@@ -40,7 +40,6 @@ async function parserFlags(): Promise<Set<string>> {
   for (const s of SETTINGS) {
     if (s.flag?.verb !== 'run') continue
     flags.add(s.flag.name)
-    if (s.flag.alias !== undefined) flags.add(s.flag.alias)
   }
   return flags
 }
@@ -55,7 +54,7 @@ async function documentedFlags(): Promise<Set<string>> {
     const m = /^\| `(--[a-zA-Z][a-zA-Z-]*)[^|]*?(?:\(`(--[a-zA-Z][a-zA-Z-]*)`\))?\s*\|/.exec(line)
     if (m !== null) {
       names.add(m[1] as string)
-      // A setting flag's alias, written after it: `--cache-policy <spec>` (`--cache`).
+      // A setting flag's alias, written after it: `--cache-policy <spec>` (`--cache-policy`).
       if (m[2] !== undefined) names.add(m[2])
       continue
     }
@@ -439,20 +438,6 @@ describe('docs/cli.md documents every verb the dispatcher answers', () => {
     }
     expect(named.size).toBeGreaterThan(10)
     expect([...named].filter((v) => !verbs.has(v)).sort()).toEqual([])
-  })
-
-  it('every verb core moved out keeps its section and its pointer', async () => {
-    const cli = await read('../docs/cli.md')
-    const moved = await read('../src/util/verbs.ts')
-    const block = /MOVED_VERBS: Readonly<Record<string, string>> = \{([\s\S]*?)\n\}/.exec(moved)
-    expect(block).not.toBeNull()
-    const names = [...block![1]!.matchAll(/^  (\w+):/gm)].map((m) => m[1]!)
-    expect(names.sort()).toEqual(['migrate', 'prune', 'stats'])
-    for (const name of names) {
-      // The doc keeps the section (people search for the verb) and says it
-      // is gone, rather than dropping it and leaving a dead end.
-      expect(cli).toContain(`## \`vx ${name}\``)
-    }
   })
 })
 

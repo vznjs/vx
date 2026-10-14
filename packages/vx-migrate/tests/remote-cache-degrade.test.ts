@@ -392,10 +392,10 @@ async function cliRun(
 ): Promise<{ exitCode: number; warnings: string[] }> {
   // `Bun.spawn`, never `spawnSync`: the stub the child dials lives in this
   // process's event loop.
-  // Off CI `vx run` reads the remote and never writes it unless `--cache`
+  // Off CI `vx run` reads the remote and never writes it unless `--cache-policy`
   // names the remote; the uploads are the subject here.
   const proc = Bun.spawn({
-    cmd: ['bun', BIN, 'run', 'build', '--all', '--cache=remote:rw'],
+    cmd: ['bun', BIN, 'run', 'build', '--all', '--cache-policy=remote:rw'],
     cwd: root,
     env: { ...process.env, NO_COLOR: '1', CI: '' },
     stdout: 'pipe',

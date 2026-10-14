@@ -1,4 +1,4 @@
-// `--download` phase 1: the deferral eligibility gate, the plan-time mode
+// `--cache-download` phase 1: the deferral eligibility gate, the plan-time mode
 // decision, and the deferred/materialise/converge lifecycle end to end
 // through a real `run()` with a fake remote executor.
 //
@@ -37,7 +37,7 @@ describe('deferralEligibility', () => {
   it('a disjoint-prefix sibling does NOT force the producer eager', () => {
     // The shape every real workspace has: `test` reads src/**, `build`
     // writes dist/**. The coarse "same project" rule would mark build
-    // ineligible and leave --download=none with nothing to defer.
+    // ineligible and leave --cache-download=none with nothing to defer.
     const nodes = graph(
       node('a#build', { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
       node('a#test', { inputs: { files: ['src/**'] }, outputs: { files: [] } }),
@@ -289,7 +289,7 @@ describe('resolveDownloadModes', () => {
   it("`toplevel` treats a requested GROUP's surfaced tasks as asked-for", () => {
     // A group has no outputs of its own; `markSurfacedDeps` marks the real
     // tasks it chains. Keying on `requested` alone meant `vx run ci
-    // --download=toplevel` deferred everything and brought home nothing —
+    // --cache-download=toplevel` deferred everything and brought home nothing —
     // the one outcome the mode exists to avoid.
     const nodes3 = graph(
       {
@@ -354,7 +354,7 @@ describe('resolveDownloadModes', () => {
     expect([...r.modeOf.keys()].sort()).toEqual(['a#gen', 'a#local'])
   })
 
-  it("`remote: 'only'` stays never — --download cannot override it", () => {
+  it("`remote: 'only'` stays never — --cache-download cannot override it", () => {
     const r = resolveDownloadModes({
       nodes,
       policy: 'none',
@@ -515,7 +515,7 @@ async function fixture(
 
 const fake = (): Fake => (globalThis as unknown as { __vxDownload: Fake }).__vxDownload
 
-describe('--download end to end', () => {
+describe('--cache-download end to end', () => {
   it('key identity: all and none derive byte-identical keys', async () => {
     const a = await fixture()
     try {
@@ -681,7 +681,7 @@ describe('--download end to end', () => {
 
   it('--dry SHOWS what would stay remote and why anything was kept eager', async () => {
     // The gate downgrades silently, so without this surface a user who asks
-    // for --download=none and gets no deferral has nothing to read. Phase 1
+    // for --cache-download=none and gets no deferral has nothing to read. Phase 1
     // claimed the --dry surface and shipped without it; this is the pin that
     // would have caught that.
     const a = await fixture()
@@ -821,7 +821,7 @@ describe('--download end to end', () => {
       expect(diag).toBeDefined()
       expect(diag).toContain('pkg-a#gen')
       expect(diag).toContain('blob evicted from CAS')
-      expect(diag).toContain('--download=all')
+      expect(diag).toContain('--cache-download=all')
     } finally {
       a.cleanup()
     }
@@ -946,7 +946,7 @@ describe('--download end to end', () => {
     }
   })
 
-  it('--download=all is unchanged: outputs land eagerly, entry saved, no deferral', async () => {
+  it('--cache-download=all is unchanged: outputs land eagerly, entry saved, no deferral', async () => {
     const a = await fixture()
     try {
       const r = await run({
@@ -973,7 +973,7 @@ describe('--download end to end', () => {
 /**
  * A SAME-project reader of the producer's outputs: `gen` runs on the fake
  * remote executor, `use` runs locally and reads what it wrote. The gate is
- * the only thing keeping `use`'s key from moving with `--download`, because
+ * the only thing keeping `use`'s key from moving with `--cache-download`, because
  * a local consumer materialises its deferred producers only after missing —
  * `execute-task` computes the key first, over whatever is on disk then.
  */
@@ -1064,9 +1064,9 @@ async function consumerKey(readGlob: string, download?: 'none'): Promise<string>
   }
 }
 
-describe('a reader that can see the producer keeps its key under --download', () => {
+describe('a reader that can see the producer keeps its key under --cache-download', () => {
   it('holds however the read glob is spelled', async () => {
-    // `--download` is transfer tuning and is never folded into a key, so
+    // `--cache-download` is transfer tuning and is never folded into a key, so
     // the ONLY way it can move one is through what is on disk when the key
     // is derived — the channel `deferralEligibility` closes. Before item
     // 441 the plain spelling held and `./out/**` did not: the same tree,

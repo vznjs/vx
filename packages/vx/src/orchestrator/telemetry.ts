@@ -191,7 +191,7 @@ export interface TaskTelemetry {
   /** Executor-reported placement (a worker id) — absent for local runs.
    *  Additive-optional, no schema bump (the `attempts` precedent). */
   where?: string
-  /** `'deferred'` when the outputs stayed remote (`--download=none`).
+  /** `'deferred'` when the outputs stayed remote (`--cache-download=none`).
    *  Additive-optional, same no-bump precedent as `where`. */
   outputs?: 'deferred'
   /** Total attempts when the task RETRIED (>1) — set only when `exec.retries`

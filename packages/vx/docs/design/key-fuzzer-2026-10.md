@@ -9,7 +9,7 @@ the worktree (`src/cache/git-inputs.ts`, `inputs.ts`, `file-hashes.ts`,
 ```sh
 cd packages/vx
 bun scripts/fuzz-keys.ts <scratch-dir> 300 <seed>             # a few seeds, in parallel
-bun scripts/fuzz-keys.ts <scratch-dir> 300 <seed> --policies  # random --force / --no-cache / --cache=
+bun scripts/fuzz-keys.ts <scratch-dir> 300 <seed> --policies  # random --force / --no-cache / --cache-policy=
 ```
 
 ## The method

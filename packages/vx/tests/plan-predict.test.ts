@@ -10,7 +10,7 @@
 //   - the plan describes the run you are ABOUT to get. `plan()` and `run()`
 //     must derive the same EFFECTIVE cache policy from the same request
 //     (the 2026-07-27 `effectiveCachePolicy` clamp exists because they had
-//     drifted: `--cache=local:,remote:rw` with no remote layer planned as
+//     drifted: `--cache-policy=local:,remote:rw` with no remote layer planned as
 //     "cache miss — would exec" for a run in which caching was entirely off).
 //   - the time prediction is a lower bound built from recorded p50s, never
 //     an invention: hits/groups cost nothing and a would-run task with no
@@ -183,7 +183,7 @@ function statusById(p: RunPlan): Record<string, CacheStatus> {
   return Object.fromEntries(p.tasks.map((t) => [t.node.id, t.cacheStatus]))
 }
 
-// The four axes, spelled out so each case below reads as the `--cache` spec
+// The four axes, spelled out so each case below reads as the `--cache-policy` spec
 // a user would actually type.
 const FULL: CachePolicy = {
   localRead: true,
@@ -204,14 +204,14 @@ const FORCE: CachePolicy = {
   remoteRead: false,
   remoteWrite: true,
 }
-/** `--cache=local:r`: serve hits, store nothing. */
+/** `--cache-policy=local:r`: serve hits, store nothing. */
 const LOCAL_READ_ONLY: CachePolicy = {
   localRead: true,
   localWrite: false,
   remoteRead: false,
   remoteWrite: false,
 }
-/** `--cache=local:,remote:rw`: the axes that are inert without a remote layer. */
+/** `--cache-policy=local:,remote:rw`: the axes that are inert without a remote layer. */
 const REMOTE_ONLY: CachePolicy = {
   localRead: false,
   localWrite: false,
@@ -311,7 +311,7 @@ describe('plan() — cache-status prediction', () => {
 
   it('calls a run that only writes, on EITHER write axis, a miss that saves (C-45)', async () => {
     // `--force` holds both write axes, so it cannot tell which one the gate
-    // reads: `--cache=local:w` and `--cache=remote:w` each save what runs.
+    // reads: `--cache-policy=local:w` and `--cache-policy=remote:w` each save what runs.
     const seen: Array<[string, unknown, string[]]> = []
     for (const [name, policy] of [
       ['local:w', { ...NO_CACHE, localWrite: true }],
@@ -475,7 +475,7 @@ describe('plan() — time prediction', () => {
 
   it('only a DEFERRED task is marked; eager and never carry no download field', async () => {
     // `downloadOf` answers for every task — 'eager' and 'never' are ordinary
-    // answers under `--download=toplevel`, not absences. Marking anything the
+    // answers under `--cache-download=toplevel`, not absences. Marking anything the
     // policy named would tell a user their outputs stay remote for tasks that
     // are about to be written to disk, on the table and in `--json` alike.
     const nodes = makeNodes([{ id: 'a#dep' }, { id: 'a#top' }, { id: 'a#never' }])

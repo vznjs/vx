@@ -2,7 +2,7 @@
 
 > **Status:** proposal (2026-08-25). This is the staged remainder of
 > `plugin-executor-reapi-2026-08.md` §9 phase 3 and roadmap item 4: the
-> `--download=all|toplevel|none` run option, the `deferred`/`cache` kinds
+> `--cache-download=all|toplevel|none` run option, the `deferred`/`cache` kinds
 > of the `ExecuteResult.outputs` discriminator (deliberately unshipped on
 > 2026-08-25, thirtieth wave: no consumer existed), and the local-cache
 > shape they require. The headline finding of working the design through
@@ -26,7 +26,7 @@ the bytes only when
 
 Bazel calls this Build without the Bytes
 (`--remote_download_outputs=all|toplevel|minimal`). vx's version is
-`--download=all|toplevel|none`, and the seam-level carrier is the
+`--cache-download=all|toplevel|none`, and the seam-level carrier is the
 `ExecuteResult.outputs` discriminator that §4 of the parent design
 already specifies but did not ship:
 
@@ -123,7 +123,7 @@ blob-store consumer appears. This doc creates no new consumer for them
 — doing so would be exactly the speculative-foundation move the
 non-goals list warns about.
 
-## 4. `--download` (question 1)
+## 4. `--cache-download` (question 1)
 
 ### 4.1 Where it lives
 
@@ -189,7 +189,7 @@ error), and `--dry` names the downgrade reason.
 Sound, but INERT: every ordinary workspace has a sibling reading the
 project (`test` reads `src/**` while `build` writes `dist/**`), so that
 rule marks essentially every producer ineligible and leaves
-`--download=none` with nothing to defer — phase 1's consumable claim
+`--cache-download=none` with nothing to defer — phase 1's consumable claim
 would have been false on arrival. The shipped gate compares the globs'
 STATIC PREFIXES, which answers the question actually being asked
 (`src/**` cannot match `dist/**`) and keeps the conservatism where it
@@ -228,7 +228,7 @@ that pinning applies to `--verify=inputs` ONLY.** Determinism and
 fingerprint modes leave placement alone, so a remote task DID defer
 under them — and the verifier, finding no outputs on disk, reported
 `no-outputs` (an n/a verdict) for a task that declares outputs and was
-simply never examined. The run now forces `--download=all` whenever any
+simply never examined. The run now forces `--cache-download=all` whenever any
 verify mode is requested, and says so when it overrides an explicit
 flag: a proof must observe what it proves.
 
@@ -271,7 +271,7 @@ a local cache hit, over that entry's `output_files` rows. A deferred
 task writes no rows, so there is nothing to compare — the question
 cannot arise. A PRIOR run's normal local entry for the same key is
 served as an ordinary local hit before placement ever happens (a local
-hit beats any deferral; `--download` gates network transfer, not local
+hit beats any deferral; `--cache-download` gates network transfer, not local
 restore). After materialisation converges (§5.4) the rows exist again
 and the check behaves exactly as for a saved-then-restored entry,
 because the convergence save goes through the ordinary
@@ -302,7 +302,7 @@ the `gitFilesCache` (`markOutputsChanged` / workspace twin).
 After the closure writes, core resolves the declared output globs and
 calls the ordinary `cache.save` with the stashed `entryMeta` (policy
 gates apply — `willWrite` off saves nothing, as everywhere). From that
-moment the machine is byte-indistinguishable from a `--download=all`
+moment the machine is byte-indistinguishable from a `--cache-download=all`
 run for that task: normal entry, normal rows, next run is a plain local
 hit, `isOutputsCurrent` skips restores. Deferral leaves no permanent
 third state behind — that invariant is what keeps every downstream
@@ -314,7 +314,7 @@ reader (`get`, prune, verify, metrics) unchanged.
 on independent schedules; the executor already warns on this class for
 grafts). A consumer that needed the bytes then CANNOT run correctly, so
 core **fails that consumer loudly**, naming the producer and the remedy
-(`re-run the producer with --force, or use --download=all`) — never a
+(`re-run the producer with --force, or use --cache-download=all`) — never a
 silent degrade, because executing against a half-materialised tree is
 the stale-input class with extra steps. The producer's own outcome
 (already reported `success`) stands; it did succeed.
@@ -372,17 +372,17 @@ result union later is additive for executors (only core consumes it).
 
 ## 8. The placement/transfer lattice, unified
 
-| effective mode | outputs land locally                                        | local entry               | who sets it                                                                  |
-| -------------- | ----------------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------- |
-| `eager`        | at task completion                                          | ordinary save             | default; `--download=all`; requested under `toplevel`; eligibility downgrade |
-| `deferred`     | lazily, if a local consumer or a later eager run needs them | on materialisation (§5.4) | `--download=toplevel`/`none`                                                 |
-| `never`        | never                                                       | never                     | `exec.remote: 'only'` (task author)                                          |
+| effective mode | outputs land locally                                        | local entry               | who sets it                                                                        |
+| -------------- | ----------------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
+| `eager`        | at task completion                                          | ordinary save             | default; `--cache-download=all`; requested under `toplevel`; eligibility downgrade |
+| `deferred`     | lazily, if a local consumer or a later eager run needs them | on materialisation (§5.4) | `--cache-download=toplevel`/`none`                                                 |
+| `never`        | never                                                       | never                     | `exec.remote: 'only'` (task author)                                                |
 
 `remote: 'only'` is the degenerate point of the same machinery
 (deferred + materialisation forbidden + local no-op fallback), which is
 why this design adds no second code path for it — internally the
 registry and the skip-save/skip-clean branches are shared.
-`--download` never overrides `'only'` in either direction.
+`--cache-download` never overrides `'only'` in either direction.
 
 ## 9. Versioning — explicitly, per the CACHE_VERSION invariant
 
@@ -390,7 +390,7 @@ registry and the skip-save/skip-clean branches are shared.
   no stored bytes become wrong under an unchanged key (a deferred task
   stores NOTHING locally; eager paths are byte-identical to today), and
   the artifact container is untouched (v27 artifacts keep restoring
-  correctly). Key derivation is untouched — `--download` is never
+  correctly). Key derivation is untouched — `--cache-download` is never
   folded (§4.1). Existing entries remain valid and keep hitting.
 - **`SCHEMA_VERSION` stays `v24`.** No new tables; the deferral
   registry is run-scoped memory, by design (§3).
@@ -415,7 +415,7 @@ sizes, on a path that just paid a network round-trip anyway.
 
 | item                                                                                 | verdict                                                      |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `RunOptions.download` + `--download` CLI + plan-time mode + `--dry` surface          | **Add** (core, phase 1)                                      |
+| `RunOptions.download` + `--cache-download` CLI + plan-time mode + `--dry` surface    | **Add** (core, phase 1)                                      |
 | `ExecuteResult.outputs` discriminator: `disk`/`deferred`                             | **Add** (core seam + reapi, phase 1)                         |
 | Deferral eligibility gate (reusing `stable-keys` relations)                          | **Add** (core, phase 1)                                      |
 | `DeferredOutputs` registry + lazy materialisation + convergence save                 | **Add** (core, phase 1)                                      |
@@ -459,7 +459,7 @@ sizes, on a path that just paid a network round-trip anyway.
 
 ## 13. Phases — each independently consumable
 
-1. **`--download=all|none` + `disk`/`deferred`, end to end.** This is
+1. **`--cache-download=all|none` + `disk`/`deferred`, end to end.** This is
    the first consumable slice, precisely: core ships the RunOption +
    CLI parse, the plan-time mode + eligibility gate, the request field,
    the registry, skip-save/skip-clean on `deferred`, lazy
@@ -467,7 +467,7 @@ sizes, on a path that just paid a network round-trip anyway.
    fail-loud eviction path, and the `--dry`/summary/telemetry surfaces;
    `vx-reapi` honours `download` and returns the `deferred` kind with
    the closure. Consumable as: a CI job runs
-   `vx run build --all --download=none` against a REAPI cluster and
+   `vx run build --all --cache-download=none` against a REAPI cluster and
    moves zero output bytes to the runner, while a laptop's mixed run
    still works because local consumers materialise lazily. `all`
    remains byte-identical to today.
@@ -480,14 +480,14 @@ sizes, on a path that just paid a network round-trip anyway.
 2. **`toplevel`.** The requested-set split in the plan-time decision
    function + pins. Small by construction (§4.2).
 3. **Exec-record short-circuit widening + `stdout_digest`.** Plugin
-   only; makes repeat `--download=none` runs skip Merkle/upload/Execute
+   only; makes repeat `--cache-download=none` runs skip Merkle/upload/Execute
    and gives short-circuited tasks stdout replay.
 4. **`{ kind: 'cache' }`** + the same-checkout executor recipe doc +
    the contract pins.
 
 ## 14. Testing (differential, per the standing rules)
 
-- **Key identity:** one workspace, three `--download` values → three
+- **Key identity:** one workspace, three `--cache-download` values → three
   byte-identical key sets (the stripping pin; fails if anyone folds it).
 - **Eligibility, both directions:** a same-project glob consumer forces
   its producer eager (deferring it must fail this pin); an isolated
@@ -520,11 +520,11 @@ sizes, on a path that just paid a network round-trip anyway.
 - Prefetching materialisation before the consumer starts (overlap
   refinement — measure the slot-blocking cost first).
 - A standalone `vx download <task>` verb for fetching after a
-  `--download=none` run — re-running with `--download=toplevel` covers
+  `--cache-download=none` run — re-running with `--cache-download=toplevel` covers
   it via the phase-3 short-circuit; a verb is UX sugar for later.
-- Changing cache POLICY semantics: `--download` governs
+- Changing cache POLICY semantics: `--cache-download` governs
   remote-execution output transfer only; locally-executed tasks and
-  `--cache=...` axes are untouched and orthogonal.
+  `--cache-policy=...` axes are untouched and orthogonal.
 - Partial materialisation (single files out of a deferred set) — the
   task is the unit, as everywhere in vx.
 - Deleting/reshaping `cas-backend.ts`/`digest.ts` (noted for an audit
@@ -539,7 +539,7 @@ sizes, on a path that just paid a network round-trip anyway.
   the short-circuit never fires under a proof — confirm the pin covers
   the widened path once it exists.
 - Whether the eligibility downgrade should warn once per run (vs only
-  `--dry`) when it makes `--download=none` mostly ineffective on a
+  `--dry`) when it makes `--cache-download=none` mostly ineffective on a
   glob-heavy workspace.
 
 ## 17. Why this is the right move

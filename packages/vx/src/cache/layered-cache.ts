@@ -308,7 +308,7 @@ export class LayeredCache implements CacheLayer {
       return this.asRemote(hash, localHit)
     }
 
-    // Remote reads disabled (e.g. `--cache=remote:`): a local miss is a
+    // Remote reads disabled (e.g. `--cache-policy=remote:`): a local miss is a
     // real miss; never touch the remote layer.
     if (!this.policy.remoteRead) return null
 
@@ -324,7 +324,7 @@ export class LayeredCache implements CacheLayer {
     // the artifact + index row this pull just wrote exist regardless of
     // policy, and the gate ("don't serve hits from the pre-existing local
     // cache") must not discard them. Going through the gated `get` here
-    // made `--cache=local:,remote:rw` download the artifact, throw the hit
+    // made `--cache-policy=local:,remote:rw` download the artifact, throw the hit
     // away, re-execute and re-upload — on every run, forever.
     const materialized = await this.local.getIngested(hash)
     if (!materialized) return null
@@ -478,7 +478,7 @@ export class LayeredCache implements CacheLayer {
     // and this upload is skipped — the never-fail contract.
     const hash = args.hash
     const durationMs = args.entry.durationMs
-    // Local writes disabled (`--cache=local:,remote:rw`): there is no
+    // Local writes disabled (`--cache-policy=local:,remote:rw`): there is no
     // on-disk artifact to read later, so the bytes must be packed NOW,
     // while this task's output files are still on disk. Deferring THIS
     // read would pack whatever the tree happens to hold when the job

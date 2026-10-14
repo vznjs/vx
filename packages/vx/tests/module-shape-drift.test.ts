@@ -99,7 +99,7 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['miss-save', 'orchestrator/miss-save.ts', 'SaveMissArgs'],
   ['options', 'orchestrator/options.ts', 'RunOptions'],
   ['options', 'orchestrator/options.ts', 'RunSummary'],
-  ['lockfile', 'workspace/lockfile.ts', 'LockfileEntry'],
+  ['lockfile', 'workspace/lockfile.ts', 'Lockfile'],
   ['lockfile', 'workspace/lockfile.ts', 'Lockfile'],
   ['plugin-commands', 'cli/plugin-commands.ts', 'ResolvedPluginCommand'],
   ['plugin-commands', 'cli/plugin-commands.ts', 'UnresolvedPluginCommand'],

@@ -17,6 +17,7 @@ import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/worksp
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 20_000
+const DRIFT = `vx lock --check: "app" (packages/app/vx.config.mjs) evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n`
 
 function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-lock-' })
@@ -125,27 +126,21 @@ describe('vx lock (e2e)', () => {
       expect(lock.code).toBe(0)
       const lockJson = (await Bun.file(path.join(root, 'vx-lock.json')).json()) as {
         version: number
-        projects: Record<string, { config: { tasks: { build: { exec: { command: string } } } } }>
+        projects: Record<string, { tasks: { build: { exec: { command: string } } } }>
       }
-      expect(lockJson.version).toBe(1)
-      expect(lockJson.projects.app!.config.tasks.build.exec.command).toBe('echo flavor-a')
+      expect(lockJson.version).toBe(2)
+      expect(lockJson.projects.app!.tasks.build.exec.command).toBe('echo flavor-a')
 
       // --check under the SAME env: fresh evaluation matches the lock.
       const checkSame = await vx(root, ['lock', '--check'], { X: 'a' })
       expect(checkSame.code).toBe(0)
       expect(checkSame.out).toContain('vx lock --check: up to date')
 
-      // --check under X=b: file bytes are unchanged (hash check alone
-      // would pass) but re-evaluation resolves a different object —
-      // exit 1 naming the project.
+      // --check under X=b: file bytes are unchanged but re-evaluation
+      // resolves a different object — exit 1 naming the project.
       const checkDrift = await vx(root, ['lock', '--check'], { X: 'b' })
       expect(checkDrift.code).toBe(1)
-      expect(checkDrift.err).toContain(
-        'lock differs from fresh evaluation in this environment (app)',
-      )
-      expect(checkDrift.err).toContain(
-        "lock differs from fresh evaluation in this environment (app) — a file the config imports changed, or the config reads the environment; run 'vx lock' here",
-      )
+      expect(checkDrift.err).toBe(DRIFT)
 
       // Plain `vx run` evaluates LIVE — local truth, no lock consumed.
       const live = await vx(
@@ -184,7 +179,7 @@ describe('vx lock (e2e)', () => {
 
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
       expect(check.code).toBe(1)
-      expect(check.err).toContain('config file changed since lock (app')
+      expect(check.err).toBe(DRIFT)
 
       // Plain runs evaluate live — the edit takes effect immediately,
       // stale lock or not.
@@ -253,24 +248,19 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    '--check refuses a config that moved, as `--frozen` does, even when its bytes did not change',
+    'a config that moved and evaluates the same is still locked: the lock is keyed by name',
     async () => {
       const dir = await addProject(root, 'app', ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
       const bytes = await Bun.file(path.join(dir, 'vx.config.mjs')).bytes()
       await rm(path.join(dir, 'vx.config.mjs'))
       await writeFile(path.join(dir, 'vx.config.ts'), bytes)
-      // Same bytes, same evaluation: only the path says the lock is stale,
-      // and the frozen run refuses on it — so the audit must too.
       const frozen = await vx(root, ['run', 'build', '--all', '--no-cache', '--frozen'], {
         X: 'a',
       })
-      expect(frozen.code).toBe(1)
+      expect(frozen.code).toBe(0)
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
-      expect(check.code).toBe(1)
-      expect(check.err).toBe(
-        `vx lock --check: "app" (packages/app/vx.config.ts) is not in the lock — run 'vx lock'\n`,
-      )
+      expect([check.code, check.err]).toEqual([0, ''])
     },
     TIMEOUT,
   )
@@ -285,7 +275,7 @@ describe('vx lock (e2e)', () => {
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
       expect(check.code).toBe(1)
       expect(check.err).toBe(
-        `vx lock --check: locked project "gone" no longer has a config in the workspace — run 'vx lock'\n`,
+        `vx lock --check: locked project "gone" has no config in the workspace — run 'vx lock'\n`,
       )
     },
     TIMEOUT,
@@ -308,7 +298,7 @@ describe('vx lock (e2e)', () => {
       // Control: the same field SET is drift once the lock was written without it.
       const drift = await vx(root, ['lock', '--check'], { VX_LOCK_UNSET: 'now set' })
       expect(drift.code).toBe(1)
-      expect(drift.err).toContain('lock differs from fresh evaluation in this environment (app)')
+      expect(drift.err).toBe(DRIFT)
     },
     TIMEOUT,
   )

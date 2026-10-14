@@ -333,7 +333,7 @@ export function nice(): VxPlugin {
 Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
 `put`, plus an optional `hasMany`. Core owns the rest: the local cache is
 asked first, then each plugin's remote in the order `plugins` lists them;
-`--cache`, `VX_CACHE_POLICY` and `cache.policy` gate every remote, and
+`--cache-policy`, `VX_CACHE_POLICY` and `cache.policy` gate every remote, and
 `--cache-scope` keeps writes apart. The hook's `ctx.scope` is that scope
 (a name like `'pr-123'`, `undefined` when none), so a
 remote can pick a credential per scope or check a token's branch. A remote error is a miss and one

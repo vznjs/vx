@@ -90,9 +90,7 @@ describe('the settings list', () => {
 
   it('gives every flag on its verb', () => {
     const missing = SETTINGS.filter((s) => s.flag !== undefined).flatMap((s) =>
-      [s.flag!.name, s.flag!.alias]
-        .filter((n) => n !== undefined)
-        .filter((n) => !acceptedFlags(s.flag!.verb).includes(n!)),
+      [s.flag!.name].filter((n) => !acceptedFlags(s.flag!.verb).includes(n)),
     )
     expect(missing).toEqual([])
   })
@@ -151,21 +149,11 @@ describe('a workspace', () => {
     )
   })
 
-  it('refuses each flat key it had before 0.0.637, naming its group', () => {
-    for (const [old, now] of [
-      ['concurrency', '`run: { concurrency }`'],
-      ['timeout', '`run: { timeout }`'],
-      ['cacheDir', '`cache: { dir }`'],
-      ['cacheRetention', '`cache: { retention }`'],
-      ['inputStability', '`cache: { inputStability }`'],
-      ['rules', '`run: { rules }`'],
-      ['schedule', '`run: { schedule }`'],
-      ['affectedBase', '`run: { affectedBase }`'],
-    ] as const) {
-      expect(() => validateWorkspace({ [old]: 1 } as never, 'w')).toThrow(
-        `w has field "${old}", which vx 0.0.637 removed — use ${now}`,
-      )
-    }
+  it('refuses a flat key from before the groups as any unknown field, with no history', () => {
+    expect(() => validateWorkspace({ concurrency: 1 } as never, 'w')).toThrow(
+      'w has unknown field "concurrency"',
+    )
+    expect(() => validateWorkspace({ concurrency: 1 } as never, 'w')).not.toThrow('removed')
   })
 })
 
@@ -202,13 +190,8 @@ describe('precedence: flag, then variable, then workspace', () => {
 })
 
 describe('the environment', () => {
-  it('refuses a variable renamed in 0.0.637, naming the new one', () => {
-    expect(() => checkSettingsEnv({ VX_KILL_GRACE_MS: '200' })).toThrow(
-      "VX_KILL_GRACE_MS was renamed VX_RUN_KILL_GRACE (a duration like '500ms', '30s' or '5m', at most 24 days) in vx 0.0.637",
-    )
-    expect(() => checkSettingsEnv({ VX_TIMING: '1' })).toThrow(
-      'VX_TIMING was renamed VX_DEBUG_TIMING in vx 0.0.637 — use VX_DEBUG_TIMING=1',
-    )
+  it('ignores a variable vx does not read, an old name included', () => {
+    expect(() => checkSettingsEnv({ VX_KILL_GRACE_MS: '200', VX_TIMING: '1' })).not.toThrow()
   })
   it('refuses a value its kind does not take, before any verb runs', () => {
     expect(() => checkSettingsEnv({ VX_RUN_TIMEOUT: '0' })).toThrow(
@@ -244,17 +227,14 @@ describe('flags', () => {
     })
   })
   it('take an alias', () => {
-    expect(parseRunArgs(['build', '--download=none']).settings).toEqual({
+    expect(parseRunArgs(['build', '--cache-download=none']).settings).toEqual({
       'cache.download': 'none',
     })
   })
-  it('refuse a renamed flag, naming the new one with the value to type', () => {
-    expect(parseRunArgs(['build', '--retry', '2']).error).toBe(
-      '--retry was renamed --retries in vx 0.0.637 — use --retries=2',
-    )
-    expect(parseRunArgs(['build', '--retry=x']).error).toBe(
-      '--retry was renamed --retries (a non-negative integer) in vx 0.0.637',
-    )
+  it('refuse an old flag name as any unknown flag, with no history', () => {
+    const error = parseRunArgs(['build', '--retry', '2']).error
+    expect(error).toStartWith('unknown flag: --retry')
+    expect(error).not.toContain('renamed')
   })
   it('refuse a bare number for a duration', () => {
     expect(parseRunArgs(['build', '--timeout', '500']).error).toBe(
@@ -278,14 +258,8 @@ function settingsTable(): string {
   const cell = (s: string): string => s.replace(/\|/g, '\\|')
   const rows = SETTINGS.map((s) => {
     const flag =
-      s.flag === undefined
-        ? '—'
-        : `\`${s.flag.verb === 'watch' ? 'vx watch ' : ''}${s.flag.name}\`` +
-          (s.flag.alias !== undefined ? ` (\`${s.flag.alias}\`)` : '')
-    const what =
-      s.doc +
-      (s.task !== undefined ? ` A task's own \`${s.task}\` beats it.` : '') +
-      (s.was !== undefined ? ` Was ${s.was.map((w) => `\`${w}\``).join(', ')}.` : '')
+      s.flag === undefined ? '—' : `\`${s.flag.verb === 'watch' ? 'vx watch ' : ''}${s.flag.name}\``
+    const what = s.doc + (s.task !== undefined ? ` A task's own \`${s.task}\` beats it.` : '')
     return `| \`${s.path}\`${s.config === false ? ' (variable or flag only)' : ''} | \`${envName(s.path)}\` | ${flag} | ${cell(kindHint(s.kind))} | ${cell(s.default)} | ${cell(what)} |`
   })
   return [

@@ -155,7 +155,7 @@ one-shot handler mid-cleanup.
    item 750). Otherwise `resolveOutputs(...)` →
    `cache.save({ hash, projectDir, outputFiles, entry })`.
    **If it ran here and saves nothing** — it failed, the policy writes
-   nothing (`--cache=local:r,remote:r`), an upstream failed, the key no
+   nothing (`--cache-policy=local:r,remote:r`), an upstream failed, the key no
    longer held — the same re-check runs (`movedInput`), and a move drops
    the project's facts; otherwise its declared outputs are resolved and
    marked in the git snapshot as a save marks them (`markUnsaved`). A

@@ -28,12 +28,12 @@ dependencies.
 
 ```bash
 vx lock              # evaluate every vx.config.* now; write vx-lock.json
-vx lock --check      # audit: hashes + full re-evaluation against the lock; exit 1 on drift
+vx lock --check      # audit: full re-evaluation against the lock; exit 1 on drift
 vx run … --frozen    # consume the lock; no evaluation at all
 ```
 
 `vx lock` evaluates each config in the current environment and stores
-the post-evaluation object plus a content hash of the config file.
+the post-evaluation object under the project's name.
 Plain runs **always** evaluate live; the lock's existence changes
 nothing about `vx run`. Only `--frozen` consumes it, and under
 `--frozen` there is no evaluation and no staleness check of its own: a
@@ -42,13 +42,11 @@ the lock is a hard error, a missing lock is a hard error.
 
 ## The check that a hash cannot do
 
-`--check` does two things, and the second is the reason the verb
-exists. It compares the stored content hash of each config file, which
-catches an edit. Then it re-evaluates every config in the current
-environment and compares the result to the frozen object, which
-catches what an edit-detector cannot: an env value read at evaluation
-time that differs from the lock's, an imported preset that changed, a
-computed command whose input moved. Every mismatched project is listed
+`--check` re-evaluates every config in the current environment and
+compares the result to the frozen object. That catches an edit, and
+what an edit-detector cannot: an env value read at evaluation time that
+differs from the lock's, an imported preset that changed, a computed
+command whose input moved. Every mismatched project is listed
 on stderr and the exit code is 1.
 
 The CI recipe is two lines:

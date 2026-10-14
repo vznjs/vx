@@ -16,37 +16,37 @@ import { parseConcurrency } from '../src/settings.js'
 import { parseDuration, parsePruneArgs, parseSize } from '../src/cli/cache.js'
 import { run } from '../src/cli/index.js'
 
-describe('--cache spec validation', () => {
+describe('--cache-policy spec validation', () => {
   it('rejects an empty spec instead of silently leaving caching FULL', () => {
-    // `--cache=` parsed to zero segments, applied nothing, and left all
+    // `--cache-policy=` parsed to zero segments, applied nothing, and left all
     // four axes on — the opposite of what someone typing it means.
-    const eq = parseRunArgs(['build', '--cache='])
-    expect(eq.error).toMatch(/--cache/)
+    const eq = parseRunArgs(['build', '--cache-policy='])
+    expect(eq.error).toMatch(/--cache-policy/)
     expect(eq.error).toMatch(/needs a spec/)
 
     // Same hole through the space form (an empty shell variable).
-    const spaced = parseRunArgs(['build', '--cache', ''])
+    const spaced = parseRunArgs(['build', '--cache-policy', ''])
     expect(spaced.error).toMatch(/needs a spec/)
 
     // A spec of nothing but separators is equally empty.
-    expect(parseRunArgs(['build', '--cache=,,']).error).toMatch(/needs a spec/)
+    expect(parseRunArgs(['build', '--cache-policy=,,']).error).toMatch(/needs a spec/)
   })
 
   it('a WHITESPACE spec is empty too, and a trailing comma is not', () => {
-    // The row above covers `--cache=`, the space FORM and `,,`. Two edges
+    // The row above covers `--cache-policy=`, the space FORM and `,,`. Two edges
     // sit either side of those and were held by neither.
     //
     // An unquoted shell variable does not always expand to nothing — it can
     // expand to a space, which is the same intent and must get the same
     // refusal. The trim is the only thing that says so.
-    expect(parseRunArgs(['build', '--cache= ']).error).toMatch(/needs a spec/)
-    expect(parseRunArgs(['build', '--cache', ' ']).error).toMatch(/needs a spec/)
-    expect(parseRunArgs(['build', '--cache=local:r, ']).error).toBeUndefined()
+    expect(parseRunArgs(['build', '--cache-policy= ']).error).toMatch(/needs a spec/)
+    expect(parseRunArgs(['build', '--cache-policy', ' ']).error).toMatch(/needs a spec/)
+    expect(parseRunArgs(['build', '--cache-policy=local:r, ']).error).toBeUndefined()
 
     // And the refusal asks whether ANY segment carries something, not
     // whether EVERY one does: a trailing comma is sloppy, not empty, and
     // rejecting it would turn a working spec into an error.
-    const trailing = parseRunArgs(['build', '--cache=local:r,'])
+    const trailing = parseRunArgs(['build', '--cache-policy=local:r,'])
     expect(trailing.error).toBeUndefined()
     expect(trailing.cache).toEqual({
       localRead: true,
@@ -57,22 +57,24 @@ describe('--cache spec validation', () => {
   })
 
   it('naming the remote layer is not the same as ASKING for a remote axis', () => {
-    // `remoteRequested` exists for one warning: "--cache named the remote
+    // `remoteRequested` exists for one warning: "--cache-policy named the remote
     // cache, but no cache plugin supplies one". `remote:` is the spelling
     // that turns the remote layer OFF, so it must NOT arm that warning —
     // otherwise the user who explicitly disabled remote caching is told
     // they asked for it. The Turbo-parity row that covers the warning uses
     // an `r` spec, so it only ever proved the positive direction.
-    expect(parseRunArgs(['build', '--cache=remote:']).remoteRequested ?? false).toBe(false)
-    expect(parseRunArgs(['build', '--cache=local:r,remote:']).remoteRequested ?? false).toBe(false)
-    expect(parseRunArgs(['build', '--cache=local:rw']).remoteRequested ?? false).toBe(false)
+    expect(parseRunArgs(['build', '--cache-policy=remote:']).remoteRequested ?? false).toBe(false)
+    expect(parseRunArgs(['build', '--cache-policy=local:r,remote:']).remoteRequested ?? false).toBe(
+      false,
+    )
+    expect(parseRunArgs(['build', '--cache-policy=local:rw']).remoteRequested ?? false).toBe(false)
     // The controls: an axis actually asked for, either way round.
-    expect(parseRunArgs(['build', '--cache=remote:r']).remoteRequested).toBe(true)
-    expect(parseRunArgs(['build', '--cache=remote:rw']).remoteRequested).toBe(true)
+    expect(parseRunArgs(['build', '--cache-policy=remote:r']).remoteRequested).toBe(true)
+    expect(parseRunArgs(['build', '--cache-policy=remote:rw']).remoteRequested).toBe(true)
   })
 
   it('still accepts a layer with EMPTY flags — that means "layer off"', () => {
-    const r = parseRunArgs(['build', '--cache=local:'])
+    const r = parseRunArgs(['build', '--cache-policy=local:'])
     expect(r.error).toBeUndefined()
     expect(r.cache).toEqual({
       localRead: false,
@@ -83,13 +85,13 @@ describe('--cache spec validation', () => {
   })
 
   it('still accepts ordinary specs', () => {
-    expect(parseRunArgs(['build', '--cache=local:r']).cache).toEqual({
+    expect(parseRunArgs(['build', '--cache-policy=local:r']).cache).toEqual({
       localRead: true,
       localWrite: false,
       remoteRead: true,
       remoteWrite: true,
     })
-    expect(parseRunArgs(['build', '--cache', 'local:,remote:rw']).cache).toEqual({
+    expect(parseRunArgs(['build', '--cache-policy', 'local:,remote:rw']).cache).toEqual({
       localRead: false,
       localWrite: false,
       remoteRead: true,
@@ -324,15 +326,15 @@ describe('value flags accept the = form', () => {
     )
   })
 
-  it('--download= and --continue= echo the bad value', () => {
-    expect(parseRunArgs(['build', '--download=some']).error).toBe(
-      "--download must be one of 'all', 'toplevel', 'none' (got some)",
+  it('--cache-download= and --continue= echo the bad value', () => {
+    expect(parseRunArgs(['build', '--cache-download=some']).error).toBe(
+      "--cache-download must be one of 'all', 'toplevel', 'none' (got some)",
     )
-    expect(parseRunArgs(['build', '--download']).error).toBe(
-      "--download requires a value (one of 'all', 'toplevel', 'none')",
+    expect(parseRunArgs(['build', '--cache-download']).error).toBe(
+      "--cache-download requires a value (one of 'all', 'toplevel', 'none')",
     )
-    expect(parseRunArgs(['build', '--download=']).error).toBe(
-      "--download requires a value (one of 'all', 'toplevel', 'none')",
+    expect(parseRunArgs(['build', '--cache-download=']).error).toBe(
+      "--cache-download requires a value (one of 'all', 'toplevel', 'none')",
     )
     expect(parseRunArgs(['build', '--continue=sometimes']).error).toBe(
       '--continue must be never, deps-ok, or always (got sometimes)',

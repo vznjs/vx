@@ -101,7 +101,7 @@ export interface PreparedRun {
    * would be saved still cleans its outputs before executing.
    */
   hasRemoteLayer: boolean
-  /** `--cache` with the workspace's `cacheScope` applied: what the layers were built under. */
+  /** `--cache-policy` with the workspace's `cacheScope` applied: what the layers were built under. */
   cachePolicy: CachePolicy
   /**
    * Scheduling priorities from plugins' `schedule` stage (task id → weight,
@@ -303,7 +303,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // A laptop reads the shared cache and does not write it unless a policy
   // names the remote (owner, 2026-10-03; Security F1, 2026-10-14): a key
   // holds only declared inputs, so a laptop's write could be replayed on CI.
-  // A workspace policy naming the remote asks to write it, as `--cache` does.
+  // A workspace policy naming the remote asks to write it, as `--cache-policy` does.
   const readOnly =
     options.remoteReadOnlyByDefault === true &&
     !(options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy))
@@ -330,8 +330,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   mark('open cache')
 
   // Frozen mode (--frozen, CI): configs load FROM vx-lock.json with no
-  // evaluation and no check of the config bytes (`vx lock --check`
-  // compares `configHash`; a run does not); env-dependent configs keep
+  // evaluation and no check of the configs (`vx lock --check`
+  // re-evaluates them; a run does not); env-dependent configs keep
   // their locked values. Default (local) runs ALWAYS evaluate live:
   // a byte hash can't see a config's import closure (shared presets),
   // so consuming the lock by default would silently serve stale

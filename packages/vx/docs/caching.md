@@ -562,7 +562,7 @@ Hard invariants of the remote prefetch:
   later `get` finds it as a now-local hit — still reports
   `source: 'remote'`, so the outcome is `cache-hit-remote`.
 - **A remote-read-off policy** (`--no-cache`, `--force`, or
-  `--cache=remote:`) fires no prefetch.
+  `--cache-policy=remote:`) fires no prefetch.
 - **Never fail.** Every remote path (get / put / ingest / prefetch)
   catches all errors and degrades to a cache miss. A remote 500, a
   network drop, a corrupt artifact, or a failed integrity check can
@@ -623,10 +623,10 @@ restore, no output clean, no local save), and its result lives in the
 remote executor's own store.
 
 The CLI maps three flags to a policy (precedence: start all-on → apply
-`--cache` → `--no-cache` forces all off → `--force` forces both reads
+`--cache-policy` → `--no-cache` forces all off → `--force` forces both reads
 off): `--no-cache` = everything off (no read, no write, no output
 clean); `--force` = reads off / writes on (re-execute and refresh the
-cache, outputs cleaned); `--cache=<spec>` = explicit per-layer control.
+cache, outputs cleaned); `--cache-policy=<spec>` = explicit per-layer control.
 Off CI, unless a spec names the remote, `remoteWrite` starts off: a key
 holds only declared inputs, so a laptop's undeclared tool or file could
 replay on CI. See `docs/cli.md` § Cache control.
@@ -639,7 +639,7 @@ is the boundary; the policy and the scope are the client's half
 (`docs/security.md` § Cache poisoning).
 
 One subtlety: when `localWrite` is off but `remoteWrite` is on
-(`--cache=local:,remote:rw`), there's no on-disk artifact for the
+(`--cache-policy=local:,remote:rw`), there's no on-disk artifact for the
 `LayeredCache` to read before uploading — so it packs the tar.zst bytes
 in memory (`Cache.packArtifactBytes`) and uploads those.
 
@@ -709,7 +709,7 @@ changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 12). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
-left remote (`--download=none`) is held to the same checks: a moved
+left remote (`--cache-download=none`) is held to the same checks: a moved
 key still lets a local consumer fetch its outputs, but the fetch saves
 no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
@@ -756,7 +756,7 @@ goes back to the scheduler and runs once its deps are done. Until X-124
 that hit restored the old install's bytes.
 
 A miss that ran here and saves **nothing** — it failed, the cache
-policy writes nothing (`--cache=local:r,remote:r`), an upstream failed
+policy writes nothing (`--cache-policy=local:r,remote:r`), an upstream failed
 under `--continue` — runs the same input re-check and, when an input
 moved, forgets the project as above; otherwise its declared outputs are
 resolved and marked in the git snapshot exactly as a save marks them.
@@ -842,7 +842,7 @@ Skipped when:
 
 - `cache.outputs.files` is empty (nothing declared as output).
 - The task's `willWrite` is false — no write axis is enabled (e.g.
-  `--no-cache`, or a read-only `--cache=local:r`). The user is debugging
+  `--no-cache`, or a read-only `--cache-policy=local:r`). The user is debugging
   and managing the tree, so vx leaves it alone. `--force` keeps writes
   on, so it DOES clean (the saved snapshot must be clean).
 

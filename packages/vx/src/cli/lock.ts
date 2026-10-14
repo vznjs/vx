@@ -12,7 +12,7 @@ import {
   loadResolvedProjects,
 } from '../orchestrator/index.js'
 import { runRules } from '../settings.js'
-import { isUserError, relPosix, secretMask, xxh3hex } from '../util/index.js'
+import { isUserError, relPosix, secretMask } from '../util/index.js'
 import {
   findWorkspaceRoot,
   type LoadReads,
@@ -25,7 +25,6 @@ import {
   checkDependencyRules,
   writeLockfile,
   type Lockfile,
-  type LockfileEntry,
   type ProjectMeta,
 } from '../workspace/index.js'
 import { taskEdgesFrom } from './select.js'
@@ -164,19 +163,14 @@ async function graphRuleRefusal(
   return null
 }
 
-/** Evaluate one config in the current env, returning its lock entry. */
-async function evaluateEntry(root: string, meta: ConfiguredMeta): Promise<LockfileEntry> {
-  const bytes = await Bun.file(meta.configPath).bytes()
-  // `fresh: true` — the lock freezes this environment's evaluation, never
-  // a stored one, whatever options a later edit passes beside it.
-  const config = await loadProjectConfig(meta.configPath, { fresh: true })
-  return {
-    configPath: relPosix(root, meta.configPath),
-    configHash: xxh3hex(bytes),
-    // Stored through `writeLockfile`'s JSON.stringify, which drops a field
-    // left `undefined` — the form `--check` compares a fresh evaluation in.
-    config,
-  }
+/**
+ * Evaluate one config in the current env. `fresh: true`: the lock freezes
+ * this environment's evaluation, never a stored one. Stored through
+ * `writeLockfile`'s JSON.stringify, which drops a field left `undefined`,
+ * the form `--check` compares a fresh evaluation in.
+ */
+function evaluate(meta: ConfiguredMeta): Promise<ProjectConfig> {
+  return loadProjectConfig(meta.configPath, { fresh: true })
 }
 
 function bareNote(bare: number): string {
@@ -186,10 +180,10 @@ function bareNote(bare: number): string {
 }
 
 async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): Promise<number> {
-  const entries = await Promise.all(metas.map((m) => evaluateEntry(root, m)))
+  const entries = await Promise.all(metas.map(evaluate))
   // Sorted by name above — stable lockfile diffs. Defined,
   // not assigned: a project named `__proto__` set the map's prototype (D-152).
-  const projects: Record<string, LockfileEntry> = Object.fromEntries(
+  const projects: Record<string, ProjectConfig> = Object.fromEntries(
     metas.map((m, i) => [m.name, entries[i]!]),
   )
   const leaks = secretsIn(projects)
@@ -217,10 +211,10 @@ async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): P
  * such a value would be published, and masking it would freeze a `***`
  * that `--frozen` runs (L-42).
  */
-function secretsIn(projects: Record<string, LockfileEntry>): Array<{ at: string; name: string }> {
+function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string; name: string }> {
   const named = new Set<string>()
-  for (const entry of Object.values(projects)) {
-    for (const task of Object.values(entry.config.tasks ?? {}))
+  for (const config of Object.values(projects)) {
+    for (const task of Object.values(config.tasks ?? {}))
       for (const n of task?.exec?.env?.secret ?? []) named.add(n)
   }
   const secrets: [value: string, name: string][] = []
@@ -240,17 +234,14 @@ function secretsIn(projects: Record<string, LockfileEntry>): Array<{ at: string;
       for (const [k, x] of Object.entries(v)) walk(project, at === '' ? k : `${at}.${k}`, x)
     }
   }
-  for (const [project, entry] of Object.entries(projects)) walk(project, '', entry.config)
+  for (const [project, config] of Object.entries(projects)) walk(project, '', config)
   return found
 }
 
 /**
- * Audit the lock. Two layers, strictly stronger than what runs do:
- *   1. The same hash check runs perform (file bytes vs lock hash).
- *   2. A full re-evaluation of every config in the CURRENT environment,
- *      deep-compared against the lock's stored resolved object. This
- *      catches eval-time env-var drift that file hashes cannot see —
- *      file bytes unchanged, resolved value changed.
+ * Audit the lock: re-evaluate every config in the CURRENT environment and
+ * deep-compare it with the locked object. That sees an edit to the config,
+ * to a file it imports, and to the environment it reads alike.
  */
 async function checkLock(
   root: string,
@@ -280,30 +271,16 @@ async function checkLock(
   const results = await Promise.all(
     metas.map(async (m): Promise<string | null> => {
       const rel = relPosix(root, m.configPath)
-      const entry = lock.projects[m.name]
-      if (!entry || entry.configPath !== rel) {
-        return `"${m.name}" (${rel}) is not in the lock — run 'vx lock'`
-      }
-      const hash = xxh3hex(await Bun.file(m.configPath).bytes())
-      if (hash !== entry.configHash) {
-        return `config file changed since lock (${m.name}: ${rel}) — run 'vx lock'`
-      }
+      const locked = Object.hasOwn(lock.projects, m.name) ? lock.projects[m.name] : undefined
+      if (locked === undefined) return `"${m.name}" (${rel}) is not in the lock — run 'vx lock'`
       // The lock's form: a first load is the module's live export, where a
       // field left `undefined` is a key the stored JSON never has.
-      const fresh = JSON.parse(
-        JSON.stringify(await loadProjectConfig(m.configPath, { fresh: true })),
-      ) as ProjectConfig
-      if (!Bun.deepEquals(fresh, entry.config, true)) {
-        // Bytes unchanged, so the drift is in what the evaluation read: a
-        // file the config imports, or the environment. Blaming only the
-        // environment sent an edited preset's author looking for env reads
-        // the config does not have (item 1044).
-        return (
-          `lock differs from fresh evaluation in this environment (${m.name}) — ` +
-          `a file the config imports changed, or the config reads the environment; run 'vx lock' here`
-        )
-      }
-      return null
+      const fresh = JSON.parse(JSON.stringify(await evaluate(m))) as ProjectConfig
+      if (Bun.deepEquals(fresh, locked, true)) return null
+      return (
+        `"${m.name}" (${rel}) evaluates differently from the lock here — its config, a file ` +
+        `it imports, or the environment it reads changed; run 'vx lock'`
+      )
     }),
   )
   const failures = results.filter((r): r is string => r !== null)
@@ -312,9 +289,7 @@ async function checkLock(
   const inWorkspace = new Set(metas.map((m) => m.name))
   for (const name of Object.keys(lock.projects)) {
     if (!inWorkspace.has(name)) {
-      failures.push(
-        `locked project "${name}" no longer has a config in the workspace — run 'vx lock'`,
-      )
+      failures.push(`locked project "${name}" has no config in the workspace — run 'vx lock'`)
     }
   }
   if (json) return answer(failures)

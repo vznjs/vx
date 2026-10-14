@@ -23,11 +23,6 @@ export function cacheScopeError(source?: string): string
 export function inputStabilityEnv(): InputStability
 // Why `name` cannot be a task name (empty, padded, holds `#`, …), or null; `vx init` skips such a script
 export function taskNameProblem(name: string): string | null
-// A level's field set → the fields a release removed from it (item H-3)
-export const REMOVED_FIELDS: ReadonlyMap<
-  ReadonlySet<string>,
-  Readonly<Record<string, { removedIn: string; use: string }>>
->
 
 // json-data.ts: the JSON-data rule (item 701)
 export interface NonJsonValue {
@@ -69,11 +64,6 @@ rules (a plugin may not shadow a core verb; a verb has one owner, a package).
   message. It changes no key: a config that passes is the object it was.
   `validateWorkspace` does not apply it: plugins are objects of
   functions, the file never crosses the worker, and no key folds it.
-- **A removed field is refused naming its replacement.** Before a key
-  is called unknown, `REMOVED_FIELDS` is consulted for the level's field
-  set: `exec.resources` reads "has field "resources", which vx 0.0.19
-  removed — use `@vzn/vx-schedule-history` …", not "unknown field"
-  (`design/versioning-1.0.md` § Deprecation). Entries stay for good.
 - **Unknown keys are refused at every object level** — `tasks`, the
   task, `exec`, `exec.env`, `exec.persistent`,
   `exec.sandbox` and its `allow` / `deny` / `ignore`, `cache`,

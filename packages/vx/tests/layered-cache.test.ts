@@ -427,7 +427,7 @@ describe('LayeredCache', () => {
   it('prefetch() with remote reads off pulls nothing: no remote GET, false', async () => {
     // The policy gate on `prefetch` (`if (!this.policy.remoteRead) return
     // false`) survived the whole core suite with `remoteHasMany`'s twin
-    // held (item 641): a `--cache` that turns remote reads off must leave
+    // held (item 641): a `--cache-policy` that turns remote reads off must leave
     // the prefetch pass, not only the lazy get, off the wire.
     await saveSample(makeLayered(), 'h-off')
     await wipeLocal()
@@ -451,7 +451,7 @@ describe('LayeredCache', () => {
   })
 
   it('save() with remote writes off uploads nothing: local entry, no remote PUT', async () => {
-    // The write twin of the two read gates (item 641): `--cache` turning
+    // The write twin of the two read gates (item 641): `--cache-policy` turning
     // remote writes off must leave the upload pool idle, and the local
     // save still lands. Deleting the gate survived the whole core suite
     // (item 642).
@@ -916,7 +916,7 @@ describe('LayeredCache', () => {
   }
 
   it('save() still packs in memory when local writes are disabled', async () => {
-    // Control for the deferred read: with `--cache=local:,remote:rw` there
+    // Control for the deferred read: with `--cache-policy=local:,remote:rw` there
     // is no on-disk artifact to read later, so those bytes MUST be captured
     // during save() while the task's outputs are still on disk. Must behave
     // identically before and after the deferral.

@@ -76,7 +76,7 @@ export function formatPlanText(plan: RunPlan): string {
   lines.push('')
   lines.push(summary.join(', ') + '.')
 
-  // `--download` is invisible without this: the eligibility gate silently
+  // `--cache-download` is invisible without this: the eligibility gate silently
   // keeps producers eager, so a user who asked for `none` and got no
   // deferral has nothing to read. Say what WOULD stay remote, and name the
   // refusals when nothing would.
@@ -169,7 +169,7 @@ export function formatPlanJson(plan: RunPlan, affectedBase?: string): string {
         }),
         ...(plan.predicted !== undefined ? { predicted: plan.predicted } : {}),
         // The gate's refusals belong on the SCRIPTING surface too: a CI job
-        // asking "did --download=none actually defer anything, and if not
+        // asking "did --cache-download=none actually defer anything, and if not
         // why" reads this, not the human table. (This object enumerates its
         // fields deliberately — the plan's internal shape is not the wire —
         // which is exactly why a new PlannedTask field does not appear here

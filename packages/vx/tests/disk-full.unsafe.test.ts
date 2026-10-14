@@ -118,7 +118,7 @@ describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
         '--all',
         '--cache-dir',
         cacheDir,
-        '--cache=local:r',
+        '--cache-policy=local:r',
       ])
       expect(second.out + second.err).toContain('1 success')
       expect(second.out + second.err).toMatch(

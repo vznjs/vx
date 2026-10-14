@@ -29,8 +29,8 @@ lock is the sound dependency story that rejection asked for:
   back; `vx lock` is a deliberate act, like `pnpm install` writing a
   lockfile. No purity heuristics — the user asserts "this resolution
   is the truth" and owns when to refresh it.
-- **Hash-pinned + hard-fail.** A changed config file is a loud error,
-  never a silent stale replay.
+- **Hard-fail.** A project the lock does not hold is a loud error,
+  never a silent evaluation.
 - **Auditable.** `vx lock --check` re-derives the truth from scratch
   and diffs it.
 
@@ -40,21 +40,22 @@ lock is the sound dependency story that rejection asked for:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "projects": {
-    "<package-name>": {
-      "configPath": "packages/app/vx.config.ts",
-      "configHash": "<xxh3 hex of file bytes>",
-      "config": { "tasks": { ... } }
-    }
-  }
+    "<package-name>": { "tasks": { ... } }
+  },
+  "validated": "<digest>"
 }
 ```
 
-- `config` is the **resolved** (post-evaluation) `ProjectConfig`,
+- Each entry is the **resolved** (post-evaluation) `ProjectConfig`,
   JSON-normalized (a `JSON.stringify` round-trip drops `undefined`
   fields, so the stored form equals what a later read produces).
-- Entries are sorted by project name (stable diffs).
+- Entries are sorted by project name (stable diffs). Version 1 also
+  stored each config's path and byte hash; version 2 (2026-10-14)
+  dropped both, since a run read neither and `--check` re-evaluates.
+- `validated` is a digest of the bytes above it under vx's version,
+  written by `vx lock`. No reader consults it.
 - Only project configs are covered. `vx.workspace.ts` is not locked:
   it holds `concurrency` / `cacheDir` only, neither of which
   participates in cache keys or task semantics.
@@ -86,16 +87,16 @@ its locked form until `vx lock`.
 
 Hard failures (`UserError`, exit 1):
 
-| condition                                         | outcome                                     |
-| ------------------------------------------------- | ------------------------------------------- |
-| no `vx-lock.json`                                 | `--frozen` refuses and names `vx lock`      |
-| project has a config but no lock entry (or moved) | `vx-lock.json has no entry for "<project>"` |
+| condition                              | outcome                                     |
+| -------------------------------------- | ------------------------------------------- |
+| no `vx-lock.json`                      | `--frozen` refuses and names `vx lock`      |
+| project has a config but no lock entry | `vx-lock.json has no entry for "<project>"` |
 
 There is deliberately **no silent fallback to evaluation**: the lock's
 contract is "what runs is what was locked". Falling back would
-reintroduce exactly the env-dependence the user locked against. The
-frozen config is still shape-validated on load — `vx-lock.json` is a
-hand-editable file, i.e. a system boundary.
+reintroduce exactly the env-dependence the user locked against. A run
+parses the lock's JSON shape and validates no entry (owner,
+2026-10-14): `vx lock` validated what it wrote, and `--check` audits.
 
 Cache-key interaction: keys hash the resolved config object (principle
 "resolved-config hashing"), so frozen configs simply pin the hashed
@@ -103,20 +104,14 @@ object. Key derivation is untouched — **no CACHE_VERSION bump**.
 
 ### `vx lock --check` — AUDIT
 
-`--check` is the only verification there is. Per
-config-bearing project:
+`--check` is the only verification there is. Per config-bearing
+project it re-evaluates in the current environment (fresh, module
+cache bypassed), JSON-normalizes, then `Bun.deepEquals(fresh, stored,
+/* strict */ true)`. A mismatch reports one message, whatever changed:
 
-1. **The file hash check** (file bytes vs `configHash`, which only
-   `--check` reads); a mismatch reports
-   `config file changed since lock (<project>)`.
-2. **Full re-evaluation in the current environment** (fresh, module
-   cache bypassed), JSON-normalized, then `Bun.deepEquals(fresh,
-stored, /* strict */ true)`. A mismatch reports:
-
-   ```
-   lock differs from fresh evaluation in this environment (<project>) —
-   a file the config imports changed, or the config reads the environment; run 'vx lock' here
-   ```
+```
+"<project>" (<config path>) evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+```
 
 Plus set-level drift: projects missing from the lock, and locked
 projects that no longer exist in the workspace. Any failure → every
@@ -209,6 +204,6 @@ confidence. Revised contract:
 **Revision (owner, 2026-06-13):** `--frozen` performs no staleness
 checks at all — in the canonical pipeline `vx lock --check` runs
 first and re-evaluates everything, so a per-file byte-hash re-check
-inside the run is redundant work wearing a safety costume. configHash
-remains in the lock purely for `--check`'s fast "file changed"
-reporting.
+inside the run is redundant work wearing a safety costume. The byte
+hash stayed for `--check`'s "file changed" report until 2026-10-14,
+when it went with the path: `--check` gives one drift message.

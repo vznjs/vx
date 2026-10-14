@@ -27,7 +27,7 @@ export interface RunArgs {
   settings: Record<string, unknown> // each setting flag by path, parsed by its kind (`run.timeout` → ms)
   cache: CachePolicy // resolved from --cache-policy / VX_CACHE_POLICY / --no-cache / --force (default all-on)
   cacheFlags?: CacheFlags // no spec named: --no-cache / --force, applied over the workspace's cache.policy
-  remoteRequested?: boolean // a --cache spec named a remote axis
+  remoteRequested?: boolean // a --cache-policy spec named a remote axis
   cacheDir: string | undefined // --cache-dir
   cacheScope?: string // --cache-scope
   frozen: boolean // run.frozen, settled before anything loads (cli/frozen.ts)
@@ -81,9 +81,7 @@ refusal points at: `vx watch` reads the same flags, M-58):
    (`--dry`, `--graph`, `--summarize`, `--profile`, `--affected`,
    `--exclude-dependencies`) accept either the bare form or `=<value>`.
 3. A setting's flag (`src/settings.ts` names each one, its verb and its
-   kind) parses by that kind into `settings` at the setting's path; a
-   name renamed in 0.0.637 (`--retry`, `--download`) is refused naming
-   the new one.
+   kind) parses by that kind into `settings` at the setting's path.
 4. Unknown flags + missing values + invalid integers → returned via
    `RunArgs.error`. The handler short-circuits to exit 1. An unknown
    flag names the nearest flag `vx run` accepts (`flagHint('run', arg)`
@@ -93,7 +91,7 @@ refusal points at: `vx watch` reads the same flags, M-58):
    `--dry` + `--graph`; either + `--summarize` / `--profile` /
    `--report` / `--report-file` (they skip execution; the artifacts need
    a real run). `--no-cache` beats
-   `--force`, both layered over a `--cache` spec.
+   `--force`, both layered over a `--cache-policy` spec.
 
 ## Scope resolution
 

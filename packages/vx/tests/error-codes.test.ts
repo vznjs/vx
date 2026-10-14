@@ -119,7 +119,7 @@ describe('a refusal under --format json', () => {
       outputOverlap: await refusal(['run', 'p', 'q', '--filter', 'twin', '--dry=json']),
       inputIsOutput: await refusal(['run', 's', '--filter', 'twin', '--dry=json']),
       cachePolicy: await refusal(['run', 'build', '--all', '--dry=json'], badPolicy),
-      cacheFlag: await refusal(['run', 'build', '--all', '--cache=disk:r', '--dry=json']),
+      cacheFlag: await refusal(['run', 'build', '--all', '--cache-policy=disk:r', '--dry=json']),
       cacheEnv: await refusal(['run', 'build', '--all', '--dry=json'], root, {
         VX_CACHE_POLICY: 'disk:r',
       }),

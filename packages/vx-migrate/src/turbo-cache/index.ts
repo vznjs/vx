@@ -630,10 +630,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
 /**
  * What Turbo's own switches leave of the remote cache: `TURBO_CACHE`
- * (`--cache`'s syntax, where an omitted source is off) and
+ * (`--cache-policy`'s syntax, where an omitted source is off) and
  * `TURBO_REMOTE_CACHE_READ_ONLY`. A CI that sets either for an untrusted
  * pull request kept Turbo from writing the shared cache and not vx. They
- * only narrow what `--cache` allows, never widen it.
+ * only narrow what `--cache-policy` allows, never widen it.
  */
 export function turboRemoteAccess(env: Record<string, string | undefined>): {
   read: boolean
@@ -648,7 +648,7 @@ export function turboRemoteAccess(env: Record<string, string | undefined>): {
       const m = /^(local|remote):([rw]*)$/.exec(part.trim())
       if (m === null)
         throw new Error(
-          `vx/turbo-cache: TURBO_CACHE ${JSON.stringify(spec)} is not --cache's syntax (e.g. local:rw,remote:r)`,
+          `vx/turbo-cache: TURBO_CACHE ${JSON.stringify(spec)} is not --cache-policy's syntax (e.g. local:rw,remote:r)`,
         )
       if (m[1] !== 'remote') continue
       read = m[2]!.includes('r')

@@ -14,7 +14,8 @@
 //   2. `frozenProjectConfig` implements a deliberate ASYMMETRY that is easy to
 //      mistake for a bug and "fix": a `--frozen` run TRUSTS the lock and does
 //      no staleness check, while `vx lock --check` audits it by full
-//      re-evaluation. The consequence is that a hand-tampered lock IS executed.
+//      re-evaluation, and a run validates no entry either. The consequence is
+//      that a hand-tampered lock IS executed.
 //      That is the documented trust model — the 2026-07-26 audit recorded it as
 //      sound — so it is pinned here with its reasoning attached.
 
@@ -32,7 +33,6 @@ import {
 } from '../src/workspace/lockfile.js'
 import type { Lockfile } from '../src/workspace/lockfile.js'
 import type { ProjectConfig } from '../src/config.js'
-import type { ConfigEvalStore } from '../src/workspace/config-cache.js'
 
 let root: string
 
@@ -70,27 +70,14 @@ async function frozenProjectConfig(
   l: Lockfile,
   meta: { name: string; configPath: string },
   r: string,
-  store?: ConfigEvalStore,
 ): Promise<ProjectConfig> {
-  return (await frozenProjectConfigs(l, [meta], r, store))[0]!
-}
-
-/** A `ConfigEvalStore` over a Map: what the local cache keeps, minus SQLite. */
-function memStore(): ConfigEvalStore & { rows: Map<string, string> } {
-  const rows = new Map<string, string>()
-  return {
-    rows,
-    getConfigEval: (k) => rows.get(k) ?? null,
-    putConfigEval: (k, v) => void rows.set(k, v),
-  }
+  return frozenProjectConfigs(l, [meta], r)[0]!
 }
 
 function lock(over: Partial<Lockfile> = {}): Lockfile {
   return {
     version: LOCKFILE_VERSION,
-    projects: {
-      pkg: { configPath: 'pkg/vx.config.ts', configHash: 'abc123', config: CONFIG },
-    },
+    projects: { pkg: CONFIG },
     ...over,
   }
 }
@@ -157,7 +144,8 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
   it.each([
     ['an older version', 0],
     ['a newer version', LOCKFILE_VERSION + 1],
-    ['a string version', '1'],
+    ['a string version', '2'],
+    ['the version before entries were bare configs', 1],
     ['null', null],
   ])('rejects %s and names both versions', async (_label, version) => {
     // A version mismatch must say what it found AND what this vx expects —
@@ -188,12 +176,8 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
   it.each([
     ['null', null],
     ['a string', 'pkg/vx.config.ts'],
-    ['missing configPath', { configHash: 'h', config: {} }],
-    ['missing configHash', { configPath: 'p', config: {} }],
-    ['missing config', { configPath: 'p', configHash: 'h' }],
-    ['a null config', { configPath: 'p', configHash: 'h', config: null }],
-    ['a non-object config', { configPath: 'p', configHash: 'h', config: 'nope' }],
-    ['a numeric configHash', { configPath: 'p', configHash: 42, config: {} }],
+    ['a number', 42],
+    ['an array', [CONFIG]],
   ])('rejects an entry that is %s, naming the project', async (_label, entry) => {
     // Naming the project is the point: a monorepo lock has hundreds of
     // entries, and "something is malformed" without a name is unactionable.
@@ -209,7 +193,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     const read = await readLockfile(root)
     expect(read).not.toBeNull()
     expect(read?.version).toBe(LOCKFILE_VERSION)
-    expect(read?.projects['pkg']?.config).toEqual(CONFIG)
+    expect(read?.projects['pkg']).toEqual(CONFIG)
   })
 
   it('accepts an empty projects map', async () => {
@@ -237,7 +221,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     await writeRaw(
       JSON.stringify({
         version: LOCKFILE_VERSION,
-        projects: [{ configPath: 'p', configHash: 'h', config: CONFIG }],
+        projects: [CONFIG],
       }),
     )
     await expect(readLockfile(root)).rejects.toThrow(/`projects` must be an object/)
@@ -252,7 +236,7 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     await writeLockfile(root, lock())
     const text = await Bun.file(lockfilePath(root)).text()
     expect(text.endsWith('\n')).toBe(true)
-    expect(text).toContain('\n  "version": 1')
+    expect(text).toContain(`\n  "version": ${LOCKFILE_VERSION}`)
   })
 
   it('overwrites rather than merging', async () => {
@@ -260,7 +244,7 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     // from a previous lock would be executed by a later `--frozen` run.
     await writeLockfile(root, {
       version: LOCKFILE_VERSION,
-      projects: { old: { configPath: 'old/vx.config.ts', configHash: 'h', config: CONFIG } },
+      projects: { old: CONFIG },
     })
     await writeLockfile(root, lock())
     const read = await readLockfile(root)
@@ -323,8 +307,14 @@ describe('frozenProjectConfig — the trust model', () => {
     // The ADDED-PROJECT case: someone creates a package and runs CI without
     // re-locking. Silently evaluating it would defeat frozen-env semantics, so
     // this is a hard error — and it must say which project and what to do.
-    const err = await rejection(frozenProjectConfig(lock(), metaFor('other/vx.config.ts'), root))
-    expect(err.message).toContain('"pkg"')
+    const err = await rejection(
+      frozenProjectConfig(
+        lock(),
+        { name: 'other', configPath: path.join(root, 'other/vx.config.ts') },
+        root,
+      ),
+    )
+    expect(err.message).toContain('"other"')
     expect(err.message).toContain('other/vx.config.ts')
     expect(err.message).toContain('vx lock')
   })
@@ -342,25 +332,8 @@ describe('frozenProjectConfig — the trust model', () => {
     }
   })
 
-  it('refuses when the entry points at a DIFFERENT config path', async () => {
-    // The MOVED/RENAMED case. The lock is keyed by project name, so a package
-    // that moved directories still finds its entry by name — and the stored
-    // config would be applied to the wrong file. Comparing the path is what
-    // catches it.
-    const moved = lock({
-      projects: {
-        pkg: { configPath: 'somewhere/else/vx.config.ts', configHash: 'h', config: CONFIG },
-      },
-    })
-    // D-88: named as the move it is, not as an entry the lock lacks.
-    const err = await rejection(frozenProjectConfig(moved, metaFor('pkg/vx.config.ts'), root))
-    expect(err.message).toBe(
-      'vx-lock.json locks "pkg" at somewhere/else/vx.config.ts, but its config is pkg/vx.config.ts now — run `vx lock` to refresh, or delete vx-lock.json',
-    )
-  })
-
-  // NOT TESTED, deliberately: that the path comparison normalizes to POSIX so
-  // a lock committed on one platform resolves on another. `relPosix` is
+  // NOT TESTED, deliberately: that the refusal's path is POSIX on every
+  // platform. `relPosix` is
   // `toPosix(path.relative(...))`, and on Linux `path.relative` ALREADY
   // returns POSIX separators — so `toPosix` is the identity here and any
   // assertion passes whether or not the normalization exists. Verified: a
@@ -375,217 +348,48 @@ describe('frozenProjectConfig — the trust model', () => {
   it('DELIBERATE: a hand-tampered stored config IS executed', async () => {
     // The asymmetry, stated as a test so nobody "fixes" it by accident.
     //
-    // A `--frozen` run does NO staleness check — not even the configHash the
-    // entry carries. That is on purpose and the reasoning is written at the
-    // call site: `vx lock --check` re-evaluates everything, so a byte-hash
-    // re-check here would be redundant work AND a weaker guarantee pretending
-    // to add safety (a file hash cannot see a config's IMPORT CLOSURE or its
-    // env reads, which is the drift that actually matters).
+    // A `--frozen` run does NO staleness check. That is on purpose:
+    // `vx lock --check` re-evaluates everything, so a byte-hash re-check here
+    // would be redundant work AND a weaker guarantee pretending to add safety
+    // (a file hash cannot see a config's IMPORT CLOSURE or its env reads,
+    // which is the drift that actually matters).
     //
     // So the lock is trusted exactly as far as the repo it lives in is
     // trusted, and `--check` is the audit. Anyone tightening this should
     // change `--check`, not this path.
     const tampered = lock({
-      projects: {
-        pkg: {
-          configPath: 'pkg/vx.config.ts',
-          configHash: 'abc123',
-          config: { tasks: { build: { exec: { command: 'echo TAMPERED' } } } },
-        },
-      },
+      projects: { pkg: { tasks: { build: { exec: { command: 'echo TAMPERED' } } } } },
     })
     const cfg = await frozenProjectConfig(tampered, metaFor('pkg/vx.config.ts'), root)
     expect(cfg.tasks?.['build']?.exec?.command).toBe('echo TAMPERED')
   })
 
-  it('DELIBERATE: a configHash that no longer matches anything is not consulted', async () => {
-    // The same decision from the other side. `configHash` remains in the file
-    // solely so `vx lock --check` can report "this file changed" quickly. A
-    // run never reads it, so an obviously-wrong value changes nothing.
-    const stale = lock({
-      projects: {
-        pkg: { configPath: 'pkg/vx.config.ts', configHash: 'not-a-real-hash', config: CONFIG },
-      },
-    })
-    expect(await frozenProjectConfig(stale, metaFor('pkg/vx.config.ts'), root)).toEqual(CONFIG)
-  })
-
-  it('still validates the stored config, so a lock cannot inject a broken shape', async () => {
-    // Trust does not mean unchecked. The stored object crosses the same
-    // boundary a freshly evaluated one does, so a lock carrying a structurally
-    // invalid config fails with the SAME message a bad vx.config.ts would give
-    // — and the message names the lockfile so the reader knows where to look.
-    const broken = lock({
-      projects: {
-        pkg: {
-          configPath: 'pkg/vx.config.ts',
-          configHash: 'h',
-          config: { tasks: [{ exec: { command: 'x' } }] } as unknown as ProjectConfig,
-        },
-      },
-    })
-    const err = await rejection(frozenProjectConfig(broken, metaFor('pkg/vx.config.ts'), root))
-    expect(err.message).toContain(LOCKFILE_NAME)
-    expect(err.message).toContain('pkg')
-    expect(err.message).toMatch(/`tasks` must be an object/)
-  })
-
-  it('holds a stored config to the JSON-data rule a loaded one meets (item 701)', async () => {
-    // JSON.parse yields only JSON values but one: a number literal past the
-    // double range parses as Infinity, which the key's JSON writes as null.
-    await writeRaw(
-      JSON.stringify(lock()).replace('"command":"echo hi"', '"command":"echo hi","timeout":1e999'),
-    )
+  it('DELIBERATE: a run validates no entry, whatever the stamp says', async () => {
+    // `vx lock` validated every entry it wrote and `vx lock --check`
+    // re-evaluates them; a run only parses the JSON shape (owner,
+    // 2026-10-14). A broken entry an edit left is the audit's to catch.
+    const shape = { tasks: [{ exec: { command: 'x' } }] } as unknown as ProjectConfig
+    await writeRaw(JSON.stringify(lock({ projects: { pkg: shape } })))
     const read = (await readLockfile(root))!
-    const err = await rejection(frozenProjectConfig(read, metaFor('pkg/vx.config.ts'), root))
-    expect(err.message).toBe(
-      `${LOCKFILE_NAME} (pkg): tasks.build.exec.timeout is Infinity — a config must be JSON data, because the cache key folds its JSON`,
-    )
+    expect(await frozenProjectConfig(read, metaFor('pkg/vx.config.ts'), root)).toEqual(shape)
   })
 
   it('accepts a locked project that declares no tasks', async () => {
     // A config with no `tasks` is legal (validation returns early), so the
     // frozen path must not invent a requirement the live loader does not have.
     const empty = lock({
-      projects: {
-        pkg: { configPath: 'pkg/vx.config.ts', configHash: 'h', config: {} },
-      },
+      projects: { pkg: {} },
     })
     expect(await frozenProjectConfig(empty, metaFor('pkg/vx.config.ts'), root)).toEqual({})
   })
 })
 
-describe('frozenProjectConfigs — the validation memo', () => {
-  const metaFor = (rel: string) => ({ name: 'pkg', configPath: path.join(root, rel) })
-  const broken = (): Lockfile =>
-    lock({
-      projects: {
-        pkg: {
-          configPath: 'pkg/vx.config.ts',
-          configHash: 'h',
-          config: { tasks: [{ exec: { command: 'x' } }] } as unknown as ProjectConfig,
-        },
-      },
-    })
-
-  it('serves the verdict on the same lock bytes without validating again', async () => {
-    const store = memStore()
-    await writeRaw(JSON.stringify(lock()))
-    await frozenProjectConfig((await readLockfile(root))!, metaFor('pkg/vx.config.ts'), root, store)
-    // The project's row and, every entry loaded, the whole lock's.
-    expect(store.rows.size).toBe(2)
-    // The same bytes read again, the object then broken in memory: only a
-    // served verdict lets it through.
-    const again = (await readLockfile(root))!
-    again.projects['pkg']!.config = broken().projects['pkg']!.config
-    expect(await frozenProjectConfig(again, metaFor('pkg/vx.config.ts'), root, store)).toEqual(
-      again.projects['pkg']!.config,
-    )
-  })
-
-  it('remembers the whole lock only once every entry was accepted, then serves it alone (X-181)', async () => {
-    const two = (): Lockfile => ({
-      ...lock(),
-      projects: {
-        ...lock().projects,
-        other: { configPath: 'other/vx.config.ts', configHash: 'h', config: CONFIG },
-      },
-    })
-    const metas = [
-      { name: 'pkg', configPath: path.join(root, 'pkg/vx.config.ts') },
-      { name: 'other', configPath: path.join(root, 'other/vx.config.ts') },
-    ]
-    const brokenOther = async (): Promise<Lockfile> => {
-      const read = (await readLockfile(root))!
-      read.projects['other']!.config = broken().projects['pkg']!.config
-      return read
-    }
-    const store = memStore()
-    await writeRaw(JSON.stringify(two()))
-    // A scoped load accepts its own entry, not the lock.
-    await frozenProjectConfigs((await readLockfile(root))!, [metas[0]!], root, store)
-    expect(store.rows.size).toBe(1)
-    const err = await rejection(frozenProjectConfigs(await brokenOther(), metas, root, store))
-    expect(err.message).toBe(
-      `${LOCKFILE_NAME} (other): \`tasks\` must be an object keyed by task name`,
-    )
-    await frozenProjectConfigs((await readLockfile(root))!, metas, root, store)
-    expect(store.rows.size).toBe(3)
-    // The per-project rows gone, the whole lock's row alone serves both a
-    // full and a scoped load.
-    for (const k of [...store.rows.keys()])
-      if (k.endsWith('\0pkg') || k.endsWith('\0other')) store.rows.delete(k)
-    expect(store.rows.size).toBe(1)
-    const served = await brokenOther()
-    expect(await frozenProjectConfigs(served, metas, root, store)).toEqual([
-      CONFIG,
-      served.projects['other']!.config,
-    ])
-    expect(await frozenProjectConfigs(served, [metas[1]!], root, store)).toEqual([
-      served.projects['other']!.config,
-    ])
-    expect(store.rows.size).toBe(1)
-  })
-
-  it('validates other bytes afresh', async () => {
-    const store = memStore()
-    await writeRaw(JSON.stringify(lock()))
-    await frozenProjectConfig((await readLockfile(root))!, metaFor('pkg/vx.config.ts'), root, store)
-    await writeRaw(JSON.stringify(broken()))
-    const err = await rejection(
-      frozenProjectConfig((await readLockfile(root))!, metaFor('pkg/vx.config.ts'), root, store),
-    )
-    expect(err.message).toBe(
-      `${LOCKFILE_NAME} (pkg): \`tasks\` must be an object keyed by task name`,
-    )
-  })
-
-  it('remembers no refusal, and nothing for a lock not read from disk', async () => {
-    const store = memStore()
-    await writeRaw(JSON.stringify(broken()))
-    for (let i = 0; i < 2; i++) {
-      const err = await rejection(
-        frozenProjectConfig((await readLockfile(root))!, metaFor('pkg/vx.config.ts'), root, store),
-      )
-      expect(err.message).toContain('must be an object keyed by task name')
-    }
-    await frozenProjectConfig(lock(), metaFor('pkg/vx.config.ts'), root, store)
-    expect(store.rows.size).toBe(0)
-  })
-})
-
 describe("the lock's validated stamp", () => {
-  const meta = () => ({ name: 'pkg', configPath: path.join(root, 'pkg/vx.config.ts') })
-  const breakIt = (l: Lockfile) => {
-    l.projects['pkg']!.config = { tasks: [] } as unknown as ProjectConfig
-    return l
-  }
-
-  it('a lock vx wrote is not validated again, with no store', async () => {
-    await writeLockfile(root, lock())
-    const read = breakIt((await readLockfile(root))!)
-    expect(await frozenProjectConfig(read, meta(), root)).toEqual(read.projects['pkg']!.config)
-  })
-
-  it('control: an edited lock keeps its stamp and is validated', async () => {
-    await writeLockfile(root, lock())
-    const text = await Bun.file(lockfilePath(root)).text()
-    await writeRaw(text.replace('echo hi', 'echo ho'))
-    const err = await rejection(
-      frozenProjectConfig(breakIt((await readLockfile(root))!), meta(), root),
-    )
-    expect(err.message).toBe(
-      `${LOCKFILE_NAME} (pkg): \`tasks\` must be an object keyed by task name`,
-    )
-  })
-
   it('is the last field, written once when a read lock is written back', async () => {
     await writeLockfile(root, lock())
     await writeLockfile(root, (await readLockfile(root))!)
     const text = await Bun.file(lockfilePath(root)).text()
     expect(text.match(/"validated"/g)?.length).toBe(1)
     expect(Object.keys(JSON.parse(text))).toEqual(['version', 'projects', 'validated'])
-    const read = breakIt((await readLockfile(root))!)
-    expect(await frozenProjectConfig(read, meta(), root)).toEqual(read.projects['pkg']!.config)
   })
 })

@@ -405,7 +405,7 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
   it(
     'a remote axis requested with no remote layer is said out loud (Turbo: "Remote caching disabled")',
     async () => {
-      const asked = await vx(root, ['run', 'lib#lint', '--cache=local:rw,remote:rw'])
+      const asked = await vx(root, ['run', 'lib#lint', '--cache-policy=local:rw,remote:rw'])
       expect(asked.code).toBe(0)
       expect(asked.out + asked.err).toContain('no cache plugin')
       // Control: the default policy has the axes on too, but nobody asked.

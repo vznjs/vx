@@ -282,7 +282,7 @@ describe('createTelemetrySource — projection', () => {
   })
 
   it('task.end carries every fact it copies, each under its own name', () => {
-    // A `--download=none` task's deferred `outputs` had no reader on the
+    // A `--cache-download=none` task's deferred `outputs` had no reader on the
     // streaming record, so dropping its copy left the suite green (654).
     // The whole record is compared, bar the projection clock.
     const { sink, records } = recorder()

@@ -82,12 +82,12 @@ verdict line is one of these fifteen sentences, quoted from the code:
 | cache key changed between the previous run and this one (inputs differ) | the key moved but neither entry kept its components (pruned, or a failed run saved none) |
 | cache key unchanged — this run was served from cache, nothing re-ran                                       | it was a cache hit                                               |
 | cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit | a failure saves no entry |
-| cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read) | the run's policy read no cache |
+| cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read) | the run's policy read no cache |
 | cache key unchanged — neither run saved it: each ran beside a failed task (…), and a task run past a failed dependency (--continue) is never cached | both runs went past a failure under `--continue` |
 | cache key unchanged — the previous run on this key ran beside a failed task (…) and was not saved: a task run past a failed dependency (--continue) is never cached, so there was nothing to hit | the previous run went past a failure under `--continue` |
 | cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one | the entry was gone |
 | cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit | the previous run's save failed, or a prune took the entry |
-| cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache without write), so there was nothing to hit | the previous run's policy wrote no cache |
+| cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit | the previous run's policy wrote no cache |
 | cache key unchanged — re-executed on the same key though this run read the cache; vx cannot name the cause | none of the above; vx cannot name the cause |
 | cache key unchanged — re-executed on the same key (--no-cache / --force, or unrelated) | no invocation recorded the run's cache policy |
 | cache key unchanged — this run recorded no cache outcome, so whether it re-ran is unknown                  | the run recorded no outcome for this task; vx says so, not guesses |

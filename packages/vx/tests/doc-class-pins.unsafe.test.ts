@@ -212,8 +212,7 @@ describe('no doc describes exec.resources as a field a config can declare', () =
     // It left the config on 2026-09-12 with the reservations. Item 347 fixed
     // four pages and did not grep the module docs, where config-schema.md
     // still had the validator checking it (item 352, 2026-09-19).
-    // The schema refuses it as a REMOVED field, naming what replaced it
-    // (versioning-1.0.md § Deprecation), so a page may say it was removed.
+    // The schema refuses it as any unknown field, so a page may say it was removed.
     const config = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'config.ts'), 'utf8')
     expect(/^\s+resources\??:/m.test(config)).toBe(false)
     expect(() =>
@@ -221,7 +220,7 @@ describe('no doc describes exec.resources as a field a config can declare', () =
         { tasks: { t: { exec: { command: 'x', resources: {} } } } } as never,
         'vx.config.ts',
       ),
-    ).toThrow('has field "resources", which vx 0.0.19 removed')
+    ).toThrow('has unknown field "resources"')
     const roots = [DOCS, path.resolve(import.meta.dir, '..', 'docs')]
     const pages: string[] = []
     const walk = (dir: string): void => {

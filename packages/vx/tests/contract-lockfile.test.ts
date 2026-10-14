@@ -4,7 +4,7 @@
 // vx-lock.json` is the lock this vx writes for one fixture workspace. A
 // later vx must write the same bytes (so a format change is a reviewed diff
 // of that file) and must accept the committed one: `--check` passes and
-// `--frozen` runs from it. A change to how `configHash` is taken, or to
+// `--frozen` runs from it. A change to the entry shape, or to
 // `LOCKFILE_VERSION`, fails here before it fails every user's CI.
 // The last field, `validated`, is a digest under vx's version: it is the
 // one line another vx writes differently, and a reader never requires it.

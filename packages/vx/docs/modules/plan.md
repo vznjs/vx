@@ -24,7 +24,7 @@ export interface PlannedTask {
   deps: readonly string[]
   p50Ms?: number // typical duration from history, on a task that would run
   executor?: string // the executor's name, when the workspace declared a choice
-  download?: 'deferred' // outputs would stay remote (`--download`)
+  download?: 'deferred' // outputs would stay remote (`--cache-download`)
   affected?: AffectedReason // why `--affected` kept this requested task (affected-tasks.md)
 }
 
@@ -82,7 +82,7 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
    run never looks up (item 766, `tests/stale-hit.test.ts` › "`--dry`
    calls a dependant of a persistent task by the key the run uses").
 4. Tasks with no `cache` block OR a policy that reads and writes
-   nothing (`--no-cache`, `--cache=local:`) → `'no-cache'`:
+   nothing (`--no-cache`, `--cache-policy=local:`) → `'no-cache'`:
    `ranNoCache` (`events.ts`), the predicate every run surface labels by,
    so the plan and the run agree.
    A server the run would leave idle (`idleServers`: not requested, and

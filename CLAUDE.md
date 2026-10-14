@@ -166,6 +166,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 - A plugin is `definePlugin(import.meta, hooks)` and its name is its
   package name — never a field, never overridden (owner, 2026-09-10).
 - No half-finished implementations behind flags. Ship it or don't write it.
+- Until 1.0 a breaking change ships with no alias, rename notice or
+  migration shim (owner, 2026-10-14): old names simply stop working.
+  Release notes, blog posts and change files may name the rename.
 - Trust internal code; validate only at boundaries (user input, FS, network).
 - Test fixtures use heredoc strings for `vx.config.mjs`.
 - A probe that confirms a thesis becomes a test, not a note.
