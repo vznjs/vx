@@ -51,7 +51,7 @@ capability in vx becomes a transformation of the same triple:
 - **Migration** from Turborepo or Nx is mostly a rendering problem,
   because both of them ultimately run a command too; vx just writes it
   where you can read it.
-- **`vx show`, `--dry`, MCP's `listTasks`** all print the same thing a
+- **`vx show` and `--dry`** both print the same thing a
   human would type.
 
 ## The environment is declared too

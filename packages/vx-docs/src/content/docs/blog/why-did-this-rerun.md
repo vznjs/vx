@@ -104,10 +104,10 @@ cross.
 
 ## The same answer for machines
 
-`--format json` emits one object: `{ taskId, runId, why, diff, roots }`. The
-`@vzn/vx-mcp` plugin exposes the same query as a tool a coding agent
-can call (`whyDidThisRerun`), so "why is CI rebuilding everything" is a
-question an agent can answer without reading the source of the runner.
+`--format json` emits one object: `{ taskId, runId, why, diff, roots }`,
+so "why is CI rebuilding everything" is a question a coding agent can
+answer without reading the source of the runner. The
+[agent skill](../../guides/agents/) teaches it the command.
 
 A cache is a claim that the work has been done before. `vx why` is how
 the claim is audited. The guide is

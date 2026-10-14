@@ -83,7 +83,7 @@ be declared as an output instead, and the status line says so.
 (or `VX_CACHE_INPUT_STABILITY_SEVERITY=error`) fails the task instead of
 warning, for a pipeline that would rather stop than build twice. The
 task's line then names the file, `failed (src/a.ts changed during the run, exit 1)`,
-and agents read the same as `inputMoved` in `vx last` and `vx mcp`.
+and agents read the same as `inputMoved` in `vx last --format json`.
 
 ## What runs downstream
 
