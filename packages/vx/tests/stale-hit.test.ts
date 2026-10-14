@@ -407,6 +407,48 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a submodule under an output survives the clean before a run and before a restore',
+    async () => {
+      // git lists a submodule as one gitlink path, never its files, so a
+      // committed-file check by exact path cleaned gen/sub/x.txt.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             codegen: {
+               exec: { command: 'mkdir -p gen && printf a > gen/a.js' },
+               cache: { inputs: { files: [] }, outputs: { files: ['gen/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'gen/sub/x.txt'), 'pinned')
+      await write(path.join(root, '.gitignore'), '.vx/\n')
+      const sub = path.join(root, 'gen/sub')
+      for (const dir of [sub, root]) {
+        git(dir, 'init', '-q')
+        git(dir, 'config', 'user.email', 'test@vx.local')
+        git(dir, 'config', 'user.name', 'vx test')
+      }
+      git(sub, 'add', '-A')
+      git(sub, 'commit', '-q', '-m', 'sub')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await waitForProducers(root)
+      vx(root, 'run', 'codegen')
+      expect(await readFile(path.join(sub, 'x.txt'), 'utf8')).toBe('pinned')
+      await rm(path.join(root, 'gen/a.js'))
+      vx(root, 'run', 'codegen')
+      expect(await readFile(path.join(root, 'gen/a.js'), 'utf8')).toBe('a')
+      expect(await readFile(path.join(sub, 'x.txt'), 'utf8')).toBe('pinned')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a workspace output written mid-run reaches a consumer whose partition was read before it',
     async () => {
       // The ADDITION twin, on the miss path: `early` reads the workspace

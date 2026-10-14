@@ -70,7 +70,7 @@ export interface GitEnumeration {
   untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
-  tracked: readonly string[] // every index path, root-relative: never an output
+  tracked: readonly string[] // every index path (a submodule as its gitlink), root-relative: never an output
   scopes: readonly string[] // the pathspecs listed, root-relative
   blobCheck: IndexBlobCheck // the blob-size check's input (A-60)
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)

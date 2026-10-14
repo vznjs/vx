@@ -239,6 +239,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * files are the user's, never an output (owner, 2026-10-14: "never
    * delete committed file"). A directory no enumeration covered (a
    * nested repository, a cache no enumeration filled) is listed once.
+   * git lists a submodule as its gitlink path alone, so a file under a
+   * tracked path is committed too.
    */
   committedIn(dir: string): (abs: string) => boolean {
     let listed = false
@@ -248,7 +250,9 @@ export class GitFilesCache extends Map<string, readonly string[]> {
         const covered = this.trackedScopes.some((s) => dir === s || dir.startsWith(s + path.sep))
         if (!covered) this.noteTracked([dir], listTracked(dir))
       }
-      return this.tracked.has(abs)
+      for (let p = abs; p.length > dir.length; p = path.dirname(p))
+        if (this.tracked.has(p)) return true
+      return false
     }
   }
 
@@ -1217,7 +1221,7 @@ export async function populateGitFilesCache(
 export interface GitEnumeration {
   /** Every enumerated path, workspace-relative, tracked and untracked. */
   all: string[]
-  /** The paths the index lists, workspace-relative: what git tracks. */
+  /** The paths the index lists (a submodule as its gitlink), workspace-relative: what git tracks. */
   tracked: readonly string[]
   /** The directories `tracked` covers, workspace-relative (`.` for the whole tree). */
   scopes: readonly string[]
@@ -1511,7 +1515,7 @@ export async function startGitEnumeration(
   }
   return {
     all,
-    tracked,
+    tracked: gitlinks.size === 0 ? tracked : tracked.concat([...gitlinks]),
     scopes: pathspecs,
     trusted,
     dirty: worktreeDirty,
