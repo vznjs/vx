@@ -145,20 +145,17 @@ export default defineWorkspace({
 const FIRST: readonly Feature[] = [
   // ---- Speed ----
   {
-    slug: 'fastest',
-    title: 'Low overhead, measured in the open',
+    slug: 'benchmarks',
+    title: 'Benchmarks you can re-run',
     category: 'speed',
-    hook: 'Measured against Turborepo, Nx and Vite Task on 9,603 tasks, losses included.',
+    hook: 'The harness is in the repo, and the benchmarks page shows every row.',
     body: [
-      'vx is measured on a synthetic workspace of 1,601 projects and 9,603 tasks in 30 dependency levels, against Turborepo, Nx and Vite Task. Each tool runs in its own native config, with the same graph, the same commands and the same concurrency. Every number is the time a tool adds over the ideal run.',
-      'With nothing changed, vx adds 1.07 s, Turborepo 898 ms, Vite Task 11.75 s and Nx 25.45 s. On a cold build vx adds 7.07 s, Vite Task 8.16 s, Turborepo 9.15 s and Nx 3 min 48 s.',
-      'Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.',
-      'The benchmarks page shows every row, including the ones vx loses: Vite Task burns less CPU on a cold build, and Turborepo adds less when nothing changed or outputs are restored. The harness lives in the repo, so you can run it yourself.',
+      'vx is measured on a synthetic workspace of 1,601 projects and 9,603 tasks in 30 dependency levels, with every runner in its own native config, the same graph, the same commands and the same concurrency. Each number is the time a runner adds over the ideal run.',
+      'The numbers live on the benchmarks page, with every row, the ones vx loses included. Real repos with uneven task times will differ, so run the harness on your own machine.',
     ],
-    example: { lang: 'sh', code: 'npm install -D @vzn/vx\nnpx @vzn/vx run build --all' },
-    image: 'fastest.png',
-    imageAlt:
-      'Time added over the ideal run with nothing changed, 9,603 tasks: vx 1.07 s, Turborepo 898 ms, Vite Task 11.75 s, Nx 25.45 s.',
+    example: { lang: 'sh', code: 'bun packages/vx-bench/compare.ts 3' },
+    image: 'benchmarks.png',
+    imageAlt: 'The benchmark harness running from the vx repository.',
     docs: { label: 'The numbers', href: 'benchmarks/' },
     deepDive: { label: 'Honest benchmarks', href: 'blog/honest-benchmarks/' },
   },
