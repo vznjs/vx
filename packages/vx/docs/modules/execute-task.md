@@ -98,7 +98,7 @@ one-shot handler mid-cleanup.
      outcome with `durationMs = performance.now() - cacheOpStart` —
      the user-perceived restore time.
    - A restore that throws `ArtifactVanishedError` (the artifact was
-     removed after the probe: a `vx cache prune` in another shell,
+     removed after the probe: a `vx cache clean` in another shell,
      another workspace's retention on a shared cache directory) is a
      miss: one status line naming the task and the artifact, ending
      `— running it`, then step 4. A hit the

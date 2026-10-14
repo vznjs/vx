@@ -1571,7 +1571,7 @@ describe('Cache storage (v10)', () => {
     // whether anything else has to go. Drop that subtraction and the
     // budget sees the PRE-prune total, so it evicts entries the user's
     // own cap says fit — here both survivors, silently, on every
-    // `vx cache prune --older-than ... --max-bytes ...`.
+    // `vx cache clean --older-than ... --max-bytes ...`.
     //
     //   correct:  remaining = 200 - 100 = 100, not > 100 → evicted 1
     //   mutated:  remaining = 200            > 100 → evicted 3

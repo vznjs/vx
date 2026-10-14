@@ -53,7 +53,7 @@ See:
 
 - [`cli-run.md`](./cli-run.md) — `vx run`
 - [`cli-watch.md`](./cli-watch.md) — `vx watch`
-- [`cli-cache.md`](./cli-cache.md) — `vx cache prune`
+- [`cli-cache.md`](./cli-cache.md) — `vx cache clean`
 - [`cli-help.md`](./cli-help.md) — `vx help`
 - [`cli-format.md`](./cli-format.md) — shared formatters
 - `vx lock`, `vx init`, `vx show` / `vx info`, `vx why`,

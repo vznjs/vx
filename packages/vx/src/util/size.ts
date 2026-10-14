@@ -1,3 +1,5 @@
+import { lstatSync, readdirSync } from 'node:fs'
+import path from 'node:path'
 import { parseDecimalInt } from './num.js'
 
 /**
@@ -47,7 +49,7 @@ export function parseDuration(input: string): number | null {
 
 /**
  * Human-readable byte size with KB/MB/GB/TB/PB suffixes and one
- * decimal of precision below 10 of any unit. Used by `vx info`, `vx cache prune` and the
+ * decimal of precision below 10 of any unit. Used by `vx info`, `vx cache clean` and the
  * run's `cacheRetention` line.
  */
 export function formatBytes(n: number): string {
@@ -59,4 +61,12 @@ export function formatBytes(n: number): string {
     v /= 1024
   }
   return `${v.toFixed(0)} PB`
+}
+
+/** Bytes under `p` on disk, links not followed; 0 when it is missing. */
+export function treeBytes(p: string): number {
+  const st = lstatSync(p, { throwIfNoEntry: false })
+  if (st === undefined) return 0
+  if (!st.isDirectory()) return st.size
+  return readdirSync(p).reduce((n, e) => n + treeBytes(path.join(p, e)), 0)
 }

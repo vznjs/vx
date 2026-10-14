@@ -4,7 +4,7 @@
 // opens now name the file and the remedy. The open reads the header and
 // `schema_meta` alone, so a file corrupt deeper answered the first lookup
 // that reached the bad page: every task of a run failed as an "internal
-// error" and `vx cache prune` printed a stack (A-8). Every entry point that
+// error" and `vx cache clean` printed a stack (A-8). Every entry point that
 // reads or writes the index now gives the open's refusal.
 import {
   closeSync,
@@ -33,7 +33,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }))
 const refusal = (reason: string) =>
   `the cache index ${db} is not a database SQLite can read (${reason}) — ` +
   `it holds nothing a run cannot rebuild: remove it with its -wal and -shm files and ` +
-  `re-run, and \`vx cache prune\` reclaims the artifacts it indexed`
+  `re-run, and \`vx cache clean\` reclaims the artifacts it indexed`
 
 const open = (inspect: boolean): string | null => {
   try {

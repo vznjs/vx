@@ -28,7 +28,7 @@ and one decimal of precision below 10 of any unit but PB. Powers of 1024.
 
 ## Use sites
 
-- `vx cache prune` output (`Pruned N entries (1.3 GB freed)`, and the
+- `vx cache clean` output (`Pruned N entries (1.3 GB freed)`, and the
   orphaned artifacts it reaped).
 - The `vx info` doctor printout: the
   cache-size line (`cache entries:    N (1.3 GB)`).

@@ -95,10 +95,10 @@ export interface CacheSettings {
   /**
    * Evict from the local cache at the end of every run, whatever its
    * policy (a remote hit is ingested under any), by the same policy
-   * `vx cache prune` takes as flags: entries not used for `olderThan`
+   * `vx cache clean` takes as flags: entries not used for `olderThan`
    * (`'30d'`, `'12h'`), then least-recently-used entries until the cache
    * is under `maxSize` (`'10GB'`, `'500MB'`). Either or both. Omitted →
-   * nothing is evicted unless you run `vx cache prune`.
+   * nothing is evicted unless you run `vx cache clean`.
    */
   retention?: { olderThan?: Duration; maxSize?: string }
   /**

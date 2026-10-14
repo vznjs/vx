@@ -64,6 +64,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--older-than': ['1d'],
   '--max-size': ['1G'],
   '--dry-run': [],
+  '--global': [],
   '--check': [],
   '--mjs': [],
   '--native': [],
@@ -92,9 +93,7 @@ describe('verbFlags is what each verb accepts', () => {
           refused.push(`${verb} ${flag}: no argv for it in this table`)
           continue
         }
-        // A cache prune needs a policy; anything but that is the flag's own verdict.
-        const extra = verb === 'cache' && flag !== '--older-than' ? ['--max-size', '1G'] : []
-        const error = parse([flag, ...argv, ...extra])
+        const error = parse([flag, ...argv])
         if (error !== null) refused.push(`${verb} ${flag}: ${error}`)
       }
     }
@@ -251,7 +250,7 @@ describe('the bash script, run', () => {
   })
 
   it('after a verb: its subcommands and choices, and a plugin verb only --help', async () => {
-    expect(await offers(script, { words: ['vx', 'cache', 'p'], cword: 2 })).toEqual(['prune'])
+    expect(await offers(script, { words: ['vx', 'cache', 'c'], cword: 2 })).toEqual(['clean'])
     expect(await offers(script, { words: ['vx', 'completions', ''], cword: 2 })).toEqual([
       'bash',
       'zsh',

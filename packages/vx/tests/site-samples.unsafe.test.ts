@@ -1598,7 +1598,7 @@ describe('the values post states the principles CLAUDE.md numbers', () => {
 
 describe("the site's Turbo and Nx verb rows say what `vx <verb>` says", () => {
   // The migrate guide mapped `nx reset` to "nothing" while `vx reset` named
-  // `vx cache prune` (J-90).
+  // `vx cache clean` (J-90).
   it('a row naming `nx <verb>` or `turbo <verb>` (no flag that changes it) holds the command and flags of its FOREIGN_VERBS hint', () => {
     let rows = 0
     for (const page of handAuthoredSitePages()) {

@@ -1,6 +1,6 @@
-// `vx cache` has one subcommand, `prune`; the words other runners use for
+// `vx cache` has one subcommand, `clean`; the words other runners use for
 // the rest point at the verb that answers them. `vx cache list` and `ls`
-// said only "The subcommand is prune", though `vx info` reports the
+// said only "The subcommand is clean", though `vx info` reports the
 // entries and `vx last --list` the runs; `gc` and `purge` are eviction.
 
 import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
@@ -26,18 +26,20 @@ const said = async (sub: string): Promise<[number, string]> => {
 it('list, ls, gc and purge name the verb that answers them', async () => {
   const runs =
     '`vx info` reports the cache entry count and size, and `vx last --list` the recent runs'
-  const evict = '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)'
+  const evict = '`vx cache clean` is the eviction verb (`--older-than`, `--max-size`)'
+  const wipe =
+    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it'
   expect([await said('list'), await said('ls'), await said('gc'), await said('purge')]).toEqual([
     [1, `vx cache: unknown subcommand: list — ${runs} (see \`vx cache --help\`)\n`],
     [1, `vx cache: unknown subcommand: ls — ${runs} (see \`vx cache --help\`)\n`],
     [1, `vx cache: unknown subcommand: gc — ${evict} (see \`vx cache --help\`)\n`],
-    [1, `vx cache: unknown subcommand: purge — ${evict} (see \`vx cache --help\`)\n`],
+    [1, `vx cache: unknown subcommand: purge — ${wipe} (see \`vx cache --help\`)\n`],
   ])
 })
 
-it('a word no runner uses still names prune (control)', async () => {
+it('a word no runner uses still names clean (control)', async () => {
   expect(await said('bogus')).toEqual([
     1,
-    'vx cache: unknown subcommand: bogus. The subcommand is prune (see `vx cache --help`)\n',
+    'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n',
   ])
 })

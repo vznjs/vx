@@ -102,14 +102,14 @@ describe('the `config` stage reaches every verb that opens the cache', () => {
     async () => {
       const r = await vx(root, ['info'])
       expect(r.code).toBe(0)
-      expect(r.out).toMatch(/^cache dir: +\S+\/\.vx\/moved$/m)
+      expect(r.out).toMatch(/^cache dir: +\S+\/\.vx\/moved \(/m)
       expect(r.out).toMatch(/^cache entries: +1 /m)
     },
     TIMEOUT,
   )
 
   it(
-    '`vx cache prune` prunes the moved directory and never creates the default one',
+    '`vx cache clean` prunes the moved directory and never creates the default one',
     async () => {
       // The freed figure is the artifact the prune deletes, measured where it
       // is stored (inline, the bytes themselves) rather than read back from
@@ -123,7 +123,7 @@ describe('the `config` stage reaches every verb that opens the cache', () => {
       db.close()
       expect(size).toBeLessThan(1024)
 
-      const r = await vx(root, ['cache', 'prune', '--max-size', '1B'])
+      const r = await vx(root, ['cache', 'clean', '--max-size', '1B'])
       expect(`${r.code}\n${r.err}`).toBe('0\n')
       expect(r.out).toBe(`Pruned 1 entry (${size} B freed)\n`)
       expect(storedKeys(moved)).toEqual([])
