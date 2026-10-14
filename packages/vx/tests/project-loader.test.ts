@@ -839,7 +839,7 @@ describe('loadProjectConfig', () => {
       `export default { tasks: { build: { exec: { command: 'tsc', resources: { cpus: 2 } } } } }`,
     )
     await expect(loadProjectConfig(file)).rejects.toThrow(
-      /has field "resources", which vx 0\.0\.19 removed — use `@vzn\/vx-schedule-history`/,
+      'tasks.build.exec has unknown field "resources"',
     )
   })
 
@@ -885,7 +885,7 @@ describe('loadProjectConfig', () => {
       await expect(loadProjectConfig(file)).rejects.toThrow(/exec has unknown field "persistant"/)
     })
 
-    it('refuses the REMOVED backend capability by name instead of ignoring it', async () => {
+    it('refuses the removed backend capability as an unknown hook, not ignoring it', async () => {
       // The whole-run backend seam went with vx cloud on 2026-08-23, but it
       // stayed in the capability list — so a plugin declaring only
       // `backend` (a third-party one written against the old API) counted
@@ -898,7 +898,7 @@ describe('loadProjectConfig', () => {
         `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/old', `{ backend() { return {} } }`)}] }\n`,
       )
       await expect(loadWorkspaceConfig(dir)).rejects.toThrow(
-        /backend` is no longer a capability[\s\S]*Use `executor`/,
+        "plugin 'org/old' declares 'backend', which is no plugin hook",
       )
     })
 
