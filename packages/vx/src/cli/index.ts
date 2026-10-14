@@ -217,10 +217,10 @@ export async function run(argv: readonly string[]): Promise<number> {
       // help after a typo was a hundred lines past the hint that mattered.
       // The verbs this workspace's plugins declare are verbs HERE, so they
       // join the "did you mean" set, and when nothing is close the second
-      // line says where a verb can come from: `vx prnue` in a workspace
-      // declaring `prune` read as a plain unknown command, and `vx prune`
-      // before the plugin was declared said nothing about the file that
-      // would declare it (2026-09-20).
+      // line says where a verb can come from: a typo of a plugin verb read
+      // as a plain unknown command, and a plugin verb before the plugin was
+      // declared said nothing about the file that would declare it
+      // (2026-09-20).
       // A word that opens with a dash is a flag, and vx itself takes only
       // --help and --version: "unknown command: --bogus" named the wrong
       // thing (M-60).

@@ -19,28 +19,21 @@ import { createRequire } from 'node:module'
 import {
   refuseUnknownOptions,
   UserError,
-  type PluginCommand,
   type PluginOptionKinds,
   definePlugin,
   lockfileClaim,
   type VxPlugin,
 } from '@vzn/vx'
 
-// Each parser and `prune` load when first used: every run evaluates
-// `.vx/workspace.ts`, and the four parsers and the verb were ~2.5 ms of it
-// for a workspace that declares one manager and runs no `prune`. The
-// digest seam is synchronous, so a parser loads by `require`.
+// Each parser loads when first used: every run evaluates
+// `.vx/workspace.ts`, and the four parsers were ~2.5 ms of it for a
+// workspace that declares one manager. The digest seam is synchronous,
+// so a parser loads by `require`.
 const load = createRequire(import.meta.url)
 const pnpmLock = (): typeof import('./pnpm.js') => load('./pnpm.js')
 const bunLock = (): typeof import('./bun.js') => load('./bun.js')
 const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
-
-/** One object for all four plugins, so a workspace declaring two still has one `prune`. */
-const pruneCommand: PluginCommand = {
-  description: 'copy projects and their workspace deps, lockfile pruned, for a Docker build',
-  run: async (argv, ctx) => (await import('./prune.js')).prune(argv, ctx),
-}
 
 export interface LockfileOptions {
   /**
@@ -109,7 +102,6 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   }
   const extraFiles = manager.extraFiles
   return definePlugin(import.meta, {
-    commands: { prune: pruneCommand },
     ...lockfileClaim({
       file: manager.file,
       part: manager.name,

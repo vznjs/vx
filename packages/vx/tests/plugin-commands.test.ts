@@ -177,8 +177,8 @@ describe('plugin commands', () => {
   })
 
   it('two plugins of one package naming a verb are one owner: the first declared runs, help lists it once', async () => {
-    // @vzn/vx-lockfile's bun() and pnpm() both carry `prune`; a workspace
-    // declaring both was refused as two owners.
+    // A package with one plugin per variant carries a verb on each; a
+    // workspace declaring two was refused as two owners.
     const SECOND = pluginSource(
       'org/hello',
       `{ commands: { hello: { description: 'second hi', run() { return 8 } } } }`,
