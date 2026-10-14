@@ -6,7 +6,7 @@ authors:
 tags:
   - migration
   - nx
-excerpt: "Moving an Nx repo to vx: `nx()` is a temporary start, executors included, then executors become shell commands in native config. `bunx @vzn/vx-migrate` reads the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as an `nx-exec` line for you to rewrite as its command."
+excerpt: "Moving an Nx repo to vx: `vx init` writes native config from the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as an `nx-exec` line for you to rewrite as its command."
 ---
 
 Leaving Nx is a bigger step than leaving Turborepo, and the honest
@@ -17,30 +17,22 @@ the generators as a scaffolding system, that is a real loss and vx
 does not replace it. If you were using Nx as a task runner, everything
 below is a simplification.
 
-## A temporary start
+## One command
 
-`nx()` from `@vzn/vx-migrate` is a bridge while you migrate, not a way
-to keep Nx's config: vx is fast on native config. It fills vx's `project` stage from the resolved
-project graph, so every project's targets are vx tasks with their
-inputs, outputs and `dependsOn`, and `vx run build --all` runs what
-`nx run-many -t build` ran, under vx's cache. `npx @vzn/vx init` writes the
-one file beside `nx.json`, and its `next:` line installs
-`@vzn/vx-migrate` and `@vzn/vx-lockfile`, then runs the build:
+`npx @vzn/vx init` beside `nx.json` is the whole adoption. It writes
+one `vx.config.ts` per project, a `.vx/workspace.ts` declaring your
+lockfile's plugin, and `.vx/projects.lock.json`, and installs vx with
+your own package manager:
 
-```ts
-import type { WorkspaceConfig } from '@vzn/vx/config'
-import { nx } from '@vzn/vx-migrate'
-import { npm } from '@vzn/vx-lockfile'
-
-export default { plugins: [nx(), npm()] } satisfies WorkspaceConfig
+```bash
+npx @vzn/vx init              # native vx.config.ts files, .vx/workspace.ts, the lock
+npx @vzn/vx run build --all   # what nx run-many -t build did, under vx's cache
 ```
 
-Executor targets keep running as executors. Each becomes an `nx-exec`
-line that runs the executor in its own Node process through Nx's public
-`runExecutor`, with the executor and its options on the command line,
-so vx's key sees them and `vx show` prints what runs. A warm vx run
-never runs Nx at all; the plugin exports the graph again only when
-the worktree changes (`nx.json`, a manifest, a source file). (Added 2026-09-22.)
+Executor targets keep running as executors at first. Each becomes an
+`nx-exec` line that runs the executor in its own Node process through
+Nx's public `runExecutor`, with the executor and its options on the
+command line, so vx's key sees them and `vx show` prints what runs.
 
 ## The one real shift: executors become commands
 
@@ -77,21 +69,27 @@ Nothing is silently wrong.
 ## Read the graph Nx actually uses
 
 Nx's real configuration is not `nx.json`; it is the resolved project
-graph, after every plugin has inferred its targets. The migration reads
-that:
+graph, after every plugin has inferred its targets. `vx init` reads
+that: it asks your installed `nx` for the graph (`nx graph`) rather
+than guessing at plugin-inferred targets from `nx.json`, so those
+targets come along. The files it writes freeze that snapshot as static
+config: review them and fill the TODOs.
 
-```bash
-bunx @vzn/vx-migrate --dry   # preview the generated vx.config.ts files and a report
-bunx @vzn/vx-migrate         # write them; never overwrites without --force
+To check the mapping before any config exists, `npx @vzn/vx init --keep`
+writes only a `.vx/workspace.ts` that runs the graph through `nx()` from
+`@vzn/vx-migrate`, and its `next:` line installs it and builds once:
+
+```ts
+import type { WorkspaceConfig } from '@vzn/vx/config'
+import { nx } from '@vzn/vx-migrate'
+import { npm } from '@vzn/vx-lockfile'
+
+export default { plugins: [nx(), npm()] } satisfies WorkspaceConfig
 ```
 
-It asks your installed `nx` for the graph (`nx graph`) rather than
-guessing at plugin-inferred targets from `nx.json`. In a terminal it
-asks native (the default) or keep (`--keep`, the `nx()` file `vx init`
-writes), then writes `.vx/workspace.ts` and installs what the files
-import. The generated
-files freeze that snapshot as static config: review them and fill the
-TODOs.
+It is a check, not a way to keep Nx's config: vx's benchmarks measure
+only native config. `bunx @vzn/vx-migrate --dry` then previews the
+files, and `bunx @vzn/vx-migrate` writes them and drops `nx()`.
 
 ## What maps
 
