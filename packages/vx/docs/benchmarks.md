@@ -355,6 +355,19 @@ graph into it and saves 40–160 ms (0.81 s against 0.85, min of 5, in a
 probe; 682 ms against 844, median of 3, in the harness), a fifth of the
 warm gap at most.
 
+At the 9,603-task shape (2026-10-13: 1,601 projects, Nx 23.3.0,
+`nx:run-commands`, `CI=1`, daemon and `.env` loading off, four-core
+Linux, 173 environment variables) warm has a cause: Nx's fully cached
+run took 21.2 to 23.6 s. A CPU profile of the main process (24.8 s
+sampled) puts 6.10 s self in `hashTasksUpfront`, which hands each
+task's environment object to the native hasher; 5.55 s in garbage
+collection; 3.03 s in `getTaskSpecificEnv`, which copies `process.env`
+for every task even with `.env` loading off; 2.89 s in
+`copyFilesFromCache`, which rewrites every cached output on each warm
+run; and 1.56 s in the native planner. Most of it is a per-task copy
+of the environment, so it grows with the environment's size, and no
+setting turns it off. Loading `.env` files cost a further 2.7 s.
+
 The npm share grows with the graph. At 1,090 packages (3,270 tasks,
 `compare.ts 100 11`, same box, one cold run each) Nx burned 76 min of
 CPU with npm and 23 min with bun: npm was two thirds of the old
