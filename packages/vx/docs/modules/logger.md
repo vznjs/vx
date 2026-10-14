@@ -135,9 +135,10 @@ wrapping its output stream. Enabled only when the stream is a TTY and
 hooks (wired by `run()`) drive a live region at the bottom
 (`formatStatusRegion`): a blank line separating it from the completed
 list above; one row per ready persistent task (`▸`, `running`, the id,
-no elapsed); one row per worker slot — the ticking elapsed time leads,
-then `running` and the full id, a task keeping its slot for its whole
-life so names never jump, an idle slot holding its place dim; a
+no elapsed); one row per worker slot that has been busy — the ticking
+elapsed time leads, then `running` and the full id, a task keeping its
+slot for its whole life so names never jump, a slot whose task ended
+holding its place dim; a
 `… +N more running` line when tasks outnumber slots; then the live
 summary section, the same meters the final footer prints, filling in
 as the run proceeds so the region becomes the summary when the run

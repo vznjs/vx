@@ -597,8 +597,7 @@ export function defaultLogger(
       if (free >= 0) {
         slots[free] = slot
         shownSlots = Math.max(shownSlots, free + 1)
-      }
-      else slotQueue.push(slot)
+      } else slotQueue.push(slot)
       refresh(true)
     },
     forecast(load) {

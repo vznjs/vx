@@ -41,7 +41,7 @@ export interface RunContext {
   workspaceProjectCount?: number // total projects → the bar's denominator
 }
 
-// The meters + info + time rows from counted stats — the live status region renders these as the run proceeds.
+// The footer section from counted stats — the live status region renders it as the run proceeds.
 export function formatSummarySection(
   stats: SummaryStats,
   totalMs: number,
@@ -75,10 +75,10 @@ only a started task carries.
 
 `formatRunSummary` returns an array of lines (caller writes one per
 `log.status`). Leading blank line is included so the summary stands
-apart from the last framed block. When `context` is omitted (the live
-status region, which fills in the meters as the run proceeds) the rule
-reads a bare `vx` and the `projects` / `info` rows are skipped — the
-meters-only section the region renders.
+apart from the last framed block. The live status region renders the
+same section with the same context, filling in as the run proceeds, so
+it becomes the final footer. When `context` is omitted the rule reads
+a bare `vx` and the `projects` / `info` rows are skipped.
 
 ## Format
 
@@ -109,8 +109,8 @@ policy that reads and writes nothing), then `<time> saved` (green:
 the hits' STORED exec times summed, what the cache skipped, never the
 restore this run paid; left out under 1 ms), `N failed` after the
 count; none on an empty run). `projects` and `info` only
-render when a `RunContext` is passed (the final footer); the live
-region shows the meters alone. The block above is
+render when a `RunContext` is passed (the live region and the final
+footer both pass one). The block above is
 `formatRunSummary` on four successes of 239, 190, 215 and 216 ms with
 that context, pinned in `tests/summary.test.ts`.
 
