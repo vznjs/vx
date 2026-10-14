@@ -441,8 +441,14 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
  * shape problems early with a clear message rather than letting them
  * crash deeper in the orchestrator. Also applied to configs loaded
  * back from `.vx/projects.lock.json` (a hand-editable file — same boundary).
+ * `ownConfig` is the config file outputs may not cover (null: none), apart
+ * from `configPath` when that is a label (`<path> (after plugin 'x')`).
  */
-export function validateProjectConfig(config: ProjectConfig, configPath: string): void {
+export function validateProjectConfig(
+  config: ProjectConfig,
+  configPath: string,
+  ownConfig: string | null = configPath,
+): void {
   // Before the schema, on the object as it stands: the key folds its JSON,
   // so a value JSON cannot carry is refused here and in the config worker
   // alike (json-data.ts). A plugin's `project` edit and a lock entry cross
@@ -810,7 +816,7 @@ export function validateProjectConfig(config: ProjectConfig, configPath: string)
         // Taken back by a `!`, the file is never cleaned or restored.
         const own = g.startsWith('!')
           ? undefined
-          : ownFilesCovered(g, configPath).find((f) => !takenBack(outFiles as unknown[], f))
+          : ownFilesCovered(g, ownConfig).find((f) => !takenBack(outFiles as unknown[], f))
         if (own !== undefined) {
           throw new UserError(
             `${where}.cache.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
@@ -1158,9 +1164,10 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
  * `package.json` and `vx.config` while the run reported success (item
  * 1002); the message for `'.'` had even suggested `**`.
  */
-function ownFilesCovered(glob: string, configPath: string): string[] {
+function ownFilesCovered(glob: string, ownConfig: string | null): string[] {
   const g = new Bun.Glob(normalizeGlob(glob))
-  return ['package.json', path.basename(configPath)].filter((f) => g.match(f))
+  const own = ownConfig === null ? ['package.json'] : ['package.json', path.basename(ownConfig)]
+  return own.filter((f) => g.match(f))
 }
 
 function takenBack(globs: readonly unknown[], file: string): boolean {

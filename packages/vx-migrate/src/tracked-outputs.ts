@@ -11,6 +11,7 @@ import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { isLiteralPattern, outputsOverlap } from '@vzn/vx'
 import { relPosix } from './paths.js'
+import { isKeyedGroup } from './shared-outputs.js'
 
 /** The files git tracks under `root`, root-relative; null outside a repo or without git. */
 export async function trackedFiles(root: string): Promise<string[] | null> {
@@ -191,6 +192,26 @@ function hidden(globs: unknown, files: readonly string[]): string | undefined {
   )
 }
 
+/** `globs` without the `!` entries in `backs` that take back one of `files`. */
+function unhidden(
+  globs: readonly unknown[],
+  backs: ReadonlySet<string>,
+  files: readonly string[],
+): unknown[] {
+  return globs.filter(
+    (g) =>
+      !(
+        typeof g === 'string' &&
+        g.startsWith('!') &&
+        backs.has(g.slice(1)) &&
+        files.some((f) => outputsOverlap(g.slice(1), f))
+      ),
+  )
+}
+
+const positives = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((g): g is string => typeof g === 'string' && !g.startsWith('!')) : []
+
 interface Outputs {
   files?: unknown
   workspaceFiles?: unknown
@@ -275,6 +296,16 @@ export function spareTrackedOutputs(
       const rooted = hits.flatMap(([key, hit]) =>
         key === 'files' ? hit.map((f) => (rel === '' ? f : `${rel}/${f}`)) : hit,
       )
+      // The `!` entries the sibling passes gave readers for these outputs.
+      const ownOut = positives(outputs.files)
+      const fileBacks = new Set(ownOut)
+      const wsBacks = new Set([
+        ...positives(outputs.workspaceFiles),
+        ...ownOut.map((g) => {
+          const bare = g.replace(/^(\.\/)+/, '')
+          return rel === '' ? bare : `${rel}/${bare}`
+        }),
+      ])
       for (const q of projects) {
         for (const r of q.tasks) {
           if (r === t) continue
@@ -284,6 +315,15 @@ export function spareTrackedOutputs(
             (q === p ? hidden(inputs.files, local) : undefined) ??
             hidden(inputs.workspaceFiles, rooted)
           if (f === undefined) continue
+          if (isKeyedGroup(r)) {
+            // Its key reads the committed files, as Nx hashes them. Only the
+            // take-backs of this output go, never a `!` the input declares.
+            if (q === p && Array.isArray(inputs.files))
+              inputs.files = unhidden(inputs.files, fileBacks, local)
+            if (Array.isArray(inputs.workspaceFiles))
+              inputs.workspaceFiles = unhidden(inputs.workspaceFiles, wsBacks, rooted)
+            continue
+          }
           delete r.task!['cache']
           todos.push([
             `${q.name}#${r.name}`,

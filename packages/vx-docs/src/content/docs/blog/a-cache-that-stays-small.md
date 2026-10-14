@@ -16,10 +16,10 @@ gives you two ways to bound it and does the cleanup it can do on its own.
 ## Two policies: age, then size
 
 ```sh frame="terminal"
-$ vx cache prune --older-than 30d
+$ vx cache clean --older-than 30d
 Pruned 42 entries (1.3 GB freed)
 
-$ vx cache prune --older-than 7d --max-size 500M
+$ vx cache clean --older-than 7d --max-size 500M
 Pruned 18 entries (320 MB freed)
 ```
 
@@ -67,7 +67,7 @@ beside it (`<hash>.tar.zst`). They can drift apart. A cache format
 change resets the index and leaves the artifacts. A save that crashed
 leaves a temp file it never renamed. vx calls these orphans.
 
-Every prune also sweeps for them. An orphan is judged like an entry, by
+Every clean also sweeps for them. An orphan is judged like an entry, by
 its file time, because another vx version sharing the store may still
 read it. A run that asks for an orphan's key indexes it again from its
 bytes and gets a hit; one no task asks for again is only reclaimed by
@@ -76,35 +76,36 @@ writes are touched: a `release.tar.zst` you keep in a shared cache
 directory is never deleted.
 
 The reverse drift is handled too. If you delete an artifact by hand,
-its index row goes with the next prune, and its bytes count toward
+its index row goes with the next clean, and its bytes count toward
 neither the size cap nor the freed total, because they are on no disk.
 
 ## A bound of zero is refused
 
 ```sh frame="terminal"
-$ vx cache prune --max-size 0
+$ vx cache clean --max-size 0
 ```
 
 That would evict every entry, and a zero is far more often a value
 computed by mistake than an intent. The same goes for a bare number:
 `--max-size 10` would mean ten bytes, so vx asks you to write `10G`, or
-`10B` if bytes really are the unit. Running `vx cache prune` with no
-policy at all is an error too. When you really want the cache gone,
-delete the store directory `vx info` names.
+`10B` if bytes really are the unit. When you really want the cache
+gone, run `vx cache clean` with no bound: it clears this repository's
+store and the workspace's run history, and `--global` clears every
+repository's store.
 
 ## Try it before it deletes anything
 
 ```sh frame="terminal"
-$ vx cache prune --older-than 30d --dry-run
+$ vx cache clean --older-than 30d --dry-run
 Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
 ```
 
 `--dry-run` picks the victims under the same policy and stops there.
-The real prune with the same flags removes exactly what it named. Add
+The real clean with the same flags removes exactly what it named. Add
 `--format json` for a script or an agent; it prints
 `{ dryRun, evicted, bytesFreed, orphans, orphanBytes }`.
 
-A prune that deletes also waits for a `vx run` on the same workspace to
+A clean that deletes also waits for a `vx run` on the same workspace to
 finish, so it never evicts an entry that run is restoring. A run it
 cannot see, such as another workspace sharing the cache directory, is
 still safe: an artifact that disappears before its restore is a miss,

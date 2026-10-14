@@ -63,10 +63,10 @@ flowchart LR
   style LRU stroke:#c6f84e,stroke-width:2px
 ```
 
-Or prune by hand, and look first:
+Or trim by hand, and look first:
 
 ```sh frame="terminal"
-$ vx cache prune --max-size 4KB --dry-run
+$ vx cache clean --max-size 4KB --dry-run
 Would prune 25 entries (5.9 KB)
 ```
 
