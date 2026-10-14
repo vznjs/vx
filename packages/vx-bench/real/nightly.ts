@@ -108,6 +108,32 @@ function allowSameDayVx(dir: string): void {
   writeFileSync(file, `${yaml.replace(/\n*$/, '\n')}minimumReleaseAgeExclude:\n  - '@vzn/*'\n`)
 }
 
+// `vx init` writes vx.workspace.ts with the published @vzn/vx-migrate,
+// which can predate this checkout's config shape: until 0.0.637 shipped it
+// wrote `concurrency` and `affectedBase` at the top level, which this vx
+// refuses. Move one-line fields under `run`, as the refusal says.
+const MOVED_TO_RUN = ['concurrency', 'schedule', 'affectedBase', 'timeout']
+function moveRunFields(dir: string): void {
+  for (const name of ['vx.workspace.ts', 'vx.workspace.mjs', 'vx.workspace.js']) {
+    const file = path.join(dir, name)
+    if (!existsSync(file)) continue
+    const moved: string[] = []
+    const text = readFileSync(file, 'utf8').replace(
+      new RegExp(`^  (${MOVED_TO_RUN.join('|')}): (.+?),?\\n`, 'gm'),
+      (_, key: string, value: string) => {
+        moved.push(`${key}: ${value}`)
+        return ''
+      },
+    )
+    if (moved.length === 0) return
+    writeFileSync(
+      file,
+      text.replace(/\n\}( satisfies [\w]+)?\s*$/, `\n  run: { ${moved.join(', ')} },\n}$1\n`),
+    )
+    return
+  }
+}
+
 const vxBin = path.join(WORK, 'vx')
 must(
   [
@@ -150,6 +176,7 @@ for (const repo of REPOS) {
     repairManagedPnpm(dir)
     allowSameDayVx(dir)
     must([vxBin, 'init', '--native'], dir)
+    moveRunFields(dir)
     const script = path.join(REPO_ROOT, 'packages/vx-bench/real', `${repo.tool}-repo.sh`)
     const toolArgs = repo.tool === 'nx' ? 'NX_ARGS' : 'TURBO_ARGS'
     const out = must(['bash', script, dir, vxBin, repo.tasks, values.reps!], dir, {
