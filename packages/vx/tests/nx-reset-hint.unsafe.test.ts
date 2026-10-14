@@ -40,7 +40,7 @@ describe('the nx reset hint names a command that runs', () => {
   })
 })
 
-describe('the advice to drop the whole cache names vx cache clear', () => {
+describe('the advice to drop the whole cache names a bare vx cache prune', () => {
   it('vx reset says it exactly; the guide row and cli.md say the same', async () => {
     root ??= await mkdtemp(path.join(os.tmpdir(), 'vx-nx-reset-'))
     const r = Bun.spawnSync({
@@ -50,14 +50,16 @@ describe('the advice to drop the whole cache names vx cache clear', () => {
       stderr: 'pipe',
     })
     expect(r.stderr.toString()).toBe(
-      '`nx reset` is `vx cache clear` here; `vx cache prune --older-than <age>` trims the cache instead\n',
+      '`nx reset` is `vx cache prune` here; `--older-than <age>` trims the cache instead of clearing it\n',
     )
     const row = readFileSync(GUIDE, 'utf8')
       .split('\n')
       .find((l) => l.startsWith('| `nx reset`'))!
-    expect(row).toContain('`vx cache clear`')
+    expect(row).toContain('`vx cache prune` clears it all')
     const cli = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
-    expect(cli.replace(/\s+/g, ' ')).toContain('`vx cache clear` deletes the whole cache')
+    expect(cli.replace(/\s+/g, ' ')).toContain(
+      '`vx cache prune` with no bound clears the whole cache',
+    )
   })
 
   it('vx info has a `cache store` line to name', async () => {

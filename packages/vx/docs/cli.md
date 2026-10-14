@@ -30,8 +30,7 @@ released binary carries its own Bun and the row never says it.
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
-vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
-vx cache clear [--dry-run] [--format pretty|json] [--cache-dir <path>]
+vx cache prune [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
@@ -1586,12 +1585,12 @@ Evict old or oversized cache entries. Operates on the entries and
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
 
-`prune` and [`clear`](#vx-cache-clear) are the `vx cache` subcommands:
-the statistics other runners put under a `cache` verb — the directory,
-the entry count, the size — are part of [`vx info`](#vx-info), and
-`vx cache stats`, `list`, `ls`, `gc` and their neighbours say so (`list`
-also names `vx last --list`; `clean`, `purge`, `reset` and `wipe` name
-`vx cache clear`) rather than printing a bare "unknown subcommand".
+`prune` is the only `vx cache` subcommand: the statistics other runners
+put under a `cache` verb — the directory, the entry count, the size —
+are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
+`gc` and their neighbours say so (`list` also names `vx last --list`;
+`clean`, `clear`, `purge`, `reset` and `wipe` name a bare
+`vx cache prune`) rather than printing a bare "unknown subcommand".
 
 ```
 vx cache prune --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
@@ -1599,10 +1598,12 @@ vx cache prune --max-size <size>            # After age-based pruning, evict LRU
 vx cache prune ... --dry-run                # Say what either policy would reap; delete nothing.
 vx cache prune ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
 vx cache prune ... --cache-dir <path>       # The cache a run with the same flag uses.
+vx cache prune                              # No bound: clear the whole cache (below).
+vx cache prune --global                     # Also clear every other repository's store.
 ```
 
-At least one of `--older-than` / `--max-size` is required. Both may
-be combined: age-based eviction runs first, then LRU eviction if the
+With no bound it clears the cache ([below](#with-no-bound-clear-the-cache)).
+Both bounds may be combined: age-based eviction runs first, then LRU eviction if the
 total is still over the size cap. The same policy runs unattended at
 the end of every run when `.vx/workspace.ts` declares
 `cacheRetention: { olderThan, maxSize }` (same spellings; see
@@ -1645,10 +1646,8 @@ write `10G`, or `10B` when bytes really are the unit.
 
 **A zero bound is rejected.** `--max-size 0` and `--older-than 0d` would
 evict every entry in the cache, which is far more often a
-computed-to-zero retention than an intent — and no flag combination
-expresses "wipe the cache" (running with neither flag is an error, not a
-full prune). `vx cache clear` deletes the whole cache when that is really
-what you want.
+computed-to-zero retention than an intent. `vx cache prune` with no
+bound clears the whole cache when that is really what you want.
 
 ```
 $ vx cache prune --older-than 30d
@@ -1695,36 +1694,39 @@ directory a run would use. `--cache-dir <path>` (cwd-relative, as on
 `vx run`) names another one, so a run that wrote elsewhere can be
 pruned there.
 
-## `vx cache clear`
+### With no bound: clear the cache
 
-`vx cache clear` deletes the whole cache: the cache directory
-(`.vx/cache`, or `cache.dir` / `--cache-dir`: the index, run history and
-logs) and the store its index names, where the entries live
-(`~/.vx/<id>/cache`). It prints what it freed. `.vx/workspace.ts`, the
-lock and `.vx/.gitignore` sit outside both and stay; a `cache.dir` that
-holds them (`.vx`, the workspace root) is refused. A directory with no
-`cache.db` is not a vx cache and is left alone; a workspace that never
-ran says `Nothing to clear: no cache here`. The next run misses every
-task once and saves again.
+`vx cache prune` with neither `--older-than` nor `--max-size` clears
+the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
+`--cache-dir`: the index and this workspace's run history, so `vx last`
+and `vx why` start over) and the store its index names, where the
+entries live (`~/.vx/<id>/cache`, shared by this repository's
+checkouts, so their entries go too). `--global` also clears every other
+repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
+and no `--cache-dir`. `.vx/workspace.ts`, the lock and `.vx/.gitignore`
+sit outside them and stay; a `cache.dir` that holds them (`.vx`, the
+workspace root) is refused. A directory with no `cache.db` is not a vx
+cache and is left alone; a workspace that never ran says
+`Nothing to clear: no cache here`. The next run misses every task once
+and saves again.
 
 ```
-$ vx cache clear
-Cleared .vx/cache and /home/me/.vx/3f2a9c01b4d5e6f7/cache (1.4 GB freed)
+$ vx cache prune
+Cleared this repository's store, shared by its checkouts, and this workspace's run history (1.4 GB freed):
+  .vx/cache
+  /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
-$ vx cache clear --dry-run
-Would clear .vx/cache and /home/me/.vx/3f2a9c01b4d5e6f7/cache (1.4 GB)
-
-$ vx cache clear --format json
-{"dryRun":false,"cleared":[".vx/cache","/home/me/.vx/3f2a9c01b4d5e6f7/cache"],"bytesFreed":1503238553}
+$ vx cache prune --global --dry-run
+Would clear every repository's store and this workspace's run history (3.1 GB):
+  .vx/cache
+  /home/me/.vx/3f2a9c01b4d5e6f7/cache
+  /home/me/.vx/9b8e7d6c5a4f3e2d/cache
 ```
 
-It waits for a `vx run` on the same workspace to finish first, as a
-prune does (the run's lock), so it never deletes what that run is
-restoring or saving. `--cache-dir <path>` clears the cache a run with the
-same flag uses. The store is shared by every checkout of the
-repository, so their entries go too; other repositories' stores under
-`~/.vx` stay. `--format json` prints `{ dryRun, cleared, bytesFreed }`
-(`schemas/cache.json`), `cleared` listing the directories.
+It waits for a `vx run` on this workspace to finish first (the run's
+lock), as a trim does. With `--format json` it prints
+`{ dryRun, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
+listing the directories.
 
 ## `--frozen` (run flag)
 
@@ -2464,8 +2466,8 @@ copy to the source.
 
 ## Machine-readable output
 
-`vx show`, `vx info`, `vx why`, `vx last`, `vx cache prune` and
-`vx cache clear` take `--format json`. Each prints one JSON document on one line, as
+`vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune` take
+`--format json`. Each prints one JSON document on one line, as
 `vx run --format json` does, whose shape is a
 checked-in JSON Schema (draft 2020-12) shipped with the package:
 `schemas/show.json`, `schemas/info.json`, `schemas/why.json`,
@@ -2762,8 +2764,8 @@ projects:         12 (34 tasks)
 plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
-cache dir:        /work/repo/.vx/cache
-cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache
+cache dir:        /work/repo/.vx/cache (8.2 MB, this workspace's run history)
+cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
 cache versions:   keys vx-cache-v43 · index schema v34
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
@@ -2823,10 +2825,12 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
   those.
-- `cache store` is where the entries and their artifacts live: the
-  store every workspace of this user shares (`docs/caching.md`), or
-  `none: the cache dir holds the entries` when the workspace names its
-  cache dir. Before a first run it is the store a run would open.
+- `cache dir` holds the index and this workspace's run history; its size
+  is on disk. `cache store` is where the entries and their artifacts
+  live: the store shared by this repo's checkouts (`docs/caching.md`),
+  with its size on disk, or `none: the cache dir holds the entries` when
+  the workspace names its cache dir. Before a first run it is the store a
+  run would open. A bare `vx cache prune` frees both sizes.
 - `cache entries` counts the entries and their size; with a
   `cacheRetention.maxSize` it reads against it (`812 (3.0 GB of 10 GB,
 30%)`), and a `cache retention` row says what each run's end evicts.
@@ -2857,8 +2861,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   empty when all did), `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
 cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
   `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
-cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheStore`
-  (null when the cache dir holds the entries), `cacheVersion`,
+cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
+  (on disk: the index and run history), `cacheStore` (null when the cache
+  dir holds the entries), `cacheStoreBytes` (on disk, null with no store), `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `settings` (every
   setting by path, `{ value, source }`, `source` one of `env` /
   `workspace` / `default`, `value` null for the default), `cacheRetention`

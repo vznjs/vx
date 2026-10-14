@@ -102,7 +102,7 @@ describe('the `config` stage reaches every verb that opens the cache', () => {
     async () => {
       const r = await vx(root, ['info'])
       expect(r.code).toBe(0)
-      expect(r.out).toMatch(/^cache dir: +\S+\/\.vx\/moved$/m)
+      expect(r.out).toMatch(/^cache dir: +\S+\/\.vx\/moved \(/m)
       expect(r.out).toMatch(/^cache entries: +1 /m)
     },
     TIMEOUT,

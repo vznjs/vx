@@ -18,7 +18,7 @@ import path from 'node:path'
 const ROOT = path.resolve(import.meta.dir, '..')
 const DOC = readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8')
 const SECTIONS: Record<string, string[]> = {
-  cache: ['vx cache prune', 'vx cache clear'],
+  cache: ['vx cache prune'],
   show: ['vx show'],
   info: ['vx info'],
   why: ['vx why'],

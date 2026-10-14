@@ -20,6 +20,7 @@ import {
   maskedLine,
   parseSize,
   relPosix,
+  treeBytes,
 } from '../util/index.js'
 import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
@@ -95,8 +96,12 @@ export interface InfoFacts {
    */
   memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
   cacheDir: string
+  /** Bytes on disk under `cacheDir`: the index and run history, and the entries when no store holds them. */
+  cacheDirBytes: number
   /** The shared store holding the entries, or null when `cacheDir` holds them. */
   cacheStore: string | null
+  /** Bytes on disk under `cacheStore`, shared by the repo's checkouts; null with no store. */
+  cacheStoreBytes: number | null
   cacheVersion: string
   schemaVersion: string
   cacheEntries: number
@@ -233,6 +238,7 @@ async function collectWorkspaceInfo(
   const git = gitVersion()
   const statusCache = gitStatusCache(root)
   const sandbox = { ...(await probing), declared: sandboxed }
+  const cacheStore = cache.storeDir ?? storeRoot
   return {
     vx: VERSION,
     vxPath: vxPath(),
@@ -262,8 +268,11 @@ async function collectWorkspaceInfo(
     workers: workersFact(resolveSetting('run.concurrency', workspaceConfig)),
     memory: memoryFact(),
     cacheDir,
+    // On disk, not the index's sum: the size `vx cache prune` would free.
+    cacheDirBytes: treeBytes(cacheDir),
     // The store the index records, else the one a first run would open.
-    cacheStore: cache.storeDir ?? storeRoot,
+    cacheStore,
+    cacheStoreBytes: cacheStore === null ? null : treeBytes(cacheStore),
     // The two versions a bug report needs and the reset notice names: the
     // key prefix (a bump orphans every entry) and the index schema (a
     // mismatch drops every table).

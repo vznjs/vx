@@ -64,6 +64,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--older-than': ['1d'],
   '--max-size': ['1G'],
   '--dry-run': [],
+  '--global': [],
   '--check': [],
   '--mjs': [],
   '--native': [],
@@ -92,9 +93,7 @@ describe('verbFlags is what each verb accepts', () => {
           refused.push(`${verb} ${flag}: no argv for it in this table`)
           continue
         }
-        // A cache prune needs a policy; anything but that is the flag's own verdict.
-        const extra = verb === 'cache' && flag !== '--older-than' ? ['--max-size', '1G'] : []
-        const error = parse([flag, ...argv, ...extra])
+        const error = parse([flag, ...argv])
         if (error !== null) refused.push(`${verb} ${flag}: ${error}`)
       }
     }

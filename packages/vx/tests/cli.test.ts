@@ -106,10 +106,7 @@ describe('cli run()', () => {
         1,
         "vx run: --output-logs must be one of 'full', 'errors-only', 'hash-only', 'none' (got loud) (see `vx run --help`)\n",
       ],
-      [
-        1,
-        'vx cache: unknown subcommand: bogus. The subcommands are prune and clear (see `vx cache --help`)\n',
-      ],
+      [1, 'vx cache: unknown subcommand: bogus. The subcommand is prune (see `vx cache --help`)\n'],
       [1, 'vx cache: unknown subcommand: prnue. Did you mean prune? (see `vx cache --help`)\n'],
     ])
   })
@@ -1709,6 +1706,7 @@ describe('parseRunArgs', () => {
       '--cache-dir',
       '--dry-run',
       '--format',
+      '--global',
       '--max-size',
       '--older-than',
     ])
@@ -2232,8 +2230,8 @@ describe('parseSize', () => {
 })
 
 describe('parsePruneArgs', () => {
-  it('rejects empty args', () => {
-    expect(parsePruneArgs([]).error).toMatch(/--older-than|--max-size/)
+  it('takes no bound as a clear', () => {
+    expect(parsePruneArgs([]).error).toBeUndefined()
   })
 
   it('parses --older-than as a wall-clock cutoff', () => {
@@ -2320,18 +2318,6 @@ describe('vx cache prune command', () => {
     vi.restoreAllMocks()
   })
 
-  it('errors when called with no policy', async () => {
-    let stderr = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
-      stderr += String(chunk)
-      return true
-    })
-    const code = await run(['cache', 'prune'])
-    expect(code).toBe(1)
-    expect(stderr).toContain('--older-than')
-  })
-
   it('errors with no subcommand at all, naming the one that exists', async () => {
     let stderr = ''
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
@@ -2341,7 +2327,7 @@ describe('vx cache prune command', () => {
     })
     expect(await run(['cache'])).toBe(1)
     expect(stderr).toBe(
-      'vx cache: missing subcommand. Try `vx cache prune --older-than 30d`, `vx cache prune --max-size 1G` or `vx cache clear` (see `vx cache --help`)\n',
+      'vx cache: missing subcommand. Try `vx cache prune --older-than 30d` to trim the cache, or `vx cache prune` to clear it (see `vx cache --help`)\n',
     )
   })
 
@@ -2376,7 +2362,7 @@ describe('vx cache prune command', () => {
   // `prune`, so a reader sent there learns what vx does not have.
   it.each([
     ['stats', '`vx info` reports the cache directory'],
-    ['clean', '`vx cache clear` deletes the whole cache'],
+    ['clean', '`vx cache prune` with no bound clears the whole cache'],
     ['dir', '`vx info` prints the cache directory'],
   ])('points %s at the verb that answers it', async (sub, hint) => {
     let stderr = ''
