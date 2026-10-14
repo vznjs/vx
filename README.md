@@ -86,15 +86,15 @@ npx @vzn/vx run build --all    # restored from the cache, not rebuilt
 ### When to run `vx lock`
 
 `init` also writes `vx-lock.json`, every project's config as it evaluated.
-Commit it. CI runs from the lock and evaluates nothing, so run
+Commit it. Every run reads its configs from the lock, so run
 `npx @vzn/vx lock` and commit the lock again after you:
 
 - edit any `vx.config.ts` or `vx.workspace.ts`,
 - update dependencies or plugins,
 - change a file a config imports.
 
-Your laptop evaluates the configs on every run and never notices a stale
-lock; `vx lock --check` in CI does, and fails until you commit a fresh one.
+Otherwise runs keep the old configs. On CI, `vx lock --check` fails a
+stale lock before any task runs.
 
 Starters: [`examples/basic`](examples/basic), and
 [`examples/ci`](examples/ci) with a GitHub Actions workflow; CI runs both

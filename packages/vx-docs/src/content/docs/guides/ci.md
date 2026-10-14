@@ -46,7 +46,6 @@ would run:
 | `--continue`        | keep going after a failure ([modes](../configure/#tasks-and-dependencies)) |
 | `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |
 | `--summarize`       | write a JSON summary of the run                             |
-| `--no-frozen`       | evaluate the configs instead of loading `vx-lock.json` ([below](#when-to-run-vx-lock)) |
 
 Every flag: [the CLI reference](../../cli/).
 
@@ -78,7 +77,6 @@ jobs:
       - run: bun install --frozen-lockfile
       # A lock that no longer matches the configs fails here, before any task.
       - run: vx lock --check
-      # Frozen (CI is set): the configs come from vx-lock.json.
       # main runs everything and fills the default keys every pull request
       # reads; a pull request runs only what it changed, and what depends on it.
       - run: >
@@ -118,8 +116,7 @@ Each step, in order:
 2. **`vx lock --check`.** It evaluates every config again and fails on
    any difference from `vx-lock.json`, before a task runs
    ([when to run `vx lock`](#when-to-run-vx-lock)).
-3. **`vx run ci`, frozen.** `CI` is set, so the run loads its configs
-   from the lock. A push to `main` runs `--all`; a pull request runs
+3. **`vx run ci`.** Its configs come from the lock. A push to `main` runs `--all`; a pull request runs
    `--affected=origin/<base>`: what it changed, and what depends on that.
 
 ### Cache scopes and tokens
@@ -184,20 +181,18 @@ A failure on inputs that passed before says so on its row:
 
 `vx lock` writes each project's resolved config to `vx-lock.json`, and
 refuses a graph that breaks a `run.rules` rule (two tasks writing one
-output, an input that reads another task's output); commit it. Under CI
-a run is frozen: it trusts the lock as it is, evaluates no config and
-checks neither the rules nor freshness. Run `vx lock` and commit the
-lock again after you:
+output, an input that reads another task's output); commit it. Every
+run reads its configs from the lock and evaluates none, so after a
+change the runs keep the old configs until you run `vx lock` and commit
+the lock again. Do it after you:
 
 - edit any `vx.config.ts` or `vx.workspace.ts`,
 - update dependencies or plugins,
 - change a file a config imports.
 
-A laptop run evaluates the configs and never notices a stale lock;
-`vx lock --check` fails on it, so it is the workflow's first step.
-`--no-frozen` or `VX_RUN_FROZEN=false` evaluate the configs on CI
-instead. The lock buys determinism, not speed: on the 1,000-project
-bench a plain run's median of 177 ms against frozen's 165 is a tie.
+`vx lock --check` evaluates every config again and fails on any
+difference or broken rule, naming the project, so it is the workflow's
+first step.
 
 ### Skip a deploy nothing changed
 

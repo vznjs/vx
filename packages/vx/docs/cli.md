@@ -1734,9 +1734,8 @@ vx lock --check --format json   # The audit as {upToDate, audited, notAudited, p
 **When to run it.** Run `vx lock` and commit `vx-lock.json` after
 editing any `vx.config.*` or `vx.workspace.*`, after updating
 dependencies or plugins, and after changing a file a config imports.
-A frozen run (the default on CI) trusts the lock as it is and evaluates
-nothing, so a stale lock runs the old tasks; a laptop run evaluates
-live and never notices. `vx lock --check` as CI's first step catches it.
+Runs read their configs from the lock, so until then they keep the old
+ones. `vx lock --check` as CI's first step fails a stale lock.
 The full workflow: the site's CI guide and `examples/ci`.
 
 A run that is not frozen evaluates live — the lock's existence changes

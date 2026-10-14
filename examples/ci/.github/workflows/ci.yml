@@ -19,7 +19,6 @@ jobs:
       - run: bun install --frozen-lockfile
       # A lock that no longer matches the configs fails here, before any task.
       - run: vx lock --check
-      # Frozen (CI is set): the configs come from vx-lock.json.
       # main runs everything and fills the default keys every pull request
       # reads; a pull request runs only what it changed, and what depends on it.
       - run: >
