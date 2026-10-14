@@ -2891,7 +2891,7 @@ export class Cache implements CacheLayer {
     // Run-history retention: the runs table grows by one row per
     // executed task per invocation — a 2000-task repo accretes ~20k
     // rows in days, inflating insert and checkpoint cost forever.
-    // 30 days comfortably covers `vx stats` (24 h windows) and any
+    // 30 days comfortably covers `vx info` (24 h windows) and any
     // CI-side analytics consumers. The `invocations` header table (one
     // row per `vx run`) is pruned on the SAME window — otherwise a
     // header would outlive its `runs` rows, so `vx info`/`vx last` would

@@ -2,7 +2,7 @@
 //
 // Fills the `project` stage: every package the workspace discovers is given
 // the tasks turbo.json + its package.json scripts define, mapped by the same
-// mapper `vx migrate --from turbo` renders files from — so what runs here is
+// mapper `bunx @vzn/vx-migrate` renders files from — so what runs here is
 // what a migration would have written, minus the file. Turbo's global fields
 // are inlined into each task instead of imported from a generated preset.
 // A task the package's own vx.config already declares wins; the plugin never
@@ -282,7 +282,7 @@ async function mapAll(
     ),
   )
   const mapped = await mapTurboWorkspace(root, metas, {
-    // Inline: the values themselves, where `vx migrate` splices a preset import.
+    // Inline: the values themselves, where `bunx @vzn/vx-migrate` splices a preset import.
     splice: (_kind, values) => values,
     persistentTodo: PERSISTENT_NOTE,
     envNames,

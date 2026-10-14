@@ -298,7 +298,7 @@ export interface TurboMapping {
 
 export interface MapTurboOptions {
   /**
-   * What a task's array holds for one global field: `vx migrate` splices a
+   * What a task's array holds for one global field: `bunx @vzn/vx-migrate` splices a
    * preset import (`{ raw: '...globalInputs' }`), the plugin the values
    * themselves. Called only for a global that is non-empty.
    */
@@ -306,7 +306,7 @@ export interface MapTurboOptions {
   /** The TODO attached to a persistent task, in the consumer's words. */
   persistentTodo: string
   /**
-   * A task's `npm_package_name` / `npm_package_version`: `vx migrate` reads
+   * A task's `npm_package_name` / `npm_package_version`: `bunx @vzn/vx-migrate` reads
    * them from the manifest it imports (`{ raw: 'pkg.version' }`), so a bump
    * reaches them; absent, the values themselves.
    */
@@ -314,7 +314,7 @@ export interface MapTurboOptions {
   /**
    * The environment's variable names, when the mapping runs where the tasks
    * will (`turbo()`): an env wildcard (`NEXT_PUBLIC_*`) expands over them.
-   * Absent (`vx migrate` writes files), a wildcard is a todo.
+   * Absent (`bunx @vzn/vx-migrate` writes files), a wildcard is a todo.
    */
   envNames?: readonly string[]
   /**

@@ -33,7 +33,7 @@
       "cold": ["126.9 s", "127.5 s"],
       "restore": ["3.44 s", "3.46 s"],
       "noop": ["256 ms", "**237 ms**"],
-      "why": "A tie within noise. On every hit vx stats all 14,430 recorded output files to prove they are intact; Turbo checks nothing on disk."
+      "why": "A tie within noise. On every hit vx calls stat on all 14,430 recorded output files to prove they are intact; Turbo checks nothing on disk."
     },
     {
       "repo": "medusajs/medusa",
