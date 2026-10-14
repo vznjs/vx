@@ -245,6 +245,27 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
+    'a lock a merge left conflicted: a run and --check refuse it, `vx lock` rewrites it',
+    async () => {
+      await addProject(root, 'app', ENV_CONFIG)
+      expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
+      const file = path.join(root, '.vx/projects.lock.json')
+      const ours = await Bun.file(file).text()
+      await writeFile(file, `<<<<<<< HEAD\n${ours}=======\n${ours}>>>>>>> other\n`)
+      const invalid =
+        'vx: .vx/projects.lock.json is not valid JSON — re-run `vx lock` or delete it\n'
+      const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
+      expect([run.code, run.err]).toEqual([1, invalid])
+      const check = await vx(root, ['lock', '--check'], { X: 'a' })
+      expect([check.code, check.err]).toEqual([1, invalid])
+      expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
+      expect(await Bun.file(file).text()).toBe(ours)
+      expect((await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })).code).toBe(0)
+    },
+    TIMEOUT,
+  )
+
+  it(
     '--check names a locked project that no longer has a config in the workspace',
     async () => {
       await addProject(root, 'app', ENV_CONFIG)

@@ -433,6 +433,19 @@ async function checkLock(
       }),
     )
     for (const f of stale) if (f !== null) failures.push(f)
+    // A copy left beside a config since deleted shows reviewers tasks
+    // nothing runs. vx never deletes a committed file; it names it.
+    const orphans = await Promise.all(
+      all
+        .filter((m) => m.configPath === null)
+        .map(async (m) => {
+          const file = path.join(m.dir, REVIEW_FILE)
+          return (await Bun.file(file).exists())
+            ? `${relPosix(root, file)} has no vx.config beside it — delete it`
+            : null
+        }),
+    )
+    for (const f of orphans) if (f !== null) failures.push(f)
   }
   const inWorkspace = new Set(metas.map((m) => m.name))
   for (const name of Object.keys(lock.projects)) {
