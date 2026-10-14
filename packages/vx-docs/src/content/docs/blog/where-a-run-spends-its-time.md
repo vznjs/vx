@@ -64,10 +64,11 @@ Some of vx's per-task cost is checks the others do not make:
   already runs off the task's slot, in a save lane, but the task's
   dependents wait for it to land, so they cannot rewrite the outputs
   while they are archived. On this graph that wait costs at most about
-  0.14 s of a 120 s run. The remote cache upload runs in the background,
-  a bounded number at once; neither the task nor its dependents wait for
-  it, only the end of the run does, so every upload finishes before vx
-  exits.
+  0.14 s of a 120 s run.
+- **Remote upload at the end**: uploads to a remote cache run in the
+  background, a bounded number at once. Neither the task nor its
+  dependents wait for one; the end of the run does, so every upload
+  finishes before vx exits.
 - **Blob-size check** on a cold cache: once per git index, vx confirms
   that the blob IDs it reads from git match the files on disk, about
   330 ms. After that it is remembered.
