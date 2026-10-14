@@ -37,6 +37,7 @@ export default defineConfig({
   // target.
   redirects: {
     '/introduction/': `${root}quickstart/`,
+    '/features/fastest/': `${root}features/benchmarks/`,
     '/add-to-existing-repo/': `${root}quickstart/#an-existing-repo`,
     '/guides/tasks/': `${root}guides/configure/#tasks-and-dependencies`,
     '/guides/task-dependencies/': `${root}guides/configure/#tasks-and-dependencies`,

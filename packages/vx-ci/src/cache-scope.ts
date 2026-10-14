@@ -1,15 +1,15 @@
 // The cache scope a GitHub Actions run gets when the workspace names none:
-// the default branch is trusted, anything else writes to its own scope.
+// the default branch writes the default keys, anything else its own scope.
 import { readFile } from 'node:fs/promises'
 
 /**
- * `undefined` (leave the workspace's default, trusted) on a push to the
+ * `undefined` (the default keys) on a push to the
  * default branch, outside Actions, or when the ref is unknown; else
  * `pr-<n>` for a pull request and `ref-<name>` for any other branch or tag.
  * An event that runs in the default branch's context on a pull request's
  * behalf (`pull_request_target`, `issue_comment` on a PR, a `workflow_run`
  * a PR started) is the PR's, whatever `GITHUB_REF` says: a workflow that
- * checks out the PR's head there would otherwise write the trusted keys.
+ * checks out the PR's head there would otherwise write the default keys.
  */
 export async function githubCacheScope(
   env: Readonly<Record<string, string | undefined>>,

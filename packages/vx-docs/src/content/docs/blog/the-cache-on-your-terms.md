@@ -80,29 +80,29 @@ it. `cache.scope` decides where a run's writes land:
 
 ```mermaid
 flowchart LR
-  M[main CI · trusted] -->|reads + writes| T[(trusted keys)]
+  M[main CI · no scope] -->|reads + writes| T[(default keys)]
   P[PR CI · pr-123] -->|reads| T
   P -->|writes| S[(pr-123 keys)]
-  L[laptop · read-only] -->|reads| T
+  L[laptop · remote:r] -->|reads| T
   style T stroke:#c6f84e,stroke-width:2px
 ```
 
-- `trusted` reads and writes the task keys. This is the default on CI.
-- `read-only` reads the task keys and writes nothing. This is the default on a laptop.
-- Any other name, like `pr-123`, reads its own keys first, then the
-  trusted ones, and writes only its own. A pull request never writes what
-  main reads.
+- With no scope, a run reads and writes the default keys.
+- A scope, like `pr-123`, reads the default keys first, then its own,
+  and writes only its own. A pull request never writes what main reads.
+- Whether a run writes at all is the policy's call. Off CI the default
+  reads the remote and writes nothing.
 
 ```ts
 // vx.workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 
-export default defineWorkspace({ cache: { scope: 'trusted' } })
+export default defineWorkspace({ cache: { scope: 'pr-123' } })
 ```
 
 `VX_CACHE_SCOPE` beats the config, and `--cache-scope` beats both for one run. On GitHub Actions, the
 [@vzn/vx-ci plugin](https://vznjs.github.io/vx/blog/results-on-github/)
-sets the scope for you: `pr-<n>` on a pull request, trusted on the
+sets the scope for you: `pr-<n>` on a pull request, none on the
 default branch. The scope is a client-side rule, so a cache server that
 checks tokens is still the real boundary.
 

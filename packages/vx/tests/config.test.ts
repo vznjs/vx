@@ -294,7 +294,7 @@ describe('defineWorkspace', () => {
         dir: '.vx',
         retention: { olderThan: '7d', maxSize: '1g' },
         policy: 'local:rw',
-        scope: 'trusted',
+        scope: 'main',
         download: 'all',
         inputStability: { strategy: 'mutable', severity: 'error' },
       },

@@ -1,5 +1,5 @@
 // `github()` sets the workspace's `cache.scope` from the Actions ref: the
-// default branch stays trusted, a PR and any other ref get their own scope.
+// default branch keeps the default keys, a PR and any other ref get their own scope.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -52,7 +52,7 @@ const actions = (ref: string, name: string): Record<string, string> => ({
   GITHUB_EVENT_PATH: eventPath,
 })
 
-it('a push to the default branch stays trusted', async () => {
+it('a push to the default branch keeps the default keys', async () => {
   expect(await scopeOf(actions('refs/heads/main', 'main'))).toBeUndefined()
 })
 
@@ -67,7 +67,7 @@ it('another branch or tag writes to its own scope', async () => {
 })
 
 // These events run with the default branch's ref on a PR's behalf; a
-// workflow that checks out the PR's head there wrote the trusted keys.
+// workflow that checks out the PR's head there wrote the default keys.
 it("an event that runs in main's context for a pull request is the PR's", async () => {
   const on = async (name: string, payload: unknown): Promise<string | undefined> => {
     const file = path.join(dir, `${name}-${Math.random()}.json`)
@@ -89,14 +89,14 @@ it("an event that runs in main's context for a pull request is the PR's", async 
       workflow_run: { event: 'pull_request', pull_requests: [{ number: 5 }] },
     }),
     await on('workflow_run', { workflow_run: { event: 'pull_request', pull_requests: [] } }),
-    // CONTROLS: the same events with no PR behind them stay trusted.
+    // CONTROLS: the same events with no PR behind them keep the default keys.
     await on('issue_comment', { issue: { number: 9 } }),
     await on('workflow_run', { workflow_run: { event: 'push', pull_requests: [] } }),
     await on('push', {}),
   ]).toEqual(['pr-7', 'pr-target', 'pr-9', 'pr-5', 'pr-target', undefined, undefined, undefined])
 })
 
-it('an unknown default branch is not trusted', async () => {
+it('an unknown default branch gets its own scope', async () => {
   expect(
     await scopeOf({
       ...actions('refs/heads/main', 'main'),
@@ -107,9 +107,9 @@ it('an unknown default branch is not trusted', async () => {
 
 it('outside Actions, a declared scope, or cacheScope: false changes nothing', async () => {
   expect(await scopeOf({ GITHUB_REF: 'refs/pull/1/merge' })).toBeUndefined()
-  expect(
-    await scopeOf(actions('refs/pull/1/merge', '1/merge'), { cache: { scope: 'trusted' } }),
-  ).toBe('trusted')
+  expect(await scopeOf(actions('refs/pull/1/merge', '1/merge'), { cache: { scope: 'ci' } })).toBe(
+    'ci',
+  )
   expect(
     await scopeOf(actions('refs/pull/1/merge', '1/merge'), {}, { cacheScope: false }),
   ).toBeUndefined()

@@ -514,10 +514,10 @@ describe('vx info (e2e)', () => {
           scope: { value: 'pr-1', source: 'workspace' },
         })
         process.env['VX_CACHE_POLICY'] = 'remote:'
-        process.env['VX_CACHE_SCOPE'] = 'read-only'
+        process.env['VX_CACHE_SCOPE'] = 'pr-2'
         expect(await facts()).toEqual({
           policy: { value: 'remote:', source: 'env' },
-          scope: { value: 'read-only', source: 'env' },
+          scope: { value: 'pr-2', source: 'env' },
         })
       } finally {
         for (const [k, v] of [

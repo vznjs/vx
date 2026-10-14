@@ -95,12 +95,12 @@ export interface RunOptions {
   /** This run's `cache.scope` (the CLI's `--cache-scope`), above `VX_CACHE_SCOPE` and `vx.workspace`. */
   cacheScope?: string
   /**
-   * The `cache.scope` a run takes when `vx.workspace` names none. The CLI
-   * passes `'read-only'` off CI (`CI` unset, `0` or `false`) unless
-   * `--cache` or `VX_CACHE_POLICY` names the remote; omitted → trusted. Dropped
-   * when the workspace's `cache.policy` names the remote.
+   * The default policy's remote write is off (`remote:r`): the CLI passes it
+   * off CI (`CI` unset, `0` or `false`) unless `--cache-policy` or
+   * `VX_CACHE_POLICY` names the remote. Dropped when the workspace's
+   * `cache.policy` names the remote.
    */
-  defaultCacheScope?: string
+  remoteReadOnlyByDefault?: boolean
   /**
    * CI mode: load configs FROM the committed vx-lock.json instead of
    * evaluating them (frozen-env reproducibility). Requires the lock

@@ -105,7 +105,9 @@ import type { CacheKeyInput } from './layer.js'
 // never listed sits under the key of that directory empty (A-61).
 // v42: the stored output is both streams in order (orchestrator/output-log.ts);
 // a v41 entry holds stdout alone and replays no stderr.
-export const CACHE_VERSION = 'vx-cache-v42'
+// v43: a scoped run stores under the scope's key locally too (F4,
+// 2026-10-14); a v42 entry a scoped run left locally sits under the default key.
+export const CACHE_VERSION = 'vx-cache-v43'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

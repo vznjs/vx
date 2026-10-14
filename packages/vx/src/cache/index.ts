@@ -19,7 +19,6 @@ export {
   type InvocationRecord,
   KEYED_RUNS_SQL,
   parseCachePolicy,
-  scopeCachePolicy,
   type RunRecord,
   type TaskInputRow,
   WORKSPACE_OUTPUT_PREFIX,
@@ -68,4 +67,5 @@ export {
   type BlobSizeMemo,
 } from './git-inputs.js'
 export { LayeredCache, type RemoteCacheLayer } from './layered-cache.js'
+export { ScopedCache } from './scoped-cache.js'
 export { ChainedCache } from './chained-cache.js'

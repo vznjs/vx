@@ -517,7 +517,6 @@ export interface CachePolicy {
   localWrite: boolean
   remoteRead: boolean
   remoteWrite: boolean
-  remoteScope?: string
 }
 == type CacheSettings (src/config.ts)
 export interface CacheSettings {
@@ -1323,7 +1322,7 @@ export interface RunOptions {
   cacheFlags?: CacheFlags
   remoteRequested?: boolean
   cacheScope?: string
-  defaultCacheScope?: string
+  remoteReadOnlyByDefault?: boolean
   frozen?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
