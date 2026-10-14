@@ -1,0 +1,12 @@
+{
+  "name": "vx-example-ci",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@vzn/vx": "latest",
+    "@vzn/vx-ci": "latest",
+    "@vzn/vx-reapi": "latest"
+  }
+}

@@ -13,7 +13,7 @@ _Since vx 0.0.637 a run under CI (`CI` set) is frozen without the flag,
 and writes the lock first when there is none; `--no-frozen` or
 `VX_RUN_FROZEN=false` turn it off. `vx lock` now checks the graph rules,
 so a frozen run does not. See
-[A frozen graph](../../guides/ci/#a-frozen-graph)._
+[When to run vx lock](../../guides/ci/#when-to-run-vx-lock)._
 
 A TypeScript config buys composition and costs one guarantee: what it
 evaluates to can depend on where it is evaluated. `process.env.CI`,

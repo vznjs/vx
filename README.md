@@ -83,7 +83,23 @@ npx @vzn/vx run build --all    # restored from the cache, not rebuilt
 
 <img src="https://vznjs.github.io/vx/demo.svg" width="760" alt="vx run ci --all on examples/basic: cold, three tasks run; again, three up-to-date.">
 
-Starter: [`examples/basic`](examples/basic), run by CI on every commit.
+### When to run `vx lock`
+
+`init` also writes `vx-lock.json`, every project's config as it evaluated.
+Commit it. CI runs from the lock and evaluates nothing, so run
+`npx @vzn/vx lock` and commit the lock again after you:
+
+- edit any `vx.config.ts` or `vx.workspace.ts`,
+- update dependencies or plugins,
+- change a file a config imports.
+
+Your laptop evaluates the configs on every run and never notices a stale
+lock; `vx lock --check` in CI does, and fails until you commit a fresh one.
+
+Starters: [`examples/basic`](examples/basic), and
+[`examples/ci`](examples/ci) with a GitHub Actions workflow; CI runs both
+on every commit. The [CI guide](https://vznjs.github.io/vx/guides/ci/)
+explains the workflow.
 More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 [Configure](https://vznjs.github.io/vx/guides/configure/) ·
 [CLI](packages/vx/docs/cli.md) · [every config field](packages/vx/docs/schema.md) ·
