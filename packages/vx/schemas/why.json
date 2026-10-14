@@ -6,7 +6,7 @@
     {
       "type": "object",
       "additionalProperties": false,
-      "required": ["taskId", "runId", "why", "diff", "roots"],
+      "required": ["taskId", "runId", "why", "diff", "roots", "writers"],
       "properties": {
         "taskId": { "type": "string" },
         "runId": { "type": "string" },
@@ -36,6 +36,20 @@
                   }
                 }
               }
+            }
+          }
+        },
+        "writers": {
+          "type": "array",
+          "description": "For each moved input file of the task or a root cause, the recorded tasks running when the file last changed: a task writing a file another key reads re-keys it every run.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["taskId", "file", "writers"],
+            "properties": {
+              "taskId": { "type": "string" },
+              "file": { "type": "string" },
+              "writers": { "type": "array", "items": { "type": "string" } }
             }
           }
         }

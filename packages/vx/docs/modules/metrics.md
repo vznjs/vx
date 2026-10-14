@@ -31,6 +31,7 @@ ListInvocationsArgs // { limit? }
 CacheEntryRow       // an entries row: hash, project, task, command, exitCode, durationMs, sizeBytes, createdAt, accessedAt
 InputDiffEntry      // one moved component: kind, name, change ('added' | 'removed' | 'changed'), before, after
 RootCause           // { chain: the asked task down to the root, entries: its own moved components }
+InputWriter         // { taskId, file, writers: the tasks running when the file last changed }
 ```
 
 `run-failures.ts` beside it keeps a failed run's task output in
@@ -150,6 +151,6 @@ rows whose fingerprints were pruned);
 
 ## Replacing this module
 
-A reader over another store implements the same ten signatures (the
+A reader over another store implements the same eleven signatures (the
 join, `diffKeyComponents`, needs no store and is reused as it is); the
 CLI verbs and the MCP tools format, they do not query.
