@@ -436,6 +436,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
         inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
       }
+      lock?: Known<At<T, 'lock'>, LockSettings>
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
@@ -1066,6 +1067,18 @@ export interface LockfileClaimOptions {
   readonly version: number
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
+}
+```
+
+## `LockSettings`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.lock`.
+
+```ts
+export interface LockSettings {
+  reviewFiles?: boolean
 }
 ```
 
@@ -2591,7 +2604,7 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
 
 type · `src/config.ts`
 
-The workspace: settings in groups (`run`, `cache`, `watch`) and the
+The workspace: settings in groups (`run`, `cache`, `lock`, `watch`) and the
 plugins. Each setting's environment variable and flag derive from its
 path (`run.concurrency` → `VX_RUN_CONCURRENCY`, `vx run --concurrency`); a flag beats
 the variable, which beats this file. `docs/schema.md` lists them all.
@@ -2601,6 +2614,7 @@ Nothing here is folded into a cache key.
 export interface WorkspaceConfig {
   run?: RunSettings
   cache?: CacheSettings
+  lock?: LockSettings
   watch?: WatchSettings
   plugins?: readonly (Plugin | undefined | null | false)[]
 }

@@ -1,7 +1,7 @@
 {
   "workspace": {
     "levels": {
-      "": ["cache", "plugins", "run", "watch"],
+      "": ["cache", "lock", "plugins", "run", "watch"],
       "run": [
         "affectedBase",
         "concurrency",
@@ -19,6 +19,7 @@
       "cache": ["dir", "download", "inputStability", "policy", "retention", "scope"],
       "cache.retention": ["maxSize", "olderThan"],
       "cache.inputStability": ["severity", "strategy"],
+      "lock": ["reviewFiles"],
       "watch": ["poll"]
     },
     "records": [],
@@ -1599,6 +1600,75 @@
         "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
+      },
+      "lock": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `lock` must be an object (fields: reviewFiles)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `lock` has unknown field \"x\" (allowed: reviewFiles)": ["{\"x\":\"y\"}"]
+      },
+      "lock.reviewFiles": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got null)": ["null"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 0)": ["0"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 1)": ["1"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [])": ["[]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got {})": ["{}"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "watch": {
         "ok": ["<absent>", "{}", "<seed>"],

@@ -1171,7 +1171,7 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
     const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
-    expect(fields.length).toBe(4)
+    expect(fields.length).toBe(5)
     const page = section(
       readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
       'Workspace config',
@@ -1236,7 +1236,7 @@ describe('the caching guide lists what the cache never reads', () => {
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n')
     const names = [...entries.matchAll(/'\*\*\/([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
-    expect(names.length).toBe(7)
+    expect(names.length).toBe(10)
     const excluded = /^\| Always excluded +\|.*$/m.exec(page)
     expect(excluded).not.toBeNull()
     for (const name of names) expect(excluded![0]).toContain(name)

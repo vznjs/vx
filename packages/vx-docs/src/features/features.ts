@@ -603,6 +603,7 @@ export default defineProject({
     hook: 'CI runs exactly the config you reviewed.',
     body: [
       'A TypeScript config can evaluate differently on another machine. `vx lock` evaluates every config now and writes the resolved objects to `.vx/lock.json`.',
+      'Beside each `vx.config` it writes `vx.lock.json`, that project’s resolved config, pretty, so a reviewer sees what a config change does; vx never reads it.',
       '`vx run --frozen` loads configs from the lock and evaluates nothing. `vx lock --check` re-evaluates every config and fails on drift, so a pipeline can check the lock first.',
     ],
     example: { lang: 'sh', code: 'vx lock\nvx lock --check\nvx run ci --all --frozen' },

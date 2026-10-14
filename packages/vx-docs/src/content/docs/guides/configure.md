@@ -111,7 +111,7 @@ export default defineProject({
 | The key                | Holds                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the package's `package.json`, the lockfile, the keys of the tasks it depends on, the task's config, arguments after `--` |
-| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `*.tsbuildinfo`, `.vx/lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
+| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `*.tsbuildinfo`, `.vx/lock.json`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
 | In, when you say so    | a tool's version: `cache.inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
@@ -267,6 +267,7 @@ the variable, which beats this file. Durations carry a unit (`'500ms'`,
 | `cache.policy` | which layers read and write (`'local:rw,remote:r'`) |
 | `cache.scope` | where cache writes land: none reads and writes the default keys, a name like `'pr-123'` reads the default keys then its own and writes only its own; `cache.policy` alone decides whether a run writes; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
 | `cache.inputStability` | every task's `cache.inputStability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_CACHE_INPUT_STABILITY_*` variables win over both ([Schema](../../schema/#cache-optional)) |
+| `lock.reviewFiles` | `false` stops `vx lock` writing a pretty `vx.lock.json` (the project's resolved config, for review) beside each `vx.config` |
 | `watch.poll` | `vx watch` polls instead of using the OS watcher |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then

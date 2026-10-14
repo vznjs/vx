@@ -15,7 +15,13 @@ import { lockAfterMigration } from './lock.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isCompiledBinary } from './upgrade.js'
 import { VERSION } from '../version.js'
-import { DOT_VX_GITIGNORE, isUserError, relPosix, UserError } from '../util/index.js'
+import {
+  DOT_VX_GITATTRIBUTES,
+  DOT_VX_GITIGNORE,
+  isUserError,
+  relPosix,
+  UserError,
+} from '../util/index.js'
 import {
   applyMigration,
   discoverProjects,
@@ -284,9 +290,11 @@ async function adopt(
   }
   const kept = existing !== undefined && !args.force
   const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
-  // vx's own housekeeping, as a run's first cache open writes it.
+  // vx's own housekeeping, as a run's first cache open and `vx lock` write them.
   if (!args.dry && ignore.length > 0)
     await Bun.write(path.join(root, '.vx', '.gitignore'), DOT_VX_GITIGNORE)
+  const attributes = path.join(root, '.vx', '.gitattributes')
+  if (!args.dry && !existsSync(attributes)) await Bun.write(attributes, DOT_VX_GITATTRIBUTES)
   const wrote = kept
     ? `${existing} already declares ${runner}().`
     : args.dry
