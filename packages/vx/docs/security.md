@@ -14,7 +14,10 @@ vulnerability), never in a public issue.
   the nearest `.vx/workspace.*`, and vx never looks for it above the git
   top-level, so a file planted in a shared directory such as `/tmp`
   cannot claim your checkout and run as you. Outside git, one another
-  user owns is refused, root aside (`tests/workspace-root-file.test.ts`).
+  user owns is refused, root aside, judged by the file itself (a link,
+  not what it names) and its `.vx` (`tests/workspace-root-file.test.ts`).
+  No task output reaches `.vx` or a `vx.lock.json`: a clean never deletes
+  them and a hit never restores them (`tests/output-never-dotvx.test.ts`).
   What a config imports
   must already be installed: vx runs Bun with `--no-install`, so an
   import no `node_modules` provides is refused, never fetched from the
