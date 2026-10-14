@@ -76,6 +76,7 @@ export {
   installPlugins,
   type CacheContext,
   type ExecutorContext,
+  type OutputContext,
   type CommandContext,
   type GraphHookContext,
   type KeyHookContext,

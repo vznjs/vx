@@ -1393,6 +1393,18 @@ export interface OutcomeView {
 }
 ```
 
+## `OutputContext`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export interface OutputContext extends BaseContext {
+  readonly isTTY: boolean
+  readonly ci: boolean
+  readonly json: boolean
+}
+```
+
 ## `OutputLocation`
 
 type · `src/orchestrator/path-links.ts`
@@ -1573,6 +1585,7 @@ export const PLUGIN_HOOKS = [
   'executor',
   'cache',
   'telemetry',
+  'output',
   'setup',
   'commands',
   'teardown',
@@ -2854,6 +2867,7 @@ export interface VxPlugin {
     | TelemetrySink[]
     | undefined
     | Promise<TelemetrySink | TelemetrySink[] | undefined>
+  output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
   setup?(ctx: PluginSetupContext): void | Promise<void>
   teardown?(): void | Promise<void>
 }

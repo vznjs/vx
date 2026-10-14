@@ -114,7 +114,7 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
       refusal({ plugins: [p({ teardown() {} })] }),
     ]).toEqual([
       `${WS}: plugin 'x19' declares 'excutor', which is no plugin hook — did you mean 'executor'?`,
-      `${WS}: plugin 'x19' declares 'zzzzzzzz', which is no plugin hook (hooks: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, setup, commands, teardown)`,
+      `${WS}: plugin 'x19' declares 'zzzzzzzz', which is no plugin hook (hooks: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, output, setup, commands, teardown)`,
       null,
     ])
   })

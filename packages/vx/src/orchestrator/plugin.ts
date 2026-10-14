@@ -19,6 +19,7 @@ import { maskedLine, nearest, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, RunStartInfo } from './events.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
+import type { Logger } from './logger.js'
 
 /**
  * A vx plugin. Contributes any subset of the run-level capabilities —
@@ -207,6 +208,16 @@ export interface VxPlugin {
     | Promise<TelemetrySink | TelemetrySink[] | undefined>
 
   /**
+   * Take the terminal for this run: return the `Logger` that renders it
+   * (the contract `run({ log })` takes), or `undefined` to leave core's
+   * renderer in place. The first plugin, in declaration order, that
+   * returns one renders the run; the rest are not asked. Not consulted
+   * when an embedder passed its own `log`. A logger that throws hands the
+   * rest of the run back to core's renderer with one warning.
+   */
+  output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
+
+  /**
    * Optional one-time setup per run (validate the workspace, open a
    * connection, read a token). Throwing aborts the run with a clean
    * UserError naming the plugin. It is not a guard over the pipeline: the
@@ -375,6 +386,15 @@ export interface CacheContext extends BaseContext {
    * claims (an OIDC branch) for every call it makes.
    */
   readonly scope: string | undefined
+}
+
+export interface OutputContext extends BaseContext {
+  /** Core would write to a terminal: stdout (stderr under `json`) is a TTY. */
+  readonly isTTY: boolean
+  /** The run is on CI (`CI` set, or a provider core detects). */
+  readonly ci: boolean
+  /** `--format json`: stdout carries the machine-readable result. */
+  readonly json: boolean
 }
 
 export interface ExecutorContext extends BaseContext {

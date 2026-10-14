@@ -344,6 +344,7 @@ describe('the plugin vocabulary config.ts owns', () => {
       'executor',
       'cache',
       'telemetry',
+      'output',
       'setup',
       'commands',
       'teardown',
@@ -365,6 +366,7 @@ describe('the plugin vocabulary config.ts owns', () => {
       'executor',
       'cache',
       'telemetry',
+      'output',
       'setup',
       'teardown',
     ])

@@ -2723,7 +2723,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
   each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
-  `setup`, `commands`), or `none`. It reads the declarations: a plugin
+  `output`, `setup`, `commands`), or `none`. It reads the declarations: a plugin
   that declines a task at run time still lists its seam here.
 - `workers` is the count a run defaults to and where it comes from:
   `vx.workspace.ts`'s `run.concurrency` when set, else the cores this
