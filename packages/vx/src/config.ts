@@ -75,8 +75,8 @@ export interface RunSettings {
    */
   frozen?: boolean
   /**
-   * Graph rules checked before anything is scheduled: by `vx lock` and
-   * `vx lock --check`, and by every run that is not frozen. Each is on
+   * Graph rules checked by `vx lock` and `vx lock --check`, never by a
+   * run. Each is on
    * unless set to `false`; turning one off allows a shape vx handles
    * correctly but more slowly.
    */

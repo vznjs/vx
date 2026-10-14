@@ -13,7 +13,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { prepareRun, run } from '../src/orchestrator/index.js'
+import { planRun, prepareRun, run } from '../src/orchestrator/index.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
 import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 
@@ -115,18 +115,26 @@ const statusOf = (r: Awaited<ReturnType<typeof run>>): Record<string, string> =>
 
 describe('overlapping outputs under the default rules', () => {
   it(
-    'a run refuses the edge-ordered pair before any task runs (X-53)',
+    '`vx lock` refuses the edge-ordered pair; a run never checks it (X-53)',
     async () => {
       const root = await makeWorkspace({ prefix: 'vx-ovl-rule-' })
       try {
-        const app = await addProject(root, 'app', {
+        await addProject(root, 'app', {
           files: { 'src/a.txt': 'A1', 'srcb/b.txt': 'B1' },
           config: configFor(SHAPES.subdirectory),
         })
-        await expect(run({ cwd: root, tasks: TASKS, log: silent })).rejects.toThrow(
-          /app#build and app#individual both declare the output .* run\.rules\.exclusiveOutputs: false/,
+        const lock = Bun.spawnSync({
+          cmd: [process.execPath, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
+          cwd: root,
+          stderr: 'pipe',
+        })
+        expect(lock.exitCode).toBe(1)
+        expect(lock.stderr.toString()).toMatch(
+          /^vx lock: \.vx\/lock\.json not written: app#build and app#individual both declare the output .* run\.rules\.exclusiveOutputs: false/,
         )
-        expect(tree(app)).toEqual([])
+        // The run plans the pair: the rules are the lock's to check.
+        const plan = await planRun({ cwd: root, tasks: TASKS, log: silent })
+        expect(plan.tasks.map((t) => t.node.id)).toContain('app#build')
       } finally {
         await rm(root, { recursive: true, force: true })
       }

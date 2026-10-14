@@ -293,9 +293,8 @@ export interface BuildGraphOptions {
 }
 
 /**
- * `run.rules` as the graph applies them. `locked`: a frozen run, whose
- * configs are the ones `vx lock` checked the rules against (owner,
- * 2026-10-13), so the run does not check them again.
+ * `run.rules` as the graph applies them. `locked`: a run, which never
+ * checks them; `vx lock` and `vx lock --check` do (owner, 2026-10-14).
  */
 export type GraphRules = WorkspaceRules & { readonly locked?: boolean }
 

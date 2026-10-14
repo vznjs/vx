@@ -1118,6 +1118,12 @@ describe('the labs plan what the CLI plans, before and after each fix (item 704)
     for (const [lab, start] of Object.entries(LAB.LABS)) {
       const dir = path.join(scratch, `lab-${lab}`)
       labWrite(dir, start.files)
+      // `vx lock` evaluates each config, whose `@vzn/vx` import must resolve.
+      mkdirSync(path.join(dir, 'node_modules', '@vzn'), { recursive: true })
+      fs.symlinkSync(
+        path.resolve(import.meta.dir, '..'),
+        path.join(dir, 'node_modules', '@vzn', 'vx'),
+      )
       labGit(dir, 'init', '-q')
       labGit(dir, 'add', '-A')
       labGit(
@@ -1137,15 +1143,21 @@ describe('the labs plan what the CLI plans, before and after each fix (item 704)
       for (const edits of [[], ...LAB.LAB_STEPS[lab]!]) {
         files = LAB.applyEdits(files, edits)
         labWrite(dir, files)
-        const cli = labSpawn(dir, [
-          process.execPath,
-          BIN,
-          'run',
-          ...start.tasks,
-          '--all',
-          '--dry=json',
-          `--cache-dir=${path.join(scratch, `lab-${lab}-cache`)}`,
-        ])
+        // The graph rules are `vx lock`'s to check, never a run's: the page
+        // shows what the lock refuses.
+        const lock = labSpawn(dir, [process.execPath, BIN, 'lock'])
+        const cli =
+          lock.exitCode !== 0
+            ? lock
+            : labSpawn(dir, [
+                process.execPath,
+                BIN,
+                'run',
+                ...start.tasks,
+                '--all',
+                '--dry=json',
+                `--cache-dir=${path.join(scratch, `lab-${lab}-cache`)}`,
+              ])
         arm()
         let page: RunOutcome
         try {
@@ -1179,7 +1191,10 @@ describe('the labs plan what the CLI plans, before and after each fix (item 704)
       if (typeof plans === 'string') {
         it(`${name}: the page shows the refusal the CLI prints`, () => {
           const { cli, page } = results.get(lab)![i]!
-          expect(cli).toEqual({ ok: false, error: `vx: ${plans}\n` })
+          expect(cli).toEqual({
+            ok: false,
+            error: `vx lock: .vx/lock.json not written: ${plans}\n`,
+          })
           expect(page).toEqual({ ok: false, error: plans })
         })
         continue
