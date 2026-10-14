@@ -331,7 +331,31 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     json: parsed.json === true,
     force: parsed.force,
     format,
+    // The written workspace file imports plugins `--no-install` left out.
+    ...(parsed.noInstall === true ? {} : { lock: lockWorkspace }),
   })
+}
+
+/**
+ * Core's `vx lock`, run where the configs were written: the step `vx init`
+ * ends with, through the core this repo resolves.
+ */
+async function lockWorkspace(root: string): Promise<number> {
+  return await Bun.spawn([process.execPath, '--no-install', coreBin(root), 'lock'], {
+    cwd: root,
+    stdio: ['ignore', 'inherit', 'inherit'],
+  }).exited
+}
+
+/** The `vx` entry of the core this repo resolves. */
+function coreBin(root: string): string {
+  // A resolve that misses from a directory with no node_modules is an
+  // auto-install under Bun: ask the root only where it has the package.
+  const installed = path.join(root, 'node_modules', '@vzn', 'vx')
+  const core = existsSync(path.join(installed, 'package.json'))
+    ? path.join(realpathSync(installed), 'src', 'index.ts')
+    : Bun.resolveSync('@vzn/vx', import.meta.dir)
+  return path.join(path.dirname(core), 'bin.ts')
 }
 
 /** vite-plus (`vp run`) in the root package.json's dependencies. */
@@ -444,12 +468,6 @@ async function keep(
   // `vx init` adopts nx() by nx.json, and a Lerna repo may have none: it
   // would map the scripts instead, so the file is written here.
   if (lerna) return keepLerna(root, plugins, args)
-  // A resolve that misses from a directory with no node_modules is an
-  // auto-install under Bun: ask the root only where it has the package.
-  const installed = path.join(root, 'node_modules', '@vzn', 'vx')
-  const core = existsSync(path.join(installed, 'package.json'))
-    ? path.join(realpathSync(installed), 'src', 'index.ts')
-    : Bun.resolveSync('@vzn/vx', import.meta.dir)
   const flags = [
     args.dry && '--dry',
     args.json && '--format=json',
@@ -457,14 +475,7 @@ async function keep(
     args.mjs && '--mjs',
   ].filter((f): f is string => typeof f === 'string')
   const code = await Bun.spawn(
-    [
-      process.execPath,
-      '--no-install',
-      path.join(path.dirname(core), 'bin.ts'),
-      'init',
-      '--keep',
-      ...flags,
-    ],
+    [process.execPath, '--no-install', coreBin(root), 'init', '--keep', ...flags],
     { cwd: root, stdio: ['inherit', 'inherit', 'inherit'] },
   ).exited
   const written = workspaceFileAt(root)

@@ -71,17 +71,17 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(process.cwd())
   if (parsed.check) {
-    const { all, metas, bare } = await configuredProjects(root, reads)
-    return await checkLock(root, all, metas, bare, parsed.format === 'json')
+    const { all, metas } = await configuredProjects(root, reads)
+    return await checkLock(root, all, metas, parsed.format === 'json')
   }
   return await lockWorkspace(root, reads)
 }
 
-/** Every project a run discovers, and how many have no vx.config. */
+/** Every project a run discovers, and those with a vx.config. */
 async function configuredProjects(
   root: string,
   reads: LoadReads = new Map(),
-): Promise<{ all: ProjectMeta[]; metas: ConfiguredMeta[]; bare: number }> {
+): Promise<{ all: ProjectMeta[]; metas: ConfiguredMeta[] }> {
   const workspace = await loadWorkspace(root, reads)
   // As a run discovers them: a project a plugin's `discover` stage adds
   // was left out of the lock, and every `--frozen` run then refused it
@@ -91,11 +91,18 @@ async function configuredProjects(
     a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
   )
   const metas = all.filter((m): m is ConfiguredMeta => m.configPath !== null)
-  // A project with no vx.config has nothing to freeze: its tasks (a plugin's,
-  // or none) load live under --frozen too, so both verbs say how many the
-  // count above leaves out — `locked 0 project configs` on a turbo() repo
-  // read like an audit of something (2026-09-16).
-  return { all, metas, bare: all.length - metas.length }
+  return { all, metas }
+}
+
+/**
+ * Projects with tasks and no vx.config: a plugin's tasks, which load live
+ * under --frozen too, so both verbs name them — `locked 0 project configs`
+ * on a turbo() repo read like an audit of something (2026-09-16). One with
+ * no task is left out: solidjs/solid's solid-ssr, which has no script Turbo
+ * runs, read as a project whose tasks are never frozen.
+ */
+function bareProjects(all: ProjectMeta[], tasked: ReadonlySet<string>): string[] {
+  return all.filter((m) => m.configPath === null && tasked.has(m.name)).map((m) => m.name)
 }
 
 /**
@@ -107,32 +114,37 @@ export async function lockWorkspace(
   reads?: LoadReads,
   warn: (message: string) => void = warnToStderr,
 ): Promise<number> {
-  const { all, metas, bare } = await configuredProjects(root, reads)
-  const broken = await graphRuleRefusal(root, all, warn)
+  const { all, metas } = await configuredProjects(root, reads)
+  const { broken, tasked } = await graphRuleRefusal(root, all, warn)
   if (broken !== null) {
     process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${broken}\n`)
     return 1
   }
-  return await writeLock(root, metas, bare)
+  return await writeLock(root, metas, bareProjects(all, tasked))
 }
 
 /**
  * The graph rules (`run.rules`), checked here over every project and task the
  * workspace declares: a frozen run trusts the lock and does not check them
  * (owner, 2026-10-13). The graph is the one a run builds, the `graph`
- * stage included; its refusal, or null.
+ * stage included; its refusal, or null, and the projects that have a task.
  */
 async function graphRuleRefusal(
   root: string,
   all: ProjectMeta[],
   warn: (message: string) => void,
-): Promise<string | null> {
+): Promise<{ broken: string | null; tasked: Set<string> }> {
+  const tasked = new Set<string>()
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
     const projects = await loadResolvedProjects(root, { warn })
     const names = new Set<string>()
-    for (const entry of projects.values())
-      for (const t of Object.keys(entry.config.tasks ?? {})) names.add(t)
+    for (const entry of projects.values()) {
+      const tasks = Object.entries(entry.config.tasks ?? {})
+      // Every project has a `build`; core's default one is nothing to freeze.
+      if (tasks.some(([, t]) => !isDefaultBuild(t))) tasked.add(entry.name)
+      for (const [t] of tasks) names.add(t)
+    }
     const dependencyRules = workspaceConfig?.run?.rules?.dependencies ?? []
     if (dependencyRules.length > 0)
       checkDependencyRules(
@@ -158,10 +170,10 @@ async function graphRuleRefusal(
         rules,
       })
   } catch (err) {
-    if (isUserError(err)) return err.message
+    if (isUserError(err)) return { broken: err.message, tasked }
     throw err
   }
-  return null
+  return { broken: null, tasked }
 }
 
 /** Evaluate one config in the current env, returning its lock entry. */
@@ -179,13 +191,38 @@ async function evaluateEntry(root: string, meta: ConfiguredMeta): Promise<Lockfi
   }
 }
 
-function bareNote(bare: number): string {
-  return bare === 0
-    ? ''
-    : ` (${bare} project${bare === 1 ? ' has' : 's have'} no vx.config; their tasks are never frozen)`
+/**
+ * `vx init`'s last step: the lock, as `vx lock` writes it. A refusal (a
+ * graph rule, a config that does not load) is printed and leaves the
+ * written configs in place.
+ */
+export async function lockAfterMigration(root: string): Promise<number> {
+  try {
+    return await lockWorkspace(root)
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${err.message}\n`)
+    return 1
+  }
 }
 
-async function writeLock(root: string, metas: ConfiguredMeta[], bare: number): Promise<number> {
+/** Names shown per note: a turbo() repo can have hundreds of bare projects. */
+const BARE_SHOWN = 5
+
+function bareNames(bare: readonly string[]): string {
+  const more = bare.length - BARE_SHOWN
+  return more > 0 ? `${bare.slice(0, BARE_SHOWN).join(', ')} and ${more} more` : bare.join(', ')
+}
+
+function bareNote(bare: readonly string[]): string {
+  return bare.length === 0 ? '' : ` (no vx.config, so never frozen: ${bareNames(bare)})`
+}
+
+async function writeLock(
+  root: string,
+  metas: ConfiguredMeta[],
+  bare: readonly string[],
+): Promise<number> {
   const entries = await Promise.all(metas.map((m) => evaluateEntry(root, m)))
   // Sorted by name above — stable lockfile diffs. Defined,
   // not assigned: a project named `__proto__` set the map's prototype (D-152).
@@ -256,15 +293,16 @@ async function checkLock(
   root: string,
   all: ProjectMeta[],
   metas: ConfiguredMeta[],
-  bare: number,
   json: boolean,
 ): Promise<number> {
+  const { broken, tasked } = await graphRuleRefusal(root, all, warnToStderr)
+  const bare = bareProjects(all, tasked)
   const answer = (problems: string[]): number => {
     if (json) {
       const out = {
         upToDate: problems.length === 0,
         audited: metas.length,
-        notAudited: bare,
+        notAudited: bare.length,
         problems,
       }
       process.stdout.write(`${JSON.stringify(out)}\n`)
@@ -307,7 +345,6 @@ async function checkLock(
     }),
   )
   const failures = results.filter((r): r is string => r !== null)
-  const broken = await graphRuleRefusal(root, all, warnToStderr)
   if (broken !== null) failures.push(broken)
   const inWorkspace = new Set(metas.map((m) => m.name))
   for (const name of Object.keys(lock.projects)) {
@@ -324,7 +361,7 @@ async function checkLock(
   }
   const n = metas.length
   const audited = `${n} project${n === 1 ? '' : 's'}`
-  const skipped = bare === 0 ? '' : `; ${bare} without a vx.config not audited`
+  const skipped = bare.length === 0 ? '' : `; not audited, no vx.config: ${bareNames(bare)}`
   process.stdout.write(`vx lock --check: up to date (${audited}${skipped})\n`)
   return 0
 }

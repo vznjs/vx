@@ -85,7 +85,7 @@ declares `turboCache()` too, and init says why:
 turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remote cache (inert where the variable is unset).
 ```
 
-`bunx @vzn/vx-migrate` reports what it wrote:
+`bunx @vzn/vx-migrate` reports what it wrote, then locks the configs:
 
 ```text
 $ bunx @vzn/vx-migrate
@@ -100,6 +100,8 @@ note: removed @vzn/vx-migrate (npm uninstall @vzn/vx-migrate)
 files written:
   packages/app/vx.config.ts
   packages/lib/vx.config.ts
+
+vx lock: locked 2 project configs → vx-lock.json
 
 next: bunx @vzn/vx run build --all
 ```
@@ -238,7 +240,7 @@ wrote vx.workspace.ts.
 next: npm install -D @vzn/vx-migrate && npx @vzn/vx run build --all
 ```
 
-`bunx @vzn/vx-migrate` reports what it wrote:
+`bunx @vzn/vx-migrate` reports what it wrote, then locks the configs:
 
 ```text
 $ bunx @vzn/vx-migrate
@@ -252,6 +254,8 @@ note: migrating from the resolved project-graph snapshot — plugin-inferred tar
 files written:
   packages/app/vx.config.ts
   packages/lib/vx.config.ts
+
+vx lock: locked 2 project configs → vx-lock.json
 
 next: bunx @vzn/vx run build --all
 ```

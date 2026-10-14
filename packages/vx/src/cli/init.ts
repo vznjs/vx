@@ -11,6 +11,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
+import { lockAfterMigration } from './lock.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isCompiledBinary } from './upgrade.js'
 import { VERSION } from '../version.js'
@@ -181,6 +182,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     force: parsed.force,
     init: true,
     format: parsed.mjs ? 'mjs' : 'ts',
+    lock: lockAfterMigration,
   })
 }
 

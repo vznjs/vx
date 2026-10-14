@@ -50,6 +50,7 @@ export interface ApplyMigrationArgs {
   unmapped?: boolean // init: scripts exist, none became a task (M-59)
   format?: MigrationFormat // default 'ts'
   json?: boolean // with dry: one JSON document (schemas/init.json) for files + report
+  lock?: (root: string) => Promise<number> // after the write: vx lock's step; a refusal is printed, exit stays 0
 }
 export function applyMigration(args: ApplyMigrationArgs): Promise<number>
 export function quoteTsLiteral(s: string): string

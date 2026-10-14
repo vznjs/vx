@@ -1754,11 +1754,11 @@ Full design: `docs/design/config-lock-2026-06.md`. A lock written by a
 A project with no `vx.config.*` — its tasks from a plugin's `project`
 stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing
 to freeze: the lock records nothing for it, `--check` does not audit
-it, and `--frozen` still loads its tasks live. Both verbs say how many
-such projects the workspace has (`locked 0 project configs →
-vx-lock.json (2 projects have no vx.config; their tasks are never
-frozen)`), so an empty lock on a plugin-only workspace never reads like
-an audit.
+it, and `--frozen` still loads its tasks live. Both verbs name such
+projects that have tasks (`locked 0 project configs → vx-lock.json (no
+vx.config, so never frozen: app, lib)`, five names then `and N more`),
+so an empty lock on a plugin-only workspace never reads like an audit.
+One with no task (core's default `build` aside) is not named.
 
 The lock is committed, so `vx lock` refuses to write one that holds a
 secret: a config that evaluated to the value of a secret-named variable
@@ -2007,6 +2007,14 @@ terminal native (a `vx.config.ts` per package, the default) or keep;
 `--native` or `--keep` answer it, and without a terminal it is native.
 `--dry`, `--format`, `--force` and `--mjs` pass through.
 
+Once it has written the configs (natively, not under `--dry`), it ends
+with `vx lock`'s step: `vx-lock.json` is written and the graph rules are
+checked, in one line before `next:` (owner, 2026-10-14). A refusal (a
+graph rule, a plugin not installed yet) is printed, the configs stay
+written, the exit is 0, and `next:` says to fix it and run `vx lock`.
+`@vzn/vx-migrate --no-install` skips the step: the plugins its workspace
+file declares are not installed yet.
+
 `vx init --dry --format json` prints the plan as one JSON document
 (`schemas/init.json`), nothing written: `files` (each path and its
 whole text), `kept`, `replaced`, `todos` (a reason and its tasks),
@@ -2152,10 +2160,10 @@ as text, so no part sees them as `$1` (X-60). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
-A member with no script to run (none, or only lifecycle hooks: a
-types-only or config package) gets no `vx.config.ts` and is named in
-the report; it is still a project, and a task declared in its own
-`vx.config.ts` runs. A package with no `build` script whose `prepack`, `prepublishOnly`,
+Every project gets a `vx.config.ts` (owner, 2026-10-14): a member with
+no script to run (none, or only lifecycle hooks: a types-only or config
+package), or with none a Turbo or Nx repo runs, gets one declaring
+`tasks: {}`. A project that already has a config keeps it. A package with no `build` script whose `prepack`, `prepublishOnly`,
 `prepublish` or `prepare` runs a builder (`bob build`, `tsc`, `tsup`, …)
 is named in the report, which says to add a `build` script running it
 (react-navigation's twelve packages, whose root `build` is `lerna run

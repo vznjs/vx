@@ -1301,6 +1301,46 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  it('ends with the lock: vx-lock.json written and named, none under --dry', async () => {
+    // owner, 2026-10-14: "vx migrate should generate lock as well".
+    const root = await makeScriptsWorkspace()
+    try {
+      const dry = await vx(root, ['init', '--dry'])
+      expect(dry.code).toBe(0)
+      expect(existsSync(path.join(root, 'vx-lock.json'))).toBe(false)
+      const r = await vx(root, ['init'])
+      expect(r.code).toBe(0)
+      expect(r.err).toBe('')
+      expect(r.out).toContain('\nvx lock: locked 3 project configs → vx-lock.json\n\nnext: ')
+      const lock = (await Bun.file(path.join(root, 'vx-lock.json')).json()) as {
+        projects: Record<string, unknown>
+      }
+      expect(Object.keys(lock.projects)).toEqual(['app', 'lib', 'silent'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a graph rule the lock refuses is printed, and the configs stay written', async () => {
+    const root = await makeScriptsWorkspace()
+    // A member's own config with a dependsOn cycle: the lock's graph check refuses it.
+    await writeFile(
+      path.join(root, 'packages', 'silent', 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ['build'] } } }\n",
+    )
+    try {
+      const r = await vx(root, ['init'])
+      expect(r.code).toBe(0)
+      expect(r.err).toContain('vx lock: vx-lock.json not written: ')
+      expect(r.err).toContain('dependsOn cycle')
+      expect(r.out).toContain('next: fix the above and run vx lock, then ')
+      expect(existsSync(path.join(root, 'vx-lock.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('names the files .gitignore would drop, and the line that keeps them', async () => {
     // vueuse ignores `packages/**/*.mjs`: `--mjs` wrote configs a commit
     // silently left behind (Growth, 2026-10-09).
@@ -1314,7 +1354,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       expect(await note()).toEqual([])
       await writeFile(path.join(root, '.gitignore'), 'packages/**/*.mjs\n')
       expect(await note()).toEqual([
-        'note: .gitignore drops 2 files this would write (packages/app/vx.config.mjs, packages/lib/vx.config.mjs): add !vx.config.mjs to .gitignore, or commit them with git add -f',
+        'note: .gitignore drops 3 files this would write (packages/app/vx.config.mjs, packages/lib/vx.config.mjs, packages/silent/vx.config.mjs): add !vx.config.mjs to .gitignore, or commit them with git add -f',
       ])
       // The advice works: with the line added, nothing is dropped.
       await writeFile(path.join(root, '.gitignore'), 'packages/**/*.mjs\n!vx.config.mjs\n')
@@ -1953,8 +1993,9 @@ describe('vx init on a workspace with no scripts', () => {
       const r = await vx(root, ['init'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
       expect(await Bun.file(path.join(root, 'vx.workspace.ts')).exists()).toBe(true)
-      expect(await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).exists()).toBe(
-        false,
+      // Every project gets a config, one with no task too (owner, 2026-10-14).
+      expect(await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).text()).toContain(
+        '  tasks: {},\n',
       )
       expect(r.out).toContain('no package.json scripts to turn into tasks')
       expect(r.out).toContain('satisfies ProjectConfig')
@@ -2053,10 +2094,10 @@ describe('vx init (package.json scripts)', () => {
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
       expect(r.out).toContain('package.json scripts → vx.config.ts')
       expect(r.out).toContain('vx.workspace.ts')
-      // A package with no scripts gets no config.
-      expect(await Bun.file(path.join(root, 'packages', 'silent', 'vx.config.ts')).exists()).toBe(
-        false,
-      )
+      // A package with no scripts gets a config with no task (owner, 2026-10-14).
+      expect(
+        await Bun.file(path.join(root, 'packages', 'silent', 'vx.config.ts')).text(),
+      ).toContain('  tasks: {},\n')
       const app = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
       const tasks = app.tasks!
       expect(Object.keys(tasks).sort()).toEqual(['build', 'dev', 'lint', 'test'])
@@ -2231,7 +2272,9 @@ describe('vx init (package.json scripts)', () => {
       const r = await vx(odd, ['init', '--dry'])
       expect(r.code).toBe(0)
       expect(r.out).toContain('packages/fine/vx.config.ts')
-      expect(r.out).not.toContain('packages/weird/vx.config.ts')
+      expect(r.out).toContain(
+        "── packages/weird/vx.config.ts ──\nimport type { ProjectConfig } from '@vzn/vx/config'\n\nexport default {\n  tasks: {},\n}",
+      )
     } finally {
       await rm(odd, { recursive: true, force: true })
     }

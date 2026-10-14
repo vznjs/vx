@@ -67,6 +67,7 @@ export interface ApplyMigrationArgs {
   unmapped?: boolean
   format?: MigrationFormat
   json?: boolean
+  lock?: (root: string) => Promise<number>
 }
 ```
 
