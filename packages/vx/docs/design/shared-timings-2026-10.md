@@ -54,7 +54,9 @@ is a local lookup. `cache.hasMany(keys)`, namespaced the same way, asks
 the layers' existing batch probes and resolves `null` when no layer has
 one; the plugin then falls back to sequential `get`. So the walk back
 over up to 5 merge-base ancestors is one `hasMany` and one `get`, inside
-the 500 ms deadline. No `has`: a `get` that resolves `null` covers it.
+the 500 ms deadline. `cache.has(key)` (M 21:11) is the layers' `has`, a
+HEAD that is cheaper than `get` for a large blob, with the same silent
+`null` on error.
 One seam, any plugin; schedule-history is its first user.
 
 ## Concurrency
@@ -88,6 +90,8 @@ The blob is untrusted input from a shared store:
   in the same run; a remote that never answers costs at most the deadline,
   and the run orders without it.
 - Every task has current-branch history: no git spawn, no fetch.
+- `cache.has` answers true after a `put` and false for an absent key,
+  through the local store and a remote layer.
 - Two runs on the same merge-base sha: one `cache.get`, no duplicate rows.
 - Oversized, malformed, out-of-range and non-graph entries are dropped,
   silently (`VX_DEBUG` names each).
