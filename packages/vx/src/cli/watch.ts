@@ -561,7 +561,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // project's dir recursively, so a `node_modules` write under a
   // project would otherwise trigger every save during `bun install` —
   // and vx's own cache writes would trigger a cycle that writes again.
-  let isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
+  /** What existed and was tracked at the arm, so a file born and gone since is no deletion and a tracked one is the user's edit (watch-judge.ts). */
+  const atArm = gitFiles(workspaceRoot)
+  let isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs, atArm?.tracked)
   let fenced = makeFence(args.fenceDirs)
   let matters = makeRootEventFilter(
     workspaceRoot,
@@ -583,8 +585,6 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
 
   /** The instant the watchers go live, on the mtime clock (see `fsClockNow`): a path last modified before it is the initial run's, not an edit. */
   const armedAt = fsClockNow(cacheDir)
-  /** What existed and was tracked at the arm, so a file born and gone since is no deletion and a tracked one is the user's edit (watch-judge.ts). */
-  const atArm = gitFiles(workspaceRoot)
   /** Which settled paths are changes (watch-judge.ts); `pending` holds what fired since. */
   const changes = new ChangeJudge({
     workspaceRoot,
@@ -814,7 +814,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     packageDirs = next.packageDirs
     memberBases = next.memberBases
     armBases()
-    isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs)
+    isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs, atArm?.tracked)
     fenced = makeFence(next.fenceDirs)
     matters = makeRootEventFilter(
       workspaceRoot,

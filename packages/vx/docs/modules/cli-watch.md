@@ -75,6 +75,7 @@ export function makeWatchIgnore(
   cacheDir,
   outputs?,
   inputs?,
+  tracked?, // git's tracked files at the arm: never an output, so an edit there counts
 ): (base: string, filename: string) => boolean // the above plus the cache dir and every declared output no task reads
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
 export function gitFiles(
