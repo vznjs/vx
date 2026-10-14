@@ -412,12 +412,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     root,
     files.map((f) => f.relPath),
   )
-  const ignoredNote =
-    ignored.length === 0
-      ? []
-      : [
-          `.gitignore drops ${ignored.length} file${ignored.length === 1 ? '' : 's'} this ${dry ? 'would write' : 'wrote'} (${ignored.slice(0, TODO_IDS_SHOWN).join(', ')}${ignored.length > TODO_IDS_SHOWN ? ', …' : ''}): add ${[...new Set(ignored.map((f) => `!${path.posix.basename(f)}`))].join(' and ')} to .gitignore, or commit them with git add -f`,
-        ]
+  const ignoredNote = ignored.length === 0 ? [] : [ignoreAdvice(root, ignored, dry)]
   const todos = new Map<string, string[]>()
   let todoCount = 0
   let clean = 0
@@ -557,6 +552,37 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const locked = (await args.lock(root)) === 0
   process.stdout.write(`\nnext: ${locked ? next : `fix the above and run vx lock, then ${next}`}\n`)
   return 0
+}
+
+/**
+ * What to do about written files .gitignore drops. A `!file` line cures a
+ * file, but git re-includes nothing inside an ignored directory: an
+ * old-layout `/.vx/` line (when `.vx` held only the cache) hides the
+ * workspace config and lock, so that advice names the directory instead.
+ */
+function ignoreAdvice(root: string, ignored: readonly string[], dry: boolean): string {
+  const ancestors = (f: string): string[] =>
+    f
+      .split('/')
+      .slice(0, -1)
+      .map((_, i, parts) => `${parts.slice(0, i + 1).join('/')}/`)
+  const dirs = new Set(gitIgnored(root, [...new Set(ignored.flatMap(ancestors))]))
+  const blocking = new Set<string>()
+  const names = new Set<string>()
+  for (const f of ignored) {
+    const dir = ancestors(f).find((d) => dirs.has(d))
+    if (dir === undefined) names.add(`!${path.posix.basename(f)}`)
+    else blocking.add(dir)
+  }
+  const cures = [
+    ...(names.size === 0 ? [] : [`add ${[...names].join(' and ')} to .gitignore`]),
+    ...(blocking.size === 0
+      ? []
+      : [
+          `stop ignoring ${[...blocking].join(' and ')} (a ! line cannot re-include a file inside an ignored directory)`,
+        ]),
+  ]
+  return `.gitignore drops ${ignored.length} file${ignored.length === 1 ? '' : 's'} this ${dry ? 'would write' : 'wrote'} (${ignored.slice(0, TODO_IDS_SHOWN).join(', ')}${ignored.length > TODO_IDS_SHOWN ? ', …' : ''}): ${cures.join(', ')}, or commit them with git add -f`
 }
 
 /** The paths (root-relative) git's ignore rules drop; none outside a work tree. */
