@@ -296,8 +296,9 @@ export function formatSummarySection(
     }
     lines.push('', row('info', join(info)), row('time', `${formatElapsed(totalMs)}${spread}`))
     // The run in one line, last, where the eye lands: what a Turbo user
-    // reads first in its own summary (tasks, cached, time), in vx's words.
-    if (stats.total > 0) lines.push(row('result', resultLine(stats, hits, totalMs, colors)))
+    // reads first in its own summary, in vx's words. The wall time is
+    // `time`'s alone: the line repeated it (M, 2026-10-14).
+    if (stats.total > 0) lines.push(row('result', resultLine(stats, hits, colors)))
   } else {
     lines.push('', row('time', `${formatElapsed(totalMs)}${spread}`))
   }
@@ -316,18 +317,12 @@ function formatEta(ms: number): string {
 }
 
 /**
- * `42 tasks · 38 cached (90%) · 3.2s`, `2 tasks · all cached · 23ms`
- * (every task hit),
+ * `42 tasks · 38 cached (90%)`, `2 tasks · all cached` (every task hit),
  * with the failures first when there are any. Cached is every hit (up to
  * date, restored locally or remotely) over every task that consulted a
  * cache: a skipped or not-yet-run task never did.
  */
-function resultLine(
-  stats: SummaryStats,
-  hits: number,
-  totalMs: number,
-  colors: ColorSupport,
-): string {
+function resultLine(stats: SummaryStats, hits: number, colors: ColorSupport): string {
   const parts = [`${stats.total} task${stats.total === 1 ? '' : 's'}`]
   if (stats.failed > 0) parts.push(paint(ERROR, `${stats.failed} failed`, colors, { bold: true }))
   // A task with no `cache` block could never hit: it is counted apart, not
@@ -349,7 +344,6 @@ function resultLine(
   // time of every hit, never the restore this run spent on it.
   if ((stats.savedMs ?? 0) >= 1)
     parts.push(paint(SUCCESS, `${formatElapsed(stats.savedMs!)} saved`, colors))
-  parts.push(formatElapsed(totalMs))
   return parts.join(` ${paint('', '\u00b7', colors, { dim: true })} `)
 }
 

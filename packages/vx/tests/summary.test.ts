@@ -204,7 +204,7 @@ describe('formatRunSummary', () => {
     expect(lines.find((l) => l.startsWith('  result'))).toBeUndefined()
   })
 
-  it('ends with the run in one line: tasks, cached, time; all cached only when every task hit; failures first', () => {
+  it('ends with the run in one line: tasks, cached; all cached only when every task hit; failures first', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
     const result = (outcomes: TaskOutcome[], ms: number): string | undefined =>
       formatRunSummary(outcomes, ms, { enabled: false }, ctx).at(-1)
@@ -215,18 +215,18 @@ describe('formatRunSummary', () => {
     }
     expect(
       result([outcome('a#x', 'cache-hit'), outcome('b#x', 'cache-hit-remote'), miss('c#x')], 3200),
-    ).toBe('  result    3 tasks · 2 cached (66%) · 3.20s')
-    expect(result([outcome('a#x', 'cache-hit')], 23)).toBe('  result    1 task · all cached · 23ms')
+    ).toBe('  result    3 tasks · 2 cached (66%)')
+    expect(result([outcome('a#x', 'cache-hit')], 23)).toBe('  result    1 task · all cached')
     expect(result([miss('a#x', 'failed'), miss('b#x')], 40)).toBe(
-      '  result    2 tasks · 1 failed · 0 cached (0%) · 40ms',
+      '  result    2 tasks · 1 failed · 0 cached (0%)',
     )
     // A task with no cache never could hit: counted apart, never a miss.
-    expect(result([outcome('a#dev', 'success')], 37)).toBe('  result    1 task · 1 no-cache · 37ms')
+    expect(result([outcome('a#dev', 'success')], 37)).toBe('  result    1 task · 1 no-cache')
     expect(
       result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'success'), miss('c#x')], 50),
-    ).toBe('  result    3 tasks · 1 cached (50%) · 1 no-cache · 50ms')
+    ).toBe('  result    3 tasks · 1 cached (50%) · 1 no-cache')
     expect(result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'failed', 1)], 50)).toBe(
-      '  result    2 tasks · 1 failed · 1 cached (100%) · 1 no-cache · 50ms',
+      '  result    2 tasks · 1 failed · 1 cached (100%) · 1 no-cache',
     )
     // A hit says what it saved: its STORED exec time, not the restore.
     const hit = (id: string, storedDurationMs: number): TaskOutcome => ({
@@ -235,8 +235,12 @@ describe('formatRunSummary', () => {
       storedDurationMs,
     })
     expect(result([hit('a#x', 2010), hit('b#x', 300), miss('c#x')], 90)).toBe(
-      '  result    3 tasks · 2 cached (66%) · 2.31s saved · 90ms',
+      '  result    3 tasks · 2 cached (66%) · 2.31s saved',
     )
+    // The wall time is said once, on `time`: the result line repeated the
+    // same number (M, 2026-10-14).
+    const footer = formatRunSummary([outcome('a#x', 'cache-hit')], 4321, { enabled: false }, ctx)
+    expect(footer.filter((l) => l.includes('4.32s'))).toEqual(['  time      4.32s'])
     expect(formatRunSummary([], 5, { enabled: false }, ctx).find((l) => l.includes('result'))).toBe(
       undefined,
     )
@@ -290,7 +294,7 @@ describe('aborted and not-run tasks', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
     const lines = formatRunSummary(run, 10, { enabled: false }, ctx)
     expect(lines[3]).toBe('            1 success · 1 total · not counted: 1 aborted, 2 not run')
-    expect(lines.at(-1)).toBe('  result    1 task · 1 no-cache · 10ms')
+    expect(lines.at(-1)).toBe('  result    1 task · 1 no-cache')
   })
 
   it('a stop before any task finished still names them under `0 tasks`', () => {

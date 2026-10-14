@@ -31,7 +31,7 @@ describe('the result line — a skipped task is no cache miss', () => {
   it('no task with a cache: no hit rate', () => {
     expect(
       result([outcome('a#x', 'failed'), outcome('c#x', 'success'), outcome('b#x', 'skipped')]),
-    ).toBe('  result    3 tasks · 1 failed · 2 no-cache · 40ms')
+    ).toBe('  result    3 tasks · 1 failed · 2 no-cache')
   })
 
   it('a skipped cached task is left out of the rate', () => {
@@ -41,6 +41,6 @@ describe('the result line — a skipped task is no cache miss', () => {
         outcome('b#x', 'failed', {}),
         outcome('c#x', 'skipped', {}),
       ]),
-    ).toBe('  result    3 tasks · 1 failed · 1 cached (50%) · 40ms')
+    ).toBe('  result    3 tasks · 1 failed · 1 cached (50%)')
   })
 })

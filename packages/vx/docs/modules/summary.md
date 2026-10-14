@@ -93,7 +93,7 @@ a bare `vx` and the `projects` / `info` rows are skipped.
 
   info      10 workers · local cache
   time      248ms · max 239ms · avg 215ms · min 190ms
-  result    4 tasks · 0 cached (0%) · 248ms
+  result    4 tasks · 0 cached (0%)
 ```
 
 Labels pad to 8, bars start at column 12, the rule + bars span 50
@@ -102,13 +102,13 @@ cells. `projects` (the projects in the run vs the workspace total) leads the met
 A blank line separates the meters from the `info` row (worker pool +
 cache mode, and `admit held N tasks · Ns` when a policy held any — a
 sum, said as one), the `time` row and the `result` row (`N tasks · N
-cached (P%) · time` over the tasks that consulted a cache (a skipped
+cached (P%)` over the tasks that consulted a cache (a skipped
 task never did, nor one still to run), `all cached` when every task
 of the run hit, `N no-cache` for the rest (`ranNoCache`: no `cache` block, or a
 policy that reads and writes nothing), then `<time> saved` (green:
 the hits' STORED exec times summed, what the cache skipped, never the
 restore this run paid; left out under 1 ms), `N failed` after the
-count; none on an empty run). `projects` and `info` only
+count; none on an empty run; the wall time is `time`'s alone). `projects` and `info` only
 render when a `RunContext` is passed (the live region and the final
 footer both pass one). The block above is
 `formatRunSummary` on four successes of 239, 190, 215 and 216 ms with

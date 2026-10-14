@@ -3365,7 +3365,7 @@ footer. A broad run looks like:
 
   info      8 workers · local cache
   time      5.34s · max 5.20s · avg 5.20s · min 5.20s
-  result    2 tasks · 1 cached (50%) · 900ms saved · 5.34s
+  result    2 tasks · 1 cached (50%) · 900ms saved
 ```
 
 The three bars are meters: `projects` is what the run covered against
@@ -3375,7 +3375,8 @@ the two legends sum alike). The `time` spread counts executed tasks
 only — a hit's restore time never enters it — which is why one executed
 task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
-task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
+task with a cache that ran or hit; a skipped task asked no cache) and
+what the cache saved, the wall time being `time`'s alone — `3 tasks · all cached`
 when every task hit, with `N failed` after the count on a
 red run. A task with no `cache` block, or any task of a run whose
 `--cache-policy` reads and writes nothing (`--no-cache`), could never hit, so it
