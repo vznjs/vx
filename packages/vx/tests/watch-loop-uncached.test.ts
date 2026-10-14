@@ -34,7 +34,7 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
     )
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await Bun.sleep(SETTLE_MS)
     await initialOnly(w, f.log)
     expect(w.cycles()).toBe(0)
@@ -55,7 +55,7 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(runs)
     expect(w.cycles()).toBe(runs - 1)
-    expect(w.out()).toContain('vx watch: app dist/out.txt; re-running...')
+    expect(w.out()).toContain('changed app dist/out.txt')
   }, 40_000)
 
   it.each([
@@ -80,7 +80,7 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
       )
       f.watch = startWatch(f.root)
       const w = f.watch
-      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await until(() => w.out().includes('watching '), 'the watching marker')
       await Bun.sleep(SETTLE_MS)
       await initialOnly(w, f.log)
 
@@ -97,8 +97,8 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
       // not by the edit that started the cycle it landed in. Asserted in
       // both modes since item 482: the poller sees the same write now.
       {
-        expect(w.out().split('re-running...')[2]).not.toContain('src/a.txt')
-        expect(w.out()).toContain('vx watch: app dist')
+        expect(w.out().split('\nchanged ')[2]).not.toContain('src/a.txt')
+        expect(w.out()).toContain('changed app dist')
       }
     },
     40_000,

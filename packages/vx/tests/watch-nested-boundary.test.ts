@@ -56,7 +56,7 @@ describe('vx watch on a root project with a nested project (e2e)', () => {
 
   const edits = async (): Promise<void> => {
     const w = watch!
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await writeFile(path.join(root, 'packages', 'a', 'src', 'a.txt'), 'a2\n')
     await Bun.sleep(SETTLE_MS)
     expect({ cycles: w.cycles(), ran: await ran() }).toEqual({ cycles: 0, ran: ['root'] })
@@ -83,7 +83,7 @@ describe('vx watch on a root project with a nested project (e2e)', () => {
       rootConfig(`{ files: ['**/*.txt'], workspaceFiles: ['tsconfig.base.json'] }`),
     )
     watch = startWatch(root, ['--filter', 'fixture-root'])
-    await until(() => watch!.out().includes('watching the workspace root'), 'the root arm')
+    await until(() => watch!.out().includes('watching '), 'the root arm')
     await edits()
   }, 40_000)
 
@@ -92,7 +92,7 @@ describe('vx watch on a root project with a nested project (e2e)', () => {
     await addProject(root, 'b', { files: { 'src/b.txt': 'b1\n' } })
     watch = startWatch(root, ['--filter', 'fixture-root'])
     const w = watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     // Its config coming or going moves the boundary, so the set is re-read.
     const config = path.join(root, 'packages', 'a', 'vx.config.mjs')
     await writeFile(config, `${await readFile(config, 'utf8')}// edited\n`)

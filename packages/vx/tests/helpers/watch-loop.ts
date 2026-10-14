@@ -87,7 +87,7 @@ export function startWatch(
     proc,
     out: () => out,
     err: () => err,
-    cycles: () => out.split('re-running...').length - 1,
+    cycles: () => out.split('\n').filter((l) => l.startsWith('changed ')).length,
   }
 }
 

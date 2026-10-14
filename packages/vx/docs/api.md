@@ -1869,6 +1869,7 @@ export interface RunOptions {
   summarize?: string
   json?: boolean
   beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
+  footer?: boolean
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal

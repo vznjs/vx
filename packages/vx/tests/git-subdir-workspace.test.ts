@@ -382,7 +382,7 @@ describe('vx watch over a workspace in a git subdirectory', () => {
       gitInitCommit(repo)
       const w = startWatch(ws)
       try {
-        await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+        await until(() => w.out().includes('watching '), 'the watching marker')
         await initialOnly(w, log)
         const g = gitIn(repo)
         for (let i = 0; i < 3; i++) {

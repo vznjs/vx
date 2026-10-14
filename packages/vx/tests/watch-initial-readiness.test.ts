@@ -41,7 +41,7 @@ it('an edit restarts a server stuck before ready in the initial run', async () =
   watch = startWatch(root, ['--all'], {}, 'dev')
   const w = watch
   await until(async () => (await lines('pids')).length === 1, 'the hanging server')
-  await until(() => w.out().includes('vx watch: watching'), 'the armed loop')
+  await until(() => w.out().includes('watching '), 'the armed loop')
   await writeFile(path.join(dir, 'src', 'a.txt'), 'fixed\n')
   await until(async () => (await lines('pids')).length === 2, 'the server after the fix', 10_000)
   expect(isAlive(Number((await lines('pids'))[1]))).toBe(true)
@@ -61,7 +61,7 @@ it('Ctrl-C while the initial run waits on readiness stops its server', async () 
   )
   watch = startWatch(root, ['--all'], {}, 'dev')
   const w = watch
-  await until(() => w.out().includes('vx watch: watching'), 'the armed loop')
+  await until(() => w.out().includes('watching '), 'the armed loop')
   const [pid] = (await lines('pids')).map(Number)
   w.proc.kill('SIGINT')
   expect(await w.proc.exited).toBe(0)

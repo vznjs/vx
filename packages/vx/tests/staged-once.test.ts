@@ -140,10 +140,7 @@ export default { plugins: [${edgesSource({ app: ['lib'] })}, ${pluginSource(
       for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
     })()
     try {
-      await until(
-        async () => out.includes('vx watch: watching 2 project(s)'),
-        'the watching marker',
-      )
+      await until(async () => out.includes('watching 2 projects'), 'the watching marker')
       // The initial run (app + its closure) and the sweep (every config):
       // two loads. Differential: with the sweep's load not handed to
       // `watchedProjects`, a third load makes it six.

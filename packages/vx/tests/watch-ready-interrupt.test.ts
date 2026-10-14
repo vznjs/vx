@@ -70,14 +70,14 @@ async function fixture(prep: string): Promise<string> {
   return dir
 }
 
-// One `time` line per run's summary: the count says how many runs have ended.
-const runsEnded = (w: Watch): number => w.out().split('\n  time ').length - 1
+// One `web#dev` row per run: the count says how many runs have settled it.
+const runsEnded = (w: Watch): number => w.out().match(/ web#dev$/gm)?.length ?? 0
 
 it('an edit stops a cycle waiting on a server that never becomes ready', async () => {
   await fixture('true')
   watch = startWatch(root, ['--all'], {}, 'dev')
   const w = watch
-  await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+  await until(() => w.out().includes('watching '), 'the watching marker')
   relock(true)
   await until(async () => (await lines('pids')).length === 2, 'the hanging server')
   relock(false)
@@ -100,7 +100,7 @@ it('an edit during other work does not stop the cycle', async () => {
     )
     watch = startWatch(root, ['--all'], {}, 'dev')
     const w = watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await writeFile(gate, '')
     await writeFile(path.join(dir, 'src', 'a.txt'), 'edit 1\n')
     const prep = async (): Promise<string[]> => {

@@ -62,10 +62,11 @@ export class ChangeJudge {
 
 // watch-cycle.ts — one cycle's run, stoppable while it waits on readiness alone:
 export interface WatchCycle {
-  readonly opts: RunOptions // the cycle's own bus and stop
+  readonly opts: RunOptions // the cycle's own bus and stop, footer: false
   waitsOnReadiness(): boolean // every task in flight is a persistent one not yet ready
   interrupt(): void // stop the run as a SIGTERM would; watch keeps going
   readonly interrupted: boolean
+  readonly tasks: number | undefined // the run's task count, once it has started
 }
 export function watchCycle(opts: RunOptions, stop: AbortSignal, onWaiting: () => void): WatchCycle
 
@@ -168,8 +169,10 @@ are refused too: they format one run's result.
    `pkg#task`'s project, or only those when every task is anchored
    (`tests/watch-anchored-scope.test.ts`). Empty scope → exit 1, judged
    after the initial run so an unknown `pkg` gets the run's refusal.
-4. **Initial run.** Print `vx watch: initial run...`; call
-   `orchestrator.run(opts)`. One that ran nothing and failed (a task
+4. **Initial run.** Call `orchestrator.run(opts)`; every cycle runs
+   with `footer: false` (`watch-cycle.ts`), so a run is its task rows.
+   Once armed the loop prints `watching N projects · M tasks`, M being
+   the initial run's task count, and again after each re-arm. One that ran nothing and failed (a task
    no project declares) exits 1. Then `opts.affected` and
    `opts.selectedOutright` are dropped: the `--affected` diff is the
    tree at start, so a later cycle runs the requested task across the

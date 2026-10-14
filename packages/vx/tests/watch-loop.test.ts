@@ -46,7 +46,7 @@ describe('vx watch loop (e2e)', () => {
       w.proc.kill('SIGTERM')
       await w.proc.exited
     }
-    expect({ code, watching: w.out().includes('vx watch: watching') }).toEqual({
+    expect({ code, watching: w.out().includes('watching ') }).toEqual({
       code: 1,
       watching: false,
     })
@@ -54,13 +54,13 @@ describe('vx watch loop (e2e)', () => {
     // CONTROL: the declared name watches (the case above never got there).
     f.watch = startWatch(f.root)
     const ok = f.watch
-    await until(() => ok.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => ok.out().includes('watching '), 'the watching marker')
   }, 40_000)
 
   it('an edit re-runs once; the same bytes again re-execute nothing; a new edit re-runs', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     // The cycle's invocation row names the verb, as `vx run`'s does; the
     // process.argv fallback recorded the bin's absolute path in its place.
@@ -87,11 +87,30 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(2)
   }, 40_000)
 
+  it('says one opening line, then each cycle as its change and its rows, no footer', async () => {
+    const w = (f.watch = startWatch(f.root))
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    await writeFile(path.join(f.dir, 'src', 'b.txt'), 'b1\n')
+    await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after the edits')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.out().replace(/\d+ms/g, 'Nms')).toBe(
+      [
+        ' ⏺︎     Nms success miss     app#build',
+        'watching 1 project · 1 task',
+        '',
+        'changed app src/b.txt (+1 more)',
+        ' ⏺︎     Nms success miss     app#build',
+        '',
+      ].join('\n'),
+    )
+  }, 40_000)
+
   it('the recorded command keeps its args shell-quoted, as `vx run` records them', async () => {
     // A bare join recorded `--filter a*`, which a shell globs when pasted.
     f.watch = startWatch(f.root, ['--filter', 'a*'])
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     const last = Bun.spawnSync([process.execPath, BIN, 'last', '--list'], { cwd: f.root })
     expect(last.stdout.toString()).toContain("$ vx watch build --filter 'a*'")
@@ -100,7 +119,7 @@ describe('vx watch loop (e2e)', () => {
   it('a re-lock re-runs, and a config edit alone does not change the command (item 971)', async () => {
     f.watch = startWatch(f.root, ['--all'])
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     // The config's command changes; the lock still holds the old one, so
@@ -140,7 +159,7 @@ describe('vx watch loop (e2e)', () => {
     )
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
@@ -161,7 +180,7 @@ describe('vx watch loop (e2e)', () => {
     )
     f.watch = startWatch(f.root, ['--all'], {}, 'show')
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     await writeFile(path.join(f.dir, '.env.local'), 'A=2\n')
@@ -200,7 +219,7 @@ describe('vx watch loop (e2e)', () => {
     )
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     expect(await readFile(said, 'utf8')).toBe('ONE\n')
 
@@ -225,7 +244,7 @@ describe('vx watch loop (e2e)', () => {
     )
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     await writeFile(path.join(f.root, 'ws-helper.mjs'), "export const msg = 'TWO'\n")
@@ -245,7 +264,7 @@ describe('vx watch loop (e2e)', () => {
     // edits — and the re-run proves the poller is the one delivering them.
     f.watch = startWatch(f.root, ['--all'], { VX_WATCH_POLL: '1' })
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     expect(w.err()).toContain('vx watch: polling every 250 ms (watch.poll)')
     expect(w.err()).not.toContain('no OS watch events')
@@ -277,7 +296,7 @@ describe('vx watch loop (e2e)', () => {
       const shim = await refusingWatch(code)
       f.watch = startWatch(f.root, ['--all'], { BUN_OPTIONS: `--preload ${shim}` })
       const w = f.watch
-      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await until(() => w.out().includes('watching '), 'the watching marker')
       await initialOnly(w, f.log)
       expect(w.err()).toContain(
         // The directory is left out: macOS's temp dir is reached through a link.
@@ -297,7 +316,7 @@ describe('vx watch loop (e2e)', () => {
     const shim = await refusingWatch('EACCES')
     f.watch = startWatch(f.root, ['--all'], { BUN_OPTIONS: `--preload ${shim}` })
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     expect(w.err()).toContain('cannot watch')
     expect(w.err()).toContain('EACCES: refused')
     expect(w.err()).not.toContain('polling every')
@@ -320,7 +339,7 @@ describe('vx watch loop (e2e)', () => {
 
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     const restored = path.join(f.root, 'restored.txt')
@@ -344,7 +363,7 @@ describe('vx watch loop (e2e)', () => {
     // only, and a plugin added under `vx watch` waited for a restart.
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     await Bun.write(
@@ -369,7 +388,7 @@ describe('vx watch loop (e2e)', () => {
   it('an atomic save by rename is one cycle with the new content, three saves in a row', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     for (let i = 2; i <= 4; i++) {
       const tmp = path.join(f.dir, 'src', 'a.txt~')
@@ -397,7 +416,7 @@ describe('vx watch loop (e2e)', () => {
 
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     git('checkout', '-q', 'feat')
@@ -426,7 +445,7 @@ describe('vx watch loop (e2e)', () => {
     // kept the loop idle for good and the edit never ran.
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     let n = 0
     const writer = setInterval(() => void writeFile(path.join(f.dir, 'noise.log'), `${n++}\n`), 50)
@@ -485,8 +504,8 @@ describe('vx watch with a persistent task (e2e)', () => {
     if (!(await f.exists())) return []
     return (await f.text()).split('\n').filter(Boolean).map(Number)
   }
-  // One `time` line per run's summary: the count says how many runs have ended.
-  const runsEnded = (w: Watch): number => w.out().split('\n  time ').length - 1
+  // One `web#dev` row per run: the count says how many runs have settled it.
+  const runsEnded = (w: Watch): number => w.out().match(/ web#dev$/gm)?.length ?? 0
 
   it('the dev server stays up across cycles and is replaced when its locked config changes', async () => {
     // cli.md: a cycle keeps a server still up whose task is unchanged; the
@@ -496,7 +515,7 @@ describe('vx watch with a persistent task (e2e)', () => {
     // (turborepo#9421, #13115 reproduced on vx).
     watch = startWatch(root, ['--all'], {}, 'dev')
     const w = watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     const [first] = await readPids()
     expect(first).toBeNumber()
     expect(isAlive(first!)).toBe(true)
@@ -541,7 +560,7 @@ describe('vx watch with a persistent task (e2e)', () => {
     )
     watch = startWatch(root, ['--all'], {}, 'dev')
     const w = watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await writeFile(armed, '')
     await until(
       () => w.out().includes('server.log has started 3 cycles in a row'),
@@ -587,7 +606,7 @@ describe('vx watch in a single-project repository (e2e)', () => {
       gitInit(root)
       w.current = startWatch(root, [])
       const watch = w.current
-      await until(() => watch.out().includes('vx watch: watching'), 'the watching marker')
+      await until(() => watch.out().includes('watching '), 'the watching marker')
       await initialOnly(watch, log)
       await writeFile(path.join(root, 'src', 'a.txt'), 'a2\n')
       await until(async () => (await executions(log)) === 2, 'the re-run after an edit')

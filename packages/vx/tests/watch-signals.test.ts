@@ -201,8 +201,8 @@ describe('vx watch under a signal (e2e)', () => {
     })()
     await waitForText(async () => out, 'watching', 10_000)
     await Bun.write(path.join(dir, 'vx.config.mjs'), config('0.06'))
-    // One `time` line per run's summary: the edit's cycle has ended.
-    const runsEnded = (): number => out.split('\n  time ').length - 1
+    // One `app#dev` row per run: the edit's cycle has settled it.
+    const runsEnded = (): number => out.match(/ app#dev$/gm)?.length ?? 0
     await waitForText(async () => (runsEnded() === 2 ? 'yes' : ''), 'yes', 10_000)
     lock(root)
     const got = path.join(dir, 'got.txt')
@@ -211,7 +211,7 @@ describe('vx watch under a signal (e2e)', () => {
     expect(await proc.exited).toBe(0)
     await reader
     const after = out
-      .slice(out.lastIndexOf('re-running...'))
+      .slice(out.lastIndexOf('\nchanged ') + 1)
       .split('\n')
       .slice(1)
       .filter((l) => l.trim() !== '' && !l.startsWith('app#dev │'))

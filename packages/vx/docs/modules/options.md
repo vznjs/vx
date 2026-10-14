@@ -43,6 +43,7 @@ export interface RunOptions {
   summarize?: string
   json?: boolean // --format json: the terminal renderer writes stderr; RunSummary.json carries the document
   beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string // text printed just above the footer
+  footer?: boolean // false: no footer, live or printed, and no blank line opening the task log (vx watch)
   profile?: string
   handleSignals?: boolean
   signal?: AbortSignal

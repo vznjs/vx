@@ -195,22 +195,31 @@ export class ChangeJudge {
     // `sed -i` saving through a temporary file fires that file first, and
     // the cycle was announced by a name already renamed away.
     let gone: [label: string, abs: string] | undefined
+    // "+N more" counts the changes of the winner's kind: an edit's count
+    // leaves out the editor's temporary file renamed away.
+    let live = 0
+    let goneCount = 0
     for (const [p, l] of this.pending) {
       if (ignored.has(p) && !editForUncached(p)) continue
-      if (this.sameState(p, ignored.has(p), spell) || first !== undefined) continue
+      if (this.sameState(p, ignored.has(p), spell)) continue
       if (!fs.existsSync(p)) {
+        goneCount++
         gone ??= [l, p]
         continue
       }
+      live++
+      if (first !== undefined) continue
       first = l
       firstAbs = p
     }
     if (first === undefined && gone !== undefined) [first, firstAbs] = gone
     this.pending.clear()
+    const more = (live > 0 ? live : goneCount) - 1
+    const named = more > 0 ? `${first} (+${more} more)` : first
     const byServer = firstAbs !== undefined && this.ctx.held()
     if (firstAbs === undefined || !this.writtenDuringLastCycle(firstAbs, spell)) {
       this.streak.n = 0
-      return first
+      return named
     }
     this.streak.n = this.streak.abs === firstAbs ? this.streak.n + 1 : 1
     this.streak.abs = firstAbs
@@ -222,6 +231,6 @@ export class ChangeJudge {
           : `vx watch: ${first} has started 3 cycles in a row, written by the cycle before each — a task rewrites it every run. Declare it in cache.outputs (an output never starts a cycle) or add it to .gitignore (a git-ignored path never does); until then every run re-runs.\n`,
       )
     }
-    return first
+    return named
   }
 }

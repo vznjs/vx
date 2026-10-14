@@ -413,7 +413,8 @@ describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
       const reader = (async () => {
         for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
       })()
-      const cycles = (): number => out.split('\n  time      ').length - 1
+      // One `app#build` row per run.
+      const cycles = (): number => out.match(/ app#build$/gm)?.length ?? 0
       const until = async (n: number): Promise<void> => {
         const deadline = Date.now() + 15_000
         while (cycles() < n && Date.now() < deadline) await Bun.sleep(25)
@@ -421,7 +422,7 @@ describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
       }
       await until(1)
       const armed = Date.now() + 15_000
-      while (!out.includes('vx watch: watching') && Date.now() < armed) await Bun.sleep(25)
+      while (!out.includes('watching ') && Date.now() < armed) await Bun.sleep(25)
       await writeFile(path.join(dir, 'src', 'a.txt'), '1\n')
       await until(2)
       // A dist-triggered cycle was queued during the one above; this edit's
@@ -431,9 +432,9 @@ describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(0)
       await reader
-      expect(out.split('\n').filter((l) => l.includes('re-running'))).toEqual([
-        'vx watch: app src/a.txt; re-running...',
-        'vx watch: app src/a.txt; re-running...',
+      expect(out.split('\n').filter((l) => l.startsWith('changed '))).toEqual([
+        'changed app src/a.txt',
+        'changed app src/a.txt',
       ])
     } finally {
       await rm(root, { recursive: true, force: true })

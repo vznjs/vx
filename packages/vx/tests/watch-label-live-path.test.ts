@@ -1,6 +1,6 @@
 // A cycle is named by the first path that changed. An editor or `sed -i`
 // that saves through a temporary file fires that file's event first, so
-// `vx watch: app sedzCKbWc; re-running...` named a file already renamed
+// `changed app sedzCKbWc` named a file already renamed
 // away, never the config the user edited. A path still there names the
 // cycle; a gone one does only when nothing that exists changed.
 
@@ -34,4 +34,15 @@ it('a deleted file names the cycle when nothing else changed', async () => {
   const judge = judgeIn(dir)
   judge.pending.set(path.join(dir, 'gone.txt'), 'app gone.txt')
   expect(judge.judge()).toBe('app gone.txt')
+})
+
+it('counts the other changes of the named kind', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-label-'))
+  const judge = judgeIn(dir)
+  for (const name of ['a.txt', 'b.txt', 'c.txt']) {
+    await writeFile(path.join(dir, name), 'x\n')
+    judge.pending.set(path.join(dir, name), `app ${name}`)
+  }
+  judge.pending.set(path.join(dir, 'gone.txt'), 'app gone.txt')
+  expect(judge.judge()).toBe('app a.txt (+2 more)')
 })
