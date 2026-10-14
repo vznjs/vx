@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## plugin: output stage lets a plugin draw the terminal
+
+PLUGIN_HOOKS gains `output` after `telemetry` (15 hooks).
+
 ## run: check graph rules in vx lock; runs are frozen under CI
 
 under CI a run loads its configs from vx-lock.json, writing it first when missing; `--no-frozen` or `VX_RUN_FROZEN=false` evaluate them. `vx lock` refuses a graph that breaks `run.rules`, and `vx lock --check` reports one.
