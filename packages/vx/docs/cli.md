@@ -2156,10 +2156,10 @@ as text, so no part sees them as `$1` (X-60). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
-A member with no script to run (none, or only lifecycle hooks: a
-types-only or config package) gets no `vx.config.ts` and is named in
-the report; it is still a project, and a task declared in its own
-`vx.config.ts` runs. A package with no `build` script whose `prepack`, `prepublishOnly`,
+Every project gets a `vx.config.ts` (owner, 2026-10-14): a member with
+no script to run (none, or only lifecycle hooks: a types-only or config
+package), or with none a Turbo or Nx repo runs, gets one declaring
+`tasks: {}`. A project that already has a config keeps it. A package with no `build` script whose `prepack`, `prepublishOnly`,
 `prepublish` or `prepare` runs a builder (`bob build`, `tsc`, `tsup`, …)
 is named in the report, which says to add a `build` script running it
 (react-navigation's twelve packages, whose root `build` is `lerna run

@@ -294,8 +294,18 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // the whole workspace, and `--force` would have replaced the hand-written
   // file; `--force` still replaces, as asked.
   const kept: string[] = []
-  const projects = plan.projects.filter((p) => {
-    if (!init || force || p.tasks.length === 0) return true
+  // Every project gets a config, a task-less one too (owner, 2026-10-14:
+  // "no skips. every project gets a config"): solidjs/solid's solid-ssr,
+  // with no script Turbo runs, was left with none and read as a project
+  // whose tasks are never frozen.
+  const planned = new Set(plan.projects.map((p) => p.dir))
+  const unplanned: GeneratedProject[] = metas
+    .filter((m) => !planned.has(m.dir))
+    .map((m) => ({ name: m.name, dir: m.dir, importLines: [], tasks: [] }))
+  const projects = [...plan.projects, ...unplanned].filter((p) => {
+    // An empty config never replaces one a project has, --force or not.
+    if (p.tasks.length === 0) return !metas.some((m) => m.dir === p.dir && m.configPath)
+    if (!init || force) return true
     const existing = metas.find((m) => m.dir === p.dir)?.configPath
     if (!existing) return true
     kept.push(relPosix(root, existing))
@@ -315,7 +325,6 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
 
   const files: { relPath: string; abs: string; contents: string }[] = []
   for (const p of projects) {
-    if (p.tasks.length === 0) continue
     const abs = path.join(p.dir, configName)
     files.push({
       relPath: relPosix(root, abs),
@@ -344,7 +353,6 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     // A discovered project with ANY existing vx config (.ts/.mjs/.js) — refuse
     // so we never shadow a hand-written config with a fresh .ts.
     for (const p of projects) {
-      if (p.tasks.length === 0) continue
       const meta = metas.find((m) => m.dir === p.dir)
       if (meta?.configPath) conflicts.add(relPosix(root, meta.configPath))
     }
@@ -369,7 +377,6 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // (item 1033).
   const replaced: string[] = []
   for (const p of projects) {
-    if (p.tasks.length === 0) continue
     const existing = metas.find((m) => m.dir === p.dir)?.configPath
     if (existing && existing !== path.join(p.dir, configName)) replaced.push(existing)
   }
@@ -707,7 +714,7 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
   if (lines.length > 0) lines.push('')
   lines.push('export default {')
   if (p.tags !== undefined && p.tags.length > 0) lines.push(`  tags: ${renderValue(p.tags, '  ')},`)
-  lines.push('  tasks: {')
+  lines.push(p.tasks.length === 0 ? '  tasks: {},' : '  tasks: {')
   for (const t of p.tasks) {
     // A reason can quote a manifest's own text (an Nx `env` key), and a
     // line break there ended the comment: the rest was code in the file
@@ -736,6 +743,7 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
       `    ${key}: ${block === undefined ? rendered : rendered.replace('{\n', `{\n      // ${block},\n`)},`,
     )
   }
-  lines.push('  },', format === 'ts' ? '} satisfies ProjectConfig' : '}', '')
+  if (p.tasks.length > 0) lines.push('  },')
+  lines.push(format === 'ts' ? '} satisfies ProjectConfig' : '}', '')
   return lines.join('\n')
 }

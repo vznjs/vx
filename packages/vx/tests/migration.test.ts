@@ -88,7 +88,7 @@ describe('applyMigration', () => {
     )
   })
 
-  it('writes no config for a project with no tasks, and no workspace file beside a .js one', async () => {
+  it('writes a config for a project with no tasks too, and no workspace file beside a .js one', async () => {
     writeFileSync(path.join(root, 'vx.workspace.js'), 'export default { plugins: [] }\n')
     mkdirSync(path.join(root, 'app'))
     mkdirSync(path.join(root, 'empty'))
@@ -99,7 +99,10 @@ describe('applyMigration', () => {
       ]),
     )
     expect(existsSync(path.join(root, 'app', 'vx.config.ts'))).toBe(true)
-    expect(existsSync(path.join(root, 'empty', 'vx.config.ts'))).toBe(false)
+    // owner, 2026-10-14: "no skips. every project gets a config".
+    expect(readFileSync(path.join(root, 'empty', 'vx.config.ts'), 'utf8')).toBe(
+      "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default {\n  tasks: {},\n} satisfies ProjectConfig\n",
+    )
     expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(false)
   })
 

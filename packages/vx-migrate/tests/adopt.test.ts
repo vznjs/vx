@@ -279,7 +279,7 @@ const calls = (root: string) => readFile(path.join(root, '.pnpm-calls'), 'utf8')
 
 describe('vx-migrate ends with the lock', () => {
   // owner, 2026-10-14: "vx migrate should generate lock as well". solid's
-  // shape: ssr has no task Turbo runs, so no config and no lock note.
+  // shape: ssr has no task Turbo runs, and gets a config all the same.
   it('writes vx-lock.json once the plugins resolve; --no-install leaves it to vx lock', async () => {
     const { root, env } = await solidShaped()
     try {
@@ -293,7 +293,7 @@ describe('vx-migrate ends with the lock', () => {
       expect(skipped.out).not.toContain('vx lock:')
       const r = await migrate(root, env, [])
       expect([r.code, r.err]).toEqual([0, ''])
-      expect(r.out).toContain('\nvx lock: locked 1 project config → vx-lock.json\n\nnext: ')
+      expect(r.out).toContain('\nvx lock: locked 2 project configs → vx-lock.json\n\nnext: ')
       expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -338,7 +338,8 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history\n',
           { build: 'turbo run build' },
           true,
-          false,
+          // No task Turbo runs, and still a config (owner, 2026-10-14).
+          true,
           ['pnpm', 'scheduleHistoryPlugin'],
           true,
           false,
