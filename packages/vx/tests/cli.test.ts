@@ -2430,7 +2430,7 @@ describe('formatRunReportMarkdown', () => {
     expect(md).toContain('| web#test | skipped | — | 0ms |')
   })
 
-  it('keeps aborted tasks out of the totals but still names them', () => {
+  it('counts aborted tasks in the total and names them', () => {
     const md = formatRunReportMarkdown({
       ok: true,
       outcomes: [
@@ -2444,10 +2444,9 @@ describe('formatRunReportMarkdown', () => {
         },
       ],
     })
-    // Aborted finished no work, so it joins no outcome bucket and no task count. It is
-    // still named: a run carrying one exits non-zero, and a report that shows
-    // only green rows leaves that red undiagnosable.
-    expect(md).toContain('**1 task**')
+    // Every task counts, as on the terminal. Named too: a run carrying one exits
+    // non-zero, and a report that shows only green rows leaves that red undiagnosable.
+    expect(md).toContain('**2 tasks**')
     expect(md).toContain('1 aborted')
     expect(md).toContain('| web#dev | aborted | — | 99ms |')
   })
