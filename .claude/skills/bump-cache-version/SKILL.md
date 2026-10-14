@@ -66,6 +66,6 @@ you will read it to understand cache invalidation history.
 The current version and the reasoning live in `CLAUDE.md` § Live
 invariants and `docs/caching.md`; the history is in git (the decision log
 was retired 2026-09-02). Current: `vx-cache-v43`, core `SCHEMA_VERSION`
-`v35` (bumped 2026-10-14: the config evaluation cache tables went; a
+`v36` (bumped 2026-10-14: the store's `task_durations` table came; a
 `SCHEMA_VERSION` bump drops the whole index, so it is taken only when a
 stored shape changes).
