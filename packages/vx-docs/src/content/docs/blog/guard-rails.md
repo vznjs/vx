@@ -40,8 +40,9 @@ and the line to add to `exec.sandbox`.
 ## Two tasks, one output folder
 
 vx cleans a task's outputs before it runs and before a cache restore. Two
-tasks that declare the same output would delete each other's work, so the
-run is refused before anything starts:
+tasks that declare the same output would delete each other's work, so
+`vx lock` refuses the graph, and so does a run that is not frozen, before
+anything starts:
 
 ```sh frame="terminal"
 $ vx run @demo/api#bundle
