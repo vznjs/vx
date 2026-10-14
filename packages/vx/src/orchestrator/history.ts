@@ -12,12 +12,16 @@
 // (zero-config); the interface is the seam a plugin fills for any other.
 
 import type { Database } from 'bun:sqlite'
-import { EXECUTED_RUNS_SQL } from '../cache/index.js'
+import { branchSource, EXECUTED_RUNS_SQL } from '../cache/index.js'
+import { splitTaskId } from '../util/index.js'
 import { failureModeOf, mixedOutcomeKeysSql } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
 import { isPassStatus, TASK_STATUSES } from './telemetry.js'
 
 const DEFAULT_RECENT = 50
+
+/** A task's forecast is the median of this many of its newest timings. */
+const FORECAST_RUNS = 5
 
 // A hit is recorded as `cache-hit` / `cache-hit-remote` and replays a
 // success; the list is derived so a new status cannot miss it.
@@ -87,6 +91,8 @@ export class LocalHistoryProvider implements HistoryProvider {
   constructor(
     private readonly db: Database,
     readonly recent: number = DEFAULT_RECENT,
+    /** The run's branch (`currentBranch`); undefined: a forecast reads every branch's timings. */
+    private readonly branch?: string | null,
   ) {}
 
   /**
@@ -177,6 +183,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     // folded away — one more pass over the slice, only for the pairs whose
     // verdict actually depends on it (failed, and no retry already proving
     // nondeterminism); a green history never pays for it.
+    const p50s = this.forecasts(new Set(rows.map((r) => `${r.project}#${r.task}`)))
     const mixed = this.mixedOutcomeKeys(
       floor,
       rows.filter((r) => r.failures > 0 && r.retried === 0),
@@ -190,7 +197,7 @@ export class LocalHistoryProvider implements HistoryProvider {
       if (durations !== undefined) durations.sort((a, b) => a - b)
       out.set(key, {
         runs: total,
-        p50DurationMs: durations ? pickPercentile(durations, 0.5) : undefined,
+        p50DurationMs: p50s.get(key),
         p99DurationMs: durations ? pickPercentile(durations, 0.99) : undefined,
         successRate: row.successes / total,
         hitRate: row.hits / total,
@@ -203,27 +210,52 @@ export class LocalHistoryProvider implements HistoryProvider {
   }
 
   /**
-   * The same window's p50s alone. `loadFor`'s rates and resource maxima
-   * read every row of the window and join each hit to its entry: 38 ms at
-   * 27,000 rows against 4 for the executed successes' durations alone.
+   * The forecasts alone. `loadFor`'s rates and resource maxima read every
+   * row of the window and join each hit to its entry: 38 ms at 27,000 rows
+   * against 4 for the executed successes' durations alone.
    */
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>> {
+    if (taskIds.length === 0) return new Map()
+    return this.forecasts(new Set(taskIds))
+  }
+
+  /**
+   * Each task's duration forecast (owner, 2026-10-14): the median of its
+   * last `FORECAST_RUNS` timings on this branch, else on any branch, else
+   * none. The timings are the shared store's `task_durations`, so every
+   * worktree of the repo reads them and a new one forecasts on its first
+   * run. A point read per task on `(project, task, source, id)`: exact
+   * however old the rows, where the runs window holds only the newest
+   * invocations.
+   */
+  private forecasts(wanted: ReadonlySet<string>): Map<string, number> {
     const out = new Map<string, number>()
-    if (taskIds.length === 0) return out
-    const rows = this.db
-      .query(
-        `SELECT project, task, GROUP_CONCAT(duration_ms) AS ds FROM runs
-         WHERE id >= ? AND status = 'success' AND (cache_hit IS NULL OR cache_hit = 0)
-         GROUP BY project, task`,
+    if (wanted.size === 0) return out
+    // Tiers, first answer wins. The remote cache's default-branch timings
+    // (#3563) slot in between the two.
+    type Tier = (project: string, task: string) => Array<{ ms: number }>
+    const tiers: Tier[] = []
+    const newest = (where: string) =>
+      this.db.query(
+        `SELECT duration_ms AS ms FROM task_durations WHERE project = ? AND task = ? AND ${where}
+         ORDER BY id DESC LIMIT ${FORECAST_RUNS}`,
       )
-      .all(this.floor()) as Array<{ project: string; task: string; ds: string }>
-    const wanted = new Set(taskIds)
-    for (const row of rows) {
-      const key = `${row.project}#${row.task}`
-      if (!wanted.has(key)) continue
-      const durations = row.ds.split(',').map(Number)
-      durations.sort((a, b) => a - b)
-      out.set(key, pickPercentile(durations, 0.5))
+    if (this.branch !== undefined) {
+      const source = branchSource(this.branch)
+      const q = newest('source = ?')
+      tiers.push((p, t) => q.all(p, t, source) as Array<{ ms: number }>)
+    }
+    const any = newest(`source LIKE 'branch:%'`)
+    tiers.push((p, t) => any.all(p, t) as Array<{ ms: number }>)
+    for (const id of wanted) {
+      const [project, task] = splitTaskId(id)
+      for (const tier of tiers) {
+        const rows = tier(project, task)
+        if (rows.length === 0) continue
+        const durations = rows.map((r) => r.ms).sort((x, y) => x - y)
+        out.set(id, pickPercentile(durations, 0.5))
+        break
+      }
     }
     return out
   }
@@ -244,13 +276,12 @@ export class LocalHistoryProvider implements HistoryProvider {
     type Executed = {
       project: string
       task: string
-      ds: string
       rss: number | null
       cpu: number | null
     }
     const executed = this.db
       .query(
-        `SELECT project, task, GROUP_CONCAT(duration_ms) AS ds, MAX(peak_rss_bytes) AS rss,
+        `SELECT project, task, MAX(peak_rss_bytes) AS rss,
            MAX(CASE WHEN cpu_ms IS NOT NULL AND duration_ms > 0
                     THEN cpu_ms * 1.0 / duration_ms END) AS cpu
          FROM runs
@@ -258,13 +289,12 @@ export class LocalHistoryProvider implements HistoryProvider {
          GROUP BY project, task`,
       )
       .all(floor) as Executed[]
+    const p50s = this.forecasts(wanted)
     for (const row of executed) {
       const key = `${row.project}#${row.task}`
       if (!wanted.has(key)) continue
-      const durations = row.ds.split(',').map(Number)
-      durations.sort((a, b) => a - b)
       out.set(key, {
-        p50DurationMs: pickPercentile(durations, 0.5),
+        p50DurationMs: p50s.get(key),
         ...(row.rss !== null ? { maxPeakRssBytes: row.rss } : {}),
         ...(row.cpu !== null ? { maxCpuParallelism: row.cpu } : {}),
       })
@@ -287,11 +317,13 @@ export class LocalHistoryProvider implements HistoryProvider {
       const rss = Math.max(had?.maxPeakRssBytes ?? -Infinity, row.rss ?? -Infinity)
       const cpu = Math.max(had?.maxCpuParallelism ?? -Infinity, row.cpu ?? -Infinity)
       out.set(key, {
-        p50DurationMs: had?.p50DurationMs,
+        p50DurationMs: p50s.get(key),
         ...(rss !== -Infinity ? { maxPeakRssBytes: rss } : {}),
         ...(cpu !== -Infinity ? { maxCpuParallelism: cpu } : {}),
       })
     }
+    // A forecast reads past the window: a task with none in it still has one.
+    for (const [key, p50] of p50s) if (!out.has(key)) out.set(key, { p50DurationMs: p50 })
     return out
   }
 

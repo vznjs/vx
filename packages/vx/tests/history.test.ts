@@ -361,8 +361,9 @@ describe('LocalHistoryProvider', () => {
       )
       const db = (cache as unknown as { db: Database }).db
       const entry = (await new LocalHistoryProvider(db).loadFor(['pkg#build'])).get('pkg#build')!
-      // sorted[floor(0.5 * 100)] and sorted[floor(0.99 * 100)] of 1..100.
-      expect(entry.p50DurationMs).toBe(51)
+      // The forecast is the median of the last five recorded (evens 10..2);
+      // p99 is sorted[floor(0.99 * 100)] of 1..100.
+      expect(entry.p50DurationMs).toBe(6)
       expect(entry.p99DurationMs).toBe(100)
     } finally {
       cache.close()
@@ -914,6 +915,9 @@ describe('LocalHistoryProvider', () => {
       expect(bound).toEqual([
         ['get', 49],
         ['all', 0],
+        ['all', 'pkg', 'broke'],
+        ['all', 'pkg', 'green'],
+        ['all', 'pkg', 'retried'],
         ['keys', 0, 'pkg', 'broke'],
       ])
     } finally {

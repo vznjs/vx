@@ -72,6 +72,7 @@ import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
+import { currentBranch } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from './logger.js'
 import type { RunOptions } from './options.js'
@@ -109,6 +110,8 @@ export interface PreparedRun {
    * nothing-changed run never dispatches. Runs the stage once.
    */
   priorities: () => Promise<ReadonlyMap<string, number>>
+  /** The run's branch, the timings a forecast reads first; learned on first ask, once per run. */
+  historyBranch: () => string | null
   nodes: Map<string, TaskNode>
   /**
    * The tasks `--exclude-dependencies` took out of the schedule: keyed as a
@@ -491,6 +494,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       hasRemoteLayer,
       cachePolicy: policy,
       priorities: () => Promise.resolve(new Map()),
+      historyBranch: () => currentBranch(workspaceRoot),
       nodes: new Map(),
       keyOnly: new Map(),
       unresolvedTasks,
@@ -689,6 +693,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       }
     }
     let scheduled: Promise<ReadonlyMap<string, number>> | undefined
+    let branch: string | null | undefined
+    const historyBranch = (): string | null =>
+      branch === undefined ? (branch = currentBranch(workspaceRoot)) : branch
     const priorities = (): Promise<ReadonlyMap<string, number>> =>
       (scheduled ??= hasHook(plugins, 'schedule')
         ? applyScheduleHooks(plugins, nodes, {
@@ -696,6 +703,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
             cacheDir,
             warn: (m) => log.status(m),
             localCache,
+            branch: historyBranch(),
           })
         : Promise.resolve(new Map()))
 
@@ -709,6 +717,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       hasRemoteLayer,
       cachePolicy: policy,
       priorities,
+      historyBranch,
       nodes,
       keyOnly,
       unresolvedTasks,

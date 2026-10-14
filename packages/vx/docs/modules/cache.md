@@ -577,7 +577,10 @@ Reads via `get()` are non-blocking thanks to WAL.
 `recordRunBundle()` is the one run-history write: one `runs` row for
 every task — cache hits and misses, successes and failures — and one
 `invocations` header row (command, git/CI/host context, tags, run-level
-counts) **atomically in one transaction**. The per-row `recordRun` /
+counts) **atomically in one transaction**, with one shared-store
+`task_durations` row per executed success, tagged `branchSource(branch)`
+(`'branch:<name>'`, `'branch:'` with none) and the commit: what a
+duration forecast reads (`history.md`). The per-row `recordRun` /
 `recordRuns` forms left the contract on 2026-09-10; no caller took them. The Tier-3
 input-fingerprint rows (`entry_inputs`) are NOT written here — they
 ride each entry's save transaction (`save`/`ingest`, miss path only)

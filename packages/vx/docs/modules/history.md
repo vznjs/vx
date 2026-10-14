@@ -32,6 +32,8 @@ export interface HistoryProvider {
   p50sFor?(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 export class EmptyHistoryProvider implements HistoryProvider {}
+/** The branch a forecast reads first: HEAD's, or CI's for a detached checkout. */
+export function currentBranch(workspaceRoot: string): string | null
 
 // failure-mode.ts, not history.ts:
 /** A task whose SAME cache key failed after it had passed — the definition
@@ -47,13 +49,33 @@ export interface FlakyTask {
 }
 export function flakyTasks(db: Database): FlakyTask[]
 export class LocalHistoryProvider implements HistoryProvider {
-  constructor(db: Database, recent?: number) // the window; defaults to 50 invocations
+  // recent: the window, 50 invocations by default; without branch a forecast reads every branch
+  constructor(db: Database, recent?: number, branch?: string | null)
   /** `loadFor`'s p50 and resource maxima, without its rates. */
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
 ```
 
+## The forecast
+
+Every `p50DurationMs` (and `p50sFor`) is a forecast (owner, 2026-10-14):
+the median of the task's last five timings on this run's branch, else on
+any branch, else none. The remote cache's default-branch timings
+(`design/shared-timings-2026-10.md`) slot in between. The timings are
+`task_durations` in the shared store (`schema.ts`), one row per executed
+success appended in the run's history transaction and tagged
+`branch:<name>` with the commit, so every worktree of the repo reads them
+and a new one forecasts on its first run; `vx last` and the runs stay
+per worktree. A read is a point lookup per task on `(project, task,
+source, id)`, exact however old the rows. A run learns its branch once
+(`PreparedRun.historyBranch`, the schedule hook's `ctx.branch`).
+`p99DurationMs`, the rates and the resource maxima stay over the
+window. `tests/history-forecast-branch.test.ts`.
+
 ## Who reads it
+
+- The live region's end-of-run forecast and each running row's usual
+  duration (`p50sFor`), asked only once a run is a second old.
 
 - `plan.ts` (`--dry` / `--graph`): attaches each would-run task's p50 and
   predicts the run's wall-clock, through `p50sFor` when the provider has

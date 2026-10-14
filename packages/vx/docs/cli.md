@@ -778,7 +778,10 @@ other persistent task`), and a non-zero exit makes the run exit 1
    workers, a running task's spent time taken off its own. It says
    nothing when history knows none of what is left, or once a running
    task is 25% past its p50. A run that ends inside the second never
-   reads history for it, and the final summary never shows it.
+   reads history for it, and the final summary never shows it. A p50
+   here is the median of the task's last five timings on this branch,
+   else on any branch; the timings are shared by every worktree of the
+   repo, so a new one has a forecast on its first run.
 
 In a terminal known to read them, the region also sends zero-width
 escapes: tab or taskbar progress (OSC 9;4: Ghostty, iTerm2 3.6+,

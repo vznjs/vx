@@ -70,3 +70,4 @@ export {
 export { LayeredCache, type RemoteCacheLayer } from './layered-cache.js'
 export { ScopedCache } from './scoped-cache.js'
 export { ChainedCache } from './chained-cache.js'
+export { branchSource } from './run-history.js'

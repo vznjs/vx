@@ -506,3 +506,8 @@ export function captureWorkspaceIdentity(
     return { id: xxh3hex(workspaceRoot), name: base, ...where }
   }
 }
+
+/** The branch a duration forecast reads first (`LocalHistoryProvider`): HEAD's, or CI's for a detached checkout. */
+export function currentBranch(workspaceRoot: string): string | null {
+  return captureGitContext(workspaceRoot).branch
+}

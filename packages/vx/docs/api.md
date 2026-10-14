@@ -353,6 +353,16 @@ export interface CommandContext extends BaseContext {
 }
 ```
 
+## `currentBranch`
+
+function · `src/orchestrator/run-context.ts`
+
+The branch a duration forecast reads first (`LocalHistoryProvider`): HEAD's, or CI's for a detached checkout.
+
+```ts
+export function currentBranch(workspaceRoot: string): string | null
+```
+
 ## `definePlugin`
 
 function · `src/orchestrator/plugin.ts`
@@ -1011,6 +1021,7 @@ export class LocalHistoryProvider implements HistoryProvider {
   constructor(
     private readonly db: Database,
     readonly recent: number
+    private readonly branch?: string | null,
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   async loadAll(): Promise<HistoryTable>
@@ -1521,6 +1532,7 @@ export interface PreparedRun {
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
   priorities: () => Promise<ReadonlyMap<string, number>>
+  historyBranch: () => string | null
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]
@@ -2098,6 +2110,7 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
+  readonly branch: string | null
 }
 ```
 

@@ -1185,6 +1185,8 @@ By default the entries and their artifacts live in a **shared store**
 in `~/.vx/<id>/cache`, and each workspace keeps only its own index in
 its `.vx/cache`: every checkout of the repository hits what another
 saved (a second clone, a worktree), and none reads another's history.
+Task timings are shared too: `task_durations`, what a duration forecast
+reads, so a new worktree has one on its first run.
 The id is Nx 23's: 16 hex of a sha256 of the remote (`origin`, then
 `upstream`, `base`, the first; `host/owner/repo` in lower case, so ssh
 and https agree) and the workspace's path in the repository; with no
@@ -1195,7 +1197,8 @@ owner-only; vx closes one of yours that others can read (chmod 700), and one oth
 ```
 ~/.vx/<id>/cache/                           the shared store
 ├── store.db                                entries, entry_stdout, output_files,
-│                                           entry_inputs, store_meta; artifacts
+│                                           entry_inputs, task_durations,
+│                                           store_meta; artifacts
 │                                           of at most 32 KiB compressed (v33)
 └── <hash>.tar.zst                          the larger artifacts (below)
 

@@ -22,7 +22,8 @@ export function lazyStatement(db: Database, sql: string): ReturnType<Database['p
 
 /**
  * Create every table. `store` names the schema holding the ENTRY tables
- * (`entries`, `entry_stdout`, `output_files`, `entry_inputs`, `store_meta`):
+ * (`entries`, `entry_stdout`, `output_files`, `entry_inputs`, `store_meta`)
+ * and the task timings (`task_durations`):
  * `main` when one `cache.db` holds everything (a `cacheDir`), `store` when
  * they live in the shared store attached beside it (v32). The rest is the
  * workspace's own: its history, its memos, and what its disk looked like
@@ -257,6 +258,23 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+    -- What a duration forecast reads (orchestrator/history.ts), one row per
+    -- executed success, shared by every worktree of the repo so a new one
+    -- forecasts on its first run (owner, 2026-10-14). Append-only: never
+    -- updated, pruned by age with the run history. \`source\` tags a local
+    -- run 'branch:<name>' ('branch:' detached or outside git); \`sha\` is its
+    -- commit. A forecast reads a task's newest rows of one source.
+    CREATE TABLE IF NOT EXISTS ${store}.task_durations (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      project     TEXT NOT NULL,
+      task        TEXT NOT NULL,
+      source      TEXT NOT NULL,
+      sha         TEXT,
+      duration_ms INTEGER NOT NULL,
+      recorded_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ${store}.task_durations_task
+      ON task_durations(project, task, source, id);
     ${artifactTables(store)}
   `)
 }
