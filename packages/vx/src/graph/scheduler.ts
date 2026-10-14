@@ -279,7 +279,7 @@ export interface ScheduleOptions {
    * outcome lands. Absent = stderr. The run gives it the task's own
    * stderr, so its frame carries the reason.
    */
-  onError?: (node: TaskNode, line: string) => void
+  onError?: (node: TaskNode, line: string, err: unknown) => void
   /**
    * What an outcome still owes before its dependents may start — a cache
    * save that runs off the execution slot (the orchestrator's save lane):
@@ -1039,7 +1039,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             }
             try {
               if (options.onError === undefined) process.stderr.write(line)
-              else options.onError(node, line)
+              else options.onError(node, line, err)
             } catch {
               process.stderr.write(line)
             }

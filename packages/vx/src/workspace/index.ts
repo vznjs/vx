@@ -23,6 +23,8 @@ export {
   frozenProjectConfigs,
   LOCKFILE_NAME,
   LOCKFILE_VERSION,
+  LOCK_INVALID,
+  lockEntryBroken,
   lockfilePath,
   NO_LOCK,
   readLockfile,

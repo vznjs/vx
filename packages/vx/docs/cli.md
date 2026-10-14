@@ -1785,7 +1785,10 @@ lock with no evaluation, no staleness check and no schema validation
 of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
 project absent from the lock, a locked project whose config file is
-gone (X-144) or a missing lock is a hard error).
+gone (X-144) or a missing lock is a hard error). An entry edited by
+hand into a shape `vx lock` could not write fails the run with
+`.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
+something has crashed, so a normal run pays nothing for it.
 
 `--check` is the audit: it re-evaluates every config in the current
 environment and `Bun.deepEquals`-compares it with the frozen object. A

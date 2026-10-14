@@ -22,6 +22,10 @@ export interface Lockfile {
 
 export function lockfilePath(root: string): string
 export const NO_LOCK = 'no lock: run `vx lock`' // a run's refusal when no lock exists
+export const LOCK_INVALID = '.vx/projects.lock.json is invalid, run `vx lock`'
+// On a run's crash path only: does the lock hold an entry `vx lock` could
+// not have written? A run validates no entry, so it pays nothing for this.
+export function lockEntryBroken(root: string): boolean
 export async function readLockfile(root: string): Promise<Lockfile | null>
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
 export function frozenProjectConfigs(
@@ -38,7 +42,10 @@ including a lock an earlier vx wrote, is a `UserError` asking for
 of an evaluation: an entry missing for the project is a
 `UserError` naming the project and the remedy. No entry is validated:
 `vx lock` validated what it wrote, and `--check` re-evaluates
-(owner, 2026-10-14). `writeLockfile` ends the lock with a `validated`
+(owner, 2026-10-14). A hand-broken entry that then crashes a run is
+named, not shown as a raw TypeError: on that crash's path only, a task
+or the CLI asks `lockEntryBroken` and prints `LOCK_INVALID` (owner,
+2026-10-14). `writeLockfile` ends the lock with a `validated`
 field, a digest of the bytes above it under vx's version; no reader
 consults it. The CLI's own selection load (`loadCliProjects`, what a
 filter that walks the graph stages) reads the lock the same way, so
