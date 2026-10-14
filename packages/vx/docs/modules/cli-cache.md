@@ -115,4 +115,4 @@ failures; `vx cache clean` reports 0 entries
 pruned from an empty cache, and rejects an unknown subcommand.
 Eviction, orphan reaping and `dryRun` are tested in
 `tests/cache.test.ts` against `Cache.prune`; clearing in
-`tests/cache-prune-clear.test.ts`.
+`tests/cache-clean.test.ts`.

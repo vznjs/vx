@@ -313,9 +313,9 @@ beforeAll(async () => {
   // A config that does not load: \`vx info\` names it.
   await addProject(root, 'broken', { config: 'export default { tasks: 1 }' })
   json('info', [])
-  json('cache', ['prune', '--max-size', '1K', '--dry-run'])
-  json('cache', ['prune', '--max-size', '1K'])
-  json('cache', ['prune', '--dry-run'])
+  json('cache', ['clean', '--max-size', '1K', '--dry-run'])
+  json('cache', ['clean', '--max-size', '1K'])
+  json('cache', ['clean', '--dry-run'])
   // A refusal: exit 1, and the error document on stdout.
   const refused = vx(['run', 'nope', '--all', '--format', 'json'])
   if (refused.code !== 1) throw new Error(`vx run nope: ${refused.code}\n${refused.err}`)
@@ -615,7 +615,7 @@ describe('each schema object is its source type', () => {
   })
 
   it('cache', () => {
-    expect(def('cache', 'clean')).toEqual(
+    expect(def('cache', 'prune')).toEqual(
       keys<PruneResult & { dryRun: boolean }>({
         dryRun: true,
         evicted: true,
