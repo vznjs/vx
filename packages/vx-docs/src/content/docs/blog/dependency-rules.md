@@ -6,7 +6,7 @@ authors:
 tags:
   - config
   - nx
-excerpt: 'run.rules.dependencies tags the layers of a monorepo and says which may reach which. vx lock refuses a dependency that breaks a rule and names every broken edge. Runs never check it, so they pay nothing. nx() carries Nx module-boundary constraints over as they are.'
+excerpt: 'run.rules.dependencies tags the layers of a monorepo and says which may reach which. vx lock refuses a dependency that breaks a rule and names every broken edge. Runs never check it, so they pay nothing. nx() carries most Nx module-boundary constraints over.'
 ---
 
 A UI kit that imports a checkout flow, or an app that reaches into a
@@ -85,7 +85,7 @@ vx lock --check: up to date (4 projects)
 ```
 
 `vx lock --check` in CI fails the same way, so a pull request that adds
-a forbidden dependency goes red. Runs never check the rules: under CI
+a forbidden dependency goes red. Runs never check these rules: under CI
 they load configs from the lock, which already passed them
 ([Lock once, run frozen](../lock-and-frozen/)).
 
@@ -113,8 +113,10 @@ dependencies: [
 ]
 ```
 
-One difference: Nx checks source imports, while vx checks the
-dependencies a project declares. `allSourceTags`, `/regex/` tags and constraints that only ban external
+One difference: Nx's `@nx/enforce-module-boundaries`
+[lint rule](https://github.com/nrwl/nx/blob/master/packages/eslint-plugin/src/rules/enforce-module-boundaries.ts)
+checks source imports, while vx checks the dependencies a project
+declares. `allSourceTags`, `/regex/` tags and constraints that only ban external
 imports are left out; the
 [vx-migrate README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#module-boundaries)
 lists them. The schema is in the
