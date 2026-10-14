@@ -12,7 +12,13 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { buildPackageGraph, pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
+import {
+  buildPackageGraph,
+  isLiteralPattern,
+  pruneOrphanPersistentNotes,
+  type ProjectMeta,
+  UserError,
+} from '@vzn/vx'
 import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
@@ -358,6 +364,20 @@ interface Literals {
   readonly rels: ReadonlyMap<string, Named>
 }
 type Named = readonly ['files' | 'workspaceFiles' | null, string]
+
+/**
+ * X for a Turbo glob `X/**` whose X has a wildcard, else null. Turbo's
+ * trailing `/**` matches zero segments too (doublestar v4: `**` is zero or
+ * more path segments, so `*\/**` matches `tsconfig.tsbuildinfo` at the
+ * package root); vx's matches only below X, and medusa's `*\/**` build lost
+ * its root `tsconfig.tsbuildinfo` on a restore. A literal X is left as is:
+ * it names the output directory, which `X/**` already covers.
+ */
+function zeroSegments(glob: string): string | null {
+  if (!glob.endsWith('/**')) return null
+  const head = glob.slice(0, -'/**'.length)
+  return head === '' || isLiteralPattern(head) ? null : head
+}
 
 /** No glob syntax: one path, which git may ignore. */
 const isLiteral = (glob: string): boolean => !/[*?[\]{}()!]/.test(glob)
@@ -2044,6 +2064,7 @@ function buildTask(
     if (Array.isArray(dotEnv) && dotEnv.some((f) => typeof f === 'string')) pkgDotenv = true
 
     const outFiles: string[] = []
+    const zeroed = new Set<string>()
     const wsOutFiles: string[] = []
     for (const raw of def.outputs ?? []) {
       // The first segment stays a literal (a route directory, item 667);
@@ -2064,10 +2085,16 @@ function buildTask(
       // before every run while vx outputs could not exclude.
       const neg = mapped.startsWith('!') ? '!' : ''
       const o = mapped.slice(neg.length)
+      const signed = (g: string) => {
+        const head = zeroSegments(g)
+        if (head === null) return [neg + g]
+        zeroed.add(neg + head)
+        return [neg + g, neg + head]
+      }
       if (o.startsWith('$TURBO_ROOT$/')) {
-        wsOutFiles.push(neg + o.slice('$TURBO_ROOT$/'.length))
+        wsOutFiles.push(...signed(o.slice('$TURBO_ROOT$/'.length)))
       } else if (climbed(o) !== null) {
-        wsOutFiles.push(neg + climbed(o)!)
+        wsOutFiles.push(...signed(climbed(o)!))
       } else if (o.startsWith('../')) {
         todos.push(`output ${JSON.stringify(o)}: leaves the workspace — map manually`)
       } else if (o.includes('$TURBO_ROOT$')) {
@@ -2075,14 +2102,18 @@ function buildTask(
           `output ${JSON.stringify(o)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
             'prefix (→ cache.outputs.workspaceFiles) — map manually',
         )
-      } else outFiles.push(neg + o)
+      } else outFiles.push(...signed(o))
     }
 
     // With git's file list known, a wildcard-first output stays cached as
     // nx() keeps it (owner, 2026-10-03; turbo() 2026-10-14): core never
     // cleans a committed file. Turbo never cleans, so the untracked files
-    // it reaches are named.
-    const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir), true)
+    // it reaches are named. An X added for `X/**` is judged with it.
+    const wild = wildcardOutput(
+      outFiles.filter((g) => !zeroed.has(g)),
+      opts.tracked?.(pkgDir),
+      true,
+    )
     if (wild !== undefined && opts.tracked === undefined) {
       todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }

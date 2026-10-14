@@ -681,7 +681,9 @@ describe('output negation', () => {
         '!node_modules/**',
         '!src/**',
         '*/**',
+        '*',
         '.medusa/**',
+        '!package.json',
       ])
       expect(log.lines.join('\n')).toContain(
         '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
@@ -691,6 +693,41 @@ describe('output negation', () => {
       expect(
         await Bun.file(path.join(root, 'packages', 'app', 'src', 'gen', 'api.js')).exists(),
       ).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a wildcard `X/**` output also matches X, as Turbo's `**` matches zero segments (medusa `*/**`)",
+    async () => {
+      // medusa's framework build writes `tsconfig.tsbuildinfo` at the package
+      // root; Turbo's artifact for `*/**` held it, vx's restore did not.
+      const script = 'mkdir -p lib && echo t > tsconfig.tsbuildinfo && echo l > lib/x.js'
+      await pkg('app', { build: script })
+      await pkg('lib', { build: script })
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { outputs: ['!node_modules/**', '!src/**', '*/**'] } } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      expect(app.config.cache?.outputs.files).toEqual([
+        '!node_modules/**',
+        '!src/**',
+        '*/**',
+        '*',
+        '!package.json',
+      ])
+      const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      const dir = path.join(root, 'packages', 'app')
+      const info = path.join(dir, 'tsconfig.tsbuildinfo')
+      expect((await build()).ok).toBe(true)
+      await rm(info)
+      const second = await build()
+      expect(second.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      expect(await Bun.file(info).text()).toBe('t\n')
+      expect(await Bun.file(path.join(dir, 'package.json')).exists()).toBe(true)
     },
     TIMEOUT,
   )
@@ -715,9 +752,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist/**'])
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist/**', '**/dist'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist/**'])
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist/**', '**/dist'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const nested = path.join(root, 'packages', 'app', 'rsc', 'dist', 'r.js')
       expect((await build()).ok).toBe(true)
@@ -777,9 +814,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*/**'])
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*/**', 'dist-*'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*/**'])
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*/**', 'dist-*'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const out = path.join(root, 'packages', 'app', 'dist-esm', 'a.js')
       expect((await build()).ok).toBe(true)
