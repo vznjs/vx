@@ -315,6 +315,10 @@ export function defaultLogger(
   // as `+k more` on the stats line. Focused flow keeps its lifecycle:
   // the region dies the moment a requested node starts streaming.
   let slots: (WorkerSlot | null)[] = []
+  // Rows shown: the most workers busy at once so far. An idle row past it
+  // was noise (a 10-core machine drew 9 on a one-chain run); it never
+  // shrinks, so a row never jumps.
+  let shownSlots = 0
   const slotQueue: WorkerSlot[] = []
   let succeeded = 0
   // Executed with no `cache` block: never a miss, counted apart.
@@ -452,7 +456,7 @@ export function defaultLogger(
       formatStatusRegion(
         {
           pinnedPersistent,
-          slots,
+          slots: slots.slice(0, shownSlots),
           overflow: slotQueue.length,
           nowMs: Date.now(),
           summaryLines,
@@ -553,6 +557,7 @@ export function defaultLogger(
       startedAtMs = Date.now()
       const cap = Math.max(1, Math.min(info.concurrency ?? 10, 10))
       slots = Array.from({ length: cap }, () => null)
+      shownSlots = 0
       if (writer.enabled && !statusDead && ticker === null) {
         // Keeps the per-worker elapsed time ticking between task events
         // (the time IS the motion — there's no spinner). The writer
@@ -589,8 +594,10 @@ export function defaultLogger(
       }
       const slot: WorkerSlot = { id: node.id, startedMs: Date.now() }
       const free = slots.indexOf(null)
-      if (free >= 0) slots[free] = slot
-      else slotQueue.push(slot)
+      if (free >= 0) {
+        slots[free] = slot
+        shownSlots = Math.max(shownSlots, free + 1)
+      } else slotQueue.push(slot)
       refresh(true)
     },
     forecast(load) {

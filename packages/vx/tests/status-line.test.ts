@@ -308,8 +308,9 @@ describe('defaultLogger status line integration', () => {
     const s = tty()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 2, concurrency: 2 })
-    // Region from the start: idle slots + the live summary section.
-    expect(s.text()).toContain('idle')
+    // Region from the start: the live summary section, and no worker row
+    // until a worker is busy.
+    expect(s.text()).not.toContain('idle')
     expect(s.text()).toContain('─ vx ')
     expect(s.text()).toContain('▱')
     const a = mkNode('one#a')
@@ -317,6 +318,8 @@ describe('defaultLogger status line integration', () => {
     expect(s.chunks[s.chunks.length - 1]).toContain('one#a')
     log.taskComplete(a, mkOutcome(a, 'success'))
     const after = s.chunks[s.chunks.length - 1]!
+    // A row that was busy holds its place, idle, so no row moves.
+    expect(after).toContain('idle')
     // The live section speaks the summary's language as it fills in.
     expect(after).toContain('1 success')
     expect(after).toContain('1 no-cache')
