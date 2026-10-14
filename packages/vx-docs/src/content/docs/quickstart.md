@@ -108,7 +108,7 @@ Start with one package and leave the rest of your tooling as it is.
 writes the native `vx.config.ts` files from `turbo.json` or the Nx graph
 (`bunx @vzn/vx-migrate` does the same from each `vite.config`'s `run.tasks`);
 from there everything above applies. `vx init --keep` writes only a
-`.vx/workspace.ts` declaring `turbo()` or `nx()`: a temporary start, dropped
+`.vx/workspace.ts` declaring `turbo()` or `nx()` and your lockfile's plugin: a temporary start, dropped
 once the configs exist.
 [Migrate](../guides/migrate/) has the steps.
 

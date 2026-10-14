@@ -26,14 +26,15 @@ beside `turbo.json`:
 ```bash
 npm install -D @vzn/vx       # or pnpm / yarn / bun
 npx @vzn/vx init                  # writes .vx/workspace.ts, below, and prints next:
-npm install -D @vzn/vx-migrate && npx @vzn/vx run build --all   # the next: line
+npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx run build --all   # the next: line
 ```
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { turbo } from '@vzn/vx-migrate'
+import { npm } from '@vzn/vx-lockfile'
 
-export default { plugins: [turbo()] } satisfies WorkspaceConfig
+export default { plugins: [turbo(), npm()] } satisfies WorkspaceConfig
 ```
 
 Whatever the mapping cannot express becomes a warning on every run,
