@@ -50,8 +50,12 @@ in order, under the run's write policy and scope. Core keys the name per
 plugin (`xxh3(pluginName\0key)`), bounds each call by the layers' own
 deadlines, and degrades every error to `null`, silently (`VX_DEBUG` names
 why). The plugin never learns whether a remote exists: with none, `get`
-is a local lookup. One seam, any plugin; schedule-history is its first
-user.
+is a local lookup. `cache.hasMany(keys)`, namespaced the same way, asks
+the layers' existing batch probes and resolves `null` when no layer has
+one; the plugin then falls back to sequential `get`. So the walk back
+over up to 5 merge-base ancestors is one `hasMany` and one `get`, inside
+the 500 ms deadline. No `has`: a `get` that resolves `null` covers it.
+One seam, any plugin; schedule-history is its first user.
 
 ## Concurrency
 
