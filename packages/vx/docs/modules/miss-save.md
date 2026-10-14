@@ -39,6 +39,7 @@ export interface SaveMissArgs {
   wsOutputs: readonly string[] // declared cache.outputs.workspaceFiles
   ownOutputFiles?: string[] | undefined // an ADDITIVE task's own set, in place of the glob walk (item 588)
   ownWsOutputFiles?: string[] | undefined // the same for `workspaceFiles` (A-43)
+  readable?: ((real: string) => boolean) | undefined // a sandboxed task's reach (`sandboxReadable`)
   captured: readonly TaskInputComponent[] // Tier-3 rows from the pre-exec describe
   command: string
   durationMs: number

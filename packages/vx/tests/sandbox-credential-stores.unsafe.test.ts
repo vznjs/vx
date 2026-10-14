@@ -111,4 +111,33 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     expect(await Bun.file(path.join(home, '.npmrc')).text()).toBe('NPMRC\nWROTE\n')
     expect(await Bun.file(path.join(home, '.aws/config')).text()).toBe('CLI\n')
   })
+
+  it('cannot hard-link one into a granted output', async () => {
+    // A hard link needs no read of its source: had the link landed in
+    // `dist/`, vx (outside the sandbox) would pack the key into the cache.
+    const ws = path.join(root!, 'ws')
+    await writeFile(
+      path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+      `export default { tasks: {
+  link: {
+    exec: { command: 'mkdir -p dist && ln "$HOME/.ssh/id_ed25519" dist/k || true', sandbox: { allow: { read: ['.'], write: ['dist/'] } } },
+    cache: { inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['dist/**'] } },
+  },
+  open: { exec: { command: 'mkdir -p dist && ln "$HOME/.ssh/id_ed25519" dist/k' } },
+} }
+`,
+    )
+    const linked = async (task: string): Promise<string> => {
+      Bun.spawnSync({
+        cmd: [process.execPath, BIN, 'run', `a#${task}`],
+        cwd: ws,
+        env: { ...process.env, HOME: path.join(root!, 'home') },
+      })
+      const k = Bun.file(path.join(ws, 'packages', 'a', 'dist', 'k'))
+      return (await k.exists()) ? await k.text() : 'no link'
+    }
+    expect(await linked('link')).toBe('no link')
+    // CONTROL: unsandboxed, the same link lands (one file system).
+    expect(await linked('open')).toBe('SSHKEY\n')
+  })
 })

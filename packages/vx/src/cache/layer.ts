@@ -702,6 +702,12 @@ export interface CacheLayer {
      * Only computed on the miss/save path — never on a hit.
      */
     inputComponents?: readonly TaskInputRow[]
+    /**
+     * For a sandboxed task: whether it could read a canonical path. A
+     * symlinked output is packed as its target's bytes, outside the
+     * sandbox, so one whose target the task could not read is refused.
+     */
+    readable?: ((real: string) => boolean) | undefined
   }): Promise<void>
   /**
    * Adopt an artifact produced elsewhere — the remote-hit path. Streams

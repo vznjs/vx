@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs'
 import { lstat, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import type { ExecConfig } from '../config.js'
+import type { ExecConfig, SandboxConfig } from '../config.js'
 import {
   bindableWrites,
   initSandbox,
@@ -288,6 +288,51 @@ export async function sandboxRequestFor(
     config,
   }
   return { sandbox: request, placeholders, withheld: links.withheld }
+}
+
+/**
+ * Whether a sandboxed task could read `real` (a canonical path inside its
+ * project): under one of its read or write grants or its `node_modules`,
+ * and not behind a wall. vx packs a symlinked output as its target's
+ * bytes, outside the sandbox, so a link the task planted to a file it was
+ * denied (`dist/x -> ../.env` under `read: ['src/']`) packed that file
+ * into the cache wherever creating the link went unseen: seatbelt, or
+ * Linux untraced. The grants are matched as written, not expanded: a
+ * glob's hit made by the task itself counts.
+ */
+export function sandboxReadable(
+  node: TaskNode,
+  sandbox: SandboxConfig,
+  workspaceRoot: string,
+  nested: readonly string[] = [],
+): (real: string) => boolean {
+  const projectReal = toRealPath(node.projectDir)
+  const at = (p: string): string =>
+    p.startsWith('~')
+      ? path.join(homedir(), p.slice(1))
+      : path.isAbsolute(p)
+        ? p
+        : path.join(projectReal, p)
+  const grants = [...(sandbox.allow?.read ?? []), ...(sandbox.allow?.write ?? [])].map(at)
+  const literals = [
+    ...grants.filter(isMountableLiteral).map((g) => toRealPath(g.replace(/\/+$/, '') || '/')),
+    toRealPath(path.join(node.projectDir, 'node_modules')),
+    toRealPath(path.join(workspaceRoot, 'node_modules')),
+  ]
+  const globs = grants.filter((g) => !isMountableLiteral(g)).map((g) => new Bun.Glob(g))
+  const walls = [...nested, path.join(workspaceRoot, '.git'), path.join(workspaceRoot, '.vx')].map(
+    toRealPath,
+  )
+  return (real) => {
+    if (walls.some((w) => atOrUnder(real, w))) return false
+    if (literals.some((l) => atOrUnder(real, l))) return true
+    // A directory a glob matches is granted whole.
+    for (let p = real; atOrUnder(p, projectReal); p = path.dirname(p)) {
+      if (globs.some((g) => g.match(p))) return true
+      if (p === projectReal) break
+    }
+    return false
+  }
 }
 
 /**

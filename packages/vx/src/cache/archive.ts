@@ -230,6 +230,12 @@ interface PackArgs {
    * output of the same artifact is packed wherever it is.
    */
   within?: string
+  /**
+   * For a sandboxed task: whether it could read this canonical path. A
+   * symlinked output inside `within` whose target it could not read is
+   * refused like one outside it.
+   */
+  readable?: ((real: string) => boolean) | undefined
 }
 
 /** The largest second count ustar's 12-byte mtime field holds: 11 octal digits. */
@@ -320,6 +326,11 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
               `${shown} is a symlink to ${src}, outside the project: vx packs a symlinked output as its target's bytes, and a project's outputs come from its own directory — emit a file there, or take it back with a '!' entry`,
             )
           }
+        }
+        if (args.readable !== undefined && !args.readable(src) && !(await ownOutputs()).has(src)) {
+          throw new UserError(
+            `${shown} is a symlink to ${src}, which the task's sandbox does not let it read: vx packs a symlinked output as its target's bytes — emit a file there, grant the target in exec.sandbox.allow.read, or take it back with a '!' entry`,
+          )
         }
         st = await statOf(src).catch(dangling)
       }

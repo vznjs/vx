@@ -106,6 +106,7 @@ export type SaveArgs = {
   workspaceOutputFiles?: string[] // absolute paths of outputs.workspaceFiles matches
   workspaceRoot?: string // required alongside workspaceOutputFiles
   inputComponents?: readonly TaskInputRow[] // entry_inputs rows, written in the save's transaction
+  readable?: (real: string) => boolean // a sandboxed task's reach: a link to what it could not read is refused
 }
 
 // Namespace discriminator for workspace outputs in the artifact and
