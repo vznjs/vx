@@ -30,7 +30,7 @@ and measures them all with vx.
 
 The last one needs run history. In vx it is the
 [`@vzn/vx-schedule-history`](../../plugins/vx-schedule-history/) plugin,
-which you add to `vx.workspace.ts`. It is not on by default.
+which you add to `.vx/workspace.ts`. It is not on by default.
 
 ## Why vx guesses "most work waiting"
 
@@ -184,11 +184,11 @@ shows the cache step.
 
 ## Pick the guess
 
-Before there is any history, one line in `vx.workspace.ts` picks the
+Before there is any history, one line in `.vx/workspace.ts` picks the
 rule vx guesses with:
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 export default {
   run: { schedule: 'critical-path' },
 }
@@ -219,7 +219,7 @@ npm install -D @vzn/vx-schedule-history
 ```
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default { plugins: [scheduleHistoryPlugin()] }

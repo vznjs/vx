@@ -34,7 +34,7 @@ Bazel's `--tls_certificate`, `--tls_client_certificate` and
 `--tls_client_key`.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 

@@ -134,7 +134,7 @@ export interface Feature {
   deepDive?: Link
 }
 
-const workspace = (pkg: string, call: string): string => `// vx.workspace.ts
+const workspace = (pkg: string, call: string): string => `// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { ${call.slice(0, call.indexOf('('))} } from '${pkg}'
 
@@ -602,12 +602,12 @@ export default defineProject({
     category: 'ci',
     hook: 'CI runs exactly the config you reviewed.',
     body: [
-      'A TypeScript config can evaluate differently on another machine. `vx lock` evaluates every config now and writes the resolved objects to `vx-lock.json`.',
+      'A TypeScript config can evaluate differently on another machine. `vx lock` evaluates every config now and writes the resolved objects to `.vx/lock.json`.',
       '`vx run --frozen` loads configs from the lock and evaluates nothing. `vx lock --check` re-evaluates every config and fails on drift, so a pipeline can check the lock first.',
     ],
     example: { lang: 'sh', code: 'vx lock\nvx lock --check\nvx run ci --all --frozen' },
     image: 'vx-lock.png',
-    imageAlt: 'vx lock writing vx-lock.json; CI runs with --frozen.',
+    imageAlt: 'vx lock writing .vx/lock.json; CI runs with --frozen.',
     docs: { label: 'vx lock', href: 'cli/#vx-lock' },
     deepDive: { label: 'Lock and frozen', href: 'blog/lock-and-frozen/' },
   },
@@ -737,7 +737,7 @@ export default defineProject({
     ],
     example: {
       lang: 'ts',
-      code: `// vx.workspace.ts
+      code: `// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 import { pnpm } from '@vzn/vx-lockfile'

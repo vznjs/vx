@@ -58,7 +58,7 @@ afterEach(async () => {
 
 async function fixture(files: Record<string, string> = {}): Promise<void> {
   app = await addProject(root, 'app', { config: config(UNSANDBOXED), files })
-  await writeFile(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+  await writeFile(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
@@ -135,7 +135,7 @@ describe('the run-start facts a producer can contradict, each one', () => {
         `,
         files: { 'src/a.txt': 'a' },
       })
-      await writeFile(path.join(root, '.gitignore'), 'dist/\n.vx/\nseed.json\n')
+      await writeFile(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\nseed.json\n')
       gitIn(root)('add', '-A')
       gitIn(root)('commit', '-q', '-m', 'init')
       const built = async (v: string): Promise<string> => {
@@ -175,7 +175,7 @@ describe('the run-start facts a producer can contradict, each one', () => {
           }
         `,
       })
-      await writeFile(path.join(root, '.gitignore'), 'dist/\n.vx/\nseed.txt\n')
+      await writeFile(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\nseed.txt\n')
       gitIn(root)('add', '-A')
       gitIn(root)('commit', '-q', '-m', 'init')
       const built = async (seed: string): Promise<string> => {

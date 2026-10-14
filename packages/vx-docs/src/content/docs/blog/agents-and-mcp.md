@@ -16,7 +16,7 @@ things to see whether they are cached. The runner already knows all of
 that. `@vzn/vx-mcp` hands it over.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { mcp } from '@vzn/vx-mcp'
 
@@ -49,7 +49,7 @@ does.
 | `checkLock`       | Is the config lock current? Each drift `vx lock --check` finds, before a `--frozen` run.                     |
 | `getConfig`       | What does this task declare? Its resolved inputs, outputs, env and sandbox, as `vx show` prints them.     |
 | `getFailures`     | Why did the last run fail? Each failed task's output and the files it names.                              |
-| `getWorkspaceInfo` | What is this workspace? Versions and state, the plugins declared, the flaky tasks, whether `vx-lock.json` exists — the facts a bug report needs. |
+| `getWorkspaceInfo` | What is this workspace? Versions and state, the plugins declared, the flaky tasks, whether `.vx/lock.json` exists — the facts a bug report needs. |
 | `runTasks` | Run these tasks. The exit code and the run summary, from `vx run --format json`. |
 | `planTasks` | What would run, and why. The plan from `vx run --dry=json`; nothing runs. |
 

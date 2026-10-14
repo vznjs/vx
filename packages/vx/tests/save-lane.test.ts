@@ -100,7 +100,7 @@ describe('the save lane in a run', () => {
     const orderLog = path.join(root, 'order.log')
     let afterSave = (): void => undefined
     try {
-      await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([]))
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
       const save = Cache.prototype.save
       const slow = spyOn(Cache.prototype, 'save').mockImplementation(async function (
         this: Cache,

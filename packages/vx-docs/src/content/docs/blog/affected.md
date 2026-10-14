@@ -68,7 +68,7 @@ $ vx run test --affected=master
 `--affected` compares against a git base. Name one (`--affected=main`),
 or let vx pick: the workspace's `run.affectedBase`, else `origin/HEAD`, else
 `main` or `master`, else `HEAD~1`. On a pull request, set
-`run.affectedBase` once in `vx.workspace.ts` and every run agrees.
+`run.affectedBase` once in `.vx/workspace.ts` and every run agrees.
 
 It is sugar for a filter, `--filter "...[<base>]"`: the projects changed
 since the base, and their dependents. So it combines with any other

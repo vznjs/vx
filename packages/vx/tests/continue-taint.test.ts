@@ -26,7 +26,7 @@ let root: string
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-taint-'))
   await writeFile(path.join(root, 'package.json'), '{"name":"fixture","workspaces":["packages/*"]}')
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   const dir = path.join(root, 'packages', 'p')
   await mkdir(path.join(dir, 'src'), { recursive: true })
   await writeFile(path.join(dir, 'package.json'), '{"name":"p"}')

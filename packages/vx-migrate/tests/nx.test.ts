@@ -116,7 +116,7 @@ async function pkg(name: string, deps?: Record<string, string>): Promise<string>
 
 async function workspace(plugin = 'nx()'): Promise<void> {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([plugin], `import { nx } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
   )
 }
@@ -126,7 +126,7 @@ beforeEach(async () => {
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'nx.json'), JSON.stringify({ namedInputs: {} }))
-  await writeFile(path.join(root, '.gitignore'), 'dist\nnode_modules\n.vx\n.nx\nlint.log\n')
+  await writeFile(path.join(root, '.gitignore'), 'dist\nnode_modules\n.vx/cache/\n.nx\nlint.log\n')
   await writeFile(path.join(root, 'graph.json'), JSON.stringify(GRAPH))
   await pkg('lib')
   await pkg('app', { lib: 'workspace:*' })
@@ -841,7 +841,10 @@ describe('nx()', () => {
         await writeFile(path.join(root, '.env.local'), 'C=local\n')
         await writeFile(lib('.env'), 'A=project\n')
         await writeFile(lib('.env.showenv'), 'B=target\n')
-        await writeFile(path.join(root, '.gitignore'), 'dist\nnode_modules\n.vx\n.nx\n.env.local\n')
+        await writeFile(
+          path.join(root, '.gitignore'),
+          'dist\nnode_modules\n.vx/cache/\n.nx\n.env.local\n',
+        )
         Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
         await libTargets(showenv)
         const plan = await planRun({ cwd: root, tasks: ['showenv'], log: silent() })
@@ -871,7 +874,10 @@ describe('nx()', () => {
       'an includeIgnored input re-keys the task when the ignored file changes',
       async () => {
         await writeFile(lib('gen.json'), '1')
-        await writeFile(path.join(root, '.gitignore'), 'dist\nnode_modules\n.vx\n.nx\ngen.json\n')
+        await writeFile(
+          path.join(root, '.gitignore'),
+          'dist\nnode_modules\n.vx/cache/\n.nx\ngen.json\n',
+        )
         Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
         await libTargets({
           gen: {
@@ -1397,9 +1403,10 @@ describe('nx(): a workspace whose root is the project', () => {
       JSON.stringify({ name: 'solo', private: true }),
     )
     await writeFile(path.join(solo, 'nx.json'), JSON.stringify({ namedInputs: {} }))
-    // The fake's call counter is the one file ignored: `.vx` and `.nx` are
-    // not, so the row sees whether vx's snapshot or Nx's own graph cache
-    // (the fake writes `.nx/workspace-data`, as Nx does) moves the key.
+    // The root .gitignore names only the fake's call counter, not `.nx`, so
+    // the row sees whether Nx's own graph cache (the fake writes
+    // `.nx/workspace-data`, as Nx does) moves the key. `.vx/.gitignore` is
+    // what init writes.
     await writeFile(path.join(solo, '.gitignore'), 'node_modules\nnx-calls\n')
     await writeFile(path.join(solo, 'graph.json'), JSON.stringify(graph))
     await mkdir(path.join(solo, 'src'), { recursive: true })
@@ -1407,9 +1414,10 @@ describe('nx(): a workspace whose root is the project', () => {
     await fakeNx(solo)
     await fakeNxCli(solo)
     await Bun.write(
-      path.join(solo, 'vx.workspace.mjs'),
+      path.join(solo, '.vx/workspace.mjs'),
       localWorkspaceSource(['nx()'], `import { nx } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
     )
+    await writeFile(path.join(solo, '.vx/.gitignore'), '/cache\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: solo })
     Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: solo })
   })
@@ -1540,7 +1548,7 @@ describe('nx() under vx lock and --frozen', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx lock: locked 0 project configs → vx-lock.json (no vx.config, so never frozen: app, lib, ws)\n',
+        out: 'vx lock: locked 0 project configs → .vx/lock.json (no vx.config, so never frozen: app, lib, ws)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all', '--frozen')

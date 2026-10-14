@@ -770,7 +770,7 @@ contributes (fully decoupled)` at the unit level. What is missing is the
 
 ### L3. Root-level file change and the root project's affected status
 
-- **Status 2026-09-10**: already pinned — `tests/affected.test.ts` "a vx-lock.json change never marks a project affected, even the root project" has the root as a member and a root README edit selecting only it.
+- **Status 2026-09-10**: already pinned — `tests/affected.test.ts` "a .vx/lock.json change never marks a project affected, even the root project" has the root as a member and a root README edit selecting only it.
 
 - **Turbo behaviour**: `filter_run_test.rs::test_filter_git_range_with_unstaged`
   — an unstaged edit to a root-level `bar.txt` puts the root package (`//`) in
@@ -1073,7 +1073,7 @@ used by its targets`**.
   seven live at the workspace root, i.e. inside no project dir, so `projectsContaining`
   returns the empty set for them.
 - **Existing vx coverage**: NONE. `tests/affected.test.ts` has a lockfile-adjacent test
-  (`:131`, `a vx-lock.json change never marks a project affected`) which pins the
+  (`:131`, `a .vx/lock.json change never marks a project affected`) which pins the
   _deliberate exclusion of vx's own lockfile_ — the package-manager lockfiles are never
   exercised. `tests/cache.test.ts` covers the fingerprint's effect on the KEY only.
 - **Proposed test**: `tests/affected.test.ts` — commit a fixture, then modify
@@ -1209,7 +1209,7 @@ graph`**, and its in-test comment names the scenario verbatim:
   `cache.inputs.env`, or any config value). Derive the submitter's stable keys with
   `BUILD_FLAVOR=a`, then run the agent-style scoped `run()` with `BUILD_FLAVOR=b`, and
   assert the two keys DIFFER — i.e. pin the hazard as a fact. Then assert the mitigation:
-  the same pair under `frozen: true` (with a `vx-lock.json` written by `vx lock` at
+  the same pair under `frozen: true` (with a `.vx/lock.json` written by `vx lock` at
   flavor `a`) derives IDENTICAL keys. Add the ergonomic half in
   `packages/cloud/tests/dist-backend.test.ts`: submitting a distributed run _without_
   `--frozen` emits a warning naming `--frozen` as the reproducibility guarantee — the

@@ -61,7 +61,7 @@ export async function loadWorkspacePlugins(
   // the loader would refuse from a user (`concurrency: -3`) hung the run,
   // and `cacheDir: 42` reached `path.resolve` as a TypeError.
   await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn }, (plugin) =>
-    validateWorkspace(workspaceConfig, `vx.workspace (after plugin '${plugin.name}')`),
+    validateWorkspace(workspaceConfig, `.vx/workspace (after plugin '${plugin.name}')`),
   )
   return { workspaceConfig, plugins }
 }

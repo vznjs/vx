@@ -42,7 +42,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       path.join(ws, 'package.json'),
       JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
     )
-    await writeFile(path.join(ws, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default {}\n')
     await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
     // A denied file reads as empty (a /dev/null bind), a denied directory as
     // an empty one: either way grep finds no line.

@@ -892,8 +892,8 @@ describe('loadProjectConfig', () => {
       // as "contributes a capability" and was then silently ignored. A
       // no-op plugin that validates is exactly what this check exists to
       // prevent.
-      const file = path.join(dir, 'vx.workspace.mjs')
-      await writeFile(
+      const file = path.join(dir, '.vx/workspace.mjs')
+      await Bun.write(
         file,
         `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/old', `{ backend() { return {} } }`)}] }\n`,
       )
@@ -903,8 +903,8 @@ describe('loadProjectConfig', () => {
     })
 
     it('CONTROL: the surviving capabilities still load', async () => {
-      const file = path.join(dir, 'vx.workspace.mjs')
-      await writeFile(
+      const file = path.join(dir, '.vx/workspace.mjs')
+      await Bun.write(
         file,
         `${PLUGIN_IMPORT}export default { plugins: [
            ${pluginSource('org/c', `{ cache() { return undefined } }`)},
@@ -1253,13 +1253,13 @@ describe('loadWorkspaceConfig', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('returns null when no vx.workspace.* file exists', async () => {
+  it('returns null when no .vx/workspace.* file exists', async () => {
     expect(await loadWorkspaceConfig(dir)).toBeNull()
   })
 
-  it('loads a default-exported object from vx.workspace.mjs', async () => {
-    await writeFile(
-      path.join(dir, 'vx.workspace.mjs'),
+  it('loads a default-exported object from .vx/workspace.mjs', async () => {
+    await Bun.write(
+      path.join(dir, '.vx/workspace.mjs'),
       'export default { run: { concurrency: 4 }, cache: { dir: "build/.vx-cache" } }',
     )
     const cfg = await loadWorkspaceConfig(dir)
@@ -1281,17 +1281,17 @@ describe('loadWorkspaceConfig', () => {
       if (root !== real) await symlink(real, root)
       const helper = path.join(root, 'helper.mjs')
       await writeFile(helper, 'export const n = 1\n')
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
-        "import { n } from './helper.mjs'\nexport default { run: { concurrency: n } }\n",
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        "import { n } from '../helper.mjs'\nexport default { run: { concurrency: n } }\n",
       )
       expect(await loadWorkspaceConfig(root)).toEqual({ run: { concurrency: 1 } })
       // CONTROL: nothing it imports moved, and an edit to the config itself
       // is read as ever.
       expect(await loadWorkspaceConfig(root)).toEqual({ run: { concurrency: 1 } })
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
-        "import { n } from './helper.mjs'\nexport default { run: { concurrency: n + 1 } }\n",
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        "import { n } from '../helper.mjs'\nexport default { run: { concurrency: n + 1 } }\n",
       )
       expect(await loadWorkspaceConfig(root)).toEqual({ run: { concurrency: 2 } })
       await writeFile(helper, 'export const n = 5\n')
@@ -1302,43 +1302,46 @@ describe('loadWorkspaceConfig', () => {
         (e: Error) => e.message,
       )
       expect(refused).toBe(
-        'vx.workspace.mjs imports helper.mjs, which changed after this process loaded it; a running process cannot evaluate an imported module again — restart it to apply the edit',
+        '.vx/workspace.mjs imports helper.mjs, which changed after this process loaded it; a running process cannot evaluate an imported module again — restart it to apply the edit',
       )
     },
   )
 
   it('takes the FIRST file in lookup order when two exist (item 653)', async () => {
-    await writeFile(path.join(dir, 'vx.workspace.ts'), 'export default { run: { concurrency: 2 } }')
-    await writeFile(
-      path.join(dir, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(dir, '.vx/workspace.ts'),
+      'export default { run: { concurrency: 2 } }',
+    )
+    await Bun.write(
+      path.join(dir, '.vx/workspace.mjs'),
       'export default { run: { concurrency: 3 } }',
     )
     expect(await loadWorkspaceConfig(dir)).toEqual({ run: { concurrency: 2 } })
   })
 
   it('throws when concurrency is non-positive or non-integer', async () => {
-    await writeFile(
-      path.join(dir, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(dir, '.vx/workspace.mjs'),
       'export default { run: { concurrency: 0 } }',
     )
     await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/positive integer/)
   })
 
   it('throws when concurrency is a non-number', async () => {
-    await writeFile(
-      path.join(dir, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(dir, '.vx/workspace.mjs'),
       'export default { run: { concurrency: "8" } }',
     )
     await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/positive integer/)
   })
 
   it('throws when cache.dir is not a string', async () => {
-    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default { cache: { dir: 7 } }')
+    await Bun.write(path.join(dir, '.vx/workspace.mjs'), 'export default { cache: { dir: 7 } }')
     await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/must be a non-blank string/)
   })
 
   it('throws when the file does not export a default object', async () => {
-    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export const x = 1')
+    await Bun.write(path.join(dir, '.vx/workspace.mjs'), 'export const x = 1')
     await expect(loadWorkspaceConfig(dir)).rejects.toThrow(/did not export a default object/)
   })
 })
@@ -1639,7 +1642,7 @@ describe('a config under a directory whose name holds a backslash', () => {
   })
 
   it('loads a workspace config', async () => {
-    await writeFile(path.join(dir, 'vx.workspace.ts'), 'export default { plugins: [] }')
+    await Bun.write(path.join(dir, '.vx/workspace.ts'), 'export default { plugins: [] }')
     expect(await loadWorkspaceConfig(dir)).toEqual({ plugins: [] })
   })
 

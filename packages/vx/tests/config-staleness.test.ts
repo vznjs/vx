@@ -467,8 +467,8 @@ describe('a config the project stage edits in place', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
       )
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         `${PLUGIN_IMPORT}
         export default { plugins: [${pluginSource(
           'org/plug',

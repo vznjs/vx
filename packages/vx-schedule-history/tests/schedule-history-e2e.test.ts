@@ -90,7 +90,7 @@ describe('schedule-history plugin end to end', () => {
         "export default { tasks: { build: { exec: { command: 'sleep 0.15' } }, test: { dependsOn: ['build'], exec: { command: 'sleep 0.15' } } } }\n",
       )
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource(['scheduleHistoryPlugin()']),
       )
@@ -127,7 +127,7 @@ describe('schedule-history plugin end to end', () => {
       await pkg('a', hog)
       await pkg('b', hog)
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource(['scheduleHistoryPlugin({ memory: 512 })']),
       )
@@ -175,7 +175,7 @@ describe('schedule-history plugin end to end', () => {
       await pkg('b', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
       await pkg('c', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource([
             "scheduleHistoryPlugin({ memory: 4096, reservations: { 'c#build': { memory: 1024, cpus: 2 } } })",
@@ -273,7 +273,7 @@ describe('schedule-history plugin end to end', () => {
         'export default { tasks: { build: { exec: { command: \'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(50); console.log(b.length)"\' } } } }\n',
       )
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource([
             'scheduleHistoryPlugin({ window: 1, resources: { headroom: 2 }, memory: 8192 })',
@@ -307,7 +307,7 @@ describe('schedule-history plugin end to end', () => {
       // The same history with learning off and no memory option: nothing is
       // learned, and the budget says where it came from.
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource(['scheduleHistoryPlugin({ resources: false })']),
       )
@@ -338,7 +338,7 @@ describe('schedule-history plugin end to end', () => {
         "export default { tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } } } }\n",
       )
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource(["scheduleHistoryPlugin({ assume: { 'b#build': 30000 } })"]),
       )
@@ -367,7 +367,7 @@ describe('schedule-history plugin end to end', () => {
         'export default { tasks: { build: { exec: { command: \'bun -e "const b = Buffer.alloc(200 * 1024 * 1024, 1); await Bun.sleep(50); console.log(b.length)"\' } } } }\n',
       )
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource([
             'scheduleHistoryPlugin({ memory: Number(undefined), resources: { headroom: Number(undefined) } })',
@@ -410,7 +410,7 @@ describe('schedule-history plugin end to end', () => {
         "export default { tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } } } }\n",
       )
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource([
             "scheduleHistoryPlugin({ assume: { 'a#build': Number(undefined), 'a#test': '50000', 'b#build': 30000 } })",
@@ -441,7 +441,7 @@ describe('schedule-history plugin end to end', () => {
     async () => {
       await pkg('a', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           'export default { run: { concurrency: 1 }, plugins: [scheduleHistoryPlugin()] }\n',
       )

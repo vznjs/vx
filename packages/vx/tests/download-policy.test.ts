@@ -460,7 +460,7 @@ async function fixture(
   // The downgrade gate keeps a producer eager for a reader of its outputs,
   // a config the default `rules.upfrontKeys` refuses (X-54).
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource(
       [
         pluginSource(
@@ -1009,7 +1009,7 @@ async function sameProjectFixture(
   // The downgrade gate keeps a producer eager for a reader of its outputs,
   // a config the default `rules.upfrontKeys` refuses (X-54).
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource(
       [
         pluginSource(

@@ -26,7 +26,7 @@ import type { Logger } from './logger.js'
  * where work runs (executor), which cache is used (cache), who
  * observes the run (telemetry). It never changes WHAT a task is (the
  * command string — principle #3), only where and how that command is
- * executed. Registered explicitly in vx.workspace.ts via
+ * executed. Registered explicitly in .vx/workspace.ts via
  * defineWorkspace({ plugins: [...] }). No auto-discovery.
  *
  * Made by `definePlugin(import.meta, hooks)` only: the loader refuses a
@@ -259,7 +259,7 @@ export interface PluginCommand {
 export interface CommandContext extends BaseContext {
   /**
    * The worker count a `vx run` here uses unless `--concurrency` says
-   * otherwise: `vx.workspace`'s `concurrency`, else what the machine allows.
+   * otherwise: `.vx/workspace`'s `concurrency`, else what the machine allows.
    * A verb that budgets a run (`vx history`) reads it here; its own
    * `machineParallelism()` said 4 cores beside `concurrency: 1` (item 1068).
    */

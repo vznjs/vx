@@ -159,8 +159,8 @@ beforeAll(async () => {
   await addProject(root, 'kitchen', { config: KITCHEN })
   await addProject(root, 'bare')
   // A plugin, so \`vx info\` lists one.
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}], cache: { retention: { olderThan: '3650d', maxSize: '10G' } } }\n`,
   )
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)

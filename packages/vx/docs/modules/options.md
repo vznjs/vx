@@ -20,12 +20,12 @@ export interface RunOptions {
   affectedReasons?: Map<string, AffectedReason> // planRun (`--dry`) collects why `--affected` kept each request
   staged?: ReadonlyMap<string, ProjectEntry> // the CLI's own selection load, reused once (below)
   discovered?: { root: string; projects: ProjectMeta[] } // the selection pass's discovery, reused once when the root matches
-  concurrency?: number // run.concurrency: the flag, else VX_RUN_CONCURRENCY, else vx.workspace (withRunSettings)
+  concurrency?: number // run.concurrency: the flag, else VX_RUN_CONCURRENCY, else .vx/workspace (withRunSettings)
   cacheDir?: string // --cache-dir, resolved against cwd
   cache?: CachePolicy // --cache-policy / VX_CACHE_POLICY resolved; absent → the workspace's cache.policy, else FULL_CACHE_POLICY
   cacheFlags?: CacheFlags // with no `cache`: --no-cache / --force over the workspace's cache.policy
   remoteRequested?: boolean // a --cache-policy spec named a remote axis
-  cacheScope?: string // --cache-scope, above VX_CACHE_SCOPE and vx.workspace
+  cacheScope?: string // --cache-scope, above VX_CACHE_SCOPE and .vx/workspace
   remoteReadOnlyByDefault?: boolean // the default policy writes no remote; the CLI passes it off CI
   frozen?: boolean // run the lock's graph
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'

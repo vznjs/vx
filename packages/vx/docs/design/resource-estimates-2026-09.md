@@ -135,7 +135,7 @@ numbers. Pinned: pack → scan round trip and the boundary
 (`archive-security.test.ts`), the entry built from the artifact on save
 and on ingest alike (`cache.test.ts`), a hit row's usage from its entry
 and a pruned entry contributing nothing (`history.test.ts`), and end to
-end through the stub remote layer: a run with its `.vx` wiped restores
+end through the stub remote layer: a run with its `.vx/cache` wiped restores
 from the remote, the hit carries the first run's peak RSS as
 `storedPeakRssBytes` and none as its own, and the history reader over
 the fresh cache reports it (`orchestrator-remote.test.ts`). Measured on

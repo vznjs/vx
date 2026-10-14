@@ -67,7 +67,7 @@ it(
         },
       }`,
     )
-    await write(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+    await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
     const lib = path.join(a, 'vendor/lib')
     await write(path.join(lib, 'x.txt'), 'one')
     git(lib, 'init', '-q')

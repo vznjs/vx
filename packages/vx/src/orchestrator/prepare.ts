@@ -329,7 +329,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const workspaceFingerprint = fingerprints.unclaimed
   mark('open cache')
 
-  // Frozen mode (--frozen, CI): configs load FROM vx-lock.json with no
+  // Frozen mode (--frozen, CI): configs load FROM .vx/lock.json with no
   // evaluation and no check of the configs (`vx lock --check`
   // re-evaluates them; a run does not); env-dependent configs keep
   // their locked values. Default (local) runs ALWAYS evaluate live:
@@ -850,7 +850,7 @@ function workspaceCachePolicy(config: WorkspaceConfig | null | undefined): Cache
     return parseCachePolicy(spec)
   } catch (err) {
     throw new UserError(
-      `vx.workspace: \`cache.policy\`: ${err instanceof Error ? err.message : String(err)}`,
+      `.vx/workspace: \`cache.policy\`: ${err instanceof Error ? err.message : String(err)}`,
       'VX_E_CONFIG',
     )
   }

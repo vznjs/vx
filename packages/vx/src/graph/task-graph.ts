@@ -1369,7 +1369,7 @@ function neverWritesLocally(n: TaskNode): boolean {
  */
 const EXCLUSIVE_OUTPUTS_FIX =
   'Give each task its own output path, or set run.rules.exclusiveOutputs: false in ' +
-  "vx.workspace.ts to let a dependant add to its upstream's outputs."
+  ".vx/workspace.ts to let a dependant add to its upstream's outputs."
 
 function collide(
   a: TaskNode,
@@ -1688,7 +1688,7 @@ function readsOutputs(
           `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
           `another task's outputs (the dependency's key already cascades through dependsOn). ` +
           `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
-          `cache.inputs.${field}, or set run.rules.upfrontKeys: false in vx.workspace.ts to ` +
+          `cache.inputs.${field}, or set run.rules.upfrontKeys: false in .vx/workspace.ts to ` +
           `let it wait for its producer.`,
         'VX_E_INPUT_IS_OUTPUT',
       )

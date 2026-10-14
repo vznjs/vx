@@ -30,10 +30,10 @@ afterEach(async () => {
 
 describe('migrateTurbo: a workspace that still declares turbo()', () => {
   it('is told to drop it; one without turbo(), or none, is told nothing', async () => {
-    const notes = async (workspace: string | null, name = 'vx.workspace.ts') => {
-      for (const n of ['vx.workspace.ts', 'vx.workspace.cjs'])
+    const notes = async (workspace: string | null, name = '.vx/workspace.ts') => {
+      for (const n of ['.vx/workspace.ts', '.vx/workspace.cjs'])
         await rm(path.join(root, n), { force: true })
-      if (workspace !== null) await writeFile(path.join(root, name), workspace)
+      if (workspace !== null) await Bun.write(path.join(root, name), workspace)
       return (await migrateTurbo(root, metas)).headerNotes
     }
     expect([
@@ -42,18 +42,18 @@ describe('migrateTurbo: a workspace that still declares turbo()', () => {
       ),
       await notes(
         "const { turbo } = require('@vzn/vx-migrate')\nmodule.exports = { plugins: [turbo ()] }\n",
-        'vx.workspace.cjs',
+        '.vx/workspace.cjs',
       ),
       await notes('export default { plugins: [] }\n'),
       await notes(null),
     ]).toEqual([
       [
-        'vx.workspace.ts still declares turbo(), which reads turbo.json every run and fills any ' +
+        '.vx/workspace.ts still declares turbo(), which reads turbo.json every run and fills any ' +
           'task a vx.config does not declare; the configs written here declare them all. Once ' +
           '`vx run` does what turbo did, remove turbo() (and its import), then turbo.json',
       ],
       [
-        'vx.workspace.cjs still declares turbo(), which reads turbo.json every run and fills any ' +
+        '.vx/workspace.cjs still declares turbo(), which reads turbo.json every run and fills any ' +
           'task a vx.config does not declare; the configs written here declare them all. Once ' +
           '`vx run` does what turbo did, remove turbo() (and its import), then turbo.json',
       ],

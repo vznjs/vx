@@ -16,7 +16,7 @@ npm install -D @vzn/vx @vzn/vx-otel   # or: pnpm add -D -w · yarn add -D (-W on
 ```
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 
@@ -199,7 +199,7 @@ still in flight is cut at core's teardown deadline (3 s,
 This replaces core's previous hardcoded OTel emit, which fired automatically
 whenever `OTEL_EXPORTER_OTLP_ENDPOINT` was set. OTel is now a **plugin**: the
 env var alone no longer auto-exports — you must declare `otel()` in
-`vx.workspace.ts`. Telemetry is observe-only and can never change, slow, or
+`.vx/workspace.ts`. Telemetry is observe-only and can never change, slow, or
 fail a run (every export is buffered, time-bounded, and swallows errors).
 
 A collector shedding load (`429`, `502`, `503`, `504`, or a dropped

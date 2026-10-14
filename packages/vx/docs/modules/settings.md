@@ -3,7 +3,7 @@
 ## Purpose
 
 The one list of run-wide settings. A setting's path is its
-`vx.workspace` key (`run.concurrency`); its variable
+`.vx/workspace` key (`run.concurrency`); its variable
 (`VX_RUN_CONCURRENCY`) and flag (`--concurrency`) derive from that path. The CLI parsers, the
 workspace validator, `vx info`'s `settings` fact and the settings tables
 in `schema.md` and `cli.md` all read it, so a setting cannot exist in
@@ -33,11 +33,11 @@ export function resolveSetting(
 
 ## Rules
 
-- Precedence: flag, then variable, then `vx.workspace`, then the
+- Precedence: flag, then variable, then `.vx/workspace`, then the
   default. A task's `exec.timeout` / `exec.retries` beats all of them.
 - No aliases: until 1.0 an old variable is ignored and an old flag is
   an unknown flag.
-- A setting with `config: false` is read before `vx.workspace` loads,
+- A setting with `config: false` is read before `.vx/workspace` loads,
   so it has a variable and maybe a flag, no key.
 - The CLI checks every set variable up front (`checkSettingsEnv`), so a
   deep reader may fall back on a bad value instead of throwing.

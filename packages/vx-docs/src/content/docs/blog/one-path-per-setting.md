@@ -6,7 +6,7 @@ authors:
 tags:
   - config
   - dx
-excerpt: 'Every vx setting has one path in vx.workspace.ts, and its environment variable and flag are spelled from it. run.retries is VX_RUN_RETRIES and --retries. Learn one name and you know all three. A duration carries its unit, and vx info says where each value came from.'
+excerpt: 'Every vx setting has one path in .vx/workspace.ts, and its environment variable and flag are spelled from it. run.retries is VX_RUN_RETRIES and --retries. Learn one name and you know all three. A duration carries its unit, and vx info says where each value came from.'
 ---
 
 A tool with forty knobs usually has three names for each one: a config
@@ -21,11 +21,11 @@ from it.
 | `cache.dir`      | `VX_CACHE_DIR`       | `--cache-dir`   |
 | `cache.scope`    | `VX_CACHE_SCOPE`     | `--cache-scope` |
 
-The settings live in three groups in `vx.workspace.ts`: `run`, `cache`
+The settings live in three groups in `.vx/workspace.ts`: `run`, `cache`
 and `watch`.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({
@@ -44,7 +44,7 @@ every setting that is not at its default and where its value came from:
 ```sh frame="terminal"
 $ VX_RUN_CONCURRENCY=2 vx info
 …
-settings:         run.concurrency 2 (VX_RUN_CONCURRENCY), run.killGrace 5s (vx.workspace)
+settings:         run.concurrency 2 (VX_RUN_CONCURRENCY), run.killGrace 5s (.vx/workspace)
 ```
 
 ## Units are part of the value
@@ -61,11 +61,11 @@ vx: VX_RUN_KILL_GRACE takes a duration with its unit, like '2000ms' or '2s' (got
 ## Old names stop working
 
 The names from before vx 0.0.637 are gone, with no alias. An old key in
-`vx.workspace.ts` is an unknown field, and an old flag an unknown flag:
+`.vx/workspace.ts` is an unknown field, and an old flag an unknown flag:
 
 ```sh frame="terminal"
 $ vx run build
-vx: /repo/vx.workspace.ts has unknown field "concurrency" (allowed: cache, plugins, run, watch)
+vx: /repo/.vx/workspace.ts has unknown field "concurrency" (allowed: cache, plugins, run, watch)
 ```
 
 An old variable such as `VX_KILL_GRACE_MS` is no longer read; set

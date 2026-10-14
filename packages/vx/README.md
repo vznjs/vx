@@ -8,7 +8,7 @@ pipeline with a plugin hook at every stage.
 
 ```sh
 bun add -d @vzn/vx      # or npm / pnpm / yarn
-vx init                 # scaffold vx.workspace.ts + a vx.config.ts per package
+vx init                 # scaffold .vx/workspace.ts + a vx.config.ts per package
 vx run build --all
 ```
 
@@ -18,7 +18,7 @@ vx run build --all
 Core applies no plugin by default and ships none; running here and
 caching on this machine (entries in `~/.vx/<id>/cache`, shared by every
 checkout of the repo) are its floor, so a workspace with no
-`vx.workspace.ts` runs. Scheduling by learned critical path:
+`.vx/workspace.ts` runs. Scheduling by learned critical path:
 `@vzn/vx-schedule-history`. Remote caching and execution:
 `@vzn/vx-reapi`. Telemetry: `@vzn/vx-otel`, `@vzn/vx-ci`. AI agents:
 the skill in `skills/vx/` (`npx skills add vznjs/vx/packages/vx/skills/vx`).

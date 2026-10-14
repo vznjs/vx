@@ -9,7 +9,7 @@
 > and with them "a workspace that declares none fails before any task
 > runs") were replaced by core's local FLOOR: `plugin-host.ts` pushes
 > `localExecutor()` as the tail of every list, so a workspace with no
-> `vx.workspace.ts` runs and caches, and `src/plugins/` is a directory a
+> `.vx/workspace.ts` runs and caches, and `src/plugins/` is a directory a
 > test asserts does not exist. The **`backend` capability** was removed —
 > no `backend` appears in `config.ts` or `plugin-host.ts`. And
 > **vx-cloud**, which this design says "is NOT deleted … it coexists", is

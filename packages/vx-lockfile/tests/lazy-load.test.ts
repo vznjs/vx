@@ -1,4 +1,4 @@
-// Every run evaluates `vx.workspace.ts`, so what this package loads at
+// Every run evaluates `.vx/workspace.ts`, so what this package loads at
 // import is paid by every run: a parser loads when its manager first
 // digests, and `prune` when the verb runs.
 import path from 'node:path'

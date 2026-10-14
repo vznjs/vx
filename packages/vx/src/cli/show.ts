@@ -4,7 +4,7 @@
 // apply, so a package a plugin gives tasks to shows them. No target: one
 // line per project. `<project>`: every task's resolved config. `<pkg>#
 // <task>`: one task. `<task>`: that task in every project declaring it.
-// Deliberately NOT the lock — vx-lock.json is already the frozen JSON.
+// Deliberately NOT the lock — .vx/lock.json is already the frozen JSON.
 
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'

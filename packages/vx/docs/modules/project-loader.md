@@ -37,12 +37,12 @@ export async function loadProjectConfigs(
 
 // The names a workspace config may take, in resolution order.
 export const WORKSPACE_CONFIG_FILENAMES = [
-  'vx.workspace.ts',
-  'vx.workspace.mts',
-  'vx.workspace.js',
-  'vx.workspace.mjs',
-  'vx.workspace.cts',
-  'vx.workspace.cjs',
+  '.vx/workspace.ts',
+  '.vx/workspace.mts',
+  '.vx/workspace.js',
+  '.vx/workspace.mjs',
+  '.vx/workspace.cts',
+  '.vx/workspace.cjs',
 ]
 
 // A Bun `ResolveMessage` / `BuildMessage`, or the stackless `SyntaxError` of a
@@ -148,7 +148,7 @@ readers that reach it here.
   `process.chdir()` left every relative path vx resolved after it reading
   from the config's choice; the working directory is put back and the load
   refused, naming `process.cwd (a chdir)` (D-120).
-- `vx.workspace.ts` gets the same guard: it runs in this process too, and
+- `.vx/workspace.ts` gets the same guard: it runs in this process too, and
   its `Object.prototype.exec` ran in a project's group task. Built-ins,
   `process.env`, the cwd and the umask are snapshotted around its load, put
   back, and the load refused naming the file, a failed load's change
@@ -345,10 +345,10 @@ the shipped standalone binary fail with `ModuleNotFound`.
 - **Imports from `node_modules` are cached by Bun on a first load.**
   Within one Bun process an `import from 'pkg'` resolves once; a repeat
   load re-resolves it in a fresh Worker registry.
-- **`loadWorkspaceConfig` has no Worker path.** `vx.workspace.ts`
+- **`loadWorkspaceConfig` has no Worker path.** `.vx/workspace.ts`
   declares `plugins`, which are objects holding **functions** — they
   cannot cross a Worker boundary at all. A repeat load busts the
-  config's own URL, so an edit to `vx.workspace.ts` itself is read, but
+  config's own URL, so an edit to `.vx/workspace.ts` itself is read, but
   Bun answers what it imports from the registry: a long-lived verb served an
   edited local plugin's first version on every call (item 1046). So a
   repeat load walks the config's relative imports and refuses, naming
@@ -367,7 +367,7 @@ the shipped standalone binary fail with `ModuleNotFound`.
 - Group-task validation (accepts task with only `dependsOn`; rejects
   task with neither `exec` nor `dependsOn`; rejects `cache` on a
   group task).
-- `loadWorkspaceConfig` returns null when no `vx.workspace.*` file
+- `loadWorkspaceConfig` returns null when no `.vx/workspace.*` file
   exists, validates `concurrency` and `cache.dir`.
 - The served first load (`a project config is evaluated from the bytes
 vx read`): a CommonJS config keeps its exports, non-UTF-8 bytes

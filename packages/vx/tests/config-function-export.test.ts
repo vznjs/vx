@@ -23,8 +23,8 @@ it('a function default export is named, in-process and from the worker', async (
     expect(await refused(loadProjectConfig(file), file)).toBe(`Project config at <file> ${fn}`)
     // The repeat load runs in the worker.
     expect(await refused(loadProjectConfig(file), file)).toBe(`Project config at <file> ${fn}`)
-    const ws = path.join(dir, 'vx.workspace.mjs')
-    await writeFile(ws, 'export default async () => ({ plugins: [] })\n')
+    const ws = path.join(dir, '.vx/workspace.mjs')
+    await Bun.write(ws, 'export default async () => ({ plugins: [] })\n')
     expect(await refused(loadWorkspaceConfig(dir), ws)).toBe(`Workspace config at <file> ${fn}`)
     // CONTROL: a number keeps the bare message.
     const n = path.join(dir, 'n', 'vx.config.mjs')

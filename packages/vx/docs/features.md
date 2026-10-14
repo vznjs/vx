@@ -129,7 +129,7 @@ config key or an environment variable is missing here.
 
 ## Config
 
-- **Config in TypeScript** (`vx.config.ts`, `defineProject`, `vx.workspace.ts`, `defineWorkspace`) — typed, composable; no named inputs. `vx.workspace.ts` is required: the nearest one up from the cwd, never above the git top-level, marks the workspace root. [page](https://vznjs.github.io/vx/features/typescript-config/) · post: [Config in TypeScript](https://vznjs.github.io/vx/blog/config-in-typescript/)
+- **Config in TypeScript** (`vx.config.ts`, `defineProject`, `.vx/workspace.ts`, `defineWorkspace`) — typed, composable; no named inputs. `.vx/workspace.ts` is required: the nearest one up from the cwd, never above the git top-level, marks the workspace root. [page](https://vznjs.github.io/vx/features/typescript-config/) · post: [Config in TypeScript](https://vznjs.github.io/vx/blog/config-in-typescript/)
 - **Tasks** (`tasks`, `exec.command`, `dependsOn`, `description`, `tags`) — one command per task; the shell is the API. [page](https://vznjs.github.io/vx/features/one-command-tasks/) · post: [One command per task](https://vznjs.github.io/vx/blog/one-command-per-task/)
 - **Workspace rules** (`rules`) — speed-only checks, on by default, configurable. [page](https://vznjs.github.io/vx/features/workspace-rules/) · post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
 - **Config worker timeout** (`VX_CONFIG_WORKER_TIMEOUT`) — bound a config's evaluation. [page](https://vznjs.github.io/vx/features/config-timeout/) · post: [Guard rails that tell you the fix](https://vznjs.github.io/vx/blog/guard-rails/)
@@ -146,7 +146,7 @@ config key or an environment variable is missing here.
 
 ## Adoption
 
-- **Start in a minute** (`vx init`, `--dry`, `--format json`, `--force`, `--mjs`) — write `vx.workspace.ts`, one `vx.config.ts` per package and `vx-lock.json`; `--dry --format json` hands an agent the plan as data. [page](https://vznjs.github.io/vx/features/quickstart/) · post: [Hello, vx](https://vznjs.github.io/vx/blog/hello-vx/)
+- **Start in a minute** (`vx init`, `--dry`, `--format json`, `--force`, `--mjs`) — write `.vx/workspace.ts`, one `vx.config.ts` per package and `.vx/lock.json`; `--dry --format json` hands an agent the plan as data. [page](https://vznjs.github.io/vx/features/quickstart/) · post: [Hello, vx](https://vznjs.github.io/vx/blog/hello-vx/)
 - **Migrate from Turborepo or Nx** (`vx init`, `--native`, `--keep`, `@vzn/vx-migrate`) — native config, or keep `turbo()` / `nx()` as a start. [page](https://vznjs.github.io/vx/features/migrate/) · posts: [From Turborepo](https://vznjs.github.io/vx/blog/from-turborepo/), [From Nx](https://vznjs.github.io/vx/blog/from-nx/)
 - **Keep a Turbo or Nx remote cache** (`turboCache()`, `nxCache()`) — reuse the cache server you have. [page](https://vznjs.github.io/vx/features/keep-remote-cache/) · post: [From Nx: keep the graph, drop the platform](https://vznjs.github.io/vx/blog/from-nx/)
 - **One binary** — one file, nothing to install underneath. [page](https://vznjs.github.io/vx/features/one-binary/) · post: [One binary](https://vznjs.github.io/vx/blog/one-binary/)

@@ -19,7 +19,7 @@ import {
   WORKSPACE_CONFIG_FILENAMES,
   WORKSPACE_FINGERPRINT_FILES,
 } from '../workspace/index.js'
-import { IGNORED_SEGMENTS } from './watch-fs.js'
+import { isIgnoredDir } from './watch-fs.js'
 
 const IGNORED_SUFFIXES = ['.tsbuildinfo', '~']
 
@@ -34,7 +34,7 @@ const IGNORED_SUFFIXES = ['.tsbuildinfo', '~']
  */
 export function isIgnoredWatchPath(rel: string): boolean {
   const segments = rel.split(path.sep)
-  if (segments.some((s) => IGNORED_SEGMENTS.includes(s))) return true
+  for (let i = 1; i <= segments.length; i++) if (isIgnoredDir(segments.slice(0, i))) return true
   if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return true
   return false
 }
@@ -43,7 +43,7 @@ export function isIgnoredWatchPath(rel: string): boolean {
  * The ignore predicate a watcher applies, closed over the run's ACTUAL cache
  * directory.
  *
- * `IGNORED_SEGMENTS` covers the `.vx/cache` default, but `cacheDir` is a
+ * `isIgnoredDir` covers the `.vx/cache` default, but `cacheDir` is a
  * shipped `defineWorkspace` field: point it anywhere else and vx's own cache
  * writes land in a watched subtree, so every cycle triggers the next one.
  * Measured on a relocated cache under a recursive root watcher: ONE edit kicked
@@ -270,23 +270,14 @@ export function makeRootEventFilter(
   )
   return (filename: string): boolean => {
     const rel = filename.split(path.sep).join('/')
-    // The depth test is a READING AID, not a guard: both predicates below
-    // are exact membership in a set of BARE names, so a `rel` carrying a
-    // slash can never be in one. Measured with it removed (item 502) over
-    // `nested/bun.lock`, `./bun.lock`, `a/b/c/pnpm-workspace.yaml` and
-    // eight more: every answer identical. The two table rows that look
-    // like they pin it — `nested/pnpm-lock.yaml → false` and
-    // `nested/vx.workspace.ts → false` — pass either way; what they
-    // actually pin is that the predicates stay exact rather than becoming
-    // a basename or suffix match, which is the change that WOULD make
-    // this line load-bearing.
+    // Exact membership, not a basename match: `nested/pnpm-lock.yaml` and
+    // `nested/.vx/workspace.ts` are no root file. The workspace config and
+    // a claimed file carry their `.vx/` prefix.
     if (
-      !rel.includes('/') &&
-      (isWorkspaceFingerprintFile(rel) ||
-        isWorkspaceConfigFile(rel) ||
-        rel === 'package.json' ||
-        rel === '.gitignore' ||
-        claimedRootFiles.has(rel))
+      isWorkspaceConfigFile(rel) ||
+      claimedRootFiles.has(rel) ||
+      (!rel.includes('/') &&
+        (isWorkspaceFingerprintFile(rel) || rel === 'package.json' || rel === '.gitignore'))
     ) {
       return true
     }
@@ -336,7 +327,7 @@ export function shapesWatchedSet(filename: string): boolean {
     base === 'package.json' ||
     isWorkspaceFingerprintFile(base) ||
     PROJECT_CONFIGS.has(base) ||
-    isWorkspaceConfigFile(base)
+    isWorkspaceConfigFile(filename.split(path.sep).join('/'))
   )
 }
 

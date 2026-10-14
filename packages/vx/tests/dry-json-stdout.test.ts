@@ -23,8 +23,8 @@ beforeEach(async () => {
     path.join(root, 'pkgs', 'app', 'vx.config.mjs'),
     "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
   )
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource('org/warner', `{ project(config, ctx) { ctx.warn('careful: app') } }`),
     ]),
@@ -75,5 +75,5 @@ it('a frozen run that writes its lock first prints a stage warning once', () => 
 })
 
 function rmLock(): void {
-  rmSync(path.join(root, 'vx-lock.json'), { force: true })
+  rmSync(path.join(root, '.vx/lock.json'), { force: true })
 }

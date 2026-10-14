@@ -46,7 +46,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
   await mkdir(path.join(p, 'src'), { recursive: true })
   await mkdir(marks)
   await writeFile(path.join(root, 'package.json'), '{"name":"fx","workspaces":["packages/*"]}')
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(p, 'package.json'), '{"name":"p"}')
 
   const ts = Array.from({ length: 3 + Math.floor(rnd() * 6) }, (_, i) => `t${i}`)

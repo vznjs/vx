@@ -20,7 +20,7 @@ export interface WorkspaceOptions {
   /** The root package.json `name`. */
   rootName?: string
   /**
-   * `vx.workspace.mjs` with the plugin import (no plugins). Default true;
+   * `.vx/workspace.mjs` with the plugin import (no plugins). Default true;
    * false writes a bare `export default {}`: the file marks the root either way.
    */
   workspaceFile?: boolean
@@ -74,7 +74,7 @@ export async function makeWorkspace(opts: WorkspaceOptions = {}): Promise<string
     JSON.stringify({ name: opts.rootName ?? 'fixture-root', private: true }, null, 2),
   )
   if (opts.workspaceFile !== false) await writeLocalWorkspace(root)
-  else await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+  else await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   await mkdir(path.join(root, 'packages'), { recursive: true })
   const git = opts.git ?? 'init'
   if (git === 'init') gitInit(root)

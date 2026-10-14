@@ -24,11 +24,28 @@ const status = (): string =>
 
 describe('the cache directory is git-ignored by construction', () => {
   it('opening a cache writes a `*` .gitignore into it, and git sees nothing under it', () => {
-    const dir = path.join(root, '.vx', 'cache')
+    const dir = path.join(root, 'build', 'vx-cache')
     const cache = new Cache(dir)
     cache.close()
     expect(status()).toBe('')
     expect(Bun.file(path.join(dir, '.gitignore')).size).toBeGreaterThan(0)
+  })
+
+  // The default is named by `.vx/.gitignore`, committed beside the workspace
+  // config and the lock, so git sees those and nothing under `.vx/cache`
+  // (owner, 2026-10-14: no `*` in it).
+  it('the default .vx/cache is ignored by .vx/.gitignore, which git sees', async () => {
+    await Bun.write(path.join(root, '.vx', 'workspace.ts'), 'export default {}\n')
+    new Cache(path.join(root, '.vx', 'cache')).close()
+    expect(await readFile(path.join(root, '.vx', '.gitignore'), 'utf8')).toBe('/cache\n')
+    expect(await Bun.file(path.join(root, '.vx', 'cache', '.gitignore')).exists()).toBe(false)
+    expect(status()).toBe('?? .vx/.gitignore\n?? .vx/workspace.ts\n')
+  })
+
+  it('an existing .vx/.gitignore is never edited', async () => {
+    await Bun.write(path.join(root, '.vx', '.gitignore'), '# mine\n/cache\n')
+    new Cache(path.join(root, '.vx', 'cache')).close()
+    expect(await readFile(path.join(root, '.vx', '.gitignore'), 'utf8')).toBe('# mine\n/cache\n')
   })
 
   it('a user-authored .gitignore in the cache dir is left alone', async () => {
@@ -43,7 +60,7 @@ describe('the cache directory is git-ignored by construction', () => {
     // Control: a file OUTSIDE the cache dir still shows, so the empty
     // status above is the ignore working and not git seeing nothing.
     await writeFile(path.join(root, 'stray.txt'), 'x')
-    const cache = new Cache(path.join(root, '.vx', 'cache'))
+    const cache = new Cache(path.join(root, 'build', 'vx-cache'))
     cache.close()
     expect(status()).toBe('?? stray.txt\n')
   })

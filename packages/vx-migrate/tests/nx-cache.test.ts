@@ -246,8 +246,8 @@ describe('vx run with nxCache() layered over the local cache', () => {
       path.join(root, 'pkg', 'vx.config.mjs'),
       "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/app.js dist/app.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n",
     )
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
         [`nxCache({ server: ${JSON.stringify(srv.url)}, accessToken: ${JSON.stringify(TOKEN)} })`],
         `import { nxCache } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
@@ -269,7 +269,7 @@ describe('vx run with nxCache() layered over the local cache', () => {
     expect(first.ok).toBe(true)
     expect(first.outcomes.map((o) => o.status)).toEqual(['success'])
     expect(srv.store.size).toBe(1)
-    await rm(path.join(root, '.vx'), { recursive: true, force: true })
+    await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
     await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
     const second = await run({
       cwd: root,
@@ -294,7 +294,7 @@ describe('vx run with nxCache() layered over the local cache', () => {
     altered[at + 10] = 'f'.charCodeAt(0)
     srv.store.set(hash, Bun.zstdCompressSync(altered))
     try {
-      await rm(path.join(root, '.vx'), { recursive: true, force: true })
+      await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
       await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
       const r = await run({ cwd: root, tasks: ['build'], handleSignals: false })
       expect({

@@ -39,7 +39,7 @@ beforeEach(async () => {
     `export default { tasks: { build: { exec: { command: 'echo gen' } } } }\n`,
   )
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource('org/tools', `{ discover() { return [{ dir: 'tools/gen', name: 'gen' }] } }`),
     ]),
@@ -60,7 +60,7 @@ it('vx lock freezes the discovered project, so lock --check && run --frozen succ
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   const check = await vx(root, ['lock', '--check'])
   expect(`${check.code}\n${check.err}`).toStartWith('0\n')
-  const locked = Object.keys((await Bun.file(path.join(root, 'vx-lock.json')).json()).projects)
+  const locked = Object.keys((await Bun.file(path.join(root, '.vx/lock.json')).json()).projects)
   expect(locked).toEqual(['app', 'gen'])
   const frozen = await vx(root, ['run', 'build', '--all', '--frozen'])
   expect(`${frozen.code}\n${frozen.err}`).toStartWith('0\n')
@@ -73,7 +73,7 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   await addProject(root, 'empty')
   await addProject(root, 'mapped')
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource('org/tools', `{ discover() { return [{ dir: 'tools/gen', name: 'gen' }] } }`),
       pluginSource(
@@ -85,7 +85,7 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toBe(
-    'vx lock: locked 2 project configs → vx-lock.json (no vx.config, so never frozen: mapped)\n',
+    'vx lock: locked 2 project configs → .vx/lock.json (no vx.config, so never frozen: mapped)\n',
   )
   const check = await vx(root, ['lock', '--check'])
   expect(check.out).toBe(

@@ -7,7 +7,7 @@
 // prefetch overlap + at-most-once, the codegen→consumer stability gate,
 // --no-cache issuing no reads, and the local:,remote:rw in-memory pack.
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
@@ -206,7 +206,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(remote.store.size).toBe(1)
 
         // Wipe the local cache so the only source of truth is the remote.
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
 
         const second = await run({
           cwd: fixture.root,
@@ -255,7 +255,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           remoteCache: remote.layer,
         }
         expect((await run(opts)).outcomes[0]!.status).toBe('success')
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         expect((await run(opts)).outcomes[0]!.status).toBe('cache-hit-remote')
         const db = new Database(path.join(fixture.root, '.vx', 'cache', 'cache.db'), {
           readonly: true,
@@ -293,7 +293,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         })
         expect(first.ok).toBe(true)
         expect(remote.store.size).toBe(1)
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         remote.getCounts.clear()
         remote.headCounts.clear()
 
@@ -378,7 +378,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           remoteCache: seed.layer,
         })
         expect(seed.store.size).toBe(2)
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
 
         const remote = startArtifactEndpoint({ getLatencyMs: 40 })
         // Carry over the warmed artifacts to the latency server.
@@ -431,7 +431,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         })
         expect(seed.store.size).toBe(2)
         const [presentHash, absentHash] = [...seed.store.keys()] as [string, string]
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
 
         const remote = startArtifactEndpoint()
         // Carry over ONLY one artifact — the other stays a remote miss.
@@ -501,7 +501,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           remoteCache: remote.layer,
         })
         expect(first.ok).toBe(true)
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
 
         const second = await run({
           cwd: fixture.root,
@@ -637,7 +637,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         })
         expect(warm.ok).toBe(true)
         expect(remote.store.size).toBe(1)
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         remote.getCounts.clear()
         absent.mockClear()
         prefetch.mockClear()
@@ -701,7 +701,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         })
         expect(warm.ok).toBe(true)
         expect(remote.store.size).toBe(2)
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
 
         calls = 0
         const res = await run({
@@ -839,7 +839,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         // No local cache.db entry was written (local writes were off);
         // the next run with remote reads on serves the artifact from the
         // remote layer.
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         const second = await run({
           cwd: fixture.root,
           tasks: ['build'],
@@ -951,7 +951,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(puts).toHaveLength(2)
         expect(puts[1]).toBe(puts[0])
 
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         await rm(out)
         expect(await once()).toBe('cache-hit-remote')
         expect(await Bun.file(out).text()).toBe(forced)
@@ -998,7 +998,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(await statuses()).toEqual({ 'app#build': 'success', 'app#deploy': 'success' })
         expect(remote.store.size).toBe(1)
 
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         await rm(path.join(fixture.root, 'packages', 'app', 'out.txt'))
         expect(await statuses()).toEqual({
           'app#build': 'cache-hit-remote',
@@ -1096,7 +1096,7 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
         expect(produced.storedPeakRssBytes).toBeUndefined()
 
         // The fresh runner: no local cache, no history.
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         const second = await run({
           cwd: fixture.root,
           tasks: ['build'],
@@ -1155,7 +1155,7 @@ describe('orchestrator: a prefetch still in flight at the end of the run', () =>
         })
         expect(first.ok).toBe(true)
         expect(warm.store.size).toBe(2)
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
 
         const slow = startArtifactEndpoint({ getLatencyMs: 150 })
         for (const [h, body] of warm.store) slow.store.set(h, body)
@@ -1272,7 +1272,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
         expect(first.ok).toBe(true)
         expect(mem.puts).toBe(1) // write-through landed in the injected layer
 
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         const second = await run({
           cwd: fixture.root,
           tasks: ['build'],
@@ -1333,7 +1333,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
           fetched: false,
           uploads: { count: 1, bytes: size, ms: miss.uploads!.ms, failed: 0 },
         })
-        await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         expect(await runOnce()).toEqual({
           source: 'remote',
           bytes: size,
@@ -1363,8 +1363,8 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
       try {
         // A cache plugin that would ABORT the run if consulted: the
         // injection-wins precedence is only proven if this never fires.
-        await writeFile(
-          path.join(fixture.root, 'vx.workspace.mjs'),
+        await Bun.write(
+          path.join(fixture.root, '.vx/workspace.mjs'),
           localWorkspaceSource([
             pluginSource(
               'test/poison-cache',
@@ -1475,8 +1475,8 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
           files: { 'src/in.txt': 'v1' },
           config: BUILD_CONFIG,
         })
-        await writeFile(
-          path.join(fixture.root, 'vx.workspace.mjs'),
+        await Bun.write(
+          path.join(fixture.root, '.vx/workspace.mjs'),
           localWorkspaceSource([
             `                ${pluginSource(
               'test/remote',

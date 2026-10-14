@@ -171,7 +171,7 @@ describe('the lifecycle is reached on a run that FAILED', () => {
   // shape. It does not — pinned here so it stays that way.
   it('a failing task still flushes sinks and tears plugins down', async () => {
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
         [
           pluginSource(
@@ -211,7 +211,7 @@ describe('the lifecycle is reached on a run that FAILED', () => {
   // warning lands above it, so the footer's result line is the last word.
   it("a teardown's warning prints above the footer", async () => {
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([pluginSource('org/bad', `{ teardown() { throw new Error('boom') } }`)]),
     )
     const lines: string[] = []
@@ -266,7 +266,7 @@ describe('the lifecycle is reached on a run a signal stops', () => {
   const workspace = (teardown: string): Promise<number> => {
     const log = JSON.stringify(path.join(root, 'lifecycle.txt'))
     return Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
         [
           pluginSource(
@@ -358,7 +358,7 @@ describe('an injected bus outlives the run: what a run subscribed leaves with it
       `export default { tasks: { hello: { exec: { command: 'echo hello' } } } }`,
     )
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
         [
           pluginSource(
@@ -467,7 +467,7 @@ describe('the lifecycle is reached on a run that never started', () => {
   /** Plugin `org/a` logs its setup and teardown; `org/b` gets `bHooks` and a teardown. */
   const withPlugins = async (bHooks: string): Promise<void> => {
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
         [
           pluginSource(

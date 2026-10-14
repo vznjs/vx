@@ -1,7 +1,7 @@
 # Config schema
 
 Complete reference for every field accepted by `vx.config.{ts,mts,js,mjs,cts,cjs}`
-and the workspace-level `vx.workspace.{ts,mts,js,mjs,cts,cjs}`, which is
+and the workspace-level `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`, which is
 required: it marks the workspace root (cli.md § The workspace root). The
 authoritative TypeScript definitions live in `src/config.ts` and are
 re-exported from `@vzn/vx`.
@@ -11,7 +11,11 @@ re-exported from `@vzn/vx`.
 ```
 <workspaceRoot>/
 ├── pnpm-workspace.yaml          (or: package.json with "workspaces", or bare package.json)
-├── vx.workspace.ts              (required: marks the root; workspace-wide settings)
+├── .vx/
+│   ├── workspace.ts             (required: marks the root; workspace-wide settings)
+│   ├── lock.json                (`vx lock`; committed)
+│   ├── .gitignore               (`/cache`; written by `vx init` and the cache when missing)
+│   └── cache/                   (machine-local state; the only part git ignores)
 └── packages/
     └── <pkg>/
         ├── package.json
@@ -753,7 +757,7 @@ Each field is resolved on its own, highest first:
    (a CI job that wants `error` sets it without editing configs); any
    other value is refused before a task runs;
 2. the task's own `cache.inputStability`;
-3. the workspace's `inputStability` (`vx.workspace.ts`);
+3. the workspace's `inputStability` (`.vx/workspace.ts`);
 4. the default, `'immutable'` and `'warn'`.
 
 Never folded into a cache key.
@@ -864,8 +868,8 @@ package.json. A task with no _file_ inputs (e.g. a pure
 Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`.
-- **Always-ignored** — `.git/**`, `.vx/**`, `*.tsbuildinfo`,
-  `vx-lock.json`, `*.bun-build`, and Bun's cross-compile extraction
+- **Always-ignored** — `.git/**`, `.vx/cache/**`, `*.tsbuildinfo`,
+  `.vx/lock.json`, `*.bun-build`, and Bun's cross-compile extraction
   directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
   `.vx-tmp-*`, at any depth.
 - **Installs** — an untracked file under any `node_modules/` (ignored or
@@ -919,8 +923,8 @@ backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 `C:/src/**`). A backslash before a bracket, a brace, a `!` or a
 backslash stays an escape.
 
-Still applied: the always-ignored set (`.git/**`, `.vx/**`,
-`*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
+Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
+`*.tsbuildinfo`, `.vx/lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
 in its own project (a task never invalidates itself).
@@ -1362,7 +1366,7 @@ vx removes the empty file it made (it takes back any placeholder the
 task never wrote, so an unwritten one is never archived as an output).
 A grant that leaves the project through a symlink is refused: the grant
 binds the path it names, and vx follows no link out of the project. So
-is one whose bind would make `.git`, `.vx`, the cache directory or a
+is one whose bind would make `.git`, `.vx/cache`, the cache directory or a
 nested project writable:
 a file grant at a single-package workspace's root binds the root. A
 directory grant is judged as the directory, made before the judgement
@@ -1597,11 +1601,13 @@ The loader rejects:
 - A task with no `exec`, no `dependsOn` and no `cache` (literal no-op).
 - A group whose `cache.outputs` names a file (a group writes nothing).
 
-## Workspace config (`vx.workspace.ts`)
+## Workspace config (`.vx/workspace.ts`)
 
-Loaded from `vx.workspace.{ts,mts,js,mjs,cts,cjs}` at the workspace root.
-**Optional** — when missing, every field falls back to its built-in
-default.
+Loaded from `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`: the directory holding
+`.vx` is the workspace root. `.vx` also holds the lock (`.vx/lock.json`)
+and `.vx/cache`, the machine-local state (the cache, the workspace id),
+which is the only part git ignores: `.vx/.gitignore` says `/cache`. Every field falls back to its
+built-in default.
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
@@ -1668,7 +1674,7 @@ default and where it came from.
 | `run.killGrace`                                | `VX_RUN_KILL_GRACE`                 | `--kill-grace`       | a duration like '500ms', '30s' or '5m', at most 24 days                 | 2s                                         | How long a task that ignores SIGTERM gets before SIGKILL.                                                                                           |
 | `run.teardownTimeout`                          | `VX_RUN_TEARDOWN_TIMEOUT`           | `--teardown-timeout` | a duration like '500ms', '30s' or '5m', at most 24 days                 | 3s                                         | The bound on each plugin's end-of-run flush and teardown.                                                                                           |
 | `run.readyNotice`                              | `VX_RUN_READY_NOTICE`               | `--ready-notice`     | a duration like '500ms', '30s' or '5m', at most 24 days                 | 10s                                        | How long a persistent task may take to match `readyWhen` before vx says it waits.                                                                   |
-| `run.frozen`                                   | `VX_RUN_FROZEN`                     | `--frozen`           | true or false                                                           | on when CI is set                          | Load configs from `vx-lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.                                               |
+| `run.frozen`                                   | `VX_RUN_FROZEN`                     | `--frozen`           | true or false                                                           | on when CI is set                          | Load configs from `.vx/lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.                                              |
 | `run.rules.exclusiveOutputs`                   | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | —                    | true or false                                                           | true                                       | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                               |
 | `run.rules.upfrontKeys`                        | `VX_RUN_RULES_UPFRONT_KEYS`         | —                    | true or false                                                           | true                                       | Refuse a task whose inputs can match another task's outputs.                                                                                        |
 | `cache.dir`                                    | `VX_CACHE_DIR`                      | `--cache-dir`        | a non-blank string                                                      | .vx/cache, entries in ~/.vx/<repo>/cache   | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                             |
@@ -1705,7 +1711,7 @@ interface RunSettings {
   killGrace?: Duration
   teardownTimeout?: Duration
   readyNotice?: Duration
-  /** Load configs from vx-lock.json; on when CI is set. */
+  /** Load configs from .vx/lock.json; on when CI is set. */
   frozen?: boolean
   /** Graph rules `vx lock` and every unfrozen run check; each on unless set to false. */
   rules?: { exclusiveOutputs?: boolean; upfrontKeys?: boolean; dependencies?: DependencyRule[] }
@@ -1743,7 +1749,7 @@ interface CacheSettings {
   end-of-run flush and teardown (3 s; there is no "no limit"), and how
   long a persistent task may wait for `readyWhen` before vx says what it
   waits for (10 s).
-- **`run.frozen`** — load configs from `vx-lock.json` instead of
+- **`run.frozen`** — load configs from `.vx/lock.json` instead of
   evaluating them; on when `CI` is set. A frozen run checks no graph
   rules: `vx lock` checked them when it wrote the lock, and with no lock
   the run writes one first (`docs/cli.md` § `--frozen`).
@@ -1765,7 +1771,10 @@ interface CacheSettings {
   `package.json` or `pnpm-workspace.yaml` (`''` and `'.'` name the
   root), whose subdirectory does (`'packages'`), or that holds the
   workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
-  `.gitignore` would hide the sources from git and the cache keys.
+  `.gitignore` would hide the sources from git and the cache keys. A
+  directory other than the default `.vx/cache` gets that `*` `.gitignore`;
+  the default is ignored by `.vx/.gitignore` (`/cache`) instead, written
+  when missing and never edited.
 - **`cache.retention`** — the `vx cache prune` policy, applied at the
   end of every run: entries unused for
   `olderThan` (`30d`, `12h`, `90m`, `45s`) go first, then the
@@ -1849,7 +1858,7 @@ interface CacheSettings {
     overlap are refused even when a `dependsOn` edge orders them:
     `<a> and <b> both declare the output "<glob>" … Give each task its
 own output path, or set run.rules.exclusiveOutputs: false in
-vx.workspace.ts to let a dependant add to its upstream's outputs.`
+.vx/workspace.ts to let a dependant add to its upstream's outputs.`
     Off, the dependant adds to its upstream's tree (item 588;
     `caching.md` § Additive outputs). Two overlapping tasks with no
     edge are refused either way.
@@ -1862,7 +1871,7 @@ vx.workspace.ts to let a dependant add to its upstream's outputs.`
     edge or no edge: `<reader> reads "<glob>" in cache.inputs.<field>,
 which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
 to <reader>'s cache.inputs.<field>, or set run.rules.upfrontKeys:
-false in vx.workspace.ts to let it wait for its producer.` Such a key
+false in .vx/workspace.ts to let it wait for its producer.` Such a key
     reads what the producer writes this run, so vx cannot know it before
     the producer ran: it is not probed, prefetched or restored ahead of
     the schedule (`caching.md` § Local restore tier). The upstream's key
@@ -2291,7 +2300,7 @@ the project's top level (`tasks`), the task itself, `exec`, `exec.env`,
 `exec.persistent`, `exec.sandbox` and its `allow` /
 `deny` / `ignore` blocks, `cache`, `cache.inputs`, and `cache.outputs`
 (`tests/schema-unknown-keys.test.ts` walks every one) — and at the top
-of `vx.workspace.ts`,
+of `.vx/workspace.ts`,
 where `plugin:` (singular) would otherwise declare no plugins and run
 the workspace bare. A silently-dropped
 `workspaceFile` (singular) or `timeoutMs` would make the task hash as

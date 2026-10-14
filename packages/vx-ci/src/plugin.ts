@@ -15,7 +15,7 @@ import {
 import type { FetchFn } from './checks.js'
 import { githubCacheScope } from './cache-scope.js'
 
-// Every run evaluates `vx.workspace.ts`; the sink, the summary renderer
+// Every run evaluates `.vx/workspace.ts`; the sink, the summary renderer
 // and the Checks API client load only where a summary file is set. The
 // telemetry hook is synchronous, so the module loads by `require`.
 const loadSink = (): typeof import('./sink.js') => createRequire(import.meta.url)('./sink.js')

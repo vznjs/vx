@@ -84,7 +84,7 @@ excluded from the up-front probe. A task whose input globs can match
 another task's declared outputs (a `test` task reading `dist/**`
 produced by `build`) is refused at load by default, so its key can
 never be preliminary by accident; `rules.upfrontKeys: false` in
-`vx.workspace.ts` lets it run, gated the same way. The rule
+`.vx/workspace.ts` lets it run, gated the same way. The rule
 that finds it is shared between the local restore tier and remote
 prefetch, so the two cannot disagree about which keys are stable.
 

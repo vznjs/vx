@@ -154,7 +154,7 @@ function silent(): Logger {
 
 async function workspace(fn: string): Promise<void> {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource(
       [`nx({ executors: { '@acme/tools:run': ${fn} } })`],
       `import { nx } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
@@ -168,7 +168,7 @@ describe('executors: the plugin', () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'nx.json'), JSON.stringify({ namedInputs: {} }))
-    await writeFile(path.join(root, '.gitignore'), 'node_modules\n.vx\n.nx\n')
+    await writeFile(path.join(root, '.gitignore'), 'node_modules\n.vx/cache/\n.nx\n')
     const dir = path.join(root, 'packages', 'lib')
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'lib' }))

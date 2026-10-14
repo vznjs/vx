@@ -1,6 +1,6 @@
 // Public API for @vzn/vx-ci — the GitHub Actions integration plugin.
 //
-// Usage in vx.workspace.ts:
+// Usage in .vx/workspace.ts:
 //   import { defineWorkspace } from '@vzn/vx'
 //   import { github } from '@vzn/vx-ci'
 //   export default defineWorkspace({ plugins: [github()] })

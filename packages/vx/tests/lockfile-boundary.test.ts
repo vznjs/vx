@@ -1,11 +1,11 @@
-// Unit tests for `src/workspace/lockfile.ts` — the `vx-lock.json` boundary and
+// Unit tests for `src/workspace/lockfile.ts` — the `.vx/lock.json` boundary and
 // the frozen-config trust model.
 //
 // `tests/lock.test.ts` drives `vx lock` end-to-end through the real CLI (three
 // tests). This file covers the layer underneath, which is where the rules
 // actually live, and it matters for two reasons:
 //
-//   1. `vx-lock.json` is a COMMITTED, HAND-EDITABLE file. That makes
+//   1. `.vx/lock.json` is a COMMITTED, HAND-EDITABLE file. That makes
 //      `readLockfile` a system boundary in this codebase's sense — the one
 //      place validation is not merely allowed but required. Its own docstring
 //      says so. Every rejection there is a message a user reads while their CI
@@ -46,7 +46,7 @@ afterEach(async () => {
 
 /** Write raw bytes as the lock, bypassing `writeLockfile`'s shaping. */
 async function writeRaw(content: string): Promise<void> {
-  await writeFile(lockfilePath(root), content)
+  await Bun.write(lockfilePath(root), content)
 }
 
 /**
@@ -83,12 +83,12 @@ function lock(over: Partial<Lockfile> = {}): Lockfile {
 }
 
 describe('lockfilePath', () => {
-  it('is vx-lock.json at the workspace root', () => {
+  it('is .vx/lock.json at the workspace root', () => {
     // The name is part of the user contract — it is committed, it appears in
     // .gitignore discussions, and `--frozen` error messages tell people to
     // delete it by name.
-    expect(lockfilePath(root)).toBe(path.join(root, 'vx-lock.json'))
-    expect(LOCKFILE_NAME).toBe('vx-lock.json')
+    expect(lockfilePath(root)).toBe(path.join(root, '.vx/lock.json'))
+    expect(LOCKFILE_NAME).toBe('.vx/lock.json')
   })
 })
 
@@ -263,17 +263,18 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     await writeLockfile(root, lock())
     expect(await Bun.file(other).text()).toBe(before)
     expect(Object.keys((await readLockfile(root))?.projects ?? {})).toEqual(['pkg'])
-    expect((await readdir(root)).sort()).toEqual(['other.json', LOCKFILE_NAME].sort())
+    expect((await readdir(root)).sort()).toEqual(['.vx', 'other.json'])
+    expect(await readdir(path.join(root, '.vx'))).toEqual(['lock.json'])
   })
 
   it('a rename that fails leaves no temp behind and rejects (item 972)', async () => {
     // A directory where the lock goes: the rename onto it fails.
     await mkdir(path.join(lockfilePath(root), 'x'), { recursive: true })
     await expect(writeLockfile(root, lock())).rejects.toThrow()
-    expect(await readdir(root)).toEqual([LOCKFILE_NAME])
+    expect(await readdir(path.join(root, '.vx'))).toEqual(['lock.json'])
   })
 
-  it('a refused write names vx-lock.json, not its temp (item 972)', async () => {
+  it('a refused write names .vx/lock.json, not its temp (item 972)', async () => {
     // What a read-only checkout prints comes from this message. A root run
     // is refused no write for permissions, and `Bun.write` makes a missing
     // directory, so a FILE where the root should be stands in for it.
@@ -327,7 +328,7 @@ describe('frozenProjectConfig — the trust model', () => {
         frozenProjectConfig(lock(), { name, configPath: path.join(root, 'x/vx.config.ts') }, root),
       )
       expect(err.message).toBe(
-        `vx-lock.json has no entry for "${name}" (x/vx.config.ts) — run \`vx lock\` to refresh, or delete vx-lock.json`,
+        `.vx/lock.json has no entry for "${name}" (x/vx.config.ts) — run \`vx lock\` to refresh, or delete .vx/lock.json`,
       )
     }
   })

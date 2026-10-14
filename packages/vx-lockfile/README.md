@@ -13,7 +13,7 @@ npm install -D @vzn/vx @vzn/vx-lockfile   # or: pnpm add -D -w · yarn add -D (-
 ```
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { pnpm } from '@vzn/vx-lockfile' // or bun, npm, yarn
 
@@ -57,7 +57,7 @@ Declaring any of the four plugins adds `vx prune` (the `commands` seam): the wor
 vx prune <project...> [--out-dir <dir>] [--docker] [--production]
 ```
 
-The out dir (default `out/`, relative to the cwd) gets the root `package.json` with `workspaces` rewritten to the subset's dirs (a glob character in a dir name bracketed, `a[1]` → `a[[]1]`, so the pattern matches that dir alone), `pnpm-workspace.yaml` with `packages` rewritten (every other key as written), each lockfile at the root **pruned** to what the subset installs, the install config (`.npmrc`, `.yarnrc.yml`, `.pnpmfile.cjs`, `bunfig.toml`, `.nvmrc`, `.node-version`, the patch files `patchedDependencies` names, Yarn's `yarnPath` and plugins), `vx.workspace.*`, the root `vx.config.*`, and each project directory less `node_modules`, `.git`, `.vx` and `.turbo`. A workspace package a copied vx config imports (a local plugin) comes along with its closure: the config loads before any task. A relative config import that leaves the subset is warned about. `--docker` writes `json/` — the root install files and each project's `package.json`, the cacheable install layer — and `full/`, everything:
+The out dir (default `out/`, relative to the cwd) gets the root `package.json` with `workspaces` rewritten to the subset's dirs (a glob character in a dir name bracketed, `a[1]` → `a[[]1]`, so the pattern matches that dir alone), `pnpm-workspace.yaml` with `packages` rewritten (every other key as written), each lockfile at the root **pruned** to what the subset installs, the install config (`.npmrc`, `.yarnrc.yml`, `.pnpmfile.cjs`, `bunfig.toml`, `.nvmrc`, `.node-version`, the patch files `patchedDependencies` names, Yarn's `yarnPath` and plugins), `.vx/workspace.*`, the root `vx.config.*`, and each project directory less `node_modules`, `.git`, `.vx` and `.turbo`. A workspace package a copied vx config imports (a local plugin) comes along with its closure: the config loads before any task. A relative config import that leaves the subset is warned about. `--docker` writes `json/` — the root install files and each project's `package.json`, the cacheable install layer — and `full/`, everything:
 
 ```dockerfile
 COPY out/json/ .

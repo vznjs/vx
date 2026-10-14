@@ -46,7 +46,7 @@ would run:
 | `--continue`        | keep going after a failure ([modes](../configure/#tasks-and-dependencies)) |
 | `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |
 | `--summarize`       | write a JSON summary of the run                             |
-| `--no-frozen`       | evaluate the configs instead of loading `vx-lock.json` ([below](#a-frozen-graph)) |
+| `--no-frozen`       | evaluate the configs instead of loading `.vx/lock.json` ([below](#a-frozen-graph)) |
 
 Every flag: [the CLI reference](../../cli/).
 
@@ -85,7 +85,7 @@ jobs:
 ```
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-ci'
 
@@ -125,7 +125,7 @@ A failure on inputs that passed before says so on its row:
 ### A frozen graph
 
 `vx lock` writes each project's resolved config, with a hash of its
-config file, to `vx-lock.json`, and refuses a graph that breaks a
+config file, to `.vx/lock.json`, and refuses a graph that breaks a
 `run.rules` rule (two tasks writing one output, an input that reads
 another task's output); commit it. Under CI (`CI` set) a run is frozen:
 it loads the configs from the lock instead of evaluating them, writes
@@ -167,7 +167,7 @@ A shared cache is a plugin. vx looks here, then asks the remote, and
 uploads new results in the background.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
@@ -205,7 +205,7 @@ Buildbarn); the graph and the scheduling stay here. It is never on by
 default:
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 

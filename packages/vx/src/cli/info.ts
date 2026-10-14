@@ -123,7 +123,7 @@ export function renderInfo(f: InfoFacts): string {
     ],
     ['flaky tasks', describeFlakyTasks(f.flakyTasks)],
     ['sandbox', describeSandbox(f.sandbox)],
-    ['vx-lock.json', f.lockfile ? 'yes' : 'no'],
+    ['.vx/lock.json', f.lockfile ? 'yes' : 'no'],
   ]
   const labelW = Math.max(...rows.map(([label]) => label.length))
   return rows.map(([label, value]) => `${`${label}:`.padEnd(labelW + 1)} ${value}`).join('\n')
@@ -141,14 +141,14 @@ function describeEntries(f: InfoFacts): string {
 
 /**
  * The settings not at their default, with where each came from:
- * `run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (vx.workspace)`.
+ * `run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (.vx/workspace)`.
  */
 function describeSettings(settings: InfoFacts['settings']): string {
   return Object.entries(settings)
     .filter(([, s]) => s.source !== 'default')
     .map(
       ([path, s]) =>
-        `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : 'vx.workspace'})`,
+        `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : '.vx/workspace'})`,
     )
     .join(', ')
 }
@@ -184,10 +184,10 @@ function describeSandbox(s: InfoFacts['sandbox']): string {
   return `unavailable — ${s.reason}; ${declared}${s.declared > 0 ? ' and will fail' : ''}`
 }
 
-/** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 — vx.workspace.ts (4 cores)`. */
+/** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 — .vx/workspace.ts (4 cores)`. */
 export function describeWorkers(w: InfoFacts['workers']): string {
   const quota = w.cpuQuota === null ? '' : `, cgroup CPU quota ${trimCores(w.cpuQuota)}`
-  if (w.source === 'workspace') return `${w.count} — vx.workspace.ts (${w.cores} cores${quota})`
+  if (w.source === 'workspace') return `${w.count} — .vx/workspace.ts (${w.cores} cores${quota})`
   if (w.source === 'cgroup')
     return `${w.count} — cgroup CPU quota ${trimCores(w.cpuQuota ?? w.count)} of ${w.cores} cores`
   return `${w.count} — the CPU count${quota}`

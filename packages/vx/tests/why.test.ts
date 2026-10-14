@@ -435,7 +435,7 @@ describe('vx why (e2e) — answers from the database alone', () => {
     async () => {
       // The guide states the one exception: the workspace file is evaluated
       // once, to find the cache directory — UNLESS --cache-dir names it.
-      const ws = path.join(root, 'vx.workspace.mjs')
+      const ws = path.join(root, '.vx/workspace.mjs')
       await writeFile(ws, "throw new Error('WORKSPACE FILE EVALUATED')\n")
       const cacheDir = path.join(root, '.vx', 'cache')
       const r = await vx(root, ['why', 'app#build', '--cache-dir', cacheDir])

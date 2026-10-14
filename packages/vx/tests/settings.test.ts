@@ -1,6 +1,6 @@
 // src/settings.ts is the one list of vx's settings: every `VX_*` name core
 // reads is one of them (or a variable vx sets for tasks), every
-// `vx.workspace` group field is one, a flag beats its variable, which
+// `.vx/workspace` group field is one, a flag beats its variable, which
 // beats the workspace, and the docs' tables are generated from it.
 //
 //   VX_UPDATE_CONTRACT=1 bun test tests/settings.test.ts   (rewrite the tables)
@@ -131,7 +131,7 @@ describe('a workspace', () => {
   it('takes every setting at its path', () => {
     const config: Record<string, unknown> = {}
     for (const s of SETTINGS) if (s.config !== false) setAt(config, s.path, sample(s))
-    expect(() => validateWorkspace(config, 'vx.workspace.ts')).not.toThrow()
+    expect(() => validateWorkspace(config, '.vx/workspace.ts')).not.toThrow()
   })
 
   it('refuses a setting read before it loads, and a field no setting is', () => {

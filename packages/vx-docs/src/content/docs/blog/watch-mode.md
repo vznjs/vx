@@ -45,7 +45,7 @@ containing directories, so a `dist/**` glob does not re-trigger on the
 it is not an edit. A task that rewrites its own files costs one extra
 cycle, which the cache serves, and then settles.
 
-Always ignored regardless: `node_modules`, `.git`, `.vx`, the run's
+Always ignored regardless: `node_modules`, `.git`, `.vx/cache`, the run's
 resolved cache directory wherever `--cache-dir` put it, `.tsbuildinfo`
 files, editor backup files (a trailing `~`), and any untracked path git
 ignores (one `git check-ignore` per debounce window): such a path is in

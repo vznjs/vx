@@ -92,7 +92,7 @@ describe('checkDependencyRules', () => {
 describe('the schema', () => {
   const refusal = (dependencies: unknown) => {
     try {
-      validateWorkspace({ run: { rules: { dependencies } } } as never, 'vx.workspace.ts')
+      validateWorkspace({ run: { rules: { dependencies } } } as never, '.vx/workspace.ts')
       return null
     } catch (err) {
       return (err as Error).message
@@ -102,13 +102,13 @@ describe('the schema', () => {
     expect(refusal([{ from: 'tag:app', allow: ['tag:lib'], deny: ['x'] }])).toBeNull()
     expect(refusal({ from: 'a' })).toContain('must be an array of { from, allow?, deny? }')
     expect(refusal([{ from: 'a' }])).toBe(
-      'vx.workspace.ts: `run.rules.dependencies`[0] names neither `allow` nor `deny`',
+      '.vx/workspace.ts: `run.rules.dependencies`[0] names neither `allow` nor `deny`',
     )
     expect(refusal([{ from: '', deny: ['b'] }])).toBe(
-      "vx.workspace.ts: `run.rules.dependencies`[0].from must be a selector like 'tag:app'",
+      ".vx/workspace.ts: `run.rules.dependencies`[0].from must be a selector like 'tag:app'",
     )
     expect(refusal([{ from: 'a', deny: 'b' }])).toBe(
-      "vx.workspace.ts: `run.rules.dependencies`[0].deny must be an array of selectors like 'tag:lib'",
+      ".vx/workspace.ts: `run.rules.dependencies`[0].deny must be an array of selectors like 'tag:lib'",
     )
     expect(refusal([{ from: 'a', deny: ['b'], only: [] }])).toContain('unknown field')
   })
@@ -129,8 +129,8 @@ describe('vx lock', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
       )
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         `export default { run: { rules: { dependencies: [{ from: 'tag:lib', deny: ['tag:app'] }] } } }\n`,
       )
       for (const [name, tag, deps] of [
@@ -158,11 +158,11 @@ describe('vx lock', () => {
       expect({
         code: r.exitCode,
         err: r.stderr.toString().split('\n').slice(0, 2),
-        written: existsSync(path.join(root, 'vx-lock.json')),
+        written: existsSync(path.join(root, '.vx/lock.json')),
       }).toEqual({
         code: 1,
         err: [
-          'vx lock: vx-lock.json not written: 1 dependency breaks run.rules.dependencies:',
+          'vx lock: .vx/lock.json not written: 1 dependency breaks run.rules.dependencies:',
           "  lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies",
         ],
         written: false,

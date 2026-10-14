@@ -87,7 +87,7 @@ describe('a task killed by a shutdown signal', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\nkill.flag\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\nkill.flag\n')
 
       await write(path.join(root, 'packages/a/package.json'), '{"name":"a","version":"0.0.0"}')
       await write(path.join(root, 'packages/a/src/in.txt'), 'a-source')
@@ -155,7 +155,7 @@ describe('a task killed by a shutdown signal', () => {
     async () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/\n')
+      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default {
@@ -197,7 +197,7 @@ describe('a task killed by a shutdown signal', () => {
     async () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/\n')
+      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
       // `slow` holds `later` back until selfkill's third attempt, then
       // 0.3 s: a flat `sleep 0.3` raced three spawns and lost under gate
       // load, so `later` ran before fail-fast tripped (C-44).
@@ -230,7 +230,7 @@ describe('a task killed by a shutdown signal', () => {
     async () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
-      await write(path.join(root, '.gitignore'), '.vx/\n')
+      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
       await write(
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { fine: { exec: { command: 'echo fine' } } } }`,

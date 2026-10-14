@@ -140,8 +140,8 @@ async function generate(dir: string): Promise<void> {
   // timings file from an earlier run recorded. The file sits outside .vx,
   // so a cache wipe keeps it, as CI caches it between runners.
   const history = path.join(vxRoot, 'packages', 'vx-schedule-history', 'src', 'index.ts')
-  await writeFile(
-    path.join(dir, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(dir, '.vx/workspace.mjs'),
     `import { scheduleHistoryPlugin } from ${JSON.stringify(history)}\n` +
       `export default { plugins: [scheduleHistoryPlugin({ file: 'vx-timings.json' })] }\n`,
   )
@@ -344,7 +344,7 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   const vxCommit = rev.ok ? rev.out.trim() : ''
   const vxVer = `${(await sh([...vxRun, '--version'], dir)).out.trim() || 'workspace'}${vxCommit ? ` @ ${vxCommit}` : ''}`
   const conc = ['--concurrency', String(CONCURRENCY)]
-  const clearVx = () => rm(path.join(dir, '.vx'), { recursive: true, force: true })
+  const clearVx = () => rm(path.join(dir, '.vx', 'cache'), { recursive: true, force: true })
   const suffix = compiled.ok ? '' : ' (ts-source)'
   // The headline vx row runs from a lock taken once here, before any rep:
   // the CI fast path, no config evaluation per run. A failed lock is a bug

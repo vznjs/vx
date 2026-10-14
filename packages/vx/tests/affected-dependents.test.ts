@@ -299,7 +299,7 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
   /** Commits a workspace whose plugin runs `body` as its `graph` hook. */
   async function graphPlugin(body: string): Promise<void> {
     await write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([pluginSource('org/edge', `{ graph(nodes) { ${body} } }`)]),
     )
     git(root, 'add', '-A')

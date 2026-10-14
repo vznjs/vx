@@ -19,7 +19,7 @@ other way.
 relationships, and the settings that apply to all of them.** A workspace
 is what a single command operates over.
 
-- vx: the workspace, configured by `vx.workspace.ts` ([workspace config](../guides/configure/#workspace-config))
+- vx: the workspace, configured by `.vx/workspace.ts` ([workspace config](../guides/configure/#workspace-config))
 - Turborepo: the Workspace ([package and task graphs](https://turborepo.com/docs/core-concepts/package-and-task-graph))
 - Nx: the workspace ([glossary](https://nx.dev/docs/reference/glossary#workspace))
 - Bazel: the workspace, organised into [repositories](https://bazel.build/reference/glossary#repository)

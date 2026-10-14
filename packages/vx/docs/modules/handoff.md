@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The workspace root is the directory holding the nearest `vx.workspace.*`
+The workspace root is the directory holding the nearest `.vx/workspace.*`
 from the working directory up to the git top-level, or up to `/` outside
 git (owner, 2026-10-13: "Workspace file is the ultimate", "never go out
 of git root"). Nothing else decides it. `findWorkspaceRoot` (workspace
@@ -32,11 +32,13 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
 // the git top-level holding `dir` (a `.git` dir, or a worktree's `.git` file;
 // a submodule's goes on to its superproject), null outside git; once per dir
 export function gitTop(dir: string): Promise<string | null>
-// the nearest vx.workspace.* from `dir` up to the git top-level (or `/`
+// the nearest .vx/workspace.* from `dir` up to the git top-level (or `/`
 // outside git), null when none; once per directory walked
 export function workspaceFile(dir: string): Promise<string | null>
-// the six names, in lookup order (ts mts js mjs cts cjs)
+// the six paths from the root, in lookup order (ts mts js mjs cts cjs)
 export const WORKSPACE_CONFIG_FILENAMES: string[]
+// the root a found `.vx/workspace.*` marks: the directory holding its `.vx`
+export function workspaceRootOf(file: string): string
 export function vxPath(): string // the compiled binary, else the source entry
 ```
 

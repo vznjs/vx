@@ -5,7 +5,7 @@
 // started fell over. Until 2026-09-10 the wait was for every server, so a
 // crash left the rest running under a run that never returned.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -300,8 +300,9 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   // wait, so through a dev session it heard the server after its teardown.
   it('a plugin hears nothing after its teardown while vx holds a server', async () => {
     const heard = path.join(root, 'heard.txt')
+    mkdirSync(path.join(root, '.vx'), { recursive: true })
     writeFileSync(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
         [
           pluginSource(

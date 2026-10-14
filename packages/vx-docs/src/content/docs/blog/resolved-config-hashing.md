@@ -111,7 +111,7 @@ what makes having it at all sound.
 
 Sometimes you want the evaluation pinned rather than repeated. `vx lock`
 evaluates every config now and writes the resolved objects plus a
-content hash of each file to `vx-lock.json`; `vx run --frozen` consumes
+content hash of each file to `.vx/lock.json`; `vx run --frozen` consumes
 the lock with no evaluation at all, and `vx lock --check` re-evaluates
 everything against it and exits non-zero on drift, including drift a
 byte hash cannot see: an env value read at eval time, an import that

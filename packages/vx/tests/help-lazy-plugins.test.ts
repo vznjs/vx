@@ -1,7 +1,7 @@
 // `vx help` and `vx completions` list plugin verbs, and finding them
 // imported the orchestrator (~50 ms of a 70 ms `vx help`) even where no
 // workspace file exists to declare a plugin. A shell sources
-// `vx completions` at every start. Without a `vx.workspace.*` the lookup
+// `vx completions` at every start. Without a `.vx/workspace.*` the lookup
 // now skips that import; with one it loads as before.
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -56,7 +56,7 @@ it(
 it(
   'a workspace file: loaded as before (control)',
   async () => {
-    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
     expect(await helpLines()).toEqual({ lines: [], orchestrator: true })
   },
   TIMEOUT,

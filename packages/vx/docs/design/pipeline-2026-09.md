@@ -70,7 +70,7 @@ Rules that keep it a pipeline and not a soup:
    **SUPERSEDED.** Running here and caching here became core's FLOOR
    rather than plugins: `plugin-host.ts` pushes `localExecutor()` as the
    TAIL of every executor list and the local store sits at the end of
-   every cache chain, so a workspace with no `vx.workspace.ts` runs and
+   every cache chain, so a workspace with no `.vx/workspace.ts` runs and
    caches, and a plugin that declines a task hands it back to this
    machine. The half of the rule that still holds is the half that
    matters: core NAMES no plugin, and a capability a plugin must supply

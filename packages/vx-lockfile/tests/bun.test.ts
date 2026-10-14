@@ -447,8 +447,8 @@ describe('vx run with bun() declared', () => {
       await writeFile(path.join(dir, 'vx.config.mjs'), BUILD)
     }
     await writeFile(path.join(root, 'bun.lock'), lock())
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(['bun()'], `import { bun } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
     )
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })

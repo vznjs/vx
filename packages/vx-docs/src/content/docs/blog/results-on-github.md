@@ -12,7 +12,7 @@ excerpt: 'One plugin line puts every vx run on GitHub: a job summary with the fa
 A red CI job should not mean scrolling a log. `@vzn/vx-ci` writes each
 `vx run` where you already look on GitHub.
 
-```ts title="vx.workspace.ts"
+```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-ci'
 
@@ -69,7 +69,7 @@ default branch sets no scope, so it reads and writes the default keys. A
 pull request becomes `pr-<n>`: it reads main's keys first, then its own,
 and writes only its own. So
 a branch never writes what main reads. Set `github({ cacheScope: false })`
-to opt out, or set `cache.scope` in `vx.workspace.ts` yourself.
+to opt out, or set `cache.scope` in `.vx/workspace.ts` yourself.
 
 ## It never breaks the build
 

@@ -517,8 +517,8 @@ describe('vx run with pnpm() declared', () => {
   })
 
   async function workspace(...plugins: string[]): Promise<void> {
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(plugins, `import { pnpm } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
     )
   }

@@ -9,7 +9,7 @@
 #
 #   real/nx-repo.sh <repo> <vx-binary> "<tasks>" [reps]
 #
-# Or with `plugins: [nx()]` in vx.workspace.mjs and nothing written
+# Or with `plugins: [nx()]` in .vx/workspace.mjs and nothing written
 # (2026-09-27). Otherwise the repo must be installed, its graph exported
 # (`nx graph --file=.nx/workspace-data/project-graph.json`) and migrated
 # (`bun packages/vx-migrate/src/bin.ts --from nx` from the repo root),

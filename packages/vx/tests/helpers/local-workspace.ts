@@ -6,7 +6,7 @@ const here = import.meta.dir
 export const CORE_INDEX = path.resolve(here, '../../src/index.ts')
 
 /**
- * Source for a `vx.workspace.mjs` declaring the test's own plugins.
+ * Source for a `.vx/workspace.mjs` declaring the test's own plugins.
  *
  * Running here and caching here are core's fallbacks, so a fixture that
  * wants neither needs only a bare workspace file, which marks the root. A plugin file imported by
@@ -31,10 +31,10 @@ export default { plugins: [${extra.join(', ')}]${rules === undefined ? '' : `, r
  */
 export const WAIT_FOR_PRODUCERS = '{ upfrontKeys: false }'
 
-/** Rewrites `root`'s `vx.workspace.mjs` with no plugins and `WAIT_FOR_PRODUCERS`. */
+/** Rewrites `root`'s `.vx/workspace.mjs` with no plugins and `WAIT_FOR_PRODUCERS`. */
 export async function waitForProducers(root: string): Promise<void> {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([], '', WAIT_FOR_PRODUCERS),
   )
 }
@@ -47,5 +47,5 @@ export async function waitForProducers(root: string): Promise<void> {
 export const PLUGIN_IMPORT = `import { definePlugin } from ${JSON.stringify(CORE_INDEX)}\n`
 
 export async function writeLocalWorkspace(root: string): Promise<void> {
-  await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource())
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
 }

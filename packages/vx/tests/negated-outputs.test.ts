@@ -47,8 +47,8 @@ const build = async (tasks = ['build']) => {
 }
 /** The addition shape loads only with `rules.exclusiveOutputs` off (X-53). */
 const additive = () =>
-  writeFile(
-    path.join(fx.root, 'vx.workspace.mjs'),
+  Bun.write(
+    path.join(fx.root, '.vx/workspace.mjs'),
     'export default { run: { rules: { exclusiveOutputs: false } } }\n',
   )
 const read = (rel: string): string => readFileSync(path.join(app, rel), 'utf8')

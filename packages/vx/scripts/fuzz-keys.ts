@@ -59,7 +59,7 @@ for (const p of ['a', 'b']) mkdirSync(at('packages', p, 'src'), { recursive: tru
 mkdirSync(at('shared'))
 writeFileSync(at('package.json'), '{"name":"root","private":true,"workspaces":["packages/*"]}')
 // `conf.mjs` is ignored so a stash conflict never writes markers into it.
-writeFileSync(at('.gitignore'), '.vx/\ndist/\nconf.mjs\n')
+writeFileSync(at('.gitignore'), '.vx/cache/\ndist/\nconf.mjs\n')
 writeFileSync(at('conf.mjs'), "export const SUFFIX = 'v1'\n")
 writeFileSync(at('shared/s1'), 'x')
 writeFileSync(at('packages/a/package.json'), '{"name":"a"}')

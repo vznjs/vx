@@ -31,8 +31,8 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-load-reads-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
   await project('packages', 'a')
   gitInit(root)
 })
@@ -62,7 +62,7 @@ async function fileOps(fn: () => Promise<void>): Promise<Record<string, string[]
     const f = file(p, o)
     if (typeof p !== 'string' || !p.startsWith(`${root}/`)) return f
     const rel = path.relative(root, p)
-    if (rel.startsWith('.vx')) return f
+    if (rel.startsWith('.vx/cache')) return f
     return new Proxy(f, {
       get(target, key) {
         const v = Reflect.get(target, key) as unknown
@@ -111,10 +111,10 @@ describe('a run reads each root file once', () => {
         '.git/HEAD': ['exists'],
         // The root lookup probes by precedence (three absent names, then the
         // file), and the loader reads the file it found.
-        'vx.workspace.ts': ['exists'],
-        'vx.workspace.mts': ['exists'],
-        'vx.workspace.js': ['exists'],
-        'vx.workspace.mjs': ['exists', 'bytes'],
+        '.vx/workspace.ts': ['exists'],
+        '.vx/workspace.mts': ['exists'],
+        '.vx/workspace.js': ['exists'],
+        '.vx/workspace.mjs': ['exists', 'bytes'],
         // Discovery's one read of the manifest, the loader's of the config.
         'packages/a/package.json': ['text'],
         'packages/a/vx.config.mjs': ['bytes'],

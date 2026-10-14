@@ -9,14 +9,14 @@ here and caching it on this machine (`~/.vx/<id>/cache`, or a named
 to the tail of every executor list and `resolveCache` puts the host's
 local `Cache` first in every chain, before each remote in declared order
 (`src/orchestrator/plugin-host.ts`).
-A workspace with no `vx.workspace.ts` therefore runs and caches, and a
+A workspace with no `.vx/workspace.ts` therefore runs and caches, and a
 plugin executor whose `accepts()` declines hands the task back to this
 machine.
 
 Every plugin is a package a workspace declares:
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default { plugins: [scheduleHistoryPlugin()] }

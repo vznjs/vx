@@ -27,7 +27,7 @@ canonical mechanism** that is correct in every mode, including frozen.
 `cache.inputs.env` already has exactly the right split:
 
 - the **names** (`['NODE_ENV']`) are part of the resolved config →
-  frozen into `vx-lock.json`, auditable;
+  frozen into `.vx/lock.json`, auditable;
 - the **values** are resolved **live at hash time** from
   `process.env` inside `resolveInputs` (`inputs.ts:81`), so they are
   fresh on every run including `--frozen`.

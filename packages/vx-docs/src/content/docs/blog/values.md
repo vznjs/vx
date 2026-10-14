@@ -67,7 +67,7 @@ project. What a project needs from another arrives through the graph.
 
 **No defaults.** Core names no plugin. Only the local floor is
 implicit. A capability a plugin must supply is declared in
-`vx.workspace.ts` or it does not exist. This is the principle that
+`.vx/workspace.ts` or it does not exist. This is the principle that
 keeps vx from quietly becoming a product: there is no built-in remote
 anything to grow a business model around.
 

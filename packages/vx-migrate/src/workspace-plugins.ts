@@ -4,9 +4,11 @@
 // and each is installed beside vx at vx-migrate's own version (plugins
 // pin their core peer to the release they shipped with).
 
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { lockfilePlugin } from './workspace-notes.js'
+
+export { workspaceFileAt } from './workspace-notes.js'
 
 export interface WorkspacePlugin {
   readonly pkg: string
@@ -21,11 +23,6 @@ export function workspacePlugins(root: string): WorkspacePlugin[] {
   if (existsSync(path.join(root, '.github', 'workflows')))
     out.push({ pkg: '@vzn/vx-ci', factory: 'github' })
   return out
-}
-
-/** The workspace file at `root`, in any extension the loader reads. */
-export function workspaceFileAt(root: string): string | undefined {
-  return readdirSync(root).find((n) => /^vx\.workspace\.(ts|mts|js|mjs|cts|cjs)$/.test(n))
 }
 
 /** `plugins` that `text` does not already call. */
@@ -53,7 +50,7 @@ function groupLines(
   return [...groups].map(([group, entries]) => `  ${group}: { ${entries.join(', ')} },`)
 }
 
-/** `vx.workspace.<format>` declaring `plugins`. */
+/** `.vx/workspace.<format>` declaring `plugins`. */
 export function renderWorkspaceFile(
   plugins: readonly WorkspacePlugin[],
   format: 'ts' | 'mjs',

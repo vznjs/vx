@@ -1,4 +1,4 @@
-# Config lock — `vx lock` / `vx-lock.json` (2026-06)
+# Config lock — `vx lock` / `.vx/lock.json` (2026-06)
 
 Status: **shipped**.
 
@@ -36,7 +36,7 @@ lock is the sound dependency story that rejection asked for:
 
 ## Format
 
-`vx-lock.json` at the workspace root:
+`.vx/lock.json` at the workspace root:
 
 ```json
 {
@@ -56,7 +56,7 @@ lock is the sound dependency story that rejection asked for:
   dropped both, since a run read neither and `--check` re-evaluates.
 - `validated` is a digest of the bytes above it under vx's version,
   written by `vx lock`. No reader consults it.
-- Only project configs are covered. `vx.workspace.ts` is not locked:
+- Only project configs are covered. `.vx/workspace.ts` is not locked:
   it holds `concurrency` / `cacheDir` only, neither of which
   participates in cache keys or task semantics.
 
@@ -87,10 +87,10 @@ its locked form until `vx lock`.
 
 Hard failures (`UserError`, exit 1):
 
-| condition                              | outcome                                     |
-| -------------------------------------- | ------------------------------------------- |
-| no `vx-lock.json`                      | `--frozen` refuses and names `vx lock`      |
-| project has a config but no lock entry | `vx-lock.json has no entry for "<project>"` |
+| condition                              | outcome                                      |
+| -------------------------------------- | -------------------------------------------- |
+| no `.vx/lock.json`                     | `--frozen` refuses and names `vx lock`       |
+| project has a config but no lock entry | `.vx/lock.json has no entry for "<project>"` |
 
 There is deliberately **no silent fallback to evaluation**: the lock's
 contract is "what runs is what was locked". Falling back would
@@ -147,7 +147,7 @@ cache key tracks properly).
 - `vx watch --frozen`: a config edited mid-watch starts a cycle that
   runs the locked config, unchanged, until `vx lock`; the loop hears
   the re-lock and runs the new one (item 971).
-- The lock does not cover `vx.workspace.ts` (see Format).
+- The lock does not cover `.vx/workspace.ts` (see Format).
 - `--check`'s re-evaluation runs config code; like any vx invocation
   it assumes configs are trusted code in the repo.
 

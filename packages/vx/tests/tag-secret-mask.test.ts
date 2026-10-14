@@ -34,7 +34,7 @@ async function fixture(): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
   )
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   const dir = path.join(root, 'packages', 'a')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
@@ -58,7 +58,7 @@ describe('a secret in a --tag', () => {
     })
     expect(r.exitCode).toBe(0)
     const holding: string[] = []
-    for (const f of await walk(path.join(root, '.vx')))
+    for (const f of await walk(path.join(root, '.vx', 'cache')))
       if ((await readFile(f)).includes(SECRET)) holding.push(path.relative(root, f))
     expect(holding).toEqual([])
   })

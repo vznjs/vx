@@ -59,7 +59,7 @@ beforeEach(async () => {
     )
     await writeFile(path.join(root, 'pkgs', name, 'in.txt'), 'x\n')
   }
-  await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+  await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
   git(root, 'init', '-q', '-b', 'feat')
   git(root, 'config', 'user.email', 'test@vx.local')
   git(root, 'config', 'user.name', 'vx test')

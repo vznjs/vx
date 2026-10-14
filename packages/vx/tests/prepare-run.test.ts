@@ -571,8 +571,8 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
     "is true when a plugin's cache hook returns a remote",
     async () => {
       await pkg('app', cfg(task('build')))
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/remote',
@@ -591,8 +591,8 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
     'is false when every cache plugin declines',
     async () => {
       await pkg('app', cfg(task('build')))
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource([pluginSource('org/declines', `{ cache: () => undefined }`)]),
       )
       const p = await prepare()
@@ -609,8 +609,8 @@ describe('a refused cache plugin leaks nothing', () => {
     'the local handle opened for the config cache is closed when the cache hook is refused',
     async () => {
       await pkg('app', cfg(task('build')))
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource([pluginSource('org/junk', `{ cache: () => ({ nope: true }) }`)]),
       )
       const closes = spyOn(Cache.prototype, 'close')

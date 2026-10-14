@@ -112,8 +112,8 @@ async function workspace(n: number, settled: boolean): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), `vx-perf-${n}-`))
   await writeFile(path.join(root, 'package.json'), '{"name":"perf-root","private":true}\n')
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-  await writeFile(path.join(root, '.gitignore'), 'dist\n.vx\n')
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+  await writeFile(path.join(root, '.gitignore'), 'dist\n.vx/cache/\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
   const config = `export default {
   tasks: {
     build: {
@@ -175,7 +175,7 @@ const BIN = path.join(
 /** Freezes the workspace with `vx lock`, then drops the cache that wrote it. */
 async function lock(cwd: string): Promise<void> {
   sh(cwd, process.execPath, BIN, 'lock')
-  await rm(path.join(cwd, '.vx'), { recursive: true, force: true })
+  await rm(path.join(cwd, '.vx', 'cache'), { recursive: true, force: true })
 }
 
 // ---------------------------------------------------------------- phases

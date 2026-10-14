@@ -45,7 +45,7 @@ migration history live in
 | -------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                               |
 | `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                   |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`vx-lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint   |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint  |
 | `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                          |
 | `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal |
 | `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                |
@@ -57,7 +57,7 @@ Root files outside the module set: `bin.ts` (shebang entry),
 path, variable, flag, parser), `version.ts` (the `VERSION`
 constant, extracted so `index`/`cli`/`orchestrator` don't form a
 cycle through it), `handoff.ts` (the workspace root: the nearest
-`vx.workspace.*` up to the git top-level; a global vx hands off to that
+`.vx/workspace.*` up to the git top-level; a global vx hands off to that
 root's own vx, before anything else loads).
 
 ### The orchestrator's file inventory
@@ -154,7 +154,7 @@ guard holds the relation, not the value.
 ## The plugin capability seam
 
 Core is extended in-process, per run, through `VxPlugin`
-(`orchestrator/plugin.ts`) — declared in `vx.workspace.ts` via
+(`orchestrator/plugin.ts`) — declared in `.vx/workspace.ts` via
 `defineWorkspace({ plugins: [...] })`. No auto-discovery. An `executor`
 changes WHERE a task's command runs, never the command — the command
 string is the task (principle #3). Which tasks exist is the `project`
@@ -188,13 +188,13 @@ here (the local `Cache`) are its FLOOR, not plugins: the tail of every
 executor list, and the first layer every cache lookup asks, before each
 remote in declared order (see `docs/modules/plugins.md`);
 a workspace that declares none runs and caches, and every plugin is a
-package (`packages/vx-*`) declared in `vx.workspace.ts`. The hard
+package (`packages/vx-*`) declared in `.vx/workspace.ts`. The hard
 invariant for observe-only plugins: **a workspace whose telemetry plugins
 all decline is byte-identical to one with none declared.** `subscribeTelemetry` returns `undefined` when zero
 sinks are contributed, so no bus subscriber is added and no summary
 records are built.
 
-The repo's own `vx.workspace.ts` declares `otel()`, `github()`,
+The repo's own `.vx/workspace.ts` declares `otel()`, `github()`,
 `bun()` and `scheduleHistoryPlugin()`; the floor needs no declaring, and
 `otel()` and `github()` decline without their env, so a plain run stays
 zero-overhead.
@@ -366,7 +366,7 @@ never branches on layering.
       workspace fingerprints → **scoped** config loading via
       `loadProjects`, the `project` stage included (only in-scope
       projects + their transitive dep closure evaluate; `--frozen`
-      loads from `vx-lock.json` instead of evaluating, with no
+      loads from `.vx/lock.json` instead of evaluating, with no
       staleness check of its own — `vx lock --check` is the audit) →
       cache layer resolved (an injected `RunOptions.remoteCache`, else
       each plugin's remote, layered over the local cache, else the
@@ -484,7 +484,7 @@ rules enforced: `exec.persistent` rejects malformed shapes; a
 persistent task with a `cache` block is rejected (no exit to cache);
 group tasks (no `exec`) must declare `dependsOn` or a `cache` with no outputs; `cache.inputs.files`
 and `cache.outputs.files` are required when `cache` is set;
-`vx.workspace.ts`'s `plugins` array is shape-checked too.
+`.vx/workspace.ts`'s `plugins` array is shape-checked too.
 
 ### Config-time imports & the bootstrap problem
 

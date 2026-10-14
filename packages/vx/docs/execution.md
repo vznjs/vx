@@ -43,7 +43,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       for pnpm; the package.json forms read as bytes (readOnce,
  │       shared with step 1) and JSON.parse.
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the
- │       vx.workspace.{ts,mts,js,mjs,cts,cjs} the root lookup found (run / cache /
+ │       .vx/workspace.{ts,mts,js,mjs,cts,cjs} the root lookup found (run / cache /
  │       watch / plugins),
  │       then the plugin `config` stage runs on it.
  │    4. listProjects — globs every workspace member's package.json,
@@ -64,7 +64,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       transitive dependency closure evaluate ('^task' frontier
  │       expansion never escapes the closure); one staged load,
  │       loadProjects, shared with every reading verb. Under --frozen,
- │       configs load from vx-lock.json — no evaluation, no staleness
+ │       configs load from .vx/lock.json — no evaluation, no staleness
  │       check of its own (vx lock --check is the audit), frozen-env
  │       semantics; a missing lock or entry is a hard UserError.
  │       Otherwise loadProjectConfigs in one batch: native Bun await
@@ -439,7 +439,7 @@ broader access has cache-stability implications).
 | Upstream task fails                                                                                                                                              | Under the default `--continue=deps-ok`, dependents marked `skipped` (exit 1, durationMs 0); no command runs — EXCEPT a restore-tier task, whose confirmed cache hit still restores (its key is dep-independent). `--continue=never` stops dispatch; `--continue=always` runs dependents, never saved                                                                                                                                                      |
 | Sandbox violation (macOS monitor / Linux structural)                                                                                                             | Task is `failed`; violations render in the frame; nothing cached                                                                                                                                                                                                                                                                                                                                                                                          |
 | Remote-cache error (500, timeout, corrupt artifact)                                                                                                              | Degrades to a cache miss; never fails the run                                                                                                                                                                                                                                                                                                                                                                                                             |
-| No vx.workspace.* in cwd or any parent up to the git top-level                                                                                                   | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                                                                                                                                                                                                                                                                                                  |
+| No .vx/workspace.* in cwd or any parent up to the git top-level                                                                                                  | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Same-project task referenced in `dependsOn` not declared                                                                                                         | `buildTaskGraph` throws with the offending edge                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Duplicate workspace package name                                                                                                                                 | `listProjects` throws with both paths                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Cycle in task graph                                                                                                                                              | `detectCycle` throws with the cycle path                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -575,7 +575,7 @@ The colors / framing modules:
   capped by the cgroup CPU quota a container runs under (`cpu.max` on v2,
   `cpu.cfs_quota_us` on v1, an ancestor's quota binding too; a 1.5-core
   quota is two workers, never below one — `util/cgroup.ts`), or
-  `vx.workspace.ts`'s `run.concurrency` field when set. Inside a container the
+  `.vx/workspace.ts`'s `run.concurrency` field when set. Inside a container the
   raw count is the HOST's, and eight workers on a two-core quota is
   oversubscription by four; `--concurrency <n>%` is a percentage of the
   same capped count.

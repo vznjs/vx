@@ -372,7 +372,7 @@ describe('caching.md names the lockfile plugin by the helpers it exports', () =>
     expect(step).toContain('`bun()`')
     // The workspace file decides which one "this repo declares".
     const ws = await Bun.file(
-      path.resolve(import.meta.dir, '..', '..', '..', 'vx.workspace.ts'),
+      path.resolve(import.meta.dir, '..', '..', '..', '.vx/workspace.ts'),
     ).text()
     const declared = [...exported].filter((f) => new RegExp(`\\b${f}\\(\\)`).test(ws))
     expect(declared).toEqual(['bun'])

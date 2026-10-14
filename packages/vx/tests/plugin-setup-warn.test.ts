@@ -20,7 +20,7 @@ afterEach(async () => {
 
 it("setup()'s ctx.warn reaches the run's status lines", async () => {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource('org/warner', `{ setup(ctx) { ctx.warn('warned from setup') } }`),
     ]),
@@ -42,7 +42,7 @@ it("setup()'s ctx.warn reaches the run's status lines", async () => {
 
 it('a declined factory (undefined) and `cond && plugin()` (false) are skipped by a run', async () => {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       'undefined',
       'false',

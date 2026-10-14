@@ -8,10 +8,10 @@ vulnerability), never in a public issue.
 
 ## What vx trusts
 
-- **Your configs.** `vx.config.ts` and `vx.workspace.ts` are programs vx
+- **Your configs.** `vx.config.ts` and `.vx/workspace.ts` are programs vx
   runs in its own process. A config can do anything you can: vx
   validates what it returns, not what it does. The workspace root is
-  the nearest `vx.workspace.*`, and vx never looks for it above the git
+  the nearest `.vx/workspace.*`, and vx never looks for it above the git
   top-level, so a file planted in a shared directory such as `/tmp`
   cannot claim your checkout and run as you. Outside git, one another
   user owns is refused, root aside (`tests/workspace-root-file.test.ts`).
@@ -73,7 +73,7 @@ bazel-remote --dir /data --max_size 50 --grpc_address 0.0.0.0:9092 \
 ```
 
 ```ts
-// vx.workspace.ts: the header only where the secret is set
+// .vx/workspace.ts: the header only where the secret is set
 reapi({
   endpoint: 'grpcs://cache.example.com:9092',
   headers: process.env.CACHE_AUTH ? { authorization: `Basic ${process.env.CACHE_AUTH}` } : {},
@@ -152,7 +152,7 @@ A task with `exec.sandbox` runs where only what it declares exists:
   (L-41), cannot be hard-linked into an output for vx to pack, and a denied read's `fix:` hint never suggests granting one
   (`tests/sandbox-credential-stores.unsafe.test.ts`, `tests/sandbox-fix.test.ts`);
 - vx's own cache directory, wherever `cache.dir` puts it in the
-  workspace, is a wall like `.vx`: a broad grant stops at it, and a write
+  workspace, is a wall like `.vx/cache`: a broad grant stops at it, and a write
   grant that would bind it is refused (L-24);
 - a symlinked output must resolve inside its project: vx packs outputs
   outside the sandbox, and a link to another project's file would have

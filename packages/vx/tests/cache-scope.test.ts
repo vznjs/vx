@@ -71,15 +71,15 @@ async function runScoped(
   remoteReadOnlyByDefault?: boolean,
   cacheScope?: string,
 ): Promise<{ status: string; hash: string }> {
-  await writeFile(
-    path.join(fixture.root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(fixture.root, '.vx/workspace.mjs'),
     scope === undefined
       ? `export default {}\n`
       : `export default { cache: { scope: '${scope}' } }\n`,
   )
   await writeFile(path.join(fixture.root, 'packages/app/src/in.txt'), input)
   // Only the remote may answer: every run starts from an empty local cache.
-  await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+  await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
   const result = await run({
     cwd: fixture.root,
     tasks: ['build'],
@@ -424,7 +424,7 @@ describe('cache.scope', () => {
           files: { 'src/in.txt': 'v1' },
           config: BUILD_CONFIG,
         })
-        await writeFile(path.join(fixture.root, 'vx.workspace.mjs'), `export default {}\n`)
+        await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), `export default {}\n`)
         // One disk, no remote: a persistent runner or a laptop switching scopes.
         const status = async (cacheScope?: string): Promise<string> => {
           const r = await run({
@@ -463,8 +463,8 @@ describe("a cache plugin sees the run's scope", () => {
           config: BUILD_CONFIG,
         })
         const hook = `{ cache(ctx) { require('node:fs').appendFileSync(${JSON.stringify(seen)}, String(ctx.scope) + '\\n') } }`
-        await writeFile(
-          path.join(fixture.root, 'vx.workspace.mjs'),
+        await Bun.write(
+          path.join(fixture.root, '.vx/workspace.mjs'),
           `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/scope-probe', hook)}] }\n`,
         )
         for (const cacheScope of [undefined, 'pr-9']) {
@@ -493,8 +493,8 @@ describe('cache.policy', () => {
     workspace: string,
     extra: Partial<Parameters<typeof run>[0]> = {},
   ): Promise<string> {
-    await writeFile(path.join(fixture.root, 'vx.workspace.mjs'), `export default ${workspace}\n`)
-    await rm(path.join(fixture.root, '.vx'), { recursive: true, force: true })
+    await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), `export default ${workspace}\n`)
+    await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
     const result = await run({
       cwd: fixture.root,
       tasks: ['build'],
@@ -567,7 +567,7 @@ describe('cache.policy', () => {
           config: BUILD_CONFIG,
         })
         expect(await refusal(`{ cache: { policy: 'local:x' } }`)).toBe(
-          "vx.workspace: `cache.policy`: invalid flag 'x' for 'local': expected 'r' and/or 'w'",
+          ".vx/workspace: `cache.policy`: invalid flag 'x' for 'local': expected 'r' and/or 'w'",
         )
         expect(await refusal(`{ cacheScope: 'pr-1' }`)).toContain('has unknown field "cacheScope"')
       } finally {

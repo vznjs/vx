@@ -57,7 +57,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     )
     expect(err).toBeInstanceOf(UserError)
     expect((err as Error).message).toBe(
-      `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from vx.workspace.ts`,
+      `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from .vx/workspace.ts`,
     )
   })
 

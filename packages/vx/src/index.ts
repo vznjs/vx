@@ -134,7 +134,7 @@ export type {
 // Plugin API — the run-level extension points. Behavior capabilities
 // (executor / cache) change WHAT/HOW work runs; the observe-only `telemetry`
 // capability is the canonical data-export path and cannot change behavior.
-// A plugin is declared in vx.workspace.ts via defineWorkspace({ plugins }).
+// A plugin is declared in .vx/workspace.ts via defineWorkspace({ plugins }).
 // See docs/design/observability-architecture-2026-06.md.
 // The claimant's shell for a lockfile plugin (`@vzn/vx-lockfile`):
 // the claim, the per-project key, the memo and the `--affected` diff around

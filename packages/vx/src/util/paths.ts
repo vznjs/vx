@@ -11,6 +11,13 @@ export function toPosix(p: string): string {
   return IS_POSIX ? p : p.split(path.sep).join('/')
 }
 
+/**
+ * `.vx/.gitignore`: git ignores the machine-local `.vx/cache` and nothing
+ * else in `.vx`, so the workspace config and the lock beside it are
+ * committed. `vx init` and the cache write it when missing.
+ */
+export const DOT_VX_GITIGNORE = '/cache\n'
+
 export function relPosix(from: string, to: string): string {
   return toPosix(path.relative(from, to))
 }

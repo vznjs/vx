@@ -17,7 +17,7 @@ code.
 flowchart LR
   I[vx init --plugin cache] --> P[plugins/cache.ts]
   I --> T[plugins/cache.test.ts]
-  P --> W[vx.workspace.ts]
+  P --> W[.vx/workspace.ts]
   T --> B[bun test]
   style P stroke:#c6f84e,stroke-width:2px
 ```
@@ -27,7 +27,7 @@ flowchart LR
 ```sh frame="terminal"
 $ vx init --plugin cache --dry
 would write plugins/cache.ts and plugins/cache.test.ts
-Declare it in vx.workspace.ts: import { dirCache } from './plugins/cache.ts', then plugins: [dirCache(…)]
+Declare it in .vx/workspace.ts: import { dirCache } from '../plugins/cache.ts', then plugins: [dirCache(…)]
 Test it: bun test plugins/cache.test.ts (needs @vzn/vx installed)
 ```
 

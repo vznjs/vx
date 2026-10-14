@@ -53,7 +53,7 @@ async function makeRoot(prefix: string): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
-  // The scaffolded `vx.workspace.ts` imports `@vzn/vx`, and a tmp dir has
+  // The scaffolded `.vx/workspace.ts` imports `@vzn/vx`, and a tmp dir has
   // no node_modules. This used to resolve through a machine-global
   // `bun link`, so the suite passed or failed on invisible state outside
   // the repo — a `bun install` that drops the link turns every fixture
@@ -90,8 +90,9 @@ describe('vx init names what it wrote', () => {
       for (let i = 0; i < 12; i++) await addPackage(root, `p${i}`, { build: 'tsc' })
       const lines = (await vx(root, ['init', '--dry'])).out.split('\n')
       const from = lines.indexOf('files (dry run, nothing written):')
-      expect(lines.slice(from + 1, from + 3)).toEqual([
-        '  vx.workspace.ts',
+      expect(lines.slice(from + 1, from + 4)).toEqual([
+        '  .vx/workspace.ts',
+        '  .vx/.gitignore',
         '  and 12 more in package directories',
       ])
       // CONTROL: ten or fewer are each named.
@@ -99,6 +100,35 @@ describe('vx init names what it wrote', () => {
         await rm(path.join(root, 'packages', `p${i}`), { recursive: true })
       const few = (await vx(root, ['init', '--dry'])).out
       expect(few).toContain('  packages/p0/vx.config.ts\n  packages/p1/vx.config.ts\n')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('vx init and .vx/.gitignore', () => {
+  it('writes .vx/.gitignore with /cache and leaves the root .gitignore alone', async () => {
+    const root = await makeRoot('vx-init-ignore-')
+    try {
+      await addPackage(root, 'a', { build: 'tsc' })
+      await Bun.write(path.join(root, '.gitignore'), 'node_modules\n')
+      expect((await vx(root, ['init'])).code).toBe(0)
+      expect(await Bun.file(path.join(root, '.vx', '.gitignore')).text()).toBe('/cache\n')
+      expect(await Bun.file(path.join(root, '.gitignore')).text()).toBe('node_modules\n')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('--keep writes it too, and never edits an existing one', async () => {
+    const root = await makeRoot('vx-init-ignore-keep-')
+    try {
+      await Bun.write(path.join(root, 'turbo.json'), '{ "tasks": {} }\n')
+      expect((await vx(root, ['init', '--keep'])).code).toBe(0)
+      expect(await Bun.file(path.join(root, '.vx', '.gitignore')).text()).toBe('/cache\n')
+      await Bun.write(path.join(root, '.vx', '.gitignore'), 'mine\n')
+      expect((await vx(root, ['init', '--keep'])).code).toBe(0)
+      expect(await Bun.file(path.join(root, '.vx', '.gitignore')).text()).toBe('mine\n')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1284,18 +1314,18 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
-  it('ends with the lock: vx-lock.json written and named, none under --dry', async () => {
+  it('ends with the lock: .vx/lock.json written and named, none under --dry', async () => {
     // owner, 2026-10-14: "vx migrate should generate lock as well".
     const root = await makeScriptsWorkspace()
     try {
       const dry = await vx(root, ['init', '--dry'])
       expect(dry.code).toBe(0)
-      expect(existsSync(path.join(root, 'vx-lock.json'))).toBe(false)
+      expect(existsSync(path.join(root, '.vx/lock.json'))).toBe(false)
       const r = await vx(root, ['init'])
       expect(r.code).toBe(0)
       expect(r.err).toBe('')
-      expect(r.out).toContain('\nvx lock: locked 3 project configs → vx-lock.json\n\nnext: ')
-      const lock = (await Bun.file(path.join(root, 'vx-lock.json')).json()) as {
+      expect(r.out).toContain('\nvx lock: locked 3 project configs → .vx/lock.json\n\nnext: ')
+      const lock = (await Bun.file(path.join(root, '.vx/lock.json')).json()) as {
         projects: Record<string, unknown>
       }
       expect(Object.keys(lock.projects)).toEqual(['app', 'lib', 'silent'])
@@ -1314,10 +1344,10 @@ describe('vx init — the generated build is not a cached no-op', () => {
     try {
       const r = await vx(root, ['init'])
       expect(r.code).toBe(0)
-      expect(r.err).toContain('vx lock: vx-lock.json not written: ')
+      expect(r.err).toContain('vx lock: .vx/lock.json not written: ')
       expect(r.err).toContain('dependsOn cycle')
       expect(r.out).toContain('next: fix the above and run vx lock, then ')
-      expect(existsSync(path.join(root, 'vx-lock.json'))).toBe(false)
+      expect(existsSync(path.join(root, '.vx/lock.json'))).toBe(false)
       expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1347,7 +1377,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
-  it('--mjs writes vx.config.mjs and vx.workspace.mjs, untyped, and they load', async () => {
+  it('--mjs writes vx.config.mjs and .vx/workspace.mjs, untyped, and they load', async () => {
     // A package whose own `tsc --build` includes every `.ts` under it
     // compiles a generated vx.config.ts into its dist (TanStack/query,
     // 2026-09-11); the same object as `.mjs` is outside that include.
@@ -1363,7 +1393,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       expect(await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).exists()).toBe(
         false,
       )
-      const ws = await Bun.file(path.join(root, 'vx.workspace.mjs')).text()
+      const ws = await Bun.file(path.join(root, '.vx/workspace.mjs')).text()
       expect(ws).not.toContain('@vzn/vx')
       expect(ws).toContain('export default { plugins: [] }')
       const config = await loadProjectConfig(configPath)
@@ -1373,7 +1403,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
-  it('a Turbo repo gets vx.workspace.ts declaring turbo() and nothing else', async () => {
+  it('a Turbo repo gets .vx/workspace.ts declaring turbo() and nothing else', async () => {
     // Turbo 2.5+ reads `turbo.jsonc` as well (item 938).
     for (const file of ['turbo.json', 'turbo.jsonc']) {
       const root = await makeScriptsWorkspace()
@@ -1383,10 +1413,10 @@ describe('vx init — the generated build is not a cached no-op', () => {
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
         expect(r.out).toBe(
           `vx init: ${file} found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.\n` +
-            'wrote vx.workspace.ts.\n\n' +
+            'wrote .vx/workspace.ts.\n\n' +
             'next: npm install -D @vzn/vx-migrate && vx run compile --all\n',
         )
-        expect(await Bun.file(path.join(root, 'vx.workspace.ts')).text()).toBe(
+        expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
           "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
             "import { turbo } from '@vzn/vx-migrate'\n\n" +
             'export default { plugins: [turbo()] } satisfies WorkspaceConfig\n',
@@ -1440,8 +1470,8 @@ describe('vx init — the generated build is not a cached no-op', () => {
         expect(r.code).toBe(0)
         expect(r.out).toContain(`import { ${runner} } from '@vzn/vx-migrate'`)
         expect(r.out).toContain(`export default { plugins: [${runner}()] }`)
-        expect(r.out).toContain('would write vx.workspace.ts (dry run, nothing written).')
-        expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(false)
+        expect(r.out).toContain('would write .vx/workspace.ts (dry run, nothing written).')
+        expect(existsSync(path.join(root, '.vx/workspace.ts'))).toBe(false)
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -1584,13 +1614,13 @@ describe('vx init — the generated build is not a cached no-op', () => {
       await Bun.write(path.join(root, 'turbo.json'), '{ "remoteCache": {} }\n')
       const mine =
         "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n"
-      await Bun.write(path.join(root, 'vx.workspace.mjs'), mine)
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), mine)
       const r = await vx(root, ['init', '--keep'])
       expect(r.out.split('\n').slice(1, 3)).toEqual([
-        'vx.workspace.mjs already declares turbo().',
+        '.vx/workspace.mjs already declares turbo().',
         'turbo.json names a remoteCache: add turboCache() from @vzn/vx-migrate to its plugins and vx shares that remote cache.',
       ])
-      expect(await Bun.file(path.join(root, 'vx.workspace.mjs')).text()).toBe(mine)
+      expect(await Bun.file(path.join(root, '.vx/workspace.mjs')).text()).toBe(mine)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1601,21 +1631,21 @@ describe('vx init — the generated build is not a cached no-op', () => {
     try {
       await Bun.write(path.join(root, 'turbo.json'), '{}\n')
       const mine = 'export default { plugins: [] }\n'
-      await Bun.write(path.join(root, 'vx.workspace.mjs'), mine)
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), mine)
       const refused = await vx(root, ['init', '--keep'])
       expect(refused.code).toBe(1)
       expect(refused.err).toBe(
-        'vx init: vx.workspace.mjs exists; add turbo() from @vzn/vx-migrate to its plugins, or --force replaces it\n',
+        'vx init: .vx/workspace.mjs exists; add turbo() from @vzn/vx-migrate to its plugins, or --force replaces it\n',
       )
-      expect(await Bun.file(path.join(root, 'vx.workspace.mjs')).text()).toBe(mine)
+      expect(await Bun.file(path.join(root, '.vx/workspace.mjs')).text()).toBe(mine)
       const forced = await vx(root, ['init', '--keep', '--force'])
       expect(forced.code).toBe(0)
-      expect(existsSync(path.join(root, 'vx.workspace.mjs'))).toBe(false)
-      expect(await Bun.file(path.join(root, 'vx.workspace.ts')).text()).toContain('turbo()')
+      expect(existsSync(path.join(root, '.vx/workspace.mjs'))).toBe(false)
+      expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toContain('turbo()')
       // Declared already: nothing to write, and the next step still said.
       const again = await vx(root, ['init', '--keep'])
       expect(again.code).toBe(0)
-      expect(again.out).toContain('vx.workspace.ts already declares turbo().')
+      expect(again.out).toContain('.vx/workspace.ts already declares turbo().')
       expect(again.out).toContain('next: npm install -D @vzn/vx-migrate && vx run build --all')
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1627,16 +1657,16 @@ describe('vx init — the generated build is not a cached no-op', () => {
     const root = await makeScriptsWorkspace()
     try {
       await Bun.write(path.join(root, 'turbo.json'), '{ "tasks": { "build": {} } }\n')
-      await Bun.write(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
       await Bun.write(path.join(root, 'packages', 'app', 'vx.config.mjs'), 'export default {}\n')
       expect(await vx(root, ['init'])).toEqual({
         code: 0,
-        out: "vx is already set up here (vx.workspace.mjs and the projects' vx.config files); --force regenerates them from turbo.json.\n\nnext: vx run build --all\n",
+        out: "vx is already set up here (.vx/workspace.mjs and the projects' vx.config files); --force regenerates them from turbo.json.\n\nnext: vx run build --all\n",
         err: '',
       })
       // Control: a workspace that runs the repo through turbo() is no native setup.
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n",
       )
       // It goes on to vx-migrate, which refuses here (or, sandboxed, cannot fetch).
@@ -1711,7 +1741,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       expect(r.code).toBe(1)
       expect(r.err).toContain('vx init: unknown flag: --bogus')
       expect(r.out).toBe('')
-      expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(false)
+      expect(existsSync(path.join(root, '.vx/workspace.ts'))).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1727,8 +1757,8 @@ describe('vx init — the generated build is not a cached no-op', () => {
     try {
       const r = await vx(path.join(root, 'packages', 'app'), ['init'])
       expect(r.code).toBe(0)
-      expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(true)
-      expect(existsSync(path.join(root, 'packages', 'app', 'vx.workspace.ts'))).toBe(false)
+      expect(existsSync(path.join(root, '.vx/workspace.ts'))).toBe(true)
+      expect(existsSync(path.join(root, 'packages', 'app', '.vx/workspace.ts'))).toBe(false)
       // The control: it did run, and it did write the package's own config.
       expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(true)
     } finally {
@@ -1737,7 +1767,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
   })
 
   it('in a nested workspace the outer one does not list, it scaffolds the NESTED one', async () => {
-    // The outer vx.workspace.ts was taken for the root: init said "no files
+    // The outer .vx/workspace.ts was taken for the root: init said "no files
     // written" and listed the outer configs, and the nested workspace the
     // user stood in stayed without one.
     // npm, Yarn and Bun own a nested root only when they list it; pnpm takes
@@ -1749,7 +1779,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       JSON.stringify({ name: 'outer', private: true, workspaces: ['packages/*'] }),
     )
     await addPackage(root, 'a', { build: 'echo a' })
-    await writeFile(path.join(root, 'vx.workspace.ts'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.ts'), 'export default {}\n')
     const inner = path.join(root, 'tools', 'inner')
     await mkdir(path.join(inner, 'pkgs', 'z'), { recursive: true })
     await writeFile(
@@ -1764,7 +1794,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
     try {
       const r = await vx(inner, ['init'])
       expect(r.code).toBe(0)
-      expect(existsSync(path.join(inner, 'vx.workspace.ts'))).toBe(true)
+      expect(existsSync(path.join(inner, '.vx/workspace.ts'))).toBe(true)
       expect(existsSync(path.join(inner, 'pkgs', 'z', 'vx.config.ts'))).toBe(true)
       // CONTROL: the outer workspace is untouched.
       expect(existsSync(path.join(root, 'packages', 'a', 'vx.config.ts'))).toBe(false)
@@ -1772,7 +1802,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const m = await vx(path.join(root, 'packages', 'a'), ['init'])
       expect(m.code).toBe(0)
       expect(existsSync(path.join(root, 'packages', 'a', 'vx.config.ts'))).toBe(true)
-      expect(existsSync(path.join(root, 'packages', 'a', 'vx.workspace.ts'))).toBe(false)
+      expect(existsSync(path.join(root, 'packages', 'a', '.vx/workspace.ts'))).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1781,7 +1811,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
   it('a run in a workspace with no vx config at all names `vx init`', async () => {
     const root = await makeRoot('vx-init-first-run-')
     await addPackage(root, 'w', { build: 'echo hi' })
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     try {
       const r = await vx(root, ['run', 'build', '--all'])
@@ -1799,7 +1829,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'ws', private: true, workspaces: ['apps/*'] }),
     )
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     try {
       const r = await vx(root, ['run', 'build', '--all'])
@@ -1842,7 +1872,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
   it('`vx run` there says the same, not `vx init`', async () => {
     const root = await bareRoot()
     try {
-      await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
       const r = await vx(root, ['run', 'build', '--all'])
       expect(r.code).not.toBe(0)
       const text = `${r.out}${r.err}`
@@ -2017,7 +2047,7 @@ describe('vx init on a workspace with no scripts', () => {
     try {
       const r = await vx(root, ['init'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
-      expect(await Bun.file(path.join(root, 'vx.workspace.ts')).exists()).toBe(true)
+      expect(await Bun.file(path.join(root, '.vx/workspace.ts')).exists()).toBe(true)
       // Every project gets a config, one with no task too (owner, 2026-10-14).
       expect(await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).text()).toContain(
         '  tasks: {},\n',
@@ -2028,13 +2058,13 @@ describe('vx init on a workspace with no scripts', () => {
       // Idempotent: a second init neither rewrites nor refuses.
       const again = await vx(root, ['init'])
       expect(again.code).toBe(0)
-      expect(again.out).toContain('vx.workspace.ts already exists')
+      expect(again.out).toContain('.vx/workspace.ts already exists')
       // --dry on an empty workspace writes nothing and says so.
-      await rm(path.join(root, 'vx.workspace.ts'))
+      await rm(path.join(root, '.vx/workspace.ts'))
       const dry = await vx(root, ['init', '--dry'])
       expect(dry.code).toBe(0)
-      expect(dry.out).toContain('would write vx.workspace.ts (dry run, nothing written)')
-      expect(await Bun.file(path.join(root, 'vx.workspace.ts')).exists()).toBe(false)
+      expect(dry.out).toContain('would write .vx/workspace.ts (dry run, nothing written)')
+      expect(await Bun.file(path.join(root, '.vx/workspace.ts')).exists()).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -2118,7 +2148,7 @@ describe('vx init (package.json scripts)', () => {
       const r = await vx(root, ['init'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
       expect(r.out).toContain('package.json scripts → vx.config.ts')
-      expect(r.out).toContain('vx.workspace.ts')
+      expect(r.out).toContain('.vx/workspace.ts')
       // A package with no scripts gets a config with no task (owner, 2026-10-14).
       expect(
         await Bun.file(path.join(root, 'packages', 'silent', 'vx.config.ts')).text(),
@@ -2332,13 +2362,13 @@ describe('vx init writes what the next run reads', () => {
   }
 
   it(
-    'a hand-written vx.workspace.mts is a workspace file: none is written beside it',
+    'a hand-written .vx/workspace.mts is a workspace file: none is written beside it',
     async () => {
       const root = await fresh()
       await addPackage(root, 'a', { build: 'echo a' })
-      await writeFile(path.join(root, 'vx.workspace.mts'), 'export default { plugins: [] }\n')
+      await Bun.write(path.join(root, '.vx/workspace.mts'), 'export default { plugins: [] }\n')
       const r = await vx(root, ['init'])
-      expect({ code: r.code, wrote: existsSync(path.join(root, 'vx.workspace.ts')) }).toEqual({
+      expect({ code: r.code, wrote: existsSync(path.join(root, '.vx/workspace.ts')) }).toEqual({
         code: 0,
         wrote: false,
       })
@@ -2443,7 +2473,7 @@ describe('vx init --plugin <seam>', () => {
       const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-plugin-mjs-'))
       try {
         await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
-        await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+        await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
         const mjs = await vx(root, ['init', '--plugin', 'cache', '--mjs', '--dry'])
         expect([mjs.code, mjs.out, mjs.err]).toEqual([
           1,
@@ -2452,11 +2482,11 @@ describe('vx init --plugin <seam>', () => {
         ])
         const ok = await vx(root, ['init', '--plugin', 'cache', '--dry'])
         expect([ok.code, ok.err]).toEqual([0, ''])
-        expect(ok.out.split('\n')[1]).toStartWith('Declare it in vx.workspace.mjs: import {')
+        expect(ok.out.split('\n')[1]).toStartWith('Declare it in .vx/workspace.mjs: import {')
         // CONTROL: with no workspace file, the one a run would read first.
-        await rm(path.join(root, 'vx.workspace.mjs'))
+        await rm(path.join(root, '.vx/workspace.mjs'))
         const none = await vx(root, ['init', '--plugin', 'cache', '--dry'])
-        expect(none.out.split('\n')[1]).toStartWith('Declare it in vx.workspace.ts: import {')
+        expect(none.out.split('\n')[1]).toStartWith('Declare it in .vx/workspace.ts: import {')
       } finally {
         await rm(root, { recursive: true, force: true })
       }

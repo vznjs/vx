@@ -5,7 +5,7 @@
 // The wire is Nx's; the bytes are vx's own artifacts under vx's own keys,
 // so the server is storage — an Nx binary cannot read them.
 //
-// Nothing is on by default: declare `nxCache()` in `vx.workspace.ts` (the
+// Nothing is on by default: declare `nxCache()` in `.vx/workspace.ts` (the
 // local store is the floor beneath it) and give it a server (options, or Nx's own
 // environment variables so a self-hosted setup carries over). Without one
 // the plugin DECLINES and the run stays local.
@@ -218,7 +218,7 @@ const NX_CACHE_KEYS: PluginOptionKinds<NxCacheOptions> = {
 }
 
 /**
- * Declare in `vx.workspace.ts`; the local store stays the floor beneath it:
+ * Declare in `.vx/workspace.ts`; the local store stays the floor beneath it:
  *
  * ```ts
  * plugins: [nxCache({ server: 'https://cache.example.com', accessToken: process.env.CACHE_TOKEN })]

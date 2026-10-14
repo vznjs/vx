@@ -1,5 +1,5 @@
 // The config schema is a 1.0 contract surface (docs/design/versioning-1.0.md):
-// every field `vx.config.ts` and `vx.workspace.ts` accept, the values each
+// every field `vx.config.ts` and `.vx/workspace.ts` accept, the values each
 // takes, and the words each refusal says. This file pins all three against a
 // committed record, `tests/contract/config-schema.json`, so a schema change
 // is a reviewed diff of that record and never a side effect.
@@ -44,7 +44,7 @@ import { validateProjectConfig, validateWorkspace } from '../src/workspace/confi
 
 const RECORD = path.join(import.meta.dir, 'contract', 'config-schema.json')
 const PROJECT_PATH = '/ws/pkg/vx.config.ts'
-const WORKSPACE_PATH = '/ws/vx.workspace.ts'
+const WORKSPACE_PATH = '/ws/.vx/workspace.ts'
 
 type Keys<T> = { [K in keyof Required<T>]: true }
 const keys = <T>(k: Keys<T>): string[] => Object.keys(k).sort()

@@ -27,7 +27,7 @@ import {
 } from '@vzn/vx'
 
 // Each parser and `prune` load when first used: every run evaluates
-// `vx.workspace.ts`, and the four parsers and the verb were ~2.5 ms of it
+// `.vx/workspace.ts`, and the four parsers and the verb were ~2.5 ms of it
 // for a workspace that declares one manager and runs no `prune`. The
 // digest seam is synchronous, so a parser loads by `require`.
 const load = createRequire(import.meta.url)

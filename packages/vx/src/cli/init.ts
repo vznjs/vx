@@ -15,7 +15,7 @@ import { lockAfterMigration } from './lock.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isCompiledBinary } from './upgrade.js'
 import { VERSION } from '../version.js'
-import { isUserError, relPosix, UserError } from '../util/index.js'
+import { DOT_VX_GITIGNORE, isUserError, relPosix, UserError } from '../util/index.js'
 import {
   applyMigration,
   discoverProjects,
@@ -101,7 +101,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
   }
   if (parsed.plugin !== undefined) return scaffoldPlugin(parsed.plugin, parsed)
   const reads: LoadReads = new Map()
-  // `vx init` makes the vx.workspace.ts that marks the root, so without one
+  // `vx init` makes the .vx/workspace.ts that marks the root, so without one
   // it starts from the package manager's root. "A workspace from nowhere"
   // still needs a package.json, and the lookup's own refusal named no next step.
   const root = await initRoot(reads).catch((err: unknown) => {
@@ -208,10 +208,10 @@ async function scaffoldPlugin(seam: string, args: InitArgs): Promise<number> {
   }
   const factory = /^export function (\w+)/m.exec(template.plugin)![1]!
   const workspaceFile =
-    WORKSPACE_CONFIG_FILENAMES.find((n) => existsSync(path.join(root, n))) ?? 'vx.workspace.ts'
+    WORKSPACE_CONFIG_FILENAMES.find((n) => existsSync(path.join(root, n))) ?? '.vx/workspace.ts'
   process.stdout.write(
     `${args.dry ? 'would write' : 'wrote'} ${files.map(([rel]) => rel).join(' and ')}\n` +
-      `Declare it in ${workspaceFile}: import { ${factory} } from './plugins/${seam}.ts', then plugins: [${factory}(…)]\n` +
+      `Declare it in ${workspaceFile}: import { ${factory} } from '../plugins/${seam}.ts', then plugins: [${factory}(…)]\n` +
       `Test it: bun test plugins/${seam}.test.ts (needs @vzn/vx installed)\n`,
   )
   return 0
@@ -249,7 +249,7 @@ export function migrateCommand(root: string, flags: readonly string[]): string[]
 }
 
 /**
- * `vx init --keep` in a Turbo or Nx repo: `vx.workspace.ts` declaring the plugin
+ * `vx init --keep` in a Turbo or Nx repo: `.vx/workspace.ts` declaring the plugin
  * that runs the repo as it is, nothing else, and the one command that gets
  * from here to a run.
  */
@@ -259,7 +259,7 @@ async function adopt(
   source: string,
   args: InitArgs,
 ): Promise<number> {
-  const name = `vx.workspace.${args.mjs ? 'mjs' : 'ts'}`
+  const name = `.vx/workspace.${args.mjs ? 'mjs' : 'ts'}`
   const remote = remoteCacheSignal(root, runner)
   const cache = REMOTE_CACHE[runner]
   const imports = remote === undefined ? runner : `${runner}, ${cache}`
@@ -283,6 +283,10 @@ async function adopt(
     await Bun.write(path.join(root, name), text)
   }
   const kept = existing !== undefined && !args.force
+  const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
+  // vx's own housekeeping, as a run's first cache open writes it.
+  if (!args.dry && ignore.length > 0)
+    await Bun.write(path.join(root, '.vx', '.gitignore'), DOT_VX_GITIGNORE)
   const wrote = kept
     ? `${existing} already declares ${runner}().`
     : args.dry
@@ -303,7 +307,10 @@ async function adopt(
       `${JSON.stringify({
         dry: true,
         source,
-        files: kept ? [] : [{ path: name, contents: text }],
+        files: [
+          ...(kept ? [] : [{ path: name, contents: text }]),
+          ...ignore.map((p) => ({ path: p, contents: DOT_VX_GITIGNORE })),
+        ],
         kept: kept ? [existing] : [],
         replaced: !kept && existing !== undefined && existing !== name ? [existing] : [],
         todos: [],
@@ -554,14 +561,14 @@ async function readRootManifest(root: string): Promise<Record<string, unknown>> 
 
 /**
  * The workspace root, or where `vx init` makes one: the package manager's
- * root. A vx.workspace.ts another user owns is not yours to re-init either.
+ * root. A .vx/workspace.ts another user owns is not yours to re-init either.
  */
 async function initRoot(reads: LoadReads): Promise<string> {
   const cwd = process.cwd()
   const marked = await findWorkspaceRoot(cwd).catch(() => undefined)
   if (marked === undefined) return findManifestRoot(cwd, reads)
   // A nested workspace the outer one does not list is its own: the outer
-  // vx.workspace.ts made init report the outer configs and write nothing.
+  // .vx/workspace.ts made init report the outer configs and write nothing.
   const manifest = await findManifestRoot(cwd, reads).catch(() => marked)
   if (manifest.startsWith(`${marked}${path.sep}`)) {
     const nested = await loadWorkspace(manifest, reads).catch(() => undefined)

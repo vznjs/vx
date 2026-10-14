@@ -142,7 +142,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
       'a read-only checkout with no cache yet says so in one line, and so does a verb writing the tree',
       async () => {
         // The workspace root alone stops being writable: the cache directory
-        // cannot be created under it, and neither can vx-lock.json.
+        // cannot be created under it, and neither can .vx/lock.json.
         const { chmod } = await import('node:fs/promises')
         await chmod(root, 0o555)
         try {
@@ -157,7 +157,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
           const locked = await vx(['lock'], null)
           expect(locked.code).toBe(1)
           expect(locked.err).toMatch(
-            /^vx: EACCES: permission denied, open '.*vx-lock\.json' — a path vx must write is not writable by this user\n$/,
+            /^vx: EACCES: permission denied, open '.*\.vx\/lock\.json' — a path vx must write is not writable by this user\n$/,
           )
         } finally {
           await chmod(root, 0o755)

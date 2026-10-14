@@ -299,7 +299,7 @@ describe('the quickstart shows what a run prints and what its flags do', () => {
 })
 
 // The add-to-existing-repo page folded into the quickstart, and its
-// vx.workspace.ts block into the configure page's workspace section.
+// .vx/workspace.ts block into the configure page's workspace section.
 describe('the configure guide states the concurrency default `vx help` states', () => {
   it("its `concurrency` comment is the help line's default clause", () => {
     const help = /--concurrency <n>\s+Max parallel tasks \(default: ([^)]+)\)/.exec(HELP)
@@ -489,7 +489,7 @@ describe('the strict-output-ownership post names what the wipe never touches', (
     )
     const arr = /const OUTPUT_NEVER = \[([^\]]*)\]/.exec(src)
     expect(arr).not.toBeNull()
-    const names = [...arr![1]!.matchAll(/'\*\*\/([^/']+)\/\*\*'/g)].map((m) => m[1]!)
+    const names = [...arr![1]!.matchAll(/'\*\*\/([^']+)\/\*\*'/g)].map((m) => m[1]!)
     expect(names.length).toBe(2)
     for (const name of names) expect(section![1]!).toContain('`' + name + '`')
     expect(section![1]!).toContain('`node_modules/**` is a legitimate output')
@@ -1102,7 +1102,7 @@ describe('the otel guide names attributes the exporter actually emits', () => {
     // shapes (`vx.tag.<k>`, `vx.log.*`) or the workspace file's name.
     const named = [...page.matchAll(/`(vx\.[a-z_.]+)`/g)]
       .map((m) => m[1]!)
-      .filter((n) => n !== 'vx.workspace.ts' && !n.endsWith('.'))
+      .filter((n) => n !== '.vx/workspace.ts' && !n.endsWith('.'))
     expect(named.length).toBeGreaterThan(15)
     for (const attr of named) expect(emitted).toContain(attr)
   })
@@ -2168,7 +2168,7 @@ describe('every page naming what vx-otel exports names each signal', () => {
         path.join(repo, 'packages', d, 'README.md'),
       ),
       path.join(repo, 'README.md'),
-      path.join(repo, 'vx.workspace.ts'),
+      path.join(repo, '.vx/workspace.ts'),
     ].filter((f) => existsSync(f))
     const wrong: string[] = []
     let seen = 0

@@ -45,6 +45,7 @@ export {
   outputMatcher,
   printable,
   relPosix,
+  DOT_VX_GITIGNORE,
   splitNegations,
   staticPrefix,
   stripTrailingSlash,
