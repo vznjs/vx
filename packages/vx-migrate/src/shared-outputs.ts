@@ -301,6 +301,15 @@ function prefixIndex(): {
   }
 }
 
+/**
+ * A keyed group (`cache`, no `exec`: the `nx-input:<name>` twins, Turbo's
+ * transit nodes) runs nothing, so core lets its key read what a task
+ * writes (`detectInputOverlaps` exempts it). Uncaching one left `{}`, a
+ * task core refuses, and every verb failed.
+ */
+export const isKeyedGroup = (t: { readonly task: Record<string, unknown> | null }): boolean =>
+  t.task !== null && t.task['exec'] === undefined && t.task['cache'] !== undefined
+
 /** A task's cached `inputs` block, when it has one with a `files` list. */
 function inputsOf(t: GeneratedTask): { files: string[]; workspaceFiles?: unknown } | undefined {
   const inputs = (t.task?.['cache'] as { inputs?: { files?: unknown } } | undefined)?.inputs
@@ -339,6 +348,7 @@ export function excludeSiblingOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
         const read = positive.filter((g) => outputsOverlap(g, out))
         if (read.length === 0) continue
         const literal = read.find((g) => isLiteralPattern(g))
+        if (literal !== undefined && isKeyedGroup(t)) continue
         if (literal !== undefined) {
           delete t.task!['cache']
           t.todos.push(
@@ -488,6 +498,7 @@ export function excludeWorkspaceOutputs(
           const read = reads.filter((g) => outputsOverlap(g, out))
           if (read.length === 0) continue
           const literal = read.find((g) => isLiteralPattern(g))
+          if (literal !== undefined && isKeyedGroup(t)) continue
           if (literal !== undefined) {
             delete t.task!['cache']
             t.todos.push(
@@ -522,6 +533,7 @@ export function excludeWorkspaceOutputs(
           // An output that reaches in from above (`**/gen/**`) has no
           // project-relative `!` that takes it back.
           const literal = out.startsWith(at) ? read.find((g) => isLiteralPattern(g)) : read[0]
+          if (literal !== undefined && isKeyedGroup(t)) continue
           if (literal !== undefined) {
             delete t.task!['cache']
             t.todos.push(
