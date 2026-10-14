@@ -47,6 +47,24 @@ async function linkModules(root: string): Promise<void> {
   }
   await symlink(path.resolve(PKG, '..', 'vx'), path.join(to, '@vzn', 'vx'))
   await symlink(PKG, path.join(to, '@vzn', 'vx-migrate'))
+  // Stand-ins for the plugins init and the migrator declare: the sandbox
+  // lets this suite read no other package but core. npm() links what the
+  // manifests name, as the real one reads the lockfile.
+  const edges = path.join(import.meta.dir, 'helpers', 'manifest-edges.ts')
+  for (const [pkg, body] of [
+    ['vx-lockfile', `export { manifestEdges as npm } from ${JSON.stringify(edges)}\n`],
+    [
+      'vx-schedule-history',
+      "import { definePlugin } from '@vzn/vx'\n" +
+        'export const scheduleHistoryPlugin = () => definePlugin(import.meta, { setup() {} })\n',
+    ],
+  ] as const) {
+    await mkdir(path.join(to, '@vzn', pkg))
+    await writeTree(path.join(to, '@vzn', pkg), {
+      'package.json': { name: `@vzn/${pkg}`, type: 'module', main: 'index.js' },
+      'index.js': body,
+    })
+  }
   await symlink(path.join(PKG, 'src', 'nx-exec.cjs'), path.join(to, '.bin', 'nx-exec'))
   await symlink(path.join(PKG, 'src', 'nx-env.cjs'), path.join(to, '.bin', 'nx-env'))
 }
@@ -97,6 +115,18 @@ const SHAPES = [
         dependencies: { lib: '*' },
         scripts: { build: write('app.txt') },
       },
+      'package-lock.json': {
+        name: 'pb',
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          '': { name: 'pb', workspaces: ['packages/*'] },
+          'node_modules/app': { resolved: 'packages/app', link: true },
+          'node_modules/lib': { resolved: 'packages/lib', link: true },
+          'packages/app': { name: 'app', version: '0.0.0', dependencies: { lib: '*' } },
+          'packages/lib': { name: 'lib', version: '0.0.0' },
+        },
+      },
     },
     undefined,
     ['dist/packages/lib/src/index.js', 'packages/app/app.txt'],
@@ -105,6 +135,12 @@ const SHAPES = [
     'integrated',
     {
       'package.json': { name: 'int', private: true },
+      'package-lock.json': {
+        name: 'int',
+        lockfileVersion: 3,
+        requires: true,
+        packages: { '': { name: 'int' } },
+      },
       'nx.json': { targetDefaults: { build: { dependsOn: ['^build'] } } },
       'tsconfig.base.json': { compilerOptions: {} },
       'libs/util/project.json': { name: 'util', targets: { build: tsc('libs/util') } },
@@ -186,8 +222,10 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
           )
         }
 
-        // 4. Without nx() the native config alone builds; the executor is its nx-exec line.
-        await Bun.write(path.join(root, '.vx/workspace.ts'), 'export default {}\n')
+        // 4. Without nx() the native config alone builds, package edges from
+        // the lockfile plugin; the executor is its nx-exec line.
+        const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
+        expect([ws.includes('nx()'), ws.includes('npm()')]).toEqual([false, true])
         const lib = outputs[0].split('/').slice(1, 3).join('/')
         expect(await readFile(path.join(root, lib, 'vx.config.ts'), 'utf8')).toContain(
           'nx-exec @nx/js:tsc',

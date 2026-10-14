@@ -70,8 +70,7 @@ export interface VxPlugin {
    * same name, if it has one); one that is a project keeps its name, and a
    * different `name` is refused, as is a name taken by another directory
    * or a directory outside the root. `deps` and `reach` from every plugin
-   * union with core's manifest edges once the stage ends; a target that is
-   * then no project is refused.
+   * union once the stage ends; a target that is then no project is refused.
    */
   discover?(
     ctx: DiscoverContext,
