@@ -259,6 +259,7 @@ export {
   cacheKeyDiff,
   latestRunId,
   resolveRunId,
+  inputWriters,
   rootCauses,
   runFailures,
   taskLog,
@@ -267,6 +268,7 @@ export {
 export type {
   CacheKeyDiff,
   OutputLocation,
+  InputWriter,
   RootCause,
   RunFailures,
   TaskFailure,

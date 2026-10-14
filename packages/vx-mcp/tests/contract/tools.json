@@ -194,7 +194,8 @@
       "thisRun.hash",
       "thisRun.restored",
       "thisRun.startedAt",
-      "thisRun.status"
+      "thisRun.status",
+      "writers"
     ]
   },
   "getTaskLog": {

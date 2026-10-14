@@ -21,6 +21,7 @@ latestRunId(db, taskId): string | null              // the run a caller without 
 whyDidThisRerun(db, runId, taskId): WhyDidThisRerun // this run vs the previous one
 cacheKeyDiff(db, runId, taskId): CacheKeyDiff       // which key components moved
 rootCauses(db, runId, taskId, entries): RootCause[] // under moved upstreams, the tasks whose own inputs moved
+inputWriters(db, root, taskId, entries, roots): InputWriter[] // tasks running when a moved input file last changed (stats it)
 loadEntryInputs(db, entryHash): TaskInputComponent[] // one entry's key components, [] when none
 diffKeyComponents(before, after): { entries, unchangedCount } // the join, no store
 

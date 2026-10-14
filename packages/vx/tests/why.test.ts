@@ -894,3 +894,59 @@ describe('vx why — a secret-named env input', () => {
     TIMEOUT,
   )
 })
+
+describe('vx why — an input a task wrote (Growth funnel F5)', () => {
+  it(
+    'names the task that was running when the moved file last changed',
+    async () => {
+      const root = await makeWorkspace()
+      const appDir = path.join(root, 'packages', 'app')
+      const libDir = path.join(root, 'packages', 'lib')
+      try {
+        // app#build rewrites a file lib#check's key reads, as documenso's
+        // build rewrites @documenso/lib's translations: each run re-keys both.
+        await mkdir(path.join(libDir, 'src'), { recursive: true })
+        await writeFile(path.join(libDir, 'package.json'), JSON.stringify({ name: 'lib' }))
+        await writeFile(path.join(libDir, 'src', 'gen.txt'), '0\n')
+        await writeFile(
+          path.join(libDir, 'vx.config.mjs'),
+          `export default {
+            tasks: { check: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } },
+          }`,
+        )
+        await writeFile(
+          path.join(appDir, 'vx.config.mjs'),
+          `export default {
+            tasks: {
+              build: {
+                dependsOn: ['lib#check'],
+                exec: { command: 'cat src/input.txt > out.txt && date +%s%N > ../lib/src/gen.txt' },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              },
+            },
+          }`,
+        )
+        await vx(root, ['run', 'app#build'])
+        await vx(root, ['run', 'app#build'])
+        const r = await vx(root, ['why', 'app#build'])
+        expect(r.code).toBe(0)
+        expect(r.out).toContain(
+          '  written during a run:\n    packages/lib/src/gen.txt  by app#build\n',
+        )
+        expect(r.out).toContain('a task wrote a file this key reads')
+        const j = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out)
+        expect(j.writers).toEqual([
+          { taskId: 'lib#check', file: 'packages/lib/src/gen.txt', writers: ['app#build'] },
+        ])
+
+        // An edit after the run names no writer.
+        await writeFile(path.join(libDir, 'src', 'gen.txt'), 'hand\n')
+        const later = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out)
+        expect(later.writers).toEqual([])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

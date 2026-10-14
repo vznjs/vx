@@ -960,6 +960,39 @@ export interface InputStability {
 }
 ```
 
+## `InputWriter`
+
+type · `src/orchestrator/metrics.ts`
+
+```ts
+export interface InputWriter {
+  taskId: string
+  file: string
+  writers: string[]
+}
+```
+
+## `inputWriters`
+
+function · `src/orchestrator/metrics.ts`
+
+For each moved input file of `taskId` and of each root cause, the
+recorded tasks that were running when the file last changed: a task
+that writes a file another key reads re-keys that task on every run
+(Growth funnel F5). The file's mtime against the recorded windows, so
+a writer that runs each time is named from its latest run, and an
+edit made outside a run names none.
+
+```ts
+export function inputWriters(
+  db: Database,
+  workspaceRoot: string,
+  taskId: string,
+  entries: CacheKeyDiff['entries'],
+  roots: readonly RootCause[],
+): InputWriter[]
+```
+
 ## `InvocationRecord`
 
 type · `src/cache/layer.ts`

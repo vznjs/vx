@@ -2,8 +2,8 @@
 // terminal. The same persisted data the MCP `whyDidThisRerun` tool reads:
 // the runs table names the
 // run-over-run hash change, and `entry_inputs` (the input-fingerprint moat)
-// names the exact cache-key components that differ. Read-only over cache.db —
-// no config evaluation, no re-hash.
+// names the exact cache-key components that differ. Read-only over cache.db
+// plus a stat of each moved input file — no config evaluation, no re-hash.
 
 import path from 'node:path'
 import { Cache } from '../cache/index.js'
@@ -12,6 +12,7 @@ import { splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
   explainCacheKeyQuery as explainCacheKey,
+  inputWriters,
   latestRunId,
   rootCauses,
   whyDidThisRerunQuery as whyDidThisRerun,
@@ -247,9 +248,10 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
     // each moved dependency in this run down to the tasks whose own
     // inputs moved, so one `vx why` names the file, not the next task.
     const roots = rootCauses(db, runId, taskId, diff.entries)
+    const writers = inputWriters(db, root, taskId, diff.entries, roots)
 
     if (parsed.format === 'json') {
-      process.stdout.write(`${JSON.stringify({ taskId, runId, why, diff, roots })}\n`)
+      process.stdout.write(`${JSON.stringify({ taskId, runId, why, diff, roots, writers })}\n`)
       return 0
     }
 
@@ -320,6 +322,12 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         }
         if (roots.length > ROOTS_SHOWN) lines.push(`    and ${roots.length - ROOTS_SHOWN} more`)
       }
+      if (writers.length > 0) {
+        lines.push('', '  written during a run:')
+        for (const w of writers) {
+          lines.push(`    ${printable(w.file)}  by ${w.writers.join(', ')}`)
+        }
+      }
       const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
       const kinds = [...new Set([...diff.entries.map((e) => e.kind), ...rootKinds])].filter(
         (k) => k in WHAT_TO_DO && !(k === 'upstream' && roots.length > 0),
@@ -341,6 +349,11 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
                 : WHAT_TO_DO[k]
           lines.push(`    ${k.padEnd(kindW)}  ${todo}`)
         }
+        if (writers.length > 0) {
+          // A task re-writing a file a key reads moves that key every run:
+          // the miss is right, and only moving the write ends it.
+          lines.push(`    ${'written'.padEnd(kindW)}  ${WRITTEN_TODO}`)
+        }
       }
     } else if (why.hashChanged === true) {
       lines.push(`  detail     ${diff.note}`)
@@ -353,3 +366,6 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 }
 
 const ROOTS_SHOWN = 5
+
+const WRITTEN_TODO =
+  'a task wrote a file this key reads, so each run re-keys it; give that write its own task with the file as an output, or keep the file out of cache.inputs.files'

@@ -2864,6 +2864,18 @@ which names the `vx why` to run next; a `config` line names the
 `vx show` that prints the task's config now. `--format json` carries
 the walk as `roots` (`chain`, `entries`).
 
+A moved input file whose last change fell inside a recorded task's run
+window names that task: a task that writes a file another key reads (a
+build rewriting a translation file in another package) re-keys that key
+on every run, so the miss is right and only moving the write ends it.
+`--format json` carries these as `writers` (`taskId`, `file`,
+`writers`); an edit made outside a run names none.
+
+```
+  written during a run:
+    packages/lib/src/gen.txt  by app#build
+```
+
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.
 A skipped task never ran and derived no key: its line is `skipped · no key`.
@@ -2888,7 +2900,7 @@ task with no `cache` block derives a key too — it is what dependents
 fold — but saves no entry, so for it the verb can only report the key
 change and says so.
 `--format json` emits one machine-readable object (`{ taskId, runId,
-why, diff, roots }`); when the task's recorded runs predate run ids, `{ taskId,
+why, diff, roots, writers }`); when the task's recorded runs predate run ids, `{ taskId,
 why, diff, explanation }`, `why` and `diff` null and `explanation` the
 latest cache entry's key.
 
