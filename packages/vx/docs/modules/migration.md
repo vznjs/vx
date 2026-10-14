@@ -99,7 +99,8 @@ export function delegatedScript(command: string): string | null
   package whose `tsconfig` `include` would not cover a `.ts` config.
 - A `ts` config is `vx.config.mts` in a package with a `tsconfig.json`
   and no `"type": "module"`: tsc reads a `.ts` there as CommonJS and its
-  type import of the ESM `@vzn/vx/config` fails (TS1479, TS1541).
+  type import of the ESM `@vzn/vx/config` fails (TS1479, TS1541). An
+  output's `!vx.config.ts` take-back there becomes `!vx.config.mts`.
 - After the write, the files go through the first formatter the root's
   `node_modules/.bin` holds (prettier, biome, oxfmt, dprint), as Nx's
   generators do, so the repo's own format check passes them; a `note:`

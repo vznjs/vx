@@ -2164,7 +2164,8 @@ directory, so no `!` line helps. vx never edits `.gitignore`.
 A package with a `tsconfig.json` and no `"type": "module"` gets
 `vx.config.mts`: tsc (node16, nodenext) reads a `.ts` there as
 CommonJS, and its type import of the ESM `@vzn/vx/config` fails
-(TS1479, TS1541: medusa's plugin builds, 2026-10-14). The files written
+(TS1479, TS1541: medusa's plugin builds, 2026-10-14); an output that
+takes the config back names the `.mts`. The files written
 then go through the repo's own formatter when its root installs one
 (`prettier --write`, `biome format --write`, `oxfmt` or `dprint fmt`,
 the first found), and a `note:` says so: create-t3-turbo's `prettier

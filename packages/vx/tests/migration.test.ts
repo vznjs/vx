@@ -366,6 +366,21 @@ describe('a written config passes the repo’s own checks', () => {
     expect(stdout).toContain('turbo.json → vx.config.mts, vx.config.ts')
   })
 
+  // medusa: the mapping takes the config back as `!vx.config.ts`, and a
+  // `*` output then covered the `.mts` written: `vx lock` refused 80 of
+  // 84 configs (Growth, 2026-10-14).
+  it('the take-back of the own config names the file written', async () => {
+    const metas = [pkg('cjs', {})]
+    const build = task('build', {
+      exec: { command: 'tsc', env: {} },
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['*', '!vx.config.ts'] } },
+    })
+    expect(await apply(plan([['cjs', [build]]]), { metas })).toBe(0)
+    const file = readFileSync(path.join(root, 'cjs', 'vx.config.mts'), 'utf8')
+    expect(file).toContain("'!vx.config.mts'")
+    expect(file).not.toContain("'!vx.config.ts'")
+  })
+
   it('runs the repo’s formatter over what it wrote, and says so', async () => {
     const bin = path.join(root, 'node_modules', '.bin')
     mkdirSync(bin, { recursive: true })
