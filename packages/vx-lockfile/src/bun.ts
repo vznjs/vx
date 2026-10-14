@@ -12,6 +12,7 @@
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { depsOf, peerOnly, record, type Json } from './json.js'
+import { joinPosix } from './posix.js'
 
 export interface Lockfile {
   readonly version: string
@@ -204,20 +205,10 @@ function workspaceSpecTarget(
   }
   if (!spec.startsWith('workspace:')) return undefined
   const rest = spec.slice('workspace:'.length)
-  if (rest.startsWith('.') || rest.startsWith('/')) return joinPosix(dir, rest)
+  if (rest.startsWith('/')) return undefined
+  if (rest.startsWith('.')) return joinPosix(dir, rest)
   const alias = ALIAS.exec(rest)
   return alias === null ? undefined : lock.workspaceDirs.get(alias[1]!)
-}
-
-/** `packages/a` + `../b` → `packages/b`. POSIX, as the lockfile writes paths. */
-function joinPosix(base: string, rel: string): string {
-  const parts: string[] = []
-  for (const seg of `${base}/${rel}`.split('/')) {
-    if (seg === '' || seg === '.') continue
-    if (seg === '..') parts.pop()
-    else parts.push(seg)
-  }
-  return parts.length === 0 ? '.' : parts.join('/')
 }
 
 /** The node_modules path a workspace resolves from: its own name, or the root's ''. */

@@ -7,4 +7,5 @@ src/index.ts
 src/json.ts
 src/npm.ts
 src/pnpm.ts
+src/posix.ts
 src/yarn.ts

@@ -13,6 +13,7 @@
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { record } from './json.js'
+import { joinPosix } from './posix.js'
 
 export interface Lockfile {
   readonly version: string
@@ -255,7 +256,8 @@ function buildGraph(lock: Lockfile): Graph {
   const link = (from: number, dir: string, name: string, version: string): void => {
     if (version.startsWith('link:')) {
       const target = joinPosix(dir, version.slice('link:'.length))
-      if (lock.importers.has(target)) edges[from]!.push(index.get(importerNode(target))!)
+      if (target !== undefined && lock.importers.has(target))
+        edges[from]!.push(index.get(importerNode(target))!)
       else material[from] += `\nlink\0${name}\0${version}`
       return
     }
@@ -288,20 +290,11 @@ export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImpor
     for (const [name, version] of deps) {
       if (!version.startsWith('link:')) continue
       const target = joinPosix(dir, version.slice('link:'.length))
-      if (target !== dir && lock.importers.has(target)) links[name] = target
+      if (target !== undefined && target !== dir && lock.importers.has(target)) {
+        links[name] = target
+      }
     }
     out.set(dir, { deps: links, peers: {} })
   }
   return out
-}
-
-/** `packages/a` + `../b` → `packages/b`; `.` + `packages/a` → `packages/a`. POSIX, as the lockfile writes paths. */
-function joinPosix(base: string, rel: string): string {
-  const parts: string[] = []
-  for (const seg of `${base}/${rel}`.split('/')) {
-    if (seg === '' || seg === '.') continue
-    if (seg === '..') parts.pop()
-    else parts.push(seg)
-  }
-  return parts.length === 0 ? '.' : parts.join('/')
 }

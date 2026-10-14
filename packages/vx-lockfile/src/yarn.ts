@@ -14,6 +14,7 @@
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { stable } from './pnpm.js'
 import { depsOf, record } from './json.js'
+import { joinPosix } from './posix.js'
 
 /** What yarn() warns of a classic lockfile, after its name: the static part a test holds. */
 export const CLASSIC_EDGES =
@@ -313,18 +314,7 @@ function linkedDir(
   const from = dirOf.get(locator)
   if (from === undefined) return undefined
   const target = joinPosix(from, m[1]!)
-  return lock.workspaces.has(target) ? target : undefined
-}
-
-/** `packages/a` + `../b` → `packages/b`. POSIX, as the lockfile writes paths. */
-function joinPosix(base: string, rel: string): string {
-  const parts: string[] = []
-  for (const seg of `${base}/${rel}`.split('/')) {
-    if (seg === '' || seg === '.') continue
-    if (seg === '..') parts.pop()
-    else parts.push(seg)
-  }
-  return parts.length === 0 ? '.' : parts.join('/')
+  return target !== undefined && lock.workspaces.has(target) ? target : undefined
 }
 
 /** The entry a descriptor the file keys resolves to: as written, bound to `from`, or with berry's `npm:` prefix. */
