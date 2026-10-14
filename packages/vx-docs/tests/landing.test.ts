@@ -344,7 +344,7 @@ describe('the landing page', () => {
       'sandbox, remote cache and remote execution, no paid tier',
       'daemons, accounts or cloud services to run it',
     ])
-    expect(wins.map((m) => text(m[1]!))).toEqual(['14', 'MIT', '0'])
+    expect(wins.map((m) => text(m[1]!))).toEqual(['15', 'MIT', '0'])
   })
 
   // Where vx differs from both, as the choosing page's model says it.
