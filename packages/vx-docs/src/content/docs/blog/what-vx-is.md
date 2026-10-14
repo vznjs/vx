@@ -50,6 +50,7 @@ In plugin terms the stages are named `config` → `discover` → `project` → `
 `key` → `fingerprint` → `schedule` → `admit`, followed by the two
 behaviour capabilities `executor` (where a command runs) and `cache`
 (where artifacts live), the observe-only `telemetry` capability,
+`output` (who draws the terminal),
 `setup` and `teardown` around the run, and `commands` (CLI verbs).
 Core applies **no** plugin by default and names
 none. A `vx.workspace.ts` that declares no plugins still runs and
