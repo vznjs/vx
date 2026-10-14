@@ -51,10 +51,8 @@ is about 0.7 s.
 Some of vx's per-task cost is checks the others do not make:
 
 - **Graph rules**: two tasks writing one output, or a task reading
-  another's output without an edge, are refused. They are lock-time
-  checks: `vx lock` checks them, and CI runs frozen by default, so it
-  loads the lock and skips them. A local run without `--frozen` still
-  checks them, which costs 10 to 12 ms.
+  another's output without an edge, are refused. Only `vx lock` checks
+  them; a run reads the lock and skips them.
 - **Input recheck**, 0.2 ms per miss: after a task exits, vx checks
   that its inputs did not move while it ran, and skips the save if one
   did ([what four tools do](../an-input-moves-four-tools/)).
