@@ -76,6 +76,10 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--log': ['a#build'],
   '--stats': [],
 }
+/** A flag that only rides with another on one verb: `last --branch` needs `--stats`. */
+const VERB_ARGV: Readonly<Record<string, readonly string[]>> = {
+  'last --branch': ['main', '--stats'],
+}
 
 describe('verbFlags is what each verb accepts', () => {
   it('completes no flag the verb refuses', () => {
@@ -87,7 +91,7 @@ describe('verbFlags is what each verb accepts', () => {
     for (const [verb, parse] of Object.entries(PARSE)) {
       for (const flag of verbFlags(verb)) {
         if (flag === '--help') continue
-        const argv = ARGV[flag]
+        const argv = VERB_ARGV[`${verb} ${flag}`] ?? ARGV[flag]
         if (argv === undefined) {
           refused.push(`${verb} ${flag}: no argv for it in this table`)
           continue
