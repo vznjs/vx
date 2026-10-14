@@ -376,7 +376,15 @@ type Named = readonly ['files' | 'workspaceFiles' | null, string]
 function zeroSegments(glob: string): string | null {
   if (!glob.endsWith('/**')) return null
   const head = glob.slice(0, -'/**'.length)
-  return head === '' || isLiteralPattern(head) ? null : head
+  // An escaped character (`literalGlob`'s `g\{1\}`) is no wildcard.
+  return head === '' || isLiteralPattern(head.replace(/\\./g, '_')) ? null : head
+}
+
+/** A glob, `!` or not, and the X its `X/**` also matches in Turbo (`zeroSegments`). */
+function withZeroSegments(glob: string): string[] {
+  const neg = glob.startsWith('!') ? '!' : ''
+  const head = zeroSegments(glob.slice(neg.length))
+  return head === null ? [glob] : [glob, neg + head]
 }
 
 /** No glob syntax: one path, which git may ignore. */
@@ -2031,11 +2039,11 @@ function buildTask(
           continue
         }
         if (body.startsWith('$TURBO_ROOT$/')) {
-          wsFiles.push((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length))
+          wsFiles.push(...withZeroSegments((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length)))
           const rel = body.slice('$TURBO_ROOT$/'.length)
           if (!neg) rels.set(rel, ['workspaceFiles', rel])
         } else if (up !== null) {
-          wsFiles.push(up)
+          wsFiles.push(...withZeroSegments(up))
           if (!neg) rels.set(up, ['workspaceFiles', up])
         } else if (body.startsWith('../')) {
           todos.push(`input ${JSON.stringify(i)}: leaves the workspace — map manually`)
@@ -2045,7 +2053,8 @@ function buildTask(
               'prefix (→ cache.inputs.workspaceFiles) — map manually',
           )
         } else {
-          files.push(translated)
+          // Unkeyed, a root file edit `*\/**` reaches in Turbo replayed a stale hit.
+          files.push(...withZeroSegments(translated))
           const rel = path.posix.join(atRoot ? '.' : pkgDir, body)
           if (!neg) rels.set(rel, [atRoot ? 'workspaceFiles' : 'files', translated])
         }
