@@ -12,7 +12,15 @@ const root =
   (args[0] === 'run' || args[0] === 'watch') && !args.includes('--help') && !args.includes('-h')
     ? await findWorkspaceRoot(process.cwd()).catch(() => null)
     : null
-if (root !== null) {
+// An up-to-date lock is left alone: a test of a full disk or a read-only
+// tree must reach the verb, not a lock write the user would not make.
+const current = (): boolean =>
+  Bun.spawnSync([process.execPath, BIN, 'lock', '--check'], {
+    stdout: 'ignore',
+    stderr: 'ignore',
+    env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+  }).exitCode === 0
+if (root !== null && !current()) {
   const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {
     stdout: 'ignore',
     stderr: 'pipe',

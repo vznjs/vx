@@ -109,6 +109,9 @@ const r = await run({ cwd: ${JSON.stringify(root)}, tasks: ['app#check'], handle
 console.log('ok=' + r.ok)
 `,
       )
+      // run() reads only the lock.
+      const vx = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+      expect(Bun.spawnSync({ cmd: [process.execPath, vx, 'lock'], cwd: root }).exitCode).toBe(0)
       const r = Bun.spawnSync({
         cmd: [process.execPath, embedder],
         cwd: root,

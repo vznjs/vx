@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
   'a workspace file this user may not read',
@@ -28,18 +28,22 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
           `export default { tasks: { build: { exec: { command: 'echo ${p}' } } } }\n`,
         )
       }
+      // A run reads only the lock, so each case starts locked.
+      expect(Bun.spawnSync(['bun', BIN, 'lock'], { cwd: root }).exitCode).toBe(0)
     })
     afterEach(async () => {
       await chmod(path.join(root, 'packages', 'b'), 0o755)
       await rm(root, { recursive: true, force: true })
     })
 
-    const run = async (locked: string, mode = 0o000) => {
+    const run = async (locked: string, mode = 0o000, verb = ['run', 'build', '--all', '--dry']) => {
       if (locked !== '') await chmod(path.join(root, locked), mode)
-      const proc = Bun.spawn(
-        ['bun', BIN, 'run', 'build', '--all', '--dry', '--cache-dir', path.join(root, '.c')],
-        { cwd: root, env: { ...process.env, NO_COLOR: '1' }, stdout: 'pipe', stderr: 'pipe' },
-      )
+      const proc = Bun.spawn(['bun', BIN, ...verb, '--cache-dir', path.join(root, '.c')], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
       const [out, err, code] = await Promise.all([
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),
@@ -60,12 +64,13 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
       })
     })
 
-    it('names a project config it may not read as a read', async () => {
-      expect(await run('packages/b/vx.config.mjs')).toEqual({
+    it('names a project config it may not read as a read; a run never opens one', async () => {
+      expect(await run('packages/b/vx.config.mjs', 0o000, ['lock'])).toEqual({
         code: 1,
-        err: 'vx: <root>/packages/b/vx.config.mjs: not readable by this user (EACCES)',
+        err: 'vx lock: .vx/projects.lock.json not written: <root>/packages/b/vx.config.mjs: not readable by this user (EACCES)',
         planned: [],
       })
+      expect(await run('')).toEqual({ code: 0, err: '', planned: ['a', 'b'] })
     })
 
     it('names and skips a member directory it may not search', async () => {

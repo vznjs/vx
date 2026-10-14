@@ -30,7 +30,7 @@ const OLD: ReadonlyArray<readonly [RegExp, string]> = [
     /(?<![\w-])--(no-)?frozen\b(?!-)|\brun\.frozen\b|\bVX_RUN_FROZEN\b/,
     'vx lock (runs read only the lock)',
   ],
-  [/\.vx\/projects\.lock\.json\b/, '.vx/projects.lock.json'],
+  [/\.vx\/lock\.json\b/, '.vx/projects.lock.json'],
 ]
 
 const SKIP = [

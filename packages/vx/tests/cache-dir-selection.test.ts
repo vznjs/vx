@@ -17,6 +17,7 @@ import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { summarized } from './helpers/parity.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+const VX = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
 
 const CONFIG = `
@@ -56,9 +57,10 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
     const vx = async (
       args: string[],
       cacheDir: string | null = ro,
+      bin = BIN,
     ): Promise<{ code: number; out: string; err: string }> => {
       const flags = cacheDir === null ? [] : ['--cache-dir', cacheDir]
-      const proc = Bun.spawn([process.execPath, BIN, ...args, ...flags], {
+      const proc = Bun.spawn([process.execPath, bin, ...args, ...flags], {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
@@ -144,9 +146,10 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         // `.vx` stops being writable: the cache directory cannot be created
         // under it, and neither can .vx/projects.lock.json.
         const { chmod } = await import('node:fs/promises')
+        expect((await vx(['lock'], null)).code).toBe(0)
         await chmod(path.join(root, '.vx'), 0o555)
         try {
-          const ran = await vx(['run', 'build', '--all'], null)
+          const ran = await vx(['run', 'build', '--all'], null, VX)
           expect(ran.code).toBe(1)
           expect(ran.err).toMatch(/^vx: cannot create cache directory .*\.vx\/cache \(EACCES: /)
           expect(ran.err).toContain('--cache-dir <path>')
