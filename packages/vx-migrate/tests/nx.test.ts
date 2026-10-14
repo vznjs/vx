@@ -145,7 +145,7 @@ const status = (r: Awaited<ReturnType<typeof run>>, id: string) =>
 
 describe('nx(): a wildcard-first output', () => {
   it(
-    'stays cached under git: committed matches and the config are taken back, the rest is cleaned',
+    'stays cached under git: committed matches are kept, the config taken back, the rest cleaned',
     async () => {
       const graph = structuredClone(GRAPH) as {
         graph: { nodes: Record<string, { data: { targets: Record<string, unknown> } }> }
@@ -169,7 +169,7 @@ describe('nx(): a wildcard-first output', () => {
         )!.node.config.cache
       expect((await cacheOf('lib#test'))?.outputs.files).toEqual(['*.xml'])
       expect((await cacheOf('lib#gen'))?.outputs.files).toEqual(['*.mjs'])
-      expect((await cacheOf('app#test'))?.outputs.files).toEqual(['**/*.xml', '!pom.xml'])
+      expect((await cacheOf('app#test'))?.outputs.files).toEqual(['**/*.xml'])
       await writeFile(
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
         'export default { tasks: {} }\n',

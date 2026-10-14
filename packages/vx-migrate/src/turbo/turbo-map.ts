@@ -30,13 +30,12 @@ import {
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   takingBack,
-  literalTailMatches,
   wildcardCleanTodo,
   wildcardOutput,
   wildcardTodo,
 } from '../shared-outputs.js'
 import { isRecord, packageScripts, relPosix } from '../paths.js'
-import { MAX_SPARED, type TrackedKinds } from '../tracked-outputs.js'
+import type { TrackedKinds } from '../tracked-outputs.js'
 import {
   DOTENV_PROBE,
   DOTENV_PROBE_TOP,
@@ -2158,18 +2157,10 @@ function buildTask(
       } else outFiles.push(neg + o)
     }
 
-    // A committed file a literal-tail wildcard reaches is taken back, as
-    // the runtime spares a tracked output; past the runtime's limit the
-    // task stays uncached.
-    for (const o of [...outFiles]) {
-      const hits = literalTailMatches(o, opts.tracked?.(pkgDir))
-      if (hits !== null && hits.length <= MAX_SPARED)
-        for (const h of hits) if (!outFiles.includes(`!${h}`)) outFiles.push(`!${h}`)
-    }
     // With git's file list known, a wildcard-first output stays cached as
-    // nx() keeps it (owner, 2026-10-03; turbo() 2026-10-14): each committed
-    // file it reaches is taken back after mapping (`spareTrackedOutputs`).
-    // Turbo never cleans, so the untracked files it reaches are named.
+    // nx() keeps it (owner, 2026-10-03; turbo() 2026-10-14): core never
+    // cleans a committed file. Turbo never cleans, so the untracked files
+    // it reaches are named.
     const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir), true)
     if (wild !== undefined && opts.tracked === undefined) {
       todos.push(wildcardTodo(wild))

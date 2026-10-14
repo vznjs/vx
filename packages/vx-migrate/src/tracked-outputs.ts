@@ -118,8 +118,8 @@ export function trackedKinds(tracked: readonly string[]): (rel: string) => Track
  * checkout, a pull appends to it), HEAD itself, and the index's size and
  * mtime (`git add`, `git rm`). Stats and a small read, so a kept mapping
  * stays a hit between them; a run does not write the index. Without the
- * index, a file `git add`ed under an output and not yet committed was not
- * taken back by the kept mapping, and the run's clean deleted it. Under
+ * index, a file `git add`ed under an output and not yet committed left a
+ * reader that its `!` hides cached by the kept mapping. Under
  * reftable storage HEAD reads `ref: refs/heads/.invalid` and no reflog file
  * exists, so the ref stack's table list stands for both: every ref update
  * names a new table in it.
@@ -191,18 +191,17 @@ function hidden(globs: unknown, files: readonly string[]): string | undefined {
   )
 }
 
-/** Past this many, a task's take-backs cost its runs more than its cache saves. */
-export const MAX_SPARED = 16
-
 interface Outputs {
   files?: unknown
   workspaceFiles?: unknown
 }
 
 /**
- * Take back every committed file a mapped task's outputs cover, in place,
- * and return one `[pkg#task, todo]` per task that had any. `tracked` is
- * root-relative.
+ * Fit a mapped task's outputs to the committed files they cover, in place,
+ * and return one `[pkg#task, todo]` per task this leaves uncached. Core
+ * never cleans, saves or restores a committed file (owner, 2026-10-14), so
+ * the outputs keep them; what is left is the readers' `!` that hides one.
+ * `tracked` is root-relative.
  */
 export function spareTrackedOutputs(
   root: string,
@@ -244,7 +243,7 @@ export function spareTrackedOutputs(
     for (const t of p.tasks) {
       const outputs = (t.task?.['cache'] as { outputs?: Outputs } | undefined)?.outputs
       if (outputs === undefined) continue
-      const hits: [key: 'files' | 'workspaceFiles', globs: string[], hit: string[]][] = []
+      const hits: [key: 'files' | 'workspaceFiles', hit: string[]][] = []
       for (const [key, base] of [
         ['files', own],
         ['workspaceFiles', tracked],
@@ -253,9 +252,9 @@ export function spareTrackedOutputs(
         if (!Array.isArray(globs) || globs.length === 0) continue
         let strings = globs.filter((g): g is string => typeof g === 'string')
         // An output naming one committed file (eslint's
-        // `eslint-suppressions.json`) is a source: its `!` would take the
-        // whole entry back, so the entry goes, and so does the `!` a
-        // reader's inputs got for it, or every reader ran uncached (hono).
+        // `eslint-suppressions.json`) is a source: the entry goes, and so
+        // does the `!` a reader's inputs got for it, or every reader ran
+        // uncached (hono).
         const rootedOf = (g: string) => (key === 'files' && rel !== '' ? `${rel}/${g}` : g)
         const sources = new Set(
           strings.filter((g) => isLiteralPattern(g) && trackedSet.has(rootedOf(g))),
@@ -266,15 +265,14 @@ export function spareTrackedOutputs(
           for (const g of sources) unhide(key === 'files' ? p : null, rootedOf(g))
         }
         const hit = coveredTracked(strings, base)
-        if (hit.length > 0) hits.push([key, strings, hit])
+        if (hit.length > 0) hits.push([key, hit])
       }
-      const spared = hits.flatMap(([, , hit]) => hit)
-      if (spared.length === 0) continue
+      if (hits.length === 0) continue
       // A committed file under these outputs is still a source, and the `!`
       // entry `excludeSiblingOutputs` gave a reader over the whole output
       // hides it from that reader's key: such a reader runs uncached (X-54).
-      const local = hits.flatMap(([key, , hit]) => (key === 'files' ? hit : []))
-      const rooted = hits.flatMap(([key, , hit]) =>
+      const local = hits.flatMap(([key, hit]) => (key === 'files' ? hit : []))
+      const rooted = hits.flatMap(([key, hit]) =>
         key === 'files' ? hit.map((f) => (rel === '' ? f : `${rel}/${f}`)) : hit,
       )
       for (const q of projects) {
@@ -294,25 +292,6 @@ export function spareTrackedOutputs(
           ])
         }
       }
-      const shown = spared.slice(0, 3).join(', ') + (spared.length > 3 ? ', …' : '')
-      // Each `!` is matched against every output path on each save, clean
-      // and restore: 4,200 of them cost typescript-eslint's warm run 1.2 s.
-      if (spared.length > MAX_SPARED) {
-        delete t.task!['cache']
-        todos.push([
-          `${p.name}#${t.name}`,
-          `outputs cover ${spared.length} committed files (${shown}), which vx cleans before ` +
-            'every run — task runs uncached; declare the exact outputs in a vx.config to cache it',
-        ])
-        continue
-      }
-      for (const [key, strings, hit] of hits)
-        outputs[key] = [...strings, ...hit.map((f) => `!${f}`)]
-      todos.push([
-        `${p.name}#${t.name}`,
-        `outputs cover ${spared.length} committed file(s) (${shown}) — vx cleans outputs ` +
-          'before a run, so they are taken back with `!` and kept',
-      ])
     }
   }
   return todos

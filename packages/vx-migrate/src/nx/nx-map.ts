@@ -875,9 +875,8 @@ function buildTask(
   const readyWhen = mapped?.readyWhen
   const persistent = readyWhen !== undefined || persistentTarget(target)
   // vx cleans outputs before a run and Nx never does. With git's file list
-  // known, a wildcard-first output (`**/*.d.ts`) stays cached: each
-  // committed file it reaches is taken back with `!` after mapping
-  // (`spareTrackedOutputs`), and what the clean removes is what the task
+  // known, a wildcard-first output (`**/*.d.ts`) stays cached: core never
+  // cleans a committed file, so what the clean removes is what the task
   // writes (owner, 2026-10-03). Without it, the sources cannot be told apart.
   const wild =
     opts.tracked === undefined

@@ -102,7 +102,7 @@ export function ownFileTodo(own: { glob: string; file: string }): string {
 export function wildcardOutput(
   files: readonly string[],
   tracked?: TrackedKinds,
-  /** Let a literal-tail glob through once its tracked matches are taken back (`literalTailMatches`). */
+  /** Let a literal-tail glob through: it reaches only the committed files it names, which core keeps (`literalTailMatches`). */
   literalTail = false,
 ): string | undefined {
   return files.find(
@@ -110,20 +110,16 @@ export function wildcardOutput(
       !o.startsWith('!') &&
       !isLiteralPattern(o.split('/')[0] ?? '') &&
       !untrackedKind(o, tracked) &&
-      !(
-        literalTail &&
-        (literalTailMatches(o, tracked)?.every((m) => files.includes(`!${m}`)) ?? false)
-      ),
+      !(literalTail && literalTailMatches(o, tracked) !== null),
   )
 }
 
 /**
  * The tracked files a wildcard-first glob with a literal rest can reach
  * (clerk's builds output `*\/package.json`, the subpath stubs it commits):
- * it reaches no other file, so with each of these taken back by a `!` it
- * reaches no source. Null for any other shape, or with `tracked` unknown.
+ * it reaches no other file, and core never cleans a committed one. Null for any other shape, or with `tracked` unknown.
  */
-export function literalTailMatches(glob: string, tracked?: TrackedKinds): string[] | null {
+function literalTailMatches(glob: string, tracked?: TrackedKinds): string[] | null {
   if (tracked === undefined || glob.startsWith('!')) return null
   const segs = glob.replace(/^(\.\/)+/, '').split('/')
   const [first, ...rest] = segs
@@ -323,8 +319,8 @@ function inputsOf(t: GeneratedTask): { files: string[]; workspaceFiles?: unknown
  * files git tracks, and a build's outputs are not, so the adopted tool
  * never keyed them either. A literal input another task writes cannot be
  * taken back (core refuses a `!` over a literal input), so that task runs
- * uncached with a todo. Committed files under an output are the tracked
- * pass's (`spareTrackedOutputs`).
+ * uncached with a todo. A reader whose `!` hides a committed file is the
+ * tracked pass's (`spareTrackedOutputs`).
  */
 export function excludeSiblingOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
   const writers = tasks.flatMap((t, index) => {

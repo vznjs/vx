@@ -56,9 +56,8 @@ export async function migrateTurbo(
     sourceNames: (dirs) => spelledNames(root, dirs, tracked),
     ignored: (rels) => gitIgnored(root, rels),
   })
-  // Turbo never cleans an output and vx cleans one before every run: a
-  // written `dist/**` beside a committed `dist/keep.js` deleted it on the
-  // first run. turbo() takes such files back each run; the configs must.
+  // A reader whose `!` hides a committed file under another task's output
+  // runs uncached, as under turbo().
   if (tracked !== null)
     for (const [id, todo] of spareTrackedOutputs(root, mapping.projects, tracked)) {
       const at = id.lastIndexOf('#')

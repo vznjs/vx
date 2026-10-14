@@ -18,7 +18,7 @@ afterEach(async () => {
 })
 
 describe('migrateTurbo: a committed file under an output', () => {
-  it('is taken back with `!`, with a todo naming it; an untracked one is not', async () => {
+  it('stays in the output with no `!` and no todo: core never cleans it', async () => {
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({ tasks: { build: { outputs: ['dist/**'] } } }),
@@ -43,10 +43,8 @@ describe('migrateTurbo: a committed file under an output', () => {
       outputs: (t.task as { cache: { outputs: unknown } }).cache.outputs,
       todos: t.todos,
     }).toEqual({
-      outputs: { files: ['dist/**', '!dist/keep.js'] },
-      todos: [
-        'outputs cover 1 committed file(s) (dist/keep.js) — vx cleans outputs before a run, so they are taken back with `!` and kept',
-      ],
+      outputs: { files: ['dist/**'] },
+      todos: [],
     })
   })
 })

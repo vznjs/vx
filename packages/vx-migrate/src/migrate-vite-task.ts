@@ -19,8 +19,8 @@ export async function migrateViteTask(
     ownConfig: () => `vx.config.${format}`,
     sourceNames: (dirs) => spelledNames(root, dirs, tracked),
   })
-  // A committed file under an output is taken back, or the first run's
-  // clean deletes it (Vite Task never cleans).
+  // A reader whose `!` hides a committed file under another task's output
+  // runs uncached.
   if (tracked !== null)
     for (const [id, todo] of spareTrackedOutputs(root, mapped.projects, tracked)) {
       const at = id.lastIndexOf('#')

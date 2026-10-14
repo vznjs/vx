@@ -74,19 +74,17 @@ describe('turbo-map: a wildcard-first output with a literal rest', () => {
   const stubs = (n: number) =>
     Array.from({ length: n }, (_, i) => `s${String(i).padStart(2, '0')}/package.json`)
 
-  // Past the runtime's limit, `spareTrackedOutputs` (the later pass) makes it uncached.
-  it('takes back each committed match, up to the runtime limit', async () => {
+  // Core never cleans a committed match (owner, 2026-10-14), however many.
+  it('stays cached as written, committed matches or not', async () => {
     expect({
       none: await map('*/package.json', ['package.json', 'src/index.ts', 'src/a/package.json']),
       two: await map('*/package.json', ['package.json', 'web/package.json', 'node/package.json']),
-      limit: ((await map('*/package.json', stubs(16))) as string[] | null)?.length,
-      over: await map('*/package.json', stubs(17)),
+      many: await map('*/package.json', stubs(17)),
       wildRest: await map('*/*.json', ['web/package.json']),
     }).toEqual({
       none: ['*/package.json'],
-      two: ['*/package.json', '!node/package.json', '!web/package.json'],
-      limit: 17,
-      over: ['*/package.json'],
+      two: ['*/package.json'],
+      many: ['*/package.json'],
       wildRest: ['*/*.json'],
     })
   })
