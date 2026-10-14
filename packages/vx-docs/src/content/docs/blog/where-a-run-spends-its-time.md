@@ -51,18 +51,24 @@ is about 0.7 s.
 Some of vx's per-task cost is checks the others do not make:
 
 - **Graph rules**: two tasks writing one output, or a task reading
-  another's output without an edge, are refused. `vx lock` and
-  `vx lock --check` check them; a run under CI loads the lock and skips
-  them; a run without a lock checks them (10 to 12 ms).
+  another's output without an edge, are refused. They are lock-time
+  checks: `vx lock` checks them, and CI runs frozen by default, so it
+  loads the lock and skips them. A local run without `--frozen` still
+  checks them, which costs 10 to 12 ms.
 - **Input recheck**, 0.2 ms per miss: after a task exits, vx checks
   that its inputs did not move while it ran, and skips the save if one
   did ([what four tools do](../an-input-moves-four-tools/)).
 - **Output clean**, 0.15 ms per miss: declared outputs are cleared
   before a task runs, so a stale file cannot ride along into the cache.
-- **Inline save**, about 4.3 ms per build task: vx writes the cache
-  entry before the task's dependents start. Turborepo hands the write
-  to a background worker. On this graph that ordering costs at most
-  about 0.14 s of a 120 s run.
+- **Save before dependents**, about 4.3 ms per build task: the save
+  already runs off the task's slot, in a save lane, but the task's
+  dependents wait for it to land, so they cannot rewrite the outputs
+  while they are archived. On this graph that wait costs at most about
+  0.14 s of a 120 s run.
+- **Remote upload at the end**: uploads to a remote cache run in the
+  background, a bounded number at once. Neither the task nor its
+  dependents wait for one; the end of the run does, so every upload
+  finishes before vx exits.
 - **Blob-size check** on a cold cache: once per git index, vx confirms
   that the blob IDs it reads from git match the files on disk, about
   330 ms. After that it is remembered.
@@ -135,8 +141,8 @@ measured alone it is 10.8 ms over 1,600 hits, and the larger figure was
 ten overlapping workers summed. When something outside vx rewrites a task's
 outputs with identical bytes, vx restores that task's outputs anyway,
 because the recorded times no longer match. That is real, but fixing it means a content
-hash on every save, which costs more than it saves. The inline save is
-the 0.14 s above. None became a patch.
+hash on every save, which costs more than it saves. The wait for the
+save before dependents start is the 0.14 s above. None became a patch.
 
 Run it yourself: the bench and its scripts are in the repository, and
 vx is at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
