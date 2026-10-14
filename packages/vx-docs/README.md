@@ -166,7 +166,8 @@ Each release gets a note in `src/content/docs/releases/`, written before it is c
 (`.claude/skills/release/SKILL.md`); the first ten batch the per-merge
 releases up to v0.0.625. A post holds at most ten changes a user would
 notice, each a `##` section with one example and its PR links, then
-Breaking changes, How to update and Learn more. The title is the
+Breaking changes (every `old → new` rename and removal; the code keeps
+no aliases before 1.0), How to update and Learn more. The title is the
 story, the cover's headline without its accent brackets (`Runs that
 explain themselves`); the version is metadata, shown as a `v0.0.625`
 chip beside the date, read from the slug. Every post has a

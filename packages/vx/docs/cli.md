@@ -760,11 +760,11 @@ other persistent task`), and a non-zero exit makes the run exit 1
    each one's id (`app#dev │ Local: http://localhost:5173`), except
    under `--output-logs errors-only`, `hash-only` or `none`; a single
    requested server in the focused flow streams raw from its frame.
-3. **Worker rows** — one per worker slot (sized
+3. **Worker rows** — one per worker slot that has been busy (at most
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
-   its row for its whole life; idle rows hold their place dimmed, so
-   nothing ever jumps; overflow shows as `+k more`. A second in, a row
+   its row for its whole life; a row whose task ended holds its place
+   dimmed (`idle`), so nothing ever jumps; overflow shows as `+k more`. A second in, a row
    says what waits on it: `critical path` (yellow) on the running task
    the longest unfinished chain waits on, by the same p50s as the
    forecast below and only while two or more run, and a dim
@@ -3305,7 +3305,7 @@ only — a hit's restore time never enters it — which is why one executed
 task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
 task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
-when nothing that could hit ran, with `N failed` after the count on a
+when every task hit, with `N failed` after the count on a
 red run. A task with no `cache` block, or any task of a run whose
 `--cache` reads and writes nothing (`--no-cache`), could never hit, so it
 is counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`), as

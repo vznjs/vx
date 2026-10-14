@@ -44,6 +44,10 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   one `##` per change with one example and its PR links,
   `## Breaking changes` when any, then How to update and Learn more as
   the last post has them.
+- Breaking changes is a list of every `old → new` rename and removal
+  in the range, taken from the `org/changes/` files (owner,
+  2026-10-14): until 1.0 the code keeps no aliases or rename notices,
+  so an old name just stops working and this list is the only notice.
 - Rules the site tests hold: speed as "N× faster" or "from X to Y",
   never percentages; no benchmark tables; no `--` at the start of a
   heading; never say vx runs or works in a Turbo or Nx repo (it maps
