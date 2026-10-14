@@ -1,7 +1,6 @@
 // The agent skill (skills/vx/SKILL.md) is what an agent trusts without
 // reading the code: each command it shows is a verb vx has, each flag one
-// that verb accepts, and its MCP list is @vzn/vx-mcp's tools. Unsafe: it
-// reads another package.
+// that verb accepts.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
@@ -29,17 +28,5 @@ describe('the agent skill', () => {
         : flags.filter((f) => !acceptedFlags(verb).includes(f)).map((f) => `vx ${verb} ${f}`),
     )
     expect(wrong).toEqual([])
-  })
-
-  it("names exactly @vzn/vx-mcp's tools", () => {
-    const tools = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'src', 'tools.ts'),
-      'utf8',
-    )
-    const want = [...tools.matchAll(/^ {4}name: '(\w+)'/gm)].map((m) => m[1]!).sort()
-    const listed = /Its tools: ([^.]+)\./.exec(SKILL)![1]!
-    const got = [...listed.matchAll(/`(\w+)`/g)].map((m) => m[1]!).sort()
-    expect(want.length).toBeGreaterThan(5)
-    expect(got).toEqual(want)
   })
 })

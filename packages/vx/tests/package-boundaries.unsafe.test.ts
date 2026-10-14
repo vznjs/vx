@@ -128,9 +128,6 @@ describe('package boundaries', () => {
       'VERSION',
       'applyMigration',
       'buildPackageGraph',
-      'cacheKeyDiff',
-      'clampInt',
-      'collectInfo',
       'definePlugin',
       'defineProject',
       'defineWorkspace',
@@ -140,7 +137,6 @@ describe('package boundaries', () => {
       'findManifestRoot',
       'findWorkspaceRoot',
       'foldScriptHooks',
-      'inputWriters',
       'isCacheHit',
       // Widened 2026-09-23 (item 667): `@vzn/vx-reapi` maps declared output
       // globs to literal REAPI paths, and its own wildcard class read the
@@ -148,7 +144,6 @@ describe('package boundaries', () => {
       'isLiteralPattern',
       'isPassStatus',
       'isUserError',
-      'latestRunId',
       'listProjectMetas',
       'loadProjectConfig',
       'loadResolvedProjects',
@@ -156,12 +151,6 @@ describe('package boundaries', () => {
       'lockfileClaim',
       'machineMemoryBytes',
       'machineParallelism',
-      // Widened 2026-09-28 (L-26): `@vzn/vx-mcp`'s `listTasks` handed an
-      // agent a task's command with its declared secret unmasked.
-      'maskedCommand',
-      // Widened 2026-10-08 (L-11): `vx mcp` handed an agent an error that
-      // quoted a secret (a config's refusal, a crash) as it was.
-      'maskedLine',
       'normalizeGlob',
       // Widened 2026-09-20 (item 445): `@vzn/vx-migrate` asks the same
       // "do these two output globs provably overlap?" question at
@@ -177,13 +166,8 @@ describe('package boundaries', () => {
       // Stream F: a plugin factory refuses a misspelt option, as core
       // refuses an unknown config field.
       'refuseUnknownOptions',
-      'resolveRunId',
-      'rootCauses',
       'run',
-      'runFailures',
       'splitTaskId',
-      'taskLog',
-      'whyDidThisRerunQuery',
       // Widened (X-112): `@vzn/vx-reapi` and the executor example joined the
       // args after `--` on their own, and lost them where the local
       // executor kept them (a trailing comment).

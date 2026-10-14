@@ -2,12 +2,11 @@
 
 ## Purpose
 
-One collector for what `vx info` prints and what `@vzn/vx-mcp`'s
-`getWorkspaceInfo` returns, so the verb and the agent tool cannot
-disagree: the CLI renders, this gathers.
+One collector for what `vx info` prints and its `--format json`
+returns: the CLI renders, this gathers.
 
 ```ts
-collectInfo(cwd, { cacheDir?, warn? }): Promise<InfoFacts>
+collectInfo(cwd, opts?: CollectInfoOptions): Promise<InfoFacts> // { cacheDir?, warn? }
 stableSandboxReason(reason: string): string // the probe's reason with the pid-named socket path masked
 ```
 
@@ -56,5 +55,4 @@ tasks` that hides a typo is the fact a bug report needs.
 ## Tests
 
 `tests/show-info.test.ts` (the rows and the JSON facts end to end, the
-`--cache-dir` override, the orphans row) and `@vzn/vx-mcp`'s server test
-(`getWorkspaceInfo` returns the same facts over the wire).
+`--cache-dir` override, the orphans row).

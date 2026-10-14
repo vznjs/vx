@@ -803,12 +803,12 @@ export const MORE: readonly Feature[] = [
     category: 'insight',
     hook: 'An installable skill teaches an agent to run, debug and query vx.',
     body: [
-      'Agents do better with a short guide than by trial and error. vx ships one: how to run tasks, read a failure, ask `vx why` and use JSON output.',
-      'Copy it into your agent’s skills folder and it uses vx the way the docs intend.',
+      'Agents do better with a short guide than by trial and error. vx ships one: how to run tasks, read a failure, ask `vx why`, read run history with `vx last --stats` and use JSON output.',
+      'Install it with `npx skills add vznjs/vx/packages/vx/skills/vx`, or copy it from `node_modules` to match the vx you installed, and your agent uses vx the way the docs intend.',
     ],
     example: {
       lang: 'sh',
-      code: 'mkdir -p .claude/skills/vx\ncp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/',
+      code: 'npx skills add vznjs/vx/packages/vx/skills/vx\n# or the copy matching the installed vx:\nmkdir -p .claude/skills/vx\ncp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/',
     },
     image: 'agent-skill.png',
     imageAlt: 'The vx skill copied into an agent’s skills folder.',

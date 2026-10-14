@@ -225,7 +225,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
 
   // A local save stores the masked command (L-11), but a remote hit's
   // ingest wrote the one the lookup carried, raw: the token a config
-  // inlined sat in cache.db, where `vx why` and `vx mcp` read it (L-27).
+  // inlined sat in cache.db, where `vx why` reads it (L-27).
   it(
     'a remote hit stores the command with its secret masked',
     async () => {

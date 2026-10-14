@@ -1,6 +1,5 @@
 // A failed run's task output and the files it names, so an agent reads why
-// a task failed without the terminal (`vx last --format json`, vx-mcp's
-// getFailures). One file per failed run, `<cacheDir>/failures/<runId>.json`,
+// a task failed without the terminal (`vx last --format json`). One file per failed run, `<cacheDir>/failures/<runId>.json`,
 // the newest 50 kept: files, not cache.db, so the index layout (and every
 // shared store under it) stays as it was.
 

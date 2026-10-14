@@ -13,7 +13,7 @@ terminal and a task succeeding or failing. Read it alongside
  │    2. cli/index.ts dispatches by subcommand (run / watch / cache /
  │       lock / init / upgrade / show / info / why / last / docs /
  │       completions / help / version); any other verb is asked of the
- │       workspace's plugins (`commands` seam — `vx mcp` is one).
+ │       workspace's plugins (`commands` seam — `vx prune` is one).
  │    3. cli/run.ts:parseRunArgs(argv) → RunArgs (validated; resolves
  │       the 4-axis cache policy from --cache-policy / --no-cache / --force).
  │    4. cli/run.ts:runCmd resolves the project scope:

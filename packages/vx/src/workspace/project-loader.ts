@@ -691,8 +691,7 @@ export async function loadProjectConfigs(
  * Every route to fd 1 sent to stderr while configs evaluate in this
  * process; returns the release. A verb's stdout is its output (`vx show
  * --format json`), and a config's `console.log` came out ahead of the
- * JSON. The worker does the same for a repeat load (D-64), `vx mcp` for
- * its whole serve. Taken before a round's built-in snapshot and released
+ * JSON. The worker does the same for a repeat load (D-64). Taken before a round's built-in snapshot and released
  * after its check, so the guard sees no change of vx's own.
  *
  * Counted, because rounds overlap (`--affected`'s per-file sweep loads each
@@ -705,7 +704,7 @@ let redirectHolders = 0
 let undoRedirect = (): void => {}
 /**
  * Bun's own `Console`, taken at load: the console a round finds may be a
- * constructed one (`vx mcp` serves under its own), which has no `Console`.
+ * constructed one (a plugin's verb may install its own), which has no `Console`.
  * The global's, not `node:console`'s: the playground bundles this module
  * for the browser, where that specifier is a stub.
  */
@@ -1081,10 +1080,10 @@ export async function loadProjectConfig(
 const workspaceLoadedAt = new Map<string, number>()
 
 /**
- * A repeat load in one process (`vx mcp`'s every call, `vx watch`'s every
- * cycle) busts the workspace config's own URL, but Bun answers what it
+ * A repeat load in one process (`vx watch`'s every cycle, a plugin verb's
+ * every call) busts the workspace config's own URL, but Bun answers what it
  * imports from the module registry: an edited local plugin kept its first
- * version and `listTasks` served its old tasks with no word (item 1046).
+ * version and its old tasks were served with no word (item 1046).
  * Bun cannot evaluate an imported module again, so the load is refused,
  * naming the file, as `vx watch` already says when it sees the edit. Only
  * a repeat load pays for the walk; a CLI verb loads once.

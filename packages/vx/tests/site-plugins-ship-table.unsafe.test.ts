@@ -19,7 +19,6 @@ const FACTORIES: Record<string, string[]> = {
   'vx-schedule-history': ['scheduleHistoryPlugin'],
   'vx-otel': ['otel'],
   'vx-ci': ['github'],
-  'vx-mcp': ['mcp'],
 }
 const LIFECYCLE = new Set(['name', 'setup', 'teardown'])
 

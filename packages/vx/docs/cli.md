@@ -36,7 +36,7 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>]] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [TAG]      # upgrade vx the way it was installed
 vx docs <query> [--limit N] [--format pretty|json]
 vx completions bash|zsh|fish
@@ -183,7 +183,7 @@ facing summary.
 A filter that matches nothing refuses the run (`no projects matched
 filter(s): …`) with `Did you mean <name>?` when a project name is within
 two edits, or when exactly one scoped project's name after its `/` is
-(`--filter vx-mcp` hints `@vzn/vx-mcp`), and `Projects: a, b` otherwise
+(`--filter vx-otel` hints `@vzn/vx-otel`), and `Projects: a, b` otherwise
 (M-56). A list names eight, then a count. An unmatched `tag:` filter
 hints the nearest tag instead (`Did you mean tag:scope:web?`), else
 lists the tags. When every pattern matched and an exclusion took back
@@ -1857,8 +1857,8 @@ One-time setup, per package, on npmjs.com → package → Settings →
 Trusted Publisher → GitHub Actions: owner `vznjs`, repository `vx`,
 workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
 `@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64`,
-`@vzn/vx-linux-arm64` and the seven plugins: `@vzn/vx-ci`,
-`@vzn/vx-lockfile`, `@vzn/vx-mcp`, `@vzn/vx-migrate`, `@vzn/vx-otel`,
+`@vzn/vx-linux-arm64` and the six plugins: `@vzn/vx-ci`,
+`@vzn/vx-lockfile`, `@vzn/vx-migrate`, `@vzn/vx-otel`,
 `@vzn/vx-reapi` and `@vzn/vx-schedule-history`.
 
 Each platform package carries `LICENSE` and `THIRD_PARTY_NOTICES.txt`:
@@ -1919,8 +1919,7 @@ never hands off.
 
 `vx --version` says when it was handed the call (`vx 0.0.640
 (/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from
-/usr/local/bin/vx)`), and `vx info` (and `vx mcp`'s
-`getWorkspaceInfo`) shows the file that ran and who handed off
+/usr/local/bin/vx)`), and `vx info` shows the file that ran and who handed off
 (`vxPath`, `handedOffFrom`).
 
 ## `vx upgrade`
@@ -2975,7 +2974,7 @@ surface. A run a Ctrl-C (or SIGTERM, SIGHUP) stopped records nothing,
 so `vx last` still shows the run before it.
 
 ```
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>]] [--format pretty|json] [--cache-dir <path>]
 ```
 
 Bare `vx last` replays the most recent run: a header (verdict, command,
@@ -3033,7 +3032,21 @@ or in the run that saved it. An uncached task that passed, or a skip,
 kept none: stdout is empty and stderr says so, exit 0. With
 `--format json` it is `{ runId, taskId, status, source, output }`,
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
-refused, exit 1; `--log` does not combine with `--list` or `--failed`. `--list --format json`
+refused, exit 1; `--log` does not combine with `--list` or `--failed`.
+`vx last app#build --log` reads the same as `--log app#build`: a `--log`
+with no value takes the positional as its task.
+`--stats [<task>]` prints per-task numbers over the last 50 runs, the
+window the scheduler and `--dry` learn from: runs, p50 and p99 of the
+executed successes, pass and hit rate, failure mode (`stable`,
+`flaky-recoverable`, `flaky-fatal`), the largest peak RSS and CPU
+parallelism (a hit counts what its producing run used), one table row
+per task. A task id narrows to that task, a task name to it in every
+project; one the window has no run of is refused, exit 1. With
+`--format json` it is `{ window, stats }`, each row `{ taskId, runs,
+p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
+maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
+measured. `--stats` does not combine with `--list`, `--failed` or
+`--log`. `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. Before any run, every form says so
 (`vx last: no recorded runs yet — run something first`, exit 1; `--list`
@@ -3137,11 +3150,8 @@ export function mcp(): VxPlugin {
 The plugin's name is its package name, which `definePlugin` reads from
 `import.meta`; a plain object is refused when the workspace loads.
 
-(`@vzn/vx-mcp` ships exactly this: declare `mcp()` and `vx mcp` serves
-six read-only tools to AI agents — four over the cache database, one
-over the resolved task catalog, one the workspace doctor's facts.
-`@vzn/vx-schedule-history` adds `vx history`: what it learned per task
-and the reservation its `admit` hook packs.) The dispatcher tries core's verbs
+(`@vzn/vx-schedule-history` ships exactly this: `vx history`, what it
+learned per task and the reservation its `admit` hook packs.) The dispatcher tries core's verbs
 first and consults plugins only for a word core does not know, loading
 the workspace config from the cwd to find them (outside a workspace the
 verb is simply unknown). A plugin verb that names a core verb, or one

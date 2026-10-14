@@ -102,7 +102,7 @@ export function loadResolvedProjects(
 through `cli/workspace-config.ts`, which passes `closure: false`, the
 lock only under `--frozen`, and a local cache opened for the
 evaluations alone. `loadResolvedProjects` is the same read for an
-embedder — `vx mcp`'s tools and `@vzn/vx-schedule-history` call it, and
+embedder — `@vzn/vx-schedule-history` calls it, and
 `@vzn/vx` exports it — with discovery and the plugin load folded in:
 `scope` is every project or a list of names, no closure, no lock, and a
 cache opened and closed around the load.

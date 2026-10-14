@@ -17,7 +17,6 @@ const ROOT = path.resolve(SITE, '../..')
 const DIST = path.join(SITE, 'dist')
 const ASSETS = path.join(SITE, 'src/assets/features')
 const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
-const PLUGIN_VERBS = ['mcp']
 
 /** Every piece of copy a feature shows. */
 const copy = (f: (typeof FEATURES)[number]): string[] => [f.title, f.hook, ...f.body, f.imageAlt]
@@ -111,7 +110,7 @@ describe('the feature data', () => {
         if (m === null) continue
         seen++
         const verb = m[1]!
-        if (!CORE_VERBS.includes(verb as never) && !PLUGIN_VERBS.includes(verb)) {
+        if (!CORE_VERBS.includes(verb as never)) {
           bad.push(`${f.slug}: vx ${verb}`)
           continue
         }
@@ -179,14 +178,7 @@ describe('the feature data', () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-feature-examples-'))
     try {
       await symlink(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), 'dir')
-      const plugins = [
-        'vx-ci',
-        'vx-lockfile',
-        'vx-mcp',
-        'vx-otel',
-        'vx-reapi',
-        'vx-schedule-history',
-      ]
+      const plugins = ['vx-ci', 'vx-lockfile', 'vx-otel', 'vx-reapi', 'vx-schedule-history']
       await writeFile(
         path.join(dir, 'tsconfig.json'),
         JSON.stringify({

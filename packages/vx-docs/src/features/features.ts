@@ -110,7 +110,7 @@ export const CATEGORIES: readonly Category[] = [
     title: 'Plugins',
     line: 'Seams for where tasks run, cache and report.',
     intro:
-      'vx is a pipeline with seams. A plugin decides where a task runs, where its outputs live and who hears about it, from remote execution to OpenTelemetry and MCP.',
+      'vx is a pipeline with seams. A plugin decides where a task runs, where its outputs live and who hears about it, from remote execution to OpenTelemetry.',
   },
 ]
 
@@ -783,21 +783,6 @@ export default defineWorkspace({
     imageAlt: 'A vx run as a trace in an OpenTelemetry backend.',
     docs: { label: 'OpenTelemetry', href: 'guides/plugins/#opentelemetry' },
     deepDive: { label: 'Telemetry never breaks a run', href: 'blog/telemetry-never-breaks-a-run/' },
-  },
-  {
-    slug: 'mcp',
-    title: 'vx mcp for coding agents',
-    category: 'extend',
-    hook: 'Give your agent the build’s memory over MCP.',
-    body: [
-      'Coding agents spend tokens working out your build: reading configs, guessing tasks, re-running to check the cache. vx already knows.',
-      '`@vzn/vx-mcp` adds `vx mcp`, an MCP server any MCP client can call: the tasks, run history, cache stats, why a task re-ran, and a tool that runs tasks and returns the run summary.',
-    ],
-    example: { lang: 'ts', code: workspace('@vzn/vx-mcp', 'mcp()') },
-    image: 'mcp.png',
-    imageAlt: 'A coding agent asking vx mcp about tasks and history.',
-    docs: { label: 'vx mcp', href: 'guides/plugins/#vx-mcp' },
-    deepDive: { label: 'Agents and MCP', href: 'blog/agents-and-mcp/' },
   },
   {
     slug: 'critical-path',

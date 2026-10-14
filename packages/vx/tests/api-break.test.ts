@@ -108,14 +108,18 @@ describe('contractBreaks', () => {
 
   it('a pack list or an answer key list loses a line or an item', () => {
     expect(
-      contractBreaks('tests/contract/pack/vx-mcp.txt', 'a\nsrc/index.ts\n', 'a\nsrc/index.ts\nb\n'),
+      contractBreaks(
+        'tests/contract/pack/vx-otel.txt',
+        'a\nsrc/index.ts\n',
+        'a\nsrc/index.ts\nb\n',
+      ),
     ).toEqual([])
-    expect(contractBreaks('tests/contract/pack/vx-mcp.txt', 'a\nsrc/index.ts\n', 'a\n')).toEqual([
+    expect(contractBreaks('tests/contract/pack/vx-otel.txt', 'a\nsrc/index.ts\n', 'a\n')).toEqual([
       '- src/index.ts',
     ])
     expect(
       contractBreaks(
-        '../vx-mcp/tests/contract/tools.json',
+        'tests/contract/discovery.json',
         j({ t: { answer: ['x', 'y'] } }),
         j({ t: { answer: ['x'] } }),
       ),

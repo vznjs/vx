@@ -267,7 +267,7 @@ export interface CommandContext extends BaseContext {
   /**
    * The argv that runs this vx again: the binary alone when compiled, the
    * runtime and its entry script from source. A verb that runs tasks
-   * (`vx mcp`'s `runTasks`) spawns `[...vx, 'run', …]` rather than guess
+   * spawns `[...vx, 'run', …]` rather than guess
    * which `vx` a PATH holds.
    */
   readonly vx: readonly string[]

@@ -8,45 +8,27 @@ terminal. vx is designed for that: an agent can ask what to run, run
 it, and learn why it failed without scraping terminal output. People
 get the same answers, formatted for reading.
 
-## Ask the build over MCP
+## Teach the agent the CLI
 
-[`@vzn/vx-mcp`](../../plugins/vx-mcp/) adds `vx mcp`, an MCP server that
-Claude Code, Cursor, Continue.dev, GitHub Copilot or any MCP client can
-call. Its tools:
+vx ships an agent skill that teaches any coding agent the CLI it already
+has: `npx skills add vznjs/vx/packages/vx/skills/vx`. Every question has a command:
 
-| Question                                      | Tool                                         |
-| --------------------------------------------- | -------------------------------------------- |
-| What can I run here?                          | `listTasks`                                  |
-| What would run, and why?                      | `planTasks`                                  |
-| Run these tasks and tell me how it went.      | `runTasks`                                   |
-| Why did the run fail, at which file and line? | `getFailures`                                |
-| What did a task print?                        | `getTaskLog`                                 |
-| Why did this task run again?                  | `whyDidThisRerun`                            |
-| What does a task declare?                     | `getConfig`                                  |
-| What is this workspace?                       | `getWorkspaceInfo`                           |
-| How is the cache doing?                       | `getCacheStats`, `explainCacheKey`           |
-| What ran, how fast, what flaked?              | `getRunHistory`                              |
-| Is the lock current? What would `vx init` do? | `checkLock`, `planInit`                      |
-| Free cache space.                             | `pruneCache` (a dry run unless told not to)  |
+| Question                                      | Command                                              |
+| --------------------------------------------- | ---------------------------------------------------- |
+| What can I run here?                          | `vx show --format json`                              |
+| What would run, and why?                      | `vx run test --dry=json`                             |
+| Run these tasks and tell me how it went.      | `vx run test --format json`                          |
+| Why did the run fail, at which file and line? | `vx last --failed --format json`                     |
+| What did a task print?                        | `vx last --log app#test`                             |
+| Why did this task run again?                  | `vx why app#test --format json`                      |
+| What does a task declare?                     | `vx show app#test --format json`                     |
+| What is this workspace?                       | `vx info --format json`                              |
+| What ran, how fast, what flaked?              | `vx last --stats --format json`                      |
+| Is the lock current? What would `vx init` do? | `vx lock --check --format json`, `vx init --dry --format json` |
+| Free cache space.                             | `vx cache prune --max-size 1G --dry-run`             |
 
-Every tool but `runTasks` only reads. `runTasks` runs through the CLI
-itself, so it writes only what `vx run` writes. You decide how far it
-goes:
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx/config'
-import { mcp } from '@vzn/vx-mcp'
-
-export default defineWorkspace({
-  // false: the agent runs nothing. A list: only these task names.
-  plugins: [mcp({ run: ['test', 'lint'] })],
-})
-```
-
-```sh
-claude mcp add vx -- vx mcp
-```
+The agent runs with your permissions, as you would; nothing sits between
+it and the shell.
 
 ## JSON with a contract
 

@@ -344,8 +344,7 @@ prune` policy at the end of every run,
   ~400 → 237 ms with the rest of the perf waves.
 - `vx init` (scripts → configs), `vx why`, `vx last`,
   `--cache-download`, remote execution through `@vzn/vx-reapi`,
-  `@vzn/vx-ci` (job summary + check run), `@vzn/vx-mcp` (an MCP
-  server as a plugin verb), the `schedule-history` plugin (critical-path
+  `@vzn/vx-ci` (job summary + check run), the `schedule-history` plugin (critical-path
   priorities from recorded durations).
 - npm distribution as per-platform binary packages plus a launcher,
   signed on macOS.

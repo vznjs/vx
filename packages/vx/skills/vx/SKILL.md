@@ -59,22 +59,19 @@ files, fix, and re-run the same command: cached tasks that passed replay from th
 vx why app#build --format json   # which input changed, down to the root cause
 ```
 
+## Run history
+
+```sh
+vx last --stats --format json            # per task: p50/p99, pass and hit rate, failure mode, peak RSS
+vx last --stats app#build --format json  # one task; a task name covers every project
+vx last --list --format json             # recent runs, newest first
+```
+
 ## Workspace health
 
 ```sh
 vx info --format json   # vx and Bun versions, projects, config errors, plugins, cache
 ```
-
-## MCP
-
-When `@vzn/vx-mcp` is a plugin in `vx.workspace.ts`, `vx mcp` serves the
-same facts and runs tasks. Adoption does not add it: install
-`@vzn/vx-mcp` and put `mcp()` (from `'@vzn/vx-mcp'`) in `plugins`. Its tools: `listTasks`, `getCacheStats`,
-`getRunHistory`, `explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`, `getConfig`, `checkLock`, `pruneCache`, `planInit`, `searchDocs`,
-`getWorkspaceInfo`, `runTasks`, `planTasks`. `runTasks` answers what
-`vx run <tasks> --format json` prints, `planTasks` what
-`vx run <tasks> --dry=json` prints, `pruneCache` evicts only with
-`dryRun: false`; the others only read.
 
 ## Rules
 
@@ -93,3 +90,9 @@ same facts and runs tasks. Adoption does not add it: install
   `https://raw.githubusercontent.com/vznjs/vx/main/packages/vx-docs/src/content/docs/<page>.md`:
   `quickstart`, `guides/migrate`, `guides/configure`, `guides/agents`,
   `guides/troubleshooting`, `guides/ci`, `guides/plugins`.
+
+## Install
+
+`npx skills add vznjs/vx/packages/vx/skills/vx` installs this skill. To match the vx a workspace
+has installed, copy it from there instead:
+`cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/`.

@@ -26,7 +26,6 @@ const AMBIENT = [
   '@vzn/vx-otel',
   '@vzn/vx-lockfile',
   '@vzn/vx-migrate',
-  '@vzn/vx-mcp',
   '@vzn/vx-ci',
   '@vzn/vx-schedule-history',
 ]

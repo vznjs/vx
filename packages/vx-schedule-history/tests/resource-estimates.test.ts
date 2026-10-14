@@ -191,7 +191,7 @@ describe('the reservation rules the sweep found unheld', () => {
     expect(scheduleHistoryPlugin({ resources: false }).admit).toBeUndefined()
   })
 
-  // Every config evaluation runs the factory (`vx info`, `vx mcp`, a plan):
+  // Every config evaluation runs the factory (`vx info`, `vx show`, a plan):
   // the machine's memory, cgroup reads on Linux, is paid only by a run.
   it('the memory budget is read on the first admit, once; not by the factory', () => {
     const totalmem = spyOn(os, 'totalmem')

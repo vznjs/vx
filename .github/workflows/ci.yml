@@ -67,7 +67,7 @@ jobs:
             case "$f" in
               packages/vx-reapi/* | packages/vx-migrate/* | packages/*/vx.config.ts | packages/*/package.json) packages=true ;;
               packages/vx/docs/* | packages/vx/tests/* | packages/vx-docs/* | packages/vx-bench/* | packages/vx-plugin-examples/*) ;;
-              packages/vx-ci/tests/* | packages/vx-lockfile/tests/* | packages/vx-mcp/tests/* | packages/vx-otel/tests/* | packages/vx-schedule-history/tests/*) ;;
+              packages/vx-ci/tests/* | packages/vx-lockfile/tests/* | packages/vx-otel/tests/* | packages/vx-schedule-history/tests/*) ;;
               README.md | CLAUDE.md | CONTRIBUTING.md | SECURITY.md | LICENSE | .claude/*) ;;
               *) packages=true ;;
             esac

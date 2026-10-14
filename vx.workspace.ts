@@ -1,7 +1,6 @@
 import { defineWorkspace } from '@vzn/vx'
 import { otel } from '@vzn/vx-otel'
 import { github } from '@vzn/vx-ci'
-import { mcp } from '@vzn/vx-mcp'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 import { bun } from '@vzn/vx-lockfile'
 
@@ -15,7 +14,6 @@ import { bun } from '@vzn/vx-lockfile'
 //   github() — write each run as a GitHub Actions job summary. Activates on
 //              GITHUB_STEP_SUMMARY, declines everywhere else. We dogfood our
 //              own plugins so their decline paths run on every laptop run.
-//   mcp()    — adds `vx mcp`, the MCP server AI agents talk to.
 //   bun()    — keys each package's tasks on its own dependency closure
 //              from bun.lock, so a `bun add` in one package re-keys that
 //              package and its dependants, not the whole repo.
@@ -37,7 +35,6 @@ export default defineWorkspace({
   plugins: [
     otel(),
     github(),
-    mcp(),
     bun(),
     scheduleHistoryPlugin({
       file: '.vx/timings.json',

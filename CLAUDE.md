@@ -58,8 +58,7 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         continue-taint), execute-task (+ miss-save,
                         sandbox-request), task-hash,
                         projects.ts (the staged config load every reader shares), plugin
-                        stages + seams, events, logger, doctor.ts (the facts `vx info` and
-                        `vx mcp`'s getWorkspaceInfo both report)
+                        stages + seams, events, logger, doctor.ts (the facts `vx info` reports)
   src/workspace/        discovery, config eval (+ config-cache.ts), config-schema.ts (what a config
                         may say), package graph, --filter/--affected, lockfile, migration.ts (the
                         plan → files seam `vx init` and @vzn/vx-migrate share)
@@ -72,7 +71,6 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
 packages/vx-ci      GitHub Actions job summary + Checks API plugin
-packages/vx-mcp         `vx mcp` — MCP server for AI agents (commands seam, no SDK)
 packages/vx-migrate     adoption, one package (2026-09-11): `turbo()` runs a Turbo repo unchanged (turbo.json +
                         scripts → tasks via the `project` stage; owns the mapper the CLI renders from),
                         `nx()` runs an Nx repo unchanged (2026-09-22: the resolved graph → tasks; executor

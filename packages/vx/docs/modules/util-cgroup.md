@@ -42,7 +42,7 @@ interface CgroupProbe { root?: string; procSelfCgroup?: string }
 
 `run()`'s default `concurrency`, the placement preview (`placement.ts`)
 and `--concurrency <n>%` read `machineParallelism`; the doctor
-(`doctor.ts`, what `vx info` and `vx mcp`'s `getWorkspaceInfo` report)
+(`doctor.ts`, what `vx info` reports)
 reads both, with the limit itself, to name the worker count and the
 memory budget with their source. Both functions are on the façade so
 `@vzn/vx-schedule-history` budgets memory by `machineMemoryBytes`

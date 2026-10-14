@@ -1,6 +1,6 @@
 ---
 title: Plugins
-description: Write a plugin that fills one or more stages of every run, export runs to OpenTelemetry, and let an AI agent read your workspace with vx mcp.
+description: Write a plugin that fills one or more stages of every run, and export runs to OpenTelemetry.
 ---
 
 Change every run from one place: add tasks, key material, a cache, an
@@ -474,7 +474,6 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 | [`@vzn/vx-schedule-history`](../../plugins/vx-schedule-history/)  | `schedule`, `admit`, `commands`            |
 | [`@vzn/vx-otel`](../../plugins/vx-otel/)              | `telemetry` ([below](#opentelemetry))      |
 | [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry` ([GitHub Actions](../ci/#github-actions)) |
-| [`@vzn/vx-mcp`](../../plugins/vx-mcp/)               | `commands` ([below](#vx-mcp))              |
 
 One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 
@@ -540,46 +539,3 @@ brew install --cask otel-desktop-viewer
 otel-desktop-viewer
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 vx run build --all
 ```
-
-## vx mcp
-
-`@vzn/vx-mcp` lets Claude Code, Cursor, Continue.dev or Copilot ask your
-workspace why a task re-ran, read-only, over stdio. Install it
-(`npm install -D @vzn/vx-mcp`) and declare it; `vx help` then lists
-`vx mcp`. Point your agent at it (`claude mcp add vx -- vx mcp`) and start
-the agent inside the workspace; restart it if it lists no vx tools.
-
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx/config'
-import { mcp } from '@vzn/vx-mcp'
-
-export default defineWorkspace({ plugins: [mcp()] })
-```
-
-```jsonc
-// .mcp.json at the workspace root; Cursor, Continue.dev and Copilot take the same shape
-{ "mcpServers": { "vx": { "command": "vx", "args": ["mcp"] } } }
-```
-
-| Tool               | Answers                                                          |
-| ------------------ | ---------------------------------------------------------------- |
-| `listTasks`        | What can I run here?                                             |
-| `getCacheStats`    | How big is the cache, and what is today's hit rate?              |
-| `getRunHistory`    | Which tasks run, how fast, how often they fail or flake?         |
-| `explainCacheKey`  | What is the cache identity of `pkg#build`?                       |
-| `whyDidThisRerun`  | Why did `pkg#test` re-run instead of hitting?                    |
-| `getTaskLog`       | What did one task print (`vx last --log`)                        |
-| `pruneCache`       | Evict cache entries (`vx cache prune`), dry run by default       |
-| `planInit`         | What `vx init` would write (`vx init --dry`), nothing written    |
-| `searchDocs`       | Search the reference offline (`vx docs`)                         |
-| `checkLock`        | The config lock audit (`vx lock --check`)                        |
-| `getConfig`        | A project's or task's resolved config (`vx show`)                |
-| `getFailures`      | Why did the run fail: each task's output and the files it names  |
-| `getWorkspaceInfo` | What `vx info` says: versions, plugins, cache, sandbox           |
-| `runTasks`         | Run these tasks: the exit code and the run summary               |
-| `planTasks`        | What would run and why: the `vx run --dry=json` plan, nothing run |
-
-Only `runTasks` runs anything, and it runs `vx run --format json`
-itself, so the CLI's selection, refusals and sandbox apply. The server speaks
-MCP in about 300 lines, with no dependencies.

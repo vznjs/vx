@@ -1267,8 +1267,8 @@ describe('loadWorkspaceConfig', () => {
   })
 
   // A repeat load busts the config's own URL, but Bun answers its imports
-  // from the registry: `vx mcp` served an edited local plugin's first
-  // version on every call, silently (item 1046).
+  // from the registry: a long-lived verb served an edited local plugin's
+  // first version on every call, silently (item 1046).
   // The root is also reached through a symlink: macOS's temp dir is one
   // (`/var` -> `/private/var`), the import walk realpaths what it finds,
   // and the name was then taken relative to the link (darwin CI).

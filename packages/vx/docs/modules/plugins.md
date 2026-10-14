@@ -54,7 +54,6 @@ it), the `TaskExecutor` contract for an executor.
 | `@vzn/vx-reapi`            | `executor`, `cache`               | Bazel REAPI: remote execution and remote cache                                                                                              |
 | `@vzn/vx-otel`             | `telemetry`                       | OpenTelemetry export, no SDK dependency                                                                                                     |
 | `@vzn/vx-ci`               | `telemetry`                       | GitHub Actions job summary and Checks API                                                                                                   |
-| `@vzn/vx-mcp`              | `commands`                        | `vx mcp`, an MCP server for AI agents                                                                                                       |
 | `@vzn/vx-migrate`          | `project`, `fingerprint`, `cache` | `turbo()` / `nx()`: such a repo under vx with nothing written (`nx-exec` runs Nx executors); `turboCache()` / `nxCache()`: the wires        |
 | `@vzn/vx-lockfile`         | `fingerprint`, `key`              | `pnpm()` `bun()` `npm()` `yarn()`: the lockfile keyed per project — one install re-keys only the projects it reaches                        |
 

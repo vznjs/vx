@@ -13,6 +13,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { coreEntries, emitMainPackage, emitPluginPackages } from '../scripts/build-npm.ts'
 import { publishOrder } from '../scripts/release.ts'
+import { RETIRED_POSTS } from './helpers/retired-posts.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
 const out = mkdtempSync(path.join(tmpdir(), 'vx-build-npm-'))
@@ -119,7 +120,6 @@ describe('the published plugin packages', async () => {
       expect.arrayContaining([
         '@vzn/vx-ci',
         '@vzn/vx-lockfile',
-        '@vzn/vx-mcp',
         '@vzn/vx-migrate',
         '@vzn/vx-otel',
         '@vzn/vx-reapi',
@@ -234,7 +234,9 @@ describe('the published plugin packages', async () => {
         .map((d) => path.join(REPO, 'packages', d, 'README.md'))
         .filter((f) => existsSync(f)),
       ...walkMd(path.join(CORE, 'docs')),
-      ...walkMd(path.join(REPO, 'packages', 'vx-docs', 'src', 'content', 'docs')),
+      ...walkMd(path.join(REPO, 'packages', 'vx-docs', 'src', 'content', 'docs')).filter(
+        (p) => ![...RETIRED_POSTS.keys()].some((post) => p.endsWith(`/${post}`)),
+      ),
     ]
     const COMMAND =
       /\b(?:bunx|npx|bun x|bun add|bun install|npm i|npm install|pnpm add|pnpm dlx|yarn add|yarn dlx)\b[^\n`]*/g

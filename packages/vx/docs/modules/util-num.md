@@ -30,9 +30,6 @@ formatElapsed(ms, minutes?): string
   unit shown before the unit is chosen: 999.6 ms printed `1000ms` and
   119,600 ms `1m 60s` (item 1034).
 
-`clampInt` is re-exported from `@vzn/vx` for plugins that bound their
-own arguments; `parseDecimalInt` is not.
-
 ## Tests
 
 `tests/util-num.test.ts`; `tests/timeout-bounds.test.ts` (every
