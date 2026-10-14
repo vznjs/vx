@@ -183,6 +183,7 @@ src/workspace/config-cache.ts
 src/workspace/config-eval.ts
 src/workspace/config-imports.ts
 src/workspace/config-schema.ts
+src/workspace/dependency-rules.ts
 src/workspace/filter.ts
 src/workspace/fingerprint.ts
 src/workspace/index.ts
