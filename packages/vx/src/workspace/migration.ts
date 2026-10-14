@@ -526,10 +526,14 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // The line is the next thing to type, so it names what that run would
   // refuse without: a git work tree (vx keys inputs on git's view) and,
   // with no scripts mapped, a task to run.
-  const run = `${vxInvocation(process.env['npm_config_user_agent'], installed)} run ${firstTask} --all`
+  const vx = vxInvocation(process.env['npm_config_user_agent'], installed)
+  const run = `${vx} run ${firstTask} --all`
+  // A run reads configs only from the lock; with no lock step here
+  // (`--no-install`), that run stopped with "no lock: run `vx lock`".
   const steps = [
     ...(inGitWorkTree(root) ? [] : ['git init']),
     ...(empty ? [`declare a task as the example shows`] : []),
+    ...(!dry && args.lock === undefined ? [`${vx} lock`] : []),
   ]
   const next = steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`
   if (args.json === true) {
