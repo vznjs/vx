@@ -21,7 +21,7 @@ dependencies.
 ## Three verbs
 
 ```bash
-vx lock              # evaluate every vx.config.* now; write .vx/lock.json
+vx lock              # evaluate every vx.config.* now; write .vx/projects.lock.json
 vx lock --check      # audit: full re-evaluation against the lock; exit 1 on drift
 vx run …             # consume the lock; no evaluation at all
 ```
@@ -62,7 +62,7 @@ first line, which is the point.
 
 ## What the lock is not
 
-- **Not a cache key input.** `.vx/lock.json` is excluded from every
+- **Not a cache key input.** `.vx/projects.lock.json` is excluded from every
   task's input set and from the workspace fingerprint, so running `vx
   lock` does not re-key the workspace.
 - **Not a substitute for `cache.inputs.env`.** The lock freezes what a

@@ -28,7 +28,7 @@ or restored changes.
 
 ## The numbers
 
-Time from `vx run` to the first task starting, cold, with `--frozen`,
+Time from `vx run` to the first task starting, cold, reading the lock,
 on the synthetic 1,090-package benchmark:
 
 - Earlier the same day: about 380 ms.

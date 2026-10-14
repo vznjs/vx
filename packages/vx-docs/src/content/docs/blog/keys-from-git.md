@@ -132,7 +132,7 @@ root (a shared `tsconfig.base.json`) and says so in its name.
   `cache.inputs.runtime` line away.
 - `exec.remote`. Placement. Where a task ran says nothing about what it
   produced.
-- `.vx/lock.json`, so that `vx lock` itself does not re-key the world.
+- `.vx/projects.lock.json`, so that `vx lock` itself does not re-key the world.
 
 When a key does change and you want to know which of the twelve parts
 moved, that is [`vx why`](../why-did-this-rerun/). The full derivation

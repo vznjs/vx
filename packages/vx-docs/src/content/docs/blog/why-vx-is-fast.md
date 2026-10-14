@@ -89,7 +89,7 @@ window between what the daemon believes and what the disk holds. What
 replaces the daemon is a set of zero-cost gates: no telemetry plugin
 means no event-bus subscriber, no summary, no git spawn for provenance;
 a plugin that declines a task costs nothing; and a run evaluates no
-config at all: it reads them from `.vx/lock.json`, which `vx lock`
+config at all: it reads them from `.vx/projects.lock.json`, which `vx lock`
 writes.
 
 ## The method behind the numbers
