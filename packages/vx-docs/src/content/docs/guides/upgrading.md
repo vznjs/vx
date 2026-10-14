@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: never delete a committed file under an output
+
+GitFilesCache output-split helpers are removed; committed files under outputs are never cleaned.
+
 ## plugin: output stage lets a plugin draw the terminal
 
 PLUGIN_HOOKS gains `output` after `telemetry` (15 hooks).
