@@ -29,8 +29,9 @@ the method and the scripts are on [Benchmarks](../../benchmarks/).
 | Run                          | vx                 | Turborepo 2.11.8 |
 | ---------------------------- | ------------------ | ---------------- |
 | Cold                         | 120.2 s            | 127.3 s          |
-| Warm                         | 892 ms             | 2,496 ms         |
+| Warm                         | 892 ms             | 2,496 ms first, 909 ms second |
 | One source file changed      | 100.1 s (6,607 run) | 105.8 s (6,607 run) |
+| That edit reverted           | 3.6 s (1,321 tasks restored, the rest left in place) | 5.2 s (all 8,002 replayed) |
 
 ## A cold run is the tasks
 
@@ -49,9 +50,10 @@ is about 0.7 s.
 
 Some of vx's per-task cost is checks the others do not make:
 
-- **Graph rules**, 10 to 12 ms per run: two tasks writing one output,
-  or a task reading another's output without an edge, are refused
-  before anything runs.
+- **Graph rules**: two tasks writing one output, or a task reading
+  another's output without an edge, are refused. `vx lock` and
+  `vx lock --check` check them; a run under CI loads the lock and skips
+  them; a run without a lock checks them (10 to 12 ms).
 - **Input recheck**, 0.2 ms per miss: after a task exits, vx checks
   that its inputs did not move while it ran, and skips the save if one
   did ([what four tools do](../an-input-moves-four-tools/)).
@@ -77,15 +79,17 @@ are the whole run.
 | Projects and graph     | discover, then graph with rules             | precompute                               |
 | File hashes            | git's own index (63 ms)                     | git index, then per-package file hashes  |
 | Keys                   | one per task                                | one per task                             |
-| On a hit               | checks outputs on disk; restores only what differs | restores every output and log      |
+| On a hit               | checks each task's outputs on disk; restores a task's outputs only if one differs | restores every output and log |
 
 The last row is the difference. Turborepo restores outputs on every hit
 unless an output watcher, which runs in its daemon, reports them
-unchanged; with no daemon, as on CI, every hit rewrites its outputs.
+unchanged; with no daemon, every hit rewrites its outputs.
 Source:
 [`crates/turborepo-run-cache/src/lib.rs`](https://github.com/vercel/turborepo/blob/v2.11.8/crates/turborepo-run-cache/src/lib.rs),
-`restore_outputs`. vx compares each output's size, mode and modification
-time with what it saved, and leaves matching files alone.
+`restore_outputs`. In vx, if every output of a task still matches what
+vx saved (size, mode, modification time, and the inode and change time
+it recorded), the task's outputs are left alone; otherwise that task's
+outputs are restored.
 
 ## Nx 23.3.0, warm
 
@@ -128,8 +132,9 @@ task's hash; vx sees root dependencies through the lockfile. A lockfile plugin s
 The trace also pointed at vx. We checked three candidates before
 calling anything waste. The output check on hits looked like 655 ms;
 measured alone it is 10.8 ms over 1,600 hits, and the larger figure was
-ten overlapping workers summed. Restoring outputs that something outside
-vx rewrote with identical bytes is real, but fixing it means a content
+ten overlapping workers summed. When something outside vx rewrites a task's
+outputs with identical bytes, vx restores that task's outputs anyway,
+because the recorded times no longer match. That is real, but fixing it means a content
 hash on every save, which costs more than it saves. The inline save is
 the 0.14 s above. None became a patch.
 
