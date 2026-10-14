@@ -94,13 +94,14 @@ describe('vx watch loop (e2e)', () => {
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
     await until(async () => (await executions(f.log)) === 2, 'the re-run after the edits')
     await Bun.sleep(SETTLE_MS)
-    expect(w.out().replace(/\d+ms/g, 'Nms')).toBe(
+    // The duration is padded to a fixed width, so its digits decide the spaces before it.
+    expect(w.out().replace(/ +\d+ms/g, ' Nms')).toBe(
       [
-        ' ⏺︎     Nms success miss     app#build',
+        ' ⏺︎ Nms success miss     app#build',
         'watching 1 project · 1 task',
         '',
         'changed app src/b.txt (+1 more)',
-        ' ⏺︎     Nms success miss     app#build',
+        ' ⏺︎ Nms success miss     app#build',
         '',
       ].join('\n'),
     )
