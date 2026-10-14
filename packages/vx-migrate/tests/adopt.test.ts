@@ -534,7 +534,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         )
         expect([kept.source, kept.files.map((f) => f.path)]).toEqual([
           'turbo.json',
-          ['.vx/workspace.ts'],
+          ['.vx/workspace.ts', '.vx/.gitignore'],
         ])
         expect(keep.err).toContain('vx-migrate: would install')
         expect(wet.err).toBe('vx-migrate: --format json prints the plan, so it needs --dry\n')
