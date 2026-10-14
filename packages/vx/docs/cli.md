@@ -2390,7 +2390,8 @@ copy to the source.
 ## Machine-readable output
 
 `vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune` take
-`--format json`. Each prints one JSON document whose shape is a
+`--format json`. Each prints one JSON document on one line, as
+`vx run --format json` does, whose shape is a
 checked-in JSON Schema (draft 2020-12) shipped with the package:
 `schemas/show.json`, `schemas/info.json`, `schemas/why.json`,
 `schemas/last.json`, `schemas/cache.json`

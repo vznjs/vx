@@ -847,6 +847,6 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       }
     }
   }
-  if (summary.json !== undefined) process.stdout.write(`${JSON.stringify(summary.json, null, 2)}\n`)
+  if (summary.json !== undefined) process.stdout.write(`${JSON.stringify(summary.json)}\n`)
   return summary.ok ? 0 : 1
 }

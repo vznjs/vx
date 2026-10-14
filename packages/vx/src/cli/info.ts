@@ -56,7 +56,7 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
     warn: warnToStderr,
   })
   process.stdout.write(
-    parsed.format === 'json' ? `${JSON.stringify(facts, null, 2)}\n` : `${renderInfo(facts)}\n`,
+    parsed.format === 'json' ? `${JSON.stringify(facts)}\n` : `${renderInfo(facts)}\n`,
   )
   return 0
 }
