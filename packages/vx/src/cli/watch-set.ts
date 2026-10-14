@@ -9,7 +9,7 @@ import type { ProjectConfig } from '../config.js'
 import {
   buildPackageGraph,
   configImports,
-  loadProjectConfig,
+  readLockfile,
   WORKSPACE_CONFIG_FILENAMES,
   type ProjectEntry,
   type ProjectMeta,
@@ -79,10 +79,9 @@ export interface ConfigSweep {
  * declared outputs, so their writes are not taken for edits. The run
  * path's load (`loadProjects`): the plugin `project` stage applies, so an
  * output a plugin gave a config-less package is ignored like a declared
- * one, and a pure config is served from its cached evaluation rather than
- * re-evaluated in a worker. A config that fails to load is out of this
+ * one. Configs come from the lock. A load that fails is out of this
  * concern's scope — the run that just happened already said so, or will —
- * and the sweep falls back to the files that do load, one by one.
+ * and the sweep falls back to the lock's entries, one by one.
  */
 export async function sweepConfigs(
   projects: readonly ProjectMeta[],
@@ -175,16 +174,17 @@ export async function sweepConfigs(
     foldAll()
     return result(staged)
   }
-  await Promise.all(
-    projects.map(async (p) => {
-      if (p.configPath === null) return
-      try {
-        fold(p.dir, await loadProjectConfig(p.configPath))
-      } catch {
-        // broken config — out of this concern's scope
-      }
-    }),
-  )
+  // The lock's entries one by one: a project it does not hold, or a
+  // hand-edited entry, is out of this concern's scope.
+  const lock = await readLockfile(workspaceRoot).catch(() => null)
+  for (const p of projects) {
+    if (p.configPath === null || lock === null || !Object.hasOwn(lock.projects, p.name)) continue
+    try {
+      fold(p.dir, lock.projects[p.name]!)
+    } catch {
+      // malformed entry
+    }
+  }
   foldAll()
   return result(null)
 }

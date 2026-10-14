@@ -17,23 +17,12 @@ Two paths, chosen by whether this process has loaded that path before:
 ## Public surface
 
 ```ts
-export async function loadProjectConfig(
-  configPath: string,
-  opts?: LoadProjectConfigOptions,
-): Promise<ProjectConfig>
+export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 export async function loadWorkspaceConfig(workspaceRoot: string): Promise<WorkspaceConfig | null>
 
-// The batch form every reading verb goes through: one staged evaluation
-// for many configs, served from the evaluation cache unless `fresh`.
-export interface LoadProjectConfigOptions {
-  // Observe the CURRENT environment: no eval cache, even beside `evalCache`.
-  fresh?: boolean
-  evalCache?: { store: ConfigEvalStore; workspaceRoot?: string; workspaceFingerprint: string }
-}
-export async function loadProjectConfigs(
-  configPaths: readonly string[],
-  opts?: LoadProjectConfigOptions,
-): Promise<ProjectConfig[]>
+// The batch form: one staged evaluation round for many configs. Every
+// config is evaluated; nothing is cached (runs read the lock).
+export async function loadProjectConfigs(configPaths: readonly string[]): Promise<ProjectConfig[]>
 
 // The names a workspace config may take, in resolution order.
 export const WORKSPACE_CONFIG_FILENAMES = [
@@ -75,12 +64,11 @@ readers that reach it here.
   The worker serves it the same way, read from disk.
 - On a repeat load the path is evaluated in a Worker instead, and the
   resolved object comes back as JSON.
-- Configs the cache does not answer load 128 at a time (`LOAD_WIDTH`),
-  not one after another: 1,000 cold configs' `load configs` went from
-  226 to 164 ms at 64 (D-68), and from 432 to 411 ms at 128 (stream I). Results keep the order they were asked in, a
-  failure stops none of the others (their evaluations are stored for the
-  next attempt), and the error thrown is the first in that order. A hit
-  is taken synchronously, so the warm path is unchanged.
+- Configs load 128 at a time (`LOAD_WIDTH`), not one after another:
+  1,000 cold configs' `load configs` went from 226 to 164 ms at 64
+  (D-68), and from 432 to 411 ms at 128 (stream I). Results keep the
+  order they were asked in, a failure stops none of the others, and the
+  error thrown is the first in that order.
 - The default export must be a non-null object. Anything else throws
   `"Project config at <path> did not export a default object"` (a function default export adds `: it exports a function, …`, D-110)
   (`Workspace config at …` for a workspace file) — from
@@ -139,11 +127,8 @@ readers that reach it here.
   `Promise`, `Map` and `Set` prototypes, `Bun.hash`), and the rest once,
   at the round's end: all of them after every load was ~73 µs a config,
   a quarter of a cold load of 1,000. A change found at the end may have
-  broken another config's load, so it is refused first, and a round that
-  changed anything stores none of its evaluations. A lone load checks
-  them all. A round where every config hits takes
-  no snapshot: reading every descriptor of `Bun` builds its lazy
-  members, 7 ms of a warm run (E-88).
+  broken another config's load, so it is refused first. A lone load
+  checks them all.
 - A first load may not move the process either: a config's
   `process.chdir()` left every relative path vx resolved after it reading
   from the config's choice; the working directory is put back and the load
@@ -216,12 +201,11 @@ readers that reach it here.
 
 ## Evaluated from the bytes it read
 
-The loader reads a project config's bytes to key it (config-cache.ts)
-and to refuse an unprovided import; `import()` then opened and read the
-file again. A first load of a project config is now served those bytes
-by the `vx-config-bytes` onLoad (`Bun.plugin`), under `?vx-held=`: one
-read of the config per run, and the evaluation runs exactly the bytes
-the key saw. It is also the cheaper import — 1,000 configs took 80–100
+The loader reads a project config's bytes to refuse an unprovided
+import; `import()` then opened and read the file again. A first load of
+a project config is now served those bytes by the `vx-config-bytes`
+onLoad (`Bun.plugin`), under `?vx-held=`: one read of the config, and
+the evaluation runs exactly the bytes the gate saw. It is also the cheaper import — 1,000 configs took 80–100
 ms served against 180 ms read by Bun, and the cold `load configs` stage
 of a 1,000-package `vx run --dry` dropped from 256 to 181 ms (min of 7,
 interleaved, 2026-09-24; 100 packages: 51 to 33).
@@ -278,10 +262,9 @@ to evict from — exists on Bun 1.3.11 and is **gone** on 1.3.14, where an
 eviction-based fix degrades to no fix at all while still reporting
 success.
 
-Every path hands out a tree of its own: a cache hit and the lock
-parse JSON, and a first in-process load, which yields the module
-object, now returns the parse of the JSON it already builds for the
-evaluation cache. The module object shares what the source shares — one
+Every path hands out a tree of its own: the lock and the Worker parse
+JSON, and a first in-process load, which yields the module object,
+returns a JSON round-trip of it. The module object shares what the source shares — one
 preset task imported by two configs, one `exec` in two tasks — so a
 `project` hook that edits in place (the way the API invites) edited all
 of them at once: a cold run ran `echo P +plug +plug` where the warm run

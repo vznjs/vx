@@ -161,7 +161,7 @@ it("the picker's menu masks the description", async () => {
   output.on('data', (c: Buffer) => {
     printed += c.toString()
   })
-  const picking = pickTask(root, { input, output }, { fromLock: true })
+  const picking = pickTask(root, { input, output })
   while (!printed.includes('Pick a task')) await Bun.sleep(5)
   input.write('9\n')
   await picking

@@ -108,7 +108,7 @@ export type { ProjectMeta } from './workspace/index.js'
 // that needs a project's transitive closure the way `vx run` computes it.
 export { buildPackageGraph } from './workspace/index.js'
 // The run path's RESOLVED view — plugin `config` and `project` stages
-// applied, cached evaluations served — for a reader outside the CLI
+// applied — for a reader outside the CLI
 // (`@vzn/vx-schedule-history`, an embedder's task catalog). What `vx show`
 // prints.
 export { loadResolvedProjects } from './orchestrator/index.js'

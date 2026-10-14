@@ -1,7 +1,7 @@
 // `--cache-dir` reaches every cache a run verb opens — the selection
-// paths too. `--affected` owners, the picker and the watch sweep load the
-// staged configs through the same evaluation cache a run uses; opening it
-// at the workspace's default dir created `.vx/cache/cache.db` beside the
+// paths too. `--affected` owners, the picker and the watch sweep once
+// opened a cache to load the staged configs; opening it at the
+// workspace's default dir created `.vx/cache/cache.db` beside the
 // one the user pointed at, and printed the schema notice against the
 // wrong index.
 
@@ -10,6 +10,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { lock } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { loadCliProjects } from '../src/cli/workspace-config.js'
 import { listProjects, loadWorkspace } from '../src/workspace/index.js'
@@ -107,8 +108,8 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         for (const f of await readdir(own)) await chmod(path.join(own, f), 0o444)
         await chmod(own, 0o555)
         try {
-          // A changed config misses the evaluation cache AND the file-hash
-          // memo, the two stores a reader would write; each is a quiet no-op.
+          // A changed config misses the file-hash memo, the store a reader
+          // would write; it is a quiet no-op.
           const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
           await Bun.write(config, `${await Bun.file(config).text()}\n// changed\n`)
           const shown = await vx(['show'], null)
@@ -179,6 +180,7 @@ describe('the run’s --cache-dir reaches selection', () => {
     elsewhere = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-dir-elsewhere-'))
     await addProject(root, 'app', { config: CONFIG, files: { 'src/index.js': 'export {}\n' } })
     await Bun.write(path.join(root, 'shared', 'schema.json'), '{}')
+    await lock(root)
     const git = gitIn(root)
     git('add', '-A')
     git('commit', '-q', '-m', 'init')
@@ -188,11 +190,11 @@ describe('the run’s --cache-dir reaches selection', () => {
     await rm(elsewhere, { recursive: true, force: true })
   })
 
-  it('loadCliProjects opens the given dir, not the workspace default', async () => {
+  it('loadCliProjects opens no cache, at the given dir or the workspace default', async () => {
     const metas = await listProjects(await loadWorkspace(root))
     const staged = await loadCliProjects(root, metas, 'all', { cacheDir: elsewhere })
     expect([...staged.keys()]).toEqual(['app'])
-    expect(existsSync(path.join(elsewhere, 'cache.db'))).toBe(true)
+    expect(existsSync(path.join(elsewhere, 'cache.db'))).toBe(false)
     expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
   })
 

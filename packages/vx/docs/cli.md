@@ -394,8 +394,7 @@ too. "New" is judged at the base: no manifest there, or one with no
 `name`.
 
 **A workspace config change selects everything.** An edit to
-`.vx/workspace.*`, or to a file it imports by relative specifier, selects
-every project: the `config` and `project` stages its plugins install
+`.vx/workspace.*` selects every project: the `config` and `project` stages its plugins install
 shape every resolved config, so the edit can re-key any task, and
 selection cannot tell which. It is not in the fingerprint (a key moves
 only when a stage's output does). A root file a plugin's stages read
@@ -483,7 +482,7 @@ than run with the args unheard.
 | `--force`                                  | boolean        | off                                               | Re-execute everything (skip cache reads) but still REFRESH the cache (writes stay on). Output globs are cleaned (so the saved snapshot is clean).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--cache-policy <spec>` (`--cache-policy`) | value          | `VX_CACHE_POLICY` / `cache.policy`                | Per-layer read/write control. See below. An EMPTY spec (`--cache-policy=`) is a parse error — it applied nothing and left every axis on; pass `--no-cache` to disable them all.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `--cache-scope <name>`                     | value          | `VX_CACHE_SCOPE` / workspace `cache.scope`        | This run's `cache.scope` (`pr-123`), above `VX_CACHE_SCOPE`, `.vx/workspace`'s and `github()`'s. A name `cache.scope` would refuse is refused. `--cache-scope=<name>` form too. Never folded into a cache key.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `--cache-dir <path>`                       | value          | `VX_CACHE_DIR` / `cache.dir` / `~/.vx/<id>/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats `VX_CACHE_DIR`, the workspace's `cache.dir` and the default; like them, the directory then holds the whole cache, shared through no store, for every cache the run opens — the config-evaluation cache that `--affected` owners, the picker and the watch sweep read included, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into fails the run before any task with `cache directory <path> is not writable (EACCES: …)` — every run records its history there.      |
+| `--cache-dir <path>`                       | value          | `VX_CACHE_DIR` / `cache.dir` / `~/.vx/<id>/cache` | Cache directory override, resolved relative to cwd (absolute paths used as-is). Beats `VX_CACHE_DIR`, the workspace's `cache.dir` and the default; like them, the directory then holds the whole cache, shared through no store, for every cache the run opens, so the workspace's default dir is not created beside it. A per-run knob — never folded into a cache key. `--cache-dir=<path>` form too; the space form rejects a value starting with `-`. A directory this user cannot write into fails the run before any task with `cache directory <path> is not writable (EACCES: …)` — every run records its history there.                                                                                                           |
 | `--retries <n>`                            | value          | `run.retries`, else `0`                           | Re-run a failed task up to `n` more times; never a persistent one. A task's own `exec.retries` wins (even an explicit `0`). Never affects cache keys. `--retries=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `--continue[=<mode>]`                      | value          | `deps-ok`                                         | What a failed task takes down with it. `never` stops dispatch on the first failure; `deps-ok` (default) skips only its dependents; `always` (bare `--continue`) runs dependents anyway. See § Failure propagation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--timeout <duration>`                     | duration       | `run.timeout`, else none                          | A task's time limit (`30s`, `10m`), for tasks without their own `exec.timeout`, which always wins. A runaway task is killed + `failed`. A bare number is refused naming the forms with units. Never affects cache keys. `--timeout=<duration>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -2637,14 +2636,13 @@ product verb to it under a notice.
 
 ## `vx show`
 
-Introspect the workspace's **live resolved configs** — what a run
-would see right now. Configs load through the same path a run uses,
-plugin `config` and `project` stages included, so a package a plugin
-gives tasks to (`turbo()` or `nx()` from `@vzn/vx-migrate`, a
-temporary start toward native config) shows them; cached
-evaluations are served from the local cache like a run's. `vx show`
-never reads `.vx/projects.lock.json` (the lock is already the frozen JSON — open
-it directly if you want the frozen view).
+Introspect the workspace's **resolved configs** — what a run would see
+right now. Configs load through the same path a run uses: from
+`.vx/projects.lock.json`, plugin `config` and `project` stages applied,
+so a package a plugin gives tasks to (`turbo()` or `nx()` from
+`@vzn/vx-migrate`, a temporary start toward native config) shows them.
+`vx show` evaluates no config: an edit shows after `vx lock`, and with
+no lock it refuses as a run does (`no lock: run \`vx lock\``).
 
 ```
 vx show                          # list every project
@@ -2750,11 +2748,10 @@ is out of file descriptors; raise the limit (ulimit -n 4096) and re-run`.
 
 Workspace doctor — one screen of facts for bug reports and sanity
 checks. The task count and the sandbox row's declared count come from
-the same load a run uses, plugin stages included; a config that fails
-to load counts as zero in both rather than failing the doctor, every
-other project still counts as a run loads it, and the broken one is
-named (`12 (34 tasks · 1 config did not load)`, then a `config errors`
-row per config with the message `vx run` stops on):
+the same load a run uses: the lock, plugin stages included. `vx info`
+evaluates no config; with no lock, or one a run would refuse, both
+counts are zero and `projects lock` says `no` — a broken config is
+`vx lock`'s to report:
 
 ```
 $ vx info
@@ -2769,7 +2766,7 @@ workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache (8.2 MB, this workspace's run history)
 cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-cache versions:   keys vx-cache-v43 · index schema v34
+cache versions:   keys vx-cache-v43 · index schema v35
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -2778,10 +2775,7 @@ sandbox:          available (9 tasks declare exec.sandbox)
 projects lock:    yes
 ```
 
-- `git` shows `(not found)` when the binary is missing; a broken
-  project config contributes zero tasks instead of failing the
-  printout, and the `config errors` row (present only then) names it
-  with the loader's message — the same line `vx run` would stop on.
+- `git` shows `(not found)` when the binary is missing.
 - `git status cache`: vx runs ONE `git status` per run to find dirty
   and untracked files, and on a large tree that walk is the warm run's
   critical path. git's `core.fsmonitor` (a daemon that watches the
@@ -2860,8 +2854,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   below Bun 1.4.0), `git` (null when not
   found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
   git could not answer), `workspaceRoot`, `projects`, `tasks`,
-  `configErrors` (`[{ path, message }]`, the configs that did not load,
-  empty when all did), `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
+  `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
 cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
   `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
 cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
@@ -2882,8 +2875,8 @@ declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
 - `--cache-dir <path>` reads the cache a run with the same flag uses, as
   `vx why`, `vx last` and `vx cache clean` do.
 
-Exit codes: `0` the facts printed, a config that did not load included;
-`1` no workspace here or above, or a parse error.
+Exit codes: `0` the facts printed, with no lock included; `1` no
+workspace here or above, or a parse error.
 
 ## `vx why`
 

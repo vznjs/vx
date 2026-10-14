@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v34",
+    "version": "v35",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -35,18 +35,6 @@
       "digest  TEXT PRIMARY KEY,",
       "paths   TEXT NOT NULL,",
       "seen_at INTEGER NOT NULL",
-      ")",
-      "",
-      "CREATE TABLE config_closures (",
-      "config_path TEXT PRIMARY KEY,",
-      "files_json  TEXT NOT NULL,",
-      "created_at  INTEGER NOT NULL",
-      ")",
-      "",
-      "CREATE TABLE config_evals (",
-      "key        TEXT PRIMARY KEY,",
-      "json       TEXT NOT NULL,",
-      "created_at INTEGER NOT NULL",
       ")",
       "",
       "CREATE TABLE entries (",

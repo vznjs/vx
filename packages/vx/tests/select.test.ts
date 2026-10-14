@@ -14,6 +14,7 @@ import {
 } from '../src/cli/select.js'
 import type { ProjectConfig } from '../src/config.js'
 import type { ProjectEntry, ProjectMeta } from '../src/workspace/index.js'
+import { lock } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 let root = ''
@@ -33,6 +34,7 @@ beforeAll(async () => {
   // A sibling that shares the member's name as a PREFIX and is no project.
   await mkdir(path.join(root, 'packages', 'app-e2e'), { recursive: true })
   await Bun.write(path.join(root, 'tsconfig.base.json'), '{}\n')
+  await lock(root)
   const git = gitIn(root)
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
@@ -147,8 +149,8 @@ describe('taskEdgesFrom', () => {
 })
 
 describe('workspaceGlobOwners', () => {
-  it('when the staged load fails, each config that loads is still read', async () => {
-    // One broken config anywhere failed the staged load, and the owners of
+  it('when the staged load fails, each locked config is still read', async () => {
+    // One failing project anywhere failed the staged load, and the owners of
     // a changed root file came back empty: `--affected` then skipped a task
     // whose declared input had changed.
     const owners = await workspaceGlobOwners(root, metas, ['tsconfig.base.json'], {}, () =>
@@ -163,6 +165,7 @@ describe('resolveFilters — a scoped name typed without its scope (E-32)', () =
   beforeAll(async () => {
     scoped = realpathSync(await makeWorkspace({ prefix: 'vx-select-scoped-' }))
     for (const name of ['@acme/web', '@acme/dup', '@other/dup']) await addProject(scoped, name)
+    await lock(scoped)
     const git = gitIn(scoped)
     git('add', '-A')
     git('commit', '-q', '-m', 'init')
@@ -200,6 +203,7 @@ describe('resolveFilters — `<name>...[ref]` over a task edge', () => {
     await addProject(ws, 'e2e', {
       config: `export default { tasks: { test: { dependsOn: ['lib#build'], exec: { command: 'true' } } } }\n`,
     })
+    await lock(ws)
     const git = gitIn(ws)
     git('add', '-A')
     git('commit', '-q', '-m', 'init')

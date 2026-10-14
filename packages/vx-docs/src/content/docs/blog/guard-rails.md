@@ -6,7 +6,7 @@ authors:
 tags:
   - correctness
   - config
-excerpt: 'A sandbox refusal names the path and the grant to add. Two tasks writing the same folder are stopped before they delete each other. A config that hangs times out with its name. And a pure config is read back as data, not run again.'
+excerpt: 'A sandbox refusal names the path and the grant to add. Two tasks writing the same folder are stopped before they delete each other. And a config that hangs times out with its name.'
 ---
 
 A refusal is only useful if it says what to do next. Each guard in this
@@ -72,13 +72,5 @@ A `vx.config.ts` is code, and code can hang: an `await` on a server that
 is down, or a loop. Each config gets 30 seconds, and then the load fails
 and names the config. A real evaluation takes about 10 ms.
 `VX_CONFIG_WORKER_TIMEOUT` changes the limit.
-
-## A pure config is read once
-
-Most configs only call `defineProject` with plain data. vx proves that
-from the imports, then stores the evaluated result. The next run reads it
-back as data instead of running the file again. A config that imports
-anything else, reads the environment or calls `Math.random` is evaluated
-every run, as it should be.
 
 The [schema](../../schema/) lists every rule and sandbox grant.

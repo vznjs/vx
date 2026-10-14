@@ -16,7 +16,6 @@ import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { relPosix, UserError, xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
-import { CONFIG_EVAL_VERSION } from './config-cache.js'
 
 export const LOCKFILE_NAME = '.vx/projects.lock.json'
 export const LOCKFILE_VERSION = 2
@@ -91,7 +90,7 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
  * record of which vx validated it. No reader consults it.
  */
 function validatedDigest(body: string): string {
-  return xxh3(`vx-lock-valid-v${CONFIG_EVAL_VERSION}\0${VERSION}\0${body}`).toString(16)
+  return xxh3(`vx-lock-valid-v3\0${VERSION}\0${body}`).toString(16)
 }
 
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {

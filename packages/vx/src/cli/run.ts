@@ -540,10 +540,7 @@ export async function resolveRunOptions(
       ? await resolveFilters(
           cwd,
           filterStrings,
-          {
-            ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
-            fromLock: true,
-          },
+          parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {},
           affectedFilter,
         )
       : undefined
@@ -670,10 +667,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       process.stderr.write(`${refusal.message}\n`)
       return 1
     }
-    const load = {
-      ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
-      fromLock: true,
-    }
+    const load = parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}
     // `--filter` / `--affected` scope the menu, as they scope a bare task:
     // the menu listed every project and the anchored pick ran outside it.
     const scope = await scopeFilters(parsed, cwd)

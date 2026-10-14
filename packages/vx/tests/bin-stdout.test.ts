@@ -9,7 +9,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+// The locked CLI imports bin.ts in its own process: the exit path is bin.ts's.
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const BIG = 2 * 1024 * 1024
 let root: string
 

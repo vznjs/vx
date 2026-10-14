@@ -72,7 +72,7 @@ that walks the graph (`app...`, `--affected` with a diff) stages every
 config to read the `pkg#task` edges, and the run reuses those entries
 instead of evaluating and staging them again (`loadProjects` seeds and
 scopes exactly as before). One run only — `vx watch` deletes it from
-the options it re-runs, since a cycle after an edit must evaluate live.
+the options it re-runs, since a cycle after an edit must load again.
 
 Both are re-exported by `orchestrator/index.ts` (the module contract)
 and by the package façade `src/index.ts`. See

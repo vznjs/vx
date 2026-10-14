@@ -196,8 +196,8 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
     packageGraph,
     seeds: 'all',
     closure: true,
-    lock: null,
-    evalCache: undefined,
+    // Every config is staged, so the lock is never asked.
+    configs: async () => ({ version: 2, projects: {} }),
     warn,
     staged,
   })

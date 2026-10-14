@@ -264,10 +264,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     delete opts.affected
     delete opts.selectedOutright
 
-    const load: CliLoadOptions = {
-      ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
-      fromLock: true,
-    }
+    const load: CliLoadOptions = opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}
     const swept = await sweepConfigs(allProjects, workspaceRoot, load, opts.tasks)
     const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
     const ws = await loadCliWorkspace(workspaceRoot)

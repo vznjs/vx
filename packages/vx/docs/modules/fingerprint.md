@@ -47,9 +47,8 @@ run keeps them so a mid-run check can say which file a task rewrote
 (`orchestrator/fingerprint-watch.ts`,
 [`fingerprint-watch.md`](./fingerprint-watch.md)). The second reads each
 file once and folds two digests: `all` over every file present, and
-`unclaimed` over the files no plugin claims. `prepareRun` keys the
-config-evaluation cache on `all` (a config may import a dependency the
-lockfile resolved) and every task key on `unclaimed`. A claimed file
+`unclaimed` over the files no plugin claims. Every task key folds
+`unclaimed`. A claimed file
 leaves the key digest entirely, name included — a fold of "present"
 would still re-key the workspace the first time the file appeared.
 

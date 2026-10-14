@@ -107,7 +107,6 @@ import {
   zstdCompress,
   zstdEncoder,
 } from './zstd.js'
-import { ConfigEvalTable } from './config-evals.js'
 import { FileHashStore } from './file-hashes.js'
 import { OutputIndex } from './output-index.js'
 import { RunHistory } from './run-history.js'
@@ -299,7 +298,10 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        unchanged (CACHE_VERSION not bumped).
 //   v34: entry_inputs holds one row per entry, its key components as one
 //        JSON array, not a row per component. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v34'
+//   v35: config_evals and config_closures are gone: runs read configs from
+//        the lock, and `vx lock` evaluates every one. The cache KEY is
+//        unchanged.
+export const SCHEMA_VERSION = 'v35'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -799,7 +801,6 @@ export class Cache implements CacheLayer {
   private readonly insertEntryInput: ReturnType<Database['prepare']>
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
-  private readonly configEvals: ConfigEvalTable
   private readonly outputs: OutputIndex
   private readonly history: RunHistory
 
@@ -887,9 +888,8 @@ export class Cache implements CacheLayer {
     // The directory exists before the DB opens — bun:sqlite won't create
     // parent dirs for us. A directory this user cannot write into is a
     // read-only cache for every reader (`vx show`, `why`, `last`, the
-    // doctor, the watch sweep): the write axis goes off, so the
-    // config-evaluation store and the file-hash memo skip their upserts
-    // instead of dying in SQLite on the first miss (an unprivileged user on
+    // doctor, the watch sweep): the write axis goes off, so the file-hash
+    // memo skips its upserts instead of dying in SQLite on the first miss (an unprivileged user on
     // a root-owned `.vx`, 2026-09-16). A run wants more than a quiet
     // read-only cache — `assertWritable()`.
     // A reading verb over a directory with no index yet reads an empty one
@@ -1174,7 +1174,6 @@ export class Cache implements CacheLayer {
     // The slices: each owns its statements over this handle and its table(s);
     // the schema above is the one place every table is declared.
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
-    this.configEvals = new ConfigEvalTable(this.db, { read: this.read, write: this.write })
     this.outputs = new OutputIndex(this.db)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
 
@@ -1386,28 +1385,6 @@ export class Cache implements CacheLayer {
       .immediate()
   }
 
-  // --- config evaluations: `ConfigEvalStore`, delegated to `ConfigEvalTable` ---
-  getConfigEval(key: string): string | null {
-    return this.guard(() => this.configEvals.getConfigEval(key))
-  }
-  getConfigClosures(configPaths: readonly string[]): Map<string, string[]> {
-    return this.guard(() => this.configEvals.getConfigClosures(configPaths))
-  }
-  putConfigClosure(configPath: string, files: readonly string[]): void {
-    return this.guard(() => this.configEvals.putConfigClosure(configPath, files))
-  }
-  getConfigEvals(keys: readonly string[]): Map<string, string> {
-    return this.guard(() => this.configEvals.getConfigEvals(keys))
-  }
-  putConfigEval(key: string, json: string): void {
-    return this.guard(() => this.configEvals.putConfigEval(key, json))
-  }
-  putConfigEvals(entries: ReadonlyArray<readonly [string, string]>): void {
-    return this.guard(() => this.configEvals.putConfigEvals(entries))
-  }
-  putConfigClosures(entries: ReadonlyArray<readonly [string, readonly string[]]>): void {
-    return this.guard(() => this.configEvals.putConfigClosures(entries))
-  }
   // --- input file hashes: delegated to `FileHashStore` (see file-hashes.ts) ---
   hashFile(filePath: string): Promise<string> {
     return this.guard(() => this.files.hashFile(filePath))
@@ -2959,7 +2936,6 @@ export class Cache implements CacheLayer {
       if (!this.inspecting) {
         const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
         this.history.pruneOlderThan(cutoff)
-        this.configEvals.pruneOlderThan(cutoff)
         if (this.write) this.files.pruneOlderThan(cutoff)
       }
     } catch {

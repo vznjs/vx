@@ -503,13 +503,10 @@ carrying both was a contradiction, so it is gone.
 **`vx lock`** is what the `vx` row runs (since 2026-09-29), as every
 run does: it executes the `.vx/projects.lock.json` graph with **zero per-run
 config evaluation**. The dated rows above that ran with no lock read
-as a tie, not a loss: since the config-evaluation cache (2026-09-02) a
-run with no lock evaluated nothing either for a config the purity gate
-could prove pure, and served the same validated object from `cache.db`
-without re-validating it, while a lock run parses the whole lock and
-reads one remembered verdict for it (the lock is hand-editable, so it
-is a boundary; X-181). What the lock still skips is the per-config
-identity stat; what it still pays is the lock's own parse. Measured
+as a tie, not a loss: from 2026-09-02 a config evaluation cache served
+a run with no lock the same validated object for a config a purity gate
+could prove pure (removed 2026-10-14: every run reads the lock, and
+`vx lock` evaluates every config). Measured
 2026-09-12 on the 1,000-project bench, compiled binary, 12 interleaved
 reps: no lock min 154 / median 177 ms, lock 148 / 165 — ~5%, the
 identity stats; the `load configs` stage read 20–25 ms with no lock
@@ -728,14 +725,9 @@ the shipped-optimization catalog with invariants is
 
 Config evaluation was the largest fixed cost of a warm run
 (`loadProjectConfig` ~199 ms of a ~517 ms warm wall at 1,000 projects,
-2026-09-02, before the day's work). The resolved-config evaluation cache
-that was first rejected here shipped the same day behind the static
-purity gate it needed (`caching.md` § Config evaluation cache): a config
-whose import closure is provably pure is served validated from
-`cache.db`, keyed on the blob id of every file in the closure; anything
-the gate cannot prove evaluates live. `load configs` is 16–25 ms per
-1,000 configs since. A run from the lock is not a faster version of
-that path (see the head-to-head above, 2026-09-12): it is the
-env-independent one, and the eval-free one for impure configs.
+2026-09-02, before the day's work). A config evaluation cache behind a
+static purity gate took `load configs` to 16–25 ms per 1,000 configs
+the same day; it was removed on 2026-10-14, when every run moved to the
+lock and only `vx lock` evaluates.
 
 **Source vs binary.** The runner invokes `bun packages/vx/src/bin.ts` by default, which pays ~40 ms of transpile per run that the `--bytecode` release binary does not (2026-09-09: 114 vs 71 ms on a two-package workspace; 20 projects warm 109 vs 64 ms). Set `VX_BIN=<path>` to time the shipped binary instead.

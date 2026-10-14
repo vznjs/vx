@@ -605,7 +605,7 @@ task `vx show` prints (a runtime probe, `readyWhen`, the description),
 the description `--dry` and the task picker print, a runtime probe's
 command as the run history stores it and `vx why` names its row (two
 probes that mask alike are numbered, `echo *** (2)`), the readiness
-notice's pattern, a sandbox violation line, `vx info`'s config errors,
+notice's pattern, a sandbox violation line,
 the error a verb ends on (a plugin's failure, a config's own throw) and
 `vx watch`'s `cycle failed` line. A multi-line value (a PEM
 key) is also masked line by line, each line of six characters or more,

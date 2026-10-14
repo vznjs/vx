@@ -690,8 +690,7 @@ describe('a broken config leaks nothing either', () => {
       // whole suite stayed green.
       //
       // Both matter for the same reason: the cache is opened BEFORE the
-      // configs load, because it is where their cached evaluations live. A
-      // throw between the open and the return strands an open SQLite handle
+      // configs load. A throw between the open and the return strands an open SQLite handle
       // for a process that keeps running — `vx watch`, an editor plugin, a
       // daemon — and the next open of the same file meets a busy lock.
       await pkg('app', cfg(task('build')))

@@ -15,18 +15,16 @@ import {
   executablePath,
   gitEnv,
   isUnsupportedBun,
+  isUserError,
   machineMemoryBytes,
   machineParallelism,
-  maskedLine,
   parseSize,
-  relPosix,
   treeBytes,
 } from '../util/index.js'
 import { vxPath } from '../handoff.js'
 import { VERSION } from '../version.js'
 import { probeSandbox, resetSandbox, untracedReason } from '../exec/index.js'
 import {
-  computeWorkspaceFingerprint,
   findWorkspaceRoot,
   type LoadReads,
   loadWorkspace,
@@ -36,12 +34,7 @@ import {
 } from '../workspace/index.js'
 import { flakyTasks, type FlakyTask } from './failure-mode.js'
 import type { VxPlugin } from './plugin.js'
-import {
-  discoverProjects,
-  type LoadProjectsArgs,
-  loadProjects,
-  loadWorkspacePlugins,
-} from './projects.js'
+import { discoverProjects, loadProjects, loadWorkspacePlugins, lockReader } from './projects.js'
 import { atPath, envName, resolveSetting, SETTINGS, type SettingSource } from '../settings.js'
 
 const warnToStderr = (message: string): void => {
@@ -70,13 +63,6 @@ export interface InfoFacts {
   workspaceRoot: string
   projects: number
   tasks: number
-  /**
-   * The project configs that did not load, each with the loader's own
-   * message (the path stripped). A broken config counts as zero tasks
-   * rather than failing the doctor — and the doctor says which, since a
-   * `0 tasks` that hides a typo is the one fact a bug report needs.
-   */
-  configErrors: Array<{ path: string; message: string }>
   plugins: Array<{ name: string; seams: string[] }>
   /**
    * The worker count a run defaults to and where it comes from:
@@ -189,45 +175,34 @@ async function collectWorkspaceInfo(
   let flaky: FlakyTask[]
   let taskCount = 0
   let sandboxed = 0
-  let configErrors: InfoFacts['configErrors'] = []
   try {
     stats = cache.stats()
     orphans = await cache.orphanStats()
     flaky = flakyTasks(cache.dbHandle())
-    // The run path's load — a plugin's `project` stage counts — so the
-    // doctor's task count is the number a run would see. A broken config
-    // must not take the doctor down with it: the count then falls back to
-    // the same load, one project at a time, the broken ones as zero.
-    const load = {
-      workspaceRoot: root,
-      cacheDir,
-      plugins,
-      projectMetas: metas,
-      closure: false,
-      lock: null,
-      evalCache: {
-        store: cache,
-        workspaceRoot: root,
-        workspaceFingerprint: await computeWorkspaceFingerprint(root, reads),
-      },
-      warn,
-    } as const
+    // The run path's load — the lock, a plugin's `project` stage counted —
+    // so the doctor's task count is the number a run would see. No lock, or
+    // one a run would refuse, counts zero: broken configs are `vx lock`'s
+    // to report.
     try {
-      const loaded = await loadProjects({ ...load, seeds: 'all' })
+      const loaded = await loadProjects({
+        workspaceRoot: root,
+        cacheDir,
+        plugins,
+        projectMetas: metas,
+        seeds: 'all',
+        closure: false,
+        configs: lockReader(root),
+        warn,
+      })
       for (const p of loaded.projects.values()) {
         const tasks = p.config.tasks ?? {}
         taskCount += Object.keys(tasks).length
         for (const t of Object.values(tasks)) if (t?.exec?.sandbox !== undefined) sandboxed++
       }
-    } catch {
-      // A config that will not load counts as zero, for both numbers: the
-      // sandbox row's "N tasks declare" must not read 0 because one other
-      // project's config is broken while this one's declares a sandbox.
-      ;({
-        tasks: taskCount,
-        sandboxed,
-        errors: configErrors,
-      } = await countLoadableTasks(load, root))
+    } catch (err) {
+      if (!isUserError(err)) throw err
+      taskCount = 0
+      sandboxed = 0
     }
   } finally {
     cache.close()
@@ -259,7 +234,6 @@ async function collectWorkspaceInfo(
     workspaceRoot: root,
     projects: metas.length,
     tasks: taskCount,
-    configErrors,
     // Which plugins loaded and which seams each fills, in pipeline order —
     // the answer to "why did this task run there / cache there / not at
     // all" before reading any config. A declined seam still costs nothing;
@@ -399,47 +373,6 @@ function gitVersion(): string | null {
   } catch {
     return null
   }
-}
-
-async function countLoadableTasks(
-  load: Omit<LoadProjectsArgs, 'seeds'> & { closure: false },
-  root: string,
-): Promise<{ tasks: number; sandboxed: number; errors: InfoFacts['configErrors'] }> {
-  let tasks = 0
-  let sandboxed = 0
-  const errors: InfoFacts['configErrors'] = []
-  // No seeds loads nothing and answers which projects an 'all' load seeds.
-  const { configured } = await loadProjects({ ...load, seeds: [] })
-  await Promise.all(
-    configured.map(async (meta) => {
-      try {
-        const loaded = await loadProjects({ ...load, seeds: [meta.name] })
-        const declared = Object.values(loaded.projects.get(meta.name)?.config.tasks ?? {})
-        tasks += declared.length
-        for (const t of declared) if (t?.exec?.sandbox !== undefined) sandboxed++
-      } catch (err) {
-        // Counted as zero, and named: the loader's message opens with the
-        // absolute path — bare for a schema refusal, behind `Project config`
-        // for an import that failed, and with `:line:col` after it for a
-        // syntax error — which the row carries workspace-relative instead,
-        // once (the second form named the file twice, 2026-09-16; the third
-        // still did).
-        const raw = err instanceof Error ? err.message : String(err)
-        const bare = raw.startsWith('Project config ') ? raw.slice('Project config '.length) : raw
-        const where = meta.configPath ?? meta.dir
-        const message = bare.startsWith(`${where}:`)
-          ? bare.slice(where.length + 1).trimStart()
-          : raw
-        errors.push({
-          path: relPosix(root, where),
-          // A config's own throw is its author's text, a secret too (L-11).
-          message: maskedLine(message),
-        })
-      }
-    }),
-  )
-  errors.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-  return { tasks, sandboxed, errors }
 }
 
 function settingsFact(config: WorkspaceConfig | null): InfoFacts['settings'] {

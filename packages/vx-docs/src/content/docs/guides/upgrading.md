@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## workspace: drop the config eval cache; all verbs read the lock
+
+index SCHEMA_VERSION v35 drops the config eval tables. Removed exports: ConfigEvalStore, LoadProjectConfigOptions, the Cache config-eval methods and loadProjectConfig's options. `vx info` loses its config errors row; `vx show` and `vx info` need a lock.
+
 ## lock: runs read only .vx/projects.lock.json
 
 --frozen, --no-frozen, run.frozen, VX_RUN_FROZEN and run({ frozen }) are removed. .vx/lock.json is renamed .vx/projects.lock.json.

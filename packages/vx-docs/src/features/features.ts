@@ -367,7 +367,7 @@ would run:
     category: 'insight',
     hook: 'The task exactly as a run sees it, after every preset and plugin.',
     body: [
-      '`vx show web#build` prints the resolved task: command, dependencies, inputs, outputs and env. Configs load through the same path a run uses, plugins included.',
+      '`vx show web#build` prints the resolved task: command, dependencies, inputs, outputs and env. Configs load from the lock through the same path a run uses, plugins included; nothing is evaluated.',
       '`vx show --affected` lists what your branch reaches, and `--format json` gives scripts the same answer.',
     ],
     example: { lang: 'sh', code: 'vx show web#build\nvx show --affected --format json' },

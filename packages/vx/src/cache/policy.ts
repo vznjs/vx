@@ -10,8 +10,7 @@ import { UserError } from '../util/index.js'
  * cache) is distinct from `--no-cache` (disable everything).
  *
  * The task-artifact get/save path is gated, and the local axes also gate
- * the local store's config-evaluation reads and writes and its file-hash
- * writes (`cache.ts`). `recordRun`, `stats`, `prune`, key derivation, and
+ * the local store's file-hash writes (`cache.ts`). `recordRun`, `stats`, `prune`, key derivation, and
  * prefetch-ingest are never affected — they are bookkeeping/analytics
  * that a run policy has no business disabling.
  */

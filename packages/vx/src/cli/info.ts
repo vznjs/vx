@@ -78,14 +78,6 @@ export function renderInfo(f: InfoFacts): string {
     ['git status cache', renderGitStatusCache(f.gitStatusCache)],
     ['workspace root', tildePath(f.workspaceRoot)],
     ['projects', describeProjects(f)],
-    // Only when a config did not load: the count above says "zero" for
-    // it, and this row says which and why.
-    ...(f.configErrors.length > 0
-      ? ([['config errors', f.configErrors.map((e) => `${e.path}: ${e.message}`).join('; ')]] as [
-          string,
-          string,
-        ][])
-      : []),
     ['plugins', describePlugins(f.plugins)],
     ['workers', describeWorkers(f.workers)],
     ['memory', describeMemory(f.memory)],
@@ -212,10 +204,7 @@ function trimCores(n: number): string {
 
 /** `2 — app#test (3 of 7 runs failed on unchanged inputs); api#e2e (1 of 4)`, or `none`. */
 function describeProjects(f: InfoFacts): string {
-  const tasks = `${f.tasks} task${f.tasks === 1 ? '' : 's'}`
-  const n = f.configErrors.length
-  if (n === 0) return `${f.projects} (${tasks})`
-  return `${f.projects} (${tasks} · ${n} config${n === 1 ? '' : 's'} did not load)`
+  return `${f.projects} (${f.tasks} task${f.tasks === 1 ? '' : 's'})`
 }
 
 function describeFlakyTasks(tasks: readonly FlakyTask[]): string {

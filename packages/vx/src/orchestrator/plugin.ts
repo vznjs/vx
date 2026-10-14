@@ -73,8 +73,8 @@ export interface VxPlugin {
   /**
    * One project's validated config, right after it loaded and before the
    * graph is built. Add, remove or edit tasks. Runs for every loaded project
-   * on every run — a config's cached evaluation is the user's file, and the
-   * hook is applied on top of it live. A package with NO config file is
+   * on every run — a locked config is the user's file, and the hook is
+   * applied on top of it live. A package with NO config file is
    * loaded too, as `{ tasks: {} }`, so a plugin can give tasks to packages
    * that never wrote one (`ctx.packageJson` carries their scripts); with no
    * `project` plugin such a package is never visited.
@@ -111,8 +111,7 @@ export interface VxPlugin {
    * task's key, so one `pnpm install` re-keys the whole workspace. A plugin
    * that reads the lockfile and folds each project's own dependency
    * closure through `key` claims the file here: core leaves it out of the
-   * fingerprint every key sees (the config-evaluation cache still keys on
-   * it — a config may import a dependency), and `--affected` asks
+   * fingerprint every key sees, and `--affected` asks
    * `affected` which projects a change to it touches instead of selecting
    * every project. A file has one claimant.
    *

@@ -8,12 +8,7 @@ import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { buildTaskGraph, expandRequested } from '../graph/index.js'
-import {
-  applyGraphStage,
-  hasHook,
-  isDefaultBuild,
-  loadResolvedProjects,
-} from '../orchestrator/index.js'
+import { applyGraphStage, hasHook, isDefaultBuild, loadProjects } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
   configErrorFrame,
@@ -148,7 +143,17 @@ async function graphRuleRefusal(
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
     reviewFiles = resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
-    const projects = await loadResolvedProjects(root, { warn })
+    // The one load that evaluates: every reader reads the lock this writes.
+    const { projects } = await loadProjects({
+      workspaceRoot: root,
+      cacheDir,
+      plugins,
+      projectMetas: all,
+      seeds: 'all',
+      closure: false,
+      configs: 'evaluate',
+      warn,
+    })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     const names = new Set<string>()
     for (const entry of projects.values()) {
@@ -200,13 +205,12 @@ interface GraphCheck {
 }
 
 /**
- * Evaluate one config in the current env. `fresh: true`: the lock freezes
- * this environment's evaluation, never a stored one. Stored through
+ * Evaluate one config in the current env. Stored through
  * `writeLockfile`'s JSON.stringify, which drops a field left `undefined`,
  * the form `--check` compares a fresh evaluation in.
  */
 function evaluate(meta: ConfiguredMeta): Promise<ProjectConfig> {
-  return loadProjectConfig(meta.configPath, { fresh: true })
+  return loadProjectConfig(meta.configPath)
 }
 
 /**

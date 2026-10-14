@@ -43,14 +43,7 @@ export {
   validateProjectConfig,
   validateWorkspace,
 } from './config-schema.js'
-export type { LoadProjectConfigOptions } from './project-loader.js'
-export {
-  blobOidOf,
-  configEvalKey,
-  configEvalKeyFromClosure,
-  configImports,
-  type ConfigEvalStore,
-} from './config-cache.js'
+export { configImports } from './config-imports.js'
 export {
   findManifestRoot,
   findWorkspaceRoot,

@@ -6,7 +6,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+// `vx lock`, then `vx show`: show reads the lock.
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 let root: string
 
 function git(...args: string[]): void {

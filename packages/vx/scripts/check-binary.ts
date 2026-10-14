@@ -92,28 +92,26 @@ writeFileSync(
 }
 `,
 )
-const info = Bun.spawnSync({
-  cmd: [out, 'info', '--format=json'],
+// `vx lock --check` evaluates the config twice in one process: the graph
+// check's first load in process, then the audit's repeat load in the
+// worker. A worker that let the function through would report drift.
+writeFileSync(
+  path.join(ws, '.vx/projects.lock.json'),
+  JSON.stringify({ version: 2, projects: { a: { tasks: {} } } }),
+)
+const check = Bun.spawnSync({
+  cmd: [out, 'lock', '--check'],
   cwd: ws,
   stdout: 'pipe',
   stderr: 'pipe',
 })
-const errors = JSON.stringify(
-  info.exitCode === 0
-    ? (JSON.parse(text(info.stdout)) as { configErrors: unknown }).configErrors
-    : text(info.stderr),
-)
-const wantErrors = JSON.stringify([
-  {
-    path: 'packages/a/vx.config.mjs',
-    message:
-      'tasks.build.description is a function — a config must be JSON data, because the cache key folds its JSON',
-  },
-])
+const refusal =
+  'tasks.build.description is a function — a config must be JSON data, because the cache key folds its JSON'
+const said = text(check.stderr)
 rmSync(ws, { recursive: true, force: true })
-if (errors !== wantErrors) {
+if (check.exitCode === 0 || !said.includes(refusal) || said.includes('evaluates differently')) {
   process.stderr.write(
-    `binary's config worker: \`vx info\` reports ${errors} (exit ${info.exitCode}), expected ${wantErrors}\n`,
+    `binary's config worker: \`vx lock --check\` said ${JSON.stringify(said)} (exit ${check.exitCode}), expected the refusal ${JSON.stringify(refusal)}\n`,
   )
   process.exit(1)
 }

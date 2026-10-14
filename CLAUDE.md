@@ -59,7 +59,7 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         sandbox-request), task-hash,
                         projects.ts (the staged config load every reader shares), plugin
                         stages + seams, events, logger, doctor.ts (the facts `vx info` reports)
-  src/workspace/        discovery, config eval (+ config-cache.ts), config-schema.ts (what a config
+  src/workspace/        discovery, config eval, config-schema.ts (what a config
                         may say), package graph, --filter/--affected, lockfile, migration.ts (the
                         plan → files seam `vx init` and @vzn/vx-migrate share)
   src/graph/            task graph + two-tier scheduler
@@ -213,7 +213,7 @@ platform claim or a timed test, and add new lessons there.
 
 ## Live invariants (verify in source before quoting)
 
-- `CACHE_VERSION` `vx-cache-v43`, core `SCHEMA_VERSION` `v34`,
+- `CACHE_VERSION` `vx-cache-v43`, core `SCHEMA_VERSION` `v35`,
   `TELEMETRY_SCHEMA_VERSION` 3. Bump `CACHE_VERSION` when stored bytes are
   wrong under an unchanged key or the container changes; a key-derivation
   fix whose old key was already wrong is self-healing and does not bump.

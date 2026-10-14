@@ -15,7 +15,8 @@ import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+// `vx lock`, then the verb: show and info read the lock.
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 20_000
 
 const APP_CONFIG = `
@@ -46,7 +47,7 @@ const APP_CONFIG = `
           remote: 'only',
         },
         cache: {
-          inputs: { files: ['**/*.ts'], workspaceFiles: ['tsconfig.base.json'], runtime: ['node -v'] },
+          inputs: { files: ['src/**/*.ts'], workspaceFiles: ['tsconfig.base.json'], runtime: ['node -v'] },
           outputs: { files: [] },
         },
       },
@@ -239,7 +240,7 @@ describe('vx show (e2e)', () => {
         'env.passThrough: HOME',
         'env.define: CI=1',
         'remote: only',
-        'inputs.files: **/*.ts',
+        'inputs.files: src/**/*.ts',
         'inputs.workspaceFiles: tsconfig.base.json',
         'inputs.runtime: node -v',
         'outputs.files:',
@@ -488,7 +489,7 @@ describe('vx info (e2e)', () => {
       expect(r.out).toMatch(row('cache entries', '0 (0 B)'))
       expect(r.out).toMatch(row('task runs (24h)', '0'))
       expect(r.out).toMatch(row('flaky tasks', 'none'))
-      expect(r.out).toMatch(row('projects lock', 'no'))
+      expect(r.out).toMatch(row('projects lock', 'yes'))
       // Control for the orphans row below: nothing on disk the index does
       // not know, so the doctor says nothing about it.
       expect(r.out).not.toContain('orphans:')
@@ -590,7 +591,7 @@ describe('vx info (e2e)', () => {
       expect(facts.hits24h).toBe(0)
       expect(facts.restored24h).toBe(0)
       expect(facts.flakyTasks).toEqual([])
-      expect(facts.lockfile).toBe(false)
+      expect(facts.lockfile).toBe(true)
       expect(facts.sandbox).toEqual({
         available: expect.any(Boolean),
         reason: expect.any(String),
@@ -616,10 +617,7 @@ describe('vx info (e2e)', () => {
   )
 })
 
-describe('vx info — a config that will not load counts as zero, for every number', () => {
-  // The doctor falls back to a per-config count when the shared load throws.
-  // That fallback counted tasks but not sandboxes, so one broken config next
-  // to a project declaring `exec.sandbox` read "0 tasks declare".
+describe('vx info — counts from the lock, for every number', () => {
   let root: string
   beforeAll(async () => {
     root = await makeWorkspace()
@@ -636,14 +634,13 @@ describe('vx info — a config that will not load counts as zero, for every numb
   })
 
   it(
-    "counts the loadable configs' tasks and sandboxes alike",
+    'counts tasks and sandboxes alike; a config vx lock refuses counts zero, unnamed',
     async () => {
-      // Control: every config loads, so the shared load counts.
       const whole = JSON.parse((await vx(root, ['info', '--format', 'json'])).out)
-      expect(whole.tasks).toBe(5)
-      expect(whole.sandbox.declared).toBe(1)
-      expect(whole.configErrors).toEqual([])
+      expect([whole.tasks, whole.sandbox.declared, whole.lockfile]).toEqual([5, 1, true])
 
+      // `vx lock` refuses the broken config and leaves no lock: a run
+      // refuses too, so info counts nothing and names nothing.
       const broken = path.join(root, 'packages', 'broken')
       await mkdir(broken, { recursive: true })
       await writeFile(path.join(broken, 'package.json'), JSON.stringify({ name: 'broken' }))
@@ -654,53 +651,16 @@ describe('vx info — a config that will not load counts as zero, for every numb
       const r = await vx(root, ['info', '--format', 'json'])
       expect(r.code).toBe(0)
       const facts = JSON.parse(r.out)
-      expect(facts.projects).toBe(4)
-      expect(facts.tasks).toBe(5)
-      expect(facts.sandbox.declared).toBe(1)
-      // Zero is not silent: the broken config is named, with the loader's
-      // message and no absolute path in front of it.
-      expect(facts.configErrors).toEqual([
-        {
-          path: 'packages/broken/vx.config.mjs',
-          message: expect.stringMatching(/^tasks\.build has unknown field "command"/),
-        },
+      expect([facts.projects, facts.tasks, facts.sandbox.declared, facts.lockfile]).toEqual([
+        4,
+        0,
+        0,
+        false,
       ])
+      expect(facts).not.toHaveProperty('configErrors')
       const pretty = await vx(root, ['info'])
-      expect(pretty.code).toBe(0)
-      expect(pretty.out).toMatch(/^projects: +4 \(5 tasks · 1 config did not load\)$/m)
-      expect(pretty.out).toMatch(
-        /^config errors: +packages\/broken\/vx\.config\.mjs: tasks\.build has unknown field "command"/m,
-      )
-
-      // An import that fails is the loader's other message shape, which
-      // opens with `Project config <abs>:` — the row named the file twice.
-      const badimport = path.join(root, 'packages', 'badimport')
-      await mkdir(badimport, { recursive: true })
-      // A real workspace has a node_modules. Without one anywhere above the
-      // config, Bun auto-installs a bare import it cannot resolve — sixteen
-      // connections to the registry before "cannot find" — which the macOS
-      // sandbox reports as a violation and fails the shard (Next 21).
-      await mkdir(path.join(root, 'node_modules'), { recursive: true })
-      await writeFile(path.join(badimport, 'package.json'), JSON.stringify({ name: 'badimport' }))
-      await writeFile(
-        path.join(badimport, 'vx.config.mjs'),
-        `import { preset } from 'nope-pkg'\nexport default { tasks: { build: { exec: { command: 'true' }, ...preset } } }\n`,
-      )
-      const two = JSON.parse((await vx(root, ['info', '--format', 'json'])).out)
-      expect(two.configErrors).toEqual([
-        {
-          path: 'packages/badimport/vx.config.mjs',
-          message: expect.stringMatching(/^cannot find 'nope-pkg' — no node_modules above/),
-        },
-        {
-          path: 'packages/broken/vx.config.mjs',
-          message: expect.stringMatching(/^tasks\.build has unknown field "command"/),
-        },
-      ])
-      // One row, the errors joined by `; ` in path order.
-      expect((await vx(root, ['info'])).out).toMatch(
-        /^config errors: +packages\/badimport\/vx\.config\.mjs: cannot find 'nope-pkg' — no node_modules above .*; packages\/broken\//m,
-      )
+      expect(pretty.out).toMatch(/^projects: +4 \(0 tasks\)$/m)
+      expect(pretty.out).not.toContain('config errors')
     },
     TIMEOUT,
   )
@@ -797,7 +757,6 @@ describe('vx info — the rendered rows', () => {
     workspaceRoot: '/w',
     projects: 3,
     tasks: 1,
-    configErrors: [],
     plugins: [],
     workers: { count: 4, source: 'cores', cores: 4, cpuQuota: null },
     memory: { usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: null },
@@ -867,7 +826,6 @@ describe('vx info — the rendered rows', () => {
       gitStatusCache: null,
       projects: 2,
       tasks: 0,
-      configErrors: [{ path: 'packages/a/vx.config.ts', message: 'boom' }],
       plugins: [
         { name: 'p', seams: [] },
         { name: 'q', seams: ['executor', 'cache'] },
@@ -896,8 +854,7 @@ describe('vx info — the rendered rows', () => {
         'git:              (not found)',
         'git status cache: (unknown)',
         'workspace root:   /w',
-        'projects:         2 (0 tasks · 1 config did not load)',
-        'config errors:    packages/a/vx.config.ts: boom',
+        'projects:         2 (0 tasks)',
         'plugins:          2 — p (no seams); q (executor, cache)',
         'workers:          8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
         'memory:           2.0 GB usable — cgroup limit; the machine has 8.0 GB',
@@ -1032,14 +989,19 @@ describe('vx info — the workers and memory rows', () => {
   })
 })
 
-describe('vx show <project> loads that project only (e2e)', () => {
-  // The scoped load is not only a saving: a config is a program, so a
-  // broken one in an unrelated package must not stop `vx show app` from
-  // answering about app. The run path makes the same promise
-  // (tests/scoped-config-loading.test.ts) and this is the reader's half.
+describe('vx show reads the lock and evaluates nothing (e2e)', () => {
+  // Only `vx lock` and `vx lock --check` evaluate a config.
+  const RAW_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+  const raw = (root: string, args: string[]) =>
+    Bun.spawnSync([process.execPath, RAW_BIN, ...args], {
+      cwd: root,
+      env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
   let root: string
   beforeAll(async () => {
-    root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-scope-'))
+    root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-lock-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
     await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
@@ -1050,32 +1012,36 @@ describe('vx show <project> loads that project only (e2e)', () => {
       path.join(app, 'vx.config.mjs'),
       "export default { tasks: { build: { exec: { command: 'echo b' } } } }\n",
     )
-    const broken = path.join(root, 'packages', 'broken')
-    await mkdir(broken, { recursive: true })
-    await writeFile(path.join(broken, 'package.json'), JSON.stringify({ name: 'broken' }))
-    await writeFile(path.join(broken, 'vx.config.mjs'), "throw new Error('never evaluated')\n")
   })
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })
   })
 
   it(
-    'a broken config in another package does not break the scoped view',
+    'with no lock it refuses as a run does',
     async () => {
-      const r = await vx(root, ['show', 'app'])
-      expect(r.code).toBe(0)
-      expect(r.out).toContain('echo b')
-      expect(r.out).not.toContain('never evaluated')
+      const r = raw(root, ['show'])
+      expect([r.exitCode, r.stderr.toString(), r.stdout.toString()]).toEqual([
+        1,
+        'vx: no lock: run `vx lock`\n',
+        '',
+      ])
     },
     TIMEOUT,
   )
 
   it(
-    'CONTROL: the unscoped listing DOES evaluate it, so the fixture is really broken',
+    'shows the locked config, not the file edited since',
     async () => {
-      const r = await vx(root, ['show'])
-      expect(r.code).toBe(1)
-      expect(r.err).toContain('never evaluated')
+      expect(raw(root, ['lock']).exitCode).toBe(0)
+      await writeFile(
+        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        "throw new Error('never evaluated')\n",
+      )
+      const r = raw(root, ['show', 'app'])
+      expect(r.exitCode).toBe(0)
+      expect(r.stdout.toString()).toContain('echo b')
+      expect(r.stderr.toString()).not.toContain('never evaluated')
     },
     TIMEOUT,
   )
@@ -1145,26 +1111,6 @@ describe('collectInfo — the facts behind the rows', () => {
     expect(facts.git).not.toBeNull()
     expect(facts.git).toMatch(/^\d+\.\d+/)
     expect(facts.git).not.toContain('git version')
-  })
-
-  it('config errors come out sorted by path, so two runs compare', async () => {
-    // The facts are pasted into bug reports and diffed between
-    // invocations; Promise.all settles in whatever order the reads finish,
-    // which is not an order at all.
-    for (const name of ['zeta', 'alpha']) {
-      const dir = path.join(root, 'packages', name)
-      await mkdir(dir, { recursive: true })
-      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
-      await writeFile(path.join(dir, 'vx.config.mjs'), `throw new Error('broken ${name}')\n`)
-    }
-    const facts = await collectInfo(root, { warn() {} })
-    const paths = facts.configErrors.map((e) => e.path)
-    expect(paths).toEqual([...paths].sort())
-    expect(paths).toContain('packages/alpha/vx.config.mjs')
-    expect(paths).toContain('packages/zeta/vx.config.mjs')
-    for (const name of ['zeta', 'alpha']) {
-      await rm(path.join(root, 'packages', name), { recursive: true, force: true })
-    }
   })
 
   it('a plugin that fills only `teardown` fills no SEAM', async () => {

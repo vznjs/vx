@@ -28,7 +28,6 @@ src/bin.ts
 src/cache/archive.ts
 src/cache/cache.ts
 src/cache/chained-cache.ts
-src/cache/config-evals.ts
 src/cache/file-hashes.ts
 src/cache/git-inputs.ts
 src/cache/index.ts
@@ -181,7 +180,6 @@ src/util/verbs.ts
 src/util/which.ts
 src/version.ts
 src/workspace/affected.ts
-src/workspace/config-cache.ts
 src/workspace/config-eval.ts
 src/workspace/config-imports.ts
 src/workspace/config-schema.ts

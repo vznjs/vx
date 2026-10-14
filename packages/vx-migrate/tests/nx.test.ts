@@ -1646,6 +1646,7 @@ describe("nx(): an Nx project's tags", () => {
         }
       }
       const tags = { lib: ['scope:shared', 'type:lib'], app: ['mine'] }
+      await lock(root)
       expect(await load()).toEqual({ tags, lint: 'echo lint-ran > lint.log' })
       await tamperMapping(root, 'nx')
       // Served from the kept mapping (the tampered command), tags intact.

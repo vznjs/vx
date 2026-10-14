@@ -182,43 +182,6 @@ describe("comparison.md's shipped list names every --output-logs mode", () => {
   })
 })
 
-// Its Shipped list described the config-evaluation purity gate as opting a
-// config out on "any `/` outside a comment". The gate refuses a BACKSLASH —
-// `stripLiterals` removes literals and comments, and what survives must hold
-// no identifier escape, because `\u0070rocess` IS `process` and no deny-list
-// can see it. A forward slash is in every path literal and every division, so
-// as written the gate excluded almost every config and the evaluation cache
-// read as a feature that never applies. modules/config-cache.md had it right
-// all along, pinned since item 314 (item 393, 2026-09-19).
-describe("comparison.md states the purity gate's three conditions", () => {
-  it('the escape character, the one bare import and the closure cap match source', () => {
-    const src = readFileSync(path.join(pkg, 'src', 'workspace', 'config-cache.ts'), 'utf8')
-    // The three the sentence claims, each read from the module.
-    expect(src).toContain("code.includes('\\\\')")
-    const cap = /const MAX_CLOSURE_FILES = (\d+)/.exec(src)
-    const pure = /const PURE_PACKAGE = '([^']+)'/.exec(src)
-    expect(cap).not.toBeNull()
-    expect(pure).not.toBeNull()
-
-    const doc = readFileSync(path.join(pkg, 'docs', 'comparison.md'), 'utf8')
-    const sentence = /a lexer-backed purity GATE[\s\S]*?opts a config out\./.exec(doc)
-    expect(sentence).not.toBeNull()
-    const text = sentence![0]!
-    expect(text).toContain('BACKSLASH')
-    // The gate passes two bare specifiers; `vx init` writes the second.
-    const entry = /const PURE_CONFIG_ENTRY = '([^']+)'/.exec(src)
-    expect(entry).not.toBeNull()
-    expect(text.split(/\s+/).join(' ')).toContain(
-      `any bare import but \`${pure![1]}\` (its pure values) and \`${entry![1]}\``,
-    )
-    const gate = readFileSync(path.join(pkg, 'docs', 'modules', 'config-cache.md'), 'utf8')
-    expect(gate.split(/\s+/).join(' ')).toContain(`or \`${entry![1]}\` (the schema entry`)
-    expect(text).toContain(`closure past ${cap![1]} files`)
-    // The error this pin exists for: a forward slash as the escape claim.
-    expect(/any `\/`/.test(text)).toBe(false)
-  })
-})
-
 // #2227 dropped every native Windows branch (vx runs under WSL), and two
 // pages still described one: sandbox-runtime.md's Windows row a probe that
 // reported the sandbox unavailable, execution.md an allowlist for Windows.

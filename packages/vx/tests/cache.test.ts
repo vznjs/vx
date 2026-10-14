@@ -837,10 +837,8 @@ describe('Cache storage (v10)', () => {
       await chmod(cacheDir, 0o555)
       const later = new Cache(cacheDir)
       try {
-        // A reader's stores are quiet no-ops on it: the eval cache and the
-        // file-hash memo skip their upserts, nothing reaches SQLite.
-        expect(() => later.putConfigEval('ro-key', '{}')).not.toThrow()
-        expect(later.getConfigEval('ro-key')).toBeNull()
+        // A reader's stores are quiet no-ops on it: the file-hash memo
+        // skips its upsert, nothing reaches SQLite.
         const fresh = path.join(projectDir, 'fresh.txt')
         await mkdir(projectDir, { recursive: true })
         await writeFile(fresh, 'fresh')
@@ -2480,9 +2478,6 @@ describe('Cache schema/version recovery', () => {
     //   output_dirs      dropped since A-54; before, its rows went by the
     //                    ON DELETE CASCADE from entries(hash) and its old
     //                    columns stayed.
-    //   config_closures  dropped since A-54 (it SURVIVED before, safely:
-    //                    a stale closure only changes a config key), so a
-    //                    reset also renews its SHAPE (the row below).
     //   schema_meta      holds the sentinel the gate just wrote; dropping
     //                    it would lose the version it is recording.
     //   artifacts        the inline artifacts (v33) and their layout
@@ -2490,8 +2485,8 @@ describe('Cache schema/version recovery', () => {
     //                    keeps artifact files, each indexed again on a hit.
     //
     // The first probe of this said nothing survived, because it planted
-    // `created_at = 1` and the config TTL sweep removes anything that old —
-    // the payload has to be one the code would really see (item 488).
+    // `created_at = 1` and a TTL sweep removes anything that old — the
+    // payload has to be one the code would really see (item 488).
     const { Database } = await import('bun:sqlite')
     const c1 = new Cache(cacheDir)
     c1.close()
@@ -2534,10 +2529,10 @@ describe('Cache schema/version recovery', () => {
         (raw.query(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
       ]),
     )
-    // `schema_meta` holds the schema version, the cache format (item 671),
-    // the `file_hashes` sweep's clock (item 1082) and the config sweep's.
-    // `artifacts_meta` holds the layout row beside the planted one.
-    const seeded: Record<string, number> = { schema_meta: 4, artifacts_meta: 2 }
+    // `schema_meta` holds the schema version, the cache format (item 671)
+    // and the `file_hashes` sweep's clock (item 1082). `artifacts_meta`
+    // holds the layout row beside the planted one.
+    const seeded: Record<string, number> = { schema_meta: 3, artifacts_meta: 2 }
     expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, seeded[t] ?? 1])))
     raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
@@ -2935,67 +2930,6 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     }
   })
 
-  it('close() prunes config evals and closures not loaded in 30 days and keeps the rest', async () => {
-    // The third duty of close(), beside the history prune and the two
-    // flushes: a config not loaded in 30 days was edited or its project
-    // left, and its rows would otherwise grow the index forever. Held by
-    // nothing until item 633.
-    const cache = new Cache(cacheDir)
-    cache.putConfigEvals([
-      ['k-old', '{"old":true}'],
-      ['k-new', '{"new":true}'],
-    ])
-    cache.putConfigClosures([
-      ['/w/old/vx.config.ts', ['/w/old/a.ts']],
-      ['/w/new/vx.config.ts', ['/w/new/b.ts']],
-    ])
-    const old = Date.now() - 40 * 24 * 60 * 60 * 1000
-    const db = cache.dbHandle()
-    db.query('UPDATE config_evals SET created_at = ? WHERE key = ?').run(old, 'k-old')
-    db.query('UPDATE config_closures SET created_at = ? WHERE config_path = ?').run(
-      old,
-      '/w/old/vx.config.ts',
-    )
-    cache.close()
-
-    const reopened = new Cache(cacheDir)
-    try {
-      expect([...reopened.getConfigEvals(['k-old', 'k-new']).keys()]).toEqual(['k-new'])
-      expect([
-        ...reopened.getConfigClosures(['/w/old/vx.config.ts', '/w/new/vx.config.ts']).keys(),
-      ]).toEqual(['/w/new/vx.config.ts'])
-    } finally {
-      reopened.close()
-    }
-  })
-
-  it('close() sweeps config evals once a day, not on every close', async () => {
-    // The sweep reads every row (no index on created_at); a warm run paid it
-    // on every close until it took the file-hash sweep's daily clock.
-    const day = 24 * 60 * 60 * 1000
-    const old = Date.now() - 40 * day
-    const first = new Cache(cacheDir)
-    first.putConfigEvals([['k-old', '{"old":true}']])
-    first.close()
-    const second = new Cache(cacheDir)
-    second.dbHandle().query('UPDATE config_evals SET created_at = ?').run(old)
-    second.close()
-    const third = new Cache(cacheDir)
-    // Swept moments ago: the stale row survives this close.
-    expect([...third.getConfigEvals(['k-old']).keys()]).toEqual(['k-old'])
-    third
-      .dbHandle()
-      .query('UPDATE schema_meta SET value = ? WHERE key = ?')
-      .run(String(Date.now() - 2 * day), 'config_evals_swept_at')
-    third.close()
-    const fourth = new Cache(cacheDir)
-    try {
-      expect([...fourth.getConfigEvals(['k-old']).keys()]).toEqual([])
-    } finally {
-      fourth.close()
-    }
-  })
-
   it('persists entry_inputs inside the entry-save transaction (miss path)', async () => {
     const cache = new Cache(cacheDir)
     try {
@@ -3378,13 +3312,13 @@ describe('the WAL a closed cache leaves', () => {
       // The first open creates the index; the WAL persists from the second.
       new Cache(dir).close()
       const cache = new Cache(dir)
-      cache.putConfigEval('k', '{}')
+      cache.rememberBlobSizes(new Map([['oid', 1]]))
       // CONTROL: the write sits in the WAL until the close checkpoints it.
       expect(statSync(wal).size).toBeGreaterThan(0)
       cache.close()
       expect(statSync(wal).size).toBe(0)
       const again = new Cache(dir)
-      expect(again.getConfigEval('k')).toBe('{}')
+      expect(again.knownBlobSizes(['oid'])).toEqual(new Map([['oid', 1]]))
       again.close()
     } finally {
       await rm(root, { recursive: true, force: true })

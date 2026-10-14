@@ -311,7 +311,7 @@ describe('project stage', () => {
     async () => {
       // `vx watch` calls run() repeatedly in one process. The first load of
       // a config hands the hook Bun's module object; a repeat load comes
-      // from the eval cache or the worker, both fresh — so an append-style
+      // from the worker, fresh — so an append-style
       // edit must land exactly once per run, never twice on the second.
       await pkg('a', build)
       await workspace([
