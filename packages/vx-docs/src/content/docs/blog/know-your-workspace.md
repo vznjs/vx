@@ -35,7 +35,7 @@ sandbox:          available (0 tasks declare exec.sandbox)
 It reads what vx already knows: the run history, the cache index, the
 host. It notes when a container caps memory below the machine's, and
 whether git's fast status cache is on. `--format json` gives agents the
-same facts, and `vx mcp` serves them as a tool.
+same facts.
 
 ## A cache that keeps itself in bounds
 

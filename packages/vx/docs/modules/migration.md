@@ -103,6 +103,10 @@ export function delegatedScript(command: string): string | null
   `node_modules/.bin` holds (prettier, biome, oxfmt, dprint), as Nx's
   generators do, so the repo's own format check passes them; a `note:`
   says which, or the error a failing one printed. Not under `dry`.
+- A written file `.gitignore` drops gets a `note:`: the `!file` line
+  that keeps it, or, inside an ignored directory (an old `/.vx/` line),
+  that directory, since no `!` line re-includes a file there. vx never
+  edits `.gitignore`.
 - An empty plan in a single-project workspace whose root `package.json`
   has no `workspaces` field, while packages with scripts sit beneath it,
   is reported as such: the report names the packages the missing field
