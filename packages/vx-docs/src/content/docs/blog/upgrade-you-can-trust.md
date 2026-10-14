@@ -65,6 +65,28 @@ vx upgrade: 0.0.635 → 0.0.640: running pnpm add @vzn/vx@0.0.640 --save-dev (in
 
 vx never installs Node or a package manager for you.
 
+## The version the project pins
+
+_Since 2026-10-13._ A global vx hands every call to the project's own
+`@vzn/vx` when the workspace root has one in `node_modules`, so each
+repo runs the version its lockfile pins, whatever version is on your
+`PATH`. Upgrading a project is then one lockfile change that the whole
+team and CI pick up together.
+
+```sh frame="terminal"
+$ vx --version
+vx 0.0.640 (/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from /usr/local/bin/vx)
+```
+
+It is one hop and never to itself. It never runs a `node_modules/.bin/vx`
+another user owns, since one planted above your checkout would run as you.
+The walk stops at the git top-level, like the
+[workspace root](../../cli/#the-workspace-root).
+
+One caveat: in a repo you do not trust, a local vx is that repo's code,
+the same as its `package.json` scripts. Read a clone before you run
+anything in it.
+
 ## Who built the bytes
 
 npm's signature proves these are the bytes npm's registry received.
