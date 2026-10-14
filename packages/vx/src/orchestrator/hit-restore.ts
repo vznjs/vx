@@ -157,12 +157,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
           projectDir: node.projectDir,
           outputs,
           nestedProjectDirs: args.nestedProjectDirs,
-          committed: cleanArgs.committed,
         })
         const actualWsAbs = await resolveWorkspaceOutputs({
           workspaceRoot: args.workspaceRoot,
           outputs: wsOutputs,
-          committed: wsCleanArgs.committed,
         })
         endGlob()
         const setsMatch = (
@@ -223,12 +221,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
-        committed: cleanArgs.committed,
       })
       const actualWs = await resolveWorkspaceOutputs({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
-        committed: wsCleanArgs.committed,
       })
       endGlob()
       skipRestore = actual.length === 0 && actualWs.length === 0
@@ -280,7 +276,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         hash,
         projectDir: node.projectDir,
         prefixes: dirPrefixes,
-        holds: entryHolds(node, cleanArgs.committed),
+        holds: entryHolds(node),
       })
     }
     // Restored outputs changed the project's tree — but on this

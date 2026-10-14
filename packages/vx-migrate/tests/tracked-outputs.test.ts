@@ -12,7 +12,7 @@ const outputsOf = (t: ReturnType<typeof task>) =>
   (t.task['cache'] as { outputs: Record<string, string[]> } | undefined)?.outputs
 
 describe('spareTrackedOutputs', () => {
-  // Core never cleans, saves or restores a committed file (owner, 2026-10-14).
+  // Core never cleans a committed file (owner, 2026-10-14).
   it('leaves an output over committed files as it is, in either field', () => {
     const own = task({ files: ['data', '!data/keep.json', 'dist/**/*.js'] })
     const ws = task({ workspaceFiles: ['node_modules/.gen'] })

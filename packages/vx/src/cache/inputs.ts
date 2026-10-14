@@ -701,25 +701,9 @@ export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  /** What git tracks (`committedFiles`; asked of git when absent): never an output. */
-  committed?: (abs: string) => boolean
 }): Promise<string[]> {
-  return (await splitOutputs(args)).files
-}
-
-/**
- * `resolveOutputs`, with the committed files the globs reach beside it: a
- * miss marks those changed too, since the task may have rewritten one and
- * its index OID no longer says what it holds.
- */
-export async function splitOutputs(args: {
-  projectDir: string
-  outputs: readonly string[]
-  nestedProjectDirs: string[]
-  committed?: (abs: string) => boolean
-}): Promise<{ files: string[]; committed: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
-  if (positive.length === 0) return { files: [], committed: [] }
+  if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
   refuseDirLinkedOut(args.projectDir, trees)
@@ -738,28 +722,15 @@ export async function splitOutputs(args: {
   // outside the project, so any future caller reaching it by another route (a
   // programmatic embedder, a config source that skips the loader) is contained
   // by construction.
-  return splitCommitted(
-    containedIn(args.projectDir, scanned).sort(),
-    args.committed ?? committedFiles(undefined, args.projectDir),
-  )
-}
-
-function splitCommitted(
-  sorted: readonly string[],
-  isCommitted: (abs: string) => boolean,
-): { files: string[]; committed: string[] } {
-  const files: string[] = []
-  const committed: string[] = []
-  for (const f of sorted) (isCommitted(f) ? committed : files).push(f)
-  return { files, committed }
+  return containedIn(args.projectDir, scanned).sort()
 }
 
 /**
- * Whether git tracks a file under `dir`. A committed (or `git add`ed) file
- * an output glob reaches is the user's, not the task's: no clean deletes
- * it, no artifact holds it, no restore writes it, and it stays an input
- * (owner, 2026-10-14: "never delete committed file"). Turbo and Nx never
- * clean an output at all; vx cleans only what git does not track.
+ * Whether git tracks a file under `dir`. No clean deletes a committed (or
+ * `git add`ed) file an output glob reaches (owner, 2026-10-14: "never
+ * delete committed file"); the task may rewrite it and a restore writes the
+ * bytes it left. It stays in the task's key, so those bytes follow from
+ * the key. Turbo and Nx never clean an output at all.
  */
 export function committedFiles(
   cache: GitFilesCache | undefined,
@@ -896,7 +867,8 @@ export async function cleanOutputs(args: {
    */
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
-  const files = args.resolved ?? (await resolveOutputs(args))
+  const committed = args.committed ?? committedFiles(undefined, args.projectDir)
+  const files = (args.resolved ?? (await resolveOutputs(args))).filter((f) => !committed(f))
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
@@ -951,7 +923,6 @@ export async function stampOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  committed?: (abs: string) => boolean
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveOutputs(args))
 }
@@ -960,7 +931,6 @@ export async function stampOutputs(args: {
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
-  committed?: (abs: string) => boolean
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveWorkspaceOutputs(args))
 }
@@ -991,12 +961,7 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
-  args: {
-    projectDir: string
-    outputs: readonly string[]
-    nestedProjectDirs: string[]
-    committed?: (abs: string) => boolean
-  },
+  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)
@@ -1004,7 +969,7 @@ export async function ownOutputsSince(
 
 /** `ownOutputsSince` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: readonly string[]; committed?: (abs: string) => boolean },
+  args: { workspaceRoot: string; outputs: readonly string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
@@ -1215,30 +1180,16 @@ function inScope(dir: string, scope: PruneScope): boolean {
 export async function resolveWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
-  /** What git tracks (`committedFiles`): never an output. */
-  committed?: (abs: string) => boolean
 }): Promise<string[]> {
-  return (await splitWorkspaceOutputs(args)).files
-}
-
-/** `splitOutputs` for root-anchored `cache.outputs.workspaceFiles`. */
-export async function splitWorkspaceOutputs(args: {
-  workspaceRoot: string
-  outputs: readonly string[]
-  committed?: (abs: string) => boolean
-}): Promise<{ files: string[]; committed: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
-  if (positive.length === 0) return { files: [], committed: [] }
+  if (positive.length === 0) return []
   const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
   const scanned = [...(await scanUnion(asTrees(positive), excludeGlobs, args.workspaceRoot))]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
   // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
   // deletes what this returns.
-  return splitCommitted(
-    containedIn(args.workspaceRoot, scanned).sort(),
-    args.committed ?? committedFiles(undefined, args.workspaceRoot),
-  )
+  return containedIn(args.workspaceRoot, scanned).sort()
 }
 
 /**
@@ -1256,7 +1207,10 @@ export async function cleanWorkspaceOutputs(args: {
   /** `cleanOutputs`'s `resolved`, from `resolveWorkspaceOutputs`. */
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
-  const files = args.resolved ?? (await resolveWorkspaceOutputs(args))
+  const committed = args.committed ?? committedFiles(undefined, args.workspaceRoot)
+  const files = (args.resolved ?? (await resolveWorkspaceOutputs(args))).filter(
+    (f) => !committed(f),
+  )
   await pruneEmptiedDirs(
     args.workspaceRoot,
     await removeAll(files, args.workspaceRoot),

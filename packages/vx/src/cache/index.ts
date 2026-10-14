@@ -37,8 +37,6 @@ export {
   type InputListing,
   cleanOutputs,
   committedFiles,
-  splitOutputs,
-  splitWorkspaceOutputs,
   cleanWorkspaceOutputs,
   declaresInput,
   workspaceFilesReachInto,

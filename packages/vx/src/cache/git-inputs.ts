@@ -223,7 +223,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   private undecodable = new Set<string>()
   /**
    * What git tracks, by absolute path, within `trackedScopes`: a file there
-   * no clean deletes and no artifact holds (`committedIn`). Filled by the
+   * no clean deletes (`committedIn`). Filled by the
    * enumeration, and per directory on demand for one it did not cover.
    */
   private tracked = new Set<string>()
@@ -251,7 +251,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   /**
    * Whether git tracks a file under `dir`: committed (or `git add`ed)
-   * files are the user's, never an output (owner, 2026-10-14: "never
+   * files are the user's, never cleaned (owner, 2026-10-14: "never
    * delete committed file"). A directory no enumeration covered (a
    * nested repository, a cache no enumeration filled) is listed once.
    * git lists a submodule as its gitlink path alone, so a file under a

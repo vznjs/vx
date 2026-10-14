@@ -815,15 +815,16 @@ whatever the glob: `.git` and `.vx` (`OUTPUT_NEVER`). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
 legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
-A file git tracks is never an output (owner, 2026-10-14): no clean
-deletes it, no artifact holds it, no restore writes it, and it stays in
-the task's key even under its own output glob. The task may rewrite it,
-and an identical rewrite is no input change; an edit moves the key. Until
-then the clean deleted a committed file under an output, and a reader
-with no edge to its producer failed naming only the file (A-48,
-vueuse's `metadata/index.json`). An artifact saved before still holding
-one may write it on a restore, with the bytes its key was saved under.
-Untracked files under the glob are cleaned as before. Paths compare as
+No clean deletes a file git tracks (owner, 2026-10-14). Under an output
+glob it is still an output: the task may rewrite it (TanStack Router's
+committed `routeTree.gen.ts`), the artifact saves the bytes the run left,
+and a restore writes them. It also stays in the task's key, even under its
+own output glob, so an edit moves the key and the saved bytes follow from
+it; the task's rewrite is no input that moved mid-run. Until then the
+clean deleted a committed file under an output, and a reader with no edge
+to its producer failed naming only the file (A-48, vueuse's
+`metadata/index.json`). Untracked files under the glob are cleaned as
+before. Paths compare as
 git compares them: case-folded under `core.ignorecase` (macOS), and a
 file inside a submodule counts as committed.
 Workspace outputs take the same rules, and a path an output `!` entry

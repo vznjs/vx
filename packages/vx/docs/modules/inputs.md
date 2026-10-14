@@ -95,7 +95,6 @@ export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  committed?: (abs: string) => boolean // git tracks it: never matched (default: asks git)
 }): Promise<string[]>
 
 /**
@@ -109,7 +108,7 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
-  committed?: (abs: string) => boolean // git tracks it: never matched (default: asks git)
+  committed?: (abs: string) => boolean // git tracks it: never removed (default: asks git)
 }): Promise<string[]>
 
 // The same pair for `outputs.workspaceFiles`, anchored at the root with
@@ -118,7 +117,6 @@ export async function cleanOutputs(args: {
 export async function resolveWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
-  committed?: (abs: string) => boolean
 }): Promise<string[]>
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
@@ -126,25 +124,12 @@ export async function cleanWorkspaceOutputs(args: {
   committed?: (abs: string) => boolean
 }): Promise<string[]>
 
-// A file git tracks is never an output (owner, 2026-10-14): not cleaned,
-// saved or restored, and kept in the task's key under its own output glob.
-// `committedFiles` answers from the run's enumeration, listing a dir it did
-// not cover once; the split pair returns the matches git tracks apart.
+// No clean removes a file git tracks (owner, 2026-10-14); `committedFiles`
+// answers from the run's enumeration, listing a dir it did not cover once.
 export function committedFiles(
   cache: GitFilesCache | undefined,
   dir: string,
 ): (abs: string) => boolean
-export async function splitOutputs(args: {
-  projectDir: string
-  outputs: readonly string[]
-  nestedProjectDirs: string[]
-  committed?: (abs: string) => boolean
-}): Promise<{ files: string[]; committed: string[] }>
-export async function splitWorkspaceOutputs(args: {
-  workspaceRoot: string
-  outputs: readonly string[]
-  committed?: (abs: string) => boolean
-}): Promise<{ files: string[]; committed: string[] }>
 
 /** A literal entry compiles to itself plus its subtree: `src/` → `src`, `src/**`. */
 export function asTrees(patterns: readonly string[]): string[]

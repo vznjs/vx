@@ -514,8 +514,8 @@ describe('stale cache hits', () => {
     'a committed file under an output survives the restore on a hit',
     async () => {
       // gen/old.ts is committed under codegen's `gen/**`: the hit's clean
-      // leaves it and the restore does not hold it, so the consumer reads it
-      // on the cold run and on the warm one.
+      // leaves it and the restore writes the bytes the run left, so the
+      // consumer reads it on the cold run and on the warm one.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
@@ -684,9 +684,8 @@ describe('stale cache hits', () => {
       // `data/sponsors.json` is committed under the task's own `data`
       // output, and the build reads it. An output is out of its own key, so
       // a committed one stays IN it (`committedFiles`): left out, an edit to
-      // it hit and replayed the old build. The build also rewrites it to the
-      // same bytes, which keeps the save (a committed own output judged as
-      // `'mutable'` judges every input).
+      // it hit and replayed the old build. The build also rewrites it,
+      // which keeps the save: the bytes it leaves are an output.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
@@ -716,6 +715,52 @@ describe('stale cache hits', () => {
       expect(third).not.toMatch(/build[^\n]*up-to-date/)
       expect(await readFile(path.join(root, 'data/gen.json'), 'utf8')).toBe('["b"]')
       expect(await readFile(path.join(root, 'data/sponsors.json'), 'utf8')).toBe('["b"]')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a codegen that rewrites its committed output is saved, and a hit writes what it left',
+    async () => {
+      // TanStack Router's committed `routeTree.gen.ts`, declared an output
+      // (item 1015): a new route makes the build write new bytes there. The
+      // key folded the old bytes, so the run is saved under it, and a hit
+      // on that state writes the new bytes, as the run would. Keyed as a
+      // plain input, the rewrite read as an input moved mid-run: not saved,
+      // and a failure under `inputStability.severity: 'error'`.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'ls routes > src/routeTree.gen.ts' },
+               cache: {
+                 inputs: { files: ['routes/**', 'src/**'] },
+                 outputs: { files: ['src/routeTree.gen.ts'] },
+                 inputStability: { severity: 'error' },
+               },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'routes/a.tsx'), 'a')
+      await write(path.join(root, 'src/routeTree.gen.ts'), 'a.tsx\n')
+      await write(path.join(root, '.gitignore'), '.vx/\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await waitForProducers(root)
+      await write(path.join(root, 'routes/b.tsx'), 'b')
+      expect(vx(root, 'run', 'build')).not.toMatch(/changed after its key/)
+      expect(await readFile(path.join(root, 'src/routeTree.gen.ts'), 'utf8')).toBe('a.tsx\nb.tsx\n')
+      git(root, 'checkout', '--', 'src/routeTree.gen.ts')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*restored-local/)
+      expect(await readFile(path.join(root, 'src/routeTree.gen.ts'), 'utf8')).toBe('a.tsx\nb.tsx\n')
     },
     TIMEOUT,
   )

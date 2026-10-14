@@ -94,6 +94,7 @@ import {
   computeTaskHash,
   describeTaskInputs,
   type HashCache,
+  type InputFact,
   movedInput,
   type TaskInputComponent,
   type UpfrontGroupKey,
@@ -1038,15 +1039,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   /**
    * A committed file under the task's own outputs is keyed (`committedFiles`)
-   * and the task may write it: a rewrite to the bytes the key folded is its
-   * own (a codegen's committed file), as `'mutable'` judges every input.
+   * and the task may rewrite it (TanStack Router's `routeTree.gen.ts`): the
+   * bytes it leaves are an output the entry saves and a restore writes, and
+   * they follow from the key, so their change is no moved input.
    */
-  let ownOutput: ((rel: string) => boolean) | undefined
-  let ownWsOutput: ((rel: string) => boolean) | undefined
-  const committedRewrite = (file: string, ctimeMs: number): boolean =>
-    ((ownOutput ??= outputMatcher(outputs))(relPosix(node.projectDir, file)) ||
-      (ownWsOutput ??= outputMatcher(wsOutputs))(relPosix(args.workspaceRoot, file))) &&
-    ownRewrite(file, ctimeMs)
+  const ownOutput = outputs.length === 0 ? undefined : outputMatcher(outputs)
+  const ownWsOutput = wsOutputs.length === 0 ? undefined : outputMatcher(wsOutputs)
+  const keyedInputs = (facts: readonly InputFact[]): readonly InputFact[] =>
+    ownOutput === undefined && ownWsOutput === undefined
+      ? facts
+      : facts.filter(
+          (f) =>
+            ownOutput?.(relPosix(node.projectDir, f.path)) !== true &&
+            ownWsOutput?.(relPosix(args.workspaceRoot, f.path)) !== true,
+        )
 
   // A name only `exec.env.secret` makes secret is not one the name rule
   // sees later: its row carries the mark, so `vx why` hides its hash (M-63).
@@ -1626,10 +1632,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (described!.hash !== hash) return null
     return (
       (await movedInput(
-        described!.facts,
+        keyedInputs(described!.facts),
         cache,
         described!.describedAt,
-        stability.strategy === 'mutable' ? ownRewrite : committedRewrite,
+        stability.strategy === 'mutable' ? ownRewrite : undefined,
       )) ?? described!.added()
     )
   }
