@@ -35,7 +35,7 @@ describe('formatRunSummary', () => {
       '  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
       '            2 no-cache',
       '',
-      '  time      1.23s · max 100ms · avg 100ms · min 100ms',
+      '  time      1.23s',
     ])
   })
 
@@ -50,7 +50,7 @@ describe('formatRunSummary', () => {
     )
     expect(lines[3]).toBe('            3 success · 3 total')
     expect(lines[5]).toBe('            1 no-cache · 2 up-to-date')
-    expect(lines.at(-1)).toBe('  time      420ms' + ' · max 100ms · avg 100ms · min 100ms')
+    expect(lines.at(-1)).toBe('  time      420ms')
   })
 
   it('reports failures separately from total', () => {
@@ -102,9 +102,9 @@ describe('formatRunSummary', () => {
     expect(lines.at(-1)).toBe('  time      42ms')
   })
 
-  it('partial-cache run: plain time row', () => {
+  it('partial-cache run: one executed task has no spread to show', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'success')], 42)
-    expect(lines.at(-1)).toBe('  time      42ms · max 100ms · avg 100ms · min 100ms')
+    expect(lines.at(-1)).toBe('  time      42ms')
   })
 
   it('empty run: 0 tasks row, no cache row', () => {
@@ -191,7 +191,7 @@ describe('formatRunSummary', () => {
       },
     )
     expect(lines[2]).toBe('  projects  ' + '▰'.repeat(13) + '▱'.repeat(37))
-    expect(lines[3]).toBe('            1 in run · 4 total')
+    expect(lines[3]).toBe('            1 affected · 4 total')
     // local-only mode reads on the info row (no worker count here)
     expect(lines).toContain('  info      local cache')
   })
@@ -204,42 +204,28 @@ describe('formatRunSummary', () => {
     expect(lines.find((l) => l.startsWith('  result'))).toBeUndefined()
   })
 
-  it('ends with the run in one line: tasks, cached, time; all cached only when every task hit; failures first', () => {
+  it('ends on the time row, which carries what the cache saved; no result row repeats the rest', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
-    const result = (outcomes: TaskOutcome[], ms: number): string | undefined =>
+    const last = (outcomes: TaskOutcome[], ms: number): string | undefined =>
       formatRunSummary(outcomes, ms, { enabled: false }, ctx).at(-1)
-    // A miss is an executed task that has a cache; `outcome()` has none.
-    const miss = (id: string, status: TaskOutcome['status'] = 'success'): TaskOutcome => {
-      const o = outcome(id, status, status === 'failed' ? 1 : 0)
-      return { ...o, node: { ...o.node, config: { ...o.node.config, cache: {} } } as TaskNode }
-    }
-    expect(
-      result([outcome('a#x', 'cache-hit'), outcome('b#x', 'cache-hit-remote'), miss('c#x')], 3200),
-    ).toBe('  result    3 tasks · 2 cached (66%) · 3.20s')
-    expect(result([outcome('a#x', 'cache-hit')], 23)).toBe('  result    1 task · all cached · 23ms')
-    expect(result([miss('a#x', 'failed'), miss('b#x')], 40)).toBe(
-      '  result    2 tasks · 1 failed · 0 cached (0%) · 40ms',
-    )
-    // A task with no cache never could hit: counted apart, never a miss.
-    expect(result([outcome('a#dev', 'success')], 37)).toBe('  result    1 task · 1 no-cache · 37ms')
-    expect(
-      result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'success'), miss('c#x')], 50),
-    ).toBe('  result    3 tasks · 1 cached (50%) · 1 no-cache · 50ms')
-    expect(result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'failed', 1)], 50)).toBe(
-      '  result    2 tasks · 1 failed · 1 cached (100%) · 1 no-cache · 50ms',
-    )
     // A hit says what it saved: its STORED exec time, not the restore.
     const hit = (id: string, storedDurationMs: number): TaskOutcome => ({
       ...outcome(id, 'cache-hit'),
       durationMs: 2,
       storedDurationMs,
     })
-    expect(result([hit('a#x', 2010), hit('b#x', 300), miss('c#x')], 90)).toBe(
-      '  result    3 tasks · 2 cached (66%) · 2.31s saved · 90ms',
+    expect(last([hit('a#x', 2010), hit('b#x', 300), outcome('c#x', 'success')], 90)).toBe(
+      '  time      90ms · 2.31s saved',
     )
-    expect(formatRunSummary([], 5, { enabled: false }, ctx).find((l) => l.includes('result'))).toBe(
-      undefined,
-    )
+    // Nothing saved under a millisecond is said.
+    expect(last([outcome('a#x', 'success')], 37)).toBe('  time      37ms')
+    // The wall time is said once (M, 2026-10-14).
+    const footer = formatRunSummary([outcome('a#x', 'cache-hit')], 4321, { enabled: false }, ctx)
+    expect(footer.filter((l) => l.includes('4.32s'))).toEqual(['  time      4.32s'])
+    for (const run of [[], [outcome('a#x', 'failed', 1)]])
+      expect(
+        formatRunSummary(run, 5, { enabled: false }, ctx).some((l) => l.includes('result')),
+      ).toBe(false)
   })
 })
 
@@ -286,18 +272,37 @@ describe('aborted and not-run tasks', () => {
     outcome('b#x', 'success'),
   ]
 
-  it('the tasks legend names each apart, outside the total, a group in neither', () => {
+  // M, 2026-10-14: every task in the run counts toward the total, each
+  // state its own segment of the bar; no "not counted".
+  it('the tasks legend counts each in the total, a group in neither', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
     const lines = formatRunSummary(run, 10, { enabled: false }, ctx)
-    expect(lines[3]).toBe('            1 success · 1 total · not counted: 1 aborted, 2 not run')
-    expect(lines.at(-1)).toBe('  result    1 task · 1 no-cache · 10ms')
+    expect(lines[3]).toBe('            1 success · 1 aborted · 2 not run · 4 total')
+    expect(lines.at(-1)).toBe('  time      10ms')
   })
 
-  it('a stop before any task finished still names them under `0 tasks`', () => {
-    expect(formatRunSummary([killed('a#t')], 10).slice(2, 4)).toEqual([
-      '  tasks     0 tasks',
-      '            not counted: 1 aborted',
-    ])
+  it('a stop before any task finished fills the bar with what it took down', () => {
+    const lines = formatRunSummary([killed('a#t')], 10)
+    expect(lines[2]).toBe(`  tasks     ${'\u25b0'.repeat(50)}`)
+    expect(lines[3]).toBe('            1 aborted · 1 total')
+  })
+
+  it('failed, aborted and not run are each a visibly distinct segment', () => {
+    const lines = formatRunSummary(
+      [
+        outcome('a#x', 'failed', 1),
+        killed('b#x'),
+        outcome('c#x', 'aborted', 1),
+        outcome('d#x', 'success'),
+      ],
+      10,
+      { enabled: true },
+    )
+    const bar = lines.find((l) => l.includes('tasks'))!
+    // Each segment opens its own colour: four states, four paints.
+    // eslint-disable-next-line no-control-regex -- the colour escapes are the point
+    const paints = [...bar.matchAll(/\x1b\[([0-9;]*)m\u25b0/g)].map((m) => m[1])
+    expect(new Set(paints).size).toBe(4)
   })
 
   it('the rows: `aborted` with its time, `not run` with none, cache blank', () => {
@@ -400,5 +405,100 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
     // The leading blank line stands the footer apart from the last frame;
     // the page's block starts at the rule.
     expect(block![1]).toBe(lines.join('\n').replace(/^\n/, '') + '\n')
+  })
+})
+
+// M, 2026-10-14: the footer never says a fact twice. `result` only
+// repeated the tasks, cache and time rows (its one new fact, saved, moved
+// to `time`), skipped was counted on both legends, and one executed task
+// read as its own max, avg and min.
+describe('the footer never repeats a value or a count', () => {
+  const ctx = {
+    version: '0.0.0',
+    packageCount: 3,
+    workspaceProjectCount: 9,
+    concurrency: 4,
+    remoteCacheEnabled: false,
+  }
+  const cached = (id: string, status: TaskOutcome['status'], ms: number): TaskOutcome => {
+    const o = outcome(id, status, status === 'failed' ? 1 : 0)
+    return {
+      ...o,
+      durationMs: ms,
+      ...(status.startsWith('cache-hit') ? { storedDurationMs: 21_290 } : {}),
+      node: { ...o.node, config: { ...o.node.config, cache: {} } } as TaskNode,
+    }
+  }
+  const facts = (lines: readonly string[]): string[] =>
+    lines
+      .flatMap((l) => l.replace(/[▰▱]/g, '').split(/·|,|:/))
+      .map((p) => p.trim().replace(/^(projects|tasks|cache|info|time|result)\s+/, ''))
+      .filter((p) => /^[~<]?\d/.test(p))
+  const footers: Record<string, string[]> = {
+    'all hits': formatRunSummary(
+      ['a', 'b', 'c', 'd'].map((p) => cached(`${p}#x`, 'cache-hit', 3)),
+      10,
+      { enabled: false },
+      ctx,
+    ),
+    'one executed task': formatRunSummary(
+      [cached('a#x', 'success', 5200)],
+      5340,
+      { enabled: false },
+      ctx,
+    ),
+    'a red run': formatRunSummary(
+      [
+        cached('a#x', 'failed', 700),
+        cached('b#x', 'success', 1300),
+        cached('c#x', 'success', 2100),
+        cached('d#x', 'cache-hit', 4),
+        outcome('e#x', 'skipped'),
+        outcome('f#x', 'skipped'),
+      ],
+      2500,
+      { enabled: false },
+      ctx,
+    ),
+  }
+  for (const [name, lines] of Object.entries(footers)) {
+    it(`${name}: each fact once`, () => {
+      const seen = facts(lines)
+      expect(seen.length).toBeGreaterThan(2)
+      expect(seen.filter((f, i) => seen.indexOf(f) !== i)).toEqual([])
+      expect(lines.some((l) => l.startsWith('  result'))).toBe(false)
+    })
+  }
+
+  it('saved rides the time row', () => {
+    expect(footers['all hits']!.at(-1)).toBe('  time      10ms · 85.16s saved')
+  })
+})
+
+// M, 2026-10-14: on every footer line with a total, the total comes last.
+describe('a total is the last word on its line', () => {
+  it('projects and tasks, with every kind of task in the run', () => {
+    const ctx = {
+      version: '0.0.0',
+      packageCount: 2,
+      workspaceProjectCount: 5,
+      remoteCacheEnabled: false,
+    }
+    const lines = formatRunSummary(
+      [
+        outcome('a#x', 'failed', 1),
+        outcome('b#x', 'success'),
+        outcome('c#x', 'skipped'),
+        { ...outcome('d#x', 'aborted', 1), durationMs: 50, startedAt: 1 } as TaskOutcome,
+        outcome('e#x', 'aborted', 1),
+      ],
+      10,
+      { enabled: false },
+      ctx,
+    )
+    const withTotal = lines.filter((l) => / total\b/.test(l))
+    expect(withTotal).toHaveLength(2)
+    for (const l of withTotal) expect(l).toMatch(/· \d+ total$/)
+    expect(withTotal[0]).toBe('            2 affected · 5 total')
   })
 })

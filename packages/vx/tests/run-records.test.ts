@@ -197,7 +197,7 @@ describe('assembleRunRecords', () => {
     expect(invocation.taskCount).toBe(6)
     const totals = formatRunSummary(outcomes, 10).filter((l) => l.includes(' total'))
     expect(totals).toStrictEqual([
-      '            1 failed · 4 success · 1 skipped · 6 total · not counted: 1 not run',
+      '            1 failed · 4 success · 1 skipped · 1 not run · 7 total',
     ])
   })
 })

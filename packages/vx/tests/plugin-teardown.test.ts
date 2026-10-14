@@ -232,7 +232,7 @@ describe('the lifecycle is reached on a run that FAILED', () => {
     }
     await run({ cwd: root, projects: ['a'], tasks: ['boom'], log, handleSignals: false })
     const warned = lines.indexOf("[vx] plugin 'org/bad' failed in teardown: boom")
-    const result = lines.findIndex((l) => l.startsWith('  result '))
+    const result = lines.findIndex((l) => l.startsWith('  time '))
     expect({ warned: warned >= 0, last: result === lines.length - 1 }).toEqual({
       warned: true,
       last: true,

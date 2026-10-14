@@ -26,6 +26,8 @@ export interface StatusStream {
    * TTY) means the region is never drawn anyway.
    */
   columns?: number
+  /** Terminal height in rows, read per draw as `columns` is. */
+  rows?: number
 }
 
 export interface OutputWriter {
@@ -137,12 +139,35 @@ export function createOutputWriter(
    * it. Reachable only on a TTY whose winsize ioctl fails, since a non-TTY
    * disables the region outright.
    */
-  const regionRows = (lines: readonly string[]): number => {
+  const lineRows = (line: string): number => {
     const cols = stream.columns
-    if (cols === undefined || cols <= 0) return lines.length
+    if (cols === undefined || cols <= 0) return 1
+    return Math.max(1, Math.ceil(Bun.stringWidth(line) / cols))
+  }
+  const regionRows = (lines: readonly string[]): number => {
     let rows = 0
-    for (const line of lines) rows += Math.max(1, Math.ceil(Bun.stringWidth(line) / cols))
+    for (const line of lines) rows += lineRows(line)
     return rows
+  }
+
+  /**
+   * The leading lines that fit the terminal's height, one row spared.
+   * Cursor-up stops at the top of the screen, and a row that scrolled into
+   * the scrollback is out of the erase's reach: a region taller than the
+   * terminal left its top behind on every redraw, one stacked block per tick
+   * (VS Code's short panel, 2026-10-14). The first line always shows.
+   */
+  const fitted = (lines: readonly string[]): readonly string[] => {
+    const height = stream.rows
+    if (height === undefined || height <= 0) return lines
+    let rows = 0
+    let n = 0
+    for (const line of lines) {
+      rows += lineRows(line)
+      if (n > 0 && rows > height - 1) break
+      n++
+    }
+    return n === lines.length ? lines : lines.slice(0, n)
   }
 
   // Erase sequence for whatever is currently shown. A single row keeps
@@ -155,9 +180,10 @@ export function createOutputWriter(
     // only repeat these bytes.
     cancelTrailing()
     const erase = shown ? eraseSeq() : CLEAR
-    stream.write(erase + current!.join('\n'))
+    const lines = fitted(current!)
+    stream.write(erase + lines.join('\n'))
     shown = true
-    shownRows = regionRows(current!)
+    shownRows = regionRows(lines)
     lastDraw = now()
   }
   const set = (lines: readonly string[], o: { force?: boolean }): void => {
@@ -246,6 +272,8 @@ export interface StatusRegionState {
   blocks?: ReadonlyMap<string, number>
   /** The running task at the head of the longest unfinished chain. */
   critical?: string
+  /** A running task's usual duration from history; its row shows it. */
+  expected?: ReadonlyMap<string, number>
   /**
    * Ready persistent tasks (dev servers …) whose children keep
    * running after their outcome lands. Pinned until runEnd — the
@@ -349,13 +377,14 @@ export function formatStatusRegion(
     const notes: string[] = []
     if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
     if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
+    const usual = s.expected?.get(slot.id)
     lines.push(
       formatTaskRow(
         ' ',
         Math.max(0, s.nowMs - slot.startedMs),
         'running',
         ACCENT,
-        '',
+        usual === undefined ? '' : formatExpected(usual),
         '',
         paintPinnedId(slot.id, colors),
         colors,
@@ -369,4 +398,17 @@ export function formatStatusRegion(
   // so the region visually BECOMES the summary when the run ends.
   lines.push(...s.summaryLines)
   return lines
+}
+
+/**
+ * A running task's usual duration, fixed while the elapsed time counts up
+ * toward it (M, 2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
+ * column below 100 minutes.
+ */
+function formatExpected(ms: number): string {
+  if (ms < 1000) return `~${Math.round(ms)}ms`
+  if (ms < 9950) return `~${(ms / 1000).toFixed(1)}s`
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `~${s}s`
+  return `~${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
 }

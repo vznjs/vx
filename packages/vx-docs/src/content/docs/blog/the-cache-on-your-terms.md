@@ -17,13 +17,15 @@ untrusted runs from writing what everyone else reads.
 
 ```sh frame="terminal"
 $ vx run build --all
-  result    4 tasks · all cached · 1.27s saved · 18ms
+  time      18ms · 1.27s saved
 
 $ vx run build --all --force
-  result    4 tasks · 0 cached (0%) · 658ms
+  cache     4 miss
+  time      658ms
 
 $ vx run build --all --no-cache
-  result    4 tasks · 4 no-cache · 638ms
+  cache     4 no-cache
+  time      638ms
 ```
 
 `--force` runs everything again and refreshes the cache with the result.
@@ -66,7 +68,7 @@ $ git worktree add ../demo-wt && cd ../demo-wt
 $ vx run build --all
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             4 local
-  result    4 tasks · all cached · 1.24s saved · 22ms
+  time      22ms · 1.24s saved
 ```
 
 The new worktree had no `dist`. All four builds came back from the shared

@@ -675,7 +675,7 @@ describe('signal handling during vx run (e2e)', () => {
       // Then the whole summary, which names the task aborted (the trap
       // exited 0 on the stop; item 962), down to its time line.
       const tail = out.slice(out.indexOf('\nEND-OF-BIG\n'))
-      expect(tail).toContain('\n  tasks     0 tasks\n            not counted: 1 aborted\n')
+      expect(tail).toContain('\n            1 aborted · 1 total\n')
       expect(out.trimEnd().split('\n').at(-1)).toMatch(/^ {2}time {6}[\d.]+m?s$/)
     },
     TIMEOUT,

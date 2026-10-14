@@ -684,7 +684,7 @@ describe('a persistent server that dies before the run stops it', () => {
     expect(await interrupted('touch gone; echo READY; exec sleep 30')).toEqual({
       code: 130,
       said: [],
-      tally: '1 success · 1 total · not counted: 1 aborted',
+      tally: '1 success · 1 aborted · 2 total',
     })
   }, 20_000)
 
@@ -697,7 +697,7 @@ describe('a persistent server that dies before the run stops it', () => {
         'vx: app#srv exited with code 3 while the run went on',
         'vx: app#srv exited with code 3 before the run stopped it',
       ],
-      tally: '1 failed · 1 total · not counted: 1 aborted',
+      tally: '1 failed · 1 aborted · 2 total',
     })
   }, 20_000)
 
@@ -731,7 +731,7 @@ describe('a persistent server that dies before the run stops it', () => {
     expect(await interrupted('touch gone; echo READY; exec sleep 30', ['srv', 'e2e'])).toEqual({
       code: 130,
       said: [],
-      tally: '1 success · 1 total · not counted: 1 aborted',
+      tally: '1 success · 1 aborted · 2 total',
     })
   }, 20_000)
 })

@@ -61,7 +61,8 @@ describe('a keyed group in a config', () => {
     await Bun.write(path.join(dir, 'fixtures', 'one.json'), '1\n')
 
     const first = await vx(root, ['run', 'test', '--all'])
-    expect(first).toContain('1 task · 0 cached')
+    expect(first).toContain('1 success · 1 total')
+    expect(first).toContain('1 miss')
     expect(await lastTasks(root)).toEqual({ 'a#test': false })
 
     await vx(root, ['run', 'test', '--all'])

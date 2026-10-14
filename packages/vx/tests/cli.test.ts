@@ -545,7 +545,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       const args = ['run', '--all', 'hello', flag, '--report=markdown', '--summarize=s.json']
       expect(await run(args)).toBe(0)
       expect(stdout).toContain('| one#hello | success | no-cache |')
-      expect(stdout).toMatch(/result +1 task · 1 no-cache · /)
+      expect(stdout).toMatch(/\n {12}1 no-cache\n/)
       expect(stdout).not.toContain('miss')
       const row = JSON.parse(await readFile('s.json', 'utf8')).tasks[0]
       expect([row.id, row.noCache]).toEqual(['one#hello', true])
@@ -1010,7 +1010,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(code).toBe(0)
     const report = stdout.indexOf('| Task | Status | Cache | Duration |')
     const table = stdout.indexOf('TASK')
-    const footer = stdout.indexOf('  result')
+    const footer = stdout.indexOf('  time ')
     expect([report > 0, table > 0, footer > 0]).toEqual([true, true, true])
     expect([table < report, report < footer]).toEqual([true, true])
     expect(stdout.slice(footer).trimEnd().split('\n')).toHaveLength(1)
@@ -2433,7 +2433,7 @@ describe('formatRunReportMarkdown', () => {
     expect(md).toContain('| web#test | skipped | — | 0ms |')
   })
 
-  it('keeps aborted tasks out of the totals but still names them', () => {
+  it('counts aborted tasks in the total and names them', () => {
     const md = formatRunReportMarkdown({
       ok: true,
       outcomes: [
@@ -2447,10 +2447,9 @@ describe('formatRunReportMarkdown', () => {
         },
       ],
     })
-    // Aborted finished no work, so it joins no outcome bucket and no task count. It is
-    // still named: a run carrying one exits non-zero, and a report that shows
-    // only green rows leaves that red undiagnosable.
-    expect(md).toContain('**1 task**')
+    // Every task counts, as on the terminal. Named too: a run carrying one exits
+    // non-zero, and a report that shows only green rows leaves that red undiagnosable.
+    expect(md).toContain('**2 tasks**')
     expect(md).toContain('1 aborted')
     expect(md).toContain('| web#dev | aborted | — | 99ms |')
   })

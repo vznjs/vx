@@ -25,6 +25,11 @@ when disabled (CI). When active:
   output. The erase always uses the height of the **previous** draw;
   the new draw establishes the new height, so the region may grow and
   shrink freely (pins arriving).
+- A region taller than the terminal (`stream.rows`, read per draw)
+  is cut to its leading lines that fit in one row less, counting
+  wrapped rows. Cursor-up stops at the top of the screen, so rows in
+  the scrollback were out of reach and every redraw stacked a new
+  block (VS Code's short panel, 2026-10-14).
 - A chunk ending mid-line (focused streaming) holds redraws until a
   newline restores column 0.
 - `clearStatus()` is permanent (run end).
@@ -74,7 +79,8 @@ Slot rules (the point of the design — the display derives from the
 - More running tasks than rows queue for a freed row and surface as
   a `… +k more running` line under the rows.
 - A worker row leads with the ticking elapsed time (no glyph), then
-  `running` and the id. Ids are identity-colored (`paintIdParts`):
+  `running`, the task's usual duration from history when known
+  (`~5.2s`, dim, in the cache column; `expected`), and the id. Ids are identity-colored (`paintIdParts`):
   project hue hashed stably from the project name, task in fixed pink —
   never status colors. The id is the last column and is never
   truncated.

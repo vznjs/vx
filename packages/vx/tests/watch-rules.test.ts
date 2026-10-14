@@ -413,7 +413,7 @@ describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
       const reader = (async () => {
         for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
       })()
-      const cycles = (): number => out.split('  result ').length - 1
+      const cycles = (): number => out.split('\n  time      ').length - 1
       const until = async (n: number): Promise<void> => {
         const deadline = Date.now() + 15_000
         while (cycles() < n && Date.now() < deadline) await Bun.sleep(25)

@@ -94,11 +94,11 @@ project's `dist` and only that one comes back from the store:
 ```sh frame="terminal"
 $ vx run build --all
   cache     4 up-to-date
-  result    4 tasks · all cached · 1.24s saved · 14ms
+  time      14ms · 1.24s saved
 
 $ rm -rf packages/web/dist && vx run build --all
   cache     3 up-to-date · 1 local
-  result    4 tasks · all cached · 1.24s saved · 21ms
+  time      21ms · 1.24s saved
 ```
 
 Restores run on their own lane, so a warm run is never queued behind

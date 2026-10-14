@@ -209,8 +209,8 @@ signal: forward it (a SIGHUP as SIGTERM) to everything in
 signal once the exit hooks have run (130 / 143 / 129 to the parent; a
 run that handed a task the terminal exits with that code instead, so
 Bun restores the terminal).
-Children killed this way classify as `aborted` — not counted, not
-recorded. Watch mode passes `handleSignals: false`; the loop owns
+Children killed this way classify as `aborted`: counted in the task
+total, not recorded. Watch mode passes `handleSignals: false`; the loop owns
 signal disposition for its whole lifetime.
 
 ## Failure semantics

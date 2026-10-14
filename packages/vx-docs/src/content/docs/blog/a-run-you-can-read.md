@@ -52,15 +52,14 @@ own frame, in the order tasks finish.
 ```sh frame="terminal"
 ─ vx 0.0.0 ───────────────────────────────────────────────────
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            4 in run · 4 total
+            4 affected · 4 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             8 success · 8 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             8 up-to-date
 
   info      4 workers · local cache
-  time      23ms
-  result    8 tasks · all cached · 2.12s saved · 23ms
+  time      23ms · 2.12s saved
 ```
 
 That is the same eight tasks a second time, all cached: 23 ms, and the

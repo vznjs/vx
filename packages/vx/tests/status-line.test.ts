@@ -609,6 +609,26 @@ describe('formatStatusRegion', () => {
     expect(lines.slice(1, 11).every((l) => l.includes('idle'))).toBe(true)
   })
 
+  // M, 2026-10-14: a running row says how long the task usually takes, in
+  // the column a finished row says miss / hit, as a fixed value the
+  // elapsed time counts up toward. With no history the column stays empty.
+  it('a running row shows its expected duration in the cache column', () => {
+    const expected = new Map([
+      ['a#x', 5200],
+      ['b#x', 42_400],
+      ['c#x', 125_000],
+      ['d#x', 300],
+    ])
+    const ids = ['a#x', 'b#x', 'c#x', 'd#x', 'e#x']
+    const lines = formatStatusRegion({ ...base, slots: ids.map((id) => slot(id)), expected })
+    expect(lines[1]).toBe('     2.00s running ~5.2s    a#x')
+    expect(lines[2]).toBe('     2.00s running ~42s     b#x')
+    expect(lines[3]).toBe('     2.00s running ~2m 05s  c#x')
+    expect(lines[4]).toBe('     2.00s running ~300ms   d#x')
+    // No history for it: the column holds its width, empty.
+    expect(lines[5]).toBe('     2.00s running          e#x')
+  })
+
   it('overflow gets its own dim line between slots and summary', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x')], overflow: 3 })
     expect(lines[2]).toBe('… +3 more running')
@@ -813,6 +833,31 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn2')
   })
 
+  // Cursor-up stops at the top of the screen: rows that scrolled into the
+  // scrollback cannot be erased. A region taller than the terminal left its
+  // top behind on every redraw, so each tick stacked a new block (VS Code's
+  // short panel, M, 2026-10-14). The region is cut to fit.
+  it('a region taller than the terminal is cut to fit, so the erase reaches its top', () => {
+    const s: StatusStream & { chunks: string[]; text(): string } = { ...ttyW(40), rows: 5 }
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    const tall = Array.from({ length: 10 }, (_, i) => `row${i}`)
+    w.setRegion(tall, { force: true })
+    expect(s.chunks.at(-1)).toBe('\x1b[2K\rrow0\nrow1\nrow2\nrow3')
+    w.setRegion(tall, { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jrow0\nrow1\nrow2\nrow3')
+  })
+
+  it('the cut counts wrapped rows, and a resize is read per draw', () => {
+    const s: StatusStream & { chunks: string[]; text(): string } = { ...ttyW(10), rows: 4 }
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    // 25 cols at 10 wide is 3 rows: with 3 rows to spare, only it fits.
+    w.setRegion(['x'.repeat(25), 'b', 'c'], { force: true })
+    expect(s.chunks.at(-1)).toBe(`\x1b[2K\r${'x'.repeat(25)}`)
+    s.rows = 30
+    w.setRegion(['x'.repeat(25), 'b', 'c'], { force: true })
+    expect(s.chunks.at(-1)).toBe(`\r\x1b[2A\x1b[J${'x'.repeat(25)}\nb\nc`)
+  })
+
   it('unknown width (no TTY columns) keeps the logical-line erase', () => {
     // A deliberate residual, not a guarantee: with no width there is nothing
     // to compute wrapping FROM, so a wrapped line under-erases exactly as it
@@ -929,4 +974,40 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     w.setRegion(['n1'], { force: true })
     expect(s.chunks.at(-1)).toBe('\r\x1b[2A\x1b[Jn1')
   })
+})
+
+// M, 2026-10-14: the task log always opens with one empty line before its
+// first row, on a terminal and off one, whatever the view.
+describe('the task log opens with one blank line', () => {
+  const firstRow = (chunks: readonly string[], id: string): string | undefined =>
+    chunks.find((c) => c.includes(id) && !c.startsWith('\x1b') && !c.startsWith('\r'))
+  for (const mode of ['broad', 'full', 'focused', 'errors-only'] as const) {
+    for (const [name, mk] of [
+      ['a pipe', pipe],
+      ['a TTY', tty],
+    ] as const) {
+      it(`${mode}, ${name}`, () => {
+        const s = mk()
+        const log = defaultLogger(NO_COLORS, { mode }, s, { forceFloorMs: 0 })
+        // Focused shows the requested tasks.
+        log.runStart?.({ total: 2, requestedCount: 2 })
+        const a = mkNode('one#a', { requested: true })
+        const b = mkNode('one#b', { requested: true })
+        // A note vx prints before any task row is no task row.
+        log.status('[vx] a note')
+        log.taskStart?.(a)
+        log.taskStdout(a, 'out\n')
+        log.taskComplete(a, mkOutcome(a, mode === 'errors-only' ? 'failed' : 'success'))
+        log.taskStart?.(b)
+        log.taskComplete(b, mkOutcome(b, 'success'))
+        log.runEnd?.()
+        const first = firstRow(s.chunks, 'one#a')
+        expect(first).toBeDefined()
+        expect(first!.startsWith('\n')).toBe(true)
+        expect(first!.startsWith('\n\n')).toBe(false)
+        // Once: the second row has no blank of its own.
+        if (mode === 'broad') expect(firstRow(s.chunks, 'one#b')!.startsWith('\n')).toBe(false)
+      })
+    }
+  }
 })

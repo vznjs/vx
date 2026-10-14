@@ -59,7 +59,7 @@ $ vx run test --affected=master
  ⏺︎   205ms success miss     @demo/docs#test
 
 ─ vx 0.0.0 ───────────────────────────────────────────
-  projects  3 in run · 4 total
+  projects  3 affected · 4 total
   tasks     6 success · 6 total
 ```
 

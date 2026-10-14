@@ -30,10 +30,11 @@ changed:
 
 ```sh frame="terminal"
 $ vx run build test --all --force
-  result    8 tasks · 0 cached (0%) · 879ms
+  cache     8 miss
+  time      879ms
 
 $ vx run build test --all
-  result    8 tasks · all cached · 2.06s saved · 26ms
+  time      26ms · 2.06s saved
 ```
 
 The second run takes 26ms instead of 879ms, because every key matched and every output

@@ -421,7 +421,8 @@ describe('structure', () => {
 describe("X-25: an interrupted run in the terminal summary's words", () => {
   // The probe: `vx run x#after x#quick` with `after` on `long` (`sleep 37.5`),
   // SIGINT at 1.5 s. The terminal said `✗ aborted x#long`, `◌ not run x#after`
-  // and `not counted: 1 aborted, 1 not run`; the report said `failed`, called
+  // and counted both (M, 2026-10-14: every task in the run counts); the
+  // report said `failed`, called
   // `x#after` aborted, and left `x#long`'s 1.30 s out of its total.
   const interrupted = [
     view({
@@ -440,7 +441,7 @@ describe("X-25: an interrupted run in the terminal summary's words", () => {
       [
         '## vx run — interrupted',
         '',
-        '**1 task** · 1 success · 0 failed · 0 cached · 1.30s total · not counted: 1 aborted, 1 not run',
+        '**3 tasks** · 1 success · 0 failed · 0 cached · 1 aborted · 1 not run · 1.30s total',
         '',
         '| Task | Status | Cache | Duration |',
         '| --- | --- | --- | --- |',

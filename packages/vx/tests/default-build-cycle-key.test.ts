@@ -47,7 +47,7 @@ describe('default builds on a package cycle', () => {
   it("a task behind one re-runs when the other's files change", async () => {
     const first = await vx(root, ['run', 'a#test'])
     expect(first.code).toBe(0)
-    expect((await vx(root, ['run', 'a#test'])).text).toContain('all cached')
+    expect((await vx(root, ['run', 'a#test'])).text).toContain('1 up-to-date')
     await writeFile(path.join(root, 'packages', 'b', 'src', 'index.js'), 'b-2\n')
     const after = await vx(root, ['run', 'a#test'])
     expect(after.code).toBe(0)
@@ -58,6 +58,6 @@ describe('default builds on a package cycle', () => {
     expect((await vx(root, ['run', 'a#test'])).code).toBe(0)
     await writeFile(path.join(root, 'packages', 'a', 'src', 'index.js'), 'a-2\n')
     const after = await vx(root, ['run', 'a#test'])
-    expect(after.text).not.toContain('all cached')
+    expect(after.text).not.toContain('up-to-date')
   }, 30_000)
 })

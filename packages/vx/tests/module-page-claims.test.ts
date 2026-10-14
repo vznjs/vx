@@ -18,9 +18,10 @@ function blocks(rel: string, needle: string): string[] {
     .filter((b) => b.includes(needle))
 }
 
-describe("summary.md's result row says what the rate counts", () => {
-  it('a skipped task is out of the rate, and the page says so', () => {
-    // #2212: one hit, one miss and one skip read "1 cached (33%)"; the skip never asked.
+describe('summary.md says the footer never repeats a fact', () => {
+  it('a skipped task is counted once, there is no result row, and the page says so', () => {
+    // #2212 put a skip in the hit rate; the rate went with the result row,
+    // which only repeated other rows (M, 2026-10-14).
     const node = (id: string): TaskNode =>
       ({
         id,
@@ -36,16 +37,18 @@ describe("summary.md's result row says what the rate counts", () => {
       { node: node('a#ran'), status: 'failed', exitCode: 1, durationMs: 5 },
       { node: node('a#after'), status: 'skipped', exitCode: 0, durationMs: 0, blockedBy: 'a#ran' },
     ]
-    const result = formatRunSummary(
+    const lines = formatRunSummary(
       outcomes,
       10,
       { enabled: false },
       { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false },
-    ).find((l) => l.includes('result'))!
-    expect(result).toContain('1 cached (50%)')
-    const para = blocks('modules/summary.md', 'cached (P%)')
+    )
+    expect(lines.filter((l) => l.includes('1 skipped'))).toHaveLength(1)
+    expect(lines.some((l) => l.includes('result'))).toBe(false)
+    const para = blocks('modules/summary.md', 'never says a fact twice')
     expect(para.length).toBe(1)
-    expect(para[0]).toMatch(/skipped task never did/)
+    expect(para[0]).toMatch(/no `result` row/)
+    expect(para[0]).toMatch(/skipped count on the tasks legend alone/)
   })
 })
 

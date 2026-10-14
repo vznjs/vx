@@ -765,7 +765,10 @@ other persistent task`), and a non-zero exit makes the run exit 1
    says what waits on it: `critical path` (yellow) on the running task
    the longest unfinished chain waits on, by the same p50s as the
    forecast below and only while two or more run, and a dim
-   `blocks N`, its unfinished dependents direct and transitive.
+   `blocks N`, its unfinished dependents direct and transitive. Where
+   local history knows the task, its row also shows its usual duration
+   (its executed p50) in the cache column, fixed while the elapsed time
+   counts up toward it (`3.33s running ~5.2s  solid-js#types`).
 4. **The live summary section** — the SAME meters the final footer
    prints (`tasks` + `cache` bars with legends, `time`), filling in as
    the run progresses, under a bare `vx` wordmark rule. A second in,
@@ -796,7 +799,8 @@ text is the task's output unchanged; a successful task's frame is never
 linked.
 
 The region is redrawn in place (cursor-up + clear; not a TUI — no
-alternate screen) and erased before the final summary prints. In the
+alternate screen) and erased before the final summary prints. On a
+terminal shorter than the region, it shows only the rows that fit. In the
 focused flow it only lives while dependencies run; it disappears for
 good the moment the requested task starts streaming.
 
@@ -1211,9 +1215,9 @@ which never consulted one / `local` / `remote` / `up-to-date` /
 `—`). A stopped run (a Ctrl-C teardown) reads `## vx run — interrupted`,
 and its tasks keep the terminal's words: one the signal killed is
 `aborted` with its time so far, one the stop reached before it ran is
-`not run` with no time. Neither joins the counts; the header names them
-after the total, `not counted: 1 aborted, 1 not run`, so a red report
-with no failing row still says why. Group tasks (no `exec`) get neither — they are not
+`not run` with no time. Both count in the header's task total, listed
+as `1 aborted · 1 not run`, so a red report with no failing row still
+says why. Group tasks (no `exec`) get neither — they are not
 work, and the header's counts match the terminal summary and
 `--summarize` exactly.
 
@@ -3345,7 +3349,9 @@ marked with a cyan `▸` after `┌─`/`└─`, and its close reads `running`
 died on its own before the run stopped it.
 
 There is **no top-of-run banner** — the run context lives in the
-footer. A broad run looks like:
+footer. The task log opens with one blank line before its first row,
+on a terminal or not; a note vx prints before it is not part of it.
+A broad run looks like:
 
 ```
  ⇢     4ms success local    @vzn/vx#format-check
@@ -3353,30 +3359,29 @@ footer. A broad run looks like:
 
 ─ vx 0.0.0 ───────────────────────────────────────────────────
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
-            1 in run · 3 total
+            1 affected · 3 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 success · 2 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             1 miss · 1 local
 
   info      8 workers · local cache
-  time      5.34s · max 5.20s · avg 5.20s · min 5.20s
-  result    2 tasks · 1 cached (50%) · 900ms saved · 5.34s
+  time      5.34s · 900ms saved
 ```
 
 The three bars are meters: `projects` is what the run covered against
 the workspace, `tasks` is failed / success / skipped, `cache` is miss /
 no-cache / up-to-date / local / remote (a skipped task rides it too, so
-the two legends sum alike). The `time` spread counts executed tasks
-only — a hit's restore time never enters it — which is why one executed
-task reads as its own max, avg and min. The `result` row is the run in
-one line, last: tasks, cached (every hit, local or remote, over every
-task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
-when every task hit, with `N failed` after the count on a
-red run. A task with no `cache` block, or any task of a run whose
-`--cache-policy` reads and writes nothing (`--no-cache`), could never hit, so it
-is counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`), as
-`--dry` labels it. A test renders this run and
+the two bars fill alike; its count is on the tasks legend only). The
+`time` row is the wall time, then what the cache saved (the hits' stored
+exec times, never the restore), then the spread over executed tasks
+only — a hit's restore time never enters it. The footer never says a
+fact twice: a spread value already on the row is left out, so one
+executed task shows no spread, and there is no closing `result` row
+repeating the tasks, cache and time rows. A task with no `cache` block,
+or any task of a run whose `--cache-policy` reads and writes nothing
+(`--no-cache`), could never hit, so it is counted apart (`1 no-cache`
+for `vx run dev`), as `--dry` labels it. A test renders this run and
 checks it against this page, byte for byte.
 
 Group tasks emit no framed block by design (they aren't real tasks);
@@ -3415,9 +3420,9 @@ what it reached first (`not run`). Neither reached the cache:
  ◌         not run          web#test
 ```
 
-The tasks legend names them outside the total, which history and
-telemetry share: `2 success · 2 total · not counted: 1 aborted, 2 not
-run`. A framed task (focused or `full`) that
+The tasks legend counts them in the total, each state its own segment
+of the bar: `2 success · 1 aborted · 2 not run · 5 total`. The total is
+always last on its line. A framed task (focused or `full`) that
 printed while it stopped shows its frame instead of a row.
 
 **Flaky rows.** A task the run just proved nondeterministic says so

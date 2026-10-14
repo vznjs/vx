@@ -12,6 +12,8 @@ export interface LiveForecast {
   critical?: string
   /** Each running task's unfinished dependents, direct and transitive. */
   blocks: ReadonlyMap<string, number>
+  /** Each running task's p50, where history knows it: the row's expected duration. */
+  expected?: ReadonlyMap<string, number>
 }
 
 export type Forecast = (
@@ -90,7 +92,12 @@ export function createForecast(
 
   return (finished, running, nowMs) => {
     const blocks = new Map<string, number>()
-    for (const id of running.keys()) blocks.set(id, blocked(id, finished))
+    const expected = new Map<string, number>()
+    for (const id of running.keys()) {
+      blocks.set(id, blocked(id, finished))
+      const p = cost.get(id)
+      if (p !== undefined) expected.set(id, p)
+    }
     const end = new Map<string, number>()
     // The running task each node's longest chain waits on.
     const head = new Map<string, string>()
@@ -128,12 +135,13 @@ export function createForecast(
       }
       work += own
     }
-    if (!known || overrun) return { blocks }
+    if (!known || overrun) return { blocks, expected }
     const critical = chainEnd === undefined ? undefined : head.get(chainEnd)
     return {
       etaMs: Math.max(chain, work / workers),
       ...(critical !== undefined ? { critical } : {}),
       blocks,
+      expected,
     }
   }
 }

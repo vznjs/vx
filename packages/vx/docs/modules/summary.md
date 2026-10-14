@@ -35,7 +35,7 @@ export interface SummaryStats {
 
 export interface RunContext {
   version: string
-  packageCount: number // projects covered → the bar's "in run" half
+  packageCount: number // projects covered → the bar's "affected" half
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
   workspaceProjectCount?: number // total projects → the bar's denominator
@@ -66,9 +66,11 @@ Nothing prints below the footer (owner, 2026-10-06): a task's own facts
 ride its row. A skip is a row naming its blocker
 (`formatTaskSkippedLine`), a flaky task a dim note on its row and frame
 (`flakyNote`, framed-output.md). An aborted task is a row too
-(`formatTaskAbortedLine`), and the tasks legend names it after the
-total — `not counted: N aborted, N not run` — since `total` is the
-count history and telemetry share. `aborted` is killed by a shutdown
+(`formatTaskAbortedLine`), and the tasks legend counts it in the
+total, each state its own bar segment: `2 success · 1 aborted · 1 not
+run · 4 total` (M, 2026-10-14; history and telemetry still record only
+the tasks that ran). A total is always the last word on its line.
+`aborted` is killed by a shutdown
 signal; `not run` is reached by the stop before it ran. `neverStarted`
 tells them apart: an aborted outcome with no `wallclockStartNs`, which
 only a started task carries.
@@ -85,7 +87,7 @@ a bare `vx` and the `projects` / `info` rows are skipped.
 ```
 ─ vx 0.0.0 ───────────────────────────────────────────────────
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
-            1 in run · 2 total
+            1 affected · 2 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             4 success · 4 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -93,7 +95,6 @@ a bare `vx` and the `projects` / `info` rows are skipped.
 
   info      10 workers · local cache
   time      248ms · max 239ms · avg 215ms · min 190ms
-  result    4 tasks · 0 cached (0%) · 248ms
 ```
 
 Labels pad to 8, bars start at column 12, the rule + bars span 50
@@ -101,14 +102,16 @@ cells. `projects` (the projects in the run vs the workspace total) leads the met
 `tasks` and `cache` follow, the tasks legend carrying a dim `N total`.
 A blank line separates the meters from the `info` row (worker pool +
 cache mode, and `admit held N tasks · Ns` when a policy held any — a
-sum, said as one), the `time` row and the `result` row (`N tasks · N
-cached (P%) · time` over the tasks that consulted a cache (a skipped
-task never did, nor one still to run), `all cached` when every task
-of the run hit, `N no-cache` for the rest (`ranNoCache`: no `cache` block, or a
-policy that reads and writes nothing), then `<time> saved` (green:
-the hits' STORED exec times summed, what the cache skipped, never the
-restore this run paid; left out under 1 ms), `N failed` after the
-count; none on an empty run). `projects` and `info` only
+sum, said as one) and the `time` row: the wall time, `<time> saved`
+(green: the hits' STORED exec times summed, what the cache skipped,
+never the restore this run paid; left out under 1 ms), the live
+forecast (`~3s left`), then the dim `max / avg / min` spread over
+executed tasks. The footer never says a fact twice (M, 2026-10-14):
+no `result` row (it only repeated the tasks, cache and time rows), a
+skipped count on the tasks legend alone (skips still ride the cache
+bar), and a spread value equal to one already on the row is left out,
+so one executed task, or tasks that all took the same time, show no
+spread. `projects` and `info` only
 render when a `RunContext` is passed (the live region and the final
 footer both pass one). The block above is
 `formatRunSummary` on four successes of 239, 190, 215 and 216 ms with
@@ -138,10 +141,11 @@ Duration:
   (the frames above carry the names; a run can fail hundreds).
 - The run context folds into the footer (version on the rule, the
   info row, the projects bar); no context keeps a bare `vx` rule.
-- Aborted and not-run tasks: named apart after the total on the tasks
-  legend (under `0 tasks` too), a group in neither; their rows
+- Aborted and not-run tasks: counted in the tasks total, each its own
+  bar segment, a group in neither; a total is last on its line; their rows
   (`formatTaskAbortedLine`) byte for byte.
-- Time row: blank line above, total + dim 'max / avg / min' per-task spread (skipped excluded).
+- Time row: blank line above, total, saved, then the dim 'max / avg / min' spread (executed tasks only; a repeated value left out).
+- No value or count appears twice in a footer (`the footer never repeats a value or a count`).
 - Duration formatting (sub-second vs second+).
 - A flaky task's note: exact text for a pass that failed before, a
   failure that passed before, a retry with and without history; none

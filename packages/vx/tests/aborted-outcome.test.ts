@@ -175,13 +175,13 @@ describe('a task killed by a shutdown signal', () => {
       // Red exit — and the reason has to be on screen.
       expect(r.code).not.toBe(0)
       // Requested, it printed, so its frame is its entry in the list; the
-      // footer names it outside the total.
+      // footer counts it in the total.
       expect(r.out).toMatch(/\n└─ r#doomed ── \([\d.]+m?s\) aborted\n/)
-      expect(r.out).toContain('\n            1 success · 1 total · not counted: 1 aborted\n')
+      expect(r.out).toContain('\n            1 success · 1 aborted · 2 total\n')
 
       const rep = vx(root, 'run', 'fine', 'doomed', '--report=markdown')
       expect(rep.out).toContain('\n## vx run — interrupted\n')
-      expect(rep.out).toMatch(/not counted: 1 aborted\n/)
+      expect(rep.out).toContain('**2 tasks** · 1 success · 0 failed · 0 cached · 1 aborted · ')
       expect(rep.out).toMatch(/\|\s*r#doomed\s*\|\s*aborted\s*\|/)
     },
     TIMEOUT,
