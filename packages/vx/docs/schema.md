@@ -1889,7 +1889,7 @@ false in vx.workspace.ts to let it wait for its producer.` Such a key
   all, the local store last). An `undefined`, `null` or `false` entry
   is skipped, as Vite skips one: a factory that declines (`github()` off
   Actions) or `cond && plugin()` needs no filter. Each entry is a `VxPlugin` contributing
-  any subset of the fourteen hooks, in pipeline order: `config` (edit
+  any subset of the fifteen hooks, in pipeline order: `config` (edit
   the workspace config before anything derives from it), `discover`
   (name directories to make projects beyond the members), `project`
   (edit a loaded project's tasks — inject, remove, rewrite;

@@ -80,7 +80,7 @@ Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
 
 - **Hooks**, in pipeline order: `config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
-  `setup`, `commands`, `teardown`. A plugin is
+  `output`, `setup`, `commands`, `teardown`. A plugin is
   `definePlugin(import.meta, hooks)`, and its name is its package's.
 - **Telemetry records**, schema version 3. The kinds are `run.start`,
   `task.start`, `task.log`, `task.sample`, `task.end` and `run.end`; each record
