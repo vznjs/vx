@@ -55,7 +55,10 @@ user.
 
 ## Concurrency
 
-Rows are append-only and written in the run's existing IMMEDIATE
+Before any `cache.get`, the plugin looks up rows tagged with the
+merge-base sha; if any exist it skips the cache entirely. Imported rows
+carry a unique key on `(sha, task)` and are written with `INSERT OR
+IGNORE`, so a repeat import is a no-op. Rows are append-only and written in the run's existing IMMEDIATE
 transaction with the busy timeout. A test runs several worktrees in
 parallel on one store: no lost rows, no `SQLITE_BUSY` failure, no lock
 wait on the warm path.
@@ -81,7 +84,7 @@ The blob is untrusted input from a shared store:
   in the same run; a remote that never answers costs at most the deadline,
   and the run orders without it.
 - Every task has current-branch history: no git spawn, no fetch.
-- A merge-base whose rows are already in the store: no fetch.
+- Two runs on the same merge-base sha: one `cache.get`, no duplicate rows.
 - Oversized, malformed, out-of-range and non-graph entries are dropped,
   silently (`VX_DEBUG` names each).
 - A read-only policy keeps a `put` out of the remote; a local run never puts.
