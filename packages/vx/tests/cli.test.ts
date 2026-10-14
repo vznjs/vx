@@ -544,7 +544,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       const args = ['run', '--all', 'hello', flag, '--report=markdown', '--summarize=s.json']
       expect(await run(args)).toBe(0)
       expect(stdout).toContain('| one#hello | success | no-cache |')
-      expect(stdout).toMatch(/result +1 task · 1 no-cache · /)
+      expect(stdout).toMatch(/\n {12}1 no-cache\n/)
       expect(stdout).not.toContain('miss')
       const row = JSON.parse(await readFile('s.json', 'utf8')).tasks[0]
       expect([row.id, row.noCache]).toEqual(['one#hello', true])
@@ -1009,7 +1009,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(code).toBe(0)
     const report = stdout.indexOf('| Task | Status | Cache | Duration |')
     const table = stdout.indexOf('TASK')
-    const footer = stdout.indexOf('  result')
+    const footer = stdout.indexOf('  time ')
     expect([report > 0, table > 0, footer > 0]).toEqual([true, true, true])
     expect([table < report, report < footer]).toEqual([true, true])
     expect(stdout.slice(footer).trimEnd().split('\n')).toHaveLength(1)

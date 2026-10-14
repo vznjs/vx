@@ -21,6 +21,7 @@ const LOCAL = '#38bdf8' // sky-400
 const REMOTE = '#2563eb' // blue-600
 const ERROR = '#ef4444'
 const ABORTED = '#f97316' // orange-500: red's neighbour, not a failure
+const NOT_RUN = '#a855f7' // purple-500: stopped before it began, apart from every other state
 const ACCENT = '#06b6d4' // cyan-500: the live region's running word
 
 const BAR_WIDTH = 50
@@ -137,7 +138,7 @@ export interface SummaryStats {
  */
 export interface RunContext {
   version: string
-  /** Projects covered by the graph — the "in run" half of the bar. */
+  /** Projects covered by the graph — the "affected" half of the bar. */
   packageCount: number
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
@@ -164,25 +165,25 @@ export function formatSummarySection(
   const row = (label: string, value: string): string => `  ${dim(label.padEnd(8))}  ${value}`
   const join = (parts: string[]): string => parts.join(` ${dim('\u00b7')} `)
 
-  // Tasks meter + numbers, fixed order: failed · success · skipped,
-  // then a dim total so the legend reads against the whole graph.
+  // Tasks meter + numbers, fixed order: failed · success · skipped ·
+  // aborted · not run, then a dim total, last on its line. Every task in
+  // the run counts, each state its own segment (M, 2026-10-14).
+  const runTotal = stats.total + aborted + notRun
   const taskParts: string[] = []
   if (stats.failed > 0)
     taskParts.push(paint(ERROR, `${stats.failed} failed`, colors, { bold: true }))
   if (stats.successful > 0) taskParts.push(paint(SUCCESS, `${stats.successful} success`, colors))
   if (stats.skipped > 0) taskParts.push(paint(WARN, `${stats.skipped} skipped`, colors))
-  if (stats.total > 0) taskParts.push(dim(`${stats.total} total`))
-  // Rows in the task list, but outside `total`: history and telemetry count
-  // the same tasks the total does, and an aborted task did no work.
-  const uncounted: string[] = []
-  if (aborted > 0) uncounted.push(paint(ABORTED, `${aborted} aborted`, colors))
-  if (notRun > 0) uncounted.push(dim(`${notRun} not run`))
-  if (uncounted.length > 0) taskParts.push(`${dim('not counted:')} ${uncounted.join(dim(', '))}`)
+  if (aborted > 0) taskParts.push(paint(ABORTED, `${aborted} aborted`, colors))
+  if (notRun > 0) taskParts.push(paint(NOT_RUN, `${notRun} not run`, colors))
+  if (runTotal > 0) taskParts.push(dim(`${runTotal} total`))
   const taskBar = segmentBar(
     [
       { n: stats.failed, color: ERROR },
       { n: stats.successful, color: SUCCESS },
       { n: stats.skipped, color: WARN },
+      { n: aborted, color: ABORTED },
+      { n: notRun, color: NOT_RUN },
       remainder,
     ],
     colors,
@@ -211,7 +212,7 @@ export function formatSummarySection(
         paint('', '▱'.repeat(BAR_WIDTH - cells), colors, { dim: true })
       lines.push(
         row('projects', bar),
-        legend([paint(WARN, `${context.packageCount} in run`, colors), dim(`${wsTotal} total`)]),
+        legend([paint(WARN, `${context.packageCount} affected`, colors), dim(`${wsTotal} total`)]),
       )
     }
   }

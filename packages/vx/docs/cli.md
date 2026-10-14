@@ -3359,7 +3359,7 @@ A broad run looks like:
 
 ─ vx 0.0.0 ───────────────────────────────────────────────────
   projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱
-            1 in run · 3 total
+            1 affected · 3 total
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 success · 2 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
@@ -3420,9 +3420,9 @@ what it reached first (`not run`). Neither reached the cache:
  ◌         not run          web#test
 ```
 
-The tasks legend names them outside the total, which history and
-telemetry share: `2 success · 2 total · not counted: 1 aborted, 2 not
-run`. A framed task (focused or `full`) that
+The tasks legend counts them in the total, each state its own segment
+of the bar: `2 success · 1 aborted · 2 not run · 5 total`. The total is
+always last on its line. A framed task (focused or `full`) that
 printed while it stopped shows its frame instead of a row.
 
 **Flaky rows.** A task the run just proved nondeterministic says so

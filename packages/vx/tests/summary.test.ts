@@ -191,7 +191,7 @@ describe('formatRunSummary', () => {
       },
     )
     expect(lines[2]).toBe('  projects  ' + '▰'.repeat(13) + '▱'.repeat(37))
-    expect(lines[3]).toBe('            1 in run · 4 total')
+    expect(lines[3]).toBe('            1 affected · 4 total')
     // local-only mode reads on the info row (no worker count here)
     expect(lines).toContain('  info      local cache')
   })
@@ -272,18 +272,37 @@ describe('aborted and not-run tasks', () => {
     outcome('b#x', 'success'),
   ]
 
-  it('the tasks legend names each apart, outside the total, a group in neither', () => {
+  // M, 2026-10-14: every task in the run counts toward the total, each
+  // state its own segment of the bar; no "not counted".
+  it('the tasks legend counts each in the total, a group in neither', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
     const lines = formatRunSummary(run, 10, { enabled: false }, ctx)
-    expect(lines[3]).toBe('            1 success · 1 total · not counted: 1 aborted, 2 not run')
+    expect(lines[3]).toBe('            1 success · 1 aborted · 2 not run · 4 total')
     expect(lines.at(-1)).toBe('  time      10ms')
   })
 
-  it('a stop before any task finished still names them under `0 tasks`', () => {
-    expect(formatRunSummary([killed('a#t')], 10).slice(2, 4)).toEqual([
-      '  tasks     0 tasks',
-      '            not counted: 1 aborted',
-    ])
+  it('a stop before any task finished fills the bar with what it took down', () => {
+    const lines = formatRunSummary([killed('a#t')], 10)
+    expect(lines[2]).toBe(`  tasks     ${'\u25b0'.repeat(50)}`)
+    expect(lines[3]).toBe('            1 aborted · 1 total')
+  })
+
+  it('failed, aborted and not run are each a visibly distinct segment', () => {
+    const lines = formatRunSummary(
+      [
+        outcome('a#x', 'failed', 1),
+        killed('b#x'),
+        outcome('c#x', 'aborted', 1),
+        outcome('d#x', 'success'),
+      ],
+      10,
+      { enabled: true },
+    )
+    const bar = lines.find((l) => l.includes('tasks'))!
+    // Each segment opens its own colour: four states, four paints.
+    // eslint-disable-next-line no-control-regex -- the colour escapes are the point
+    const paints = [...bar.matchAll(/\x1b\[([0-9;]*)m\u25b0/g)].map((m) => m[1])
+    expect(new Set(paints).size).toBe(4)
   })
 
   it('the rows: `aborted` with its time, `not run` with none, cache blank', () => {
@@ -453,5 +472,33 @@ describe('the footer never repeats a value or a count', () => {
 
   it('saved rides the time row', () => {
     expect(footers['all hits']!.at(-1)).toBe('  time      10ms · 85.16s saved')
+  })
+})
+
+// M, 2026-10-14: on every footer line with a total, the total comes last.
+describe('a total is the last word on its line', () => {
+  it('projects and tasks, with every kind of task in the run', () => {
+    const ctx = {
+      version: '0.0.0',
+      packageCount: 2,
+      workspaceProjectCount: 5,
+      remoteCacheEnabled: false,
+    }
+    const lines = formatRunSummary(
+      [
+        outcome('a#x', 'failed', 1),
+        outcome('b#x', 'success'),
+        outcome('c#x', 'skipped'),
+        { ...outcome('d#x', 'aborted', 1), durationMs: 50, startedAt: 1 } as TaskOutcome,
+        outcome('e#x', 'aborted', 1),
+      ],
+      10,
+      { enabled: false },
+      ctx,
+    )
+    const withTotal = lines.filter((l) => / total\b/.test(l))
+    expect(withTotal).toHaveLength(2)
+    for (const l of withTotal) expect(l).toMatch(/· \d+ total$/)
+    expect(withTotal[0]).toBe('            2 affected · 5 total')
   })
 })
