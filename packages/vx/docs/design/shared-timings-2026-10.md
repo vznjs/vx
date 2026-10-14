@@ -26,7 +26,8 @@ declares. No new wire, no mutable entry.
 - **Read (only when needed):** only when some task in the run has no
   current-branch history does the plugin compute the merge-base of `HEAD`
   with the default branch; the blob is kept on disk keyed by that sha
-  (`.vx/cache/timings/<sha>.json`), and fetched only when no local copy
+  (`~/.vx/<repo-id>/timings/<sha>.json`, the store every worktree of the
+  repo shares, M 20:59: one download per repo, not per worktree), and fetched only when no local copy
   exists, walking back up to 5 commits for a missing blob. So most runs
   make no network call and no extra git spawn. A fetch is awaited before
   scheduling (M 20:55: "wait for download") under a short deadline
