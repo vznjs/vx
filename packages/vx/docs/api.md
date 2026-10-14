@@ -68,6 +68,7 @@ export interface ApplyMigrationArgs {
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<number>
+  plugins?: readonly WorkspacePlugin[]
 }
 ```
 

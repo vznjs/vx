@@ -25,13 +25,14 @@ project graph, so every project's targets are vx tasks with their
 inputs, outputs and `dependsOn`, and `vx run build --all` runs what
 `nx run-many -t build` ran, under vx's cache. `npx @vzn/vx init` writes the
 one file beside `nx.json`, and its `next:` line installs
-`@vzn/vx-migrate` and runs the build:
+`@vzn/vx-migrate` and `@vzn/vx-lockfile`, then runs the build:
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
+import { npm } from '@vzn/vx-lockfile'
 
-export default { plugins: [nx()] } satisfies WorkspaceConfig
+export default { plugins: [nx(), npm()] } satisfies WorkspaceConfig
 ```
 
 Executor targets keep running as executors. Each becomes an `nx-exec`
