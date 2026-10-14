@@ -69,8 +69,9 @@ writes nothing:
 
 ```sh frame="terminal"
 $ vx lock
-vx lock: vx-lock.json not written: @demo/button depends on @demo/checkout, which run.rules.dependencies[1] (from 'tag:type:ui') denies
-@demo/web depends on @demo/utils, which run.rules.dependencies[0] (from 'tag:type:app') does not allow
+vx lock: vx-lock.json not written: 2 dependencies break run.rules.dependencies:
+  @demo/button depends on @demo/checkout, which run.rules.dependencies[1] (from 'tag:type:ui') denies
+  @demo/web depends on @demo/utils, which run.rules.dependencies[0] (from 'tag:type:app') does not allow
 Drop the dependency, or change the project's tags or the rule.
 ```
 

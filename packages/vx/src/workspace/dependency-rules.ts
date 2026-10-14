@@ -41,7 +41,7 @@ export function checkDependencyRules(
   }
   if (broken.length === 0) return
   throw new UserError(
-    `${broken.join('\n')}\nDrop the dependency, or change the project's tags or the rule.`,
+    `${broken.length === 1 ? '1 dependency breaks' : `${broken.length} dependencies break`} run.rules.dependencies:\n${broken.map((b) => `  ${b}`).join('\n')}\nDrop the dependency, or change the project's tags or the rule.`,
     'VX_E_DEPENDENCY_RULE',
   )
 }

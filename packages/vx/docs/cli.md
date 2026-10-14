@@ -2535,8 +2535,8 @@ for a task that rewrites files in place.
 #### `VX_E_DEPENDENCY_RULE`
 
 `vx lock` found a project depending on one a `run.rules.dependencies`
-rule denies or does not allow. Each line names both projects and the
-rule. Drop the dependency, or change the project's tags or the rule.
+rule denies or does not allow. A header counts the broken edges and
+each indented line under it names both projects and the rule. Drop the dependency, or change the project's tags or the rule.
 
 #### `VX_E_INTERNAL`
 

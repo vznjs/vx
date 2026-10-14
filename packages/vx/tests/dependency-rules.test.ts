@@ -49,7 +49,9 @@ function broken(rules: DependencyRule[]): string[] {
   } catch (err) {
     const e = err as { code: string; message: string }
     expect(e.code).toBe('VX_E_DEPENDENCY_RULE')
-    return e.message.split('\n').slice(0, -1)
+    const lines = e.message.split('\n')
+    expect(lines[0]).toMatch(/^\d+ dependenc(y breaks|ies break) run\.rules\.dependencies:$/)
+    return lines.slice(1, -1).map((l) => l.replace(/^  /, ''))
   }
 }
 
@@ -155,11 +157,14 @@ describe('vx lock', () => {
       })
       expect({
         code: r.exitCode,
-        err: r.stderr.toString().split('\n')[0],
+        err: r.stderr.toString().split('\n').slice(0, 2),
         written: existsSync(path.join(root, 'vx-lock.json')),
       }).toEqual({
         code: 1,
-        err: "vx lock: vx-lock.json not written: lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies",
+        err: [
+          'vx lock: vx-lock.json not written: 1 dependency breaks run.rules.dependencies:',
+          "  lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies",
+        ],
         written: false,
       })
     },
