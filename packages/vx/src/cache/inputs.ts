@@ -83,6 +83,13 @@ const ALWAYS_IGNORE = [
   '**/.vx/cache/**',
   '**/*.tsbuildinfo',
   '**/.vx/lock.json',
+  // `vx lock`'s review copy of a project's resolved config: the config is
+  // keyed already, and a re-lock must not move every `**` reader's key.
+  '**/vx.lock.json',
+  // What `vx lock` and `vx init` write beside the lock: a re-lock or init
+  // must not select every `**` reader under --affected.
+  '**/.vx/.gitattributes',
+  '**/.vx/.gitignore',
   // `bun build --compile` writes a transient `.<hash>-<n>.bun-build` intermediate
   // in the cwd. It never rests on disk, so it can't be a real input — but a
   // broad `inputs.files: ['**/*']` on a compile task would try to hash the temp

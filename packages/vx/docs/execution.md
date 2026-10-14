@@ -44,7 +44,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       shared with step 1) and JSON.parse.
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the
  │       .vx/workspace.{ts,mts,js,mjs,cts,cjs} the root lookup found (run / cache /
- │       watch / plugins),
+ │       watch / plugins / lock),
  │       then the plugin `config` stage runs on it.
  │    4. listProjects — globs every workspace member's package.json,
  │       finds sibling vx.config.* files, detects duplicate package

@@ -229,14 +229,14 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
 })
 
 describe('writeLockfile — the file is committed, so its shape is a contract', () => {
-  it('writes 2-space-indented JSON with a trailing newline', async () => {
-    // The lock is committed and reviewed. Minified JSON would make every
-    // change a single unreadable diff line, and a missing trailing newline
-    // makes git and POSIX tools complain on every write.
+  it('writes minified JSON with a trailing newline', async () => {
+    // The lock is the one file a run reads, and minified loads faster; the
+    // per-project `vx.lock.json` copies are what a reviewer reads. A missing
+    // trailing newline makes git and POSIX tools complain on every write.
     await writeLockfile(root, lock())
     const text = await Bun.file(lockfilePath(root)).text()
-    expect(text.endsWith('\n')).toBe(true)
-    expect(text).toContain(`\n  "version": ${LOCKFILE_VERSION}`)
+    expect(text).toBe(`${JSON.stringify(JSON.parse(text))}\n`)
+    expect(text.startsWith(`{"version":${LOCKFILE_VERSION},`)).toBe(true)
   })
 
   it('overwrites rather than merging', async () => {

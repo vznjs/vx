@@ -1302,6 +1302,45 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a .gitattributes naming no converting attribute never runs check-attr',
+    async () => {
+      // `.vx/.gitattributes` marks the lock `linguist-generated`, which
+      // converts nothing; any .gitattributes used to cost a check-attr per
+      // run (21 ms). Control: a `text` line in the same file does run it.
+      await write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
+      await write(path.join(root, 'pkg/.gitattributes'), 'lock.json linguist-generated\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      const checkAttrRuns = async (): Promise<boolean> => {
+        const origSpawn = Bun.spawn
+        const seen: string[][] = []
+        const bunMut = Bun as unknown as { spawn: typeof Bun.spawn }
+        bunMut.spawn = ((...a: Parameters<typeof Bun.spawn>) => {
+          const opt = a[0] as { cmd?: readonly string[] } | undefined
+          if (opt && Array.isArray(opt.cmd) && path.basename(opt.cmd[0] ?? '') === 'git')
+            seen.push([...opt.cmd])
+          return origSpawn(...a)
+        }) as typeof Bun.spawn
+        try {
+          await populateGitFilesCache(root, [path.join(root, 'pkg')], new GitFilesCache())
+        } finally {
+          bunMut.spawn = origSpawn
+        }
+        return seen.some((cmd) => cmd.includes('check-attr'))
+      }
+      const generatedOnly = await checkAttrRuns()
+      await write(path.join(root, 'pkg/.gitattributes'), '*.ts text eol=lf\n')
+      git(root, 'commit', '-qam', 'text')
+      expect([generatedOnly, await checkAttrRuns()]).toEqual([false, true])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a tracked .gitattributes starts check-attr before status has answered (U-3)',
     async () => {
       // check-attr waited for status, the one spawn that walks the tree, and

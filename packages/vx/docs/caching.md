@@ -1830,7 +1830,9 @@ built to defeat it can). Details and the deny-list:
   `define: { X: execSync(...) }` — that value freezes into the config
   object at lock time and goes stale.
 - **`.vx/lock.json`** — globally excluded (v24); also filtered out of
-  `--affected` change sets.
+  `--affected` change sets. So are the files `vx lock` and `vx init`
+  write beside it: each project's `vx.lock.json` review copy,
+  `.vx/.gitattributes` and `.vx/.gitignore`.
 - **`exec.remote`.** Pure PLACEMENT: it decides _where_ a task runs,
   never what it produces, so pinning a task to this machine does not
   bust its cache. It must not — the

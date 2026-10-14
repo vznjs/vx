@@ -13,13 +13,15 @@ re-exported from `@vzn/vx`.
 ├── pnpm-workspace.yaml          (or: package.json with "workspaces", or bare package.json)
 ├── .vx/
 │   ├── workspace.ts             (required: marks the root; workspace-wide settings)
-│   ├── lock.json                (`vx lock`; committed)
+│   ├── lock.json                (`vx lock`, minified; committed)
+│   ├── .gitattributes           (`lock.json linguist-generated=true`; written when missing)
 │   ├── .gitignore               (`/cache`; written by `vx init` and the cache when missing)
 │   └── cache/                   (machine-local state; the only part git ignores)
 └── packages/
     └── <pkg>/
         ├── package.json
-        └── vx.config.ts         (per-package task definitions)
+        ├── vx.config.ts         (per-package task definitions)
+        └── vx.lock.json         (`vx lock`: its resolved config, pretty, for review)
 ```
 
 A project is discovered as a vx project by the **presence of a
@@ -869,7 +871,7 @@ Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`, `*.tsbuildinfo`,
-  `.vx/lock.json`, `*.bun-build`, and Bun's cross-compile extraction
+  `.vx/lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction
   directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
   `.vx-tmp-*`, at any depth.
 - **Installs** — an untracked file under any `node_modules/` (ignored or
@@ -924,7 +926,7 @@ backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
-`*.tsbuildinfo`, `.vx/lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
+`*.tsbuildinfo`, `.vx/lock.json`, `vx.lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
 in its own project (a task never invalidates itself).
@@ -1638,12 +1640,13 @@ export default defineWorkspace({
     scope: 'main',
     inputStability: { strategy: 'immutable', severity: 'warn' },
   },
+  lock: { reviewFiles: true },
   watch: { poll: false },
   plugins: [otel()],
 })
 ```
 
-The workspace holds settings in groups (`run`, `cache`, `watch`) and the
+The workspace holds settings in groups (`run`, `cache`, `lock`, `watch`) and the
 `plugins`. Every setting has one path, and its environment variable and
 flag derive from it: `run.timeout` is `VX_RUN_TIMEOUT` and
 `vx run --timeout`. A flag beats its variable, which beats this file,
@@ -1685,6 +1688,7 @@ default and where it came from.
 | `cache.download`                               | `VX_CACHE_DOWNLOAD`                 | `--cache-download`   | one of 'all', 'toplevel', 'none'                                        | all                                        | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                       |
 | `cache.inputStability.strategy`                | `VX_CACHE_INPUT_STABILITY_STRATEGY` | —                    | one of 'immutable', 'mutable', 'unchecked'                              | immutable                                  | What a write to an input during the command means for the save, for tasks without their own. A task's own `cache.inputStability.strategy` beats it. |
 | `cache.inputStability.severity`                | `VX_CACHE_INPUT_STABILITY_SEVERITY` | —                    | one of 'warn', 'error'                                                  | warn                                       | Whether a skipped save warns or fails the task, for tasks without their own. A task's own `cache.inputStability.severity` beats it.                 |
+| `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`              | —                    | true or false                                                           | true                                       | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                   |
 | `watch.poll`                                   | `VX_WATCH_POLL`                     | `vx watch --poll`    | true or false                                                           | false                                      | Poll for changes from the start instead of the OS watcher.                                                                                          |
 | `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`          | —                    | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                        | How long one config evaluation may take.                                                                                                            |
 | `debug.timing` (variable or flag only)         | `VX_DEBUG_TIMING`                   | —                    | true or false                                                           | false                                      | Print the run's stage timings to stderr.                                                                                                            |
@@ -1696,6 +1700,7 @@ default and where it came from.
 interface WorkspaceConfig {
   run?: RunSettings
   cache?: CacheSettings
+  lock?: LockSettings
   watch?: { poll?: boolean }
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly (Plugin | undefined | null | false)[]
@@ -1719,6 +1724,11 @@ interface RunSettings {
 
 /** `run.rules.dependencies`, checked by `vx lock` only. */
 type DependencyRule = { from: string; allow?: string[]; deny?: string[] }
+
+interface LockSettings {
+  /** A pretty vx.lock.json beside each config, for review; on unless false. */
+  reviewFiles?: boolean
+}
 
 interface CacheSettings {
   dir?: string

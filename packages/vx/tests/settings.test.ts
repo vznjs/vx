@@ -75,6 +75,7 @@ describe('the settings list', () => {
     const declared = [
       ...fieldsOf('RunSettings').map((f) => `run.${f}`),
       ...fieldsOf('CacheSettings').map((f) => `cache.${f}`),
+      ...fieldsOf('LockSettings').map((f) => `lock.${f}`),
       ...fieldsOf('WatchSettings').map((f) => `watch.${f}`),
     ].sort()
     const listed = [
@@ -85,7 +86,7 @@ describe('the settings list', () => {
       ),
     ].sort()
     expect(declared).toEqual(listed)
-    expect([...SETTING_GROUPS]).toEqual(['run', 'cache', 'watch'])
+    expect([...SETTING_GROUPS]).toEqual(['run', 'cache', 'lock', 'watch'])
   })
 
   it('gives every flag on its verb', () => {

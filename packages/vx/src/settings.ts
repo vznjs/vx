@@ -187,6 +187,12 @@ export const SETTINGS: readonly Setting[] = [
     task: 'cache.inputStability.severity',
   },
   {
+    path: 'lock.reviewFiles',
+    kind: { type: 'bool' },
+    default: 'true',
+    doc: "`vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.",
+  },
+  {
     path: 'watch.poll',
     kind: { type: 'bool' },
     default: 'false',
@@ -217,7 +223,7 @@ export const SETTINGS: readonly Setting[] = [
 ]
 
 /** The `.vx/workspace` groups that hold settings; `plugins` is the other key. */
-export const SETTING_GROUPS = ['run', 'cache', 'watch'] as const
+export const SETTING_GROUPS = ['run', 'cache', 'lock', 'watch'] as const
 
 const BY_PATH = new Map(SETTINGS.map((s) => [s.path, s]))
 

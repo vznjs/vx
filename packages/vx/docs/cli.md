@@ -1731,6 +1731,16 @@ vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
 vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
 ```
 
+`.vx/lock.json` is minified: it is the one file vx reads, and it loads
+faster that way (10,000 projects: 15.6 ms against 22.5 ms pretty). For
+review, `vx lock` also writes each project's resolved config (plugins
+applied), pretty, to `vx.lock.json` beside its `vx.config`; vx never reads
+it, it is no task's input, and `lock.reviewFiles: false`
+(`VX_LOCK_REVIEW_FILES`) turns it off. `vx lock` also writes
+`.vx/.gitattributes` (`lock.json linguist-generated=true`) when it is
+missing, so GitHub collapses the machine lock in a diff; `vx init` does
+too, and an existing one is never edited.
+
 A run that is not frozen evaluates live — the lock's existence changes
 nothing. Only a frozen run consumes it: configs come from the
 lock with no evaluation, no staleness check and no schema validation
@@ -1744,7 +1754,8 @@ environment and `Bun.deepEquals`-compares it with the frozen object. A
 project that differs gets one message, whether its config, a file it
 imports or the environment it reads changed. A lock an earlier vx wrote
 fails the shape check and asks for `vx lock`. It also checks the graph rules over the configs as they
-evaluate now. The CI recipe is `vx lock --check && vx run …`, frozen
+evaluate now, and that each `vx.lock.json` is what its project resolves to
+here (unless `lock.reviewFiles` is off). The CI recipe is `vx lock --check && vx run …`, frozen
 under CI by default.
 `--format json` prints the audit as one document
 (`schemas/lock.json`, exit code unchanged; a missing lock is one of
@@ -3210,6 +3221,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_CACHE_DOWNLOAD`                 | [`cache.download`](schema.md#settings)                | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                               |
 | `VX_CACHE_INPUT_STABILITY_STRATEGY` | [`cache.inputStability.strategy`](schema.md#settings) | What a write to an input during the command means for the save, for tasks without their own.                                                                |
 | `VX_CACHE_INPUT_STABILITY_SEVERITY` | [`cache.inputStability.severity`](schema.md#settings) | Whether a skipped save warns or fails the task, for tasks without their own.                                                                                |
+| `VX_LOCK_REVIEW_FILES`              | [`lock.reviewFiles`](schema.md#settings)              | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                           |
 | `VX_WATCH_POLL`                     | [`watch.poll`](schema.md#settings)                    | Poll for changes from the start instead of the OS watcher.                                                                                                  |
 | `VX_CONFIG_WORKER_TIMEOUT`          | [`config.workerTimeout`](schema.md#settings)          | How long one config evaluation may take.                                                                                                                    |
 | `VX_DEBUG_TIMING`                   | [`debug.timing`](schema.md#settings)                  | Print the run's stage timings to stderr.                                                                                                                    |

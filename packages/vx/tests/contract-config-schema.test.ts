@@ -27,6 +27,7 @@ import type {
   CacheOutputs,
   CacheSettings,
   RunSettings,
+  LockSettings,
   WatchSettings,
   InputStability,
   ExecConfig,
@@ -56,7 +57,7 @@ const keys = <T>(k: Keys<T>): string[] => Object.keys(k).sort()
  */
 const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
   workspace: {
-    '': keys<WorkspaceConfig>({ run: true, cache: true, watch: true, plugins: true }),
+    '': keys<WorkspaceConfig>({ run: true, cache: true, lock: true, watch: true, plugins: true }),
     run: keys<RunSettings>({
       concurrency: true,
       schedule: true,
@@ -88,6 +89,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       maxSize: true,
     }),
     'cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
+    lock: keys<LockSettings>({ reviewFiles: true }),
     watch: keys<WatchSettings>({ poll: true }),
   },
   project: {
@@ -172,6 +174,7 @@ function workspaceSeed(): Record<string, unknown> {
       download: 'all',
       inputStability: { strategy: 'mutable', severity: 'error' },
     },
+    lock: { reviewFiles: false },
     watch: { poll: true },
     plugins: [],
   }

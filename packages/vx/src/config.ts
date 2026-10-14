@@ -7,7 +7,7 @@
 export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
 
 /**
- * The workspace: settings in groups (`run`, `cache`, `watch`) and the
+ * The workspace: settings in groups (`run`, `cache`, `lock`, `watch`) and the
  * plugins. Each setting's environment variable and flag derive from its
  * path (`run.concurrency` → `VX_RUN_CONCURRENCY`, `vx run --concurrency`); a flag beats
  * the variable, which beats this file. `docs/schema.md` lists them all.
@@ -16,6 +16,7 @@ export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
 export interface WorkspaceConfig {
   run?: RunSettings
   cache?: CacheSettings
+  lock?: LockSettings
   watch?: WatchSettings
   /**
    * Plugins registered for this workspace, consulted in this order once
@@ -120,6 +121,16 @@ export interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   /** The `cache.inputStability` of every task that does not set its own. */
   inputStability?: InputStability
+}
+
+/** `WorkspaceConfig.lock`. */
+export interface LockSettings {
+  /**
+   * `vx lock` writes each project's resolved config, pretty, to
+   * `vx.lock.json` beside its `vx.config`, for review; vx never reads it.
+   * On unless `false`.
+   */
+  reviewFiles?: boolean
 }
 
 /** `WorkspaceConfig.watch`. */
@@ -779,6 +790,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
         inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
       }
+      lock?: Known<At<T, 'lock'>, LockSettings>
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T {

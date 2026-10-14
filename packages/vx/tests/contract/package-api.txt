@@ -207,6 +207,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
         inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
       }
+      lock?: Known<At<T, 'lock'>, LockSettings>
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
@@ -817,6 +818,10 @@ export interface LockfileClaimOptions {
   readonly version: number
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
+}
+== type LockSettings (src/config.ts)
+export interface LockSettings {
+  reviewFiles?: boolean
 }
 == type Logger (src/orchestrator/logger.ts)
 export interface Logger {
@@ -1738,6 +1743,7 @@ export interface Workspace {
 export interface WorkspaceConfig {
   run?: RunSettings
   cache?: CacheSettings
+  lock?: LockSettings
   watch?: WatchSettings
   plugins?: readonly (Plugin | undefined | null | false)[]
 }

@@ -213,7 +213,8 @@ other walker: a project outside a git work tree is a `UserError`
    too) and any matched path is removed.
 4. **Always-ignored** — hard-coded
    (`**/.git/**`, `**/.vx/cache/**`, `**/*.tsbuildinfo`,
-   `**/.vx/lock.json`, `**/*.bun-build`,
+   `**/.vx/lock.json`, `**/vx.lock.json`, `**/.vx/.gitattributes`,
+   `**/.vx/.gitignore`, `**/*.bun-build`,
    `**/.????????????????-????????.tmp/**`, `**/.vx-tmp-*`)
    — applied as a defense-in-depth even if git happens to track
    something there. The lock file is vx's own frozen-config metadata,

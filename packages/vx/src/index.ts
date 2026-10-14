@@ -29,6 +29,7 @@ export type {
   WorkspaceConfig,
   RunSettings,
   CacheSettings,
+  LockSettings,
   WatchSettings,
   Duration,
   ProjectConfig,
