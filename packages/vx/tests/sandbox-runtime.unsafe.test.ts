@@ -25,7 +25,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { pluginSource } from './helpers/plugin.js'
+import { type EdgeMap, pluginSource } from './helpers/plugin.js'
 import {
   initSandbox,
   pendingWriteGrants,
@@ -113,8 +113,10 @@ const collectingLogger = (fixture: Fixture): Logger => ({
   },
 })
 
-async function makeWorkspace(): Promise<Fixture> {
-  const root = await makeWorkspaceRoot({ prefix: 'vx-sandbox-' })
+async function makeWorkspace(edges?: EdgeMap): Promise<Fixture> {
+  const root = await makeWorkspaceRoot(
+    edges === undefined ? { prefix: 'vx-sandbox-' } : { prefix: 'vx-sandbox-', edges },
+  )
   return { root, log: [] }
 }
 
@@ -2242,7 +2244,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
     let fixture: Fixture
 
     beforeEach(async () => {
-      fixture = await makeWorkspace()
+      // The edge a lockfile plugin gives: core reads no manifest edge.
+      fixture = await makeWorkspace({ '@x/app': ['@x/ui'] })
     })
     afterEach(async () => {
       await rm(fixture.root, { recursive: true, force: true })
