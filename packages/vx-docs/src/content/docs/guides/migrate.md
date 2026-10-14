@@ -63,10 +63,10 @@ export default { plugins: [turbo()] } satisfies WorkspaceConfig
 
 ```text
 $ npx @vzn/vx init --keep
-vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
+vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
 wrote .vx/workspace.ts.
 
-next: npm install -D @vzn/vx-migrate && npx @vzn/vx run build --all
+next: npm install -D @vzn/vx-migrate && npx @vzn/vx lock && npx @vzn/vx run build --all
 ```
 
 The `next:` line uses your lockfile's manager (`pnpm add -D -w …` beside
@@ -236,10 +236,10 @@ export default { plugins: [nx()] } satisfies WorkspaceConfig
 
 ```text
 $ npx @vzn/vx init --keep
-vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
+vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
 wrote .vx/workspace.ts.
 
-next: npm install -D @vzn/vx-migrate && npx @vzn/vx run build --all
+next: npm install -D @vzn/vx-migrate && npx @vzn/vx lock && npx @vzn/vx run build --all
 ```
 
 `bunx @vzn/vx-migrate` reports what it wrote, then locks the configs:

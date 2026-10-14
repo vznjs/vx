@@ -1414,9 +1414,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
         const r = await vx(root, ['init', '--keep'])
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
         expect(r.out).toBe(
-          `vx init: ${file} found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.\n` +
+          `vx init: ${file} found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.\n` +
             'wrote .vx/workspace.ts.\n\n' +
-            'next: npm install -D @vzn/vx-migrate && vx run compile --all\n',
+            'next: npm install -D @vzn/vx-migrate && vx lock && vx run compile --all\n',
         )
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
           "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
@@ -1648,7 +1648,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const again = await vx(root, ['init', '--keep'])
       expect(again.code).toBe(0)
       expect(again.out).toContain('.vx/workspace.ts already declares turbo().')
-      expect(again.out).toContain('next: npm install -D @vzn/vx-migrate && vx run build --all')
+      expect(again.out).toContain(
+        'next: npm install -D @vzn/vx-migrate && vx lock && vx run build --all',
+      )
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1714,15 +1716,15 @@ describe('vx init — the generated build is not a cached no-op', () => {
       rows.push(adoptionNext(root, 'nx', 'nx.json', undefined, '0.0.633'))
       const all = '@vzn/vx @vzn/vx-migrate'
       expect(rows).toEqual([
-        `npm install -D ${all} && vx run compile --all`,
-        `npm install -D ${all} && npx @vzn/vx run compile --all`,
+        `npm install -D ${all} && vx lock && vx run compile --all`,
+        `npm install -D ${all} && npx @vzn/vx lock && npx @vzn/vx run compile --all`,
         // The first lockfile in pnpm, yarn, bun, npm order names the manager.
-        `bun add -d ${all} && bunx @vzn/vx run compile --all`,
-        `yarn add -D -W ${all} && yarn vx run compile --all`,
-        `yarn add -D ${all} && yarn vx run compile --all`,
-        `pnpm add -D -w ${all} && pnpm vx run compile --all`,
-        'pnpm add -D -w @vzn/vx && pnpm vx run compile --all',
-        'pnpm add -D -w @vzn/vx@0.0.633 && pnpm vx run compile --all',
+        `bun add -d ${all} && bunx @vzn/vx lock && bunx @vzn/vx run compile --all`,
+        `yarn add -D -W ${all} && yarn vx lock && yarn vx run compile --all`,
+        `yarn add -D ${all} && yarn vx lock && yarn vx run compile --all`,
+        `pnpm add -D -w ${all} && pnpm vx lock && pnpm vx run compile --all`,
+        'pnpm add -D -w @vzn/vx && pnpm vx lock && pnpm vx run compile --all',
+        'pnpm add -D -w @vzn/vx@0.0.633 && pnpm vx lock && pnpm vx run compile --all',
       ])
     } finally {
       if (ua === undefined) delete process.env['npm_config_user_agent']
