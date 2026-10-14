@@ -4,6 +4,7 @@
 export { run, planRun, nxProjectTarget, projectNamed } from './run.js'
 export { prepareRun, type PreparedRun } from './prepare.js'
 export { affectedTaskProjects } from './affected-tasks.js'
+export { applyGraphStage } from './graph-stage.js'
 export type { AffectedReason } from './affected-tasks.js'
 export {
   discoverProjects,

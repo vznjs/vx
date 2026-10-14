@@ -289,8 +289,15 @@ export interface BuildGraphOptions {
    */
   workspaceRoot?: string
   /** The workspace's `run.rules`; each is on unless set to `false`. */
-  rules?: WorkspaceRules | undefined
+  rules?: GraphRules | undefined
 }
+
+/**
+ * `run.rules` as the graph applies them. `locked`: a frozen run, whose
+ * configs are the ones `vx lock` checked the rules against (owner,
+ * 2026-10-13), so the run does not check them again.
+ */
+export type GraphRules = WorkspaceRules & { readonly locked?: boolean }
 
 /**
  * The refusal of a literal `^name` that no project in the workspace
@@ -746,7 +753,7 @@ function reachingTo(nodes: Map<string, TaskNode>, target: string): Set<string> {
 export function checkGraph(
   nodes: Map<string, TaskNode>,
   workspaceRoot?: string,
-  rules?: WorkspaceRules,
+  rules?: GraphRules,
 ): void {
   for (const [key, node] of nodes) {
     if (node.id !== key) {
@@ -762,8 +769,12 @@ export function checkGraph(
   }
   for (const node of nodes.values()) refuseSelfClean(node)
   detectCycle(nodes)
-  detectOutputCollisions(nodes, workspaceRoot, rules?.exclusiveOutputs !== false)
-  if (rules?.upfrontKeys !== false) detectInputOverlaps(nodes, workspaceRoot)
+  const exclusive = rules?.exclusiveOutputs !== false
+  const locked = rules?.locked === true
+  // Under a lock an exclusive graph has no overlap to mark; a non-exclusive
+  // one still needs the addition marks the walk derives.
+  if (!locked || !exclusive) detectOutputCollisions(nodes, workspaceRoot, exclusive)
+  if (rules?.upfrontKeys !== false && !locked) detectInputOverlaps(nodes, workspaceRoot)
 }
 
 /**

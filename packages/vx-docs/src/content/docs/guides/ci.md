@@ -46,7 +46,7 @@ would run:
 | `--continue`        | keep going after a failure ([modes](../configure/#tasks-and-dependencies)) |
 | `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |
 | `--summarize`       | write a JSON summary of the run                             |
-| `--frozen`          | load the configs from `vx-lock.json` ([below](#a-frozen-graph)) |
+| `--no-frozen`       | evaluate the configs instead of loading `vx-lock.json` ([below](#a-frozen-graph)) |
 
 Every flag: [the CLI reference](../../cli/).
 
@@ -125,12 +125,15 @@ A failure on inputs that passed before says so on its row:
 ### A frozen graph
 
 `vx lock` writes each project's resolved config, with a hash of its
-config file, to `vx-lock.json`; commit it. `vx run ci --frozen` loads the
-configs from the lock instead of evaluating them, and builds the graph
-from them as usual. A frozen run trusts the lock and checks nothing:
-`vx lock --check` fails on drift, so run it in CI too. It buys
-determinism, not speed: on the 1,000-project bench a plain run's median
-of 177 ms against frozen's 165 is a tie.
+config file, to `vx-lock.json`, and refuses a graph that breaks a
+`run.rules` rule (two tasks writing one output, an input that reads
+another task's output); commit it. Under CI (`CI` set) a run is frozen:
+it loads the configs from the lock instead of evaluating them, writes
+the lock first when there is none, and checks neither the rules nor
+freshness. `vx lock --check` fails on drift or a broken rule, so run it
+in CI too. `--no-frozen` or `VX_RUN_FROZEN=false` evaluate the configs
+instead. It buys determinism, not speed: on the 1,000-project bench a
+plain run's median of 177 ms against frozen's 165 is a tie.
 
 ### Skip a deploy nothing changed
 

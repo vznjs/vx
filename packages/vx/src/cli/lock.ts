@@ -4,7 +4,15 @@
 
 import type { ProjectConfig } from '../config.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
-import { relPosix, secretMask, xxh3hex } from '../util/index.js'
+import { buildTaskGraph, expandRequested } from '../graph/index.js'
+import {
+  applyGraphStage,
+  hasHook,
+  isDefaultBuild,
+  loadResolvedProjects,
+} from '../orchestrator/index.js'
+import { runRules } from '../settings.js'
+import { isUserError, relPosix, secretMask, xxh3hex } from '../util/index.js'
 import {
   findWorkspaceRoot,
   type LoadReads,
@@ -13,12 +21,13 @@ import {
   LOCKFILE_NAME,
   LOCKFILE_VERSION,
   readLockfile,
+  buildPackageGraph,
   writeLockfile,
   type Lockfile,
   type LockfileEntry,
   type ProjectMeta,
 } from '../workspace/index.js'
-import { discoverCliProjects } from './workspace-config.js'
+import { discoverCliProjects, loadCliWorkspace, warnToStderr } from './workspace-config.js'
 
 interface LockArgs {
   check: boolean
@@ -59,6 +68,18 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
     )
   const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(process.cwd())
+  if (parsed.check) {
+    const { all, metas, bare } = await configuredProjects(root, reads)
+    return await checkLock(root, all, metas, bare, parsed.format === 'json')
+  }
+  return await lockWorkspace(root, reads)
+}
+
+/** Every project a run discovers, and how many have no vx.config. */
+async function configuredProjects(
+  root: string,
+  reads: LoadReads = new Map(),
+): Promise<{ all: ProjectMeta[]; metas: ConfiguredMeta[]; bare: number }> {
   const workspace = await loadWorkspace(root, reads)
   // As a run discovers them: a project a plugin's `discover` stage adds
   // was left out of the lock, and every `--frozen` run then refused it
@@ -72,9 +93,57 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
   // or none) load live under --frozen too, so both verbs say how many the
   // count above leaves out — `locked 0 project configs` on a turbo() repo
   // read like an audit of something (2026-09-16).
-  const bare = all.length - metas.length
-  if (parsed.check) return await checkLock(root, metas, bare, parsed.format === 'json')
+  return { all, metas, bare: all.length - metas.length }
+}
+
+/**
+ * `vx lock`: evaluate every config, check the graph rules over every task,
+ * and write the lock. Also what a frozen run with no lock does first.
+ */
+export async function lockWorkspace(root: string, reads?: LoadReads): Promise<number> {
+  const { all, metas, bare } = await configuredProjects(root, reads)
+  const broken = await graphRuleRefusal(root, all)
+  if (broken !== null) {
+    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${broken}\n`)
+    return 1
+  }
   return await writeLock(root, metas, bare)
+}
+
+/**
+ * The graph rules (`run.rules`), checked here over every task the
+ * workspace declares: a frozen run trusts the lock and does not check them
+ * (owner, 2026-10-13). The graph is the one a run builds, the `graph`
+ * stage included; its refusal, or null.
+ */
+async function graphRuleRefusal(root: string, all: ProjectMeta[]): Promise<string | null> {
+  try {
+    const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
+    const projects = await loadResolvedProjects(root, { warn: warnToStderr })
+    const names = new Set<string>()
+    for (const entry of projects.values())
+      for (const t of Object.keys(entry.config.tasks ?? {})) names.add(t)
+    const rules = runRules(workspaceConfig)
+    const nodes = buildTaskGraph({
+      projects,
+      packageGraph: buildPackageGraph(all),
+      requested: expandRequested([...names], [...projects.keys()], projects, isDefaultBuild),
+      workspaceRoot: root,
+      rules,
+    })
+    if (hasHook(plugins, 'graph'))
+      await applyGraphStage(plugins, nodes, {
+        workspaceRoot: root,
+        cacheDir,
+        projectMetas: all,
+        warn: warnToStderr,
+        rules,
+      })
+  } catch (err) {
+    if (isUserError(err)) return err.message
+    throw err
+  }
+  return null
 }
 
 /** Evaluate one config in the current env, returning its lock entry. */
@@ -167,6 +236,7 @@ function secretsIn(projects: Record<string, LockfileEntry>): Array<{ at: string;
  */
 async function checkLock(
   root: string,
+  all: ProjectMeta[],
   metas: ConfiguredMeta[],
   bare: number,
   json: boolean,
@@ -219,6 +289,8 @@ async function checkLock(
     }),
   )
   const failures = results.filter((r): r is string => r !== null)
+  const broken = await graphRuleRefusal(root, all)
+  if (broken !== null) failures.push(broken)
   const inWorkspace = new Set(metas.map((m) => m.name))
   for (const name of Object.keys(lock.projects)) {
     if (!inWorkspace.has(name)) {

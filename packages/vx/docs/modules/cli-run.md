@@ -30,7 +30,8 @@ export interface RunArgs {
   remoteRequested?: boolean // a --cache spec named a remote axis
   cacheDir: string | undefined // --cache-dir
   cacheScope?: string // --cache-scope
-  frozen: boolean // --frozen: run the lock's graph
+  frozen: boolean // run.frozen, settled before anything loads (cli/frozen.ts)
+  frozenFlag?: boolean // --frozen / --no-frozen as typed
   poll?: true // vx watch --poll (watch.poll)
   forwardArgs: string[] // everything after `--`
   verbosity: number

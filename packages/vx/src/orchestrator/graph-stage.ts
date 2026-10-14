@@ -2,8 +2,7 @@
 // CLI's `--affected` task selection (`vx show <task> --affected`), so both
 // select over the graph the hooks leave.
 
-import type { WorkspaceRules } from '../config.js'
-import type { TaskNode } from '../graph/index.js'
+import type { GraphRules, TaskNode } from '../graph/index.js'
 import { type ProjectMeta, validateProjectConfig } from '../workspace/index.js'
 import { applyGraphHooks } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
@@ -17,7 +16,7 @@ export async function applyGraphStage(
     cacheDir: string
     projectMetas: readonly ProjectMeta[]
     warn: (message: string) => void
-    rules?: WorkspaceRules | undefined
+    rules?: GraphRules | undefined
   },
 ): Promise<void> {
   // A hook edits each node's config in place, as `project` does, so the

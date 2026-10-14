@@ -46,6 +46,7 @@ import {
   buildTaskGraph,
   excludeDependencies,
   expandRequested,
+  type GraphRules,
   isGroupTask,
   type TaskNode,
   undeclaredDepsError,
@@ -534,6 +535,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // the whole workspace: a `^name` nothing loaded declares may be declared
     // by a config the scope left out, so the builder hands it back instead of
     // refusing it, and the rest decide.
+    const graphRules: GraphRules = {
+      ...runRules(workspaceConfig),
+      ...(options.frozen === true ? { locked: true } : {}),
+    }
     const unproven: Array<[taskId: string, name: string]> = []
     const graphOf = (req: typeof requested) =>
       buildTaskGraph({
@@ -541,7 +546,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         packageGraph,
         requested: req,
         workspaceRoot,
-        rules: runRules(workspaceConfig),
+        rules: graphRules,
         ...(partialLoad
           ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
           : {}),
@@ -554,7 +559,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         cacheDir,
         projectMetas,
         warn: (m) => log.status(m),
-        rules: runRules(workspaceConfig),
+        rules: graphRules,
       })
     // `--affected` selects over the FINAL graph: an edge or an input a
     // `graph` hook adds moves a key, so the hooks run first, over every

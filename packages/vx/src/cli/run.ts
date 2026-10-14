@@ -3,6 +3,7 @@ import path from 'node:path'
 import { isatty } from 'node:tty'
 import { cacheScopeError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
+import { onCI, settleFrozen } from './frozen.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   planRun,
@@ -74,7 +75,10 @@ export interface RunArgs {
   cacheDir: string | undefined
   /** `--cache-scope <name>`: this run's `cache.scope`, above `VX_CACHE_SCOPE` and the workspace's. */
   cacheScope?: string
+  /** `run.frozen`, settled by `settleFrozen` before anything loads. */
   frozen: boolean
+  /** `--frozen` / `--no-frozen`, as typed. */
+  frozenFlag?: boolean
   /** `vx watch --poll` (`watch.poll`). */
   poll?: true
   forwardArgs: string[]
@@ -114,12 +118,12 @@ function flagOf(a: string | undefined, name: string): string | undefined {
   return a === name || a?.startsWith(`${name}=`) ? name : undefined
 }
 
-// The settings parsed by their kind alone; the cache flags, `--continue`
-// and `--cache-dir` keep their own branches above.
+// The settings parsed by their kind alone; the cache flags, `--continue`,
+// `--frozen` and `--cache-dir` keep their own branches above.
 const GENERIC_FLAGS = SETTINGS.filter(
   (s) =>
     s.flag?.verb === 'run' &&
-    !['run.continue', 'cache.dir', 'cache.policy', 'cache.scope'].includes(s.path),
+    !['run.continue', 'run.frozen', 'cache.dir', 'cache.policy', 'cache.scope'].includes(s.path),
 )
 
 /** The setting a flag names, by its name or alias. */
@@ -226,8 +230,8 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         .split(',')
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
-    } else if (a === '--frozen') {
-      out.frozen = true
+    } else if (a === '--frozen' || a === '--no-frozen') {
+      out.frozenFlag = a === '--frozen'
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
       if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
@@ -470,9 +474,6 @@ export function detectFlow(
 }
 
 /** `CI=0` / `CI=false` are not CI, as the output flow reads them. */
-function onCI(v: string | undefined): boolean {
-  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
-}
 
 /** The filters a run's scope comes from: `--filter`s, with `--affected` as its `...[<base>]`. */
 async function scopeFilters(
@@ -660,6 +661,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
 
   const cwd = process.cwd()
+  const frozen = await settleFrozen(cwd, parsed.frozenFlag)
+  if (typeof frozen === 'number') return frozen
+  parsed.frozen = frozen
   let tasks = [...parsed.tasks]
   let picked: string | undefined
 

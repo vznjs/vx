@@ -52,6 +52,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--poll': [],
   '--continue': [],
   '--frozen': [],
+  '--no-frozen': [],
   '--output-logs': ['full'],
   '--download': ['all'],
   '--verbosity': ['1'],

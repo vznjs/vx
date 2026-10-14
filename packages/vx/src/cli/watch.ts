@@ -12,6 +12,7 @@
 // per-task input globs — the cache key is the source of truth, and
 // filtering would mean re-doing the glob/boundary work on every event.
 
+import { settleFrozen } from './frozen.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
@@ -102,6 +103,9 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`${refused}\n`)
     return 1
   }
+  const frozen = await settleFrozen(process.cwd(), parsed.frozenFlag)
+  if (typeof frozen === 'number') return frozen
+  parsed.frozen = frozen
   if (parsed.tasks.length === 0) {
     process.stderr.write(
       `vx watch: missing task name (vx watch <task>, e.g. vx watch build)${seeHelp('watch')}\n`,
