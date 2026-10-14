@@ -61,8 +61,8 @@ async function workspace(root: string, file: boolean): Promise<void> {
       pack: { ...sleep(SHORT_S), dependsOn: ['check'] },
     })
   const options = file ? "{ file: 'timings.json' }" : ''
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN)}\n` +
       `export default { cacheDir: '.cache', plugins: [scheduleHistoryPlugin(${options})] }\n`,
   )

@@ -53,7 +53,7 @@ behaviour capabilities `executor` (where a command runs) and `cache`
 `output` (who draws the terminal),
 `setup` and `teardown` around the run, and `commands` (CLI verbs).
 Core applies **no** plugin by default and names
-none. A `vx.workspace.ts` that declares no plugins still runs and
+none. A `.vx/workspace.ts` that declares no plugins still runs and
 caches, because the local executor and the local cache are the floor
 under every list, not plugins you have to remember to add.
 

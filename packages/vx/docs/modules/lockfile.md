@@ -1,9 +1,9 @@
-# `src/workspace/lockfile.ts` — vx-lock.json
+# `src/workspace/lockfile.ts` — .vx/lock.json
 
 ## Purpose
 
 `vx lock` freshly evaluates every project config and freezes it, by
-project name, into `vx-lock.json`. `vx run --frozen` loads configs FROM
+project name, into `.vx/lock.json`. `vx run --frozen` loads configs FROM
 the lock (zero eval, no staleness check, no schema validation);
 `vx lock --check` re-evaluates every config and reports one drift
 message per project that differs.
@@ -11,7 +11,7 @@ message per project that differs.
 ## Public surface
 
 ```ts
-export const LOCKFILE_NAME = 'vx-lock.json'
+export const LOCKFILE_NAME = '.vx/lock.json'
 export const LOCKFILE_VERSION = 2
 
 export interface Lockfile {
@@ -69,5 +69,5 @@ any refusal that comes first.
   workspace. It compares a fresh evaluation in the
   lock's JSON form, so a field a config leaves `undefined` is not drift.
   An unknown argument exits 1 before anything is read or written.
-- `vx-lock.json` is globally excluded from cache inputs and
+- `.vx/lock.json` is globally excluded from cache inputs and
   `--affected` (it's vx's own metadata, never a task input).

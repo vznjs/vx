@@ -232,7 +232,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { reapi } from '@vzn/vx-reapi'\n\nexport default defineWorkspace({\n  plugins: [reapi({ endpoint: 'grpcs://remote.example.com', execute: true, capacity: 64 })],\n})",
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { reapi } from '@vzn/vx-reapi'\n\nexport default defineWorkspace({\n  plugins: [reapi({ endpoint: 'grpcs://remote.example.com', execute: true, capacity: 64 })],\n})",
     },
     image: 'executor-pools.png',
     imageAlt: 'Remote tasks admitted against the pool’s own capacity.',
@@ -948,7 +948,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Turn it off, refresh it, or choose per layer what is read and written.',
     body: [
       'Sometimes you need a clean build, sometimes you want to read a shared cache without writing to it. `--no-cache` turns caching off, and `--force` re-runs everything while still refreshing the cache.',
-      '`--cache-policy` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and `cache.policy` in `vx.workspace.ts` sets the default. The local cache is always asked first, then each remote.',
+      '`--cache-policy` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and `cache.policy` in `.vx/workspace.ts` sets the default. The local cache is always asked first, then each remote.',
     ],
     example: {
       lang: 'sh',
@@ -1525,11 +1525,11 @@ export const MORE: readonly Feature[] = [
     hook: 'Checks for configs that would make runs slow or wrong, on by default, each one optional.',
     body: [
       'Two tasks writing the same `dist/**` delete each other’s output. An input glob that reads another task’s output makes keys wait on builds. vx refuses both at load, with the fix.',
-      'Each rule can be turned off in `vx.workspace.ts` when you know better.',
+      'Each rule can be turned off in `.vx/workspace.ts` when you know better.',
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  run: { rules: { exclusiveOutputs: false, upfrontKeys: true } },\n})",
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  run: { rules: { exclusiveOutputs: false, upfrontKeys: true } },\n})",
     },
     image: 'workspace-rules.png',
     imageAlt: 'Workspace rules turned on and off.',
@@ -1673,7 +1673,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { github } from '@vzn/vx-ci'\n\nexport default defineWorkspace({\n  plugins: [github({ checks: true })],\n})",
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { github } from '@vzn/vx-ci'\n\nexport default defineWorkspace({\n  plugins: [github({ checks: true })],\n})",
     },
     image: 'pr-check-run.png',
     imageAlt: 'A vx check run on a pull request.',
@@ -1697,7 +1697,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { github } from '@vzn/vx-ci'\n\nexport default defineWorkspace({\n  plugins: [github({ cacheScope: true })],\n})",
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { github } from '@vzn/vx-ci'\n\nexport default defineWorkspace({\n  plugins: [github({ cacheScope: true })],\n})",
     },
     image: 'ref-cache-scope.png',
     imageAlt: 'Cache scope taken from the branch on Actions.',
@@ -1721,7 +1721,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: "// vx.workspace.ts\nimport { turboCache } from '@vzn/vx-migrate'\n\nexport default defineWorkspace({ plugins: [turboCache()] })",
+      code: "// .vx/workspace.ts\nimport { turboCache } from '@vzn/vx-migrate'\n\nexport default defineWorkspace({ plugins: [turboCache()] })",
     },
     image: 'keep-remote-cache.png',
     imageAlt: 'vx using an existing Turbo remote cache.',
@@ -1938,7 +1938,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { reapi } from '@vzn/vx-reapi'\n\nexport default defineWorkspace({\n  plugins: [reapi({\n      endpoint: 'remote.buildbuddy.io',\n      headers: { 'x-buildbuddy-api-key': process.env['BB_KEY'] ?? '' },\n      execute: true,\n    })],\n})",
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { reapi } from '@vzn/vx-reapi'\n\nexport default defineWorkspace({\n  plugins: [reapi({\n      endpoint: 'remote.buildbuddy.io',\n      headers: { 'x-buildbuddy-api-key': process.env['BB_KEY'] ?? '' },\n      execute: true,\n    })],\n})",
     },
     image: 'reapi-tls.png',
     imageAlt: 'A REAPI plugin connected to a hosted server.',
@@ -2034,7 +2034,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { otel } from '@vzn/vx-otel'\n\nexport default defineWorkspace({\n  plugins: [otel({ live: true })],\n})",
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { otel } from '@vzn/vx-otel'\n\nexport default defineWorkspace({\n  plugins: [otel({ live: true })],\n})",
     },
     image: 'otel-live.png',
     imageAlt: 'Spans streaming to a dashboard during a run.',
@@ -2058,7 +2058,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'\n\nexport default defineWorkspace({\n  plugins: [scheduleHistoryPlugin()],\n})",
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'\n\nexport default defineWorkspace({\n  plugins: [scheduleHistoryPlugin()],\n})",
     },
     image: 'memory-admission.png',
     imageAlt: 'Tasks admitted against learned peak memory.',

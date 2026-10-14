@@ -141,7 +141,7 @@ describe('a task typed as a verb', () => {
   })
 
   it('a plugin verb of the same name is the verb', async () => {
-    const ws = path.join(root, 'vx.workspace.mjs')
+    const ws = path.join(root, '.vx/workspace.mjs')
     const before = await Bun.file(ws).text()
     try {
       await writeFile(

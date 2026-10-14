@@ -36,7 +36,7 @@ literal that another task's glob matches) are refused when the graph
 is built, because a restore of one would delete the other's work. Two
 globs that only *might* overlap are let through, and there the last
 restore wins. By default the refusal holds even when one task depends
-on the other (`rules.exclusiveOutputs` in `vx.workspace.ts`). Set it to
+on the other (`rules.exclusiveOutputs` in `.vx/workspace.ts`). Set it to
 `false` and vx accepts the ordered overlap: the second task runs after
 the first and adds to the tree (twenty's `build:individual` writing
 `dist/individual` into `build`'s `dist`), and vx caches exactly what it
@@ -69,7 +69,7 @@ means for a directory it only ever adds to.
   not declare is a bug the [sandbox](../the-sandbox/) can catch, but
   the wipe itself is bounded by the declaration.
 - Another project's directory. Boundaries are hard.
-- `.git` and the `.vx` cache directory, whatever the glob says.
+- `.git` and the `.vx/cache` directory, whatever the glob says.
 - A file git tracks. A committed file under an output glob is still
   saved and restored, but the wipe never deletes it.
 - `node_modules`, unless a glob names it. `**/*.js` leaves installed

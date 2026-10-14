@@ -254,7 +254,7 @@ export async function affectedChanges(
       gitPaths(args.workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z']))(),
   ])
 
-  // vx-lock.json (workspace-root metadata) is excluded like a gitignored
+  // .vx/lock.json (workspace-root metadata) is excluded like a gitignored
   // file: re-running `vx lock` must not mark every project affected.
   // An untracked file under `node_modules` is an install, which the input
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.

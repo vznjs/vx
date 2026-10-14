@@ -111,7 +111,7 @@ sub-variants were weighed:
   `@vzn/vx-docs`. Bounded by nothing in particular, and it dissolves
   project boundaries (architecture principle #6).
 
-**F. Record the import closure in `vx-lock.json` at `vx lock` time.**
+**F. Record the import closure in `.vx/lock.json` at `vx lock` time.**
 Rejected for now: it is a versioned on-disk format change that helps only
 frozen CI, and E is cheap enough that it buys nothing. Noted so it is not
 re-proposed without a measurement that says E is too slow.
@@ -164,7 +164,7 @@ two `git` processes. The implementer must re-measure on the `bench/`
 synthetic workspace and record the number; the claim above is one box, warm.
 
 Note the existing orphan path already costs far more than this: when there
-are orphans and no `vx-lock.json`, `workspaceGlobOwners`
+are orphans and no `.vx/lock.json`, `workspaceGlobOwners`
 (`src/cli/run.ts:648-680`) **evaluates every project config in the
 workspace**. This proposal adds no cost to that path and does not touch it.
 
@@ -337,7 +337,7 @@ into "select everything".
 
 ## What's out of scope
 
-- **`vx.workspace.ts` and its imports.** `fingerprint.ts:28-37` deliberately
+- **`.vx/workspace.ts` and its imports.** `fingerprint.ts:28-37` deliberately
   keeps the workspace config out of the fingerprint: everything it can
   declare is placement, storage or observability, never what a command
   produces. Nothing it imports can move a cache key, so widening selection
@@ -372,7 +372,7 @@ blindness`prune.ts:40-41` documents; say so, do not sell completeness.
    would need both modes. Recommendation: **not in this wave** — land the
    scanner, then migrate prune in a follow-up if the shared helper stays
    honest. Two scanners is a drift risk that must be recorded either way.
-2. Should the scan be skipped under `--frozen`? `vx-lock.json` holds resolved
+2. Should the scan be skipped under `--frozen`? `.vx/lock.json` holds resolved
    configs but not import closures, so no — there is nothing cheaper to
    consult. Revisit only with option F.
 3. `apps/docs/vx.config.ts` importing `../../src/index.ts` will, after this

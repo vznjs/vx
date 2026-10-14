@@ -33,7 +33,7 @@ async function fixture(remote: 'only' | undefined): Promise<void> {
      } } }`,
   )
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource(
       [
         pluginSource(

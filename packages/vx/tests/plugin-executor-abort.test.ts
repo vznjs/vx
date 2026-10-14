@@ -36,7 +36,7 @@ afterEach(async () => {
 
 it("an aborted run aborts a plugin executor's request, so its child ends and run() returns", async () => {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource(
         'org/spawner',
@@ -75,7 +75,7 @@ it("an aborted run aborts a plugin executor's request, so its child ends and run
 
 it("exec.timeout aborts a plugin executor's request, and the task fails as timed out", async () => {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource(
         'org/spawner',
@@ -113,7 +113,7 @@ it("exec.timeout aborts a plugin executor's request, and the task fails as timed
 // replayed as a green hit (X-125).
 it("an exit 0 after exec.timeout's abort is a timeout on a plugin executor too (X-125)", async () => {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource(
         'org/spawner',
@@ -174,7 +174,7 @@ describe('an executor that ignores the signal', () => {
   })
 
   it('is abandoned after the grace once exec.timeout fires, and the task times out', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([deaf]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([deaf]))
     await addProject(
       root,
       'app',
@@ -199,7 +199,7 @@ describe('an executor that ignores the signal', () => {
   }, 20_000)
 
   it('is abandoned after the grace once the run stops, and the task is aborted', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([deaf]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([deaf]))
     await addProject(
       root,
       'app',

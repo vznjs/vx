@@ -490,9 +490,9 @@ describe('affectedProjects', () => {
     await mkdir(path.join(root, 'tools'), { recursive: true })
     await writeFile(path.join(root, 'tools/gen.mjs'), "export const cmd = 'echo v1'\n")
     await writeFile(path.join(root, 'tools/unrelated.mjs'), 'export {}\n')
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
-      "import { cmd } from './tools/gen.mjs'\nexport default { plugins: [] }\n",
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      "import { cmd } from '../tools/gen.mjs'\nexport default { plugins: [] }\n",
     )
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'workspace config')
@@ -505,7 +505,7 @@ describe('affectedProjects', () => {
     await writeFile(path.join(root, 'tools/gen.mjs'), "export const cmd = 'echo v2'\n")
     expect(await all()).toEqual(['a', 'b'])
     await git(root, 'checkout', '--', 'tools/gen.mjs')
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
     expect(await all()).toEqual(['a', 'b'])
   })
 
@@ -726,23 +726,23 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual([])
   })
 
-  it('a vx-lock.json change never marks a project affected, even the root project', async () => {
+  it('a .vx/lock.json change never marks a project affected, even the root project', async () => {
     // The root is a project here, so a root-level file edit WOULD map to
     // it — proving the exclusion is the lock filter, not "root isn't a
-    // project". A README edit at root still marks it; vx-lock.json never.
+    // project". A README edit at root still marks it; .vx/lock.json never.
     const withRoot: ProjectMeta[] = [
       ...projects,
       { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
     ]
     // Commit both root files so `git diff` (tracked changes only) can see
     // edits to them.
-    await writeFile(path.join(root, 'vx-lock.json'), '{"v":1}')
+    await Bun.write(path.join(root, '.vx/lock.json'), '{"v":1}')
     await writeFile(path.join(root, 'README.md'), 'v1')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'add lock + readme')
 
     // Editing only the lock → nothing affected.
-    await writeFile(path.join(root, 'vx-lock.json'), '{"v":2}')
+    await Bun.write(path.join(root, '.vx/lock.json'), '{"v":2}')
     expect([
       ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withRoot })),
     ]).toEqual([])
@@ -958,20 +958,20 @@ describe('affectedProjects', () => {
       expect([...out].sort()).toEqual(['a', 'b'])
     })
 
-    it('a vx.workspace change does NOT move the fingerprint', async () => {
+    it('a .vx/workspace change does NOT move the fingerprint', async () => {
       // The deliberate exclusion, pinned so nobody "fixes" it. Everything
-      // vx.workspace can declare is placement/storage/observability, never
+      // .vx/workspace can declare is placement/storage/observability, never
       // what a command produces — and folding it in would split a laptop
       // (local plugins) from CI (reapi declared) into disjoint cache
       // namespaces, sharing not one entry.
       const before = await computeWorkspaceFingerprint(root)
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         'export default { plugins: [], concurrency: 3 }\n',
       )
       expect(await computeWorkspaceFingerprint(root)).toBe(before)
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         'export default { plugins: [], concurrency: 99 }\n',
       )
       expect(await computeWorkspaceFingerprint(root)).toBe(before)
@@ -1325,17 +1325,17 @@ describe('affectedProjects', () => {
       expect([...out]).toEqual([])
     })
 
-    it('vx-lock.json still never widens, even though it sits at the root', async () => {
+    it('.vx/lock.json still never widens, even though it sits at the root', async () => {
       // vx's OWN lockfile is deliberately excluded from cache inputs, so
       // re-running `vx lock` must not rebuild the workspace.
       //
       // The root is a project here ON PURPOSE. Without it the assertion is
-      // VACUOUS — vx-lock.json maps to no project directory anyway, so `[]`
+      // VACUOUS — .vx/lock.json maps to no project directory anyway, so `[]`
       // comes back whether or not any guard exists (mutation-verified: with
       // only a/b in scope, deleting the exclusion filter still passed). With
       // root in scope, deleting the filter yields ['root'] and this fails.
       //
-      // What the filter, and ONLY the filter, enforces: adding 'vx-lock.json'
+      // What the filter, and ONLY the filter, enforces: adding '.vx/lock.json'
       // to the widening set is inert, because the filter has already removed
       // it from `changed`. That mutation survives and no test can kill it —
       // recorded rather than papered over, so nobody adds a second guard here
@@ -1344,11 +1344,11 @@ describe('affectedProjects', () => {
         ...projects,
         { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
       ]
-      await writeFile(path.join(root, 'vx-lock.json'), '{"v":1}')
+      await Bun.write(path.join(root, '.vx/lock.json'), '{"v":1}')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'add vx lock')
 
-      await writeFile(path.join(root, 'vx-lock.json'), '{"v":2}')
+      await Bun.write(path.join(root, '.vx/lock.json'), '{"v":2}')
       const out = await affectedProjects({
         workspaceRoot: root,
         since: 'HEAD',
@@ -2115,8 +2115,8 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
     // A `project` plugin gives a config-less package a task reading a root
     // glob; a written config in a sibling declares none.
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
         'gen',
         `{ project(config, ctx) {
@@ -2203,7 +2203,7 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
     expect([
       await owners('shared/src.txt'),
       await owners('shared/gen/out.txt'),
-      await owners('shared/.vx/x'),
+      await owners('shared/.vx/cache/x'),
     ]).toEqual([['p'], ['p'], []])
   })
 })

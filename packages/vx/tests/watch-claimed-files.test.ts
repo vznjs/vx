@@ -23,7 +23,7 @@ describe('vx watch and claimed root files', () => {
     const w = f.watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
     await initialOnly(w, f.log)
-    await writeFile(path.join(f.root, 'vx.workspace.mjs'), claimant('org/claimant'))
+    await Bun.write(path.join(f.root, '.vx/workspace.mjs'), claimant('org/claimant'))
     await until(() => w.out().includes('CLAIMANT-LOADED'), 'the cycle under the new plugin')
     await until(() => w.out().split('vx watch: watching').length === 3, 'the re-arm after it')
     await writeFile(path.join(f.root, 'custom.lock'), 'v1\n')
@@ -33,7 +33,7 @@ describe('vx watch and claimed root files', () => {
 
   // Control: claimed from the start, the file is an event (item 971's path).
   it('a file claimed at the start is an event', async () => {
-    await writeFile(path.join(f.root, 'vx.workspace.mjs'), claimant('org/claimant'))
+    await Bun.write(path.join(f.root, '.vx/workspace.mjs'), claimant('org/claimant'))
     f.watch = startWatch(f.root)
     const w = f.watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')

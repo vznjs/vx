@@ -827,12 +827,12 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
-    "honours vx.workspace.mjs's cache.dir, which VX_CACHE_DIR would beat",
+    "honours .vx/workspace.mjs's cache.dir, which VX_CACHE_DIR would beat",
     async () => {
       const env = process.env['VX_CACHE_DIR']
       delete process.env['VX_CACHE_DIR']
-      await writeFile(
-        path.join(fixture.root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(fixture.root, '.vx/workspace.mjs'),
         `export default { cache: { dir: 'build/.vx-cache' }, plugins: [] }\n`,
       )
       await addProject(fixture.root, 'app-x', {

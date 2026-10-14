@@ -126,7 +126,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
       )
-      await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
       await writeFile(path.join(root, 'packages', 'ui', 'package.json'), '{"name":"ui"}')
       await writeFile(
         path.join(root, 'packages', 'ui', 'vx.config.mjs'),

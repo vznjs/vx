@@ -29,7 +29,7 @@ import { bun } from '@vzn/vx-lockfile'
 //              On Linux CI the reapi and migrate suites (38 s, 27 s) wait
 //              on only their own install and started last, the tail of the
 //              gate by 22 s (I-13). `file` writes what it learned to
-//              .vx/timings.json, which CI caches beside .vx/cache, so a
+//              .vx/cache/timings.json, which CI caches with the cache, so a
 //              runner whose vx cache missed still orders by real times.
 export default defineWorkspace({
   plugins: [
@@ -37,7 +37,7 @@ export default defineWorkspace({
     github(),
     bun(),
     scheduleHistoryPlugin({
-      file: '.vx/timings.json',
+      file: '.vx/cache/timings.json',
       assume: {
         '@vzn/vx-docs#build': 30_000,
         '@vzn/vx#test.bun.unsafe': 46_000,

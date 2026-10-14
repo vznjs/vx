@@ -439,8 +439,8 @@ describe('yarn() declared', () => {
       await writeFile(path.join(dir, 'vx.config.mjs'), BUILD)
     }
     await writeFile(path.join(root, 'yarn.lock'), berry())
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(['yarn()'], `import { yarn } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
     )
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })

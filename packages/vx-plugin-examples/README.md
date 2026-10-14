@@ -21,11 +21,11 @@ shows `config`, `discover` and `fingerprint`.
 | `graph`     | [`plugins/graph.ts`](plugins/graph.ts)         | tasks of a name run one after another across projects                              |
 | `key`       | [`plugins/key.ts`](plugins/key.ts)             | folds environment variables into every cache key                                   |
 
-Use one in `vx.workspace.ts`:
+Use one in `.vx/workspace.ts`:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { envKey } from './plugins/key.ts'
+import { envKey } from '../plugins/key.ts'
 
 export default defineWorkspace({ plugins: [envKey(['NODE_ENV'])] })
 ```

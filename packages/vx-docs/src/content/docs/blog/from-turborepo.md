@@ -25,7 +25,7 @@ beside `turbo.json`:
 
 ```bash
 npm install -D @vzn/vx       # or pnpm / yarn / bun
-npx @vzn/vx init                  # writes vx.workspace.ts, below, and prints next:
+npx @vzn/vx init                  # writes .vx/workspace.ts, below, and prints next:
 npm install -D @vzn/vx-migrate && npx @vzn/vx run build --all   # the next: line
 ```
 
@@ -40,7 +40,7 @@ Whatever the mapping cannot express becomes a warning on every run,
 which is the same list `bunx @vzn/vx-migrate --dry` prints once. A
 package that writes its own `vx.config.ts` keeps it; the plugin fills
 and never overwrites. So you can migrate one package at a time, until
-every package has its own config and `vx.workspace.ts` drops `turbo()`.
+every package has its own config and `.vx/workspace.ts` drops `turbo()`.
 
 ## Step one: let the tool write the files
 
@@ -52,7 +52,7 @@ bunx @vzn/vx-migrate         # write them; never overwrites without --force
 `@vzn/vx-migrate` is its own package so it runs before any vx file
 exists, and it is the whole adoption in one command: in a terminal it
 asks native (the default) or keep (`--keep`, the `turbo()` file
-`vx init` writes), writes `vx.workspace.ts` with the plugins the repo
+`vx init` writes), writes `.vx/workspace.ts` with the plugins the repo
 calls for, and installs what the files import. It reads the root pipeline and any per-package `extends`,
 inlines the matching `package.json` script as the task's command, and
 emits one `vx.config.ts` per package. A task goes where the script

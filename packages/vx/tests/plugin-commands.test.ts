@@ -1,6 +1,6 @@
 // `VxPlugin.commands` — verbs a plugin adds to the CLI. Driven through the
 // real dispatcher (`cli/index.ts run`) from inside a workspace whose
-// vx.workspace.mjs declares the plugin inline.
+// .vx/workspace.mjs declares the plugin inline.
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -74,7 +74,7 @@ const TWICE = pluginSource(
 
 describe('plugin commands', () => {
   it('a plugin verb runs with its argv and a workspace context, and its exit code is the result', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     const code = await cli(['hello', 'world', '--flag'])
     expect(code).toBe(7)
     expect((globalThis as { __vxCmd?: unknown }).__vxCmd).toEqual({
@@ -91,7 +91,7 @@ describe('plugin commands', () => {
   // dispatcher): `vx hello --help` would have printed core's reference and
   // never run the plugin.
   it('a plugin verb gets its own --help; a core verb gets the reference', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['hello', '--help'])).toBe(7)
     expect((globalThis as { __vxCmd?: { argv: string[] } }).__vxCmd?.argv).toEqual(['--help'])
     expect(out.join('')).not.toContain('Usage:')
@@ -104,8 +104,8 @@ describe('plugin commands', () => {
   // return on a failure branch read as SUCCESS (probed 2026-09-03). The
   // contract is an exit code; a verb that cannot say fails, naming its owner.
   it('a verb that resolves nothing fails plainly instead of reading as success', async () => {
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([
         pluginSource(
           'org/forgetful',
@@ -126,8 +126,8 @@ describe('plugin commands', () => {
   // exits 0 (probed on Bun 1.4.2), so a verb returning a count of 256
   // failures read as success, and -1 as 255.
   it('a verb that resolves an integer past a byte fails instead of wrapping', async () => {
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([
         pluginSource(
           'org/counts',
@@ -153,7 +153,7 @@ describe('plugin commands', () => {
     // to load fine and sit dead. The refusal reaches `vx version` too — the
     // workspace load is where every verb meets the plugin list — and names
     // the plugin and the verb.
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO, SHADOW]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO, SHADOW]))
     const refusal =
       "plugin 'org/shadow' declares command 'version', a core verb — core verbs cannot be shadowed"
     // A plugin verb: the lookup cannot finish, and says why.
@@ -168,7 +168,7 @@ describe('plugin commands', () => {
 
   it('two plugins naming the same verb are refused, naming both', async () => {
     // First-declared used to win and the second was never heard of.
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO, TWICE]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO, TWICE]))
     const refusal =
       "plugins 'org/hello' and 'org/twice' both declare command 'hello' — a verb has one owner"
     expect(await cli(['hello'])).toBe(1)
@@ -183,7 +183,7 @@ describe('plugin commands', () => {
       'org/hello',
       `{ commands: { hello: { description: 'second hi', run() { return 8 } } } }`,
     )
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO, SECOND]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO, SECOND]))
     expect(await cli(['hello'])).toBe(7)
     expect(await cli(['help'])).toBe(0)
     expect(
@@ -195,7 +195,7 @@ describe('plugin commands', () => {
   })
 
   it('an unknown verb is still unknown, and says where help is', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['nope'])).toBe(1)
     expect(err.join('')).toContain('unknown command: nope')
     expect(err.join('')).toContain('(see `vx help`)')
@@ -210,13 +210,13 @@ describe('plugin commands', () => {
     // AND one from `hello`, and a tie goes to whichever list is scanned
     // first — a test that turns on the order of two equal candidates
     // pins nothing.
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['hllo'])).toBe(1)
     expect(err.join('')).toContain('unknown command: hllo. Did you mean hello? (see `vx help`)')
   })
 
   it('a verb nothing declares says where a verb can come from, and what is declared here', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['zzzzzzzz'])).toBe(1)
     expect(err.join('')).toContain("This workspace's plugins declare: hello.")
     // The guess is the answer when there is one, so it stands alone.
@@ -226,15 +226,15 @@ describe('plugin commands', () => {
   })
 
   it('with no plugin verbs at all the note names the file that would declare one', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
     expect(await cli(['mcp'])).toBe(1)
     expect(err.join('')).toContain(
-      'A plugin declared in vx.workspace.ts can add verbs; this workspace declares none.',
+      'A plugin declared in .vx/workspace.ts can add verbs; this workspace declares none.',
     )
   })
 
   it('vx help lists plugin verbs with their description and plugin', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['help'])).toBe(0)
     const text = out.join('')
     expect(text).toContain('Plugin commands:')
@@ -257,7 +257,7 @@ describe('plugin commands', () => {
       'org/other',
       `{ commands: { other: { description: 'not hello', run() { return 3 } } } }`,
     )
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([OTHER, HELLO]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([OTHER, HELLO]))
     expect(await cli(['hello'])).toBe(7)
   })
 
@@ -267,7 +267,7 @@ describe('plugin commands', () => {
       'org/shadow',
       `{ commands: { hello: { description: 'shadowed', run() { return 9 } } } }`,
     )
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO, SHADOW]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO, SHADOW]))
     expect(await cli(['hello'])).toBe(1)
     expect(err.join('')).toContain(
       "plugins 'org/hello' and 'org/shadow' both declare command 'hello' — a verb has one owner",
@@ -276,7 +276,7 @@ describe('plugin commands', () => {
 
   it("a plugin verb's warnings reach stderr, one line each", async () => {
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([
         pluginSource(
           'org/warner',
@@ -289,7 +289,7 @@ describe('plugin commands', () => {
   })
 
   it('the help line pads the verb to one column', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([HELLO]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([HELLO]))
     expect(await cli(['help'])).toBe(0)
     expect(out.join('').split('\n')).toContain(`  vx ${'hello'.padEnd(17)} says hi (org/hello)`)
   })
@@ -305,7 +305,7 @@ describe('plugin commands', () => {
       err.length = 0
       expect(await cli(['zzzzzzzz'])).toBe(1)
       expect(err.join('')).toContain(
-        'A plugin declared in vx.workspace.ts can add verbs; there is no workspace here.',
+        'A plugin declared in .vx/workspace.ts can add verbs; there is no workspace here.',
       )
     } finally {
       process.chdir(root)
@@ -315,7 +315,7 @@ describe('plugin commands', () => {
 
   it('a malformed commands entry is refused by the loader, and the refusal is what the verb reports', async () => {
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([
         pluginSource('org/bad', `{ commands: { hello: { run() { return 0 } } } }`),
       ]),
@@ -326,7 +326,7 @@ describe('plugin commands', () => {
     expect(text).toMatch(/plugins\[0\]\.commands\.hello/)
     // The load error's message, not its class name in front of it.
     expect(text).toContain(
-      `(plugin verbs could not be looked up: vx.workspace failed to load: ${root}/vx.workspace.mjs: `,
+      `(plugin verbs could not be looked up: .vx/workspace failed to load: ${root}/.vx/workspace.mjs: `,
     )
   })
 })
@@ -334,14 +334,14 @@ describe('plugin commands', () => {
 describe('a broken workspace file', () => {
   it('reports the unknown verb AND why plugin verbs could not be looked up', async () => {
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       'export default { plugins: [ this is not javascript\n',
     )
     expect(await cli(['nope'])).toBe(1)
     const text = err.join('')
     expect(text).toContain('unknown command: nope')
     expect(text).toContain('plugin verbs could not be looked up')
-    expect(text).toContain('vx.workspace')
+    expect(text).toContain('.vx/workspace')
     // Nothing to offer: a broken file declares no verbs to hint at.
     expect(await pluginVerbs(root)).toEqual([])
   })
@@ -377,14 +377,14 @@ describe('bin.ts prints a foreign-copy UserError as one line', () => {
   )
 
   it('a class named UserError from another copy prints the message only, exit 1', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
     const r = spawn('refuse')
     expect(r.code).toBe(1)
     expect(r.err).toBe('vx: bad flag --x\n')
   })
 
   it('a plain Error names the plugin and verb in one line, as other stages do (E-25)', async () => {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource([PLUGIN]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([PLUGIN]))
     const r = spawn('crash')
     expect(r.code).toBe(1)
     expect(r.err).toBe("vx: plugin 'org/foreign' failed in command 'crash': kaboom\n")

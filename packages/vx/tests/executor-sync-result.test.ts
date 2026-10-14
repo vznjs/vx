@@ -24,7 +24,7 @@ async function runWith(
   timeout = '',
 ): Promise<{ lines: string[]; statuses: string[] }> {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource('org/sync', `{ executor() { return { name: 'sync', ${execute} } } }`),
     ]),

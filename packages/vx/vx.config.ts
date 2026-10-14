@@ -435,7 +435,7 @@ export default defineProject({
             'LICENSE',
             '.claude/skills/**',
             'vx.config.ts',
-            'vx.workspace.ts',
+            '.vx/workspace.ts',
             ...OTHER_OUTPUTS,
           ],
         },

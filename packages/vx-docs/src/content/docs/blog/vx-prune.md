@@ -73,7 +73,7 @@ RUN bunx @vzn/vx run @demo/web#build
 appears:
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { bun } from '@vzn/vx-lockfile'
 

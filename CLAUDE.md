@@ -19,7 +19,7 @@ CLI verbs exist. Core applies NO plugin by default. Running here and
 caching here are core's FLOOR, not plugins: the local executor sits at
 the tail of every executor list and the local cache heads every cache
 chain (asked first, then each remote in declared order), so a
-`vx.workspace.ts` declaring no plugin runs and caches, and a plugin that
+`.vx/workspace.ts` declaring no plugin runs and caches, and a plugin that
 declines a task hands it back to this machine. That file is required:
 the nearest one up from the cwd, never above the git top-level, marks
 the workspace root (2026-10-13).
@@ -193,7 +193,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 6. **Project boundaries are hard.** Globs never cross into another project.
 7. **No defaults.** Core names no plugin; only the local floor is
    implicit. A capability a plugin must supply (a remote, a wire) is
-   declared in `vx.workspace.ts` or it does not exist.
+   declared in `.vx/workspace.ts` or it does not exist.
 8. **Seam over special case.** When core grows a branch for one consumer,
    the seam is too narrow.
 9. **Once per run.** A run treats the files it reads as fixed except

@@ -10,7 +10,7 @@ exporter or a CLI verb.
 
 A plugin is a function that returns `definePlugin(import.meta, hooks)`.
 Its name is its package's name. Fill only the hooks you need; an unfilled
-hook costs nothing. Declare it in `vx.workspace.ts`
+hook costs nothing. Declare it in `.vx/workspace.ts`
 (`plugins: [typecheck()]`), and `vx info` lists it with its hooks. To test
 it, call `run()` from `@vzn/vx` on a throwaway workspace. A runnable
 plugin for each of nine seams, each held by a test that runs it, is in
@@ -451,7 +451,7 @@ that the real run turns into a miss.
 - A `cache` or `executor` hook whose return breaks the contract: the three `RemoteCacheLayer` methods, or `execute` and a `name`. A whole cache layer, what the hook returned before 0.0.637, is refused with the fix named.
 - A `name` on the hooks object: the name is the package's.
 - A `ctx.on` hook name core does not know: `ctx.on: unknown hook '<h>' (one of …)`.
-- A `config` or `project` edit the loader would refuse from a user, checked after each plugin: `vx.workspace (after plugin '<p>'): …`; a `project` edit names the project's config file, or `<name> (no config file)`, instead.
+- A `config` or `project` edit the loader would refuse from a user, checked after each plugin: `.vx/workspace (after plugin '<p>'): …`; a `project` edit names the project's config file, or `<name> (no config file)`, instead.
 - A verb that names a core verb, or one plugins of two packages both declare (one package's plugins are one owner; the first declared runs).
 - An executor `capacity` that is not a positive integer: `plugin '<p>' returned executor '<e>' with capacity <v>: it must be a positive integer`.
 
@@ -486,7 +486,7 @@ OpenTelemetry SDK: one trace per run, one span per task. Install it
 endpoint it declines; a signal's own endpoint alone exports that signal.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 

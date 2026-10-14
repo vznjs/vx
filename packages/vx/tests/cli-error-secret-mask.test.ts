@@ -21,7 +21,7 @@ afterEach(() => rm(root, { recursive: true, force: true }))
 
 async function plugin(hooks: string): Promise<void> {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([pluginSource('org/p', hooks)]),
   )
 }

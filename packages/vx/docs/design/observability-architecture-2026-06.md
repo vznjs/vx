@@ -9,7 +9,7 @@
 >    is now fully independent: it NEVER reads a workspace `cache.db`. `serve`
 >    reads `/v1/*` only from its own push-fed SQLite ingest store (§6), so it
 >    can be deployed anywhere. `otel()` + `cloud()` are declared in the repo's
->    `vx.workspace.ts`; both decline (zero cost) until configured.
+>    `.vx/workspace.ts`; both decline (zero cost) until configured.
 >
 > **Updates / reconciles (does not contradict without saying so):**
 >
@@ -546,7 +546,7 @@ local dashboard wants to show runs **without any config**.
 - **Option L1 — local serve runs an ingest endpoint; a default local exporter
   pushes to it.** `vx run` would need a telemetry sink pointed at the local serve
   to populate the dashboard. But a sink only exists if declared in
-  `vx.workspace.ts` (no auto-discovery, principle #1) — so a fresh workspace with
+  `.vx/workspace.ts` (no auto-discovery, principle #1) — so a fresh workspace with
   no plugin shows an empty dashboard until the user adds `cloud()`. **Friction:**
   the zero-config local experience regresses; the user must edit config to see
   their own runs.
@@ -598,7 +598,7 @@ Tier-3 features working throughout.
    contributing the trace+metrics `telemetry` sink. Delete `otel-emit.ts` from
    core and the `attachOtelEmit(bus)` call in `run.ts`. **Behavior note:** OTel
    currently fires with zero config when `OTEL_EXPORTER_OTLP_ENDPOINT` is set;
-   after this it requires declaring `otel()` in `vx.workspace.ts`. That is the
+   after this it requires declaring `otel()` in `.vx/workspace.ts`. That is the
    intended de-hardcoding (the owner wants OTel to be a plugin), but it IS a
    behavior change — call it out in the migration guide. (Alternatively, ship
    `otel()` pre-declared in the generated default workspace config so the

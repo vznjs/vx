@@ -51,7 +51,7 @@ const silent = {
 
 async function refusal(hooks: string): Promise<string> {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([pluginSource('org/p', hooks)]),
   )
   return run({ cwd: root, tasks: ['t'], log: silent }).then(

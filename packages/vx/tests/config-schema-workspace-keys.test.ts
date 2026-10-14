@@ -1,11 +1,11 @@
-// Keys pasted into vx.workspace from pnpm-workspace.yaml, Lerna and the
+// Keys pasted into .vx/workspace from pnpm-workspace.yaml, Lerna and the
 // root package.json name vx's home for them (D-98).
 import { expect, it } from 'bun:test'
 import { validateWorkspace } from '../src/workspace/config-schema.js'
 
 const where = (key: string): string | undefined => {
   try {
-    validateWorkspace({ [key]: {} } as never, 'vx.workspace.ts')
+    validateWorkspace({ [key]: {} } as never, '.vx/workspace.ts')
   } catch (err) {
     return (err as Error).message.split(' — ')[1]
   }
@@ -32,7 +32,7 @@ it("names vx's home for a workspace key another tool spells (D-98)", () => {
     'vx spells it `cache.inputs.env` on the tasks it keys, or `exec.env` on the tasks it passes to',
   )
   // `cache` is vx's own run policy here; Turbo's `cache: true` is told where tasks cache.
-  expect(() => validateWorkspace({ cache: true } as never, 'vx.workspace.ts')).toThrow(
+  expect(() => validateWorkspace({ cache: true } as never, '.vx/workspace.ts')).toThrow(
     "a task caches through its own `cache` in its project's vx.config",
   )
   // CONTROL: a typo still gets the nearest spelling.

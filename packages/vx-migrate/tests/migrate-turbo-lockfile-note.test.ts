@@ -18,11 +18,11 @@ afterEach(async () => {
 })
 
 const notes = async (files: Record<string, string>): Promise<string[]> => {
-  for (const [f, text] of Object.entries(files)) await writeFile(path.join(root, f), text)
+  for (const [f, text] of Object.entries(files)) await Bun.write(path.join(root, f), text)
   return (await migrateTurbo(root, [])).headerNotes.map((n) => n.split(/[;,]/)[0]!)
 }
 
-it('names the plugin for the lockfile present, unless vx.workspace declares one', async () => {
+it('names the plugin for the lockfile present, unless .vx/workspace declares one', async () => {
   expect(await notes({})).toEqual([])
   expect(await notes({ 'yarn.lock': '' })).toEqual([
     'Turbo keys each package on its own yarn.lock entries',
@@ -33,17 +33,17 @@ it('names the plugin for the lockfile present, unless vx.workspace declares one'
   ])
   expect(
     await notes({
-      'vx.workspace.ts':
+      '.vx/workspace.ts':
         "import { pnpm } from '@vzn/vx-lockfile'\nexport default { plugins: [pnpm()] }\n",
     }),
   ).toEqual([])
   expect(
     await notes({
-      'vx.workspace.ts':
+      '.vx/workspace.ts':
         "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n",
     }),
   ).toEqual([
-    'vx.workspace.ts still declares turbo()',
+    '.vx/workspace.ts still declares turbo()',
     'Turbo keys each package on its own pnpm-lock.yaml entries',
   ])
 })

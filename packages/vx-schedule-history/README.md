@@ -11,7 +11,7 @@ npm install -D @vzn/vx @vzn/vx-schedule-history   # or: pnpm add -D -w · yarn a
 ```
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default { plugins: [scheduleHistoryPlugin()] }

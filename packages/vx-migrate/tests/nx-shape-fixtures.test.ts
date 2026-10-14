@@ -116,8 +116,8 @@ async function migrate(shape: string): Promise<{
     // The written workspace file imports plugins this fixture never
     // installs (--no-install); the configs are the subject here. A bare one
     // still marks the root.
-    await rm(path.join(root, 'vx.workspace.ts'), { force: true })
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await rm(path.join(root, '.vx/workspace.ts'), { force: true })
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     await writeFile(path.join(root, '.gitignore'), 'node_modules\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })

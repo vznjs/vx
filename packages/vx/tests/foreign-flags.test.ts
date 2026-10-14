@@ -132,7 +132,7 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
   ],
   [
     ['--token', 't'],
-    '--token (turbo): a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in vx.workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API',
+    '--token (turbo): a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in .vx/workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API',
   ],
   [
     ['--anon-profile'],
@@ -194,11 +194,11 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
   ],
   [
     ['--experimental-otel-enabled'],
-    '--experimental-otel-enabled (turbo): telemetry is a plugin: `otel()` from @vzn/vx-otel in vx.workspace.ts',
+    '--experimental-otel-enabled (turbo): telemetry is a plugin: `otel()` from @vzn/vx-otel in .vx/workspace.ts',
   ],
   [
     ['--experimental-otel-endpoint=http://c'],
-    '--experimental-otel-endpoint (turbo): telemetry is a plugin: `otel()` from @vzn/vx-otel in vx.workspace.ts',
+    '--experimental-otel-endpoint (turbo): telemetry is a plugin: `otel()` from @vzn/vx-otel in .vx/workspace.ts',
   ],
   [
     ['--head', 'feature'],
@@ -218,7 +218,7 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
   [['--nx-ignore-cycles'], '--nx-ignore-cycles (nx): vx refuses a task cycle by name: break it'],
   [
     ['--runner', 'cloud'],
-    '--runner (nx): a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in vx.workspace.ts',
+    '--runner (nx): a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in .vx/workspace.ts',
   ],
   [['--skip-sync'], '--skip-sync (nx): vx never runs sync generators: drop it'],
   [['--tui'], '--tui (nx): vx frames each task’s output: `--output-logs <mode>` sets how much'],

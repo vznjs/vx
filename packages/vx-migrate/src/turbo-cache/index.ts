@@ -4,7 +4,7 @@
 // spec. The wire is Turbo's; the bytes are vx's own artifacts under vx's
 // own keys, so the server is storage — a Turbo binary cannot read them.
 //
-// Nothing is on by default: declare `turboCache()` in `vx.workspace.ts`
+// Nothing is on by default: declare `turboCache()` in `.vx/workspace.ts`
 // (the local store is the floor beneath it) and give it a URL and a token (options, or
 // Turbo's own environment variables and turbo.json's `remoteCache` so a
 // self-hosted setup carries over).
@@ -713,7 +713,7 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
 }
 
 /**
- * Declare in `vx.workspace.ts`; the local store stays the floor beneath it:
+ * Declare in `.vx/workspace.ts`; the local store stays the floor beneath it:
  *
  * ```ts
  * plugins: [turboCache({ apiUrl: 'https://cache.example.com', token: process.env.CACHE_TOKEN })]

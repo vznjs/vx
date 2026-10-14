@@ -3,7 +3,7 @@
 // branches on the code instead of parsing prose. stderr and the exit code
 // stay as they were.
 import { readdirSync, readFileSync } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -54,8 +54,8 @@ beforeAll(async () => {
     `export default { tasks: { b: { exec: { command: 'true' }, nope: 1 } } }\n`,
   )
   badPolicy = await makeWorkspace({ prefix: 'vx-error-codes-policy-', workspaceFile: false })
-  await writeFile(
-    path.join(badPolicy, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(badPolicy, '.vx/workspace.mjs'),
     `export default { cache: { policy: 'local:x' } }\n`,
   )
   await addProject(

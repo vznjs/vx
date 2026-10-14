@@ -820,7 +820,7 @@ Declared `cache.outputs.files` are wiped in two distinct places:
 
 Both branches use the same `cleanOutputs` helper (`src/cache/inputs.ts`)
 with the same boundary rules, and two directories stay off the wipe
-whatever the glob: `.git` and `.vx` (`OUTPUT_NEVER`). `node_modules` is
+whatever the glob: `.git` and `.vx/cache` (`OUTPUT_NEVER`). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
 legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
@@ -870,7 +870,7 @@ function of the cache key.
 Two cached tasks whose declared outputs overlap are refused at graph
 build. By default that holds even when one depends on the other: the
 workspace rule `rules.exclusiveOutputs` (on unless set to `false` in
-`vx.workspace.ts`, X-53) keeps one path to one task, and its refusal says
+`.vx/workspace.ts`, X-53) keeps one path to one task, and its refusal says
 how to turn it off. The shape below is correct, only slower: a stamp
 before every run, a diff after, and a clean by rows. Give each task its
 own output path where you can (`dist-individual` beside `dist`).
@@ -932,7 +932,7 @@ A task's cache becomes invalid when any of these change:
 | Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                                                                                                    |
 | Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                                                                                              |
 | Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                                                                                             |
-| Edit `vx-lock.json`                                                                                                                      | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                             |
+| Edit `.vx/lock.json`                                                                                                                     | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                             |
 | Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception)                                                                       |
 
 The cascade in step 10 is what makes monorepo caching work: edit a
@@ -1039,7 +1039,7 @@ exactly on `cache.inputs.env`, and they share its asymmetry with the
 lockfile:
 
 - **The command _strings_ live in the resolved config**, so `vx lock`
-  freezes them into `vx-lock.json` (just as it freezes the env _names_
+  freezes them into `.vx/lock.json` (just as it freezes the env _names_
   a task declares).
 - **The command _output_ is resolved live at hash time on every run**
   — inside `resolveInputs`, the same place env _values_ are read from
@@ -1151,7 +1151,7 @@ only read keeps the entry (`…; left it (this cache is read-only)`).
 
 The run must be able to write here — it records its history at the
 end of every run, hit or miss — so a directory this user cannot write
-into (another user's `.vx`, a read-only checkout) fails the run before
+into (another user's `.vx/cache`, a read-only checkout) fails the run before
 any task: `cache directory <path> is not writable (EACCES: …)`, with
 `--cache-dir <path>` as the way out. `vx cache prune` is refused the
 same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
@@ -1223,7 +1223,7 @@ when its task next hits. The check, drop, re-create and stamp are one
 write transaction, so another version's open waits rather than landing
 between them. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
-cache directory (`cache.dir` in vx.workspace.ts, `--cache-dir`, or
+cache directory (`cache.dir` in .vx/workspace.ts, `--cache-dir`, or
 `VX_CACHE_DIR`, in that order of precedence, relative to the workspace
 root) and it holds everything, shared with no other workspace:
 
@@ -1829,7 +1829,7 @@ built to defeat it can). Details and the deny-list:
   under `--frozen`. Avoid baking versions via
   `define: { X: execSync(...) }` — that value freezes into the config
   object at lock time and goes stale.
-- **`vx-lock.json`** — globally excluded (v24); also filtered out of
+- **`.vx/lock.json`** — globally excluded (v24); also filtered out of
   `--affected` change sets.
 - **`exec.remote`.** Pure PLACEMENT: it decides _where_ a task runs,
   never what it produces, so pinning a task to this machine does not
@@ -2144,7 +2144,7 @@ breaking footer).
   so existing artifacts stay valid and `CACHE_VERSION` stays `v24`. The
   schema gate drops + recreates on the version mismatch (pre-alpha, no
   migration).
-- **v23 → v24**: exclude `vx-lock.json` from the input file set
+- **v23 → v24**: exclude `.vx/lock.json` from the input file set
   globally (`ALWAYS_IGNORE` in `cache/inputs.ts`). The lockfile is
   committed, so git enumerates it, but it's vx's own frozen-config
   metadata — never a task input. Without this, a `vx lock` re-write

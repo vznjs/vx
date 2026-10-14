@@ -70,7 +70,7 @@ vx run test --all --concurrency 50%   # half the cores, never below one
 vx run test --all --concurrency 1     # one at a time, still in graph order
 ```
 
-`run.concurrency` in `vx.workspace.ts` sets a workspace default, and the
+`run.concurrency` in `.vx/workspace.ts` sets a workspace default, and the
 flag still wins. A percentage above 100% is allowed for tasks that mostly
 wait on the network or disk.
 

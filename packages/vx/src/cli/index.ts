@@ -176,7 +176,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       }
       const loadNote =
         resolved !== null && 'loadError' in resolved
-          ? `\n  (plugin verbs could not be looked up: vx.workspace failed to load: ${resolved.loadError})`
+          ? `\n  (plugin verbs could not be looked up: .vx/workspace failed to load: ${resolved.loadError})`
           : ''
       // Another tool's verb: the pointer, but only after the plugins had
       // their chance — a workspace that declares a plugin verb of that name keeps it.
@@ -202,7 +202,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       if (command === 'serve' || command === 'dev') {
         // vx core is only a task runner — it has no service layer of its
         // own. A dashboard, remote cache, distributed execution, etc. are
-        // provided by PLUGINS (declared in vx.workspace.ts), never by core.
+        // provided by PLUGINS (declared in .vx/workspace.ts), never by core.
         // We keep this neutral hint for the common muscle-memory verbs, but
         // core names no specific plugin package: any package can provide
         // these.
@@ -272,5 +272,5 @@ function verbSourceNote(resolved: unknown, declaredVerbs: readonly string[]): st
     return `  This workspace's plugins declare: ${[...declaredVerbs].sort().join(', ')}.\n`
   }
   const here = resolved === null ? 'there is no workspace here' : 'this workspace declares none'
-  return `  A plugin declared in vx.workspace.ts can add verbs; ${here}.\n`
+  return `  A plugin declared in .vx/workspace.ts can add verbs; ${here}.\n`
 }

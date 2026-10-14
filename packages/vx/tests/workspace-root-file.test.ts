@@ -1,4 +1,4 @@
-// The workspace root is the directory holding the nearest `vx.workspace.*`
+// The workspace root is the directory holding the nearest `.vx/workspace.*`
 // (owner, 2026-10-13: "Workspace file is the ultimate"), from the start up
 // to the git top-level and never above it ("never go out of git root"). A
 // worktree's `.git` is a file and is a top-level; a submodule's points into
@@ -21,7 +21,7 @@ const file = async (rel: string, body = 'export default {}\n') => {
 beforeEach(async () => {
   shared = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-root-file-')))
   // Planted above every case: never read from inside git.
-  await file('vx.workspace.ts')
+  await file('.vx/workspace.ts')
   await file('repo/package.json', JSON.stringify({ name: 'repo', workspaces: ['pkgs/*'] }))
   await file('repo/pkgs/a/package.json', JSON.stringify({ name: 'a' }))
 })
@@ -36,13 +36,13 @@ const found = (dir: string, uid?: number) =>
     (err: Error & { code?: string }) => err.code ?? err.message,
   )
 
-it('the nearest vx.workspace.* marks the root, whatever the manifests say', async () => {
+it('the nearest .vx/workspace.* marks the root, whatever the manifests say', async () => {
   await file('repo/.git/HEAD', 'ref: refs/heads/main\n')
-  await file('repo/vx.workspace.mjs')
+  await file('repo/.vx/workspace.mjs')
   expect([await found('repo/pkgs/a'), await found('repo')]).toEqual(['repo', 'repo'])
   // A member with its own file is a root of its own. (A new start: a run
   // learns each directory's answer once.)
-  await file('repo/pkgs/a/src/vx.workspace.ts')
+  await file('repo/pkgs/a/src/.vx/workspace.ts')
   expect(await found('repo/pkgs/a/src')).toBe('repo/pkgs/a/src')
 })
 
@@ -58,7 +58,7 @@ it('a worktree, whose .git is a file, is its own top-level', async () => {
 
 it('a submodule walks on to its superproject, and no further', async () => {
   await file('super/.git/HEAD', 'ref: refs/heads/main\n')
-  await file('super/vx.workspace.ts')
+  await file('super/.vx/workspace.ts')
   await file('super/mods/sub/.git', 'gitdir: ../../.git/modules/mods/sub\n')
   expect(await found('super/mods/sub')).toBe('super')
 })
@@ -68,7 +68,7 @@ it('outside git the walk reaches the file above', async () => {
 })
 
 it('a package.json alone is no root', async () => {
-  await rm(path.join(shared, 'vx.workspace.ts'))
+  await rm(path.join(shared, '.vx/workspace.ts'))
   expect(await found('repo/pkgs/a')).toBe('VX_E_NO_WORKSPACE')
 })
 

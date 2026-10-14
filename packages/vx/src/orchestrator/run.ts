@@ -755,7 +755,7 @@ async function runOnBus(
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer)
     if (options.remoteRequested === true && !prepared.hasRemoteLayer) {
       log.status(
-        'vx: --cache-policy named the remote cache, but no cache plugin in vx.workspace.* supplies one — the remote axes are off for this run',
+        'vx: --cache-policy named the remote cache, but no cache plugin in .vx/workspace.* supplies one — the remote axes are off for this run',
       )
     }
     const deferredOutputs = new DeferredOutputs({
@@ -788,7 +788,7 @@ async function runOnBus(
     let runContextRecord: RunContextRecord | undefined
     // Gate on a plugin that can actually CONTRIBUTE a sink, not on declaring
     // any plugin at all: a cache-only plugin has no telemetry hook to
-    // consult, so paying for the record (2 git spawns + a `.vx/workspace-id`
+    // consult, so paying for the record (2 git spawns + a `.vx/cache/workspace-id`
     // write on a remote-less repo) buys nothing. A plugin that has the hook
     // but declines still pays — its answer is only knowable by asking.
     const hasTelemetryPlugin = prepared.plugins.some((p) => p.telemetry !== undefined)

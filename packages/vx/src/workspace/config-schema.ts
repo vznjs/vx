@@ -1,5 +1,5 @@
 // What a config may SAY — the schema validators for `vx.config.*` and
-// `vx.workspace.*`, split from the loader (which decides HOW a file is
+// `.vx/workspace.*`, split from the loader (which decides HOW a file is
 // evaluated) on 2026-09-10. Every object level refuses a key it does not
 // know (tests/schema-unknown-keys), every message names the level and what
 // it accepts, and `validateProjectConfig` is the one boundary the loader,
@@ -101,7 +101,7 @@ export function inputStabilityEnv(): InputStability {
 const WORKSPACE_FIELDS = new Set<string>([...SETTING_GROUPS, 'plugins'])
 
 /**
- * `vx.workspace`'s settings, as `src/settings.ts` lists them: each group's
+ * `.vx/workspace`'s settings, as `src/settings.ts` lists them: each group's
  * fields, and the nested objects (`run.rules`) with theirs.
  */
 const GROUP_FIELDS = new Map<string, Set<string>>()
@@ -440,7 +440,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
  * typechecked (plain .js, or TS with errors ignored). Catch the worst
  * shape problems early with a clear message rather than letting them
  * crash deeper in the orchestrator. Also applied to configs loaded
- * back from `vx-lock.json` (a hand-editable file — same boundary).
+ * back from `.vx/lock.json` (a hand-editable file — same boundary).
  */
 export function validateProjectConfig(config: ProjectConfig, configPath: string): void {
   // Before the schema, on the object as it stands: the key folds its JSON,
@@ -985,7 +985,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       with: '`dependsOn` on each task it runs beside: a persistent one stays up, and this task starts once it is ready',
       cwd: '`cd <dir> && …` in `exec.command`: a task runs in its project directory',
       parallelism:
-        '`run.concurrency: 1` in vx.workspace or `--concurrency 1` on the run: no task runs alone beside others',
+        '`run.concurrency: 1` in .vx/workspace or `--concurrency 1` on the run: no task runs alone beside others',
       configurations:
         'one task per configuration (`build:production`, with its own `exec.command`)',
     },
@@ -1063,7 +1063,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       env: '`tasks.<name>.cache.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
     },
   ],
-  // Turbo's turbo.json and Nx's nx.json keys, written into vx.workspace
+  // Turbo's turbo.json and Nx's nx.json keys, written into .vx/workspace
   // (D-38).
   [
     WORKSPACE_FIELDS,
@@ -1085,7 +1085,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       tasksRunnerOptions: 'a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
       // pnpm-workspace.yaml's, Lerna's and the package.json's own keys
-      // pasted into vx.workspace: refused with no word on where vx reads
+      // pasted into .vx/workspace: refused with no word on where vx reads
       // them (D-98).
       packages:
         "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",

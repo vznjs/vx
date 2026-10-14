@@ -1,4 +1,4 @@
-// Every run evaluates `vx.workspace.ts`, so what this package loads at
+// Every run evaluates `.vx/workspace.ts`, so what this package loads at
 // import is paid by every run: the history table loads with `vx history`.
 import path from 'node:path'
 import { expect, it } from 'bun:test'

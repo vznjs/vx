@@ -133,7 +133,7 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
       async () => {
         const root = await realpath(await mkdtemp(path.join(tmpdir(), `vx-nx-e2e-${name}-`)))
         roots.push(root)
-        await writeTree(root, { ...files, '.gitignore': 'node_modules\n.nx\n.vx\ndist\n' })
+        await writeTree(root, { ...files, '.gitignore': 'node_modules\n.nx\n.vx/cache/\ndist\n' })
         await linkModules(root)
         const env = {
           PATH: `${path.join(root, 'node_modules', '.bin')}${path.delimiter}${process.env['PATH']}`,
@@ -162,12 +162,12 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
           Promise.all(outputs.map((o) => Bun.file(path.join(root, o)).exists()))
         const clean = async () => {
           for (const o of outputs) await rm(path.join(root, o), { force: true })
-          await rm(path.join(root, '.vx'), { recursive: true, force: true })
+          await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
         }
 
         // 1. vx init --keep: the temporary start.
         expect(await run(['bun', VX, 'init', '--keep'])).toEqual({ code: 0, tail: '' })
-        expect(await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')).toContain('nx()')
+        expect(await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')).toContain('nx()')
 
         // 2. The build through nx(), executors as nx-exec.
         expect(await run(['bun', VX, 'run', 'build', '--all'])).toEqual({ code: 0, tail: '' })
@@ -187,7 +187,7 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
         }
 
         // 4. Without nx() the native config alone builds; the executor is its nx-exec line.
-        await writeFile(path.join(root, 'vx.workspace.ts'), 'export default {}\n')
+        await Bun.write(path.join(root, '.vx/workspace.ts'), 'export default {}\n')
         const lib = outputs[0].split('/').slice(1, 3).join('/')
         expect(await readFile(path.join(root, lib, 'vx.config.ts'), 'utf8')).toContain(
           'nx-exec @nx/js:tsc',

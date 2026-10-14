@@ -16,7 +16,7 @@ run on every runner fell back to a guess.
 ## One file
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default {

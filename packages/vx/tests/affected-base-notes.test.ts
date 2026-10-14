@@ -58,7 +58,7 @@ beforeEach(async () => {
     `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'cat src/a.txt > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } }\n`,
   )
   await writeFile(path.join(root, 'pkgs/app/src/a.txt'), 'a1\n')
-  await writeFile(path.join(root, '.gitignore'), 'out.txt\n.vx/\n')
+  await writeFile(path.join(root, '.gitignore'), 'out.txt\n.vx/cache/\n')
   git(root, 'init', '-q', '-b', 'feat')
   git(root, 'config', 'user.email', 'test@vx.local')
   git(root, 'config', 'user.name', 'vx test')
@@ -96,8 +96,8 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
   it('a bare --affected takes affectedBase, from the file or a config stage; a value still wins', async () => {
     git(root, 'branch', 'develop')
     // Untracked, the file the row rewrites would itself be the change.
-    await writeFile(path.join(root, '.gitignore'), 'out.txt\n.vx/\nvx.workspace.mjs\n')
-    git(root, 'rm', '-q', '--cached', 'vx.workspace.mjs')
+    await writeFile(path.join(root, '.gitignore'), 'out.txt\n.vx/cache/\n.vx/workspace.mjs\n')
+    git(root, 'rm', '-q', '--cached', '.vx/workspace.mjs')
     git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
     await writeFile(path.join(root, 'pkgs/app/src/a.txt'), 'a2\n')
     git(root, 'add', '-A')
@@ -110,7 +110,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       return (JSON.parse(json) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
     }
     const workspace = (body: string) =>
-      writeFile(path.join(root, 'vx.workspace.mjs'), `${PLUGIN_IMPORT}export default ${body}\n`)
+      Bun.write(path.join(root, '.vx/workspace.mjs'), `${PLUGIN_IMPORT}export default ${body}\n`)
     await workspace(`{ plugins: [] }`)
     expect(vx(root, 'run', 'build', '--affected').out).toContain(
       'nothing affected since origin/feat',

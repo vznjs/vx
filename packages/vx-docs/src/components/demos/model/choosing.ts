@@ -205,7 +205,7 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'TypeScript: a vx.config.ts per package and a vx.workspace.ts. vx evaluates each file and hashes the object it returns.',
+          'TypeScript: a vx.config.ts per package and a .vx/workspace.ts. vx evaluates each file and hashes the object it returns.',
         buys: 'Types and autocomplete, shared presets as plain imports, and computed values that still reach the key.',
         costs:
           'A config is a program: it must be evaluated (vx caches configs it can prove pure), it runs on Bun, and other tools cannot read it as data.',

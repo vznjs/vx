@@ -5,8 +5,19 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-/** Paths whose changes never trigger a re-run. */
-export const IGNORED_SEGMENTS = ['node_modules', '.git', '.vx']
+/** Directories whose changes never trigger a re-run, wherever they appear. */
+export const IGNORED_SEGMENTS = ['node_modules', '.git']
+
+/**
+ * True for a directory, as `/`-separated segments, the watchers skip: an
+ * `IGNORED_SEGMENTS` name, or vx's machine-local `.vx/cache`. The
+ * workspace config and the lock beside it in `.vx` are watched.
+ */
+export function isIgnoredDir(segments: readonly string[]): boolean {
+  const last = segments.length - 1
+  if (IGNORED_SEGMENTS.includes(segments[last]!)) return true
+  return segments[last] === 'cache' && segments[last - 1] === '.vx'
+}
 
 /**
  * The file `armWatcher` writes under a watched directory to prove the
@@ -41,7 +52,7 @@ const POLL_INTERVAL_MS = 250
  * `node_modules` is the difference between a cheap fallback and one that
  * re-stats 40 000 files four times a second.
  *
- * That justification is exactly `IGNORED_SEGMENTS`, so this IS that set.
+ * That justification is exactly `isIgnoredDir`, so this IS that test.
  * It used to carry a fourth name, `dist`, which the justification does NOT
  * cover: `dist` is dropped only when a project DECLARES it as an output, and
  * a project that does not declare it had its `dist/` sources silently
@@ -50,7 +61,6 @@ const POLL_INTERVAL_MS = 250
  * delivered them. Two watchers disagreeing about what an edit is (item 482).
  * The real per-project answer is the caller's `skipDir`, below.
  */
-const POLL_SKIP = new Set(IGNORED_SEGMENTS)
 
 /**
  * A watcher built from `stat`, for when the OS one cannot deliver.
@@ -75,7 +85,7 @@ export function pollWatcher(
    * what the filter would drop anyway — every declared output container, not
    * a hard-coded name. The default covers the unconditional segments alone.
    */
-  skipDir: (rel: string) => boolean = (rel) => POLL_SKIP.has(path.basename(rel)),
+  skipDir: (rel: string) => boolean = (rel) => isIgnoredDir(rel.split('/')),
 ): WatchHandle {
   let previous = new Map<string, string>()
   let first = true
@@ -275,7 +285,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
         if (name == null || typeof name !== 'string' || name === '' || name === '.') return
         const child = rel === '' ? name : `${rel}/${name}`
         listener(child)
-        if (IGNORED_SEGMENTS.includes(name)) return
+        if (isIgnoredDir(child.split('/'))) return
         let st: fs.Stats
         try {
           st = fs.statSync(path.join(abs, name))
@@ -321,7 +331,7 @@ function treeWatcher(root: string, listener: (filename: string) => void): WatchH
     for (const e of entries) {
       const child = rel === '' ? e.name : `${rel}/${e.name}`
       if (e.isDirectory()) {
-        if (!IGNORED_SEGMENTS.includes(e.name)) watchDir(child, report)
+        if (!isIgnoredDir(child.split('/'))) watchDir(child, report)
       } else if (report) listener(child)
     }
   }

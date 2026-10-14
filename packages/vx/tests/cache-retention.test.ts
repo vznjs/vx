@@ -369,7 +369,7 @@ describe('Cache.evictIfDue', () => {
 })
 
 describe('the cache.retention field', () => {
-  const WS = '/ws/vx.workspace.ts'
+  const WS = '/ws/.vx/workspace.ts'
   function refusal(retention: unknown): string | null {
     try {
       validateWorkspace({ cache: { retention } } as WorkspaceConfig, WS)
@@ -449,7 +449,7 @@ describe('a run applies the workspace retention at its end', () => {
 
   async function setup(retention: string): Promise<string> {
     root = await makeWorkspace({ prefix: 'vx-retention-run-' })
-    await writeFile(path.join(root, 'vx.workspace.mjs'), `export default { ${retention} }\n`)
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), `export default { ${retention} }\n`)
     await addProject(root, 'a', { config: task('a'), files: { 'src/a.txt': 'a' } })
     await addProject(root, 'b', { config: task('b'), files: { 'src/b.txt': 'b' } })
     const cacheDir = path.join(root, '.vx', 'cache')
@@ -545,8 +545,8 @@ describe('a run applies the workspace retention at its end', () => {
       try {
         const where =
           via === 'cache.dir' ? `, dir: ${JSON.stringify(path.relative(root, outside))}` : ''
-        await writeFile(
-          path.join(root, 'vx.workspace.mjs'),
+        await Bun.write(
+          path.join(root, '.vx/workspace.mjs'),
           `export default { cache: { retention: { olderThan: '1d' }${where} } }\n`,
         )
         await addProject(root, 'a', { config: task('a'), files: { 'src/a.txt': 'a' } })

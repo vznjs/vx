@@ -186,7 +186,7 @@ export interface ExecuteArgs {
   readyNotice?: number
   /**
    * The run's `inputStability` layers around the task's own: `run` from
-   * the env vars (above the task), `workspace` from `vx.workspace` (below).
+   * the env vars (above the task), `workspace` from `.vx/workspace` (below).
    */
   inputStability?: { run: InputStability; workspace?: InputStability }
   /** Per-run memo for `git ls-files` (one entry per project dir). */

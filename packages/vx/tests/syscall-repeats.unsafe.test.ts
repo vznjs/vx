@@ -172,11 +172,13 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       // holds no database and no ignore file.
       expect(vxOwn(cold, cacheDir)).toEqual(['access', 'mkdir', 'mkdir'])
       expect(vxOwn(cold, path.join(cacheDir, 'cache.db'))).toEqual([])
-      expect(on(cold, path.join(cacheDir, '.gitignore'))).toEqual(['openat'])
+      // The default `.vx/cache` keeps its ignore beside it, in `.vx/.gitignore`.
+      const ignoreFile = path.join(path.dirname(cacheDir), '.gitignore')
+      expect(on(cold, ignoreFile)).toEqual(['openat'])
       // A warm open: no mkdir, no existence probe before the write probe.
       expect(vxOwn(warm, cacheDir)).toEqual(['access'])
       expect(vxOwn(warm, path.join(cacheDir, 'cache.db'))).toEqual(['access'])
-      const ignore = warm.filter((c) => c.path === path.join(cacheDir, '.gitignore'))
+      const ignore = warm.filter((c) => c.path === ignoreFile)
       expect(ignore.map((c) => c.name)).toEqual(['openat'])
       expect(ignore[0]!.args).toContain('O_EXCL')
       expect(ignore[0]!.args).toContain('EEXIST')

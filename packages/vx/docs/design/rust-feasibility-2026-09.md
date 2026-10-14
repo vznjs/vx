@@ -48,7 +48,7 @@ Warm no-op, `vx run build --all`, 150 projects, all hits:
 | stage             |  own | what it is                                         |
 | ----------------- | ---: | -------------------------------------------------- |
 | startup           |  9.8 | imports ahead of `prepareRun`                      |
-| workspace config  |  8.1 | `vx.workspace.mjs` (declares no plugin)            |
+| workspace config  |  8.1 | `.vx/workspace.mjs` (declares no plugin)           |
 | discover projects |  3.3 |                                                    |
 | package graph     |  1.9 |                                                    |
 | open cache        |  2.7 | SQLite open + workspace fingerprints               |

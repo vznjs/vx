@@ -16,7 +16,7 @@ wire that already exists: Bazel's Remote Execution API, spoken by
 NativeLink, BuildBuddy, Buildbarn and bazel-remote.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 

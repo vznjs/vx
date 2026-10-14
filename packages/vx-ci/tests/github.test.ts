@@ -340,8 +340,8 @@ describe('vx run with github() — the composition proof', () => {
            },
          } }`,
       )
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [`github({ summaryFile: ${JSON.stringify(summaryFile)}, checks: false })`],
           `import { github } from ${JSON.stringify(GITHUB_INDEX)}\n`,

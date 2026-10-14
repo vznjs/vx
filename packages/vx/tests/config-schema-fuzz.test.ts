@@ -20,7 +20,7 @@ import { MAX_TIMEOUT_MS, UserError } from '../src/util/index.js'
 import { rng } from './helpers/rng.js'
 
 const PROJECT_PATH = '/ws/pkg/vx.config.ts'
-const WORKSPACE_PATH = '/ws/vx.workspace.ts'
+const WORKSPACE_PATH = '/ws/.vx/workspace.ts'
 const SEEDS = 300
 /** Nodes each seed corrupts: every node of every seed cost 700 ms. */
 const PER_SEED = 6

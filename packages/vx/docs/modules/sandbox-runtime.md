@@ -128,7 +128,7 @@ directory it matches writable whole on both: Linux binds the hit, and
 macOS grants the glob's subtree beside it, so pnpm 12's lock directory
 grant covers the lock file inside it.
 
-There is **no inheritance** from `vx.workspace.ts`, and nothing is
+There is **no inheritance** from `.vx/workspace.ts`, and nothing is
 derived from `cache`. The single grant core makes is dependencies:
 `node_modules` for the project and the workspace root, plus the real path
 of every workspace package symlinked into them, and into theirs in turn
@@ -697,11 +697,11 @@ baseline `node_modules` reads are granted apart and are unaffected.
 
 The key of a project excludes the projects nested in it, and the deny
 anchor is the workspace root, which is a ROOT project's own directory: its
-`read: ['.']` bound every nested project, `.git` and `.vx` readable, and a
+`read: ['.']` bound every nested project, `.git` and `.vx/cache` readable, and a
 cached root task replayed a nested file's old bytes; a file grant there
 (`write: ['out.txt']`) is widened to its directory, which bound the whole
 workspace writable, `.git` included (item 1010). The request now carries
-the node's nested project directories, and with the root's `.git`, `.vx`
+the node's nested project directories, and with the root's `.git`, `.vx/cache`
 and the run's cache directory when it lies in the workspace (a `cache.dir`
 inside a project was writable to a task granted it, L-24) they are walls: on Linux a read grant containing one is punched
 around it (`punchWalls`, the write-path punch with the wall dropped), on
@@ -712,7 +712,7 @@ naming the wall. A grant that names a wall or a path inside it is the
 user's on purpose and stays, as does a bind outside the workspace (`/tmp`,
 `~`). A glob's hit that is a wall or lies inside one was matched, not
 named, and is dropped before the bind (`resolveSandboxConfig` takes the
-walls): `read: ['*']` in a root project binds neither `.git` nor `.vx`,
+walls): `read: ['*']` in a root project binds neither `.git` nor `.vx/cache`,
 `packages/*` no nested project, and `write: ['.*']` is refused for no wall
 (B-1). Seatbelt matches a glob as a path regex, with no hit to drop, and
 SRT re-emits a wall's deny after the allows only under a literal grant:

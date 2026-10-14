@@ -306,7 +306,7 @@ const calls = (root: string) => readFile(path.join(root, '.pnpm-calls'), 'utf8')
 describe('vx-migrate ends with the lock', () => {
   // owner, 2026-10-14: "vx migrate should generate lock as well". solid's
   // shape: ssr has no task Turbo runs, and gets a config all the same.
-  it('writes vx-lock.json once the plugins resolve; --no-install leaves it to vx lock', async () => {
+  it('writes .vx/lock.json once the plugins resolve; --no-install leaves it to vx lock', async () => {
     const { root, env } = await solidShaped()
     try {
       await installPlugins(root)
@@ -314,8 +314,8 @@ describe('vx-migrate ends with the lock', () => {
       expect(skipped.out).not.toContain('vx lock:')
       const r = await migrate(root, env, [])
       expect([r.code, r.err]).toEqual([0, ''])
-      expect(r.out).toContain('\nvx lock: locked 2 project configs → vx-lock.json\n\nnext: ')
-      expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(true)
+      expect(r.out).toContain('\nvx lock: locked 2 project configs → .vx/lock.json\n\nnext: ')
+      expect(await Bun.file(path.join(root, '.vx/lock.json')).exists()).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -327,7 +327,7 @@ describe('vx-migrate ends with the lock', () => {
       const r = await migrate(root, env, ['--no-install'])
       expect([r.code, r.err]).toEqual([0, ''])
       expect(r.out).not.toContain('vx lock:')
-      expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(false)
+      expect(await Bun.file(path.join(root, '.vx/lock.json')).exists()).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -344,7 +344,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         const pj = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as {
           scripts: Record<string, string>
         }
-        const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
+        const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
         expect([
           r.code,
           await calls(root),
@@ -382,7 +382,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
       try {
         await mkdir(path.join(root, '.github', 'workflows'), { recursive: true })
         const r = await migrate(root, env, ['--keep'])
-        const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
+        const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
         expect([
           r.code,
           await calls(root),
@@ -415,7 +415,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         try {
           const keep = await migrate(root, env, ['--keep'])
           if (keepCache) {
-            const file = path.join(root, 'vx.workspace.ts')
+            const file = path.join(root, '.vx/workspace.ts')
             const ws = await readFile(file, 'utf8')
             await writeFile(
               file,
@@ -430,7 +430,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await writeFile(path.join(root, 'package.json'), JSON.stringify(pj))
           await rm(path.join(root, '.pnpm-calls'))
           const r = await migrate(root, env, [])
-          const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
+          const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
           return [
             keep.code,
             r.code,
@@ -468,7 +468,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
       try {
         const ws =
           "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo({})] }\n"
-        await writeFile(path.join(root, 'vx.workspace.ts'), ws)
+        await Bun.write(path.join(root, '.vx/workspace.ts'), ws)
         await writeFile(
           path.join(root, 'package.json'),
           JSON.stringify({ name: 'r', devDependencies: { '@vzn/vx-migrate': '*' } }),
@@ -476,7 +476,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         const r = await migrate(root, env, [])
         expect([
           r.code,
-          await readFile(path.join(root, 'vx.workspace.ts'), 'utf8'),
+          await readFile(path.join(root, '.vx/workspace.ts'), 'utf8'),
           (await calls(root)).includes('remove'),
           r.out.includes('still declares turbo()'),
         ]).toEqual([0, ws, false, true])
@@ -525,7 +525,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         }
         const kept = JSON.parse(keep.out) as { source: string; files: { path: string }[] }
         expect([native.code, keep.code, wet.code, await calls(root)]).toEqual([0, 0, 1, ''])
-        expect([plan.source, plan.files.some((f) => f.path === 'vx.workspace.ts')]).toEqual([
+        expect([plan.source, plan.files.some((f) => f.path === '.vx/workspace.ts')]).toEqual([
           'turbo.json',
           true,
         ])
@@ -534,7 +534,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
         )
         expect([kept.source, kept.files.map((f) => f.path)]).toEqual([
           'turbo.json',
-          ['vx.workspace.ts'],
+          ['.vx/workspace.ts', '.vx/.gitignore'],
         ])
         expect(keep.err).toContain('vx-migrate: would install')
         expect(wet.err).toBe('vx-migrate: --format json prints the plan, so it needs --dry\n')
@@ -630,7 +630,7 @@ describe('vx init in a Turbo repo', () => {
           )
           await installPlugins(root)
           const r = await init(root, env, keep ? ['--keep'] : [])
-          const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
+          const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
           expect([
             r.code,
             r.err,

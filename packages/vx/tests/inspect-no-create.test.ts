@@ -61,7 +61,10 @@ describe('a reading verb makes nothing on disk', () => {
       // configs through the cache and opened (made) one (E-38).
       for (const args of [...VERBS, ['show'], ['show', 'app#build']]) {
         await vx(root, args)
-        expect({ args, made: existsSync(path.join(root, '.vx')) }).toEqual({ args, made: false })
+        expect({ args, made: existsSync(path.join(root, '.vx', 'cache')) }).toEqual({
+          args,
+          made: false,
+        })
       }
       // The positive: a run does make it, so the check above can see one.
       expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
@@ -79,7 +82,7 @@ describe('a reading verb makes nothing on disk', () => {
         { code: 0, out: 'Would prune 0 entries (0 B)\n', err: '' },
         { code: 0, out: 'Pruned 0 entries (0 B freed)\n', err: '' },
       ])
-      expect(existsSync(path.join(root, '.vx'))).toBe(false)
+      expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
     },
     TIMEOUT,
   )

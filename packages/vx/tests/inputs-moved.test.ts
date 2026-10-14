@@ -98,7 +98,7 @@ describe('a task that rewrites its own input', () => {
         `,
         files: { 'a.ts': 'const x = "unformatted"\n' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
       commit()
 
       await runTask('format')
@@ -136,7 +136,7 @@ describe('a task that rewrites its own input', () => {
         `,
         files: { 'a.ts': 'const x = "formatted"\n' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
       commit()
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
@@ -171,7 +171,7 @@ describe('cache.inputStability: what a write during the command means', () => {
   })
   async function fixture(from: string, stability?: object): Promise<void> {
     await addProject(root, 'app', formatter(from, stability))
-    await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+    await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
     commit()
   }
 
@@ -237,7 +237,7 @@ describe('cache.inputStability: what a write during the command means', () => {
         files: { 'a.ts': 'const x = 1\n' },
       })
       await addProject(root, 'app', project(false))
-      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
       commit()
       status = []
       const r = await run({ cwd: root, tasks: ['read', 'meddle'], log: logger })
@@ -283,7 +283,7 @@ describe('cache.inputStability: what a write during the command means', () => {
         `,
         files: { 'a.ts': 'const x = 1\n' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
       commit()
       const first = await run({ cwd: root, tasks: ['srv'], log: logger, holdPersistent: true })
       status = []
@@ -319,7 +319,7 @@ describe('cache.inputStability: what a write during the command means', () => {
     "the workspace's inputStability is the default; a task's own field wins over it",
     async () => {
       await fixture('formatted')
-      const ws = path.join(root, 'vx.workspace.mjs')
+      const ws = path.join(root, '.vx/workspace.mjs')
       await writeFile(
         ws,
         "export default { plugins: [], cache: { inputStability: { strategy: 'mutable' } } }\n",
@@ -433,7 +433,7 @@ describe('the other moves', () => {
         `,
         files: { 'in/a.txt': 'a', 'in/b.txt': 'b' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
       commit()
       await runTask('build')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
@@ -465,7 +465,7 @@ describe('the other moves', () => {
           'next.json': JSON.stringify({ name: 'app', version: '1.0.0' }),
         },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
       commit()
       await runTask('bump')
       expect(status.filter((l) => MOVED.test(l))).toEqual([
@@ -507,7 +507,7 @@ describe('what the run knew about the project goes with a move', () => {
         config: format('echo ok > fmt.log'),
         files: { 'a.ts': 'U\n' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nfmt.log\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nfmt.log\n')
       commit()
       await runTask('build')
       expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('U\n')
@@ -562,7 +562,7 @@ describe('what a moved task wrote elsewhere is seen too', () => {
           }
         `,
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
       commit()
       await runTask('build')
       expect(status.filter((l) => l.includes('app#build'))).toEqual([])
@@ -587,7 +587,7 @@ describe('an input the user edits during the run', () => {
     'while the command runs: the entry is withheld, and the restored file rebuilds',
     async () => {
       const app = await addProject(root, 'app', { config: BUILD, files: { 'src/a.ts': 'X\n' } })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nstarted\ngo\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n')
       commit()
       const pending = runTask('build')
       await reached(path.join(app, 'started'))
@@ -628,7 +628,10 @@ describe('an input the user edits during the run', () => {
         `,
         files: { 'src/a.ts': 'X\n' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nstarted\ngo\nbuilt\ndone\n')
+      await writeFile(
+        path.join(root, '.gitignore'),
+        '.vx/cache/\ndist/\nstarted\ngo\nbuilt\ndone\n',
+      )
       commit()
       const pending = runTask('build')
       await reached(path.join(app, 'started'))
@@ -677,7 +680,7 @@ describe('an input the user edits during the run', () => {
       `,
       files,
     })
-    await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nstarted\ngo\n')
+    await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n')
     return { app, lib }
   }
 
@@ -760,7 +763,7 @@ describe('an input file added during the run', () => {
 
   async function addedDuring(rel: string, config = ADDS(BUILD)): Promise<string> {
     const app = await addProject(root, 'app', { config, files: { 'src/in.txt': 'hi\n' } })
-    await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nstarted\ngo\n*.log\n')
+    await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n*.log\n')
     commit()
     const pending = runTask('build')
     await reached(path.join(app, 'started'))
@@ -817,7 +820,7 @@ describe('an input file added during the run', () => {
         config: ADDS(`touch src/x.log other.txt; ${BUILD}`),
         files: { 'src/in.txt': 'hi\n' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nstarted\ngo\n*.log\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nstarted\ngo\n*.log\n')
       commit()
       await writeFile(path.join(app, 'go'), '')
       await runTask('build')
@@ -853,7 +856,7 @@ describe('control: inputs an upstream wrote just before are not a move', () => {
         `,
         files: { 'src/a.txt': 'a' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
       commit()
       await waitForProducers(root)
       await runTask('build')

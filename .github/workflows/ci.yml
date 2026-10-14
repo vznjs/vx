@@ -77,7 +77,7 @@ jobs:
             # line that names a platform trait (owner, 2026-10-12: macOS
             # only for platform-touching PRs; main runs it always).
             case "$f" in
-              '' | package.json | bun.lock | vx.workspace.ts | .github/* | scripts/*) darwin=true ;;
+              '' | package.json | bun.lock | .vx/workspace.ts | .github/* | scripts/*) darwin=true ;;
               packages/*/vx.config.ts | packages/*/package.json | packages/*/scripts/*) darwin=true ;;
               packages/vx/src/exec/* | packages/vx/src/util/* | packages/vx/src/bin.ts | packages/vx/npm-launcher.*) darwin=true ;;
               *)
@@ -128,7 +128,7 @@ jobs:
       # resolve from a raw shell.
       #
       # The job summary comes from `@vzn/vx-ci`, declared in
-      # vx.workspace.ts — it activates on GITHUB_STEP_SUMMARY and writes the
+      # .vx/workspace.ts — it activates on GITHUB_STEP_SUMMARY and writes the
       # verdict, stats, failures and the per-task table, so a red run says
       # WHICH task failed on the PR page instead of only in the log.
       #
@@ -170,7 +170,6 @@ jobs:
           # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
-            .vx/timings.json
             ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
@@ -237,7 +236,6 @@ jobs:
           # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
-            .vx/timings.json
             ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
@@ -281,7 +279,6 @@ jobs:
         with:
           path: |
             .vx/cache
-            .vx/timings.json
             ~/.vx
           key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-shards-${{ matrix.part }}-
@@ -298,7 +295,6 @@ jobs:
         with:
           path: |
             .vx/cache
-            .vx/timings.json
             ~/.vx
           key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
 
@@ -498,7 +494,6 @@ jobs:
           # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
-            .vx/timings.json
             ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
@@ -524,7 +519,6 @@ jobs:
           # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
-            .vx/timings.json
             ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
@@ -585,7 +579,6 @@ jobs:
         with:
           path: |
             .vx/cache
-            .vx/timings.json
             ~/.vx
           key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-shards-${{ matrix.part }}-
@@ -600,7 +593,6 @@ jobs:
         with:
           path: |
             .vx/cache
-            .vx/timings.json
             ~/.vx
           key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
 

@@ -113,7 +113,7 @@ it('each discovery case answers as tests/contract/discovery.json records', async
       meta?.configPath == null ? null : path.basename(meta.configPath)
   }
 
-  const wsNames = ['vx.workspace.ts', 'vx.workspace.mts', 'vx.workspace.js', 'vx.workspace.mjs']
+  const wsNames = ['.vx/workspace.ts', '.vx/workspace.mts', '.vx/workspace.js', '.vx/workspace.mjs']
   for (const [i, file] of wsNames.entries()) {
     const root = fixture({
       'package.json': pkg('root', { workspaces: ['packages/*'] }),
@@ -149,9 +149,9 @@ it('each discovery case answers as tests/contract/discovery.json records', async
         : [path.basename(meta.configPath), Object.keys(config?.tasks ?? {})]
   }
   for (const files of [
-    ['vx.workspace.cts', 'vx.workspace.cjs'],
-    ['vx.workspace.cjs'],
-    ['vx.workspace.mjs', 'vx.workspace.cts'],
+    ['.vx/workspace.cts', '.vx/workspace.cjs'],
+    ['.vx/workspace.cjs'],
+    ['.vx/workspace.mjs', '.vx/workspace.cts'],
   ]) {
     const root = fixture({
       'package.json': pkg('root', { workspaces: ['packages/*'] }),

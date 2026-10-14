@@ -30,7 +30,7 @@ describe('vx why — a config change', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-why-config-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     const dir = path.join(root, 'packages', 'app')
     await mkdir(path.join(dir, 'src'), { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))

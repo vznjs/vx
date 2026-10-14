@@ -30,7 +30,7 @@ Declare the plugin and point the standard OTel variables at a collector.
 Live export is the default.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { otel } from '@vzn/vx-otel'
 

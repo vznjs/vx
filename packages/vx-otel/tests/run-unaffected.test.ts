@@ -69,8 +69,8 @@ async function down(): Promise<string> {
 }
 
 async function runWith(endpoint: string) {
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `import { otel } from ${JSON.stringify(OTEL_INDEX)}\n` +
       `export default { plugins: [otel({ endpoint: ${JSON.stringify(endpoint)}, timeoutMs: 60000 })] }\n`,
   )

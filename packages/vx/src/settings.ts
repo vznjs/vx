@@ -1,4 +1,4 @@
-// Every vx setting, once: its path is its `vx.workspace` key, and its
+// Every vx setting, once: its path is its `.vx/workspace` key, and its
 // environment variable and flag are derived from that path. Parsing,
 // validation, `vx info`'s settings view and the docs' settings tables all
 // read this list (`tests/settings.test.ts` holds src and docs to it).
@@ -23,7 +23,7 @@ export type SettingKind =
   | { readonly type: 'string' }
 
 export interface Setting {
-  /** The `vx.workspace` path (`run.timeout`); env and flag derive from it. */
+  /** The `.vx/workspace` path (`run.timeout`); env and flag derive from it. */
   readonly path: string
   readonly kind: SettingKind
   /** The built-in, as the docs print it. */
@@ -34,7 +34,7 @@ export interface Setting {
   readonly flag?: { readonly verb: 'run' | 'watch'; readonly name: string }
   /** The task field that overrides it, and beats every run-level source. */
   readonly task?: string
-  /** False: read before `vx.workspace` loads, so flag and env only. */
+  /** False: read before `.vx/workspace` loads, so flag and env only. */
   readonly config?: false
 }
 
@@ -117,7 +117,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'run.frozen',
     kind: { type: 'bool' },
     default: 'on when CI is set',
-    doc: 'Load configs from `vx-lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.',
+    doc: 'Load configs from `.vx/lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.',
     flag: { verb: 'run', name: '--frozen' },
   },
   {
@@ -216,7 +216,7 @@ export const SETTINGS: readonly Setting[] = [
   },
 ]
 
-/** The `vx.workspace` groups that hold settings; `plugins` is the other key. */
+/** The `.vx/workspace` groups that hold settings; `plugins` is the other key. */
 export const SETTING_GROUPS = ['run', 'cache', 'watch'] as const
 
 const BY_PATH = new Map(SETTINGS.map((s) => [s.path, s]))

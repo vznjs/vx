@@ -1,5 +1,5 @@
 /**
- * Source for a `vx.workspace.mjs` declaring this test's own plugins.
+ * Source for a `.vx/workspace.mjs` declaring this test's own plugins.
  * Running here and caching here are core's fallbacks, so a fixture that
  * wants neither needs no workspace file at all.
  *

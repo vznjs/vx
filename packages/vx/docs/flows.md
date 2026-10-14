@@ -182,12 +182,12 @@ Owners: `cli/watch.ts`, `cli/watch-set.ts` (what is watched),
 settled paths are changes), `cli/watch-fs.ts` (watchers,
 and the stat poller where they fail). One recursive `fs.watch` per project dir plus a
 non-recursive watch of the workspace root, which fires for the
-workspace fingerprint files (lockfiles), `vx.workspace.*`, the root
+workspace fingerprint files (lockfiles), `.vx/workspace.*`, the root
 `package.json` and root files a plugin claims. When any task declares
 `cache.inputs.workspaceFiles`, one recursive root watcher replaces them
-all. Path filter drops the segments `node_modules`, `.git` and `.vx`,
+all. Path filter drops the segments `node_modules`, `.git` and `.vx/cache`,
 the suffixes `.tsbuildinfo` and a trailing `~`, the run's resolved
-cache dir (which `.vx` covers only until `cache.dir` relocates it), the
+cache dir (which `.vx/cache` covers only until `cache.dir` relocates it), the
 watch probe file, and declared outputs plus the directories holding
 them (unless a task reads the path as an input). Git-ignored paths
 (one `git check-ignore` per judgement) start no cycle, except an edit

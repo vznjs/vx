@@ -49,7 +49,7 @@ export function useTurboWorkspace(turbo: unknown): { readonly root: string } {
     await pkg('lib', { build: 'mkdir -p dist && echo lib > dist/lib.js' })
     await pkg('app', { build: 'mkdir -p dist && echo app > dist/app.js' }, { lib: 'workspace:*' })
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(['turbo()'], `import { turbo } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
     )
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })

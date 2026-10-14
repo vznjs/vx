@@ -29,7 +29,7 @@ contributes, per task, a digest of **its project's resolved dependency
 closure**:
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { pnpm } from '@vzn/vx-lockfile'
 

@@ -1,5 +1,5 @@
 // End-to-end plugin integration: a workspace declares plugins in
-// vx.workspace.ts; run() loads them, installs lifecycle hooks, and
+// .vx/workspace.ts; run() loads them, installs lifecycle hooks, and
 // fires them in order across a real run.
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -26,12 +26,12 @@ async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => v
 }
 
 describe('Plugin API — end-to-end via run()', () => {
-  it('plugins declared in vx.workspace.ts receive lifecycle events from a real run', async () => {
+  it('plugins declared in .vx/workspace.ts receive lifecycle events from a real run', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       // The captured-events array is a module-level box the plugin pushes to.
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
@@ -73,7 +73,7 @@ describe('Plugin API — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
@@ -115,7 +115,7 @@ describe('Plugin API — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
@@ -163,7 +163,7 @@ describe('Plugin API — end-to-end via run()', () => {
     try {
       const mark = (name: string) => `${name}() { globalThis.__vxOrder.push('${name}') },`
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
@@ -217,7 +217,7 @@ describe('Plugin API — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/bad',

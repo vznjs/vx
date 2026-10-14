@@ -92,7 +92,7 @@ export interface RunOptions {
    * saying it is not.
    */
   remoteRequested?: boolean
-  /** This run's `cache.scope` (the CLI's `--cache-scope`), above `VX_CACHE_SCOPE` and `vx.workspace`. */
+  /** This run's `cache.scope` (the CLI's `--cache-scope`), above `VX_CACHE_SCOPE` and `.vx/workspace`. */
   cacheScope?: string
   /**
    * The default policy's remote write is off (`remote:r`): the CLI passes it
@@ -102,7 +102,7 @@ export interface RunOptions {
    */
   remoteReadOnlyByDefault?: boolean
   /**
-   * CI mode: load configs FROM the committed vx-lock.json instead of
+   * CI mode: load configs FROM the committed .vx/lock.json instead of
    * evaluating them (frozen-env reproducibility). Requires the lock
    * to exist and pass its content-hash tripwire. Local runs default
    * to live evaluation — byte hashes can't see a config's import

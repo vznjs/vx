@@ -1,4 +1,4 @@
-// Every run evaluates `vx.workspace.ts`, so what this package loads at
+// Every run evaluates `.vx/workspace.ts`, so what this package loads at
 // import is paid by every run: the sink and the Checks API client load
 // only where a summary file is set.
 import path from 'node:path'

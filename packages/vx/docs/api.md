@@ -620,7 +620,7 @@ export function exitSignal(code: number): string | undefined
 
 function · `src/workspace/workspace.ts`
 
-Where `vx init` (and `@vzn/vx-migrate`) puts `vx.workspace.ts` when
+Where `vx init` (and `@vzn/vx-migrate`) puts `.vx/workspace.ts` when
 there is none yet: the package manager's workspace root. A directory is a root
 CANDIDATE when it contains `pnpm-workspace.yaml` or a `package.json`.
 
@@ -665,14 +665,14 @@ export async function findManifestRoot(
 function · `src/workspace/workspace.ts`
 
 The workspace root for `start`: the directory holding the first
-`vx.workspace.*` from `start` up to the git top-level, or up to `/`
+`.vx/workspace.*` from `start` up to the git top-level, or up to `/`
 outside git ({@link workspaceFile}, shared with the hand-off). Nothing
 else decides it (owner, 2026-10-13: "Workspace file is the ultimate"):
 not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
 `VX_E_NO_WORKSPACE` when there is none.
 
 Outside git, a file another user owns is refused (root aside): a
-`vx.workspace.ts` planted in a shared directory above you (`/tmp`) is
+`.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
 code that would run as you. Inside git the walk never leaves your
 checkout. The directory you run in is yours to judge, and costs no
 stat. Run as root, vx trusts every owner, as a container over a mounted
@@ -2519,7 +2519,7 @@ A vx plugin. Contributes any subset of the run-level capabilities —
 where work runs (executor), which cache is used (cache), who
 observes the run (telemetry). It never changes WHAT a task is (the
 command string — principle #3), only where and how that command is
-executed. Registered explicitly in vx.workspace.ts via
+executed. Registered explicitly in .vx/workspace.ts via
 defineWorkspace({ plugins: [...] }). No auto-discovery.
 
 Made by `definePlugin(import.meta, hooks)` only: the loader refuses a

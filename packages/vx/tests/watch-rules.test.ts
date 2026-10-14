@@ -264,8 +264,8 @@ describe('the sweep sees what a run sees', () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
     // A `project` plugin gives a config-less package a cached task whose
     // outputs land in its dir — the zero-migration shape.
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
         'gen',
         `{ project(config) {
@@ -458,13 +458,12 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['.turbo/daemon.log', false],
     ['packages/other/src/index.ts', false],
     ['tsconfig.json', false],
-    // These two pin the predicates' EXACTNESS, not the filter's depth test:
-    // that test is redundant while the predicates are bare-name set membership
-    // (measured, item 502). A basename or suffix match would fail them.
+    // These pin the predicates' EXACTNESS: a basename or suffix match would
+    // fail them.
     ['nested/pnpm-lock.yaml', false], // a fingerprint NAME below the root is not the fingerprint
-    ['vx.workspace.ts', true], // the one root file that shapes a run without being an input
-    ['vx.workspace.mjs', true],
-    ['nested/vx.workspace.ts', false],
+    ['.vx/workspace.ts', true], // the one root file that shapes a run without being an input
+    ['.vx/workspace.mjs', true],
+    ['nested/.vx/workspace.ts', false],
     ['package.json', true], // its `workspaces` list is the package globs (item 1018)
     ['nested/package.json', false],
     // A sibling whose name EXTENDS a project's is no project: a prefix test

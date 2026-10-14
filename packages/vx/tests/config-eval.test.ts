@@ -435,7 +435,7 @@ describe('a first load in process: what a config prints', () => {
     )
     const ws = path.join(root, 'ws')
     await mkdir(ws)
-    await writeFile(path.join(ws, 'vx.workspace.mjs'), prints + 'export default {}\n')
+    await Bun.write(path.join(ws, '.vx/workspace.mjs'), prints + 'export default {}\n')
     const driver = path.join(root, 'first-load.ts')
     await writeFile(
       driver,
@@ -683,9 +683,9 @@ describe('validation stays in the parent process', () => {
   it('refuses a workspace Promise default of no object, as a project one is (D-6)', async () => {
     // Checked only before the await: `null` crashed the validator with a
     // TypeError stack, `42` loaded as a workspace with no config.
-    const file = path.join(root, 'vx.workspace.mjs')
+    const file = path.join(root, '.vx/workspace.mjs')
     for (const value of ['null', '42']) {
-      await writeFile(file, `export default Promise.resolve(${value})\n`)
+      await Bun.write(file, `export default Promise.resolve(${value})\n`)
       const err = await loadWorkspaceConfig(root).then(
         () => new Error('NO THROW'),
         (e: unknown) => e as Error,

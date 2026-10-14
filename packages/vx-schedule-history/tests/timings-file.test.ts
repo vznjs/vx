@@ -91,8 +91,8 @@ describe('the file between machines', () => {
         'b',
         "export default { tasks: { build: { exec: { command: 'sleep 0.15' } }, test: { dependsOn: ['build'], exec: { command: 'sleep 0.15' } } } }\n",
       )
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           "export default { cache: { dir: '.cache' }, plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
       )
@@ -137,8 +137,8 @@ describe('the file between machines', () => {
         'a',
         "export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } } } } }\n",
       )
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           "export default { cache: { dir: '.cache' }, plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
       )
@@ -168,8 +168,8 @@ describe('the file between machines', () => {
         'a',
         "export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } } }, all: { dependsOn: ['build'] } } }\n",
       )
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           "export default { cache: { dir: '.cache' }, plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
       )

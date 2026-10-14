@@ -1,6 +1,6 @@
 // A `package.json` planted in a shared directory above a checkout
 // (`/tmp/package.json` listing `*`) claimed it, and `vx info` in the
-// checkout ran the planter's `vx.workspace.ts` as the user (Security,
+// checkout ran the planter's `.vx/workspace.ts` as the user (Security,
 // 2026-10-13; git's `safe.directory` case). The root walk now stops at a
 // manifest another user owns, root aside; inside git it never goes above
 // the top-level at all (workspace-git-root.test.ts).

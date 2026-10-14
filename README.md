@@ -103,7 +103,7 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 
 ## Plugins
 
-What vx can do, not what it is limited to. Declared in `vx.workspace.ts`; without any, vx runs and caches locally.
+What vx can do, not what it is limited to. Declared in `.vx/workspace.ts`; without any, vx runs and caches locally.
 
 | Package                                                    | What it adds                                                                  |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -122,7 +122,7 @@ Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 Beside `turbo.json` or `nx.json`, `npx @vzn/vx init` runs `@vzn/vx-migrate`:
 it writes a `vx.config.ts` per package from `turbo.json` or the Nx graph,
 and you keep those and delete the old config. `vx init --keep` writes only
-a `vx.workspace.ts` that maps the old config instead: a temporary start,
+a `.vx/workspace.ts` that maps the old config instead: a temporary start,
 not a way to run the repo. The benchmark below uses native vx config.
 [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 

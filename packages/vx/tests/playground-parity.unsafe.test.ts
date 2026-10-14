@@ -270,7 +270,8 @@ const cacheDir = path.join(scratch, 'cache')
 
 /** The CLI's root marker; the playground is handed its root. */
 function markRoot(dir: string): void {
-  writeFileSync(path.join(dir, 'vx.workspace.mjs'), 'export default {}\n')
+  mkdirSync(path.join(dir, '.vx'), { recursive: true })
+  writeFileSync(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
 }
 
 function write(files: Record<string, string>): void {

@@ -39,19 +39,19 @@ async function armed(prepare: (dir: string) => Promise<void>) {
 }
 
 describe.skipIf(process.platform !== 'linux')('the recursive arm on Linux', () => {
-  it('never reports a write under node_modules, .git or .vx; one beside them is', async () => {
+  it('never reports a write under node_modules, .git or .vx/cache; one beside them is', async () => {
     const t = await armed(async (dir) => {
-      for (const d of ['node_modules/pkg/lib', '.git/objects', '.vx', 'src'])
+      for (const d of ['node_modules/pkg/lib', '.git/objects', '.vx/cache', 'src'])
         await mkdir(path.join(dir, d), { recursive: true })
     })
     try {
       await writeFile(path.join(t.dir, 'node_modules/pkg/lib/x.js'), 'x')
       await writeFile(path.join(t.dir, '.git/objects/o'), 'x')
-      await writeFile(path.join(t.dir, '.vx/cache.db'), 'x')
+      await writeFile(path.join(t.dir, '.vx/cache/cache.db'), 'x')
       await writeFile(path.join(t.dir, 'src/a.ts'), 'x')
       await until(() => t.seen.includes('src/a.ts'), 'the src edit')
       await Bun.sleep(100)
-      expect(t.seen.filter((f) => /node_modules|\.git|\.vx/.test(f))).toEqual([])
+      expect(t.seen.filter((f) => /node_modules|\.git|\.vx\/cache/.test(f))).toEqual([])
     } finally {
       await t.end()
     }

@@ -100,7 +100,7 @@
     "cacheBytes": { "type": "integer" },
     "settings": {
       "type": "object",
-      "description": "every setting (docs/schema.md § Settings) by path, as a run with no flags takes it: its variable as written, else vx.workspace's value, else null with source default",
+      "description": "every setting (docs/schema.md § Settings) by path, as a run with no flags takes it: its variable as written, else .vx/workspace's value, else null with source default",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,

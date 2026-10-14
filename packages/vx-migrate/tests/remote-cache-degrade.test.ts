@@ -145,8 +145,8 @@ async function fixture(plugin: string, importName: string): Promise<string> {
     path.join(root, 'pkg', 'vx.config.mjs'),
     "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/app.js dist/app.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n",
   )
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource(
       [plugin],
       `import { ${importName} } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
@@ -159,7 +159,7 @@ async function fixture(plugin: string, importName: string): Promise<string> {
 const OUT = path.join('pkg', 'dist', 'app.js')
 
 async function coldAgain(root: string): Promise<void> {
-  await rm(path.join(root, '.vx'), { recursive: true, force: true })
+  await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
   await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
 }
 
@@ -330,8 +330,8 @@ describe('a refused token costs ONE line on a whole workspace', () => {
         "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/app.js dist/app.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n",
       )
     }
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(
         [
           `turboCache({ apiUrl: ${JSON.stringify(srv.url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`,

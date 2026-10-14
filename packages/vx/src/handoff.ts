@@ -23,7 +23,7 @@ export async function localVx(
   if (execPath.includes('/node_modules/')) return null
   const file = await workspaceFile(cwd)
   if (file === null) return null
-  const root = file.slice(0, file.lastIndexOf('/')) || '/'
+  const root = workspaceRootOf(file)
   if (!(await Bun.file(`${root}/node_modules/@vzn/vx/package.json`).exists())) return null
   const bin = `${root}/node_modules/.bin/vx`
   const { realpathSync, statSync } = await import('node:fs')
@@ -37,23 +37,31 @@ export async function localVx(
   }
 }
 
-/** The workspace config's filenames, in lookup order: one marks the workspace root. */
+/**
+ * The workspace config's paths under the root, in lookup order: one marks
+ * the workspace root, the directory holding its `.vx` (owner, 2026-10-14).
+ */
 export const WORKSPACE_CONFIG_FILENAMES = [
-  'vx.workspace.ts',
-  'vx.workspace.mts',
-  'vx.workspace.js',
-  'vx.workspace.mjs',
+  '.vx/workspace.ts',
+  '.vx/workspace.mts',
+  '.vx/workspace.js',
+  '.vx/workspace.mjs',
   // A CommonJS config (`module.exports = …`), as Vite and TS name theirs: it
   // was ignored without a word (D-86).
-  'vx.workspace.cts',
-  'vx.workspace.cjs',
+  '.vx/workspace.cts',
+  '.vx/workspace.cjs',
 ]
+
+/** The workspace root a workspace config marks: the directory above its `.vx`. */
+export function workspaceRootOf(file: string): string {
+  return file.slice(0, file.lastIndexOf('/.vx/')) || '/'
+}
 
 const files = new Map<string, Promise<string | null>>()
 
 /**
  * The workspace config that marks the root for `dir`: the first
- * `vx.workspace.*` from `dir` up to the git top-level ({@link gitTop}),
+ * `.vx/workspace.*` from `dir` up to the git top-level ({@link gitTop}),
  * inclusive, or to `/` outside git (owner, 2026-10-13: "Workspace file is
  * the ultimate" and "never go out of git root"). Null when there is none.
  * Learned once per directory per run: the hand-off and the workspace root

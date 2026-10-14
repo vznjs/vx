@@ -34,7 +34,7 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-no-cache-word-'))
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-    await writeFile(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource())
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     for (const [name, cache] of [
       ['cached', "cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },"],
       ['plain', ''],

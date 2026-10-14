@@ -1,6 +1,6 @@
 ---
 name: vx
-description: Run, inspect and debug tasks in a vx monorepo (vx.config.ts, vx.workspace.ts). Use to build or test projects, find what a change affects, read why a task failed or re-ran, and query the cache as JSON.
+description: Run, inspect and debug tasks in a vx monorepo (vx.config.ts, .vx/workspace.ts). Use to build or test projects, find what a change affects, read why a task failed or re-ran, and query the cache as JSON.
 ---
 
 # vx

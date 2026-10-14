@@ -70,10 +70,10 @@ npm install -D @vzn/vx
 npx @vzn/vx init --keep
 ```
 
-`--keep` writes one file, `vx.workspace.ts`, which reads your
+`--keep` writes one file, `.vx/workspace.ts`, which reads your
 `turbo.json` or Nx graph as it is: nothing in the repo changes. Run
 `vx run build --all` next to the tool you use today. To undo, delete
-`vx.workspace.ts`. When you want native config, `vx init --native`
+`.vx/workspace.ts`. When you want native config, `vx init --native`
 writes a `vx.config.ts` per package; [Migrate](../../guides/migrate/)
 walks through it.
 

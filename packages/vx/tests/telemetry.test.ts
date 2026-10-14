@@ -818,7 +818,7 @@ describe('subscribeTelemetry — host', () => {
   })
 })
 
-// --- end-to-end through run() via vx.workspace.mjs ---------------------
+// --- end-to-end through run() via .vx/workspace.mjs ---------------------
 
 function makeSilentLogger() {
   return {
@@ -850,7 +850,7 @@ describe('telemetry — end-to-end through run()', () => {
         `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
@@ -931,7 +931,7 @@ describe('telemetry — end-to-end through run()', () => {
       const rec = got as unknown as RunSummaryRecord
       expect(rec.v).toBe(TELEMETRY_SCHEMA_VERSION)
       // v2: workspace identity present (this fixture has no remote, so it
-      // comes from the persisted .vx/workspace-id salt).
+      // comes from the persisted .vx/cache/workspace-id salt).
       expect(rec.run.workspaceId).toMatch(/^[0-9a-f]{16}$/)
       expect(rec.run.workspaceName.length).toBeGreaterThan(0)
     } finally {

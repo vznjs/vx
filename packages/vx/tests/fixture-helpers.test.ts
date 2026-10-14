@@ -59,17 +59,17 @@ describe('makeWorkspace', () => {
     expect(path.dirname(root)).toBe(tmpdir())
     expect(readdirSync(root).sort()).toEqual([
       '.git',
+      '.vx',
       'package.json',
       'packages',
       'pnpm-workspace.yaml',
-      'vx.workspace.mjs',
     ])
     expect(await text(path.join(root, 'pnpm-workspace.yaml'))).toBe('packages:\n  - "packages/*"\n')
     expect(JSON.parse(await text(path.join(root, 'package.json')))).toEqual({
       name: 'fixture-root',
       private: true,
     })
-    expect(await text(path.join(root, 'vx.workspace.mjs'))).toBe(localWorkspaceSource())
+    expect(await text(path.join(root, '.vx/workspace.mjs'))).toBe(localWorkspaceSource())
     const git = gitIn(root)
     expect(git('config', 'user.email').trim()).toBe('test@vx.local')
     expect(git('config', 'user.name').trim()).toBe('vx test')
@@ -89,22 +89,22 @@ describe('makeWorkspace', () => {
     expect(path.dirname(root)).toBe(dir)
     expect(path.basename(root)).toStartWith('suite-x-')
     expect(readdirSync(root).sort()).toEqual([
+      '.vx',
       'package.json',
       'packages',
       'pnpm-workspace.yaml',
-      'vx.workspace.mjs',
     ])
     expect(JSON.parse(await text(path.join(root, 'package.json'))).name).toBe('named-root')
-    expect(await text(path.join(root, 'vx.workspace.mjs'))).toBe('export default {}\n')
+    expect(await text(path.join(root, '.vx/workspace.mjs'))).toBe('export default {}\n')
   })
 
   it("git: 'commit' tracks everything written so far", async () => {
     const root = track(await makeWorkspace({ git: 'commit' }))
     const git = gitIn(root)
     expect(git('ls-files').trim().split('\n').sort()).toEqual([
+      '.vx/workspace.mjs',
       'package.json',
       'pnpm-workspace.yaml',
-      'vx.workspace.mjs',
     ])
     expect(git('status', '--porcelain')).toBe('')
     expect(git('log', '--format=%s').trim()).toBe('init')
@@ -193,7 +193,7 @@ describe('the local workspace source', () => {
     )
     const dir = scratch()
     await writeLocalWorkspace(dir)
-    const mod = await import(path.join(dir, 'vx.workspace.mjs'))
+    const mod = await import(path.join(dir, '.vx/workspace.mjs'))
     expect(mod.default).toEqual({ plugins: [] })
   })
 })

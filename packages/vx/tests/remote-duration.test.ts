@@ -38,7 +38,7 @@ it(
       const seen: Record<string, [string, number | undefined]> = {}
       for (const d of [Number.NaN, Infinity, -5, 1e300, 1.7]) {
         duration = d
-        await rm(path.join(fx.root, '.vx'), { recursive: true, force: true })
+        await rm(path.join(fx.root, '.vx', 'cache'), { recursive: true, force: true })
         const r = await run({ cwd: fx.root, tasks: ['build'], log, remoteCache: remote })
         seen[String(d)] = [r.outcomes[0]!.status, r.outcomes[0]!.storedDurationMs]
       }

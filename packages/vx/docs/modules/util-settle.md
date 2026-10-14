@@ -18,7 +18,7 @@ exitClaimedBySignal(): boolean
 ```
 
 - `setSettleBounds` takes the run's `run.teardownTimeout` and
-  `run.killGrace` from its flag or `vx.workspace`, resolved by the
+  `run.killGrace` from its flag or `.vx/workspace`, resolved by the
   orchestrator (`run-settings.ts`): util sits below `settings.ts`. The
   flag beats the variable, which beats the workspace.
 - `teardownTimeoutMs` reads `VX_RUN_TEARDOWN_TIMEOUT` per call (a test

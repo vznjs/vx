@@ -504,7 +504,7 @@ describe('warm hits through run() with the short-circuit', () => {
     root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-outdirs-run-')))
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-    await writeFile(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource())
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     await mkdir(path.join(root, 'packages/a/src'), { recursive: true })
     await writeFile(path.join(root, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(path.join(root, 'packages/a/src/index.js'), 'export const v = 1\n')

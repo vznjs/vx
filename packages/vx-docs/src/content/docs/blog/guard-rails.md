@@ -46,7 +46,7 @@ anything starts:
 
 ```sh frame="terminal"
 $ vx run @demo/api#bundle
-vx: @demo/api#bundle and @demo/api#build both declare the output "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false in vx.workspace.ts to let a dependant add to its upstream's outputs.
+vx: @demo/api#bundle and @demo/api#build both declare the output "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false in .vx/workspace.ts to let a dependant add to its upstream's outputs.
 ```
 
 This is a workspace rule. Rules are checks that keep vx fast and
@@ -54,7 +54,7 @@ correct, on by default. Turning one off allows a shape vx still runs
 correctly, only slower, and never changes a cache key:
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({

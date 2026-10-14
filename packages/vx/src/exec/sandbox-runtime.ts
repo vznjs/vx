@@ -2693,6 +2693,15 @@ function expandGrants(
       // names a wall literally never reaches this loop and stays, and one
       // spelled with escaped brackets names it as surely.
       if (namedPath(p) === undefined && walls.some((w) => atOrUnder(real, w))) continue
+      // A write hit that HOLDS a wall would bind it writable: `.*` in a root
+      // project matched `.vx`, which holds the cache. A read hit is punched
+      // around it instead (`punchWalls`).
+      if (
+        unmatched !== undefined &&
+        namedPath(p) === undefined &&
+        walls.some((w) => atOrUnder(w, real))
+      )
+        continue
       out.push(abs)
       hits++
     }

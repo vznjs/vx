@@ -185,7 +185,7 @@ async function vendoredFixture(root: string): Promise<string> {
       },
     }`,
   )
-  await write(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+  await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
   for (const [sub, file] of [
     ['vendor/lib', 'x.txt'],
     ['vendor/loose', 'y.txt'],

@@ -27,7 +27,7 @@ import { readOnce, unreadable } from './load-reads.js'
 export { validateProjectConfig }
 
 // The filenames live with the root lookup, which runs before anything loads.
-import { WORKSPACE_CONFIG_FILENAMES, workspaceFile } from '../handoff.js'
+import { WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
 export { WORKSPACE_CONFIG_FILENAMES }
 
 /** What a function default export is told; the playground says the same. */
@@ -288,7 +288,7 @@ const NAMED_FRAME = /\n\s+at .*[\\/]/
  *
  * `ResolveMessage` — an import that cannot be resolved. The usual cause has
  * one answer: the workspace runs the vx binary and never installed `@vzn/vx`,
- * which its own `vx.workspace.ts` imports. Bun's message also carries the
+ * which its own `.vx/workspace.ts` imports. Bun's message also carries the
  * module-cache bust query; the user gets the file they wrote.
  *
  * `BuildMessage` — a syntax or transpile error. Its message alone (`Expected
@@ -1103,16 +1103,17 @@ async function refuseStaleWorkspaceImports(configPath: string, since: number): P
     if (Math.floor(mtime) > since) {
       // The walk names real paths: a root reached through a symlink (macOS's
       // temp dir) named `../target/helper.mjs` from the link.
-      const from = path.dirname(realpathSync(configPath))
+      const real = realpathSync(configPath)
+      const root = workspaceRootOf(real)
       throw new UserError(
-        `${path.basename(configPath)} imports ${path.relative(from, file)}, which changed after this process loaded it; a running process cannot evaluate an imported module again — restart it to apply the edit`,
+        `${path.relative(root, real)} imports ${path.relative(root, file)}, which changed after this process loaded it; a running process cannot evaluate an imported module again — restart it to apply the edit`,
       )
     }
   }
 }
 
 /**
- * Find and load `vx.workspace.{ts,mts,js,mjs,cts,cjs}` from the workspace
+ * Find and load `.vx/workspace.{ts,mts,js,mjs,cts,cjs}` from the workspace
  * root. Returns `null` if no such file exists (the common case;
  * the schema is fully optional). Validates the shape and throws
  * a `UserError` on malformed input.
@@ -1122,7 +1123,7 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
   // found. A file gone since (a `vx watch` cycle after a rename) is probed for.
   const found = await workspaceFile(path.resolve(root))
   const known =
-    found !== null && path.dirname(found) === path.resolve(root)
+    found !== null && workspaceRootOf(found) === path.resolve(root)
       ? await Bun.file(found)
           .bytes()
           .then(

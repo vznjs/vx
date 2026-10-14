@@ -60,12 +60,12 @@ without re-reading this doc.
 
 ### 1.2 Workspace config parsing
 
-|       | What                                                                                      | vx                                              | Test                   |
-| ----- | ----------------------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------- |
-| Turbo | `turbo.json` parsed once, validated against schema                                        | `vx.workspace.{ts,mts,js,mjs}` via `Bun.import` | ✅ `workspace.test.ts` |
-| Nx    | `nx.json` with `extends` chain merging (`nx-json.ts:921-944`) + fallback to "core preset" | No `extends` support                            | ❌ no `extends` test   |
+|       | What                                                                                      | vx                                               | Test                   |
+| ----- | ----------------------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------- |
+| Turbo | `turbo.json` parsed once, validated against schema                                        | `.vx/workspace.{ts,mts,js,mjs}` via `Bun.import` | ✅ `workspace.test.ts` |
+| Nx    | `nx.json` with `extends` chain merging (`nx-json.ts:921-944`) + fallback to "core preset" | No `extends` support                             | ❌ no `extends` test   |
 
-**GAP:** `vx.workspace.ts` doesn't support `extends`. Low priority — only worth adding when configs grow.
+**GAP:** `.vx/workspace.ts` doesn't support `extends`. Low priority — only worth adding when configs grow.
 
 ### 1.3 Per-project config load
 
@@ -554,7 +554,7 @@ The 478 unique `it()` descriptions in our 29 test files were grepped against eve
 | ------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
 | Machine-ID gate                                                    | Only matters for shared `<cacheDir>` across machines                         |
 | Per-project transitive-deps hash slice                             | Optimization; current whole-lockfile fingerprint is correct, just over-broad |
-| `vx.workspace.ts` `extends` chain                                  | Feature; no user driving it                                                  |
+| `.vx/workspace.ts` `extends` chain                                 | Feature; no user driving it                                                  |
 | `extractOutputs` partial-restore (per-file extract on mixed-state) | Optimization on a path that's already manifest-skip-fast                     |
 | Cross-run project-graph cache                                      | Cold-start optimization; defer until measured                                |
 | `--continue=<mode>` flag                                           | Feature; in `comparison.md` already                                          |

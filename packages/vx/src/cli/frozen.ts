@@ -1,5 +1,5 @@
 // `run.frozen` for `vx run` and `vx watch`: the flag, then VX_RUN_FROZEN,
-// then vx.workspace, else on when CI is set (owner, 2026-10-13). A frozen
+// then .vx/workspace, else on when CI is set (owner, 2026-10-13). A frozen
 // run with no lock writes one first, which checks the graph rules, so a
 // pipeline needs no `vx lock` step of its own.
 

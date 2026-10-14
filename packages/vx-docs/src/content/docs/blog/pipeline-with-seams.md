@@ -44,7 +44,7 @@ setup and teardown wrap the run; commands adds a verb
 
 A plugin is `definePlugin(import.meta, hooks)`. Its name is its package
 name, read from `import.meta`, never a field you set. Declaration order
-in `vx.workspace.ts` is the order everywhere: executors are consulted in
+in `.vx/workspace.ts` is the order everywhere: executors are consulted in
 order, cache layers are chained in order, telemetry sinks receive in
 order.
 
@@ -90,7 +90,7 @@ migrate` became `@vzn/vx-migrate`, and the run-history scheduler became
 
 The second rule is the one that keeps the floor under your feet: core
 applies **no** plugin by default and names none. A capability a plugin
-must supply, a remote, a wire format, is declared in `vx.workspace.ts`
+must supply, a remote, a wire format, is declared in `.vx/workspace.ts`
 or it does not exist. The one thing that is implicit is the
 [local floor](../the-local-floor/): running here and caching here.
 

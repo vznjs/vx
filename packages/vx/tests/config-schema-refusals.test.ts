@@ -8,7 +8,7 @@ import { validateProjectConfig, validateWorkspace } from '../src/workspace/confi
 import { parseDependencySpec } from '../src/graph/dependency-spec.js'
 import { testPlugin } from './helpers/plugin.js'
 
-const WS = '/ws/vx.workspace.ts'
+const WS = '/ws/.vx/workspace.ts'
 const CFG = '/ws/pkg/vx.config.ts'
 
 function refusal(config: unknown): string | null {
@@ -465,7 +465,7 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       'vx spells it `cd <dir> && …` in `exec.command`: a task runs in its project directory',
     )
     expect(where({ parallelism: false })).toBe(
-      'vx spells it `run.concurrency: 1` in vx.workspace or `--concurrency 1` on the run: no task runs alone beside others',
+      'vx spells it `run.concurrency: 1` in .vx/workspace or `--concurrency 1` on the run: no task runs alone beside others',
     )
     expect(where({ configurations: {} })).toBe(
       'vx spells it one task per configuration (`build:production`, with its own `exec.command`)',
@@ -698,7 +698,7 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
   it('names where vx keeps each one', () => {
     const where = (key: string): string | undefined => {
       try {
-        validateWorkspace({ [key]: {} } as never, 'vx.workspace.ts')
+        validateWorkspace({ [key]: {} } as never, '.vx/workspace.ts')
       } catch (err) {
         return (err as Error).message.split(' — ')[1]
       }
@@ -720,7 +720,7 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
   it("names where vx keeps Nx's nx.json and Turbo's global keys (D-49)", () => {
     const where = (key: string): string | undefined => {
       try {
-        validateWorkspace({ [key]: {} } as never, 'vx.workspace.ts')
+        validateWorkspace({ [key]: {} } as never, '.vx/workspace.ts')
       } catch (err) {
         return (err as Error).message.split(' — ')[1]
       }
@@ -738,23 +738,23 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
   it('an Nx-style plugin name says what a vx plugin is (D-49)', () => {
     const refusal = (plugins: unknown[]): string => {
       try {
-        validateWorkspace({ plugins } as never, 'vx.workspace.ts')
+        validateWorkspace({ plugins } as never, '.vx/workspace.ts')
       } catch (err) {
         return (err as Error).message
       }
       return ''
     }
     expect(refusal(['@nx/vite/plugin'])).toBe(
-      "vx.workspace.ts: `plugins[0]` must be an object — a plugin is what its package's function returns (`nx()` from `@vzn/vx-migrate`), not a module name",
+      ".vx/workspace.ts: `plugins[0]` must be an object — a plugin is what its package's function returns (`nx()` from `@vzn/vx-migrate`), not a module name",
     )
     // CONTROL: any other non-object keeps the plain refusal.
-    expect(refusal([42])).toBe('vx.workspace.ts: `plugins[0]` must be an object')
+    expect(refusal([42])).toBe('.vx/workspace.ts: `plugins[0]` must be an object')
   })
 
   it('an undefined, null or false entry is skipped, as Vite skips it', () => {
     const refusal = (plugins: unknown[]): string => {
       try {
-        validateWorkspace({ plugins } as never, 'vx.workspace.ts')
+        validateWorkspace({ plugins } as never, '.vx/workspace.ts')
       } catch (err) {
         return (err as Error).message
       }
@@ -762,8 +762,8 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
     }
     expect(refusal([undefined, null, false])).toBe('')
     // CONTROL: the index past a skipped entry is still the entry's own.
-    expect(refusal([undefined, 0])).toBe('vx.workspace.ts: `plugins[1]` must be an object')
-    expect(refusal([true])).toBe('vx.workspace.ts: `plugins[0]` must be an object')
+    expect(refusal([undefined, 0])).toBe('.vx/workspace.ts: `plugins[1]` must be an object')
+    expect(refusal([true])).toBe('.vx/workspace.ts: `plugins[0]` must be an object')
   })
 })
 

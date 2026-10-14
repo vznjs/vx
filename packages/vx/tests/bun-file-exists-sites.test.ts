@@ -15,13 +15,13 @@ const FILE_PATH_SITES: Record<string, number> = {
   'cli/frozen.ts': 1, // the lockfile
   'cli/init.ts': 3, // turbo.json, nx.json, a scaffold's file
   'cli/plugin-templates.ts': 2, // the cache example's has() and get(): artifact file paths
-  'handoff.ts': 4, // a package.json, .git/HEAD, a worktree's .git file, a vx.workspace.*
+  'handoff.ts': 4, // a package.json, .git/HEAD, a worktree's .git file, a .vx/workspace.*
   'orchestrator/doctor.ts': 1, // the lockfile
   'orchestrator/task-hash.ts': 1, // a file to hash
   'workspace/affected.ts': 1, // a file to read bytes from
   'workspace/load-reads.ts': 1, // a root file: manifest, fingerprint file, workspace config
   'workspace/lockfile.ts': 1, // the lockfile
-  'workspace/migration.ts': 2, // workspace config candidates; write targets
+  'workspace/migration.ts': 3, // workspace config candidates; write targets; .vx/.gitignore
 }
 
 describe('Bun.file(...).exists() in src/ probes file paths only', () => {

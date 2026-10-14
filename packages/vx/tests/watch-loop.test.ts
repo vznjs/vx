@@ -205,9 +205,9 @@ describe('vx watch loop (e2e)', () => {
     // The workspace config is loaded in this process, and Bun keeps what it
     // imports: a cycle would run the old helper. Silence was worse.
     await writeFile(path.join(f.root, 'ws-helper.mjs'), "export const msg = 'ONE'\n")
-    await writeFile(
-      path.join(f.root, 'vx.workspace.mjs'),
-      "import { msg } from './ws-helper.mjs'\nexport default { plugins: [] }\n",
+    await Bun.write(
+      path.join(f.root, '.vx/workspace.mjs'),
+      "import { msg } from '../ws-helper.mjs'\nexport default { plugins: [] }\n",
     )
     f.watch = startWatch(f.root)
     const w = f.watch
@@ -323,7 +323,7 @@ describe('vx watch loop (e2e)', () => {
     expect(w.cycles()).toBe(2)
   }, 40_000)
 
-  it('an edit to vx.workspace.mjs is one cycle that runs under the new workspace config', async () => {
+  it('an edit to .vx/workspace.mjs is one cycle that runs under the new workspace config', async () => {
     // The workspace config is no task's input, so no project arm sees it;
     // its plugins, `config` stage and concurrency shape every cycle all the
     // same. Before 2026-09-10 the root arm listened for fingerprint files
@@ -333,8 +333,8 @@ describe('vx watch loop (e2e)', () => {
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
     await initialOnly(w, f.log)
 
-    await writeFile(
-      path.join(f.root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(f.root, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
         'org/greeter',
         `{ config(_ws, ctx) { ctx.warn('WS-EDIT-SEEN') } }`,
@@ -551,7 +551,7 @@ describe('vx watch in a single-project repository (e2e)', () => {
     const w = { current: undefined as ReturnType<typeof startWatch> | undefined }
     try {
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'solo' }))
-      await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
       await writeFile(
         path.join(root, 'vx.config.mjs'),
         `export default {

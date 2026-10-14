@@ -188,7 +188,7 @@ export async function sandboxRequestFor(
   /** The projects nested in this one (their dirs): a wall its grants do not reach. */
   nested: readonly string[] = [],
   /**
-   * The run's cache directory. `.vx` is walled wherever it is; a
+   * The run's cache directory. `.vx/cache` is walled wherever it is; a
    * `cacheDir` configured inside a project was not, and a task whose write
    * grant covered it could plant artifacts and index rows (L-24).
    */
@@ -234,7 +234,7 @@ export async function sandboxRequestFor(
   const walls = [
     ...nested,
     path.join(workspaceRoot, '.git'),
-    path.join(workspaceRoot, '.vx'),
+    path.join(workspaceRoot, '.vx', 'cache'),
     ...(cacheDir !== undefined &&
     toRealPath(cacheDir).startsWith(toRealPath(workspaceRoot) + path.sep)
       ? [cacheDir]
@@ -320,9 +320,11 @@ export function sandboxReadable(
     toRealPath(path.join(workspaceRoot, 'node_modules')),
   ]
   const globs = grants.filter((g) => !isMountableLiteral(g)).map((g) => new Bun.Glob(g))
-  const walls = [...nested, path.join(workspaceRoot, '.git'), path.join(workspaceRoot, '.vx')].map(
-    toRealPath,
-  )
+  const walls = [
+    ...nested,
+    path.join(workspaceRoot, '.git'),
+    path.join(workspaceRoot, '.vx', 'cache'),
+  ].map(toRealPath)
   return (real) => {
     if (walls.some((w) => atOrUnder(real, w))) return false
     if (literals.some((l) => atOrUnder(real, l))) return true

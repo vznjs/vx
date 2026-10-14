@@ -1,6 +1,6 @@
 // Public API for @vzn/vx-otel — the OpenTelemetry exporter plugin for vx.
 //
-// Usage in vx.workspace.ts:
+// Usage in .vx/workspace.ts:
 //   import { defineWorkspace } from '@vzn/vx'
 //   import { otel } from '@vzn/vx-otel'
 //   export default defineWorkspace({ plugins: [otel()] })

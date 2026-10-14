@@ -108,13 +108,13 @@ function allowSameDayVx(dir: string): void {
   writeFileSync(file, `${yaml.replace(/\n*$/, '\n')}minimumReleaseAgeExclude:\n  - '@vzn/*'\n`)
 }
 
-// `vx init` writes vx.workspace.ts with the published @vzn/vx-migrate,
+// `vx init` writes .vx/workspace.ts with the published @vzn/vx-migrate,
 // which can predate this checkout's config shape: until 0.0.637 shipped it
 // wrote `concurrency` and `affectedBase` at the top level, which this vx
 // refuses. Move one-line fields under `run`, as the refusal says.
 const MOVED_TO_RUN = ['concurrency', 'schedule', 'affectedBase', 'timeout']
 function moveRunFields(dir: string): void {
-  for (const name of ['vx.workspace.ts', 'vx.workspace.mjs', 'vx.workspace.js']) {
+  for (const name of ['.vx/workspace.ts', '.vx/workspace.mjs', '.vx/workspace.js']) {
     const file = path.join(dir, name)
     if (!existsSync(file)) continue
     const moved: string[] = []

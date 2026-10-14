@@ -159,7 +159,7 @@ describe('telemetry flush is time-bounded', () => {
       `export default { tasks: { boom: { exec: { command: 'exit 3' } } } }`,
     )
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([
         pluginSource(
           'org/hang',
@@ -196,7 +196,7 @@ describe('a hook that never settles', () => {
       `export default { tasks: { boom: { exec: { command: 'exit 3' } } } }`,
     )
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([pluginSource('org/hang', hooks)]),
     )
     gitInitCommit(root)
@@ -427,7 +427,7 @@ describe('a malformed telemetry() return is rejected at the boundary', () => {
       `export default { tasks: { hi: { exec: { command: 'true' } } } }`,
     )
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([pluginSource('org/bad', `{ telemetry() { return null } }`)]),
     )
     gitInitCommit(root)
@@ -456,7 +456,7 @@ describe('the zero-cost gate keys on the telemetry capability', () => {
       `export default { tasks: { hi: { exec: { command: 'true' } } } }`,
     )
     if (pluginSource !== null) {
-      await Bun.write(path.join(root, 'vx.workspace.mjs'), pluginSource)
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), pluginSource)
     }
     gitInitCommit(root)
     await run({
@@ -469,10 +469,10 @@ describe('the zero-cost gate keys on the telemetry capability', () => {
     return root
   }
 
-  // `.vx/workspace-id` is written by captureWorkspaceIdentity, which only
+  // `.vx/cache/workspace-id` is written by captureWorkspaceIdentity, which only
   // runs when the run context is built — a cheap, exact proxy for "did this
   // run pay the telemetry-context cost?" on a remote-less fixture repo.
-  const idFile = (root: string) => existsSync(path.join(root, '.vx', 'workspace-id'))
+  const idFile = (root: string) => existsSync(path.join(root, '.vx', 'cache', 'workspace-id'))
 
   it('a plugin with a non-telemetry capability pays nothing', async () => {
     // Was a `backend`-only plugin until that capability was removed and the

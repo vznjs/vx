@@ -1,6 +1,6 @@
 // `vx init` in a Turbo or Nx repo, the temporary start the migrate guide
 // shows (owner, 2026-10-02: Turbo and Nx only via migration): four
-// commands, and the guide's `vx.workspace.ts` held to the one init writes.
+// commands, and the guide's `.vx/workspace.ts` held to the one init writes.
 // The run spawns npx, which a sandboxed shard cannot host — hence the
 // unsafe suite.
 //
@@ -108,7 +108,7 @@ function commit(root: string): void {
 function turboRepo(): string {
   const root = tmp('turbo')
   cpSync(path.join(REPO, 'examples', 'turbo'), root, { recursive: true })
-  rmSync(path.join(root, 'vx.workspace.ts'))
+  rmSync(path.join(root, '.vx/workspace.ts'))
   return root
 }
 
@@ -160,7 +160,7 @@ function nxRepo(): string {
       },
     }),
   )
-  writeFileSync(path.join(root, '.gitignore'), 'node_modules\n.nx\n.vx\ndist\n')
+  writeFileSync(path.join(root, '.gitignore'), 'node_modules\n.nx\n.vx/cache/\ndist\n')
   return root
 }
 
@@ -232,7 +232,7 @@ describe('vx init in a Turbo or Nx repo: the first run builds, the second hits',
           status === ''
             ? ''
             : status === 'file'
-              ? readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')
+              ? readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')
               : lastStatuses(root),
         ])
       }
@@ -265,7 +265,7 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     expect(initCmd).toBe('npx @vzn/vx init --keep')
     const init = step(root, initCmd)
     expect([init.code, init.out]).toEqual([0, initOut])
-    expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
+    expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(file!)
 
     mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true })
     writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'env:\n  TURBO_TOKEN: x\n')
@@ -293,7 +293,7 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     expect(initCmd).toBe('npx @vzn/vx init --keep')
     const init = step(root, initCmd)
     expect([init.code, init.out]).toEqual([0, initOut])
-    expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(file!)
+    expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(file!)
     const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
     expect(migrate(root)).toEqual([0, migrateOut])
@@ -328,10 +328,10 @@ function migrate(root: string): [number | null, string] {
 }
 
 /** The guide's last step: vx-migrate already took the plugin out of
- *  `vx.workspace.ts`; the tool's config deleted, two builds on the written
+ *  `.vx/workspace.ts`; the tool's config deleted, two builds on the written
  *  configs alone, each run's statuses for app and lib. */
 function endState(root: string, plugin: 'turbo' | 'nx', config: string): string[][] {
-  expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).not.toContain(`${plugin}()`)
+  expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).not.toContain(`${plugin}()`)
   rmSync(path.join(root, config))
   const git = gitIn(root)
   git('add', '-A')

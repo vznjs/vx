@@ -14,7 +14,7 @@ import {
   normalizeBunGlob,
   realpathOf,
 } from '../util/index.js'
-import { gitTop, workspaceFile } from '../handoff.js'
+import { gitTop, workspaceFile, workspaceRootOf } from '../handoff.js'
 import { type LoadReads, readOnce, unreadable } from './load-reads.js'
 import { repoIdOf } from './repo-id.js'
 
@@ -79,14 +79,14 @@ const decoder = new TextDecoder()
 
 /**
  * The workspace root for `start`: the directory holding the first
- * `vx.workspace.*` from `start` up to the git top-level, or up to `/`
+ * `.vx/workspace.*` from `start` up to the git top-level, or up to `/`
  * outside git ({@link workspaceFile}, shared with the hand-off). Nothing
  * else decides it (owner, 2026-10-13: "Workspace file is the ultimate"):
  * not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
  * `VX_E_NO_WORKSPACE` when there is none.
  *
  * Outside git, a file another user owns is refused (root aside): a
- * `vx.workspace.ts` planted in a shared directory above you (`/tmp`) is
+ * `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
  * code that would run as you. Inside git the walk never leaves your
  * checkout. The directory you run in is yours to judge, and costs no
  * stat. Run as root, vx trusts every owner, as a container over a mounted
@@ -100,12 +100,12 @@ export async function findWorkspaceRoot(
   const file = await workspaceFile(start)
   if (file === null) {
     throw new UserError(
-      `no vx.workspace.ts in ${start} or a parent${(await gitTop(start)) === null ? '' : ' up to the git root'} — ` +
+      `no .vx/workspace.ts in ${start} or a parent${(await gitTop(start)) === null ? '' : ' up to the git root'} — ` +
         'run `vx init` to create one',
       'VX_E_NO_WORKSPACE',
     )
   }
-  const root = path.dirname(file)
+  const root = workspaceRootOf(file)
   if (uid !== 0 && root !== start && (await gitTop(start)) === null) {
     const owner = await stat(file).then(
       (st) => st.uid,
@@ -123,7 +123,7 @@ export async function findWorkspaceRoot(
 }
 
 /**
- * Where `vx init` (and `@vzn/vx-migrate`) puts `vx.workspace.ts` when
+ * Where `vx init` (and `@vzn/vx-migrate`) puts `.vx/workspace.ts` when
  * there is none yet: the package manager's workspace root. A directory is a root
  * CANDIDATE when it contains `pnpm-workspace.yaml` or a `package.json`.
  *

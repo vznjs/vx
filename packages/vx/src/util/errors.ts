@@ -26,7 +26,7 @@ export class UserError extends Error {
 
 // A refusal that opens with the config that caused it: the schema's
 // `<file>: tasks.<name> …` and the loader's `<file> has unknown field …`.
-const CONFIG_REFUSAL = /^\/\S*\/vx\.(?:config|workspace)\.[cm]?[jt]s\b/
+const CONFIG_REFUSAL = /^\/\S*\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s\b/
 
 /**
  * The stable code of anything `bin.ts` catches. A UserError's own, but

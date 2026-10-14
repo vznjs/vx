@@ -64,7 +64,7 @@ async function workspace(
 ): Promise<string> {
   const root = await makeWorkspace({ prefix: `vx-reftable-${format}-${objects}-`, git: false })
   roots.push(root)
-  await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+  await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
   for (const name of ['a', 'b']) {
     await addProject(root, name, { config: CONFIG, files: { 'src/x.txt': name } })
   }

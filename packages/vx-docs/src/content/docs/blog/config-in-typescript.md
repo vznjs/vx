@@ -98,7 +98,7 @@ allowed:
 
 When "evaluated live" is exactly what a CI pipeline must not do,
 [`vx lock`](../lock-and-frozen/) evaluates every config once and writes
-the resolved objects to `vx-lock.json`; `vx run --frozen` consumes the
+the resolved objects to `.vx/lock.json`; `vx run --frozen` consumes the
 lock with no evaluation at all, and `--check` catches drift a byte hash
 cannot see.
 

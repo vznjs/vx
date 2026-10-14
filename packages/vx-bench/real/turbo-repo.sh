@@ -12,7 +12,7 @@
 #
 #   real/turbo-repo.sh <repo> <vx-binary> "<tasks>" [reps] [output-dir-names]
 #
-# The repo must already have `vx.workspace.mjs` with `plugins: [turbo()]`
+# The repo must already have `.vx/workspace.mjs` with `plugins: [turbo()]`
 # and its dependencies installed. `output-dir-names` is what the wipe
 # removes under packages/*/ (default: dist types coverage). Rows print as
 # `<tool> <arm> <ms> exit=<code>`; each arm's log is kept beside the repo
@@ -23,7 +23,7 @@
 # 274 across build + typecheck + test:unit + lint; needs Node >= 24 and
 # pnpm 12 on the bench host:
 #   git clone --depth 1 https://github.com/n8n-io/n8n && cd n8n && pnpm install
-#   printf "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n" > vx.workspace.mjs
+#   printf "import { turbo } from '@vzn/vx-migrate'\nexport default { plugins: [turbo()] }\n" > .vx/workspace.mjs
 #   real/turbo-repo.sh ~/n8n <vx-binary> "build" 3 "dist"
 #   real/turbo-repo.sh ~/n8n <vx-binary> "build typecheck test:unit lint" 3 "dist coverage"
 #
