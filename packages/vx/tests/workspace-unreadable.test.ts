@@ -36,9 +36,13 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
       await rm(root, { recursive: true, force: true })
     })
 
-    const run = async (locked: string, mode = 0o000, verb = ['run', 'build', '--all', '--dry']) => {
+    const run = async (
+      locked: string,
+      mode = 0o000,
+      verb = ['run', 'build', '--all', '--dry', '--cache-dir', path.join(root, '.c')],
+    ) => {
       if (locked !== '') await chmod(path.join(root, locked), mode)
-      const proc = Bun.spawn(['bun', BIN, ...verb, '--cache-dir', path.join(root, '.c')], {
+      const proc = Bun.spawn(['bun', BIN, ...verb], {
         cwd: root,
         env: { ...process.env, NO_COLOR: '1' },
         stdout: 'pipe',
