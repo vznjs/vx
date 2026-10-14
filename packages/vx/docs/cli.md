@@ -2063,7 +2063,7 @@ checked, in one line before `next:` (owner, 2026-10-14). A refusal (a
 graph rule, a plugin not installed yet) is printed, the configs stay
 written, the exit is 0, and `next:` says to fix it and run `vx lock`.
 `@vzn/vx-migrate --no-install` skips the step: the plugins its workspace
-file declares are not installed yet.
+file declares are not installed yet, so `next:` starts with `vx lock`.
 
 `vx init --dry --format json` prints the plan as one JSON document
 (`schemas/init.json`), nothing written: `files` (each path and its

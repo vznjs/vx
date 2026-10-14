@@ -256,12 +256,12 @@ describe('applyMigration', () => {
     await apply(plan([['app', [task('lint', exec('x')), task('build', exec('tsc'))]]]), {
       force: true,
     })
-    expect(stdout.trimEnd().split('\n').at(-1)).toBe('next: vx run build --all')
+    expect(stdout.trimEnd().split('\n').at(-1)).toBe('next: vx lock, then vx run build --all')
     stdout = ''
     await apply(plan([['app', [task('lint', exec('x')), task('test', exec('y'))]]]), {
       force: true,
     })
-    expect(stdout.trimEnd().split('\n').at(-1)).toBe('next: vx run lint --all')
+    expect(stdout.trimEnd().split('\n').at(-1)).toBe('next: vx lock, then vx run lint --all')
   })
 
   it("writes a plan's import lines and a raw expression as code, not as strings (D-22)", async () => {
