@@ -65,7 +65,7 @@ export {
   settleWithin,
   teardownTimeoutMs,
 } from './settle.js'
-export { formatBytes, parseDuration, parseSize } from './size.js'
+export { formatBytes, parseDuration, parseSize, treeBytes } from './size.js'
 export {
   cgroupCpuQuota,
   cgroupMemoryLimitBytes,

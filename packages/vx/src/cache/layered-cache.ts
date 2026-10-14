@@ -474,7 +474,7 @@ export class LayeredCache implements CacheLayer {
     // queued job holds a path, not a buffer, a plugin that streams the Blob
     // never holds it whole, and every read of it sees the same bytes though
     // a re-save of the key renames others over the live name. If a
-    // concurrent `vx cache prune` removed the artifact first the pin throws
+    // concurrent `vx cache clean` removed the artifact first the pin throws
     // and this upload is skipped — the never-fail contract.
     const hash = args.hash
     const durationMs = args.entry.durationMs

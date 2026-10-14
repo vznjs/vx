@@ -1,5 +1,5 @@
 // A cache entry whose artifact is removed between the probe and the restore
-// — a `vx cache prune` in another shell, or the `cacheRetention` of another
+// — a `vx cache clean` in another shell, or the `cacheRetention` of another
 // workspace sharing `--cache-dir` — is a MISS: the task runs and the run
 // stays green. It failed every such task with "internal error …
 // CorruptArtifactError: artifact file vanished before restore" (upstream

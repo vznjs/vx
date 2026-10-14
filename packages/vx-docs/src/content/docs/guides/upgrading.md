@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: rename vx cache prune to vx cache clean
+
+`vx cache prune` is now `vx cache clean`; the old name is an unknown subcommand. A bare `vx cache clean` clears this repo's cache and run history instead of exiting 1.
+
 ## lock: write the lock minified, a review copy per config
 
 .vx/lock.json is written minified; re-run vx lock and commit the lock and each project's vx.lock.json.

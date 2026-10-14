@@ -52,7 +52,7 @@ verdict: `0` when every task passed ([exit codes](#branch-on-exit-codes-and-erro
 
 ## Read answers as JSON
 
-`vx run`, `vx show`, `vx info`, `vx why`, `vx last`, `vx cache prune`,
+`vx run`, `vx show`, `vx info`, `vx why`, `vx last`, `vx cache clean`,
 `vx lock --check` and `vx init --dry` take `--format json`. Each prints one JSON document to stdout, and every
 notice goes to stderr, so stdout always parses. Each shape is a JSON
 Schema shipped in the package (`node_modules/@vzn/vx/schemas/`).

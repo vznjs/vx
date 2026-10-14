@@ -553,7 +553,7 @@ describe('vx info (e2e)', () => {
         const r = await vx(root, ['info'])
         expect(r.code).toBe(0)
         expect(r.out).toMatch(
-          /^orphans: +1 artifact \(2\.0 KB\) the index does not know — `vx cache prune` reaps them$/m,
+          /^orphans: +1 artifact \(2\.0 KB\) the index does not know — `vx cache clean` reaps them$/m,
         )
       } finally {
         await rm(aged, { force: true })
@@ -802,7 +802,9 @@ describe('vx info — the rendered rows', () => {
     workers: { count: 4, source: 'cores', cores: 4, cpuQuota: null },
     memory: { usableBytes: 16 * GB, totalBytes: 16 * GB, cgroupLimitBytes: null },
     cacheDir: '/w/.vx',
+    cacheDirBytes: 0,
     cacheStore: '/home/u/.vx/3f2a9c1e7b4d5a60/cache',
+    cacheStoreBytes: 0,
     cacheVersion: 'vx-cache-v39',
     schemaVersion: 'v28',
     cacheEntries: 0,
@@ -844,8 +846,8 @@ describe('vx info — the rendered rows', () => {
         'plugins:          none',
         'workers:          4 — the CPU count',
         'memory:           16 GB',
-        'cache dir:        /w/.vx',
-        'cache store:      /home/u/.vx/3f2a9c1e7b4d5a60/cache',
+        "cache dir:        /w/.vx (0 B, this workspace's run history)",
+        "cache store:      /home/u/.vx/3f2a9c1e7b4d5a60/cache (0 B, shared by this repo's checkouts)",
         'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    0 (0 B)',
         'task runs (24h):  5 (2 cache hits: 1 up-to-date, 1 restored)',
@@ -899,12 +901,12 @@ describe('vx info — the rendered rows', () => {
         'plugins:          2 — p (no seams); q (executor, cache)',
         'workers:          8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
         'memory:           2.0 GB usable — cgroup limit; the machine has 8.0 GB',
-        'cache dir:        /w/.vx',
+        "cache dir:        /w/.vx (0 B, the entries and this workspace's run history)",
         'cache store:      none: the cache dir holds the entries',
         'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    3 (3.0 GB of 10 GB, 30%)',
         'cache retention:  each run evicts entries unused for 30d, and the oldest entries past 10G',
-        'orphans:          1 artifact (512 B) the index does not know — `vx cache prune` reaps them',
+        'orphans:          1 artifact (512 B) the index does not know — `vx cache clean` reaps them',
         'task runs (24h):  0 (0 cache hits)',
         'flaky tasks:      2 — a#test (3 of 7 runs failed on unchanged inputs); b#e2e (1 of 4 runs failed)',
         'sandbox:          unavailable — bwrap missing; 2 tasks declare exec.sandbox and will fail',
@@ -924,8 +926,8 @@ describe('vx info — the rendered rows', () => {
     }).split('\n')
     expect(out.filter((l) => /^(workspace root|cache |cache retention)/.test(l))).toEqual([
       'workspace root:   ~/w',
-      'cache dir:        ~/w/.vx',
-      'cache store:      ~/.vx/id/cache',
+      "cache dir:        ~/w/.vx (0 B, this workspace's run history)",
+      "cache store:      ~/.vx/id/cache (0 B, shared by this repo's checkouts)",
       'cache versions:   keys vx-cache-v39 · index schema v28',
       'cache entries:    0 (0 B of 1.0 GB, 0%)',
       'cache retention:  each run evicts the oldest entries past 1G',

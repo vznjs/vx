@@ -89,10 +89,15 @@ export function renderInfo(f: InfoFacts): string {
     ['plugins', describePlugins(f.plugins)],
     ['workers', describeWorkers(f.workers)],
     ['memory', describeMemory(f.memory)],
-    ['cache dir', tildePath(f.cacheDir)],
+    [
+      'cache dir',
+      `${tildePath(f.cacheDir)} (${formatBytes(f.cacheDirBytes)}, ${f.cacheStore === null ? 'the entries and ' : ''}this workspace's run history)`,
+    ],
     [
       'cache store',
-      f.cacheStore === null ? 'none: the cache dir holds the entries' : tildePath(f.cacheStore),
+      f.cacheStore === null
+        ? 'none: the cache dir holds the entries'
+        : `${tildePath(f.cacheStore)} (${formatBytes(f.cacheStoreBytes ?? 0)}, shared by this repo's checkouts)`,
     ],
     ['cache versions', `keys ${f.cacheVersion} · index schema ${f.schemaVersion}`],
     ['cache entries', describeEntries(f)],
@@ -108,7 +113,7 @@ export function renderInfo(f: InfoFacts): string {
       ? ([
           [
             'orphans',
-            `${f.orphans.artifacts} artifact${f.orphans.artifacts === 1 ? '' : 's'} (${formatBytes(f.orphans.bytes)}) the index does not know — \`vx cache prune\` reaps them`,
+            `${f.orphans.artifacts} artifact${f.orphans.artifacts === 1 ? '' : 's'} (${formatBytes(f.orphans.bytes)}) the index does not know — \`vx cache clean\` reaps them`,
           ],
         ] as [string, string][])
       : []),

@@ -961,7 +961,7 @@ describe('LocalHistoryProvider', () => {
 
 // Retention ran in every handle's close, a reading verb's included: `vx
 // last --list` over month-old runs emptied the history it listed, and
-// `vx cache prune --dry-run` pruned it (item 1004).
+// `vx cache clean --dry-run` pruned it (item 1004).
 describe('a reading handle prunes no history', () => {
   let dir: string | undefined
   afterEach(() => {

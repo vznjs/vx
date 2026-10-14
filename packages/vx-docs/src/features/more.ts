@@ -1019,18 +1019,18 @@ export const MORE: readonly Feature[] = [
     category: 'cache',
     hook: 'Evict by age or size, oldest use first, by hand or on a schedule.',
     body: [
-      'Caches grow. `vx cache prune` removes entries older than a cutoff or trims the cache to a size, least recently used first.',
+      'Caches grow. `vx cache clean` removes entries older than a cutoff or trims the cache to a size, least recently used first.',
       'Set `cache.retention` once and vx keeps to it; `--dry-run` shows what would go first.',
     ],
     example: {
       lang: 'sh',
-      code: 'vx cache prune --older-than 30d\nvx cache prune --max-size 10G --dry-run',
+      code: 'vx cache clean --older-than 30d\nvx cache clean --max-size 10G --dry-run',
     },
     image: 'cache-prune.png',
     imageAlt: 'Cache pruning by age and size.',
     docs: {
-      label: 'vx cache prune',
-      href: 'cli/#vx-cache-prune',
+      label: 'vx cache clean',
+      href: 'cli/#vx-cache-clean',
     },
     deepDive: {
       label: 'One command to know your workspace',

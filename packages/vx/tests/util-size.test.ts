@@ -9,7 +9,7 @@ import { parseSize as parseSizeViaBarrel } from '../src/util/index.js'
 
 // parseSize is the single gate on every byte quantity a user can type:
 //
-//   `vx cache prune --max-size <size>`  → the LRU eviction cap. A value
+//   `vx cache clean --max-size <size>`  → the LRU eviction cap. A value
 //        larger than intended evicts nothing.
 //   (`--memory` and `exec.resources.memory` read it too until 2026-09-12,
 //        when reservations left core for the schedule plugin.)
@@ -155,7 +155,7 @@ describe('parseSize — zero', () => {
   })
 
   // The refusal of a zero bound lives at the CLI, NOT here — docs/cli.md:968
-  // ("A zero bound is rejected") describes `vx cache prune`, and the same
+  // ("A zero bound is rejected") describes `vx cache clean`, and the same
   // string is a legal 0 for any other caller. Pinned in both directions so
   // the split stays a decision: moving the guard into parseSize would break
   // nothing visible here, but would change which layer owns the message.

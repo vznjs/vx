@@ -168,7 +168,7 @@ function unreadableIndexError(dbFile: string, err: unknown): UserError {
   return new UserError(
     `the cache index ${dbFile} is not a database SQLite can read (${(err as Error).message}) — ` +
       `it holds nothing a run cannot rebuild: remove it with its -wal and -shm files and ` +
-      `re-run, and \`vx cache prune\` reclaims the artifacts it indexed`,
+      `re-run, and \`vx cache clean\` reclaims the artifacts it indexed`,
   )
 }
 
@@ -1168,7 +1168,7 @@ export class Cache implements CacheLayer {
    * corrupt past the ones the open reads — to the open's own refusal. The
    * open reads the header and `schema_meta` alone (item 1005), so a file
    * corrupt deeper answered the first lookup that reached the bad page: every
-   * task of a run failed as an "internal error", and `vx cache prune` printed
+   * task of a run failed as an "internal error", and `vx cache clean` printed
    * a stack (A-8). Every other error passes through as it was.
    */
   private guard<T>(op: () => T): T {
@@ -1819,7 +1819,7 @@ export class Cache implements CacheLayer {
     // outputs, so a restore that did not fail here would report a green cache
     // hit over an emptied output tree. The artifact existed when `get()`
     // probed it, so its absence now means something removed it underneath us
-    // (a `vx cache prune` in another shell, or another workspace's retention
+    // (a `vx cache clean` in another shell, or another workspace's retention
     // on a shared `--cache-dir`) — `ArtifactVanishedError`, which the caller
     // turns into a miss: the task runs.
     //
@@ -2918,7 +2918,7 @@ export class Cache implements CacheLayer {
     // list an invocation whose task detail is already gone, and the
     // table would grow unbounded on a long-lived checkout.
     // A reading verb and a dry run delete nothing: `vx last --list` over
-    // month-old runs emptied the history it listed, and `vx cache prune
+    // month-old runs emptied the history it listed, and `vx cache clean
     // --dry-run` pruned it (item 1004).
     try {
       if (!this.inspecting) {

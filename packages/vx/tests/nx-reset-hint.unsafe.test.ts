@@ -1,5 +1,5 @@
 // `vx reset` and the migrate guide's `nx reset` row named a bare
-// `vx cache prune`, which refuses without --older-than or --max-size. The
+// `vx cache clean`, which refuses without --older-than or --max-size. The
 // command they name now runs. Both, and cli.md, told a reader to remove the
 // cache directory to drop it all, but the entries live in the shared store
 // `vx info` names (X-44).
@@ -40,7 +40,7 @@ describe('the nx reset hint names a command that runs', () => {
   })
 })
 
-describe('the advice to drop the whole cache names the store', () => {
+describe('the advice to drop the whole cache names a bare vx cache clean', () => {
   it('vx reset says it exactly; the guide row and cli.md say the same', async () => {
     root ??= await mkdtemp(path.join(os.tmpdir(), 'vx-nx-reset-'))
     const r = Bun.spawnSync({
@@ -50,14 +50,16 @@ describe('the advice to drop the whole cache names the store', () => {
       stderr: 'pipe',
     })
     expect(r.stderr.toString()).toBe(
-      '`nx reset` is `vx cache prune --older-than <age>` here, or delete the cache store `vx info` names to drop it all\n',
+      '`nx reset` is `vx cache clean` here; `--older-than <age>` trims the cache instead of clearing it\n',
     )
     const row = readFileSync(GUIDE, 'utf8')
       .split('\n')
       .find((l) => l.startsWith('| `nx reset`'))!
-    expect(row).toContain('delete the cache store `vx info` names')
+    expect(row).toContain('`vx cache clean` clears it all')
     const cli = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
-    expect(cli.replace(/\s+/g, ' ')).toContain('Delete the cache store `vx info` names')
+    expect(cli.replace(/\s+/g, ' ')).toContain(
+      '`vx cache clean` with no bound clears the whole cache',
+    )
   })
 
   it('vx info has a `cache store` line to name', async () => {

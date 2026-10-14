@@ -141,7 +141,7 @@ describe('two runs on one workspace', () => {
   )
 
   it(
-    '`vx cache prune` waits for a run on the workspace before it evicts',
+    '`vx cache clean` waits for a run on the workspace before it evicts',
     async () => {
       // A prune beside a run deleted the artifacts the run had just probed
       // as hits (upstream survey, nx#36688); the run now re-runs such a task,
@@ -164,7 +164,7 @@ describe('two runs on one workspace', () => {
       const release = await acquireRunLock(root, { log: () => {} })
       let released = false
       try {
-        const proc = Bun.spawn([process.execPath, BIN, 'cache', 'prune', '--older-than', '1s'], {
+        const proc = Bun.spawn([process.execPath, BIN, 'cache', 'clean', '--older-than', '1s'], {
           cwd: root,
           stdout: 'pipe',
           stderr: 'pipe',
@@ -193,13 +193,13 @@ describe('two runs on one workspace', () => {
   )
 
   it(
-    '`vx cache prune` from a task of a run on the workspace is refused, not left waiting',
+    '`vx cache clean` from a task of a run on the workspace is refused, not left waiting',
     async () => {
       // The run holds the lock until it ends and the prune waited for it:
       // a wait with no end. The row's own timeout bounds it (macOS has no
       // `timeout`).
       await addProject(root, 'app', {
-        config: `export default { tasks: { prune: { exec: { command: '${process.execPath} ${BIN} cache prune --older-than 30d' } } } }`,
+        config: `export default { tasks: { prune: { exec: { command: '${process.execPath} ${BIN} cache clean --older-than 30d' } } } }`,
       })
       const r = await vx(root, ['run', 'prune', '--all'])
       expect(r.code).toBe(1)

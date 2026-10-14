@@ -265,7 +265,7 @@ flowchart TD
     H --> J[not cached - the gate is<br/>effectiveExitCode == 0]
 ```
 
-## 8. `vx cache prune` — TTL + LRU
+## 8. `vx cache clean` — TTL + LRU
 
 Owner: `cli/cache.ts` + `cache/cache.ts:prune`. Both bounds can
 combine; eviction is one SQL transaction (CASCADE clears
@@ -275,7 +275,7 @@ artifacts with no row are reaped after it.
 
 ```mermaid
 flowchart TD
-    A[vx cache prune] --> P[flush deferred accessed_at bumps,<br/>find phantom rows]
+    A[vx cache clean] --> P[flush deferred accessed_at bumps,<br/>find phantom rows]
     P --> B{--older-than?}
     B -->|yes| C[SELECT entries WHERE<br/>accessed_at < now - ttl → victims]
     B -->|no| D
