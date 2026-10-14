@@ -1,7 +1,7 @@
 # Task timings through the remote cache (2026-10)
 
 Status: proposed. Owner call M 2026-10-14 20:51 (via EA). Builds after DX's
-local forecast PR (median of the last 5 runs, default branch first).
+local forecast PR (median of the last 5 runs on the current branch).
 
 ## Problem
 
@@ -29,9 +29,8 @@ declares. No new wire, no mutable entry.
   and used from the NEXT run, so a run never waits on the network and an
   offline run is unchanged.
 - **Forecast order** (M 2026-10-14 20:54), per task: this machine's
-  current-branch runs (median of the last 5), then its default-branch
-  runs, then the remote file, then `assume`. On CI the history is empty,
-  so the remote file comes first.
+  current-branch runs (median of the last 5), then the remote file, then
+  `assume`. On CI the history is empty, so the remote file comes first.
 
 ## Core seam
 
