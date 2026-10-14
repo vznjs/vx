@@ -30,8 +30,8 @@ declares. No new wire, no mutable entry.
   exists, walking back up to 5 commits for a missing blob. So most runs
   make no network call and no extra git spawn. A fetch is awaited before
   scheduling (M 20:55: "wait for download") under a short deadline
-  (500 ms); on timeout or error the run orders without it, with one
-  warning. A slow remote never holds a run longer than the deadline.
+  (500 ms); on timeout or error the run orders without it, silently
+  (`VX_DEBUG` names why). A slow remote never holds a run longer than the deadline.
 - **Forecast order** (M 2026-10-14 20:54), per task: this machine's
   current-branch runs (median of the last 5), then the remote file, then
   `assume`. On CI the history is empty, so the remote file comes first.
@@ -44,7 +44,7 @@ over the run's declared remote layers, in chain order, bypassing the local
 artifact store. Core keys the name per plugin (`xxh3(pluginName\0key)`),
 applies the run's scope and policy (a `put` without remote write is a
 no-op), bounds each call by the layer's own deadline, and degrades every
-error to `null` with one warning. No remote declared: `remote` is
+error to `null`, silently (`VX_DEBUG` names why). No remote declared: `remote` is
 `undefined` and nothing is spawned (zero-cost gate). One seam, any plugin;
 schedule-history is its first user.
 
@@ -52,7 +52,9 @@ schedule-history is its first user.
 
 The blob is untrusted input from a shared store:
 
-- Size cap 1 MiB before parsing; above it, ignored with one warning.
+- Size cap 1 MiB before parsing; above it, ignored.
+- A missing or refused forecast is not the user's problem: no warning
+  ever, only `VX_DEBUG` output (M: no extra runtime warnings).
 - Shape `{ version: 1, tasks: { id: ms } }`; `ms` a finite number in
   `[0, 86_400_000]`; at most 50 000 ids; ids not in this run's graph are
   dropped; nothing from it is ever evaluated, spawned or used as a path.
@@ -70,7 +72,7 @@ The blob is untrusted input from a shared store:
 - Every task has current-branch history: no git spawn, no fetch.
 - A merge-base whose blob is already on disk: no fetch.
 - Oversized, malformed, out-of-range and non-graph entries are dropped,
-  each named once.
+  silently (`VX_DEBUG` names each).
 - A read-only policy never puts.
 
 ## Out of scope
