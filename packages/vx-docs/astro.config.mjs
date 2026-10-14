@@ -38,6 +38,9 @@ export default defineConfig({
   redirects: {
     '/introduction/': `${root}quickstart/`,
     '/features/fastest/': `${root}features/benchmarks/`,
+    '/features/vx-prune/': `${root}features/`,
+    '/blog/vx-prune/': `${root}blog/`,
+    '/blog/prune-production/': `${root}blog/`,
     '/add-to-existing-repo/': `${root}quickstart/#an-existing-repo`,
     '/guides/tasks/': `${root}guides/configure/#tasks-and-dependencies`,
     '/guides/task-dependencies/': `${root}guides/configure/#tasks-and-dependencies`,

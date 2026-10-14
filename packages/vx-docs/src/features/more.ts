@@ -1855,31 +1855,6 @@ export const MORE: readonly Feature[] = [
     },
   },
   {
-    slug: 'vx-prune',
-    title: 'Ship one app, not the monorepo',
-    category: 'extend',
-    hook: '`vx prune` copies a project and its dependencies with a pruned lockfile, for a Docker build.',
-    body: [
-      'A Docker image for one app should not install the whole monorepo’s dependencies. `vx prune @demo/web --docker` writes just the projects it needs and a lockfile cut down to them.',
-      'Copy `json/` first and install, then `full/`, and the install layer caches until a dependency changes.',
-      'For the image that only runs the app, `--production` also leaves out workspace packages that only dev dependencies pull in.',
-    ],
-    example: {
-      lang: 'text',
-      code: '$ vx prune @demo/web --docker\nvx prune: 2 projects → out (json/ + full/), bun.lock pruned',
-    },
-    image: 'vx-prune.png',
-    imageAlt: 'vx prune writing a pruned workspace for Docker.',
-    docs: {
-      label: 'vx prune',
-      href: 'cli/',
-    },
-    deepDive: {
-      label: 'Ship one app, not the whole monorepo',
-      href: 'blog/vx-prune/',
-    },
-  },
-  {
     slug: 'vx-history',
     title: 'What the scheduler learned',
     category: 'extend',
