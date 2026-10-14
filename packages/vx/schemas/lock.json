@@ -10,7 +10,7 @@
     "audited": { "type": "integer", "description": "projects with a vx.config, each audited" },
     "notAudited": {
       "type": "integer",
-      "description": "projects without a vx.config: nothing to freeze, never audited"
+      "description": "projects with tasks and no vx.config: nothing to freeze, never audited"
     },
     "problems": {
       "type": "array",
