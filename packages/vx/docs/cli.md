@@ -1704,8 +1704,11 @@ checkouts, so their entries go too). `--global` also clears every other
 repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
 and no `--cache-dir`. `.vx/workspace.ts`, the lock and `.vx/.gitignore`
 sit outside them and stay; a `cache.dir` that holds them (`.vx`, the
-workspace root) is refused. A directory with no `cache.db` is not a vx
-cache and is left alone; a workspace that never ran says
+workspace root) is refused. A `cache.dir` you named may be shared
+(`build/`, `~/.cache`), so there only what vx wrote goes (the index,
+its artifacts, run history, its `*` `.gitignore`); your own files stay,
+and the directory goes only if that empties it. A directory with no
+`cache.db` is not a vx cache and is left alone; a workspace that never ran says
 `Nothing to clear: no cache here`. The next run misses every task once
 and saves again.
 

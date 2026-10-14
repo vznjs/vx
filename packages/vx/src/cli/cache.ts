@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { Cache } from '../cache/index.js'
+import { Cache, vxCacheEntries } from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { errorCode, nearest, parseDuration, parseSize, relPosix, treeBytes } from '../util/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
@@ -277,6 +277,8 @@ export interface ClearResult {
  * names (`~/.vx/<id>/cache`, shared by the repository's checkouts), as
  * `nx reset` does. `--global` takes every store under `~/.vx` too. The
  * workspace config, the lock and `.vx/.gitignore` sit outside them all.
+ * A directory the user named (`cache.dir`) may be shared (`build/`,
+ * `~/.cache`): there only what vx wrote goes (item 968).
  */
 async function clear(
   args: readonly string[],
@@ -314,13 +316,21 @@ async function clear(
     )
   }
   const dry = parsed.dryRun === true
-  const bytes = doomed.reduce((n, t) => n + treeBytes(t), 0)
+  // `.vx/cache` and the stores are vx's own; any other directory is the
+  // user's, cleared entry by entry and removed only if that empties it.
+  const named = path.resolve(dir) === path.join(dotVx, 'cache') ? undefined : path.resolve(dir)
+  const entries = (t: string): string[] =>
+    t === named ? vxCacheEntries(t).map((e) => path.join(t, e)) : [t]
+  const bytes = doomed.reduce((n, t) => n + entries(t).reduce((m, e) => m + treeBytes(e), 0), 0)
   if (!dry && doomed.length > 0) {
     // A clear beside a run deletes what the run is restoring or saving; it
     // waits for the run's lock, as a trim does.
     const release = await acquireRunLock(root, { log: warnToStderr })
     try {
-      for (const t of doomed) rmSync(t, { recursive: true, force: true })
+      for (const t of doomed) {
+        for (const e of entries(t)) rmSync(e, { recursive: true, force: true })
+        if (t === named && readdirSync(t).length === 0) rmSync(t, { recursive: true })
+      }
     } finally {
       await release()
     }

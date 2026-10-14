@@ -43,6 +43,7 @@ import {
   mkdirSync,
   openSync,
   readdirSync,
+  readFileSync,
   renameSync,
   statSync,
   utimesSync,
@@ -148,6 +149,40 @@ const ACCESS_REFRESH_MS = 60 * 60 * 1000
  * the user's own release tarball included (item 968).
  */
 const VX_ARTIFACT_NAME = /^([0-9a-f]{16})\.tar\.zst(\.tmp-\d+-\d+-[0-9a-z]*)?$/
+
+/** What vx writes in a cache directory besides its artifacts. */
+const VX_CACHE_NAMES = new Set([
+  'cache.db',
+  'cache.db-wal',
+  'cache.db-shm',
+  'cache.db-journal',
+  'runs',
+  'failures',
+  'lockfile-claims',
+])
+
+/**
+ * The entries of `cacheDir` vx wrote: the index, its artifacts, run
+ * history, and the `*` ignore file unless the user changed it. A clear of
+ * a directory the user named deletes these and nothing else (item 968).
+ */
+export function vxCacheEntries(cacheDir: string): string[] {
+  let names: string[]
+  try {
+    names = readdirSync(cacheDir)
+  } catch {
+    return []
+  }
+  return names.filter((name) => {
+    if (VX_CACHE_NAMES.has(name) || VX_ARTIFACT_NAME.test(name)) return true
+    if (name !== '.gitignore') return false
+    try {
+      return readFileSync(path.join(cacheDir, name), 'utf8') === IGNORE_ALL
+    } catch {
+      return false
+    }
+  })
+}
 
 /** The `schema_meta` key holding when the orphan sweep last ran (ms epoch). */
 const SWEPT_AT = 'orphans_swept_at'
