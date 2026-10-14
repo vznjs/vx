@@ -183,7 +183,7 @@ export const PLUGIN_PACKAGE: unique symbol = Symbol.for('vx.plugin.package')
 /**
  * Structural plugin shape — any subset of the pipeline stages
  * (`config`/`project`/`graph`/`key`/`schedule`), run-level capabilities
- * (`cache`/`executor`/`telemetry`) and CLI `commands`, plus optional
+ * (`cache`/`executor`/`telemetry`/`output`) and CLI `commands`, plus optional
  * `setup`/`teardown`. The fully-typed `VxPlugin` lives in
  * `src/orchestrator/plugin.ts` and is what users import; this is a
  * re-declaration with opaque function types so `config.ts` stays a leaf
@@ -204,6 +204,7 @@ export interface Plugin {
   cache?(ctx: unknown): unknown
   executor?(ctx: unknown): unknown
   telemetry?(ctx: unknown): unknown
+  output?(ctx: unknown): unknown
   setup?(ctx: unknown): void | Promise<void>
   teardown?(): void | Promise<void>
   readonly fingerprint?: unknown
@@ -229,6 +230,7 @@ export const PLUGIN_HOOKS = [
   'executor',
   'cache',
   'telemetry',
+  'output',
   'setup',
   'commands',
   'teardown',

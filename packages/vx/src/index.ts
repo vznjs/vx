@@ -167,6 +167,7 @@ export type {
   PluginOptionKinds,
   CacheContext,
   ExecutorContext,
+  OutputContext,
   CommandContext,
   FingerprintChange,
   FingerprintClaim,

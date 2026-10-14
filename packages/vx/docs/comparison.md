@@ -331,7 +331,7 @@ prune` policy at the end of every run,
 - `vx lock` / `vx run --frozen`, `vx init` / `@vzn/vx-migrate`, `vx show`.
 - **The plugin pipeline (2026-09-02).** One `VxPlugin` hooks every
   stage — `config`, `discover`, `project`, `graph`, `key`, `fingerprint`,
-  `schedule`, `admit` — beside the `executor` / `cache` / `telemetry`
+  `schedule`, `admit` — beside the `executor` / `cache` / `telemetry` / `output`
   capabilities, `commands` (new verbs) and the `setup` / `teardown`
   pair. Core applies no plugin by default; a workspace declares all
   of them.

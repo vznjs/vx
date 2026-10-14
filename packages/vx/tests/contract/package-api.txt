@@ -159,6 +159,7 @@ export const PLUGIN_HOOKS = [
   'executor',
   'cache',
   'telemetry',
+  'output',
   'setup',
   'commands',
   'teardown',
@@ -1005,6 +1006,12 @@ export interface OutcomeView {
   wallclockStartNs?: string
   wallclockEndNs?: string
 }
+== type OutputContext (src/orchestrator/plugin.ts)
+export interface OutputContext extends BaseContext {
+  readonly isTTY: boolean
+  readonly ci: boolean
+  readonly json: boolean
+}
 == type OutputDirRow (src/cache/layer.ts)
 export interface OutputDirRow {
   path: string
@@ -1083,6 +1090,7 @@ export interface Plugin {
   cache?(ctx: unknown): unknown
   executor?(ctx: unknown): unknown
   telemetry?(ctx: unknown): unknown
+  output?(ctx: unknown): unknown
   setup?(ctx: unknown): void | Promise<void>
   teardown?(): void | Promise<void>
   readonly fingerprint?: unknown
@@ -1867,6 +1875,7 @@ export interface VxPlugin {
     | TelemetrySink[]
     | undefined
     | Promise<TelemetrySink | TelemetrySink[] | undefined>
+  output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
   setup?(ctx: PluginSetupContext): void | Promise<void>
   teardown?(): void | Promise<void>
 }
@@ -1941,5 +1950,5 @@ export interface WorkspaceRules {
 == runtime values
 LOG_WIRE_VERSION = 1
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"
-PLUGIN_HOOKS = ["config","discover","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","setup","commands","teardown"]
+PLUGIN_HOOKS = ["config","discover","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","output","setup","commands","teardown"]
 TELEMETRY_SCHEMA_VERSION = 3

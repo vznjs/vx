@@ -70,7 +70,8 @@ package manager's members), `project` (a project's tasks),
 lockfile claimed and keyed per project), `schedule` (which ready task
 runs first), `admit` (whether it runs now), `executor` (where one
 task's command runs), `cache` (where artifacts live), `telemetry`
-(where run records go), `commands` (which verbs exist), with `setup`
+(where run records go), `output` (who draws the terminal), `commands`
+(which verbs exist), with `setup`
 and `teardown` around the run — and applies **none** of them by
 default. Running here and caching here are its floor: the local
 executor sits at the tail of every executor list and the local cache is

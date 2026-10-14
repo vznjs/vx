@@ -43,6 +43,7 @@ in pipeline order:
 | execute     | `executor(ctx)`                      | once per run                              | WHERE one task's command runs (existing)                                                      |
 | store       | `cache(ctx)`                         | once per run                              | WHERE artifacts live (existing)                                                               |
 | observe     | `telemetry(ctx)`                     | once per run                              | nothing — records out (existing)                                                              |
+| render      | `output(ctx)`                        | once per run                              | who draws the terminal: a `Logger` in place of core's (2026-10-14)                            |
 | observe     | `setup(ctx)` / `teardown()`          | once per run                              | nothing — raw bus subscription (existing)                                                     |
 | cli         | `commands`                           | on an unknown verb                        | which verbs exist                                                                             |
 
