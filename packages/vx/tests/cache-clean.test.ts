@@ -4,6 +4,7 @@
 // Before it, a bare prune was refused and the docs said to delete the
 // store by hand (M, 2026-10-14).
 
+import { Database } from 'bun:sqlite'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
@@ -111,6 +112,26 @@ describe('vx cache clean with no bound clears the cache', () => {
         false,
       ])
       expect(existsSync(path.join(home, '.vx'))).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'deletes the store the index names only when it is a vx store',
+    async () => {
+      // The index is a file in the checkout: one a repo committed, or a CI
+      // cache restored, named any directory, and the clear deleted it whole.
+      expect((await vx(['run', 'build', '--all'])).code).toBe(0)
+      const victim = path.join(home, 'projects')
+      await Bun.write(path.join(victim, 'keep.txt'), 'mine')
+      const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+      db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'store_dir'").run(victim)
+      db.close()
+      const r = await vx(['cache', 'clean'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+      expect(r.out).not.toContain(victim)
+      expect(existsSync(path.join(victim, 'keep.txt'))).toBe(true)
+      expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
     },
     TIMEOUT,
   )
