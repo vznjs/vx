@@ -24,10 +24,11 @@ declares. No new wire, no mutable entry.
   another branch asks for: only commits that land on the default branch
   are ever read back.
 - **Read (every run):** the merge-base of `HEAD` with the default branch,
-  walking back up to 5 commits for a missing blob. Fetched in the
-  background after scheduling; stored at `.vx/cache/timings-remote.json`
-  and used from the NEXT run, so a run never waits on the network and an
-  offline run is unchanged.
+  walking back up to 5 commits for a missing blob (M 20:55: "wait for
+  download"). The fetch starts at run start, beside the graph build, and
+  scheduling awaits it under a short deadline (500 ms); on timeout or
+  error the run orders without it and says nothing more than one warning.
+  A slow remote never holds a run longer than the deadline.
 - **Forecast order** (M 2026-10-14 20:54), per task: this machine's
   current-branch runs (median of the last 5), then the remote file, then
   `assume`. On CI the history is empty, so the remote file comes first.
@@ -59,9 +60,9 @@ The blob is untrusted input from a shared store:
 
 - CI run on commit B with blob A at its parent writes blob B = A merged
   with B's p50s, minus removed tasks.
-- A local run on a branch reads the merge-base's blob in the background and
-  orders by it on the next run; the first run does not wait (a remote that
-  never answers leaves its wall time unchanged).
+- A local run on a branch with no history orders by the merge-base's blob
+  in the same run; a remote that never answers costs at most the deadline,
+  and the run orders without it.
 - No remote declared: no git spawn, no read (zero-cost gate).
 - Oversized, malformed, out-of-range and non-graph entries are dropped,
   each named once.
