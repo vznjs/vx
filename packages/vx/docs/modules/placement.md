@@ -30,7 +30,7 @@ export function locallyPlaced(placements: Placements, ids: Iterable<string>): Se
 export async function planExecutorOf(
   prepared: PreparedRun,
   log: Logger,
-  policy: 'all' | 'toplevel' | 'none', // the run's --download policy
+  policy: 'all' | 'toplevel' | 'none', // the run's --cache-download policy
 ): Promise<{
   executorOf?: (id: string) => string | undefined
   downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined

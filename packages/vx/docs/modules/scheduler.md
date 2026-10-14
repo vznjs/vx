@@ -53,7 +53,7 @@ export interface TaskOutcome {
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
   inputMoved?: string // failed by inputStability.severity 'error': the input that changed ('' unnamed)
   where?: string // executor-reported placement, when not this host (telemetry-only)
-  outputs?: 'deferred' // outputs left in the remote store (`--download=none`)
+  outputs?: 'deferred' // outputs left in the remote store (`--cache-download=none`)
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   restored?: boolean // cache hits: false = tree already current (up-to-date)

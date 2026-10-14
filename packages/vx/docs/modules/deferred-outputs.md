@@ -3,7 +3,7 @@
 ## Purpose
 
 Run-scoped home for tasks whose outputs were left in the remote store
-(`--download=none` / `toplevel`), plus the lazy materialisation that
+(`--cache-download=none` / `toplevel`), plus the lazy materialisation that
 fetches them when a locally-placed task turns out to need them.
 
 ## Public surface
@@ -56,7 +56,7 @@ export class DeferredOutputs {
 - Materialisation CONVERGES: clean → closure writes →
   `markOutputsChanged` → ordinary `cache.save`, mirroring `restoreHit`'s sequence
   so the two cannot drift. Afterwards the machine is indistinguishable
-  from a `--download=all` run, so no third storage state persists.
+  from a `--cache-download=all` run, so no third storage state persists.
 - A failed fetch is the CONSUMER's failure, named with the producer and
   the remedy — executing against a half-materialised tree is the
   stale-input class with extra steps.

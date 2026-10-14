@@ -63,7 +63,7 @@ Status symbols:
 
 The `predicted:` footer prints only when history gave the plan
 something to say — at least one would-run task has a p50 — and counts
-the would-run tasks without history as `(+?)`. A `--download` policy
+the would-run tasks without history as `(+?)`. A `--cache-download` policy
 adds a `download:` block: how many tasks would keep their outputs
 remote and, up to three, the tasks the eligibility gate kept eager and
 why.

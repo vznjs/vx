@@ -709,7 +709,7 @@ changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
 derivation, step 12). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
-left remote (`--download=none`) is held to the same checks: a moved
+left remote (`--cache-download=none`) is held to the same checks: a moved
 key still lets a local consumer fetch its outputs, but the fetch saves
 no entry; until X-123 it saved them under the old key. A task
 that rewrites its own input to the SAME bytes (`sed -i` always writes)
