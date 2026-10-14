@@ -92,6 +92,21 @@ of a small package (first run, again, again after `rm -rf dist`):
   result    1 task · all cached · 60ms saved · 31ms
 ```
 
+## When to run vx lock
+
+`vx init` also writes `.vx/projects.lock.json`: every project's config as it
+evaluated. Commit it. Every run reads its configs from the lock and
+evaluates none, so after you change one the runs keep the old tasks
+until you run `vx lock`. Run it, and commit the lock, after you:
+
+- edit any `vx.config.ts` or `.vx/workspace.ts`,
+- update dependencies or plugins,
+- change a file a config imports (a shared preset, a helper).
+
+On CI, `vx lock --check` comes first
+([the workflow](../guides/ci/#github-actions)): it evaluates every
+config again and fails on any difference, naming the project.
+
 ## An existing repo
 
 Start with one package and leave the rest of your tooling as it is.

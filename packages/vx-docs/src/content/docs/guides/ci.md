@@ -51,46 +51,101 @@ Every flag: [the CLI reference](../../cli/).
 
 ## GitHub Actions
 
-Check out with `fetch-depth: 0`: `--affected` needs the history. Its base
-is the target branch on a pull request, the commit before the push on a
-push.
+This workflow and workspace are [`examples/ci`](https://github.com/vznjs/vx/tree/main/examples/ci);
+vx's own CI runs their steps as a push to `main` and as a pull request
+on every commit. Copy both.
 
 ```yaml
 # .github/workflows/ci.yml
+name: ci
 on:
   pull_request:
   push:
-    branches: [main] # a new branch's first push has no `before`
+    branches: [main]
 jobs:
   ci:
     runs-on: ubuntu-latest
     permissions:
       contents: read # checkout; naming any permission drops the rest
-      checks: write # the PR check; the job summary needs nothing
+      checks: write # the PR check github() posts
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2 # the runner has no Bun
-      - run: npm install -g @vzn/vx # hands off to the lockfile's vx once installed
+          fetch-depth: 0 # --affected needs the history
+      - uses: oven-sh/setup-bun@v2
+      - run: npm install -g @vzn/vx # hands off to the repo's own vx
       - run: bun install --frozen-lockfile
-      - run: vx lock --check # the run trusts .vx/projects.lock.json; this catches drift
+      # A lock that no longer matches the configs fails here, before any task.
+      - run: vx lock --check
+      # main runs everything and fills the default keys every pull request
+      # reads; a pull request runs only what it changed, and what depends on it.
       - run: >
           vx run ci
-          --affected=${{ github.event_name == 'pull_request'
-            && format('origin/{0}', github.base_ref)
-            || github.event.before }}
+          ${{ github.event_name == 'pull_request'
+            && format('--affected=origin/{0}', github.base_ref)
+            || '--all' }}
         env:
-          GITHUB_TOKEN: ${{ github.token }} # the PR check; without it, no check
+          GITHUB_TOKEN: ${{ github.token }} # the PR check
+          VX_REAPI_ENDPOINT: ${{ vars.VX_REAPI_ENDPOINT }}
+          VX_CACHE_TOKEN: ${{ secrets.VX_CACHE_TOKEN }} # read-write
 ```
 
 ```ts
 // .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-ci'
+import { reapi } from '@vzn/vx-reapi'
 
-export default defineWorkspace({ plugins: [github()] })
+const token = process.env.VX_CACHE_TOKEN
+
+export default defineWorkspace({
+  plugins: [
+    // On Actions: the job summary, the PR check, and the cache scope
+    // (a push to main writes the default keys, pull request 7 writes pr-7).
+    github(),
+    // The shared cache. With no VX_REAPI_ENDPOINT it declines and vx
+    // caches on this machine alone.
+    reapi({ headers: token ? { authorization: `Bearer ${token}` } : {} }),
+  ],
+})
 ```
+
+Each step, in order:
+
+1. **`fetch-depth: 0`.** `--affected` needs the history to find the base.
+2. **`vx lock --check`.** It evaluates every config again and fails on
+   any difference from `.vx/projects.lock.json`, before a task runs
+   ([when to run `vx lock`](#when-to-run-vx-lock)).
+3. **`vx run ci`.** Its configs come from the lock. A push to `main` runs `--all`; a pull request runs
+   `--affected=origin/<base>`: what it changed, and what depends on that.
+
+### Cache scopes and tokens
+
+`github()` names the run's cache scope from the event:
+
+| Run | Scope | Reads | Writes |
+| --- | --- | --- | --- |
+| push to the default branch | none | the default keys | the default keys |
+| pull request 7 | `pr-7` | the default keys, then `pr-7` | `pr-7` only |
+| any other branch or tag | `ref-<name>` | the default keys, then its own | its own only |
+
+So a pull request reuses everything `main` built, and nothing it builds
+is ever read by `main` or by another pull request. `--cache-scope <name>`
+or `VX_CACHE_SCOPE` names one by hand; `github({ cacheScope: false })`
+turns it off.
+
+Which layers a run writes is the policy, not the scope:
+
+| Where | Default `cache.policy` | Token |
+| --- | --- | --- |
+| CI (`CI` set) | every layer reads and writes | read-write, a repository secret |
+| a laptop | `local:rw,remote:r` | read-only, in `VX_CACHE_TOKEN` |
+
+Both policies are the defaults; the workspace sets none. A pull request from a fork gets
+no secrets, so it runs without a token. The scope keeps honest runs
+apart; it is not a lock. A run holding a write token can write any key,
+so the token is the boundary: give write tokens only to CI you trust
+([security](../../security/#cache-poisoning)).
 
 `github()` writes a job summary, failures first, and a PR check. The
 check needs `GITHUB_TOKEN` in the vx step's `env`, as above (the runner
@@ -122,16 +177,23 @@ A failure on inputs that passed before says so on its row:
  ◼︎   4.21s failed  miss     web#test flaky - passed 3× before
 ```
 
-### A frozen graph
+### When to run vx lock
 
-`vx lock` writes each project's resolved config, with a hash of its
-config file, to `.vx/projects.lock.json`, and refuses a graph that breaks a
-`run.rules` rule (two tasks writing one output, an input that reads
-another task's output); commit it. Every run loads the configs from the
-lock, never evaluates them, and checks neither the rules nor freshness;
-with no lock it fails with `` no lock: run `vx lock` ``. After editing a
-config, run `vx lock`. `vx lock --check` fails on drift or a broken
-rule, so run it in CI before the run.
+`vx lock` writes each project's resolved config to `.vx/projects.lock.json`, and
+refuses a graph that breaks a `run.rules` rule (two tasks writing one
+output, an input that reads another task's output); commit it. Every
+run reads its configs from the lock and evaluates none, so after a
+change the runs keep the old configs until you run `vx lock` and commit
+the lock again; with no lock a run fails with `` no lock: run `vx lock` ``.
+Do it after you:
+
+- edit any `vx.config.ts` or `.vx/workspace.ts`,
+- update dependencies or plugins,
+- change a file a config imports.
+
+`vx lock --check` evaluates every config again and fails on any
+difference or broken rule, naming the project, so it is the workflow's
+first step.
 
 ### Skip a deploy nothing changed
 
@@ -190,8 +252,8 @@ export TURBO_TOKEN=… TURBO_TEAM=…
 
 Then declare `plugins: [turboCache()]`. `nxCache()` does the same for a
 self-hosted Nx cache; your own backend is [a plugin](../plugins/#your-own-cache).
-A laptop that only reads runs with `--cache-policy=local:rw,remote:r`; so does a
-pull request from a fork, which must never write what `main` restores.
+Off CI a run reads the remote and does not write it (`local:rw,remote:r`);
+the [scopes](#cache-scopes-and-tokens) keep a pull request's writes apart.
 The plugins honour the tools' own switches for it too: Turbo's
 `TURBO_REMOTE_CACHE_READ_ONLY` and `TURBO_CACHE`, Nx's
 `NX_SKIP_REMOTE_CACHE`.

@@ -1759,6 +1759,13 @@ vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
 vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
 ```
 
+**When to run it.** Run `vx lock` and commit `.vx/projects.lock.json` after
+editing any `vx.config.*` or `.vx/workspace.*`, after updating
+dependencies or plugins, and after changing a file a config imports.
+Runs read their configs from the lock, so until then they keep the old
+ones. `vx lock --check` as CI's first step fails a stale lock.
+The full workflow: the site's CI guide and `examples/ci`.
+
 `.vx/projects.lock.json` is minified: it is the one file vx reads, and it loads
 faster that way (10,000 projects: 15.6 ms against 22.5 ms pretty). For
 review, `vx lock` also writes each project's resolved config (plugins

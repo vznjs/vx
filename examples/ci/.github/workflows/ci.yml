@@ -1,0 +1,32 @@
+# .github/workflows/ci.yml
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout; naming any permission drops the rest
+      checks: write # the PR check github() posts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # --affected needs the history
+      - uses: oven-sh/setup-bun@v2
+      - run: npm install -g @vzn/vx # hands off to the repo's own vx
+      - run: bun install --frozen-lockfile
+      # A lock that no longer matches the configs fails here, before any task.
+      - run: vx lock --check
+      # main runs everything and fills the default keys every pull request
+      # reads; a pull request runs only what it changed, and what depends on it.
+      - run: >
+          vx run ci
+          ${{ github.event_name == 'pull_request'
+            && format('--affected=origin/{0}', github.base_ref)
+            || '--all' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # the PR check
+          VX_REAPI_ENDPOINT: ${{ vars.VX_REAPI_ENDPOINT }}
+          VX_CACHE_TOKEN: ${{ secrets.VX_CACHE_TOKEN }} # read-write

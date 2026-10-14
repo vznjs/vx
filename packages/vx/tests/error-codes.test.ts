@@ -158,7 +158,9 @@ describe('a refusal under --format json', () => {
         'VX_E_REFUSED',
       ],
     })
-  })
+    // Two vx spawns per refused graph, one after another: a loaded CI
+    // runner took past bun's 5 s default.
+  }, 30_000)
 
   it('every reading verb answers its refusals with a code too', async () => {
     expect({
