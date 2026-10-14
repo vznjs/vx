@@ -400,6 +400,33 @@ describe('a written config passes the repo’s own checks', () => {
   })
 })
 
+// Bug hunt, 2026-10-14: a root .gitignore from the old layout drops `.vx`,
+// where the workspace config and lock now live, so neither reached git and
+// CI found no workspace. The note's `!workspace.ts` could not help: git
+// re-includes nothing under an excluded directory.
+describe('a root .gitignore that drops .vx', () => {
+  beforeEach(() => {
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  })
+
+  it('stays untouched, and the note names the directory, not a ! line that cannot work', async () => {
+    writeFileSync(path.join(root, '.gitignore'), 'node_modules\n/.vx/\ndist\n')
+    expect(await apply(plan([['a', [task('build', null)]]]))).toBe(0)
+    expect(readFileSync(path.join(root, '.gitignore'), 'utf8')).toBe('node_modules\n/.vx/\ndist\n')
+    expect(stdout).toContain(
+      'stop ignoring .vx/ (a ! line cannot re-include a file inside an ignored directory)',
+    )
+    expect(stdout).not.toContain('!workspace.ts')
+  })
+
+  it('CONTROL: a file ignored by its own name still gets the ! line', async () => {
+    writeFileSync(path.join(root, '.gitignore'), 'vx.config.ts\n')
+    expect(await apply(plan([['a', [task('build', null)]]]))).toBe(0)
+    expect(stdout).toContain('add !vx.config.ts to .gitignore')
+    expect(stdout).not.toContain('stop ignoring')
+  })
+})
+
 describe('foldScriptHooks runs the hooks as npm does', () => {
   const run = async (command: string, args: string[] = []) => {
     const full = withForwardArgs(command, args)

@@ -2104,6 +2104,10 @@ into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
 A file it writes that `.gitignore` drops (vueuse ignores
 `packages/**/*.mjs`) gets a `note:` naming it and the `!vx.config.mjs`
 line that keeps it, since a commit would leave it behind unnoticed.
+When a whole directory is ignored, such as the old layout's `/.vx/`
+cache line now hiding `.vx/workspace.ts` and the lock, the note names
+that directory instead: git re-includes nothing inside an ignored
+directory, so no `!` line helps. vx never edits `.gitignore`.
 A package with a `tsconfig.json` and no `"type": "module"` gets
 `vx.config.mts`: tsc (node16, nodenext) reads a `.ts` there as
 CommonJS, and its type import of the ESM `@vzn/vx/config` fails
