@@ -93,14 +93,12 @@ flowchart LR
 - Whether a run writes at all is the policy's call. Off CI the default
   reads the remote and writes nothing.
 
-```ts
-// vx.workspace.ts
-import { defineWorkspace } from '@vzn/vx/config'
-
-export default defineWorkspace({ cache: { scope: 'pr-123' } })
+```sh frame="terminal"
+$ vx run build --cache-scope pr-123
 ```
 
-`VX_CACHE_SCOPE` beats the config, and `--cache-scope` beats both for one run. On GitHub Actions, the
+`--cache-scope` beats `VX_CACHE_SCOPE`, which beats `cache.scope` in
+`vx.workspace.ts`. On GitHub Actions, the
 [@vzn/vx-ci plugin](https://vznjs.github.io/vx/blog/results-on-github/)
 sets the scope for you: `pr-<n>` on a pull request, none on the
 default branch. The scope is a client-side rule, so a cache server that

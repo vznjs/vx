@@ -999,8 +999,8 @@ export const MORE: readonly Feature[] = [
       "With no scope, a run reads and writes the default entries. `cache: { scope: 'pr-123' }` reads them first, then the scope’s, and writes only the scope’s. Whether a run writes at all is `cache.policy`: off CI, a run reads the remote and writes nothing. Set the scope in config, with `VX_CACHE_SCOPE`, or with `--cache-scope` for one run.",
     ],
     example: {
-      lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  cache: { scope: process.env['PR'] ? 'pr-' + process.env['PR'] : undefined },\n})",
+      lang: 'sh',
+      code: 'vx run build --cache-scope pr-123',
     },
     image: 'cache-scope.png',
     imageAlt: 'CI writing the remote cache, a laptop only reading.',
