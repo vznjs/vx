@@ -13,27 +13,47 @@ import { findWorkspaceRoot } from '../../src/workspace/index.js'
 
 export * from '../../src/orchestrator/index.js'
 
+// Locks run concurrently (abort.test.ts runs two runs at once), so the env
+// and the muted streams are set by the first lock in and restored by the
+// last one out: one restoring mid-way changed the env under another's
+// config evaluation, which vx refuses.
+let active = 0
+let saved: {
+  env: string | undefined
+  out: typeof process.stdout.write
+  err: typeof process.stderr.write
+}
+const listeners = new Set<string[]>()
+
 /** Writes the lock for the workspace `cwd` is in; a refusal throws its line. */
 export async function lock(cwd: string): Promise<void> {
   const root = await findWorkspaceRoot(cwd)
-  const out = process.stdout.write
-  const err = process.stderr.write
   const said: string[] = []
-  const env = process.env['VX_LOCK_REVIEW_FILES']
-  process.env['VX_LOCK_REVIEW_FILES'] = 'false'
-  process.stdout.write = () => true
-  process.stderr.write = (chunk: string | Uint8Array) => {
-    said.push(String(chunk))
-    return true
+  if (active++ === 0) {
+    saved = {
+      env: process.env['VX_LOCK_REVIEW_FILES'],
+      out: process.stdout.write,
+      err: process.stderr.write,
+    }
+    process.env['VX_LOCK_REVIEW_FILES'] = 'false'
+    process.stdout.write = () => true
+    process.stderr.write = (chunk: string | Uint8Array) => {
+      for (const l of listeners) l.push(String(chunk))
+      return true
+    }
   }
+  listeners.add(said)
   try {
     const code = await lockWorkspace(root, undefined, () => {})
     if (code !== 0) throw new Error(said.join('').trim())
   } finally {
-    process.stdout.write = out
-    process.stderr.write = err
-    if (env === undefined) delete process.env['VX_LOCK_REVIEW_FILES']
-    else process.env['VX_LOCK_REVIEW_FILES'] = env
+    listeners.delete(said)
+    if (--active === 0) {
+      process.stdout.write = saved.out
+      process.stderr.write = saved.err
+      if (saved.env === undefined) delete process.env['VX_LOCK_REVIEW_FILES']
+      else process.env['VX_LOCK_REVIEW_FILES'] = saved.env
+    }
   }
 }
 
