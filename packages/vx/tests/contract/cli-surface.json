@@ -36,6 +36,7 @@
       "--plugin"
     ],
     "last": [
+      "--branch",
       "--cache-dir",
       "--failed",
       "--format",
@@ -170,6 +171,7 @@
       "schedule",
       "telemetry"
     ],
+    "last --branch": [],
     "last --cache-dir": [
       "*"
     ],

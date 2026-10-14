@@ -9,6 +9,7 @@ import { Cache } from '../cache/index.js'
 import { formatBytes } from './format.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import {
+  currentBranch,
   exitSignal,
   type FailureMode,
   getInvocation,
@@ -39,6 +40,8 @@ interface LastArgs {
   stats?: boolean
   /** `--stats`' positional: a task id, or a task name in every project. */
   task?: string
+  /** `--branch`: the branch `--stats` forecasts from, as a run's `--branch`. */
+  branch?: string
   /** `--cache-dir`: read the history a run with the same flag wrote. */
   cacheDir?: string
   error?: string
@@ -86,6 +89,14 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     }
     if (a === '--stats') {
       out.stats = true
+      continue
+    }
+    if (a === '--branch' || a.startsWith('--branch=')) {
+      const v = a === '--branch' ? args[++i] : a.slice('--branch='.length)
+      if (v === undefined || v === '' || (a === '--branch' && v.startsWith('-'))) {
+        return { ...out, error: `--branch requires a branch name${seeHelp('last')}` }
+      }
+      out.branch = v
       continue
     }
     if (a === '--log') {
@@ -142,6 +153,9 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     delete out.runId
     return out
   }
+  if (out.branch !== undefined) {
+    return { ...out, error: `--branch combines only with --stats${seeHelp('last')}` }
+  }
   // One run's replay or a list of runs, not both: the id was dropped.
   // Beside --list, a word no run id could be is just an extra one.
   if (out.runId !== undefined && out.list !== undefined && !RUN_ID_SHAPE.test(out.runId)) {
@@ -191,14 +205,16 @@ export interface TaskStats {
 
 /**
  * `--stats`: what the scheduler and `--dry` learn from history, per task,
- * over the same window (`LocalHistoryProvider`).
+ * over the same window (`LocalHistoryProvider`), with the p50 a run on
+ * `branch` forecasts.
  */
 async function printStats(
   db: Database,
   target: string | undefined,
   format: 'pretty' | 'json',
+  branch: string | null,
 ): Promise<number> {
-  const provider = new LocalHistoryProvider(db)
+  const provider = new LocalHistoryProvider(db, undefined, branch)
   const matches = (id: string): boolean =>
     target === undefined || (target.includes('#') ? id === target : splitTaskId(id)[1] === target)
   const stats: TaskStats[] = [...(await provider.loadAll())]
@@ -222,7 +238,7 @@ async function printStats(
     )
   }
   if (format === 'json') {
-    process.stdout.write(`${JSON.stringify({ window: provider.recent, stats })}\n`)
+    process.stdout.write(`${JSON.stringify({ window: provider.recent, branch, stats })}\n`)
     return 0
   }
   if (stats.length === 0) {
@@ -431,7 +447,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     // nothing, while `--list --failed` past green runs said there were none.
     const noRuns = (): boolean => listInvocations(db, { limit: 1 }).length === 0
 
-    if (parsed.stats === true) return await printStats(db, parsed.task, parsed.format)
+    if (parsed.stats === true) {
+      const branch = currentBranch(root, undefined, parsed.branch)
+      return await printStats(db, parsed.task, parsed.format, branch)
+    }
 
     if (parsed.log !== undefined) {
       const runId =

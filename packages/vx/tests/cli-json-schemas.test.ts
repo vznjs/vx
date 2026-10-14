@@ -499,7 +499,7 @@ describe('each schema object is its source type', () => {
         tags: true,
       }),
     )
-    expect(def('last', 'stats')).toEqual(['stats', 'window'])
+    expect(def('last', 'stats')).toEqual(['branch', 'stats', 'window'])
     expect(def('last', 'taskStats')).toEqual(
       keys<TaskStats>({
         taskId: true,

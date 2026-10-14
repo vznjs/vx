@@ -36,7 +36,7 @@ vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--pl
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>]] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--format pretty|json] [--cache-dir <path>]
 vx upgrade [TAG]      # upgrade vx the way it was installed
 vx docs <query> [--limit N] [--format pretty|json]
 vx completions bash|zsh|fish
@@ -3034,7 +3034,7 @@ surface. A run a Ctrl-C (or SIGTERM, SIGHUP) stopped records nothing,
 so `vx last` still shows the run before it.
 
 ```
-vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>]] [--format pretty|json] [--cache-dir <path>]
+vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--format pretty|json] [--cache-dir <path>]
 ```
 
 Bare `vx last` replays the most recent run: a header (verdict, command,
@@ -3096,17 +3096,19 @@ refused, exit 1; `--log` does not combine with `--list` or `--failed`.
 `vx last app#build --log` reads the same as `--log app#build`: a `--log`
 with no value takes the positional as its task.
 `--stats [<task>]` prints per-task numbers over the last 50 runs, the
-window the scheduler and `--dry` learn from: runs, p50 and p99 of the
-executed successes, pass and hit rate, failure mode (`stable`,
+window the scheduler and `--dry` learn from: runs, p50 (the forecast a
+run shows: the median of the task's last five timings on the branch,
+else on any branch), p99 of the executed successes, pass and hit rate, failure mode (`stable`,
 `flaky-recoverable`, `flaky-fatal`), the largest peak RSS and CPU
 parallelism (a hit counts what its producing run used), one table row
 per task. A task id narrows to that task, a task name to it in every
-project; one the window has no run of is refused, exit 1. With
-`--format json` it is `{ window, stats }`, each row `{ taskId, runs,
+project; one the window has no run of is refused, exit 1. The branch is
+`--branch`, else `VX_RUN_BRANCH`, else git's, then the CI provider's, as
+a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ taskId, runs,
 p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
 maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
 measured. `--stats` does not combine with `--list`, `--failed` or
-`--log`. `--list --format json`
+`--log`; `--branch` combines only with `--stats`. `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. Before any run, every form says so
 (`vx last: no recorded runs yet — run something first`, exit 1; `--list`
