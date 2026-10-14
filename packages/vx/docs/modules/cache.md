@@ -309,6 +309,9 @@ export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
 export const SCHEMA_VERSION = 'v34'
+// What vx wrote in a cache dir (index, artifacts, run history, its `*`
+// ignore): all a clear of a dir the user named may delete (item 968).
+export function vxCacheEntries(cacheDir: string): string[]
 
 // The two WHERE fragments every history query shares, so "a run that
 // executed" and "a run with a key" mean one thing across metrics.ts,
