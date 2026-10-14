@@ -32,8 +32,6 @@ export interface HistoryProvider {
   p50sFor?(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
 }
 export class EmptyHistoryProvider implements HistoryProvider {}
-/** The branch a forecast reads first: HEAD's, or CI's for a detached checkout. */
-export function currentBranch(workspaceRoot: string): string | null
 
 // failure-mode.ts, not history.ts:
 /** A task whose SAME cache key failed after it had passed — the definition
@@ -49,8 +47,8 @@ export interface FlakyTask {
 }
 export function flakyTasks(db: Database): FlakyTask[]
 export class LocalHistoryProvider implements HistoryProvider {
-  // recent: the window, 50 invocations by default; without branch a forecast reads every branch
-  constructor(db: Database, recent?: number, branch?: string | null)
+  // without branch a forecast reads every branch
+  constructor(db: Database, recent?: number, branch?: string | null) // the window; defaults to 50 invocations
   /** `loadFor`'s p50 and resource maxima, without its rates. */
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
@@ -68,7 +66,8 @@ success appended in the run's history transaction and tagged
 and a new one forecasts on its first run; `vx last` and the runs stay
 per worktree. A read is a point lookup per task on `(project, task,
 source, id)`, exact however old the rows. A run learns its branch once
-(`PreparedRun.historyBranch`, the schedule hook's `ctx.branch`).
+(`PreparedRun.historyBranch`, the schedule hook's `ctx.branch`;
+`currentBranch` in `run-context.ts` for any other reader).
 `p99DurationMs`, the rates and the resource maxima stay over the
 window. `tests/history-forecast-branch.test.ts`.
 

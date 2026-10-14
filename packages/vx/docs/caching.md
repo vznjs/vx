@@ -1463,9 +1463,9 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v35', in cache.ts)
--- With a shared store, entries, entry_stdout, output_files, entry_inputs
--- and store_meta live in its store.db, attached as `store`; the rest is
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v36', in cache.ts)
+-- With a shared store, entries, entry_stdout, output_files, entry_inputs,
+-- store_meta and task_durations live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
@@ -1686,6 +1686,20 @@ CREATE TABLE store_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- v36: each executed success's duration, appended in the run's history
+-- transaction, in the store so every worktree forecasts from it.
+-- source: 'branch:<name>'; the forecast reads the newest five per task.
+CREATE TABLE task_durations (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  project     TEXT NOT NULL,
+  task        TEXT NOT NULL,
+  source      TEXT NOT NULL,
+  sha         TEXT,
+  duration_ms INTEGER NOT NULL,
+  recorded_at INTEGER NOT NULL
+);
+CREATE INDEX task_durations_task ON task_durations(project, task, source, id);
 
 -- v33: an artifact of at most 32 KiB compressed, its exact <hash>.tar.zst
 -- bytes, written in the transaction that writes its entry rows. In the

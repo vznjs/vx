@@ -301,7 +301,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //   v35: config_evals and config_closures are gone: runs read configs from
 //        the lock, and `vx lock` evaluates every one. The cache KEY is
 //        unchanged.
-export const SCHEMA_VERSION = 'v35'
+//   v36: the store's task_durations: each executed success's time, tagged
+//        by branch, read by the forecast. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v36'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON

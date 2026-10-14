@@ -303,7 +303,7 @@ export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v35'
+export const SCHEMA_VERSION = 'v36'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -313,6 +313,7 @@ export function vxCacheEntries(cacheDir: string): string[]
 // history.ts and failure-mode.ts.
 export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
 export const KEYED_RUNS_SQL = "hash <> ''"
+export function branchSource(branch: string | null): string // task_durations.source: 'branch:<name>'
 
 // The four independent cache axes, and the `--cache-policy=<spec>` parser over
 // them. `FULL_CACHE_POLICY` is every axis on — the default a run starts
@@ -627,7 +628,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v43'`; `SCHEMA_VERSION` is
-`'v35'`. Bump `CACHE_VERSION` when:
+`'v36'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
