@@ -236,6 +236,14 @@ export function foldScriptHooks(
   body: string,
   post: string | undefined,
 ): string
+== function inputWriters (src/orchestrator/metrics.ts)
+export function inputWriters(
+  db: Database,
+  workspaceRoot: string,
+  taskId: string,
+  entries: CacheKeyDiff['entries'],
+  roots: readonly RootCause[],
+): InputWriter[]
 == function isCacheHit (src/orchestrator/telemetry.ts)
 export function isCacheHit(status: string): boolean
 == function isLiteralPattern (src/util/paths.ts)
@@ -837,6 +845,12 @@ export interface InputFile {
 export interface InputStability {
   strategy?: 'immutable' | 'mutable' | 'unchecked'
   severity?: 'warn' | 'error'
+}
+== type InputWriter (src/orchestrator/metrics.ts)
+export interface InputWriter {
+  taskId: string
+  file: string
+  writers: string[]
 }
 == type InvocationRecord (src/cache/layer.ts)
 export interface InvocationRecord {
