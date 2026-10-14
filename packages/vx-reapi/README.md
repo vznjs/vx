@@ -142,7 +142,7 @@ record once replayed the edited outputs on every machine after the file
 was restored. The project's own `package.json`, which the key folds
 whether or not a glob lists it, is always in the input root.
 
-This matters most under `--download=none`, where deferral leaves no
+This matters most under `--cache-download=none`, where deferral leaves no
 local cache entry behind, so vx's own probe misses on every later run
 and the record is what makes the second run cheap. Records are checked
 against the CAS first (`FindMissingBlobs`) — the action cache and the

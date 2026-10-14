@@ -948,11 +948,11 @@ export const MORE: readonly Feature[] = [
     hook: 'Turn it off, refresh it, or choose per layer what is read and written.',
     body: [
       'Sometimes you need a clean build, sometimes you want to read a shared cache without writing to it. `--no-cache` turns caching off, and `--force` re-runs everything while still refreshing the cache.',
-      '`--cache` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and `cache.policy` in `vx.workspace.ts` sets the default. The local cache is always asked first, then each remote.',
+      '`--cache-policy` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and `cache.policy` in `vx.workspace.ts` sets the default. The local cache is always asked first, then each remote.',
     ],
     example: {
       lang: 'sh',
-      code: 'vx run build --all --force\nvx run build --all --no-cache\nvx run build --all --cache=local:rw,remote:r\nVX_CACHE_POLICY=local:rw,remote:r vx run build --all',
+      code: 'vx run build --all --force\nvx run build --all --no-cache\nvx run build --all --cache-policy=local:rw,remote:r\nVX_CACHE_POLICY=local:rw,remote:r vx run build --all',
     },
     image: 'cache-controls.png',
     imageAlt: 'Cache flags: force, no-cache, per-layer.',
@@ -1044,16 +1044,16 @@ export const MORE: readonly Feature[] = [
     hook: 'With remote execution, choose to fetch all outputs, the top-level ones, or none.',
     body: [
       'When tasks run on remote workers, their outputs stay remote until something needs them. Pulling every intermediate file to a laptop wastes the network.',
-      '`--download all` fetches everything, `toplevel` only the outputs of the tasks you asked for, and `none` fetches lazily, only when a local task needs a file.',
+      '`--cache-download all` fetches everything, `toplevel` only the outputs of the tasks you asked for, and `none` fetches lazily, only when a local task needs a file.',
     ],
     example: {
       lang: 'sh',
-      code: 'vx run build --all --download toplevel\nvx run test --all --download none',
+      code: 'vx run build --all --cache-download toplevel\nvx run test --all --cache-download none',
     },
     image: 'remote-downloads.png',
     imageAlt: 'Remote outputs downloaded selectively.',
     docs: {
-      label: '--download',
+      label: '--cache-download',
       href: 'cli/#vx-run',
     },
     deepDive: {

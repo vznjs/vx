@@ -126,7 +126,7 @@ the upstream's output rows, which the save writes.
    the run's list; a caller with no list gets no snapshot (recording
    here fell inside the racy window and was always refused, item 637).
 
-Not here: the deferred-download path (`--download=none`), which saves
+Not here: the deferred-download path (`--cache-download=none`), which saves
 no artifact and registers a closure instead (`execute-task.ts`).
 
 ## Tests

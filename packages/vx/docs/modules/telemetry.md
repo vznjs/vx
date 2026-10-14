@@ -100,7 +100,7 @@ interface TaskTelemetry {
   cpuMs?: number
   peakRssBytes?: number
   where?: string // an executor's placement; absent when run here
-  outputs?: 'deferred' // the outputs stayed remote (`--download=none`)
+  outputs?: 'deferred' // the outputs stayed remote (`--cache-download=none`)
   attempts?: number // more than one: the task retried
   blockedBy?: string // on a skipped task, the failure at the root of it
   timedOut?: true // on a failed task, vx's own timeout killed it

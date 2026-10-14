@@ -64,7 +64,7 @@ links each claim to its source.
   declare is out of its reach. A violation fails the task, and a failed
   task is never cached.
 - **Pull requests keep to their own scope.** A pull request run reads the
-  trusted keys and writes only its own, over any wire, Turbo's included.
+  default keys and writes only its own, over any wire, Turbo's included.
   The real boundary is a token your cache server limits; the scope keeps
   honest runs apart ([security model](../../security/#cache-poisoning)).
 

@@ -1,4 +1,4 @@
-# `src/orchestrator/download-policy.ts` — `--download` modes + the deferral gate
+# `src/orchestrator/download-policy.ts` — `--cache-download` modes + the deferral gate
 
 ## Purpose
 
@@ -46,7 +46,7 @@ matters:
 - a same-project reader whose input-glob static prefix can overlap one of
   the producer's output-glob prefixes (`src/**` vs `dist/**` cannot, and
   the coarse "same project" rule the design first sketched would have
-  left `--download=none` with nothing to defer);
+  left `--cache-download=none` with nothing to defer);
 - any task declaring `cache.inputs.runtime` / `workspaceRuntime` — a
   shell command's reads cannot be bounded, and deferral SKIPS the output
   clean, so a stale prior build is exactly what it would sample;
@@ -65,14 +65,14 @@ transfer flag (item 441).
 
 ## Invariants
 
-- `--download` is a RunOption, never task config, and never folded into a
+- `--cache-download` is a RunOption, never task config, and never folded into a
   key — it is transfer tuning and cannot change what a command produces.
-- `exec.remote: 'only'` is `never` in both directions; `--download`
+- `exec.remote: 'only'` is `never` in both directions; `--cache-download`
   cannot override it.
 
 ## Tests
 
 `tests/download-policy.test.ts` (gate both directions incl. the
 false-positive controls, mode resolution, the e2e lifecycle, and a
-same-project reader whose key must not move with `--download` however
+same-project reader whose key must not move with `--cache-download` however
 its glob is spelled).
