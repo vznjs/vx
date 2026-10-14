@@ -108,6 +108,36 @@ export function createEventBus(): EventBus {
  * `log.X(...)` call site emits through the bus unchanged — the concrete
  * renderer subscribes via `terminalSubscriber`.
  */
+/**
+ * Warnings the lock a frozen run wrote first already printed (`settleFrozen`):
+ * that lock loads every plugin and config the run then loads again, so each
+ * would print twice. A run prints each such line once less, then forgets it.
+ */
+const printedByLock = new Map<string, number>()
+
+export function notePrintedByLock(lines: readonly string[]): void {
+  for (const line of lines) printedByLock.set(line, (printedByLock.get(line) ?? 0) + 1)
+}
+
+function printedAlready(line: string): boolean {
+  const n = printedByLock.get(line)
+  if (n === undefined) return false
+  if (n === 1) printedByLock.delete(line)
+  else printedByLock.set(line, n - 1)
+  return true
+}
+
+/** `log` without the lines the lock before this run already printed. */
+export function skipPrintedByLock(log: Logger): Logger {
+  if (printedByLock.size === 0) return log
+  const status = log.status.bind(log)
+  return Object.assign(Object.create(log) as Logger, {
+    status: (line: string) => {
+      if (!printedAlready(line)) status(line)
+    },
+  })
+}
+
 export function busLogger(bus: EventBus): Logger {
   // run() reaches runEnd on its success path, in its finally and from a
   // signal; a plugin's onRunEnd hears the first only.

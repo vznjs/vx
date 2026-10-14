@@ -61,7 +61,13 @@ import { admitTasks, taintTracker } from './admission.js'
 import { unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
-import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
+import {
+  busLogger,
+  createEventBus,
+  skipPrintedByLock,
+  terminalSubscriber,
+  type EventBus,
+} from './events.js'
 import { installPlugins, PluginSetupError } from './plugin.js'
 import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
@@ -384,7 +390,7 @@ async function runOnBus(
   terminal: DefaultLogger | null,
   takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
-  const log = busLogger(bus)
+  const log = skipPrintedByLock(busLogger(bus))
   // A server's output goes through a cell of its own: a later watch cycle
   // that keeps the server points it at that cycle's bus (`RunOptions.keep`).
   const serverOuts = new Map<string, { bus: EventBus }>()
@@ -1735,7 +1741,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   refuseRunOptions(options)
   // The plan is the product and goes to stdout (`--dry=json` is parsed):
   // what a stage says on the way goes to stderr (C-6).
-  const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
+  const log = skipPrintedByLock(options.log ?? defaultLogger(undefined, undefined, process.stderr))
   const reasons = new Map<string, AffectedReason>()
   const prepared = await prepareRun({ ...options, affectedReasons: reasons }, log)
   options = withRunSettings(options, prepared.workspaceConfig)

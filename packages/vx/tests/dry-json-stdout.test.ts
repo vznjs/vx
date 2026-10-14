@@ -2,6 +2,7 @@
 // nothing else. A `project` stage's warning (turbo() warns there) went
 // through the plan's default logger to stdout ahead of the JSON, and the
 // output did not parse (C-6).
+import { rmSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -53,3 +54,26 @@ it('a stage warning goes to stderr, and --dry=json stdout parses', () => {
     { code: 0, tasks: ['app#build'], warned: true },
   )
 })
+
+it('a frozen run that writes its lock first prints a stage warning once', () => {
+  const count = (args: string[]) => {
+    const p = Bun.spawnSync({
+      cmd: ['bun', CLI, 'run', 'build', '--all', ...args],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, CI: '1', GITHUB_ACTIONS: '', VX_RUN_FROZEN: '', NO_COLOR: '1' },
+    })
+    const all = p.stdout.toString() + p.stderr.toString()
+    return { code: p.exitCode, warned: all.split('careful: app').length - 1 }
+  }
+  // The lock it writes loads the plugin, then the run loads it again.
+  expect({ dry: count(['--dry']), run: (rmLock(), count([])) }).toEqual({
+    dry: { code: 0, warned: 1 },
+    run: { code: 0, warned: 1 },
+  })
+})
+
+function rmLock(): void {
+  rmSync(path.join(root, 'vx-lock.json'), { force: true })
+}

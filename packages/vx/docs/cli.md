@@ -1699,7 +1699,8 @@ config's import closure, so silently consuming the lock would risk stale
 freezes. A frozen run trusts the lock: it performs NO staleness checks
 and does not check the graph rules (`run.rules`), which `vx lock`
 checked when it wrote the lock. With no lock, a frozen run writes one
-first (`vx lock`, rules included) and runs from it; a project missing
+first (`vx lock`, rules included) and runs from it, printing a warning
+the lock already printed (a plugin's, a config's) once; a project missing
 from a lock that exists is still a hard error. Run `vx lock --check`
 first in a pipeline that commits its lock: that audit re-evaluates
 everything and checks the rules, making any per-run re-check redundant.
