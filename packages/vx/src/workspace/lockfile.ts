@@ -1,15 +1,14 @@
-// .vx/lock.json — frozen resolved-config lockfile.
+// .vx/projects.lock.json — frozen resolved-config lockfile.
 //
 // `vx lock` evaluates every project's vx.config.* in the CURRENT
 // environment and freezes the resolved objects, by project name, into
-// `.vx/lock.json` at the workspace root. A run
-// under `--frozen` loads configs from it instead of evaluating —
-// frozen-env semantics; a plain run always evaluates live. See
-// docs/design/config-lock-2026-06.md.
+// `.vx/projects.lock.json` at the workspace root. Every run loads configs from
+// it and never evaluates one (owner, 2026-10-14); only `vx lock` writes
+// it. See docs/design/config-lock-2026-06.md.
 //
 // Verification asymmetry (deliberate):
-//   - `--frozen` runs TRUST the lock: no staleness check, no schema
-//     validation, eval-free.
+//   - runs TRUST the lock: no staleness check, no schema validation,
+//     eval-free.
 //   - `vx lock --check` AUDITS it: full re-evaluation + deep equality.
 
 import { rename, rm } from 'node:fs/promises'
@@ -19,7 +18,7 @@ import { relPosix, UserError, xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { CONFIG_EVAL_VERSION } from './config-cache.js'
 
-export const LOCKFILE_NAME = '.vx/lock.json'
+export const LOCKFILE_NAME = '.vx/projects.lock.json'
 export const LOCKFILE_VERSION = 2
 
 export interface Lockfile {
@@ -34,12 +33,11 @@ export function lockfilePath(root: string): string {
   return path.join(root, LOCKFILE_NAME)
 }
 
-/** What a `--frozen` verb says when there is no lock to read. */
-export const FROZEN_WITHOUT_LOCK =
-  "--frozen requires .vx/lock.json at the workspace root — run 'vx lock' and commit it"
+/** What a run says when there is no lock to read. */
+export const NO_LOCK = 'no lock: run `vx lock`'
 
 /**
- * Read and shape-validate `.vx/lock.json`. Returns `null` when no lock
+ * Read and shape-validate `.vx/projects.lock.json`. Returns `null` when no lock
  * exists (the common case — the feature is opt-in). The lock is a
  * user-editable file, so this is a system boundary: malformed content
  * throws a `UserError` instead of crashing deeper in the run.
@@ -74,7 +72,7 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   }
   // Same trap, and this one is worse than a bad message: an ARRAY of entries is
   // ACCEPTED, because `Object.entries` happily walks it — yielding a project
-  // literally named "0". `--frozen` then looks up real project names against a
+  // literally named "0". A run then looks up real project names against a
   // lock that declares none of them.
   if (typeof lock.projects !== 'object' || lock.projects === null || Array.isArray(lock.projects)) {
     throw new UserError(`${LOCKFILE_NAME}: \`projects\` must be an object — re-run \`vx lock\``)
@@ -98,7 +96,7 @@ function validatedDigest(body: string): string {
 
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
   // Written beside its name and renamed over it: `Bun.write` truncates in
-  // place, so a `--frozen` run, or `vx watch --frozen` woken by the write
+  // place, so a run, or `vx watch` woken by the write
   // itself (item 971), could read an empty or half-written lock and fail
   // on "not valid JSON" (item 972).
   const file = lockfilePath(root)
@@ -115,7 +113,7 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
     // either (ENOTDIR), and that must not replace the refusal itself.
     await rm(tmp, { force: true }).catch(() => {})
     // The refusal names the file the user knows: a read-only checkout read
-    // `open '…/.vx/lock.json.tmp-…'` where it had read the lock's own name.
+    // `open '…/.vx/projects.lock.json.tmp-…'` where it had read the lock's own name.
     const e = err as NodeJS.ErrnoException
     if (typeof e.message === 'string') e.message = e.message.split(tmp).join(file)
     if (e.path === tmp) e.path = file
@@ -129,8 +127,7 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
  * check or schema validation either: the lock's contract is "what runs is
  * what was locked", `vx lock` validated every entry it wrote, and
  * `vx lock --check` re-evaluates them all. An unlocked project is a hard
- * error; silently falling back to evaluation would break frozen-env
- * semantics.
+ * error; a run never evaluates.
  */
 export function frozenProjectConfigs(
   lock: Lockfile,
@@ -143,7 +140,7 @@ export function frozenProjectConfigs(
     if (config === undefined) {
       throw new UserError(
         `${LOCKFILE_NAME} has no entry for "${meta.name}" (${relPosix(root, meta.configPath)}) — ` +
-          `run \`vx lock\` to refresh, or delete ${LOCKFILE_NAME}`,
+          'run `vx lock`',
       )
     }
     return config

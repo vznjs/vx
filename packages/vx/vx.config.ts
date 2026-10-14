@@ -19,13 +19,10 @@ const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' 
 // VX_CACHE_DIR: every fixture keeps its whole cache in its own .vx/cache; the
 // default shares entries through the user's store, and one fixture would hit
 // what another saved.
-// A suite's vx runs evaluate the configs its fixtures write: CI is set
-// there, and `run.frozen` would otherwise read a lock written once.
 const SUITE_ENV = {
   ...GIT_HERMETIC,
   FORCE_COLOR: '0',
   VX_CACHE_DIR: '.vx/cache',
-  VX_RUN_FROZEN: 'false',
 }
 // `bun build --compile --target=bun-<t>` for a target other than the
 // running Bun fetches `@oven/bun-<t>` from the npm registry once, extracts

@@ -2,7 +2,7 @@
 // that named only groups dropped them and passed (X-14).
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { makeWorkspace, silentLogger, type Fixture } from './helpers/orchestrator-fixture.js'
 import { addProject } from './helpers/workspace.js'
 

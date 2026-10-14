@@ -102,7 +102,7 @@ files written:
   packages/app/vx.config.ts
   packages/lib/vx.config.ts
 
-vx lock: locked 2 project configs → .vx/lock.json
+vx lock: locked 2 project configs → .vx/projects.lock.json
 
 next: bunx @vzn/vx run build --all
 ```
@@ -145,7 +145,8 @@ and vx keys every task on the whole file until a plugin claims it.
 ### Try it in five minutes
 
 [`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
-is a Turbo repo with that `.vx/workspace.ts` added. The first runs go
+is a Turbo repo with that `.vx/workspace.ts` added, and the
+`.vx/projects.lock.json` `vx lock` wrote (a run refuses without one). The first runs go
 through `turbo()`, the bridge; the last runs on the written configs alone,
 the goal. Each line and its comment is what a test runs and sees on each commit
 (`packages/vx/tests/examples.unsafe.test.ts`).
@@ -256,7 +257,7 @@ files written:
   packages/app/vx.config.ts
   packages/lib/vx.config.ts
 
-vx lock: locked 2 project configs → .vx/lock.json
+vx lock: locked 2 project configs → .vx/projects.lock.json
 
 next: bunx @vzn/vx run build --all
 ```

@@ -33,13 +33,19 @@ async function pkg(
   return dir
 }
 
-/** A `.vx/workspace.mjs` declaring `call`, e.g. `envKey()`, from the plugin file beside this test. */
+/**
+ * A `.vx/workspace.mjs` declaring `call`, e.g. `envKey()`, from the plugin file
+ * beside this test, then `vx lock`: a run reads project configs only from the lock.
+ */
 async function workspace(call: string): Promise<void> {
   const from = JSON.stringify(path.join(import.meta.dir, 'key.ts'))
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
     `import { envKey } from ${from}\nexport default { plugins: [${call}] }\n`,
   )
+  const vx = path.join(path.dirname(new URL(import.meta.resolve('@vzn/vx')).pathname), 'bin.ts')
+  const lock = Bun.spawnSync({ cmd: [process.execPath, vx, 'lock'], cwd: root })
+  expect([lock.exitCode, lock.stderr.toString()]).toEqual([0, ''])
 }
 
 function log(order: string[] = []): Logger {

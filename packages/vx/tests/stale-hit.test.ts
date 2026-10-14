@@ -35,7 +35,7 @@ import {
 } from '../src/cache/inputs.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -956,6 +956,8 @@ describe('stale cache hits', () => {
         git(root, 'init', '-q')
         git(root, 'config', 'user.email', 'test@vx.local')
         git(root, 'config', 'user.name', 'vx test')
+        // Committed with the rest, so the status below holds only the flagged file.
+        vx(root, 'lock')
         git(root, 'add', '-A')
         git(root, 'commit', '-q', '-m', 'initial')
 
@@ -1308,7 +1310,7 @@ describe('stale cache hits', () => {
       // converts nothing; any .gitattributes used to cost a check-attr per
       // run (21 ms). Control: a `text` line in the same file does run it.
       await write(path.join(root, 'pkg/src/a.ts'), 'export const a = 1')
-      await write(path.join(root, 'pkg/.gitattributes'), 'lock.json linguist-generated\n')
+      await write(path.join(root, 'pkg/.gitattributes'), 'projects.lock.json linguist-generated\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')

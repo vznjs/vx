@@ -39,7 +39,7 @@ export interface BuildGraphOptions {
   rules?: GraphRules | undefined // the workspace's `rules`; each on unless false (X-53)
 }
 
-// `locked`: a frozen run, whose configs `vx lock` checked the rules on.
+// `locked`: a run, which never checks the rules; `vx lock` does.
 export type GraphRules = WorkspaceRules & { readonly locked?: boolean }
 
 export function taskId(project: string, task: string): string

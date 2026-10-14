@@ -6,7 +6,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { isUserError, planRun, run, type Logger } from '@vzn/vx'
+import { isUserError, type Logger } from '@vzn/vx'
+import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { pnpm } from '../src/index.js'
@@ -28,7 +29,7 @@ function silent(): Logger {
     status() {},
   } as never
 }
-const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts')
 
 /**
  * A v9 lockfile: `a` → foo → bar; `b` → baz; `c` → link:../b, and qux with

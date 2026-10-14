@@ -4,7 +4,7 @@
 // `<NONEXISTENT>`); vx refused with "no projects declare task(s): lint", so a
 // migrated CI step broke.
 import { describe, expect, it } from 'bun:test'
-import { planRun } from '@vzn/vx'
+import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 
 const ws = useTurboWorkspace({

@@ -14,7 +14,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { describePid, isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { run, type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { terminateChildren } from '../src/orchestrator/signals.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
@@ -25,7 +26,7 @@ import { terminateChildren } from '../src/orchestrator/signals.js'
 // item 849 every vx here ran on the 2 s default.
 process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const SIGNALS = path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'signals.ts')
 const KILL_TREE = path.resolve(import.meta.dir, '..', 'src', 'exec', 'kill-tree.ts')
 const TIMEOUT = 20_000

@@ -46,7 +46,6 @@ would run:
 | `--continue`        | keep going after a failure ([modes](../configure/#tasks-and-dependencies)) |
 | `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |
 | `--summarize`       | write a JSON summary of the run                             |
-| `--no-frozen`       | evaluate the configs instead of loading `.vx/lock.json` ([below](#a-frozen-graph)) |
 
 Every flag: [the CLI reference](../../cli/).
 
@@ -75,6 +74,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2 # the runner has no Bun
       - run: npm install -g @vzn/vx # hands off to the lockfile's vx once installed
       - run: bun install --frozen-lockfile
+      - run: vx lock --check # the run trusts .vx/projects.lock.json; this catches drift
       - run: >
           vx run ci
           --affected=${{ github.event_name == 'pull_request'
@@ -125,15 +125,13 @@ A failure on inputs that passed before says so on its row:
 ### A frozen graph
 
 `vx lock` writes each project's resolved config, with a hash of its
-config file, to `.vx/lock.json`, and refuses a graph that breaks a
+config file, to `.vx/projects.lock.json`, and refuses a graph that breaks a
 `run.rules` rule (two tasks writing one output, an input that reads
-another task's output); commit it. Under CI (`CI` set) a run is frozen:
-it loads the configs from the lock instead of evaluating them, writes
-the lock first when there is none, and checks neither the rules nor
-freshness. `vx lock --check` fails on drift or a broken rule, so run it
-in CI too. `--no-frozen` or `VX_RUN_FROZEN=false` evaluate the configs
-instead. It buys determinism, not speed: on the 1,000-project bench a
-plain run's median of 177 ms against frozen's 165 is a tie.
+another task's output); commit it. Every run loads the configs from the
+lock, never evaluates them, and checks neither the rules nor freshness;
+with no lock it fails with `` no lock: run `vx lock` ``. After editing a
+config, run `vx lock`. `vx lock --check` fails on drift or a broken
+rule, so run it in CI before the run.
 
 ### Skip a deploy nothing changed
 

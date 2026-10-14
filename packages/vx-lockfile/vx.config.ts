@@ -68,7 +68,6 @@ export default defineProject({
             GIT_CONFIG_GLOBAL: '/dev/null',
             GIT_CONFIG_NOSYSTEM: '1',
             VX_CACHE_DIR: '.vx/cache',
-            VX_RUN_FROZEN: 'false',
           },
         },
         sandbox: {

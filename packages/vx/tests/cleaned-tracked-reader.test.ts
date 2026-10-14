@@ -14,7 +14,7 @@ import {
   TIMEOUT,
 } from './helpers/orchestrator-fixture.js'
 import { gitIn } from './helpers/workspace.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 const METADATA = `export default { tasks: { build: {
   exec: { command: 'sleep 1 && echo v2 > index.json' },

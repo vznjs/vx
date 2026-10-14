@@ -306,7 +306,7 @@ const calls = (root: string) => readFile(path.join(root, '.pnpm-calls'), 'utf8')
 describe('vx-migrate ends with the lock', () => {
   // owner, 2026-10-14: "vx migrate should generate lock as well". solid's
   // shape: ssr has no task Turbo runs, and gets a config all the same.
-  it('writes .vx/lock.json once the plugins resolve; --no-install leaves it to vx lock', async () => {
+  it('writes .vx/projects.lock.json once the plugins resolve; --no-install leaves it to vx lock', async () => {
     const { root, env } = await solidShaped()
     try {
       await installPlugins(root)
@@ -314,8 +314,10 @@ describe('vx-migrate ends with the lock', () => {
       expect(skipped.out).not.toContain('vx lock:')
       const r = await migrate(root, env, [])
       expect([r.code, r.err]).toEqual([0, ''])
-      expect(r.out).toContain('\nvx lock: locked 2 project configs → .vx/lock.json\n\nnext: ')
-      expect(await Bun.file(path.join(root, '.vx/lock.json')).exists()).toBe(true)
+      expect(r.out).toContain(
+        '\nvx lock: locked 2 project configs → .vx/projects.lock.json\n\nnext: ',
+      )
+      expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -327,7 +329,7 @@ describe('vx-migrate ends with the lock', () => {
       const r = await migrate(root, env, ['--no-install'])
       expect([r.code, r.err]).toEqual([0, ''])
       expect(r.out).not.toContain('vx lock:')
-      expect(await Bun.file(path.join(root, '.vx/lock.json')).exists()).toBe(false)
+      expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

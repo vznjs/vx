@@ -58,7 +58,7 @@ export {
   type GitEnumeration,
 } from './git-inputs.js'
 
-// .vx/lock.json is committed (so git enumerates it) but it's vx's own
+// .vx/projects.lock.json is committed (so git enumerates it) but it's vx's own
 // frozen-config metadata — never a task input. Excluded globally so a
 // re-lock can't bust every cache key the way a tracked source file
 // would. (Literal pattern, not the workspace `LOCKFILE_NAME` constant:
@@ -82,7 +82,7 @@ const ALWAYS_IGNORE = [
   // vx's machine-local state; the workspace config beside it is a source.
   '**/.vx/cache/**',
   '**/*.tsbuildinfo',
-  '**/.vx/lock.json',
+  '**/.vx/projects.lock.json',
   // `vx lock`'s review copy of a project's resolved config: the config is
   // keyed already, and a re-lock must not move every `**` reader's key.
   '**/vx.lock.json',

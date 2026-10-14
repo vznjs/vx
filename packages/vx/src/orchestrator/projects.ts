@@ -142,8 +142,8 @@ interface LoadProjectsBase {
    */
   seeds: 'all' | Iterable<string>
   /**
-   * Read configs from the lock instead of evaluating them (`--frozen`),
-   * asked only when a config is to be read: a run whose every config the
+   * Read configs from the lock instead of evaluating them (every run;
+   * null for `vx lock` and the reading verbs), asked only when a config is to be read: a run whose every config the
    * CLI's selection pass staged never parses it again.
    */
   lock: (() => Promise<Lockfile>) | null
@@ -244,19 +244,16 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // alike. With no root project it stays, and the graph's refusal says so.
   const root = path.resolve(workspaceRoot)
   const rootName = args.projectMetas.find((m) => path.resolve(m.dir) === root)?.name
-  // A project the lock holds whose config file is gone ran nothing under
-  // --frozen, green, though the lock promises what runs is what was
+  // A project the lock holds whose config file is gone ran nothing,
+  // green, though the lock promises what runs is what was
   // locked (X-144); a run never even asks such a project for a task.
-  // With no lock at all, nothing was
-  // locked: a repo of config-less projects needs none.
   if (lock) {
     const bare = args.projectMetas.filter((m) => m.configPath === null)
     const held = bare.length === 0 ? null : await lock().catch(() => null)
     const gone = held === null ? undefined : bare.find((m) => Object.hasOwn(held.projects, m.name))
     if (gone !== undefined && held !== null)
       throw new UserError(
-        `${LOCKFILE_NAME} locks "${gone.name}", but it has no config now — ` +
-          `run \`vx lock\` to refresh, or delete ${LOCKFILE_NAME}`,
+        `${LOCKFILE_NAME} locks "${gone.name}", but it has no config now — run \`vx lock\``,
       )
   }
   const projects = new Map<string, ProjectEntry>()

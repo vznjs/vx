@@ -13,7 +13,7 @@ import {
   silentLogger,
   TIMEOUT,
 } from './helpers/orchestrator-fixture.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 const CONFIG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },

@@ -9,7 +9,7 @@ import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { rm } from 'node:fs/promises'
 import { makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 let root = ''
 beforeAll(async () => {

@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test'
 import { completionScript, completionsCmd, FLAG_VALUES, verbFlags } from '../src/cli/completions.js'
 import { documentedFlags, CORE_VERBS, WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
 import { parseRunArgs } from '../src/cli/run.js'
-import { run } from '../src/cli/index.js'
+import { run } from './helpers/cli.js'
 import { watchRefusal } from '../src/cli/watch.js'
 import { PARSE } from './helpers/cli-parsers.js'
 
@@ -50,8 +50,6 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--ready-notice': ['1s'],
   '--poll': [],
   '--continue': [],
-  '--frozen': [],
-  '--no-frozen': [],
   '--output-logs': ['full'],
   '--verbosity': ['1'],
   '--dry': [],
@@ -159,7 +157,7 @@ describe('verbFlags is what each verb accepts', () => {
   })
 
   it('a flag another verb names in passing is never suggested to run', () => {
-    // `--frozen`'s help line says "pair with vx lock --check".
+    // The help names `vx lock --check`; `--check` is no run flag.
     expect(parseRunArgs(['build', '--chek']).error).toBe('unknown flag: --chek')
   })
 })

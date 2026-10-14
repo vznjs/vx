@@ -35,7 +35,7 @@ import {
   isCacheScope,
   type LoadReads,
   loadWorkspace,
-  FROZEN_WITHOUT_LOCK,
+  NO_LOCK,
   type Lockfile,
   readLockfile,
   resolveCacheDir,
@@ -196,7 +196,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // fingerprint. A watch cycle is a new run and reads it afresh.
   const reads: LoadReads = new Map()
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
-  // A frozen run with nothing staged reads the lock whatever discovery
+  // A run with nothing staged reads the lock whatever discovery
   // finds, so the read (1.1 MB at 1,000 projects, ~10 ms to read and
   // parse) starts here and overlaps discovery's I/O instead of following
   // the cache open (X-181). A missing or malformed lock still refuses at
@@ -204,10 +204,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   let lockRead: Promise<Lockfile> | undefined
   const readLock = (): Promise<Lockfile> =>
     (lockRead ??= readLockfile(workspaceRoot).then((read) => {
-      if (read === null) throw new UserError(FROZEN_WITHOUT_LOCK)
+      if (read === null) throw new UserError(NO_LOCK)
       return read
     }))
-  if (options.frozen === true && options.staged === undefined) void readLock().catch(() => {})
+  if (options.staged === undefined) void readLock().catch(() => {})
   // An UNSCOPED run (no explicit scope, at least one bare task name)
   // enumerates the whole tree whatever the configs say, so git starts
   // HERE — the walk needs only the root — and overlaps the workspace
@@ -329,17 +329,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const workspaceFingerprint = fingerprints.unclaimed
   mark('open cache')
 
-  // Frozen mode (--frozen, CI): configs load FROM .vx/lock.json with no
-  // evaluation and no check of the configs (`vx lock --check`
-  // re-evaluates them; a run does not); env-dependent configs keep
-  // their locked values. Default (local) runs ALWAYS evaluate live:
-  // a byte hash can't see a config's import closure (shared presets),
-  // so consuming the lock by default would silently serve stale
-  // freezes. `vx lock --check` is the full re-evaluation audit.
+  // Configs load FROM .vx/projects.lock.json with no evaluation and no check of
+  // the configs (`vx lock --check` re-evaluates them; a run does not):
+  // only `vx lock` evaluates (owner, 2026-10-14).
   // See docs/design/config-lock-2026-06.md.
   // Read once, and only when a config is to be read from it: the CLI's
   // selection pass may have staged every config (`options.staged`), and
-  // its load refused a frozen run without a lock. A 1,000-project lock is
+  // its load refused a run without a lock. A 1,000-project lock is
   // 1.1 MB of JSON (I-27); a run with nothing staged started its read
   // beside discovery, above.
   const staged = options.staged
@@ -348,8 +344,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     projectMetas.every(
       (m) => typeof m.configPath !== 'string' || m.configPath === '' || staged.has(m.name),
     )
-  if (options.frozen === true && !allStaged) await readLock()
-  const lock = options.frozen === true ? readLock : null
+  if (!allStaged) await readLock()
+  const lock = readLock
 
   const loadArgs = {
     workspaceRoot,

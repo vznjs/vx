@@ -69,13 +69,6 @@ export interface RunSettings {
   /** How long a persistent task may take to match `readyWhen` before vx says it waits. Omitted → `'10s'`. */
   readyNotice?: Duration
   /**
-   * Load configs from `.vx/lock.json` instead of evaluating them. A frozen
-   * run trusts the lock: `vx lock` checked the graph rules when it wrote it,
-   * so the run does not check them again. With no lock, the run writes one
-   * first. Omitted → on when `CI` is set.
-   */
-  frozen?: boolean
-  /**
    * Graph rules checked by `vx lock` and `vx lock --check`, never by a
    * run. Each is on
    * unless set to `false`; turning one off allows a shape vx handles
@@ -689,8 +682,8 @@ export interface CacheInputs {
    * trimmed (stdout + stderr) output is folded into the cache key.
    * Deduped per (projectDir, command) within a run. A non-zero exit
    * fails the run. Modeled on `env`: the COMMANDS are frozen in the
-   * lock, the OUTPUT is resolved live every run — correct under
-   * `--frozen`. Use for project-specific runtime probes.
+   * lock, the OUTPUT is resolved live every run. Use for
+   * project-specific runtime probes.
    */
   runtime?: readonly string[]
   /**

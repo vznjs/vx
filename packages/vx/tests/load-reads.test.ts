@@ -3,7 +3,8 @@
 // each read `pnpm-workspace.yaml` for themselves — three probes and three
 // reads per run (strace of a 100-package run, 2026-09-24). The count is
 // taken where vx asks: every `Bun.file` operation on a path under the
-// fixture root, by path, across one `prepareRun`. What Bun's own module
+// fixture root, by path, across one `prepareRun` over a lock written
+// before the count. What Bun's own module
 // loader reads is not in it; `read-once.unsafe.test.ts` counts that with
 // strace.
 
@@ -11,12 +12,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import type { Logger, RunOptions } from '../src/orchestrator/index.js'
-import { prepareRun } from '../src/orchestrator/index.js'
+import { type Logger, prepareRun, type RunOptions } from '../src/orchestrator/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 30_000
+const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 
 const log: Logger = {
   status() {},
@@ -35,7 +36,18 @@ beforeEach(async () => {
   await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
   await project('packages', 'a')
   gitInit(root)
+  lock()
 })
+
+// In a child process: an in-process lock would warm the memos the count reads through.
+function lock(): void {
+  const r = Bun.spawnSync([process.execPath, BIN, 'lock'], {
+    cwd: root,
+    stderr: 'pipe',
+    env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+  })
+  if (r.exitCode !== 0) throw new Error(r.stderr.toString())
+}
 
 afterEach(async () => {
   await rm(root, { recursive: true, force: true })
@@ -115,9 +127,9 @@ describe('a run reads each root file once', () => {
         '.vx/workspace.mts': ['exists'],
         '.vx/workspace.js': ['exists'],
         '.vx/workspace.mjs': ['exists', 'bytes'],
-        // Discovery's one read of the manifest, the loader's of the config.
+        // Discovery's one read of the manifest; the config comes from the lock.
         'packages/a/package.json': ['text'],
-        'packages/a/vx.config.mjs': ['bytes'],
+        '.vx/projects.lock.json': ['exists', 'text'],
       })
     },
     TIMEOUT,
@@ -168,13 +180,14 @@ describe('a run reads each root file once', () => {
     async () => {
       // `vx watch` runs every cycle in one process. What a run learns is
       // held for that run only, so a package added by editing the globs
-      // joins the very next one.
+      // joins the very next one (once locked, as `vx lock` in a watch is).
       expect(await prepare()).toEqual(['a#build'])
       await project('libs', 'b')
       await writeFile(
         path.join(root, 'pnpm-workspace.yaml'),
         'packages:\n  - "packages/*"\n  - "libs/*"\n',
       )
+      lock()
       expect(await prepare()).toEqual(['a#build', 'b#build'])
     },
     TIMEOUT,

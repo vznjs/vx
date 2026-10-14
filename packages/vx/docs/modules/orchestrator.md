@@ -46,7 +46,7 @@ export function acquireRunLock(
 ): Promise<() => Promise<void>>
 
 // RunOptions highlights (full list in options.md):
-//   cwd, tasks, projects?, concurrency?, cache?: CachePolicy, frozen?,
+//   cwd, tasks, projects?, concurrency?, cache?: CachePolicy,
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
 //   summarize?, beforeFooter? (text above the footer), profile?, tags?, command?, log?, bus?,
 //   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
@@ -74,7 +74,7 @@ export interface RunSummary {
    `ctx.bus.subscribe` with `disposePlugins`, the telemetry source with
    its handle's `dispose()` (item 635).
 2. **`prepareRun(options, log)`** — shared setup: discovery, scoped
-   config loading (lock-backed under `--frozen`), package + task
+   config loading (from the lock), package + task
    graph, cache open (local policy slice; the declared `cache`
    layers chained in order; an injected
    `RunOptions.remoteCache` wrap wins), bulk git populate, hash memo.

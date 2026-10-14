@@ -18,7 +18,7 @@ import {
 import { packArtifactBytes, planArtifact } from '../src/cache/archive.js'
 import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { makeWatchIgnore } from '../src/cli/watch-filter.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 const BUILD = `export default { tasks: { build: {
   exec: { command: 'mkdir -p dist/sub && cp src/a.txt dist/a.js && echo g > dist/sub/gen.js && echo t > dist/scratch.tmp' },

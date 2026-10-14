@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { run } from '@vzn/vx'
+import { run } from '../../vx/tests/helpers/orchestrator.js'
 
 const OTEL_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 

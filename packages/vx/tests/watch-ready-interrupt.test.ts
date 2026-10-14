@@ -10,7 +10,7 @@ import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { isAlive } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { startWatch, until, type Watch } from './helpers/watch-loop.js'
+import { BIN, startWatch, until, type Watch } from './helpers/watch-loop.js'
 
 let root = ''
 let outside = ''
@@ -34,19 +34,32 @@ async function lines(name: string): Promise<string[]> {
   return (await f.text()).split('\n').filter(Boolean)
 }
 
-/** The project's config; `hang` makes a server that never prints READY. A server restarts only when its config changes. */
-function config(prep: string, hang = false): string {
+/**
+ * The project's config. `vx lock` with HANG=1 locks a server that never
+ * prints READY: the file stays as it is, so the re-lock is the one edit a
+ * cycle hears. A server restarts only when its locked config changes.
+ */
+function config(prep: string): string {
   const pids = path.join(outside, 'pids')
   return `export default { tasks: {
       prep: { exec: { command: '${prep}' } },
       dev: {
         dependsOn: ['prep'],
         exec: {
-          command: 'echo $$ >> ${pids}; ${hang ? 'exec sleep 1000' : 'echo READY; exec sleep 1000'}',
+          command: 'echo $$ >> ${pids}; ' + (process.env.HANG === '1' ? 'exec sleep 1000' : 'echo READY; exec sleep 1000'),
           persistent: { readyWhen: 'READY' },
         },
       },
     } }`
+}
+
+function relock(hang: boolean): void {
+  const p = Bun.spawnSync([process.execPath, BIN, 'lock'], {
+    cwd: root,
+    env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false', HANG: hang ? '1' : '' },
+    stderr: 'pipe',
+  })
+  expect(p.stderr.toString()).toBe('')
 }
 
 async function fixture(prep: string): Promise<string> {
@@ -61,13 +74,13 @@ async function fixture(prep: string): Promise<string> {
 const runsEnded = (w: Watch): number => w.out().split('\n  time ').length - 1
 
 it('an edit stops a cycle waiting on a server that never becomes ready', async () => {
-  const dir = await fixture('true')
+  await fixture('true')
   watch = startWatch(root, ['--all'], {}, 'dev')
   const w = watch
   await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-  await writeFile(path.join(dir, 'vx.config.mjs'), config('true', true))
+  relock(true)
   await until(async () => (await lines('pids')).length === 2, 'the hanging server')
-  await writeFile(path.join(dir, 'vx.config.mjs'), config('true'))
+  relock(false)
   await until(() => runsEnded(w) === 3, 'the cycle after the fix')
   const pids = (await lines('pids')).map(Number)
   expect(pids).toHaveLength(3)

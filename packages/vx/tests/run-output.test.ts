@@ -11,7 +11,7 @@ import { fileLocations } from '../src/orchestrator/path-links.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 describe('BoundedCapture bounds', () => {

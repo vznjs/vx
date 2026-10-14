@@ -268,7 +268,7 @@ export interface ApplyMigrationArgs {
   json?: boolean
   /**
    * Run after the files are written (not under `dry`): `vx lock`'s step, so
-   * the migrated workspace has its .vx/lock.json and its graph rules checked
+   * the migrated workspace has its .vx/projects.lock.json and its graph rules checked
    * (owner, 2026-10-14). Prints its own line. A refusal (a graph rule, a
    * plugin not installed yet) is printed and the migration still succeeds:
    * its files are written, and `vx lock` is the step to re-run.
@@ -297,7 +297,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // Every project gets a config, a task-less one too (owner, 2026-10-14:
   // "no skips. every project gets a config"): solidjs/solid's solid-ssr,
   // with no script Turbo runs, was left with none and read as a project
-  // whose tasks are never frozen.
+  // whose tasks are not locked.
   const planned = new Set(plan.projects.map((p) => p.dir))
   const unplanned: GeneratedProject[] = metas
     .filter((m) => !planned.has(m.dir))

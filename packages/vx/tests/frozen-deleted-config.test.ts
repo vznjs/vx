@@ -1,7 +1,7 @@
-// `--frozen` runs what the lock records: an EDITED config still runs as
+// A run runs what the lock records: an EDITED config still runs as
 // locked, and a RENAMED one is refused (D-88). A DELETED config is neither:
 // the project loads live as config-less, its locked tasks vanish, and the
-// frozen run exited 0 having run only the other project's build (X-144).
+// run exited 0 having run only the other project's build (X-144).
 import { rm, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -47,17 +47,17 @@ it('control: an edited config still runs as locked', async () => {
     config,
     `export default { tasks: { build: { exec: { command: 'echo EDITED' } } } }\n`,
   )
-  const r = await vx(root, ['run', 'build', '--all', '--frozen', '--output-logs=full'])
+  const r = await vx(root, ['run', 'build', '--all', '--output-logs=full'])
   expect(`${r.code}\n${r.err}`).toStartWith('0\n')
   expect(r.out).toContain('LOCKED-BUILD')
 }, 30_000)
 
 it('a deleted config the lock holds is refused, not silently dropped', async () => {
   await unlink(config)
-  const r = await vx(root, ['run', 'build', '--all', '--frozen'])
+  const r = await vx(root, ['run', 'build', '--all'])
   expect([r.code, r.out.includes('LIB'), r.err.trim()]).toEqual([
     1,
     false,
-    'vx: .vx/lock.json locks "app", but it has no config now — run `vx lock` to refresh, or delete .vx/lock.json',
+    'vx: .vx/projects.lock.json locks "app", but it has no config now — run `vx lock`',
   ])
 }, 30_000)

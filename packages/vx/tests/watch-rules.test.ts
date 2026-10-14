@@ -29,8 +29,9 @@ import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { waitForProducers } from './helpers/local-workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 describe('the ignore filter', () => {
@@ -382,6 +383,8 @@ describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
   // took build's `dist/` write for an edit and every save cost a cycle more.
   it("a sibling task's inputs never turn the run's own write into a cycle", async () => {
     const root = await makeWorkspace({ prefix: 'vx-watch-own-' })
+    // `vx lock` checks every task: lint's `**/*` reads build's `dist/**`.
+    await waitForProducers(root)
     try {
       const dir = await addProject(
         root,

@@ -11,7 +11,8 @@ import { describe, expect, it } from 'bun:test'
 import { buildTaskGraph } from '../src/graph/index.js'
 import type { PackageGraph, ProjectEntry } from '../src/workspace/index.js'
 import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../src/config.js'
-import { planRun, run, type Logger } from '../src/orchestrator/index.js'
+import { type Logger, planRun as corePlanRun } from '../src/orchestrator/index.js'
+import { planRun } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
@@ -212,19 +213,21 @@ describe('rules.upfrontKeys end to end', () => {
           cmd: [process.execPath, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
           cwd: root,
           stderr: 'pipe',
+          env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
         })
       const refused = lock()
       expect(refused.exitCode).toBe(1)
       expect(refused.stderr.toString()).toMatch(
         /app#test reads "\*\*" in cache\.inputs\.files, which matches app#build's output/,
       )
-      const plan = await planRun({ cwd: root, tasks: ['test'], log: silent })
-      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#build', 'app#test'])
-      await Bun.write(
-        path.join(root, '.vx/workspace.mjs'),
-        'export default { run: { rules: { upfrontKeys: false } } }\n',
-      )
+      const ws = path.join(root, '.vx/workspace.mjs')
+      const on = await Bun.file(ws).text()
+      await Bun.write(ws, 'export default { run: { rules: { upfrontKeys: false } } }\n')
       expect(lock().exitCode).toBe(0)
+      // The rule back on, the lock unchanged: the run plans the reader.
+      await Bun.write(ws, on)
+      const plan = await corePlanRun({ cwd: root, tasks: ['test'], log: silent })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#build', 'app#test'])
     } finally {
       await rm(root, { recursive: true, force: true })
     }

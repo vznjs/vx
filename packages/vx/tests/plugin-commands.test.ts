@@ -5,7 +5,7 @@ import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { run as cli } from '../src/cli/index.js'
+import { run as cli } from './helpers/cli.js'
 import { pluginVerbs } from '../src/cli/plugin-commands.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
@@ -354,7 +354,7 @@ describe('a broken workspace file', () => {
 // compiled vx (a different class object). Reproduced through the real binary
 // on 2026-09-03: it printed `vx: UserError: …` with a stack.
 describe('bin.ts prints a foreign-copy UserError as one line', () => {
-  const bin = path.resolve(import.meta.dir, '../src/bin.ts')
+  const bin = path.resolve(import.meta.dir, 'helpers/vx-locked.ts')
   function spawn(verb: string): { code: number | null; err: string } {
     const p = Bun.spawnSync({
       cmd: [process.execPath, bin, verb],

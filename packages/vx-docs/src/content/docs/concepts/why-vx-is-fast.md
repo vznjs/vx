@@ -22,8 +22,8 @@ These are reproducible on your own machine, not marketing figures:
   Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ. Run 2026-10-12 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across
-  fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot
-  (`--frozen`), as every vx bench runs it. A 100-project workspace
+  fresh / warm-no-restore / warm-restore, from a `vx lock` snapshot,
+  as every run reads one. A 100-project workspace
   replayed fully-cached in **74 ms** whole-process (1,000 projects in
   172 ms) on one macOS arm64 machine (2026-09-02); a 4-core Linux
   container reads 271 ms at 1,000 projects. Its restore row deletes the outputs first and extracts

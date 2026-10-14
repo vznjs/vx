@@ -11,7 +11,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const available = await sandboxAvailable('sandbox credential stores test')
 let root: string | undefined
 

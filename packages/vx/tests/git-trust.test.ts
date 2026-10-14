@@ -7,7 +7,7 @@ import { readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { Logger, RunSummary } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const TIMEOUT = 30_000
@@ -29,7 +29,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 function cli(): void {
   const r = Bun.spawnSync([process.execPath, BIN, 'run', 'build', '--all'], {

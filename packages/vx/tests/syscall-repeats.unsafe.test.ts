@@ -288,6 +288,12 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
         } } }\n`,
         files: { 'src/a.txt': 'a' },
       })
+      const lock = Bun.spawnSync({
+        cmd: [process.execPath, path.join(SRC, 'bin.ts'), 'lock'],
+        cwd: root,
+        stderr: 'pipe',
+      })
+      expect(`${lock.exitCode}\n${lock.stderr.toString()}`).toBe('0\n')
       gitInitCommit(root)
       const vx = ['run', 'build', '--all']
       const prime = Bun.spawnSync({

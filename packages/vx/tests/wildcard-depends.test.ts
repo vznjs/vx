@@ -13,7 +13,7 @@ import {
 
 setDefaultTimeout(30_000)
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-wildcard-e2e-', rootName: 'root' })

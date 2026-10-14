@@ -268,10 +268,15 @@ const scratch = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-pg-')))
 const ws = path.join(scratch, 'ws')
 const cacheDir = path.join(scratch, 'cache')
 
-/** The CLI's root marker; the playground is handed its root. */
+/** The CLI's root marker (the playground is handed its root), and the `@vzn/vx` configs import. */
 function markRoot(dir: string): void {
   mkdirSync(path.join(dir, '.vx'), { recursive: true })
   writeFileSync(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
+  // `vx lock` evaluates each config, whose `@vzn/vx` import must resolve.
+  const link = path.join(dir, 'node_modules', '@vzn', 'vx')
+  if (fs.lstatSync(link, { throwIfNoEntry: false }) !== undefined) return
+  mkdirSync(path.dirname(link), { recursive: true })
+  fs.symlinkSync(path.resolve(import.meta.dir, '..'), link)
 }
 
 function write(files: Record<string, string>): void {
@@ -290,12 +295,31 @@ function git(...args: string[]): void {
 const baseEnv = { ...process.env }
 delete baseEnv['API_URL']
 
+/** `vx lock` in `cwd` under `env`, as a user runs it before a run; throws its refusal. */
+function lockAt(cwd: string, env: Record<string, string | undefined>): void {
+  const r = Bun.spawnSync([process.execPath, BIN, 'lock'], {
+    cwd,
+    env: { ...env, NO_COLOR: '1', VX_LOCK_REVIEW_FILES: 'false' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  if (r.exitCode !== 0) throw new Error(`vx lock exited ${r.exitCode}: ${r.stderr.toString()}`)
+}
+
+/** `vx lock` under `env`, as the page evaluates under it, then the run; a refusal is the lock's. */
 function cliRun(env: Record<string, string>): { exitCode: number; stdout: string; stderr: string } {
-  const r = Bun.spawnSync(
-    [process.execPath, BIN, 'run', ...TASKS, '--all', '--dry=json', `--cache-dir=${cacheDir}`],
-    { cwd: ws, env: { ...baseEnv, ...env, NO_COLOR: '1' }, stdout: 'pipe', stderr: 'pipe' },
-  )
-  return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
+  const spawn = (args: string[]) => {
+    const r = Bun.spawnSync([process.execPath, BIN, ...args], {
+      cwd: ws,
+      env: { ...baseEnv, ...env, NO_COLOR: '1', VX_LOCK_REVIEW_FILES: 'false' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
+  }
+  const lock = spawn(['lock'])
+  if (lock.exitCode !== 0) return lock
+  return spawn(['run', ...TASKS, '--all', '--dry=json', `--cache-dir=${cacheDir}`])
 }
 
 function cliPlan(env: Record<string, string>): PlanTask[] {
@@ -712,7 +736,9 @@ describe("the page evaluates a config's text as the CLI does (item 699)", () => 
       expect(cli.exitCode).toBe(1)
       const want = name === 'a function' ? NOT_AN_OBJECT_FUNCTION : NOT_AN_OBJECT
       expect(page).toEqual({ ok: false, error: want })
-      expect(cli.stderr.replace(file, 'vx.config.mjs')).toBe(`vx: ${want}\n`)
+      expect(cli.stderr.replace(file, 'vx.config.mjs')).toBe(
+        `vx lock: .vx/projects.lock.json not written: ${want}\n`,
+      )
     })
   }
 
@@ -769,7 +795,7 @@ describe('a config is JSON data on the page as in the CLI (item 701)', () => {
 }
 `
 
-  it("a function-valued description: `vx run --dry=json`, the CLI's worker and the page give one refusal", async () => {
+  it("a function-valued description: `vx lock`, the CLI's worker and the page give one refusal", async () => {
     const file = path.join(ws, CONFIG_FILE['@pg/docs']!)
     const refusal = (at: string): string =>
       `${at}: tasks.build.description is a function — a config must be JSON data, because the cache key folds its JSON`
@@ -783,7 +809,9 @@ describe('a config is JSON data on the page as in the CLI (item 701)', () => {
       const page = await evaluate(FUNCTION_TEXT)
       expect(cli.exitCode).toBe(1)
       // The CLI names the same refusal at its line, a frame under it.
-      expect(cli.stderr).toStartWith(`vx: ${refusal(`${path.relative(ws, file)}:2:48`)}\n\n`)
+      expect(cli.stderr).toStartWith(
+        `vx lock: .vx/projects.lock.json not written: ${refusal(`${path.relative(ws, file)}:2:48`)}\n\n`,
+      )
       expect(worker).toBe(refusal(file))
       expect(page).toEqual({ ok: false, error: refusal('vx.config.mjs') })
     } finally {
@@ -818,6 +846,7 @@ describe("the playground page's workspace plans what the CLI plans (item 700)", 
   }
 
   function pageCli(): PlanTask[] {
+    lockAt(pageWs, { ...baseEnv, ...PAGE.ENV })
     const r = Bun.spawnSync(
       [
         process.execPath,
@@ -954,6 +983,7 @@ describe('the page names what moved a key as `vx why` does (item 703)', () => {
   }
 
   function vx(...args: string[]): string {
+    if (args[0] === 'run') lockAt(whyWs, { ...baseEnv, ...PAGE.ENV })
     const r = Bun.spawnSync([process.execPath, BIN, ...args, `--cache-dir=${whyCache}`], {
       cwd: whyWs,
       env: { ...baseEnv, ...PAGE.ENV, NO_COLOR: '1' },
@@ -1118,12 +1148,6 @@ describe('the labs plan what the CLI plans, before and after each fix (item 704)
     for (const [lab, start] of Object.entries(LAB.LABS)) {
       const dir = path.join(scratch, `lab-${lab}`)
       labWrite(dir, start.files)
-      // `vx lock` evaluates each config, whose `@vzn/vx` import must resolve.
-      mkdirSync(path.join(dir, 'node_modules', '@vzn'), { recursive: true })
-      fs.symlinkSync(
-        path.resolve(import.meta.dir, '..'),
-        path.join(dir, 'node_modules', '@vzn', 'vx'),
-      )
       labGit(dir, 'init', '-q')
       labGit(dir, 'add', '-A')
       labGit(
@@ -1193,7 +1217,7 @@ describe('the labs plan what the CLI plans, before and after each fix (item 704)
           const { cli, page } = results.get(lab)![i]!
           expect(cli).toEqual({
             ok: false,
-            error: `vx lock: .vx/lock.json not written: ${plans}\n`,
+            error: `vx lock: .vx/projects.lock.json not written: ${plans}\n`,
           })
           expect(page).toEqual({ ok: false, error: plans })
         })

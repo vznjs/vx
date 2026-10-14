@@ -30,6 +30,13 @@ describe('a workspace .env stays out of vx', () => {
     )
     await writeFile(path.join(root, '.env'), 'VX_DOTENV_PROBE=from-dotenv\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    const lock = Bun.spawnSync({
+      cmd: [BIN, 'lock'],
+      cwd: root,
+      env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+      stderr: 'pipe',
+    })
+    expect(lock.stderr.toString()).toBe('')
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })

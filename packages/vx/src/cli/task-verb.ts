@@ -83,9 +83,7 @@ async function workspaceProjects(
       root,
       await discoverCliProjects(await loadWorkspace(root)),
       'all',
-      {
-        noCreate: true,
-      },
+      { noCreate: true, fromLock: true },
     )
   } catch {
     // No workspace, or a config that does not load: the caller's plain line stands.

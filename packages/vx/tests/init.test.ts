@@ -20,7 +20,7 @@ import {
 } from '../src/workspace/index.js'
 import { foldScriptHooks, vxInvocation } from '../src/workspace/migration.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 20_000
 
 interface VxResult {
@@ -1314,18 +1314,20 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
-  it('ends with the lock: .vx/lock.json written and named, none under --dry', async () => {
+  it('ends with the lock: .vx/projects.lock.json written and named, none under --dry', async () => {
     // owner, 2026-10-14: "vx migrate should generate lock as well".
     const root = await makeScriptsWorkspace()
     try {
       const dry = await vx(root, ['init', '--dry'])
       expect(dry.code).toBe(0)
-      expect(existsSync(path.join(root, '.vx/lock.json'))).toBe(false)
+      expect(existsSync(path.join(root, '.vx/projects.lock.json'))).toBe(false)
       const r = await vx(root, ['init'])
       expect(r.code).toBe(0)
       expect(r.err).toBe('')
-      expect(r.out).toContain('\nvx lock: locked 3 project configs → .vx/lock.json\n\nnext: ')
-      const lock = (await Bun.file(path.join(root, '.vx/lock.json')).json()) as {
+      expect(r.out).toContain(
+        '\nvx lock: locked 3 project configs → .vx/projects.lock.json\n\nnext: ',
+      )
+      const lock = (await Bun.file(path.join(root, '.vx/projects.lock.json')).json()) as {
         projects: Record<string, unknown>
       }
       expect(Object.keys(lock.projects)).toEqual(['app', 'lib', 'silent'])
@@ -1344,10 +1346,10 @@ describe('vx init — the generated build is not a cached no-op', () => {
     try {
       const r = await vx(root, ['init'])
       expect(r.code).toBe(0)
-      expect(r.err).toContain('vx lock: .vx/lock.json not written: ')
+      expect(r.err).toContain('vx lock: .vx/projects.lock.json not written: ')
       expect(r.err).toContain('dependsOn cycle')
       expect(r.out).toContain('next: fix the above and run vx lock, then ')
-      expect(existsSync(path.join(root, '.vx/lock.json'))).toBe(false)
+      expect(existsSync(path.join(root, '.vx/projects.lock.json'))).toBe(false)
       expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })

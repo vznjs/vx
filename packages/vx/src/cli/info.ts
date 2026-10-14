@@ -123,7 +123,7 @@ export function renderInfo(f: InfoFacts): string {
     ],
     ['flaky tasks', describeFlakyTasks(f.flakyTasks)],
     ['sandbox', describeSandbox(f.sandbox)],
-    ['.vx/lock.json', f.lockfile ? 'yes' : 'no'],
+    ['projects lock', f.lockfile ? 'yes' : 'no'],
   ]
   const labelW = Math.max(...rows.map(([label]) => label.length))
   return rows.map(([label, value]) => `${`${label}:`.padEnd(labelW + 1)} ${value}`).join('\n')

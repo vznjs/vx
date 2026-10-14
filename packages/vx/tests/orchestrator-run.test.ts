@@ -17,8 +17,11 @@ import {
   TIMEOUT,
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
-import { run, type Logger } from '../src/orchestrator/index.js'
+import { run as coreRun, type Logger } from '../src/orchestrator/index.js'
+import { lock, run } from './helpers/orchestrator.js'
 import { summarized, vx } from './helpers/parity.js'
+
+const REAL_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 describe('orchestrator e2e — restores, groups, streams, plan and records', () => {
   let fixture: Fixture
@@ -716,7 +719,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
 
   // turborepo#7245: a deleted package stayed in the graph after a warm run.
   it(
-    'a package deleted after a warm run and a lock leaves the next run and a frozen run without it',
+    'a package deleted after a warm run and a lock leaves the next run without it, before and after a re-lock',
     async () => {
       const build = `
           export default {
@@ -726,16 +729,21 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       await addProject(fixture.root, 'keep', { config: build, files: { 'src/a.txt': 'a' } })
       await addProject(fixture.root, 'gone', { config: build, files: { 'src/a.txt': 'a' } })
       expect((await vx(fixture.root, ['run', 'build', '--all'])).code).toBe(0)
-      expect((await vx(fixture.root, ['lock'])).code).toBe(0)
       await rm(path.join(fixture.root, 'packages', 'gone'), { recursive: true })
 
+      // The lock still holds `gone`: a run takes its projects from discovery.
+      const stale = Bun.spawnSync(
+        [process.execPath, REAL_BIN, 'run', 'build', '--all', '--dry=json'],
+        { cwd: fixture.root, stderr: 'pipe' },
+      )
+      expect({
+        code: stale.exitCode,
+        ids: (JSON.parse(stale.stdout.toString()) as { tasks: { id: string }[] }).tasks.map(
+          (t) => t.id,
+        ),
+      }).toEqual({ code: 0, ids: ['keep#build'] })
       const again = await summarized(fixture.root, ['build', '--all'])
       expect({ code: again.code, ids: [...again.tasks.keys()] }).toEqual({
-        code: 0,
-        ids: ['keep#build'],
-      })
-      const frozen = await summarized(fixture.root, ['build', '--all', '--frozen'])
-      expect({ code: frozen.code, ids: [...frozen.tasks.keys()] }).toEqual({
         code: 0,
         ids: ['keep#build'],
       })
@@ -1305,10 +1313,11 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
           }
         `,
       })
-      // Both runs share the one fixture, so the one cache dir.
+      // Both runs share the one fixture, so the one cache dir, and the one lock.
+      await lock(fixture.root)
       const [r1, r2] = await Promise.all([
-        run({ cwd: fixture.root, tasks: ['a'], log: silentLogger(fixture) }),
-        run({ cwd: fixture.root, tasks: ['b'], log: silentLogger(fixture) }),
+        coreRun({ cwd: fixture.root, tasks: ['a'], log: silentLogger(fixture) }),
+        coreRun({ cwd: fixture.root, tasks: ['b'], log: silentLogger(fixture) }),
       ])
       expect(r1.ok).toBe(true)
       expect(r2.ok).toBe(true)
@@ -1322,7 +1331,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       // Property: for the same workspace + cache state, what planRun
       // predicts must match what run produces. Catches drift between
       // `computeTaskHash` and the executor.
-      const { planRun } = await import('../src/orchestrator/index.js')
+      const { planRun } = await import('./helpers/orchestrator.js')
       await addProject(fixture.root, 'p', {
         config: `
           export default {

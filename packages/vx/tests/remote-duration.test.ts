@@ -7,7 +7,7 @@ import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import type { RemoteCacheLayer } from '../src/cache/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 const CFG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },

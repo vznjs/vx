@@ -13,8 +13,8 @@ re-exported from `@vzn/vx`.
 ├── pnpm-workspace.yaml          (or: package.json with "workspaces", or bare package.json)
 ├── .vx/
 │   ├── workspace.ts             (required: marks the root; workspace-wide settings)
-│   ├── lock.json                (`vx lock`, minified; committed)
-│   ├── .gitattributes           (`lock.json linguist-generated=true`; written when missing)
+│   ├── projects.lock.json                (`vx lock`, minified; committed)
+│   ├── .gitattributes           (`projects.lock.json linguist-generated=true`; written when missing)
 │   ├── .gitignore               (`/cache`; written by `vx init` and the cache when missing)
 │   └── cache/                   (machine-local state; the only part git ignores)
 └── packages/
@@ -871,7 +871,7 @@ Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`, `*.tsbuildinfo`,
-  `.vx/lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction
+  `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction
   directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
   `.vx-tmp-*`, at any depth.
 - **Installs** — an untracked file under any `node_modules/` (ignored or
@@ -926,7 +926,7 @@ backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
-`*.tsbuildinfo`, `.vx/lock.json`, `vx.lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
+`*.tsbuildinfo`, `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
 in its own project (a task never invalidates itself).
@@ -1003,8 +1003,8 @@ Semantics:
   `resolveInputs`), exactly like `inputs.env` reads host env values
   live. `vx lock` freezes the command _strings_ (they're in the
   resolved config), not their output, so the field stays correct under
-  `vx run --frozen` — the changed output of a frozen command still
-  busts the cache.
+  the lock every run reads — the changed output of a locked command
+  still busts the cache.
 - A **non-zero exit fails the run** (a hard `UserError` naming the
   command and exit code) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
@@ -1606,7 +1606,7 @@ The loader rejects:
 ## Workspace config (`.vx/workspace.ts`)
 
 Loaded from `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`: the directory holding
-`.vx` is the workspace root. `.vx` also holds the lock (`.vx/lock.json`)
+`.vx` is the workspace root. `.vx` also holds the lock (`.vx/projects.lock.json`)
 and `.vx/cache`, the machine-local state (the cache, the workspace id),
 which is the only part git ignores: `.vx/.gitignore` says `/cache`. Every field falls back to its
 built-in default.
@@ -1625,7 +1625,6 @@ export default defineWorkspace({
     killGrace: '2s',
     teardownTimeout: '3s',
     readyNotice: '10s',
-    frozen: false,
     rules: {
       exclusiveOutputs: true,
       upfrontKeys: true,
@@ -1677,7 +1676,6 @@ default and where it came from.
 | `run.killGrace`                                | `VX_RUN_KILL_GRACE`                 | `--kill-grace`       | a duration like '500ms', '30s' or '5m', at most 24 days                 | 2s                                         | How long a task that ignores SIGTERM gets before SIGKILL.                                                                                           |
 | `run.teardownTimeout`                          | `VX_RUN_TEARDOWN_TIMEOUT`           | `--teardown-timeout` | a duration like '500ms', '30s' or '5m', at most 24 days                 | 3s                                         | The bound on each plugin's end-of-run flush and teardown.                                                                                           |
 | `run.readyNotice`                              | `VX_RUN_READY_NOTICE`               | `--ready-notice`     | a duration like '500ms', '30s' or '5m', at most 24 days                 | 10s                                        | How long a persistent task may take to match `readyWhen` before vx says it waits.                                                                   |
-| `run.frozen`                                   | `VX_RUN_FROZEN`                     | `--frozen`           | true or false                                                           | on when CI is set                          | Load configs from `.vx/lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.                                              |
 | `run.rules.exclusiveOutputs`                   | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | —                    | true or false                                                           | true                                       | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                               |
 | `run.rules.upfrontKeys`                        | `VX_RUN_RULES_UPFRONT_KEYS`         | —                    | true or false                                                           | true                                       | Refuse a task whose inputs can match another task's outputs.                                                                                        |
 | `cache.dir`                                    | `VX_CACHE_DIR`                      | `--cache-dir`        | a non-blank string                                                      | .vx/cache, entries in ~/.vx/<repo>/cache   | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                             |
@@ -1716,8 +1714,6 @@ interface RunSettings {
   killGrace?: Duration
   teardownTimeout?: Duration
   readyNotice?: Duration
-  /** Load configs from .vx/lock.json; on when CI is set. */
-  frozen?: boolean
   /** Graph rules `vx lock` checks, never a run; each on unless set to false. */
   rules?: { exclusiveOutputs?: boolean; upfrontKeys?: boolean; dependencies?: DependencyRule[] }
 }
@@ -1759,10 +1755,6 @@ interface CacheSettings {
   end-of-run flush and teardown (3 s; there is no "no limit"), and how
   long a persistent task may wait for `readyWhen` before vx says what it
   waits for (10 s).
-- **`run.frozen`** — load configs from `.vx/lock.json` instead of
-  evaluating them; on when `CI` is set. A frozen run checks no graph
-  rules: `vx lock` checked them when it wrote the lock, and with no lock
-  the run writes one first (`docs/cli.md` § `--frozen`).
 - **`run.rules`** — checked by `vx lock` and `vx lock --check` only;
   no run checks them.
 - **`cache.dir`** — unset, the workspace keeps its index and history in

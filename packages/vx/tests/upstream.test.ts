@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { appendFile, rm } from 'node:fs/promises'
 import path from 'node:path'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import {
   expandGroupUpstream,
   filterUpstreamHashes,

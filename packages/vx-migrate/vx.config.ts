@@ -7,7 +7,6 @@ const SUITE_ENV = {
   GIT_CONFIG_NOSYSTEM: '1',
   FORCE_COLOR: '0',
   VX_CACHE_DIR: '.vx/cache',
-  VX_RUN_FROZEN: 'false',
 }
 
 const SUITE_SANDBOX = {

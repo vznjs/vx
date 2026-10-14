@@ -8,7 +8,7 @@ import { realpathSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { run } from '../src/cli/index.js'
+import { run } from './helpers/cli.js'
 
 let stdout = ''
 let stderr = ''

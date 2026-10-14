@@ -1,4 +1,4 @@
-// `vx lock` — freeze every resolved vx.config.* into .vx/lock.json, and
+// `vx lock` — freeze every resolved vx.config.* into .vx/projects.lock.json, and
 // each one, pretty, into a `vx.lock.json` beside it for review.
 // `vx lock --check` — audit the lock against a fresh evaluation in the
 // current environment. Design: docs/design/config-lock-2026-06.md.
@@ -15,7 +15,13 @@ import {
   loadResolvedProjects,
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
-import { DOT_VX_GITATTRIBUTES, isUserError, relPosix, secretMask } from '../util/index.js'
+import {
+  configErrorFrame,
+  DOT_VX_GITATTRIBUTES,
+  isUserError,
+  relPosix,
+  secretMask,
+} from '../util/index.js'
 import {
   findWorkspaceRoot,
   type LoadReads,
@@ -86,7 +92,7 @@ async function configuredProjects(
 ): Promise<{ all: ProjectMeta[]; metas: ConfiguredMeta[] }> {
   const workspace = await loadWorkspace(root, reads)
   // As a run discovers them: a project a plugin's `discover` stage adds
-  // was left out of the lock, and every `--frozen` run then refused it
+  // was left out of the lock, and every run then refused it
   // with "run vx lock", which changed nothing (X-143).
   // Sorted by name, as core's discovery is, for stable lockfile diffs.
   const all = (await discoverCliProjects(workspace)).sort((a, b) =>
@@ -98,10 +104,10 @@ async function configuredProjects(
 
 /**
  * Projects with tasks and no vx.config: a plugin's tasks, which load live
- * under --frozen too, so both verbs name them — `locked 0 project configs`
+ * in every run, so both verbs name them — `locked 0 project configs`
  * on a turbo() repo read like an audit of something (2026-09-16). One with
  * no task is left out: solidjs/solid's solid-ssr, which has no script Turbo
- * runs, read as a project whose tasks are never frozen.
+ * runs, read as a project whose tasks come live from the plugin `project` stage.
  */
 function bareProjects(all: ProjectMeta[], tasked: ReadonlySet<string>): string[] {
   return all.filter((m) => m.configPath === null && tasked.has(m.name)).map((m) => m.name)
@@ -109,7 +115,7 @@ function bareProjects(all: ProjectMeta[], tasked: ReadonlySet<string>): string[]
 
 /**
  * `vx lock`: evaluate every config, check the graph rules over every task,
- * and write the lock. Also what a frozen run with no lock does first.
+ * and write the lock: the only writer of it.
  */
 export async function lockWorkspace(
   root: string,
@@ -119,7 +125,7 @@ export async function lockWorkspace(
   const { all, metas } = await configuredProjects(root, reads)
   const check = await graphRuleRefusal(root, all, warn)
   if (check.broken !== null) {
-    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${check.broken}\n`)
+    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${framed(check.broken)}\n`)
     return 1
   }
   return await writeLock(root, metas, bareProjects(all, check.tasked), check)
@@ -127,7 +133,7 @@ export async function lockWorkspace(
 
 /**
  * The graph rules (`run.rules`), checked here over every project and task the
- * workspace declares: a frozen run trusts the lock and does not check them
+ * workspace declares: a run trusts the lock and does not check them
  * (owner, 2026-10-13). The graph is the one a run builds, the `graph`
  * stage included; its refusal, or null, and the projects that have a task.
  */
@@ -213,9 +219,14 @@ export async function lockAfterMigration(root: string): Promise<number> {
     return await lockWorkspace(root)
   } catch (err) {
     if (!isUserError(err)) throw err
-    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${err.message}\n`)
+    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${framed(err.message)}\n`)
     return 1
   }
+}
+
+/** A config refusal as a run used to print it: path:line:col and the source line. */
+function framed(message: string): string {
+  return configErrorFrame(message, process.cwd()) ?? message
 }
 
 /** Names shown per note: a turbo() repo can have hundreds of bare projects. */
@@ -227,7 +238,7 @@ function bareNames(bare: readonly string[]): string {
 }
 
 function bareNote(bare: readonly string[]): string {
-  return bare.length === 0 ? '' : ` (no vx.config, so never frozen: ${bareNames(bare)})`
+  return bare.length === 0 ? '' : ` (no vx.config, so not locked: ${bareNames(bare)})`
 }
 
 /** The name `vx lock` writes each project's review copy under. */
@@ -320,7 +331,7 @@ async function writeLock(
  * environment, by the rule output masking uses (a secret-named variable,
  * or one a task lists in `exec.env.secret`). The lock is committed, so
  * such a value would be published, and masking it would freeze a `***`
- * that `--frozen` runs (L-42).
+ * that every run runs (L-42).
  */
 function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string; name: string }> {
   const named = new Set<string>()

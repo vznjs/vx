@@ -440,7 +440,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
  * typechecked (plain .js, or TS with errors ignored). Catch the worst
  * shape problems early with a clear message rather than letting them
  * crash deeper in the orchestrator. Also applied to configs loaded
- * back from `.vx/lock.json` (a hand-editable file — same boundary).
+ * back from `.vx/projects.lock.json` (a hand-editable file — same boundary).
  */
 export function validateProjectConfig(config: ProjectConfig, configPath: string): void {
   // Before the schema, on the object as it stands: the key folds its JSON,

@@ -4,7 +4,7 @@
 // entries and `vx last --list` the runs; `gc` and `purge` are eviction.
 
 import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
-import { run } from '../src/cli/index.js'
+import { run } from './helpers/cli.js'
 
 let stderr = ''
 beforeEach(() => {

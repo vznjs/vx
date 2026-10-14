@@ -40,7 +40,7 @@ import {
 import { UserError, relPosix } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 async function write(p: string, content = 'x'): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -332,10 +332,10 @@ describe('resolveInputs', () => {
     expect(got.files).toEqual([path.join(projectDir, 'src', 'index.ts')])
   })
 
-  it('.vx/lock.json never enters the input set (project + workspace globs)', async () => {
+  it('.vx/projects.lock.json never enters the input set (project + workspace globs)', async () => {
     await write(path.join(projectDir, 'src', 'index.ts'), 'src')
-    await write(path.join(projectDir, '.vx/lock.json'), '{}')
-    await write(path.join(root, '.vx/lock.json'), '{}')
+    await write(path.join(projectDir, '.vx/projects.lock.json'), '{}')
+    await write(path.join(root, '.vx/projects.lock.json'), '{}')
 
     const got = await resolveInputs({
       projectDir,
@@ -345,8 +345,8 @@ describe('resolveInputs', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files).not.toContain(path.join(projectDir, '.vx/lock.json'))
-    expect(got.files).not.toContain(path.join(root, '.vx/lock.json'))
+    expect(got.files).not.toContain(path.join(projectDir, '.vx/projects.lock.json'))
+    expect(got.files).not.toContain(path.join(root, '.vx/projects.lock.json'))
     expect(got.files).toContain(path.join(projectDir, 'src', 'index.ts'))
   })
 

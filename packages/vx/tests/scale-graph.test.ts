@@ -19,7 +19,7 @@ import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { planRun } from '../src/orchestrator/index.js'
+import { planRun } from './helpers/orchestrator.js'
 import type { RunPlan } from '../src/orchestrator/index.js'
 import { defaultLogger } from '../src/orchestrator/logger.js'
 

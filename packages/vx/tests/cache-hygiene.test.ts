@@ -18,7 +18,7 @@ import {
 process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 const TIMEOUT = 30_000
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 let root: string
 

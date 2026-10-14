@@ -4,7 +4,8 @@ import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { formatBytes } from '../src/cli/format.js'
 import { parseDuration, parsePruneArgs, parseSize } from '../src/cli/cache.js'
 import { parseRunArgs } from '../src/cli/run.js'
-import { run } from '../src/cli/index.js'
+import { run } from './helpers/cli.js'
+import { lock } from './helpers/orchestrator.js'
 import { formatRunReportMarkdown } from '../src/orchestrator/index.js'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -212,6 +213,8 @@ describe('cli run()', () => {
       ]) {
         Bun.spawnSync({ cmd: ['git', ...args], cwd: root })
       }
+      // By hand: the helper takes the forwarded `--help` for ours and skips the lock.
+      await lock(root)
       process.chdir(path.join(root, 'p'))
       expect(await run(['run', 'no-such-task-xyz', '--', '--help'])).not.toBe(0)
       expect(stdout).not.toContain('Usage:')
@@ -1652,12 +1655,12 @@ describe('parseRunArgs', () => {
     // `vx run --chek` was told "did you mean --check?".
     const fixture = [
       'Execution (for run):',
-      '  --frozen          Refuse drift from .vx/lock.json;',
+      '  --dry             Print the plan;',
       '                    pair with vx lock --check in CI.',
       'Cache (for prune):',
       '  --older-than <d>  Prune entries older than d.',
     ].join('\n')
-    expect(documentedFlags('run', fixture)).toEqual(['--frozen'])
+    expect(documentedFlags('run', fixture)).toEqual(['--dry'])
   })
 
   it('vx <verb> --help is the reference cut to that verb, from the same text', () => {
@@ -1687,10 +1690,10 @@ describe('parseRunArgs', () => {
   it('a verb cut takes only lines that START with its own `vx <verb>` form', () => {
     const flagsIn = (s: string): string[] =>
       [...new Set(s.match(/--[a-zA-Z][a-zA-Z-]*/g) ?? [])].sort()
-    // `--frozen`'s line mentions "pair with `vx lock --check`" MID-LINE, so
-    // without the start anchor that one cross-reference drags the whole
-    // `Execution (for run)` block — 26 lines of run's flags — into `vx lock
-    // --help`. The exact set is the assertion; a `not.toContain` would pass
+    // A run flag's line that mentions "pair with `vx lock --check`" MID-LINE
+    // (the removed `--frozen`'s did): without the start anchor that one
+    // cross-reference drags the whole `Execution (for run)` block — 26
+    // lines of run's flags — into `vx lock --help`. The exact set is the assertion; a `not.toContain` would pass
     // on any single flag leaking.
     expect(flagsIn(verbHelpText('lock'))).toEqual(['--check', '--format'])
     expect(flagsIn(verbHelpText('init'))).toEqual([
@@ -1731,11 +1734,9 @@ describe('parseRunArgs', () => {
       '--filter',
       '--force',
       '--format',
-      '--frozen',
       '--graph',
       '--kill-grace',
       '--no-cache',
-      '--no-frozen',
       '--output-logs',
       '--profile',
       '--ready-notice',

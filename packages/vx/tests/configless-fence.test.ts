@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { run } from '../src/orchestrator/index.js'
+import { lock, run } from './helpers/orchestrator.js'
 import { silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import { addProject, gitIn, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
@@ -48,6 +48,9 @@ async function workspace(rootOutputs: string, command = 'true'): Promise<string>
   await addProject(r, 'b', { config: B_CONFIG, files: { 'src/b.js': 'b-1\n' } })
   // Committed, as `vx init` writes it: the first run would add it under `**`.
   await writeFile(path.join(r, '.vx/.gitignore'), '/cache\n')
+  // The lock and `.vx/.gitattributes` beside it are committed too, so no
+  // diff below holds them.
+  await lock(r)
   gitInitCommit(r)
   return r
 }

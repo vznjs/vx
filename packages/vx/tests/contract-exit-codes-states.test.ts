@@ -15,7 +15,8 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+const UNLOCKED_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const RECORD = path.join(import.meta.dir, 'contract', 'exit-codes-states.json')
 const env = { ...process.env, NO_COLOR: '1', VX_RUN_KILL_GRACE: '200ms' }
 
@@ -40,8 +41,13 @@ afterAll(async () => {
 })
 
 function vx(...args: string[]): number {
+  return vxWith(BIN, args)
+}
+
+/** The CLI itself, with no `vx lock` first. */
+function vxWith(bin: string, args: string[]): number {
   return Bun.spawnSync({
-    cmd: [process.execPath, BIN, ...args],
+    cmd: [process.execPath, bin, ...args],
     cwd: root,
     env,
     stdout: 'pipe',
@@ -79,12 +85,7 @@ it('each stateful and signalled outcome exits as tests/contract/exit-codes-state
   live['why: no recorded run: vx why build'] = vx('why', 'build')
   live['last: no recorded run: vx last'] = vx('last')
   live['lock --check: no lock: vx lock --check'] = vx('lock', '--check')
-  live['run --frozen: no lock: vx run build --all --frozen'] = vx(
-    'run',
-    'build',
-    '--all',
-    '--frozen',
-  )
+  live['run: no lock: vx run build --all'] = vxWith(UNLOCKED_BIN, ['run', 'build', '--all'])
   expect(vx('lock')).toBe(0)
   // The control: the drift below, not the fixture, is what fails the check.
   expect(vx('lock', '--check')).toBe(0)

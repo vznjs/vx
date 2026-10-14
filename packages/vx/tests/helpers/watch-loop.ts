@@ -13,6 +13,7 @@ import { afterEach, beforeEach } from 'bun:test'
 import { addProject, makeWorkspace } from './workspace.js'
 
 export const BIN = path.resolve(import.meta.dir, '..', '..', 'src', 'bin.ts')
+const LOCKED_BIN = path.resolve(import.meta.dir, 'vx-locked.ts')
 export const SETTLE_MS = 1_000
 
 export interface Watch {
@@ -68,7 +69,7 @@ export function startWatch(
   env: Record<string, string> = {},
   task = 'build',
 ): Watch {
-  const proc = Bun.spawn([process.execPath, BIN, 'watch', task, ...select], {
+  const proc = Bun.spawn([process.execPath, LOCKED_BIN, 'watch', task, ...select], {
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',

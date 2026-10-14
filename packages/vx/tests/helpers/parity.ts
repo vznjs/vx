@@ -11,7 +11,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { addProject, gitIn, makeWorkspace } from './workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'vx-locked.ts')
 
 export const PARITY_TIMEOUT = 60_000
 

@@ -14,7 +14,7 @@ import {
 import { applyFilters, parseFilter } from '../src/workspace/filter.js'
 import { relPosix, UserError } from '../src/util/index.js'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 describe('findManifestRoot', () => {

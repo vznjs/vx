@@ -5,7 +5,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { planRun, run, type Logger, type ProjectConfig, type ProjectMeta } from '@vzn/vx'
+import { type Logger, type ProjectConfig, type ProjectMeta } from '@vzn/vx'
+import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { turbo } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
@@ -601,7 +602,7 @@ describe('turbo.json is a claimed root file (item 961)', () => {
       const p = Bun.spawnSync({
         cmd: [
           process.execPath,
-          path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
+          path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts'),
           'run',
           'lint',
           '--affected=HEAD',
@@ -1190,12 +1191,11 @@ describe('turbo(): the mapping cache', () => {
   })
 })
 
-// Every bench arm runs vx from a lock (`vx lock` once, then `--frozen`), on
-// real Turbo repos too: the plugin's tasks are no vx.config, so the lock
-// records none of them and a frozen run maps turbo.json live. A config
-// written after the lock is a project the lock lacks, and a frozen run
-// refuses it rather than evaluating it.
-describe('turbo() under vx lock and --frozen', () => {
+// Every run reads configs from the lock, on real Turbo repos too: the
+// plugin's tasks are no vx.config, so the lock records none of them and a
+// run maps turbo.json live. A config written after the lock is a project the
+// lock lacks, and a run refuses it rather than evaluating it.
+describe('turbo() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
       cmd: [
@@ -1210,30 +1210,30 @@ describe('turbo() under vx lock and --frozen', () => {
   }
 
   it(
-    'locks, runs frozen, hits on the second frozen run, and refuses a config the lock lacks',
+    'locks, runs from the lock, hits on the second run, and refuses a config the lock lacks',
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx lock: locked 0 project configs → .vx/lock.json (no vx.config, so never frozen: app, lib)\n',
+        out: 'vx lock: locked 0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)\n',
         err: '',
       })
-      const first = vx('run', 'build', '--all', '--frozen')
+      const first = vx('run', 'build', '--all')
       expect({ code: first.code, err: first.err }).toEqual({ code: 0, err: '' })
       expect(await Bun.file(path.join(root, 'packages', 'app', 'dist', 'app.js')).text()).toBe(
         '// api\n',
       )
-      const second = vx('run', 'build', '--all', '--frozen')
+      const second = vx('run', 'build', '--all')
       expect({ code: second.code, err: second.err }).toEqual({ code: 0, err: '' })
       expect(second.out).toContain('3 tasks · all cached')
       await writeFile(
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
         'export default { tasks: { build: { command: "true" } } }\n',
       )
-      const stale = vx('run', 'build', '--all', '--frozen')
-      expect(stale.code).toBe(1)
-      expect(stale.err).toContain(
-        '.vx/lock.json has no entry for "lib" (packages/lib/vx.config.mjs) — run `vx lock` to refresh',
-      )
+      expect(vx('run', 'build', '--all')).toEqual({
+        code: 1,
+        out: '',
+        err: 'vx: .vx/projects.lock.json has no entry for "lib" (packages/lib/vx.config.mjs) — run `vx lock`\n',
+      })
     },
     TIMEOUT,
   )

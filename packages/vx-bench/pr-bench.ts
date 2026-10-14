@@ -96,6 +96,8 @@ try {
   const vx = path.join(ws, '.vx-bin')
   const bin = path.join(import.meta.dir, 'node_modules', '@vzn', 'vx', 'src', 'bin.ts')
   must(['bun', 'build', '--compile', '--minify', '--bytecode', bin, '--outfile', vx], ws)
+  // Every run reads configs only from the lock.
+  must([vx, 'lock'], ws)
 
   const runs: Record<'vx' | 'turbo', string[]> = {
     vx: [vx, 'run', 'build', 'test', '--all', `--concurrency=${CONCURRENCY}`],
@@ -123,6 +125,7 @@ try {
       ws,
     )
   // Each tool's own cache only: Turbo's cold rep must not empty vx's before vx's restore rep.
+  // `.vx/cache`, not `.vx`: the lock lives there.
   const wipeCache = (tool: 'vx' | 'turbo') => {
     sh(
       ['rm', '-rf', ...(tool === 'vx' ? ['.vx/cache'] : ['.turbo', 'node_modules/.cache/turbo'])],

@@ -70,7 +70,7 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    and `loadWorkspacePlugins` gives the declared plugin list.
 2. **Project config load** — `loadProjects` ([`projects.md`](./projects.md)),
    the load `vx show` shares: scoped to the seeds and their package
-   closure, from the lock under `--frozen`, through the plugin
+   closure, from the lock, through the plugin
    `project` stage. Projects without configs are kept in the
    workspace graph (for cross-package dep edges) but contribute no
    tasks — unless a plugin fills the `project` stage.
