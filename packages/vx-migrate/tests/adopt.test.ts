@@ -277,6 +277,42 @@ async function migrate(root: string, env: Record<string, string>, args: string[]
 
 const calls = (root: string) => readFile(path.join(root, '.pnpm-calls'), 'utf8').catch(() => '')
 
+describe('vx-migrate ends with the lock', () => {
+  // owner, 2026-10-14: "vx migrate should generate lock as well". solid's
+  // shape: ssr has no task Turbo runs, so no config and no lock note.
+  it('writes vx-lock.json once the plugins resolve; --no-install leaves it to vx lock', async () => {
+    const { root, env } = await solidShaped()
+    try {
+      await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+      for (const pkg of ['vx', 'vx-lockfile', 'vx-schedule-history'])
+        await symlink(
+          path.resolve(import.meta.dir, '..', '..', pkg),
+          path.join(root, 'node_modules', '@vzn', pkg),
+        )
+      const skipped = await migrate(root, env, ['--no-install', '--dry'])
+      expect(skipped.out).not.toContain('vx lock:')
+      const r = await migrate(root, env, [])
+      expect([r.code, r.err]).toEqual([0, ''])
+      expect(r.out).toContain('\nvx lock: locked 1 project config → vx-lock.json\n\nnext: ')
+      expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('--no-install writes no lock: the plugins it declares are not installed', async () => {
+    const { root, env } = await solidShaped()
+    try {
+      const r = await migrate(root, env, ['--no-install'])
+      expect([r.code, r.err]).toEqual([0, ''])
+      expect(r.out).not.toContain('vx lock:')
+      expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
   it(
     'no terminal: native, vx installed with pnpm, its built-in plugins declared, scripts untouched',
@@ -570,6 +606,13 @@ describe('vx init in a Turbo repo', () => {
             path.resolve(import.meta.dir, '..'),
             path.join(root, 'node_modules', '@vzn', 'vx-migrate'),
           )
+          // What the fake pnpm would have installed: the native run ends
+          // with `vx lock`, which loads the plugins the workspace declares.
+          for (const pkg of ['vx', 'vx-lockfile', 'vx-schedule-history'])
+            await symlink(
+              path.resolve(import.meta.dir, '..', '..', pkg),
+              path.join(root, 'node_modules', '@vzn', pkg),
+            )
           const r = await init(root, env, keep ? ['--keep'] : [])
           const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
           expect([

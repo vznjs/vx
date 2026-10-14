@@ -2003,6 +2003,14 @@ terminal native (a `vx.config.ts` per package, the default) or keep;
 `--native` or `--keep` answer it, and without a terminal it is native.
 `--dry`, `--format`, `--force` and `--mjs` pass through.
 
+Once it has written the configs (natively, not under `--dry`), it ends
+with `vx lock`'s step: `vx-lock.json` is written and the graph rules are
+checked, in one line before `next:` (owner, 2026-10-14). A refusal (a
+graph rule, a plugin not installed yet) is printed, the configs stay
+written, the exit is 0, and `next:` says to fix it and run `vx lock`.
+`@vzn/vx-migrate --no-install` skips the step: the plugins its workspace
+file declares are not installed yet.
+
 `vx init --dry --format json` prints the plan as one JSON document
 (`schemas/init.json`), nothing written: `files` (each path and its
 whole text), `kept`, `replaced`, `todos` (a reason and its tasks),

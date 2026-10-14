@@ -266,6 +266,14 @@ export interface ApplyMigrationArgs {
    * of the files and the report, so an agent reads the plan as data.
    */
   json?: boolean
+  /**
+   * Run after the files are written (not under `dry`): `vx lock`'s step, so
+   * the migrated workspace has its vx-lock.json and its graph rules checked
+   * (owner, 2026-10-14). Prints its own line. A refusal (a graph rule, a
+   * plugin not installed yet) is printed and the migration still succeeds:
+   * its files are written, and `vx lock` is the step to re-run.
+   */
+  lock?: (root: string) => Promise<number>
 }
 
 export type MigrationFormat = 'ts' | 'mjs'
@@ -519,8 +527,14 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     )
     return 0
   }
-  report.push('', `next: ${next}`)
-  process.stdout.write(`${report.join('\n')}\n`)
+  if (dry || args.lock === undefined) {
+    report.push('', `next: ${next}`)
+    process.stdout.write(`${report.join('\n')}\n`)
+    return 0
+  }
+  process.stdout.write(`${report.join('\n')}\n\n`)
+  const locked = (await args.lock(root)) === 0
+  process.stdout.write(`\nnext: ${locked ? next : `fix the above and run vx lock, then ${next}`}\n`)
   return 0
 }
 

@@ -192,6 +192,21 @@ async function evaluateEntry(root: string, meta: ConfiguredMeta): Promise<Lockfi
 }
 
 /** Names shown per note: a turbo() repo can have hundreds of bare projects. */
+/**
+ * `vx init`'s last step: the lock, as `vx lock` writes it. A refusal (a
+ * graph rule, a config that does not load) is printed and leaves the
+ * written configs in place.
+ */
+export async function lockAfterMigration(root: string): Promise<number> {
+  try {
+    return await lockWorkspace(root)
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${err.message}\n`)
+    return 1
+  }
+}
+
 const BARE_SHOWN = 5
 
 function bareNames(bare: readonly string[]): string {

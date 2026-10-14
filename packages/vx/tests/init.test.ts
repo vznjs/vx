@@ -1301,6 +1301,46 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  it('ends with the lock: vx-lock.json written and named, none under --dry', async () => {
+    // owner, 2026-10-14: "vx migrate should generate lock as well".
+    const root = await makeScriptsWorkspace()
+    try {
+      const dry = await vx(root, ['init', '--dry'])
+      expect(dry.code).toBe(0)
+      expect(existsSync(path.join(root, 'vx-lock.json'))).toBe(false)
+      const r = await vx(root, ['init'])
+      expect(r.code).toBe(0)
+      expect(r.err).toBe('')
+      expect(r.out).toContain('\nvx lock: locked 2 project configs → vx-lock.json\n\nnext: ')
+      const lock = (await Bun.file(path.join(root, 'vx-lock.json')).json()) as {
+        projects: Record<string, unknown>
+      }
+      expect(Object.keys(lock.projects)).toEqual(['app', 'lib'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a graph rule the lock refuses is printed, and the configs stay written', async () => {
+    const root = await makeScriptsWorkspace()
+    // A member's own config with a dependsOn cycle: the lock's graph check refuses it.
+    await writeFile(
+      path.join(root, 'packages', 'silent', 'vx.config.mjs'),
+      "export default { tasks: { build: { exec: { command: 'true' }, dependsOn: ['build'] } } }\n",
+    )
+    try {
+      const r = await vx(root, ['init'])
+      expect(r.code).toBe(0)
+      expect(r.err).toContain('vx lock: vx-lock.json not written: ')
+      expect(r.err).toContain('dependsOn cycle')
+      expect(r.out).toContain('next: fix the above and run vx lock, then ')
+      expect(existsSync(path.join(root, 'vx-lock.json'))).toBe(false)
+      expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('names the files .gitignore would drop, and the line that keeps them', async () => {
     // vueuse ignores `packages/**/*.mjs`: `--mjs` wrote configs a commit
     // silently left behind (Growth, 2026-10-09).
