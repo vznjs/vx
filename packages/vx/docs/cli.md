@@ -2094,6 +2094,15 @@ into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
 A file it writes that `.gitignore` drops (vueuse ignores
 `packages/**/*.mjs`) gets a `note:` naming it and the `!vx.config.mjs`
 line that keeps it, since a commit would leave it behind unnoticed.
+A package with a `tsconfig.json` and no `"type": "module"` gets
+`vx.config.mts`: tsc (node16, nodenext) reads a `.ts` there as
+CommonJS, and its type import of the ESM `@vzn/vx/config` fails
+(TS1479, TS1541: medusa's plugin builds, 2026-10-14). The files written
+then go through the repo's own formatter when its root installs one
+(`prettier --write`, `biome format --write`, `oxfmt` or `dprint fmt`,
+the first found), and a `note:` says so: create-t3-turbo's `prettier
+--check` failed on the quotes of a written config. A formatter that
+fails leaves the files as written and the note names its error.
 
 Each script becomes a task with its command verbatim. `build` gets
 `dependsOn: ['^build']` (a `build` that only delegates, `pnpm run
