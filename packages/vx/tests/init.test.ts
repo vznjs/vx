@@ -2498,9 +2498,20 @@ describe('vx init --plugin <seam>', () => {
 describe('vx init declares the lockfile plugin', () => {
   // Package edges (`^build`, --affected) come from @vzn/vx-lockfile alone,
   // so a workspace file without it has none.
-  const LOCKFILE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx-lockfile')
+  // A stand-in: the sandbox lets this suite read only core, not packages/vx-lockfile.
+  const standIn = async (dir: string) => {
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: '@vzn/vx-lockfile', type: 'module', exports: './index.js' }),
+    )
+    await writeFile(
+      path.join(dir, 'index.js'),
+      "import { definePlugin } from '@vzn/vx'\nexport const pnpm = () => definePlugin(import.meta, { setup() {} })\n",
+    )
+  }
   const linkLockfile = (root: string) =>
-    symlink(LOCKFILE_PKG, path.join(root, 'node_modules', '@vzn', 'vx-lockfile'), 'dir')
+    standIn(path.join(root, 'node_modules', '@vzn', 'vx-lockfile'))
   const lockfileWorkspace = async () => {
     const root = await makeRoot('vx-init-lockfile-')
     await addPackage(root, 'app', { build: 'tsc' })
@@ -2536,10 +2547,11 @@ describe('vx init declares the lockfile plugin', () => {
       const root = await lockfileWorkspace()
       const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-init-pm-'))
       try {
+        await standIn(path.join(bin, 'pkg'))
         // A stand-in pnpm: records its argv and installs the package.
         await writeFile(
           path.join(bin, 'pnpm'),
-          `#!/bin/sh\necho "$@" > argv\nln -s ${LOCKFILE_PKG} node_modules/@vzn/vx-lockfile\n`,
+          `#!/bin/sh\necho "$@" > argv\ncp -R ${path.join(bin, 'pkg')} node_modules/@vzn/vx-lockfile\n`,
           { mode: 0o755 },
         )
         const proc = Bun.spawn([process.execPath, BIN, 'init'], {

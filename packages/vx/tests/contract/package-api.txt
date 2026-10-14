@@ -332,6 +332,7 @@ export interface ApplyMigrationArgs {
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<number>
+  plugins?: readonly WorkspacePlugin[]
 }
 == type At (src/config.ts)
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
@@ -1768,6 +1769,11 @@ export interface WorkspaceIdentity {
   name: string
   repository?: string
   path?: string
+}
+== type WorkspacePlugin (src/workspace/migration.ts)
+export interface WorkspacePlugin {
+  readonly pkg: string
+  readonly factory: string
 }
 == type WorkspaceRules (src/config.ts)
 export interface WorkspaceRules {
