@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## rename vx.config.* to vx.project.*, vx-lock.json to vx.lock.json
+
+a project config is vx.project.{ts,mts,js,mjs,cts,cjs}; a vx.config.* file is no longer read, so rename it. The lock is vx.lock.json; a vx-lock.json is not read, so re-run `vx lock` and delete the old file.
+
 ## drop rename shims, flag aliases and lock path fields
 
 an old config key or flag fails the unknown field or flag check, and an old VX_* variable is ignored; `vx migrate`, `vx prune` and `vx stats` are unknown verbs unless a plugin declares them; `--cache` is only `--cache-policy` and `--download` only `--cache-download`; vx-lock.json is version 2, project name to resolved config, so re-run `vx lock`; `vx lock --check` reports one drift message per project.
