@@ -796,7 +796,8 @@ text is the task's output unchanged; a successful task's frame is never
 linked.
 
 The region is redrawn in place (cursor-up + clear; not a TUI — no
-alternate screen) and erased before the final summary prints. In the
+alternate screen) and erased before the final summary prints. On a
+terminal shorter than the region, it shows only the rows that fit. In the
 focused flow it only lives while dependencies run; it disappears for
 good the moment the requested task starts streaming.
 

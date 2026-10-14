@@ -25,6 +25,11 @@ when disabled (CI). When active:
   output. The erase always uses the height of the **previous** draw;
   the new draw establishes the new height, so the region may grow and
   shrink freely (pins arriving).
+- A region taller than the terminal (`stream.rows`, read per draw)
+  is cut to its leading lines that fit in one row less, counting
+  wrapped rows. Cursor-up stops at the top of the screen, so rows in
+  the scrollback were out of reach and every redraw stacked a new
+  block (VS Code's short panel, 2026-10-14).
 - A chunk ending mid-line (focused streaming) holds redraws until a
   newline restores column 0.
 - `clearStatus()` is permanent (run end).

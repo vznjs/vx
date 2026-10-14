@@ -813,6 +813,31 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jn2')
   })
 
+  // Cursor-up stops at the top of the screen: rows that scrolled into the
+  // scrollback cannot be erased. A region taller than the terminal left its
+  // top behind on every redraw, so each tick stacked a new block (VS Code's
+  // short panel, M, 2026-10-14). The region is cut to fit.
+  it('a region taller than the terminal is cut to fit, so the erase reaches its top', () => {
+    const s: StatusStream & { chunks: string[]; text(): string } = { ...ttyW(40), rows: 5 }
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    const tall = Array.from({ length: 10 }, (_, i) => `row${i}`)
+    w.setRegion(tall, { force: true })
+    expect(s.chunks.at(-1)).toBe('\x1b[2K\rrow0\nrow1\nrow2\nrow3')
+    w.setRegion(tall, { force: true })
+    expect(s.chunks.at(-1)).toBe('\r\x1b[3A\x1b[Jrow0\nrow1\nrow2\nrow3')
+  })
+
+  it('the cut counts wrapped rows, and a resize is read per draw', () => {
+    const s: StatusStream & { chunks: string[]; text(): string } = { ...ttyW(10), rows: 4 }
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    // 25 cols at 10 wide is 3 rows: with 3 rows to spare, only it fits.
+    w.setRegion(['x'.repeat(25), 'b', 'c'], { force: true })
+    expect(s.chunks.at(-1)).toBe(`\x1b[2K\r${'x'.repeat(25)}`)
+    s.rows = 30
+    w.setRegion(['x'.repeat(25), 'b', 'c'], { force: true })
+    expect(s.chunks.at(-1)).toBe(`\r\x1b[2A\x1b[J${'x'.repeat(25)}\nb\nc`)
+  })
+
   it('unknown width (no TTY columns) keeps the logical-line erase', () => {
     // A deliberate residual, not a guarantee: with no width there is nothing
     // to compute wrapping FROM, so a wrapped line under-erases exactly as it
