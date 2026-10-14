@@ -83,6 +83,12 @@ draft after its last upload) and the post is live at
 `https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/` (`docs.yml` deploys
 main).
 
+Then check npm has it: `curl -s https://registry.npmjs.org/@vzn%2fvx | jq -r '."dist-tags".latest'`
+must print the new version. `npm.yml` runs on the published release; if
+it failed or a job was cancelled (a macOS runner that never started),
+dispatch `npm.yml` on `main` with `version: <N+1>` and `ref: v<N+1>`, and
+share nothing until npm has it.
+
 ## 4. Share on Bluesky
 
 The @vzn-vx.bsky.social account and its scripts live in the project's
