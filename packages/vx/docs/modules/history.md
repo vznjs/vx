@@ -61,7 +61,7 @@ export class LocalHistoryProvider implements HistoryProvider {
 Every `p50DurationMs` (and `p50sFor`) is a forecast (owner, 2026-10-14):
 the median of the task's last five timings on this run's branch, else on
 any branch, else none. The remote cache's default-branch timings
-(`design/shared-timings-2026-10.md`) slot in between. The timings are
+(#3563) slot in between. The timings are
 `task_durations` in the shared store (`schema.ts`), one row per executed
 success appended in the run's history transaction and tagged
 `branch:<name>` with the commit, so every worktree of the repo reads them
