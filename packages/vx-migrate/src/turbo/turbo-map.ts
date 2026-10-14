@@ -12,7 +12,14 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { buildPackageGraph, pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
+import {
+  buildPackageGraph,
+  isLiteralPattern,
+  type GeneratedTask,
+  pruneOrphanPersistentNotes,
+  type ProjectMeta,
+  UserError,
+} from '@vzn/vx'
 import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
@@ -497,6 +504,69 @@ function checkTurboShape(cfg: unknown, label: string): void {
 
 function tasksOf(cfg: TurboJson): Record<string, TurboTask> {
   return cfg.tasks ?? cfg.pipeline ?? {}
+}
+
+/**
+ * A reader whose inputs cover another task's one-file output waits for
+ * that task. Turbo leaves an output in place while its producer runs, so
+ * a reader with no edge reads the last run's bytes; vx cleans it first,
+ * and the reader finds nothing: vueuse's builds all import the
+ * `packages/metadata/index.json` that `@vueuse/metadata#update` writes,
+ * and failed on a cold cache. A glob output (`dist/**`) a broad input
+ * happens to cover orders nothing: that would chain every build. Skipped
+ * where the writer already reaches the reader (an edge back would be a
+ * cycle).
+ */
+function orderReaders(
+  projects: readonly { name: string; tasks: GeneratedTask[] }[],
+  metas: readonly ProjectMeta[],
+  rootMeta: ProjectMeta | undefined,
+  reads: readonly [GeneratedTask, string, string][],
+  notes: string[],
+): void {
+  const byId = new Map<string, GeneratedTask>()
+  for (const p of projects) for (const t of p.tasks) byId.set(`${p.name}#${t.name}`, t)
+  const metaOf = new Map(metas.map((m) => [m.name, m]))
+  const edges = (id: string): string[] => {
+    const project = id.slice(0, id.lastIndexOf('#'))
+    const deps = (byId.get(id)?.task?.['dependsOn'] as unknown[] | undefined) ?? []
+    return deps.flatMap((d) => {
+      if (typeof d !== 'string') return []
+      if (d.startsWith('^')) {
+        const meta = metaOf.get(project)
+        return meta === undefined
+          ? []
+          : metas.filter((m) => declares(meta, m.name)).map((m) => `${m.name}#${d.slice(1)}`)
+      }
+      if (d.startsWith(`${ROOT}#`))
+        return rootMeta === undefined ? [] : [`${rootMeta.name}${d.slice(2)}`]
+      return [d.includes('#') ? d : `${project}#${d}`]
+    })
+  }
+  const reaches = (from: string, to: string): boolean => {
+    const seen = new Set<string>()
+    const stack = [from]
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      if (id === to) return true
+      if (seen.has(id)) continue
+      seen.add(id)
+      stack.push(...edges(id))
+    }
+    return false
+  }
+  const waiting = new Map<string, string[]>()
+  for (const [t, project, writer] of reads) {
+    const reader = `${project}#${t.name}`
+    if (t.task === null || reaches(reader, writer) || reaches(writer, reader)) continue
+    t.task['dependsOn'] = [...((t.task['dependsOn'] as unknown[] | undefined) ?? []), writer]
+    waiting.set(writer, [...(waiting.get(writer) ?? []), reader])
+  }
+  for (const [writer, readers] of waiting)
+    notes.push(
+      `${readers.join(', ')} wait for ${writer}: their inputs read its outputs, which vx ` +
+        'cleans before it runs where Turbo leaves the last ones in place',
+    )
 }
 
 /** A turbo.json's own task `key`: a plain index reads `constructor` off Object. */
@@ -1524,7 +1594,16 @@ export async function mapTurboWorkspace(
   const opaque = new Map<string, readonly string[]>()
   for (const e of opts.splice('inputs', globals.inputs))
     if (typeof e !== 'string') opaque.set(JSON.stringify(e), globals.inputs)
-  excludeWorkspaceOutputs(root, projects, (e) => opaque.get(JSON.stringify(e)) ?? [])
+  const reads: [GeneratedTask, string, string][] = []
+  excludeWorkspaceOutputs(
+    root,
+    projects,
+    (e) => opaque.get(JSON.stringify(e)) ?? [],
+    (t, project, writer, output) => {
+      if (isLiteralPattern(output)) reads.push([t, project, writer])
+    },
+  )
+  orderReaders(projects, metas, rootMeta, reads, notes)
   pruneUnreachedPersistentNotes(projects, metas, opts.persistentTodo)
   pruneOrphanPersistentNotes(projects, opts.persistentTodo)
   return { projects, notes, globals }
