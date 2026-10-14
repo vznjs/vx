@@ -31,11 +31,11 @@ export default { plugins: [${extra.join(', ')}]${rules === undefined ? '' : `, r
  */
 export const WAIT_FOR_PRODUCERS = '{ upfrontKeys: false }'
 
-/** Rewrites `root`'s `.vx/workspace.mjs` with no plugins and `WAIT_FOR_PRODUCERS`. */
-export async function waitForProducers(root: string): Promise<void> {
+/** Rewrites `root`'s `.vx/workspace.mjs` with `WAIT_FOR_PRODUCERS` and only the `extra` plugins. */
+export async function waitForProducers(root: string, extra: readonly string[] = []): Promise<void> {
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    localWorkspaceSource([], '', WAIT_FOR_PRODUCERS),
+    localWorkspaceSource(extra, '', WAIT_FOR_PRODUCERS),
   )
 }
 

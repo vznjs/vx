@@ -105,13 +105,6 @@ describe('Bun and process over the VFS', () => {
     expect(await code(bun.file('/ws/nope').text())).toBe('ENOENT')
   })
 
-  it('Bun.semver.satisfies answers the range, not yes', () => {
-    expect([
-      bun.semver.satisfies('1.2.3', '^1.0.0'),
-      bun.semver.satisfies('1.2.3', '^2.0.0'),
-    ]).toEqual([true, false])
-  })
-
   it('setEnv replaces the environment, dropping what the last one set', () => {
     setEnv({ A: '1' })
     setEnv({ B: '2' })

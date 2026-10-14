@@ -10,13 +10,7 @@
 
 import { mkdir, rename } from 'node:fs/promises'
 import path from 'node:path'
-import {
-  buildPackageGraph,
-  foldScriptHooks,
-  isLiteralPattern,
-  outputsOverlap,
-  VERSION,
-} from '@vzn/vx'
+import { foldScriptHooks, isLiteralPattern, outputsOverlap, VERSION } from '@vzn/vx'
 import type { Gaps } from './plugin-gaps.js'
 
 /** What the stage uses of a mapping: tags and tasks per package name, and the gaps to report once. */
@@ -41,7 +35,7 @@ function codeId(): Promise<string> {
   code ??= (async () => {
     const parts: string[] = [
       VERSION,
-      ...[buildPackageGraph, foldScriptHooks, isLiteralPattern, outputsOverlap].map(String),
+      ...[foldScriptHooks, isLiteralPattern, outputsOverlap].map(String),
     ]
     const files: string[] = []
     for await (const f of new Bun.Glob('**/*.{ts,cjs}').scan(import.meta.dir)) files.push(f)

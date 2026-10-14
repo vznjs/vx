@@ -2,9 +2,10 @@
 // consumers: `bunx @vzn/vx-migrate --from nx` writes it to files, and the
 // `nx()` plugin runs it live. Static by design: targets that Nx plugins
 // infer at runtime are whatever the graph says. Named inputs expand from
-// nx.json when readable; the graph's dependency edges are ignored (vx
-// derives package edges from package.json manifests) except for one
-// report line counting edges with no manifest counterpart.
+// nx.json when readable; the graph's dependency edges are ignored (vx's
+// package edges come from a lockfile plugin, which installs what the
+// manifests name) except for one report line counting edges with no
+// manifest counterpart.
 //
 // Executors: `nx:run-commands`, a plain `command` and `nx:run-script` are
 // shell; `nx:noop` is a group; an executor the workspace translates
@@ -17,7 +18,6 @@
 
 import path from 'node:path'
 import {
-  buildPackageGraph,
   type Duration,
   type GeneratedProject,
   type GeneratedTask,
@@ -25,6 +25,7 @@ import {
   UserError,
 } from '@vzn/vx'
 import { withoutTakenBack } from '../glob-grammar.js'
+import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
@@ -522,11 +523,11 @@ export async function mapNxWorkspace(
     nxClosureMemo.set(from, (r = seen))
     return r
   }
-  // What vx's `^` already reaches: a manifest path, direct or through
-  // another project, orders `^x` and folds its key (item 931). Built once,
-  // on the first `^` edge.
-  let pkgGraph: ReturnType<typeof buildPackageGraph> | undefined
-  const packageGraph = () => (pkgGraph ??= buildPackageGraph([...metas]))
+  // What vx's `^` already reaches: a manifest path (the lockfile plugin's
+  // edges), direct or through another project, orders `^x` and folds its
+  // key (item 931). Built once, on the first `^` edge.
+  let pkgGraph: ManifestGraph | undefined
+  const packageGraph = () => (pkgGraph ??= manifestGraph(metas))
   let reach: ((name: string) => ReadonlySet<string>) | undefined
   const reached = (name: string): ReadonlySet<string> => {
     if (reach === undefined) {

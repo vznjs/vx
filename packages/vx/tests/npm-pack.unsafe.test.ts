@@ -159,7 +159,8 @@ describe('the npm tarballs', () => {
   it('installed from the tarballs with npm, turbo() builds a Turbo repo, then hits', () => {
     const tgz = path.join(root, 'tgz')
     mkdirSync(tgz)
-    for (const name of ['@vzn/vx', '@vzn/vx-migrate']) {
+    // npm() gives the package edges `^build` follows, from the lockfile the install writes.
+    for (const name of ['@vzn/vx', '@vzn/vx-migrate', '@vzn/vx-lockfile']) {
       const { dir } = packages.find((p) => p.name === name)!
       expect(npm(dir, ['pack', '--pack-destination', tgz]).code).toBe(0)
     }
@@ -196,12 +197,16 @@ describe('the npm tarballs', () => {
     write('.gitignore', 'node_modules\ndist\n.vx/cache/\n')
     write(
       '.vx/workspace.ts',
-      "import { defineWorkspace } from '@vzn/vx'\nimport { turbo } from '@vzn/vx-migrate'\n\nexport default defineWorkspace({ plugins: [turbo()] })\n",
+      "import { defineWorkspace } from '@vzn/vx'\nimport { npm } from '@vzn/vx-lockfile'\nimport { turbo } from '@vzn/vx-migrate'\n\nexport default defineWorkspace({ plugins: [turbo(), npm()] })\n",
     )
     gitInit(repo)
     gitIn(repo)('add', '-A')
     gitIn(repo)('commit', '-q', '-m', 'init')
-    const tarballs = ['vzn-vx-9.9.9.tgz', 'vzn-vx-migrate-9.9.9.tgz'].map((f) => path.join(tgz, f))
+    const tarballs = [
+      'vzn-vx-9.9.9.tgz',
+      'vzn-vx-migrate-9.9.9.tgz',
+      'vzn-vx-lockfile-9.9.9.tgz',
+    ].map((f) => path.join(tgz, f))
     const install = npm(repo, ['install', '-D', '--no-audit', '--no-fund', ...tarballs])
     expect([install.code, install.code === 0 ? '' : install.out]).toEqual([0, ''])
     const statuses = (): Record<string, string> => {

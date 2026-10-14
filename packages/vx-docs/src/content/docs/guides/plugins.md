@@ -115,7 +115,9 @@ export function scriptsProject(): VxPlugin {
 
 An entry can also give a project edges, as directories. `deps` orders
 `^build` and reaches `--filter app...` and `--affected`; `reach` only
-reaches. An entry for an existing project needs no `name`:
+reaches. These and `pkg#task` are the only project edges vx has (it
+reads none from a `package.json`): with no plugin returning `deps`, a
+`^build` is refused. An entry for an existing project needs no `name`:
 
 ```ts
 discover: () => [{ dir: 'apps/web', deps: ['packages/ui'], reach: ['packages/config'] }]

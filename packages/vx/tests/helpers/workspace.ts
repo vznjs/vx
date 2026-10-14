@@ -10,7 +10,8 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { writeLocalWorkspace } from './local-workspace.js'
+import { localWorkspaceSource, writeLocalWorkspace } from './local-workspace.js'
+import { edgesSource, type EdgeMap } from './plugin.js'
 
 export interface WorkspaceOptions {
   /** mkdtemp prefix; name the suite so a leaked directory says who left it. */
@@ -24,6 +25,12 @@ export interface WorkspaceOptions {
    * false writes a bare `export default {}`: the file marks the root either way.
    */
   workspaceFile?: boolean
+  /**
+   * Project edges, by name, from the `edges()` test plugin in the workspace
+   * file: core reads none from a manifest, and a `^task` with no edge
+   * source is refused. `{}` is an edge source where every project is a leaf.
+   */
+  edges?: EdgeMap
   /**
    * Git: `'init'` (default) inits a quiet repo with a test identity — vx
    * asks git for the input file set, nothing more; `'commit'` also stages
@@ -73,7 +80,12 @@ export async function makeWorkspace(opts: WorkspaceOptions = {}): Promise<string
     path.join(root, 'package.json'),
     JSON.stringify({ name: opts.rootName ?? 'fixture-root', private: true }, null, 2),
   )
-  if (opts.workspaceFile !== false) await writeLocalWorkspace(root)
+  if (opts.edges !== undefined) {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([edgesSource(opts.edges)]),
+    )
+  } else if (opts.workspaceFile !== false) await writeLocalWorkspace(root)
   else await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   await mkdir(path.join(root, 'packages'), { recursive: true })
   const git = opts.git ?? 'init'
@@ -85,6 +97,7 @@ export async function makeWorkspace(opts: WorkspaceOptions = {}): Promise<string
 export interface ProjectSpec {
   /** `vx.config.mjs` source; omitted → a package with no config file. */
   config?: string
+  /** package.json dependency fields; core reads no edge from them (`edges` does). */
   deps?: Record<string, string>
   devDeps?: Record<string, string>
   /** Files relative to the project directory, written after the config. */

@@ -16,7 +16,7 @@ process.env['VX_RUN_KILL_GRACE'] = '200ms'
 
 let root: string
 beforeEach(async () => {
-  root = await makeWorkspace({ prefix: 'vx-held-' })
+  root = await makeWorkspace({ prefix: 'vx-held-', edges: { app: ['lib'] } })
 })
 afterEach(async () => {
   await rm(root, { recursive: true, force: true })
@@ -106,7 +106,7 @@ it('a later run keeps an unchanged held server, rebuilds its deps, and replaces 
         persistent: { readyWhen: 'READY' },
       },
     } } }`
-  const app = await addProject(root, 'app', { config: srv('go'), deps: { lib: 'workspace:*' } })
+  const app = await addProject(root, 'app', { config: srv('go') })
   const builds = (): number =>
     readFileSync(path.join(root, 'built.log'), 'utf8').split('\n').filter(Boolean).length
   const heard: string[] = ['', '', '']

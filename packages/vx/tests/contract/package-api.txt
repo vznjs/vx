@@ -165,11 +165,6 @@ export const TELEMETRY_SCHEMA_VERSION = 3
 export const VERSION: string = pkg.version
 == function applyMigration (src/workspace/migration.ts)
 export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
-== function buildPackageGraph (src/workspace/package-graph.ts)
-export function buildPackageGraph(
-  projects: ProjectMeta[],
-  taskEdges?: ReadonlyMap<string, readonly string[]>,
-): PackageGraph
 == function definePlugin (src/orchestrator/plugin.ts)
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
 == function defineProject (src/config.ts)
@@ -498,8 +493,6 @@ export interface CaptureConfig {
   stdout?: boolean
   stderr?: boolean
 }
-== type Catalogs (src/workspace/workspace.ts)
-export type Catalogs = ReadonlyMap<string, Readonly<Record<string, unknown>>>
 == type CgroupProbe (src/util/cgroup.ts)
 export interface CgroupProbe {
   readonly root?: string
@@ -907,12 +900,6 @@ export interface OutputView {
   gha?: boolean
   ci?: boolean
 }
-== type PackageGraph (src/workspace/package-graph.ts)
-export interface PackageGraph {
-  directDeps: (name: string) => string[]
-  transitiveDeps: (name: string) => string[]
-  transitiveDependents: (name: string) => string[]
-}
 == type PackageJson (src/workspace/workspace.ts)
 export interface PackageJson {
   name: string
@@ -1059,7 +1046,6 @@ export interface ProjectMeta {
   dir: string
   packageJson: PackageJson
   configPath: string | null
-  catalogs?: Catalogs
   deps?: readonly string[]
   reach?: readonly string[]
 }
@@ -1724,7 +1710,6 @@ export interface WatchSettings {
 export interface Workspace {
   root: string
   packageGlobs: string[]
-  catalogs?: Catalogs
 }
 == type WorkspaceConfig (src/config.ts)
 export interface WorkspaceConfig {

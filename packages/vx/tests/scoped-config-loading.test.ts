@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { writeEdges } from './helpers/plugin.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { loadProjects, loadResolvedProjects } from '../src/orchestrator/index.js'
 import { lock, run } from './helpers/orchestrator.js'
@@ -27,19 +27,14 @@ const silent = (): Logger => ({
   taskComplete() {},
 })
 
+let edges: Record<string, string[]> = {}
+
 async function addProject(name: string, config: string, deps: string[] = []): Promise<void> {
   const dir = path.join(root, 'packages', name)
   await mkdir(path.join(dir, 'src'), { recursive: true })
-  await writeFile(
-    path.join(dir, 'package.json'),
-    JSON.stringify({
-      name,
-      version: '0.0.0',
-      ...(deps.length
-        ? { dependencies: Object.fromEntries(deps.map((d) => [d, 'workspace:*'])) }
-        : {}),
-    }),
-  )
+  await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
+  edges[name] = deps
+  await writeEdges(root, edges)
   await writeFile(path.join(dir, 'src', 'in.txt'), 'v1')
   await writeFile(path.join(dir, 'vx.config.mjs'), config)
 }
@@ -56,7 +51,8 @@ describe('scoped config loading', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-scoped-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await writeLocalWorkspace(root)
+    edges = {}
+    await writeEdges(root, edges)
     await mkdir(path.join(root, 'packages'), { recursive: true })
     const git = (...a: string[]) => {
       const p = Bun.spawnSync({

@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { writeEdges } from './helpers/plugin.js'
 
 // `vx lock`, then `vx show`: show reads the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -31,7 +32,7 @@ describe('vx show and the default build of a dependency', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
     )
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await writeEdges(root, { app: ['lib'] })
     const pkg = async (name: string, json: object, config?: string): Promise<void> => {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })
@@ -40,7 +41,7 @@ describe('vx show and the default build of a dependency', () => {
     }
     await pkg(
       'app',
-      { dependencies: { lib: '*' } },
+      {},
       `
   export default { tasks: { test: { exec: { command: 'true' } } } }
 `,

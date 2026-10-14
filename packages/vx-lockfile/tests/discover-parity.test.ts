@@ -1,16 +1,18 @@
-// The parity row (language-agnostic core, PR 2): the edges `discover`
-// reads from a lockfile equal core's package graph over the manifests that
+// The edges `discover` reads from a lockfile, over the manifests that
 // install wrote it from — every bucket, a peer that orders, a peer that
 // would close a cycle (reach only), two peers on each other, a dependency
 // ring and the root as a project. The lockfiles are real installs (bun
-// 1.4.2, pnpm 10.28, npm 10.9, yarn 4), and the rows after them pin where
-// the lockfile says otherwise than the manifest graph guesses: the edge is
-// what was installed.
+// 1.4.2, pnpm 10.28, npm 10.9, yarn 4). The expected lists are what core's
+// manifest graph answered over the same manifests (language-agnostic core,
+// PR 2's parity row), recorded when PR 3 deleted it: core reads no edge
+// now, so these are the edges a run has. The rows after them pin where the
+// lockfile says otherwise than a manifest read guesses: the edge is what
+// was installed.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { buildPackageGraph, type ProjectMeta, type VxPlugin } from '@vzn/vx'
+import type { ProjectMeta, VxPlugin } from '@vzn/vx'
 import { bun, npm, pnpm, yarn } from '../src/index.js'
 
 let root: string
@@ -69,11 +71,6 @@ async function pluginEdges(plugin: VxPlugin, file: string, text: string, project
     return [...seen]
   }
   return edgeLists(projects, (n) => order.get(n) ?? [], closure)
-}
-
-function coreEdges(projects: ProjectMeta[]) {
-  const g = buildPackageGraph(projects)
-  return edgeLists(projects, g.directDeps, g.transitiveDeps)
 }
 
 function edgeLists(
@@ -568,7 +565,41 @@ __metadata:
   linkType: soft
 `
 
-describe('plugin edges equal the package graph over the installed manifests', () => {
+/** The order edges and the transitive reach of `combined`, as core's manifest graph read them. */
+const COMBINED = {
+  order: [
+    'app → lib',
+    'app → opt',
+    'app → peer',
+    'app → tool',
+    'core → devtools',
+    'ring-a → ring-b',
+    'ring-b → ring-a',
+    'root → lib',
+    'x → y',
+  ],
+  reach: [
+    'app → lib',
+    'app → opt',
+    'app → peer',
+    'app → tool',
+    'core → core',
+    'core → devtools',
+    'devtools → core',
+    'devtools → devtools',
+    'ring-a → ring-a',
+    'ring-a → ring-b',
+    'ring-b → ring-a',
+    'ring-b → ring-b',
+    'root → lib',
+    'x → x',
+    'x → y',
+    'y → x',
+    'y → y',
+  ],
+}
+
+describe('plugin edges are the recorded graph over the installed manifests', () => {
   for (const [make, file, text, any] of [
     [bun, 'bun.lock', BUN, 'workspace:*'],
     [pnpm, 'pnpm-lock.yaml', PNPM, 'workspace:*'],
@@ -577,14 +608,7 @@ describe('plugin edges equal the package graph over the installed manifests', ()
   ] as const) {
     it(`${make.name}()`, async () => {
       const projects = metas(combined(any))
-      const core = coreEdges(projects)
-      expect(await pluginEdges(make(), file, text, projects)).toEqual(core)
-      // The rows the fixture is for, so an empty graph cannot pass.
-      expect(core.order).toContain('core → devtools')
-      expect(core.order).not.toContain('devtools → core')
-      expect(core.reach).toContain('devtools → core')
-      expect(core.order).toContain('app → peer')
-      expect(core.order).toContain('root → lib')
+      expect(await pluginEdges(make(), file, text, projects)).toEqual(COMBINED)
     })
   }
 })
@@ -593,7 +617,7 @@ describe('plugin edges equal the package graph over the installed manifests', ()
 // path or alias and a satisfied `npm:` alias though `packages` records no
 // nested entry for it; yarn symlinks a `link:` path; yarn installs the
 // registry copy a devDependency names over a workspace peer of that key.
-describe('the parity row holds on specs a lockfile resolves past its layout', () => {
+describe('the recorded edges hold on specs a lockfile resolves past its layout', () => {
   const rows = [
     {
       title: 'bun(): a `workspace:` path and a `workspace:` alias link their target, not their key',
@@ -655,7 +679,7 @@ describe('the parity row holds on specs a lockfile resolves past its layout', ()
         'packages/ui': { name: 'ui', version: '9.0.0' },
         'packages/acme-ui': { name: '@acme/ui', version: '1.2.0' },
       },
-      edge: 'app → waluigi',
+      edges: ['app → @acme/ui', 'app → waluigi'],
     },
     {
       title: 'bun(): a satisfied `npm:` alias links the workspace package it names',
@@ -702,7 +726,7 @@ describe('the parity row holds on specs a lockfile resolves past its layout', ()
         'packages/d': { name: 'd', version: '2.0.0' },
         'packages/is-number': { name: 'is-number', version: '2.0.0' },
       },
-      edge: 'app → is-number',
+      edges: ['app → is-number'],
     },
     {
       title: 'yarn(): a `link:` path links the workspace package it points at',
@@ -752,7 +776,7 @@ __metadata:
         'packages/b': { name: 'b', version: '2.0.0' },
         'packages/real-b': { name: 'real-b', version: '2.0.0' },
       },
-      edge: 'app → real-b',
+      edges: ['app → real-b'],
     },
     {
       title:
@@ -865,20 +889,21 @@ __metadata:
         'packages/b': { name: 'b', version: '1.0.0', peerDependencies: { buffer: '^6.0.0' } },
         'packages/buffer': { name: 'buffer', version: '0.0.1' },
       },
-      edge: 'b → buffer',
+      edges: ['b → buffer'],
     },
   ] as const
   for (const row of rows) {
     it(row.title, async () => {
       const projects = metas(row.manifests as Manifests)
-      const core = coreEdges(projects)
-      expect(core.order).toContain(row.edge)
-      expect(await pluginEdges(row.make(), row.file, row.text, projects)).toEqual(core)
+      expect(await pluginEdges(row.make(), row.file, row.text, projects)).toEqual({
+        order: [...row.edges],
+        reach: [...row.edges],
+      })
     })
   }
 })
 
-describe('where the lockfile is exact and the manifest graph guesses', () => {
+describe('where the lockfile is exact and a manifest read guesses', () => {
   it('pnpm installs a plain range from the registry, though the workspace package satisfies it', async () => {
     // pnpm 9+ links a workspace package only by `workspace:` (`linkWorkspacePackages`
     // is off by default); `other` got the registry is-number@2.1.0.
@@ -895,7 +920,7 @@ describe('where the lockfile is exact and the manifest graph guesses', () => {
       },
       'packages/is-number': { name: 'is-number', version: '2.0.0' },
     })
-    expect(coreEdges(projects).order).toEqual(['other → is-number'])
+    // A manifest read guessed `other → is-number`.
     expect((await pluginEdges(pnpm(), 'pnpm-lock.yaml', D_PNPM, projects)).order).toEqual([])
   })
 
@@ -905,7 +930,7 @@ describe('where the lockfile is exact and the manifest graph guesses', () => {
       'packages/a': { name: 'a', version: '2.0.0' },
       'packages/real-a': { name: 'real-a', version: '2.0.0' },
     })
-    expect(coreEdges(projects).order).toEqual(['app → real-a'])
+    // A manifest read guessed `app → real-a`.
     expect((await pluginEdges(yarn(), 'yarn.lock', D_YARN, projects)).order).toEqual([])
   })
 
@@ -925,10 +950,7 @@ describe('where the lockfile is exact and the manifest graph guesses', () => {
       },
       'packages/is-number': { name: 'is-number', version: '2.0.0' },
     })
-    expect(coreEdges(projects).order).toEqual([
-      'dev-met-prod-unmet → is-number',
-      'opt-met-prod-unmet → is-number',
-    ])
+    // A manifest read guessed both projects → is-number.
     expect((await pluginEdges(bun(), 'bun.lock', D_BUN, projects)).order).toEqual([])
   })
 
@@ -944,7 +966,7 @@ describe('where the lockfile is exact and the manifest graph guesses', () => {
       'packages/d': { name: 'd', version: '2.0.0' },
       'packages/is-number': { name: 'is-number', version: '2.0.0' },
     })
-    expect(coreEdges(projects).order).toEqual(['app → is-number'])
+    // A manifest read guessed `app → is-number`.
     expect((await pluginEdges(npm(), 'package-lock.json', D_NPM, projects)).order).toEqual([
       'app → d',
     ])

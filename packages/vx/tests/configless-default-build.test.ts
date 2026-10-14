@@ -24,10 +24,9 @@ afterEach(async () => {
 it(
   "an edit to a config-less dependency re-keys its dependant's build",
   async () => {
-    const f = (fixture = await makeWorkspace('vx-configless-'))
+    const f = (fixture = await makeWorkspace('vx-configless-', { app: ['lib'] }))
     const lib = await addProject(f.root, 'lib', { files: { 'src/index.js': 'v1\n' } })
     await addProject(f.root, 'app', {
-      deps: { lib: 'workspace:*' },
       files: { 'src/index.js': 'app\n' },
       config: `export default { tasks: { build: {
         dependsOn: ['^build'],

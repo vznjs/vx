@@ -35,7 +35,7 @@ describe('selection follows cross-project dependsOn edges', () => {
   const executed = async (): Promise<string[]> =>
     (await readdir(ran)).sort((a, b) => (a < b ? -1 : 1))
   beforeEach(async () => {
-    root = await makeWorkspace({ prefix: 'vx-task-edge-' })
+    root = await makeWorkspace({ prefix: 'vx-task-edge-', edges: { app: ['lib'] } })
     ran = await mkdtemp(path.join(os.tmpdir(), 'vx-task-edge-ran-'))
     const task = (name: string) => `
       export default { tasks: {
@@ -44,7 +44,7 @@ describe('selection follows cross-project dependsOn edges', () => {
       } }
     `
     await addProject(root, 'lib', task('lib'))
-    await addProject(root, 'app', { config: task('app'), deps: { lib: 'workspace:*' } })
+    await addProject(root, 'app', task('app'))
     await addProject(
       root,
       'e2e',
@@ -60,7 +60,7 @@ describe('selection follows cross-project dependsOn edges', () => {
     await rm(ran, { recursive: true, force: true })
   })
 
-  it("...lib selects app (package.json) AND e2e (dependsOn: ['app#build'])", async () => {
+  it("...lib selects app (a plugin edge) AND e2e (dependsOn: ['app#build'])", async () => {
     const r = await vx(root, ['run', 'test', '--filter', '...lib'])
     expect(r.code).toBe(0)
     expect(await executed()).toEqual(['app#build', 'app#test', 'e2e#test', 'lib#test'])

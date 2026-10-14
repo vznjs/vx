@@ -37,7 +37,7 @@ async function planned(cwd: string, args: string[]): Promise<string[]> {
 describe('a bare name does not select a default build', () => {
   let root: string
   beforeEach(async () => {
-    root = await makeWorkspace({ prefix: 'vx-bare-default-' })
+    root = await makeWorkspace({ prefix: 'vx-bare-default-', edges: { app: ['lib'] } })
     await writeFile(
       path.join(root, 'vx.config.mjs'),
       `export default { tasks: { ci: { exec: { command: 'true' } } } }\n`,
@@ -79,7 +79,6 @@ describe('a bare name does not select a default build', () => {
 
   it('--all requests the declared builds; a dependant still reaches the default one', async () => {
     await addProject(root, 'app', {
-      deps: { lib: 'workspace:*' },
       config: `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'true' } } } }\n`,
     })
     const r = await vx(root, ['run', 'build', '--all', '--dry=json'])

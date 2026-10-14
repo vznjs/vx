@@ -20,6 +20,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { planRun, run, type Logger } from '@vzn/vx'
+import { BENCH_WORKSPACE } from './edges.js'
 
 const BASELINE = path.join(import.meta.dir, 'perf-baseline.json')
 const SMALL = 25
@@ -113,7 +114,7 @@ async function workspace(n: number, settled: boolean): Promise<string> {
   await writeFile(path.join(root, 'package.json'), '{"name":"perf-root","private":true}\n')
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, '.gitignore'), 'dist\n.vx/cache/\n')
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), BENCH_WORKSPACE)
   const config = `export default {
   tasks: {
     build: {

@@ -12,13 +12,14 @@ import type { Logger } from '../src/orchestrator/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
+import { edgesSource } from './helpers/plugin.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 const TIMEOUT = 30_000
 let root: string
 
 beforeEach(async () => {
-  root = await makeWorkspace({ prefix: 'vx-marks-' })
+  root = await makeWorkspace({ prefix: 'vx-marks-', edges: { rd: ['gen'] } })
 })
 afterEach(async () => {
   await rm(root, { recursive: true, force: true })
@@ -49,7 +50,6 @@ async function genAndReader(genOutputs: string, genCommand: string, reads: strin
   })
   await addProject(root, 'rd', {
     files: { 'src/r.txt': 'r' },
-    deps: { gen: '*' },
     config: `export default { tasks: { build: {
       dependsOn: ['^build'],
       exec: { command: 'true' },
@@ -67,7 +67,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         'mkdir -p ../../shared && echo g > ../../shared/gen.txt',
         'shared/**',
       )
-      await waitForProducers(root)
+      await waitForProducers(root, [edgesSource({ rd: ['gen'] })])
       expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
       expect(keyedFiles('rd')).toEqual(['shared/gen.txt'])
     },
@@ -82,7 +82,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         'mkdir -p dist && echo g > dist/x.txt',
         'packages/gen/dist/**',
       )
-      await waitForProducers(root)
+      await waitForProducers(root, [edgesSource({ rd: ['gen'] })])
       expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
       expect(keyedFiles('rd')).toEqual(['packages/gen/dist/x.txt'])
     },
@@ -95,7 +95,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
   it(
     "a workspace output landing in another project's dir is keyed by that project's reader",
     async () => {
-      await waitForProducers(root)
+      await waitForProducers(root, [edgesSource({ rd: ['gen'] })])
       await addProject(root, 'gen', {
         files: { 'src/a.txt': 'a' },
         config: `export default { tasks: { build: {
@@ -105,7 +105,6 @@ describe('a miss marks what it wrote for the rest of the run', () => {
       })
       await addProject(root, 'rd', {
         files: { 'src/r.txt': 'r' },
-        deps: { gen: '*' },
         config: `export default { tasks: { build: {
           dependsOn: ['^build'],
           exec: { command: 'true' },

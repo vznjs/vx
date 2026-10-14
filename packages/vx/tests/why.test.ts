@@ -9,6 +9,7 @@ import { Database } from 'bun:sqlite'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
+import { writeEdges } from './helpers/plugin.js'
 import { parseShowArgs } from '../src/cli/show.js'
 import { parseWhyArgs } from '../src/cli/why.js'
 import { WHAT_TO_DO } from '../src/cli/why.js'
@@ -196,17 +197,14 @@ describe('vx why (e2e) — every component kind names its row', () => {
     }
   `
   beforeAll(async () => {
-    root = await makeWorkspaceRoot({ prefix: 'vx-why-kinds-', git: false })
-    for (const [name, config, deps] of [
-      ['app', APP, { lib: '*' }],
-      ['lib', LIB, {}],
+    root = await makeWorkspaceRoot({ prefix: 'vx-why-kinds-', git: false, edges: { app: ['lib'] } })
+    for (const [name, config] of [
+      ['app', APP],
+      ['lib', LIB],
     ] as const) {
       const dir = path.join(root, 'packages', name)
       await mkdir(path.join(dir, 'src'), { recursive: true })
-      await writeFile(
-        path.join(dir, 'package.json'),
-        JSON.stringify({ name, version: '0.0.0', dependencies: deps }),
-      )
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
       await writeFile(path.join(dir, 'vx.config.mjs'), config)
       await writeFile(path.join(dir, 'src', 'index.js'), 'export {}\n')
     }
@@ -234,7 +232,7 @@ describe('vx why (e2e) — every component kind names its row', () => {
 
       await writeFile(
         path.join(root, 'packages', 'app', 'package.json'),
-        JSON.stringify({ name: 'app', version: '0.0.1', dependencies: { lib: '*' } }),
+        JSON.stringify({ name: 'app', version: '0.0.1' }),
       )
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
       expect(await why({ APP_MODE: 'prod' })).toMatch(
@@ -755,7 +753,8 @@ describe('vx why after a run of only a group (X-50)', () => {
   it('says no run executed a task, instead of "nothing has run here yet"', async () => {
     const root = await makeWorkspace()
     try {
-      // No config: `lib` has only the default `build`, a group.
+      // No config: `lib` has only the default `build`, a group, whose `^build` needs an edge source.
+      await writeEdges(root)
       const lib = path.join(root, 'packages', 'lib')
       await mkdir(lib, { recursive: true })
       await writeFile(path.join(lib, 'package.json'), JSON.stringify({ name: 'lib' }))

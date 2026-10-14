@@ -23,11 +23,14 @@ import { summarized, vx } from './helpers/parity.js'
 
 const REAL_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
+// The edges every row's projects take, whichever of them a row adds.
+const EDGES = { app: ['lib'], 'app-shell': ['app-core'] }
+
 describe('orchestrator e2e — restores, groups, streams, plan and records', () => {
   let fixture: Fixture
 
   beforeEach(async () => {
-    fixture = await makeWorkspace()
+    fixture = await makeWorkspace(undefined, EDGES)
   })
 
   afterEach(async () => {
@@ -195,7 +198,6 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         `,
       })
       const appDir = await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         files: { 'src/y.txt': 'app' },
         config: `
           export default {
@@ -884,7 +886,6 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         `,
       })
       await addProject(fixture.root, 'app-shell', {
-        deps: { 'app-core': 'workspace:*' },
         config: `
           export default {
             tasks: {
@@ -1207,7 +1208,6 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         `
       const lib = await addProject(fixture.root, 'lib', { config: argsTask('') })
       const app = await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         config: argsTask(`'^build'`),
       })
       const r = await run({

@@ -13,11 +13,9 @@ function mkProject(name: string, dir: string, deps: string[] = []): ProjectMeta 
   return {
     name,
     dir,
-    packageJson: {
-      name,
-      dependencies: Object.fromEntries(deps.map((d) => [d, 'workspace:*'])),
-    },
+    packageJson: { name },
     configPath: null,
+    deps,
   }
 }
 

@@ -93,3 +93,69 @@ export function pluginSource(name: string, hooks: string): string {
 }
 
 export { PLUGIN_IMPORT }
+
+/** Project name → the project names it builds after (or, for `reach`, is reached through). */
+export type EdgeMap = Readonly<Record<string, readonly string[]>>
+
+/**
+ * The `discover` hooks of `edges()`: every project gets `deps` (none
+ * unless named), so the workspace is an edge source, and a named project
+ * its `reach`. Names resolve through the projects the stage sees; one that
+ * is no project is skipped, so one map can serve fixtures that add
+ * projects as they go.
+ */
+function edgesHooks(deps: EdgeMap, reach: EdgeMap): string {
+  return `{
+  discover(ctx) {
+    const deps = ${JSON.stringify(deps)}
+    const reach = ${JSON.stringify(reach)}
+    const dir = new Map(ctx.projects.map((p) => [p.name, p.dir]))
+    const dirs = (names) => names.filter((n) => dir.has(n)).map((n) => dir.get(n))
+    return ctx.projects.map((p) => ({
+      dir: p.dir,
+      deps: dirs(deps[p.name] ?? []),
+      ...(reach[p.name] === undefined ? {} : { reach: dirs(reach[p.name]) }),
+    }))
+  },
+}`
+}
+
+/**
+ * A test plugin supplying project edges as a lockfile plugin does, for
+ * in-process use. Core reads no manifest edge, so a fixture whose `^task`
+ * needs an upstream declares it here.
+ */
+export function edges(deps: EdgeMap = {}, reach: EdgeMap = {}): VxPlugin {
+  return testPlugin('vx-test-edges', {
+    discover(ctx) {
+      const dir = new Map(ctx.projects.map((p) => [p.name, p.dir]))
+      const dirs = (names: readonly string[]): string[] =>
+        names.filter((n) => dir.has(n)).map((n) => dir.get(n)!)
+      return ctx.projects.map((p) => {
+        const near = reach[p.name]
+        return {
+          dir: p.dir,
+          deps: dirs(deps[p.name] ?? []),
+          ...(near === undefined ? {} : { reach: dirs(near) }),
+        }
+      })
+    },
+  })
+}
+
+/** `edges()` as source text for a fixture `.vx/workspace.mjs`; pair it with `PLUGIN_IMPORT`. */
+export function edgesSource(deps: EdgeMap = {}, reach: EdgeMap = {}): string {
+  return pluginSource('vx-test-edges', edgesHooks(deps, reach))
+}
+
+/** Rewrites `root`'s `.vx/workspace.mjs` to declare `edges()` and nothing else. */
+export async function writeEdges(
+  root: string,
+  deps: EdgeMap = {},
+  reach: EdgeMap = {},
+): Promise<void> {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    `${PLUGIN_IMPORT}export default { plugins: [${edgesSource(deps, reach)}] }\n`,
+  )
+}

@@ -36,7 +36,7 @@ const vx = (mode: string, ...args: string[]): { code: number | null; out: string
 }
 
 beforeAll(async () => {
-  root = await makeWorkspace({ prefix: 'vx-lock-contract-' })
+  root = await makeWorkspace({ prefix: 'vx-lock-contract-', edges: { app: ['lib'] } })
   // Every config field a lock carries a value for, and an env read the
   // lock freezes at lock time.
   await addProject(root, 'lib', {
@@ -65,7 +65,6 @@ export default {
   },
 }
 `,
-    deps: { lib: 'workspace:*' },
     files: { 'src/b.ts': 'b' },
   })
 })

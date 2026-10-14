@@ -6,6 +6,7 @@
 // output changes on every real execution.
 
 import type { Logger } from '../../src/orchestrator/index.js'
+import type { EdgeMap } from './plugin.js'
 import { makeWorkspace as makeWorkspaceRoot } from './workspace.js'
 
 export { addProject } from './workspace.js'
@@ -59,8 +60,9 @@ export const silentLogger = (fixture: Fixture): Logger => {
   }
 }
 
-export async function makeWorkspace(prefix = 'nxt-e2e-'): Promise<Fixture> {
-  const root = await makeWorkspaceRoot({ prefix })
+/** `edges`: project edges by name, from the `edges()` test plugin (`makeWorkspace` in workspace.ts). */
+export async function makeWorkspace(prefix = 'nxt-e2e-', edges?: EdgeMap): Promise<Fixture> {
+  const root = await makeWorkspaceRoot(edges === undefined ? { prefix } : { prefix, edges })
   return { root, log: [], err: [] }
 }
 

@@ -12,13 +12,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import {
-  buildPackageGraph,
-  isLiteralPattern,
-  pruneOrphanPersistentNotes,
-  type ProjectMeta,
-  UserError,
-} from '@vzn/vx'
+import { isLiteralPattern, pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
 import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
@@ -33,6 +27,7 @@ import {
   wildcardOutput,
   wildcardTodo,
 } from '../shared-outputs.js'
+import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
 import { isRecord, packageScripts, relPosix } from '../paths.js'
 import type { TrackedKinds } from '../tracked-outputs.js'
 import {
@@ -1109,13 +1104,11 @@ export async function mapTurboWorkspace(
   // package reaches in a package something depends on stays none (a
   // `test: [build]` in a package with no tests adds nothing its
   // dependants' `^build` does not).
-  let graph: ReturnType<typeof buildPackageGraph> | undefined
+  let graph: ManifestGraph | undefined
   // The root runs only its `//#` tasks, so its dependencies are no reach
   // (ai's root dev-depends on `konsistent-provider`).
   const depended = (pkg: string): boolean =>
-    (graph ??= buildPackageGraph([...metas]))
-      .transitiveDependents(pkg)
-      .some((d) => d !== rootMeta?.name)
+    (graph ??= manifestGraph(metas)).transitiveDependents(pkg).some((d) => d !== rootMeta?.name)
   const sidecarGroups = new Set<string>()
   for (const meta of metas) {
     const scripts = packageScripts(meta)

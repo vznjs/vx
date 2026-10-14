@@ -26,7 +26,7 @@ function vx(cwd: string, args: string[]): { code: number; text: string } {
 describe('a skipped task', () => {
   let root: string
   beforeEach(async () => {
-    root = await makeWorkspace({ prefix: 'vx-skipped-' })
+    root = await makeWorkspace({ prefix: 'vx-skipped-', edges: { app: ['lib'] } })
     await addProject(root, 'lib', {
       config: `export default { tasks: { build: { exec: { command: 'exit 3' } } } }\n`,
       files: {},
@@ -34,7 +34,6 @@ describe('a skipped task', () => {
     await addProject(root, 'app', {
       config: `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'echo built' } } } }\n`,
       files: {},
-      deps: { lib: '*' },
     })
     const git = gitIn(root)
     git('add', '-A')

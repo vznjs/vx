@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { writeEdges } from './helpers/plugin.js'
 
 setDefaultTimeout(30_000)
 
@@ -64,7 +64,7 @@ describe('running from inside a workspace member', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
     )
-    await writeLocalWorkspace(root)
+    await writeEdges(root, { a: ['b'] })
     await writeFile(path.join(root, '.gitignore'), 'node_modules\n.vx/cache/\nout\nran.log\n')
 
     await writeFile(path.join(b, 'package.json'), JSON.stringify({ name: 'b', version: '1.0.0' }))
@@ -82,10 +82,7 @@ describe('running from inside a workspace member', () => {
     )
     await writeFile(path.join(b, 'src', 'in.txt'), 'v1')
 
-    await writeFile(
-      path.join(a, 'package.json'),
-      JSON.stringify({ name: 'a', version: '1.0.0', dependencies: { b: '1.0.0' } }),
-    )
+    await writeFile(path.join(a, 'package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
     await writeFile(
       path.join(a, 'vx.config.mjs'),
       `export default {

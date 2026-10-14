@@ -8,6 +8,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
+import { workspaceFileWritten } from '../handoff.js'
 import { DOT_VX_GITIGNORE, executablePath, gitEnv, relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { loadWorkspace, reachesManifest, unreachedHint, unreachedPackages } from './workspace.js'
@@ -405,6 +406,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   } else if (!dry) {
     for (const f of files) await Bun.write(f.abs, f.contents)
     for (const f of replaced) await unlink(f)
+    // The lock that follows loads its plugins from the file just written.
+    workspaceFileWritten()
   }
   const formatted = dry
     ? []

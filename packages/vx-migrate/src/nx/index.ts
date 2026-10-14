@@ -23,6 +23,7 @@ import { stat } from 'node:fs/promises'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
 import {
+  type DiscoveredProject,
   refuseUnknownOptions,
   type PluginOptionKinds,
   type GeneratedProject,
@@ -200,10 +201,41 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
           dirs.add(dir)
           named.push({ dir, name })
         }
-        return named
+        return withGraphEdges(root, graph, dirs, named)
       },
     },
   )
+}
+
+/**
+ * Every project the graph and the workspace share, with its Nx graph edges
+ * (package deps, `implicitDependencies`, imports) as `deps`: nx() is an Nx
+ * repo's edge source, so `^task` follows Nx's graph with no lockfile plugin.
+ */
+function withGraphEdges(
+  root: string,
+  graph: NxGraph,
+  dirs: ReadonlySet<string>,
+  named: ReadonlyArray<{ dir: string; name: string }>,
+): DiscoveredProject[] {
+  const dirOf = new Map<string, string>()
+  for (const [nodeName, node] of Object.entries(graph.nodes)) {
+    const dir = path.resolve(root, node?.data?.root ?? '')
+    if (dirs.has(dir)) dirOf.set(nodeName, dir)
+  }
+  const nameOf = new Map(named.map((n) => [n.dir, n.name]))
+  const edges = (graph.dependencies ?? {}) as Record<string, ReadonlyArray<{ target?: unknown }>>
+  const out: DiscoveredProject[] = []
+  for (const [nodeName, dir] of dirOf) {
+    const deps = new Set<string>()
+    for (const e of edges[nodeName] ?? []) {
+      const to = typeof e?.target === 'string' ? dirOf.get(e.target) : undefined
+      if (to !== undefined && to !== dir) deps.add(to)
+    }
+    const name = nameOf.get(dir)
+    out.push({ dir, ...(name === undefined ? {} : { name }), deps: [...deps].sort() })
+  }
+  return out
 }
 
 function isWithin(root: string, dir: string): boolean {

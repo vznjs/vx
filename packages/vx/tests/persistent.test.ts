@@ -55,8 +55,11 @@ const silentLogger = (fixture: Fixture): Logger => {
   }
 }
 
+const FRONT_DEPS = Array.from({ length: 12 }, (_, i) => `d${String(i + 1).padStart(2, '0')}`)
+const EDGES = { app: ['lib'], front: FRONT_DEPS, web: ['api'] }
+
 async function makeWorkspace(): Promise<Fixture> {
-  const root = await makeWorkspaceRoot({ prefix: 'vx-persistent-' })
+  const root = await makeWorkspaceRoot({ prefix: 'vx-persistent-', edges: EDGES })
   return { root, log: [], err: [] }
 }
 
@@ -671,7 +674,6 @@ describe('exec.persistent (e2e)', () => {
         `,
       })
       await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         config: `
           export default {
             tasks: {
@@ -774,7 +776,7 @@ describe('exec.persistent (e2e)', () => {
   it(
     'every one of thirteen persistent tasks a filter selects starts at concurrency 2',
     async () => {
-      const deps = Array.from({ length: 12 }, (_, i) => `d${String(i + 1).padStart(2, '0')}`)
+      const deps = FRONT_DEPS
       const dev = (name: string) => `
         export default {
           tasks: {
@@ -791,7 +793,6 @@ describe('exec.persistent (e2e)', () => {
       for (const d of deps) await addProject(fixture.root, d, { config: dev(d) })
       await addProject(fixture.root, 'other', { config: dev('other') })
       await addProject(fixture.root, 'front', {
-        deps: Object.fromEntries(deps.map((d) => [d, 'workspace:*'])),
         config: dev('front'),
       })
       const parsed = parseRunArgs(['dev', '--filter', 'front...', '--concurrency', '2'])
@@ -834,7 +835,6 @@ describe('exec.persistent (e2e)', () => {
         `,
       })
       const web = await addProject(fixture.root, 'web', {
-        deps: { api: 'workspace:*' },
         files: { 'src/a.ts': 'a\n' },
         config: `
           export default {

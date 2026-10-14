@@ -283,7 +283,7 @@ describe('keyUpstream', () => {
   it(
     'a restore-tier hit with an order-only edge runs before its dependency settles',
     async () => {
-      const fixture = await makeWorkspace('vx-keyupstream-')
+      const fixture = await makeWorkspace('vx-keyupstream-', { '@x/app': ['@x/ui'] })
       try {
         const ui = await addProject(fixture.root, '@x/ui', {
           files: { 'src/index.js': 'export const ui = 1\n' },
@@ -293,7 +293,6 @@ describe('keyUpstream', () => {
           } } }`,
         })
         await addProject(fixture.root, '@x/app', {
-          deps: { '@x/ui': 'workspace:*' },
           files: { 'src/index.js': 'export const app = 1\n' },
           config: `export default { tasks: {
             gen: {

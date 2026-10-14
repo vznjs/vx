@@ -26,6 +26,7 @@ import { run } from './helpers/orchestrator.js'
 import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
+import { edgesSource } from './helpers/plugin.js'
 
 const TIMEOUT = 30_000
 const MOVED = /changed after its key was taken/
@@ -47,7 +48,7 @@ const saved = {
   severity: process.env['VX_CACHE_INPUT_STABILITY_SEVERITY'],
 }
 beforeEach(async () => {
-  root = await makeWorkspace({ prefix: 'vx-moved-' })
+  root = await makeWorkspace({ prefix: 'vx-moved-', edges: { app: ['lib'] } })
   status = []
   delete process.env['VX_CACHE_INPUT_STABILITY_STRATEGY']
   delete process.env['VX_CACHE_INPUT_STABILITY_SEVERITY']
@@ -529,7 +530,7 @@ describe('what a moved task wrote elsewhere is seen too', () => {
   it(
     "a workspace output it created in another project reaches that project's reader",
     async () => {
-      await waitForProducers(root)
+      await waitForProducers(root, [edgesSource({ app: ['lib'] })])
       // Its save would have marked the output against `app`'s listing; the
       // save is withheld, and the listing must not outlive the write.
       await addProject(root, 'lib', {
@@ -549,7 +550,6 @@ describe('what a moved task wrote elsewhere is seen too', () => {
         files: { 'a.ts': 'U\n' },
       })
       await addProject(root, 'app', {
-        deps: { lib: 'workspace:*' },
         config: `
           export default {
             tasks: {
@@ -666,7 +666,6 @@ describe('an input the user edits during the run', () => {
       `,
     })
     const app = await addProject(root, 'app', {
-      deps: { lib: 'workspace:*' },
       config: `
         export default {
           tasks: {
@@ -858,7 +857,7 @@ describe('control: inputs an upstream wrote just before are not a move', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
       commit()
-      await waitForProducers(root)
+      await waitForProducers(root, [edgesSource({ app: ['lib'] })])
       await runTask('build')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       expect(statusOf(await runTask('build'), 'app#build')).toBe('cache-hit')

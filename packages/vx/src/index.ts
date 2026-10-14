@@ -104,9 +104,6 @@ export {
   listProjects as listProjectMetas,
 } from './workspace/index.js'
 export type { ProjectMeta } from './workspace/index.js'
-// The package graph as a run sees it (workspace deps by manifest), for a tool
-// that needs a project's transitive closure the way `vx run` computes it.
-export { buildPackageGraph } from './workspace/index.js'
 // The run path's RESOLVED view — plugin `config` and `project` stages
 // applied — for a reader outside the CLI
 // (`@vzn/vx-schedule-history`, an embedder's task catalog). What `vx show`

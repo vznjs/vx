@@ -27,7 +27,7 @@ import {
 } from '../src/cli/watch-fs.js'
 import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
-import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { edgesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { lock } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
@@ -360,10 +360,7 @@ describe('sweepConfigs: only the tasks the run reaches are judged', () => {
         } }\n`,
       )
       // lint's `**/*` reading build's `dist/` is the case under test.
-      await Bun.write(
-        path.join(root, '.vx/workspace.mjs'),
-        'export default { run: { rules: { upfrontKeys: false } } }\n',
-      )
+      await waitForProducers(root, [edgesSource()])
       await lock(root)
       const metas = await listProjects(await loadWorkspace(root))
       const ui = path.join(root, 'packages', 'ui')

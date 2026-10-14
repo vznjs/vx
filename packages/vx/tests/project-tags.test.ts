@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { dry, PARITY_TIMEOUT, planned, vx } from './helpers/parity.js'
-import { pluginSource } from './helpers/plugin.js'
+import { edgesSource, pluginSource } from './helpers/plugin.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
@@ -31,17 +31,16 @@ beforeAll(async () => {
   await addProject(root, 'lib', { config: config("tags: ['type:lib'],") })
   await addProject(root, 'ui', {
     config: config("tags: ['scope:web', 'type:lib'],"),
-    deps: { lib: 'workspace:*' },
   })
   await addProject(root, 'app', {
     config: config("tags: ['scope:web', 'type:app'],"),
-    deps: { ui: 'workspace:*' },
   })
   await addProject(root, 'docs', { config: config('') })
   // A `project` plugin gives docs a tag its config does not carry.
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
+      edgesSource({ ui: ['lib'], app: ['ui'] }),
       pluginSource(
         'tagger',
         `{ project(config, ctx) { if (ctx.name === 'docs') config.tags = ['type:docs'] } }`,

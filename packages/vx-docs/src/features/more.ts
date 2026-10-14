@@ -131,7 +131,7 @@ export const MORE: readonly Feature[] = [
     category: 'run',
     hook: 'One short syntax for upstream, cross-project and pattern edges.',
     body: [
-      '`^build` means every workspace dependency’s build first. `build` alone is this project’s. `@demo/api#build` names another project’s task, and `lint.*` matches every task whose name starts that way.',
+      '`^build` means every workspace dependency’s build first, by the edges your lockfile plugin reads from what the package manager installed. `build` alone is this project’s. `@demo/api#build` names another project’s task, and `lint.*` matches every task whose name starts that way.',
       'The edges are checked as you type in a typed config, and an edge that matches nothing is an error, not a silent no-op.',
     ],
     example: {

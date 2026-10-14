@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const LOCKFILE_PLUGIN = path.resolve(import.meta.dir, '../../vx-lockfile/src/index.ts')
 const PAGE = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/quickstart.md')
 const GIT = {
   GIT_CONFIG_GLOBAL: '/dev/null',
@@ -50,7 +51,15 @@ describe('the quickstart Run block', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-quickstart-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    // The workspace file the page has the reader write: the lockfile plugin, for `^build`.
+    await writeFile(
+      path.join(root, 'pnpm-lock.yaml'),
+      "lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n\n  packages/app: {}\n",
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { pnpm } from ${JSON.stringify(LOCKFILE_PLUGIN)}\nexport default { plugins: [pnpm()] }\n`,
+    )
     const app = path.join(root, 'packages', 'app')
     await mkdir(path.join(app, 'src'), { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))

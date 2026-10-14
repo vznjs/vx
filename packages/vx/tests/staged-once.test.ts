@@ -15,7 +15,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { PLUGIN_IMPORT } from './helpers/local-workspace.js'
-import { pluginSource } from './helpers/plugin.js'
+import { edgesSource, pluginSource } from './helpers/plugin.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -53,7 +53,7 @@ describe('the project stage runs once per project per run', () => {
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}import { appendFileSync } from 'node:fs'
-export default { plugins: [${pluginSource(
+export default { plugins: [${edgesSource({ app: ['lib'] })}, ${pluginSource(
         'counter',
         `{ project(config, ctx) { appendFileSync(${JSON.stringify(counter)}, ctx.name + '\\n') } }`,
       )}] }\n`,
@@ -72,7 +72,6 @@ export default { plugins: [${pluginSource(
     lib = await addProject(root, 'lib', { config: task, files: { 'src/l.txt': 'l1\n' } })
     await addProject(root, 'app', {
       config: task,
-      deps: { lib: '0.0.0' },
       files: { 'src/a.txt': 'a1\n' },
     })
     const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {

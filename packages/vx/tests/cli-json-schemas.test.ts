@@ -51,7 +51,7 @@ import {
 import { formatPlanJson, type PlanTaskJson } from '../src/cli/plan-format.js'
 import type { TaskStats } from '../src/cli/last.js'
 import { declaredPaths, validate } from './helpers/json-schema.js'
-import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { edgesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -154,7 +154,6 @@ beforeAll(async () => {
   await addProject(root, 'lib', { config: CONFIG(false), files: { 'src/a.txt': 'a' } })
   await addProject(root, 'app', {
     config: CONFIG(true),
-    deps: { lib: 'workspace:*' },
     files: { 'src/a.txt': 'b' },
   })
   await addProject(root, 'kitchen', { config: KITCHEN })
@@ -162,7 +161,7 @@ beforeAll(async () => {
   // A plugin, so \`vx info\` lists one.
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}], cache: { retention: { olderThan: '3650d', maxSize: '10G' } } }\n`,
+    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}, ${edgesSource({ app: ['lib'] })}], cache: { retention: { olderThan: '3650d', maxSize: '10G' } } }\n`,
   )
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
   expect(vx(['run', 'lib#stamp']).code).toBe(0)

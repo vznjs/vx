@@ -29,6 +29,7 @@ import {
 } from '../src/orchestrator/sandbox-request.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
+import { writeEdges } from './helpers/plugin.js'
 
 const TIMEOUT = 30_000
 const READ_ONLY: CachePolicy = {
@@ -575,10 +576,10 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
           `,
         })
         await addProject(root, 'app', {
-          deps: { lib: 'workspace:*' },
           config: `export default { tasks: { build: ${reader('^gen', tasks)} } }`,
           files: { 'a.ts': 'x' },
         })
+        await writeEdges(root, { app: ['lib'] })
         return upFront('build', 'app#build')
       }
       expect(await crossProject('[]')).toBe(false)

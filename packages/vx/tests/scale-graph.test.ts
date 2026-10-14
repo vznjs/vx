@@ -15,7 +15,7 @@
 // functional pin (the graph is correct at scale, not merely fast).
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { writeEdges } from './helpers/plugin.js'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -51,7 +51,7 @@ async function generateWorkspace(root: string, count: number): Promise<void> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'scale-root', private: true }),
   )
-  await writeLocalWorkspace(root)
+  const edges: Record<string, string[]> = {}
 
   // Write projects in parallel batches (keeps the FS pipeline busy without
   // opening 6000 fds at once).
@@ -62,22 +62,19 @@ async function generateWorkspace(root: string, count: number): Promise<void> {
       const name = `pkg-${String(i).padStart(4, '0')}`
       // A 10-wide dependency band (project i depends on up to 3 of the
       // previous ~10) — real fan-in without a pathological single chain.
-      const deps: Record<string, string> = {}
+      const deps: string[] = []
       for (let k = 1; k <= 3; k++) {
         const j = i - k * 3
-        if (j >= 0) deps[`pkg-${String(j).padStart(4, '0')}`] = 'workspace:*'
+        if (j >= 0) deps.push(`pkg-${String(j).padStart(4, '0')}`)
       }
+      edges[name] = deps
       const pdir = path.join(root, 'packages', name)
       jobs.push(
         (async () => {
           await mkdir(path.join(pdir, 'src'), { recursive: true })
           await writeFile(
             path.join(pdir, 'package.json'),
-            JSON.stringify({
-              name,
-              version: '0.0.0',
-              ...(Object.keys(deps).length ? { dependencies: deps } : {}),
-            }),
+            JSON.stringify({ name, version: '0.0.0' }),
           )
           await writeFile(path.join(pdir, 'src', 'index.js'), `export const v = ${i}\n`)
           await writeFile(path.join(pdir, 'vx.config.mjs'), CONFIG)
@@ -86,6 +83,7 @@ async function generateWorkspace(root: string, count: number): Promise<void> {
     }
     await Promise.all(jobs)
   }
+  await writeEdges(root, edges)
 
   // vx enumerates inputs via git — the workspace must be a committed repo.
   const git = (...args: string[]): void => {

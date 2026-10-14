@@ -89,6 +89,7 @@ function workspace(rnd: () => number): Workspace {
     projects.set(p, { name: p, dir: `/ws/${p}`, config: { tasks } as ProjectConfig })
   }
   const graph: PackageGraph = {
+    edgeSource: true,
     directDeps: (p) => direct.get(p) ?? [],
     transitiveDeps: () => [],
     transitiveDependents: () => [],

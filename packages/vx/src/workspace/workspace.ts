@@ -33,17 +33,7 @@ export interface Workspace {
   root: string
   /** Glob patterns relative to root that match project directories. */
   packageGlobs: string[]
-  /** The package manager's catalogs, when the root declares any. */
-  catalogs?: Catalogs
 }
-
-/**
- * Catalog name → dependency → the spec a `catalog:<name>` entry stands
- * for; `catalog:` alone is `default`. pnpm's from `pnpm-workspace.yaml`
- * (`catalog`, `catalogs`), bun's from the root `package.json` (the same
- * keys, top level or under `workspaces`).
- */
-export type Catalogs = ReadonlyMap<string, Readonly<Record<string, unknown>>>
 
 export interface ProjectMeta {
   /** Canonical name from package.json. */
@@ -53,8 +43,6 @@ export interface ProjectMeta {
   packageJson: PackageJson
   /** Absolute path to vx.config.{ts,mts,js,mjs,cts,cjs} or null. */
   configPath: string | null
-  /** The workspace's catalogs, which the package graph resolves `catalog:` specs through. */
-  catalogs?: Catalogs
   /** Projects a `discover` plugin says this one builds after (order and reach). */
   deps?: readonly string[]
   /** Projects a `discover` plugin says a change reaches this one through, with no order. */
@@ -351,31 +339,20 @@ function excludedBy(rel: string, negative: readonly string[]): boolean {
  * the root itself is the only project, hence `['.']`.
  */
 async function readPackageGlobs(dir: string, reads?: LoadReads): Promise<string[] | null> {
-  return (await readRootManifests(dir, reads)).globs
-}
-
-/** `readPackageGlobs`, and the catalogs the same manifests declare. */
-async function readRootManifests(
-  dir: string,
-  reads?: LoadReads,
-): Promise<{ globs: string[] | null; catalogs: Catalogs | undefined }> {
   const yamlPath = path.join(dir, 'pnpm-workspace.yaml')
   const yaml = await readOnce(reads, yamlPath)
   let yamlWithoutPackages = false
-  // pnpm reads its catalogs from this file alone, bun from package.json.
-  let catalogs: Catalogs | undefined
   if (yaml !== null) {
     const parsed = parseManifest(decoder.decode(yaml), yamlPath, Bun.YAML.parse)
     if (parsed !== null && parsed !== undefined) {
       if (typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new UserError(`${yamlPath}: must be a mapping (\`packages:\` and pnpm's settings)`)
       }
-      catalogs = catalogsOf([parsed])
       const packages = (parsed as { packages?: unknown }).packages
       // A list commented out leaves `packages:` null, which pnpm reads as
       // absent; vx refused it as "must be an array" (D-149).
       if (packages !== undefined && packages !== null) {
-        return { globs: assertGlobList(packages, yamlPath, 'packages'), catalogs }
+        return assertGlobList(packages, yamlPath, 'packages')
       }
     }
     // No `packages:` (or an empty one): pnpm 10 keeps its settings and catalogs in this file
@@ -386,50 +363,21 @@ async function readRootManifests(
   }
   const pkgPath = path.join(dir, 'package.json')
   const pkgBytes = await readOnce(reads, pkgPath)
-  if (pkgBytes === null) return { globs: yamlWithoutPackages ? [] : null, catalogs }
+  if (pkgBytes === null) return yamlWithoutPackages ? [] : null
   const pkg = parsePackageJson(decoder.decode(pkgBytes), pkgPath)
   const ws = pkg.workspaces as unknown
-  if (yaml === null) {
-    catalogs = catalogsOf(
-      ws !== null && typeof ws === 'object' && !Array.isArray(ws) ? [pkg, ws] : [pkg],
-    )
-  }
-  if (ws === undefined || ws === null) return { globs: ['.'], catalogs }
+  if (ws === undefined || ws === null) return ['.']
   // bun's `{ catalog }` and yarn's `{ nohoist }` name no members, and both
   // managers run the root alone; vx refused them as no array (D-151).
-  if (typeof ws === 'object' && !Array.isArray(ws) && !('packages' in ws)) {
-    return { globs: ['.'], catalogs }
-  }
+  if (typeof ws === 'object' && !Array.isArray(ws) && !('packages' in ws)) return ['.']
   if (ws && typeof ws === 'object' && !Array.isArray(ws) && 'packages' in ws) {
     const packages = (ws as { packages?: unknown }).packages
     // Yarn 1 and 4 run the root alone under `packages: null`; read as an
     // empty list, the root was no project and every verb ran nothing (D-150).
-    if (packages === null) return { globs: ['.'], catalogs }
-    return { globs: assertGlobList(packages, pkgPath, 'workspaces.packages'), catalogs }
+    if (packages === null) return ['.']
+    return assertGlobList(packages, pkgPath, 'workspaces.packages')
   }
-  return { globs: assertGlobList(ws, pkgPath, 'workspaces'), catalogs }
-}
-
-/**
- * The `catalog` and `catalogs` keys of the manifests (bun reads them at
- * the top level and under `workspaces`), or undefined when none declares
- * one. An entry that is not a mapping is no catalog: a `catalog:` spec
- * through it keeps its edge, as one through an unknown catalog does.
- */
-function catalogsOf(manifests: readonly object[]): Catalogs | undefined {
-  const isMap = (v: unknown): v is Record<string, unknown> =>
-    typeof v === 'object' && v !== null && !Array.isArray(v)
-  let out: Map<string, Readonly<Record<string, unknown>>> | undefined
-  for (const m of manifests) {
-    const { catalog, catalogs } = m as { catalog?: unknown; catalogs?: unknown }
-    if (isMap(catalogs)) {
-      for (const [name, c] of Object.entries(catalogs))
-        if (isMap(c)) (out ??= new Map()).set(name, c)
-    }
-    // `catalog` is the default catalog to pnpm and bun.
-    if (isMap(catalog)) (out ??= new Map()).set('default', catalog)
-  }
-  return out
+  return assertGlobList(ws, pkgPath, 'workspaces')
 }
 
 /**
@@ -622,14 +570,14 @@ const repoIds = new Map<string, Promise<string | null>>()
  * itself is treated as a single-project workspace.
  */
 export async function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace> {
-  const { globs: packageGlobs, catalogs } = await readRootManifests(root, reads)
+  const packageGlobs = await readPackageGlobs(root, reads)
   if (packageGlobs === null) {
     // The CLI never lands here (findWorkspaceRoot returns only a dir that
     // passes one of the two checks); a direct call of this public function
     // on a bare dir does (D-58).
     throw new UserError(`workspace root ${root} has neither pnpm-workspace.yaml nor package.json`)
   }
-  return catalogs === undefined ? { root, packageGlobs } : { root, packageGlobs, catalogs }
+  return { root, packageGlobs }
 }
 
 // `<dir>/*` — the shape of nearly every workspace glob. Anything with another
@@ -954,7 +902,7 @@ export async function discoverProjects(
     }
     if (group.length === 1) {
       const { dir, pkg, configPath } = group[0]!
-      projects.push(withCatalogs({ name, dir, packageJson: pkg, configPath }, workspace))
+      projects.push({ name, dir, packageJson: pkg, configPath })
       continue
     }
     // The root's own manifest is '' relative to itself, and the refusal read
@@ -1107,7 +1055,7 @@ export async function discoveredProject(
     )
   }
   return {
-    meta: withCatalogs({ name, dir, packageJson: pkg, configPath }, workspace),
+    meta: { name, dir, packageJson: pkg, configPath },
     added: true,
   }
 }
@@ -1123,7 +1071,7 @@ export function linkDiscoveredEdges(
   edges: ReadonlyArray<{
     readonly by: string
     readonly meta: ProjectMeta
-    readonly deps: readonly string[]
+    readonly deps: readonly string[] | undefined
     readonly reach: readonly string[]
   }>,
 ): void {
@@ -1132,8 +1080,11 @@ export function linkDiscoveredEdges(
   const deps = new Map<ProjectMeta, Set<string>>()
   const reach = new Map<ProjectMeta, Set<string>>()
   for (const edge of edges) {
+    // An entry carrying `deps`, even none, makes its project a leaf of an
+    // edge source rather than a project no plugin spoke for.
+    if (edge.deps !== undefined && !deps.has(edge.meta)) deps.set(edge.meta, new Set())
     for (const [kind, into] of [
-      [edge.deps, deps],
+      [edge.deps ?? [], deps],
       [edge.reach, reach],
     ] as const) {
       for (const target of kind) {
@@ -1153,9 +1104,4 @@ export function linkDiscoveredEdges(
   }
   for (const [meta, names] of deps) meta.deps = [...names].sort()
   for (const [meta, names] of reach) meta.reach = [...names].sort()
-}
-
-function withCatalogs(meta: ProjectMeta, workspace: Workspace): ProjectMeta {
-  if (workspace.catalogs !== undefined) meta.catalogs = workspace.catalogs
-  return meta
 }

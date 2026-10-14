@@ -52,7 +52,11 @@ function refusal(
   try {
     buildTaskGraph({
       projects: entries,
-      packageGraph: { directDeps: () => [], transitiveDeps: () => [] } as unknown as PackageGraph,
+      packageGraph: {
+        edgeSource: true,
+        directDeps: () => [],
+        transitiveDeps: () => [],
+      } as unknown as PackageGraph,
       requested: [...entries.values()].flatMap((e) =>
         Object.keys(e.config.tasks ?? {}).map((t) => ({ project: e.name, task: t })),
       ),
@@ -234,7 +238,7 @@ describe('rules.upfrontKeys end to end', () => {
   }, 30_000)
 
   it("the default build a config's project gets reads `**` beside its tasks' outputs and loads", async () => {
-    const root = await makeWorkspace({ prefix: 'vx-upfront-default-' })
+    const root = await makeWorkspace({ prefix: 'vx-upfront-default-', edges: { app: ['lib'] } })
     try {
       await addProject(root, 'lib', {
         config: `export default { tasks: { test: {
@@ -243,7 +247,6 @@ describe('rules.upfrontKeys end to end', () => {
         } } }`,
       })
       await addProject(root, 'app', {
-        deps: { lib: '*' },
         config: `export default { tasks: { build: {
           dependsOn: ['^build'],
           exec: { command: 'true' },

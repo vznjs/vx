@@ -50,7 +50,7 @@ let root: string
 let app: string
 
 beforeEach(async () => {
-  root = await makeWorkspace({ prefix: 'vx-undeclared-' })
+  root = await makeWorkspace({ prefix: 'vx-undeclared-', edges: { app: ['lib'] } })
 })
 
 afterEach(async () => {
@@ -160,7 +160,6 @@ describe('the run-start facts a producer can contradict, each one', () => {
         files: { 'config.json': 'X' },
       })
       app = await addProject(root, 'app', {
-        deps: { lib: 'workspace:*' },
         config: `
           export default {
             tasks: {
@@ -419,7 +418,6 @@ describe('the stability gate reads the reach', () => {
       `,
     })
     await addProject(root, 'app', {
-      deps: { lib: 'workspace:*' },
       config: `
         export default {
           tasks: {

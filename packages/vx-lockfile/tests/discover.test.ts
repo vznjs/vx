@@ -13,9 +13,11 @@ import type { DiscoverContext, Logger, ProjectMeta, VxPlugin } from '@vzn/vx'
 import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { bun, npm, pnpm, yarn } from '../src/index.js'
 import { CLASSIC_EDGES } from '../src/yarn.js'
+import { commitAll } from './helpers/affected.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
 
 const PNPM = `lockfileVersion: '9.0'
 
@@ -351,6 +353,36 @@ describe('vx run with bun() declared', () => {
     )
     // a builds after b, so its key folds b's: the cascade, not the input.
     expect(moved.sort()).toEqual(['a#build', 'b#build'])
+  })
+
+  // Core reads no manifest edge and diffs no manifest: the dependency an
+  // install added reaches `--affected` only as the lockfile's change. Here
+  // the lockfile alone records it (these manifests declare none), so no
+  // project's own file moved.
+  it('--affected after a dependency add selects the dependent through the lockfile diff', async () => {
+    await plan() // writes the lock
+    commitAll(root)
+    const affected = (): string => {
+      const r = Bun.spawnSync({
+        cmd: [process.execPath, CORE_BIN, 'show', '--affected=HEAD'],
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      expect(r.exitCode).toBe(0)
+      return r.stdout.toString()
+    }
+    expect(affected()).toBe('')
+    await writeFile(
+      path.join(root, 'bun.lock'),
+      BUN.replace(
+        '"name": "d", "peerDependencies"',
+        '"name": "d", "dependencies": { "e": "workspace:*" }, "peerDependencies"',
+      ),
+    )
+    // d gained e, and c and a build after d; e and b, whose closures did not move, are not.
+    expect(affected()).toBe(
+      'a  packages/a  2 tasks\nc  packages/c  2 tasks\nd  packages/d  2 tasks\n',
+    )
   })
 
   // package.json is an input now; under the default `immutable` the entry

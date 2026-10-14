@@ -74,11 +74,9 @@ function world(rnd: Rnd): World {
     projects.push({
       name,
       dir: dir === '' ? ROOT : `${ROOT}/${dir}`,
-      packageJson: {
-        name,
-        dependencies: Object.fromEntries(manifest.map((d) => [d, 'workspace:*'])),
-      },
+      packageJson: { name },
       configPath: null,
+      deps: manifest,
     })
   })
   // Discovery order is not the dependency order.
@@ -285,7 +283,7 @@ function oracle(w: World, specs: Spec[]): Set<string> {
 function select(w: World, raws: string[], noMatch?: string[]): Set<string> {
   const edges = new Map<string, string[]>()
   for (const p of w.projects) {
-    const manifest = Object.keys(p.packageJson.dependencies as Record<string, string>)
+    const manifest = p.deps ?? []
     edges.set(
       p.name,
       [...w.deps.get(p.name)!].filter((d) => !manifest.includes(d)),

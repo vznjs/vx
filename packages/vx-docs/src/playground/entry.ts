@@ -3,10 +3,11 @@
 // in item 695).
 //
 // Everything below the shim is core's own source, bundled unchanged:
-// discovery (`loadWorkspace`, `listProjects`), the package graph, the
-// staged-config load (`loadProjects`), config validation, the task graph,
-// the workspace fingerprint, the git-enumeration partition, `plan()` with
-// the real key fold (`foldKey`) and the scheduler. What this
+// discovery (`loadWorkspace`, `listProjects`), the package graph over the
+// page's edges (edges.ts), the staged-config load (`loadProjects`), config
+// validation, the task graph, the workspace fingerprint, the
+// git-enumeration partition, `plan()` with the real key fold (`foldKey`)
+// and the scheduler. What this
 // file supplies is what `prepareRun` gets from the machine: the git
 // enumeration (every VFS file tracked and clean, its OID a git blob SHA-1),
 // the evaluated configs (plain objects, as a `vx.config.mjs` default export
@@ -24,6 +25,7 @@ import {
   buildPackageGraph,
   computeNestedProjectDirs,
   computeWorkspaceFingerprints,
+  linkDiscoveredEdges,
   listProjects,
   loadWorkspace,
   validateProjectConfig,
@@ -40,6 +42,7 @@ import { computeReverseDepCount } from '../../../vx/src/graph/priorities.js'
 import { loadProjects } from '../../../vx/src/orchestrator/projects.js'
 import { plan } from '../../../vx/src/orchestrator/plan.js'
 import { createHashCache, type TaskInputComponent } from '../../../vx/src/orchestrator/task-hash.js'
+import { manifestEdges } from './edges.js'
 
 export { evaluateConfig } from './config-eval.js'
 // The page names what moved a key by the rule `vx why` does (item 703).
@@ -179,6 +182,18 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
 
   const workspace = await loadWorkspace(root)
   const metas = await listProjects(workspace)
+  // The `discover` stage with the page's one edge source in it.
+  const byDir = new Map(metas.map((m) => [m.dir, m]))
+  linkDiscoveredEdges(
+    root,
+    metas,
+    manifestEdges(metas).map((e) => ({
+      by: 'playground',
+      meta: byDir.get(e.dir)!,
+      deps: e.deps,
+      reach: [],
+    })),
+  )
   const packageGraph = buildPackageGraph(metas)
   const staged = new Map<string, ProjectEntry>()
   for (const meta of metas) {

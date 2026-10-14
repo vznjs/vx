@@ -19,12 +19,16 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { run } from './helpers/orchestrator.js'
 import { waitForProducers } from './helpers/local-workspace.js'
+import { edgesSource } from './helpers/plugin.js'
+
+// The edges every row's projects take, whichever of them a row adds.
+const EDGES = { app: ['lib', 'liba'], liba: ['libb'] }
 
 describe('orchestrator e2e — keys, inputs and invalidation', () => {
   let fixture: Fixture
 
   beforeEach(async () => {
-    fixture = await makeWorkspace()
+    fixture = await makeWorkspace(undefined, EDGES)
   })
 
   afterEach(async () => {
@@ -260,7 +264,6 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         `,
       })
       const appDir = await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         files: { 'src/y.txt': 'app' },
         config: `
           export default {
@@ -324,12 +327,10 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         config: build('cat src/x.txt > dist.txt'),
       })
       await addProject(fixture.root, 'liba', {
-        deps: { libb: 'workspace:*' },
         files: { 'src/x.txt': 'a' },
         config: build('cat ../libb/dist.txt > dist.txt'),
       })
       const appDir = await addProject(fixture.root, 'app', {
-        deps: { liba: 'workspace:*' },
         files: { 'src/x.txt': 'app' },
         config: build('cat ../liba/dist.txt > dist.txt'),
       })
@@ -372,7 +373,6 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         `,
       })
       await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         files: { 'src/y.txt': 'app' },
         config: `
           export default {
@@ -422,7 +422,6 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         `,
       })
       const appDir = await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         files: { 'src/y.txt': 'app' },
         config: `
           export default {
@@ -667,7 +666,6 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         `,
       })
       const appDir = await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         files: { 'src/y.txt': 'app' },
         config: `
           export default {
@@ -733,7 +731,6 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
       // Its `build` filters self to ['codegen'] but DOESN'T set dependencies
       // -> dependencies bucket should default to all-of-deps' build.
       const appDir = await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         files: { 'src/y.txt': 'app' },
         config: `
           export default {
@@ -807,7 +804,6 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
       })
 
       const appDir = await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         files: { 'src/y.txt': 'app' },
         config: `
           export default {
@@ -866,7 +862,6 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         `,
       })
       await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         config: `
           export default {
             tasks: {
@@ -1151,7 +1146,6 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         `
       await addProject(fixture.root, 'lib', { files: { 'src/x.txt': 'l' }, config: build('lib') })
       await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         files: { 'src/x.txt': 'a' },
         config: build('app'),
       })
@@ -1452,7 +1446,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
           }
         `,
       })
-      await waitForProducers(fixture.root)
+      await waitForProducers(fixture.root, [edgesSource(EDGES)])
       const statuses = async () => {
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
         return Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))

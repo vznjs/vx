@@ -576,6 +576,17 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       // last (`resolveDeferred`), and a walk that meets it on a cycle takes
       // the edge and goes on past it, so the builds it could not depend on
       // still come first.
+      //
+      // With no edge source every `^` resolves to nothing and its upstream
+      // folds into no key: a stale hit, green. With one, a project with no
+      // deps is a leaf. The default `build`'s `^build` is no exception: a
+      // task behind it would fold no upstream either.
+      if (!packageGraph.edgeSource) {
+        throw new UserError(
+          `${id}: ^${spec.task} needs project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns \`deps\``,
+          'VX_E_DEPENDS_ON',
+        )
+      }
       const visited = new Set<string>([projectName])
       if (!isTaskPattern(spec.task)) {
         const held = walkHolders(frame, spec.task, visited, projectName)

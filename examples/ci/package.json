@@ -7,6 +7,7 @@
   "devDependencies": {
     "@vzn/vx": "latest",
     "@vzn/vx-ci": "latest",
+    "@vzn/vx-lockfile": "latest",
     "@vzn/vx-reapi": "latest"
   }
 }

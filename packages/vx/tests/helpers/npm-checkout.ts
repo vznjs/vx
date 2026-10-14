@@ -6,7 +6,7 @@
 // reconciled the tree and brought the RELEASED core, whose schema this
 // checkout may have bumped, and a release whose peer ranges this
 // checkout's versions miss failed it on ERESOLVE.
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -45,9 +45,36 @@ export function installFromCheckout(root: string, names: readonly string[]): voi
   writeFileSync(manifest, JSON.stringify({ ...pkg, devDependencies: dev }, null, 2))
   // npm writes its lockfile on an install, and the migrator's report
   // names the lockfile plugin for it: a stand-in without one printed a
-  // report no user sees.
+  // report no user sees. Its workspace links are the edges npm() reads.
   const lock = path.join(root, 'package-lock.json')
-  if (!existsSync(lock)) writeFileSync(lock, '{"lockfileVersion":3,"packages":{}}\n')
+  if (!existsSync(lock)) writeFileSync(lock, `${JSON.stringify(npmWorkspaceLock(root), null, 2)}\n`)
+}
+
+/** The workspace half of the lockfile npm 10 writes for `root`'s `packages/*` members. */
+export function npmWorkspaceLock(root: string): unknown {
+  const pkg = (rel: string) =>
+    JSON.parse(readFileSync(path.join(root, rel, 'package.json'), 'utf8')) as {
+      name: string
+      version?: string
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+  const top = pkg('.')
+  const packages: Record<string, unknown> = {
+    '': { name: top.name, workspaces: ['packages/*'], devDependencies: top.devDependencies },
+  }
+  const members = path.join(root, 'packages')
+  for (const dir of existsSync(members) ? readdirSync(members).sort() : []) {
+    if (!existsSync(path.join(members, dir, 'package.json'))) continue
+    const m = pkg(`packages/${dir}`)
+    packages[`node_modules/${m.name}`] = { resolved: `packages/${dir}`, link: true }
+    packages[`packages/${dir}`] = {
+      version: m.version ?? '0.0.0',
+      ...(m.dependencies === undefined ? {} : { dependencies: m.dependencies }),
+      ...(m.devDependencies === undefined ? {} : { devDependencies: m.devDependencies }),
+    }
+  }
+  return { name: top.name, lockfileVersion: 3, requires: true, packages }
 }
 
 /** What `npm uninstall <names>` leaves in `root`: the links and listings gone. */

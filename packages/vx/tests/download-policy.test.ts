@@ -15,7 +15,7 @@ import { formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import { deferralEligibility, resolveDownloadModes } from '../src/orchestrator/download-policy.js'
 import { DeferredOutputs } from '../src/orchestrator/deferred-outputs.js'
 import type { TaskNode } from '../src/graph/index.js'
-import { pluginSource } from './helpers/plugin.js'
+import { edgesSource, pluginSource } from './helpers/plugin.js'
 
 // ── unit: the eligibility gate ──────────────────────────────────────
 
@@ -423,7 +423,7 @@ async function fixture(
     await mkdir(path.join(root, 'packages', 'pkg-c', 'src'), { recursive: true })
     await Bun.write(
       path.join(root, 'packages', 'pkg-c', 'package.json'),
-      JSON.stringify({ name: 'pkg-c', version: '0.0.0', dependencies: { 'pkg-a': 'workspace:*' } }),
+      JSON.stringify({ name: 'pkg-c', version: '0.0.0' }),
     )
     await Bun.write(path.join(root, 'packages', 'pkg-c', 'src', 'm.txt'), 'm\n')
     await Bun.write(
@@ -434,16 +434,14 @@ async function fixture(
     )
   }
   const consumers = opts.consumers ?? 1
+  const edges: Record<string, string[]> = opts.chain === true ? { 'pkg-c': ['pkg-a'] } : {}
   for (let i = 0; i < consumers; i++) {
     const name = `pkg-b${i === 0 ? '' : i}`
+    edges[name] = [opts.chain === true ? 'pkg-c' : 'pkg-a']
     await mkdir(path.join(root, 'packages', name, 'src'), { recursive: true })
     await Bun.write(
       path.join(root, 'packages', name, 'package.json'),
-      JSON.stringify({
-        name,
-        version: '0.0.0',
-        dependencies: opts.chain === true ? { 'pkg-c': 'workspace:*' } : { 'pkg-a': 'workspace:*' },
-      }),
+      JSON.stringify({ name, version: '0.0.0' }),
     )
     await Bun.write(path.join(root, 'packages', name, 'src', 'x.txt'), 'x\n')
     await Bun.write(
@@ -497,6 +495,7 @@ async function fixture(
          },
        }`,
         ),
+        edgesSource(edges),
       ],
       '',
       WAIT_FOR_PRODUCERS,

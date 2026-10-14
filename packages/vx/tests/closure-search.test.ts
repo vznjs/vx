@@ -1,7 +1,7 @@
 // `transitiveDeps` answers its first few questions by a search from the
 // seed and the rest from the whole graph's bitsets. Both must give the same
-// closure in the same order, over any graph the manifests can draw: dev,
-// optional and peer edges, a peer that would close a cycle, and a true cycle.
+// closure in the same order, over any graph plugins can draw: order edges,
+// reach-only edges, and a true cycle.
 
 import { describe, expect, it } from 'bun:test'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
@@ -24,14 +24,14 @@ function workspace(seed: number, cyclic: boolean): ProjectMeta[] {
   const n = 30
   const names = Array.from({ length: n }, (_, i) => `p${String(i).padStart(2, '0')}`)
   return names.map((name, i) => {
-    const pick = (): Record<string, string> => {
-      const out: Record<string, string> = {}
+    const pick = (): string[] => {
+      const out: string[] = []
       for (let j = 0; j < n; j++) {
         // Mostly toward later packages (a DAG); a cyclic workspace also
         // points back.
         const forward = j > i && next() < 0.12
         const back = cyclic && j < i && next() < 0.03
-        if (forward || back) out[names[j]!] = 'workspace:*'
+        if (forward || back) out.push(names[j]!)
       }
       return out
     }
@@ -39,14 +39,10 @@ function workspace(seed: number, cyclic: boolean): ProjectMeta[] {
       name,
       dir: `/ws/${name}`,
       configPath: null,
-      packageJson: {
-        name,
-        version: '1.0.0',
-        dependencies: pick(),
-        devDependencies: pick(),
-        peerDependencies: pick(),
-      },
-    } as unknown as ProjectMeta
+      packageJson: { name },
+      deps: [...pick(), ...pick()],
+      reach: pick(),
+    }
   })
 }
 

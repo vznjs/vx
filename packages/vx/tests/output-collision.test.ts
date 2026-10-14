@@ -52,6 +52,7 @@ function graph(projects: Record<string, Record<string, TaskConfig>>, rules?: Wor
     } as ProjectEntry)
   }
   const pkg = {
+    edgeSource: true,
     transitiveDeps: () => [],
     directDeps: () => [],
     has: () => false,
@@ -85,6 +86,7 @@ function graphNodes(projects: Record<string, Record<string, TaskConfig>>): Map<s
     } as ProjectEntry)
   }
   const pkg = {
+    edgeSource: true,
     transitiveDeps: () => [],
     directDeps: () => [],
     has: () => false,
@@ -1154,7 +1156,7 @@ describe('collision rows the C-30 sweep found unheld', () => {
           build: { ...task([], ['dist/a.txt']), dependsOn: ['root#build'] } as TaskConfig,
         }),
       ]),
-      packageGraph: { directDeps: () => [] } as unknown as PackageGraph,
+      packageGraph: { edgeSource: true, directDeps: () => [] } as unknown as PackageGraph,
       requested: [
         { project: 'root', task: 'build' },
         { project: 'a', task: 'build' },
