@@ -15,18 +15,18 @@ directory is exempt by name: the site's playground
 the browser, not a consumer of its API, and
 `tests/playground-parity.unsafe.test.ts` holds it to the CLI:
 
-| Package                        | What                                                                                                                                                                                                                          |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/vx`                  | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                                                                    |
-| `packages/vx-otel`             | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces, metrics and logs, zero SDK deps                                                                                                                            |
-| `packages/vx-reapi`            | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                                                              |
-| `packages/vx-ci`               | `@vzn/vx-ci` — `github()` telemetry plugin: the GitHub Actions job summary and a Checks API run                                                                                                                               |
-| `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`                                                   |
-| `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI                                                  |
-| `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim`; `vx prune` (Docker subset, lockfile pruned) |
-| `packages/vx-docs`             | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                                                                           |
-| `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                                                                         |
-| `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                                                                   |
+| Package                        | What                                                                                                                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vx`                  | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                       |
+| `packages/vx-otel`             | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces, metrics and logs, zero SDK deps                                                                               |
+| `packages/vx-reapi`            | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                 |
+| `packages/vx-ci`               | `@vzn/vx-ci` — `github()` telemetry plugin: the GitHub Actions job summary and a Checks API run                                                                                  |
+| `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`      |
+| `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI     |
+| `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
+| `packages/vx-docs`             | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                              |
+| `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
+| `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (42 runtime symbols, a deliberate
@@ -337,8 +337,7 @@ never branches on layering.
 2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
    `cache`, `lock`, `init`, `upgrade`, `show`, `info`, `why`, `last`,
    `docs`, `completions`, `help`, `version`; any other
-   verb is asked of the workspace's plugins (`commands` seam — `vx prune`
-   is one).
+   verb is asked of the workspace's plugins (`commands` seam).
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
    object (including the 4-axis cache policy from `--cache-policy` /
    `--no-cache` / `--force`). Surfaces parse errors as `RunArgs.error`

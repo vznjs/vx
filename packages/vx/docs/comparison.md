@@ -291,7 +291,7 @@ upstream repos.
    time: a task's command is exactly what its config says.
    - vite-task: `enablePrePostScripts` (default true).
 
-10. **`vx prune` — shipped (2026-08-25), `@vzn/vx-prune` from 2026-09-10, removed 2026-09-11, back 2026-10-03 as a verb of `@vzn/vx-lockfile`.** Workspace subset for Docker
+10. **`vx prune` — shipped (2026-08-25), `@vzn/vx-prune` from 2026-09-10, removed 2026-09-11, back 2026-10-03 as a verb of `@vzn/vx-lockfile`, removed 2026-10-14.** Workspace subset for Docker
     builds: targets + transitive workspace deps, workspace lists rewritten,
     root manifests and vx configs, each lockfile (bun, pnpm, npm, yarn)
     PRUNED to what the subset installs so it installs frozen, `--docker`

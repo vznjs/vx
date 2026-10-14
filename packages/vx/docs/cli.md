@@ -3006,23 +3006,6 @@ latest cache entry's key.
 Exit codes: `0` the task's run explained; `1` no recorded run of the
 task, a `--run` with no row for it, or a parse error.
 
-## `vx prune`
-
-```
-vx prune <project...> [--out-dir <dir>] [--docker] [--production]
-```
-
-A plugin verb of `@vzn/vx-lockfile`: declaring `pnpm()`, `bun()`,
-`npm()` or `yarn()` adds it. It copies the named projects, their
-transitive workspace dependencies, the root manifests (workspace lists
-rewritten to the subset), the vx configs and each lockfile pruned to what
-the subset installs into `--out-dir` (default `out/`), so a Docker build
-installs it with a frozen lockfile; `--docker` splits `json/` (the
-install layer) from `full/`; `--production` leaves out a workspace
-package only a dev dependency reaches and strikes it from the kept
-manifests and lockfiles. `turbo prune`. Reference:
-`packages/vx-lockfile/README.md` § `vx prune`.
-
 ## `vx last`
 
 Replay a recorded run's summary from the local history — no
@@ -3215,8 +3198,8 @@ the workspace config from the cwd to find them (outside a workspace the
 verb is simply unknown). A plugin verb that names a core verb, or one
 plugins of two packages both declare, is refused when the workspace
 loads — such a verb could never run, or would hide the other plugin's.
-Plugins of one package are one owner (`bun()` and `pnpm()` both carry
-`prune`): the first declared runs. A plugin verb's
+Plugins of one package are one owner (two of its plugins may carry the
+same verb): the first declared runs. A plugin verb's
 return value is the exit code, an integer 0–255 (anything else — nothing,
 a fraction, 256, which the OS would keep as 0 — fails naming the plugin
 and the verb), and a thrown `UserError` prints as
