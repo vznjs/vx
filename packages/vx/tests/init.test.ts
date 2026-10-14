@@ -1736,6 +1736,48 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  it('in a nested workspace the outer one does not list, it scaffolds the NESTED one', async () => {
+    // The outer vx.workspace.ts was taken for the root: init said "no files
+    // written" and listed the outer configs, and the nested workspace the
+    // user stood in stayed without one.
+    // npm, Yarn and Bun own a nested root only when they list it; pnpm takes
+    // the nearest pnpm-workspace.yaml, listed or not (findManifestRoot).
+    const root = await makeRoot('vx-init-nested-ws-')
+    await rm(path.join(root, 'pnpm-workspace.yaml'))
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'outer', private: true, workspaces: ['packages/*'] }),
+    )
+    await addPackage(root, 'a', { build: 'echo a' })
+    await writeFile(path.join(root, 'vx.workspace.ts'), 'export default {}\n')
+    const inner = path.join(root, 'tools', 'inner')
+    await mkdir(path.join(inner, 'pkgs', 'z'), { recursive: true })
+    await writeFile(
+      path.join(inner, 'package.json'),
+      JSON.stringify({ name: 'inner', private: true, workspaces: ['pkgs/*'] }),
+    )
+    await writeFile(
+      path.join(inner, 'pkgs', 'z', 'package.json'),
+      JSON.stringify({ name: 'z', scripts: { build: 'echo z' } }),
+    )
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    try {
+      const r = await vx(inner, ['init'])
+      expect(r.code).toBe(0)
+      expect(existsSync(path.join(inner, 'vx.workspace.ts'))).toBe(true)
+      expect(existsSync(path.join(inner, 'pkgs', 'z', 'vx.config.ts'))).toBe(true)
+      // CONTROL: the outer workspace is untouched.
+      expect(existsSync(path.join(root, 'packages', 'a', 'vx.config.ts'))).toBe(false)
+      // A member of the outer workspace still resolves to the outer root.
+      const m = await vx(path.join(root, 'packages', 'a'), ['init'])
+      expect(m.code).toBe(0)
+      expect(existsSync(path.join(root, 'packages', 'a', 'vx.config.ts'))).toBe(true)
+      expect(existsSync(path.join(root, 'packages', 'a', 'vx.workspace.ts'))).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('a run in a workspace with no vx config at all names `vx init`', async () => {
     const root = await makeRoot('vx-init-first-run-')
     await addPackage(root, 'w', { build: 'echo hi' })

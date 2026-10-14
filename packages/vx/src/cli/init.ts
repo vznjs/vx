@@ -558,5 +558,14 @@ async function readRootManifest(root: string): Promise<Record<string, unknown>> 
  */
 async function initRoot(reads: LoadReads): Promise<string> {
   const cwd = process.cwd()
-  return findWorkspaceRoot(cwd).catch(() => findManifestRoot(cwd, reads))
+  const marked = await findWorkspaceRoot(cwd).catch(() => undefined)
+  if (marked === undefined) return findManifestRoot(cwd, reads)
+  // A nested workspace the outer one does not list is its own: the outer
+  // vx.workspace.ts made init report the outer configs and write nothing.
+  const manifest = await findManifestRoot(cwd, reads).catch(() => marked)
+  if (manifest.startsWith(`${marked}${path.sep}`)) {
+    const nested = await loadWorkspace(manifest, reads).catch(() => undefined)
+    if (nested !== undefined && nested.packageGlobs.length > 0) return manifest
+  }
+  return marked
 }
