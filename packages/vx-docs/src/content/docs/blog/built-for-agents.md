@@ -48,7 +48,7 @@ $ vx run build --all --format json 2>/dev/null
 ```
 
 `savedMs` is the time the cache saved this run. `vx show`, `vx info`,
-`vx why`, `vx last` and `vx cache prune` take the same `--format json`.
+`vx why`, `vx last` and `vx cache clean` take the same `--format json`.
 
 ## Every shape has a schema
 
