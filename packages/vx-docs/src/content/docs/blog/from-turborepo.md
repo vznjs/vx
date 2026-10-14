@@ -1,12 +1,12 @@
 ---
-title: 'Moving to vx from Turborepo: a temporary start, then native config'
+title: 'Moving to vx from Turborepo: one command to native config'
 date: 2026-09-10T23:32:00Z
 authors:
   - vzn
 tags:
   - migration
   - turborepo
-excerpt: "Moving a Turborepo workspace to vx: a two-line workspace file is a temporary start, and one command writes the native TypeScript configs that are the goal."
+excerpt: "Moving a Turborepo workspace to vx: `vx init` writes the native TypeScript configs beside turbo.json, and `--keep` checks the mapping first if you want it."
 ---
 
 vx is shaped like Turborepo on purpose. Same per-package model, same
@@ -15,19 +15,32 @@ vx is shaped like Turborepo on purpose. Same per-package model, same
 almost nothing has to change in how you think about the graph; what
 changes is where the config lives and what it can say.
 
-## Step zero: a temporary start
+## One command
 
-`turbo()` from `@vzn/vx-migrate` fills vx's `project` stage from your existing
-`turbo.json` and each package's scripts. It is a bridge while you
-migrate, not a way to keep turbo.json: vx is fast on native config, and
-only native config is what its benchmarks measure. `vx init` writes it
-beside `turbo.json`:
+`npx @vzn/vx init` beside `turbo.json` is the whole adoption. It reads
+the root pipeline and any per-package `extends`, inlines the matching
+`package.json` script as the task's command, and writes one
+`vx.config.ts` per package, a `.vx/workspace.ts` declaring your
+lockfile's plugin, and `.vx/projects.lock.json`. It installs vx with
+your own package manager and never overwrites a file without `--force`:
 
 ```bash
-npm install -D @vzn/vx       # or pnpm / yarn / bun
-npx @vzn/vx init                  # writes .vx/workspace.ts, below, and prints next:
-npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx run build --all   # the next: line
+npx @vzn/vx init              # native vx.config.ts files, .vx/workspace.ts, the lock
+npx @vzn/vx run build --all   # what turbo run build did, under vx's cache
 ```
+
+A task goes where the script exists, and to a package without it that
+another package's `^` task reaches: a cached `true` with no outputs,
+Turbo's no-op node, so an edit there still re-keys its dependants.
+Anything it cannot infer becomes a `TODO(vx-migrate)` comment, never a
+silently wrong value. Review those, and once `vx run build --all` does
+what `turbo run build` did, delete `turbo.json`.
+
+## Check the mapping first
+
+`npx @vzn/vx init --keep` writes only a `.vx/workspace.ts` that runs
+`turbo.json` unchanged through `turbo()` from `@vzn/vx-migrate`, and
+prints a `next:` line that installs it and builds once:
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -37,32 +50,11 @@ import { npm } from '@vzn/vx-lockfile'
 export default { plugins: [turbo(), npm()] } satisfies WorkspaceConfig
 ```
 
-Whatever the mapping cannot express becomes a warning on every run,
-which is the same list `bunx @vzn/vx-migrate --dry` prints once. A
-package that writes its own `vx.config.ts` keeps it; the plugin fills
-and never overwrites. So you can migrate one package at a time, until
-every package has its own config and `.vx/workspace.ts` drops `turbo()`.
-
-## Step one: let the tool write the files
-
-```bash
-bunx @vzn/vx-migrate --dry   # preview the generated files and a report
-bunx @vzn/vx-migrate         # write them; never overwrites without --force
-```
-
-`@vzn/vx-migrate` is its own package so it runs before any vx file
-exists, and it is the whole adoption in one command: in a terminal it
-asks native (the default) or keep (`--keep`, the `turbo()` file
-`vx init` writes), writes `.vx/workspace.ts` with the plugins the repo
-calls for, and installs what the files import. It reads the root pipeline and any per-package `extends`,
-inlines the matching `package.json` script as the task's command, and
-emits one `vx.config.ts` per package. A task goes where the script
-exists, and to a package without it that another package's `^` task
-reaches: a cached `true` with no outputs, Turbo's no-op node, so an edit
-there still re-keys its dependants. Anything it cannot infer becomes a `TODO(vx-migrate)`
-comment, never a silently wrong value. It renders from the same mapper
-`turbo()` runs, so the files say exactly what the plugin was
-already doing.
+It is a check, not a way to keep `turbo.json`: vx's benchmarks measure
+only native config. `bunx @vzn/vx-migrate --dry` then previews the
+files, and `bunx @vzn/vx-migrate` writes them and drops `turbo()`. It
+renders from the same mapper `turbo()` runs, so the files say exactly
+what the plugin was already doing.
 
 ## What maps, and what is better
 
