@@ -49,7 +49,6 @@ export interface PlanArgs {
   downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
   workspaceRoot: string
-  workspaceFingerprint: string
   cache: CacheLayer
   cachePolicy?: CachePolicy // a no-read policy predicts misses
   forwardArgs?: readonly string[] | undefined

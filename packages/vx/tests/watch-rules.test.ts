@@ -25,7 +25,7 @@ import {
   pollWatcher,
   WATCH_PROBE,
 } from '../src/cli/watch-fs.js'
-import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
+import { listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { edgesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { lock } from './helpers/orchestrator.js'
@@ -458,8 +458,8 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['packages/app/src/index.ts', true],
     ['packages/lib/package.json', true],
     ['packages/app', true],
-    ['pnpm-lock.yaml', true],
-    ['pnpm-workspace.yaml', true],
+    ['pnpm-lock.yaml', false], // no plugin claims it here: no key folds it
+    ['pnpm-workspace.yaml', true], // its `packages` are the member globs
     ['tsconfig.base.json', true],
     ['configs/tsconfig.strict.json', true],
     ['configs/README.md', true], // a `!` only narrows; one cache-hit cycle beats a missed edit
@@ -470,7 +470,7 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['tsconfig.json', false],
     // These pin the predicates' EXACTNESS: a basename or suffix match would
     // fail them.
-    ['nested/pnpm-lock.yaml', false], // a fingerprint NAME below the root is not the fingerprint
+    ['nested/pnpm-workspace.yaml', false], // the member globs are the root's alone
     ['.vx/workspace.ts', true], // the one root file that shapes a run without being an input
     ['.vx/workspace.mjs', true],
     ['nested/.vx/workspace.ts', false],
@@ -490,6 +490,15 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     const unclaimed = makeRootEventFilter(root, [], [])
     expect([claimed('turbo.json'), unclaimed('turbo.json')]).toEqual([true, false])
     expect(claimed(path.join('nested', 'turbo.json'))).toBe(false)
+    // A lockfile is the same: an event only when a plugin claims it, since
+    // core folds no root file into a key.
+    const locked = makeRootEventFilter(root, [], [], new Set(['pnpm-lock.yaml']))
+    expect([locked('pnpm-lock.yaml'), unclaimed('pnpm-lock.yaml')]).toEqual([true, false])
+    expect([unclaimed('.npmrc'), unclaimed('bun.lock'), unclaimed('yarn.lock')]).toEqual([
+      false,
+      false,
+      false,
+    ])
   })
 
   it('a route directory in a workspaceFiles glob is the directory, not a class (item 667)', () => {
@@ -537,42 +546,20 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
   })
 })
 
-describe('the root-file trigger set does not drift from the fingerprint', () => {
-  it('reads the shared constant instead of a hand-rolled copy', async () => {
-    // A SOURCE assertion, because the defect has no runtime shape until someone
-    // adds a name: `watch.ts` used to carry its own literal list of the seven
-    // lockfile / workspace-definition files. That is the THIRD copy, and the
-    // `--affected` wave exported `WORKSPACE_FINGERPRINT_FILES` precisely so a
-    // second could not drift — it just missed this one.
-    //
-    // Add a name to the shared constant and, before the fix: every task's cache
-    // key folds it, `--affected` widens on it, and `vx watch` silently never
-    // re-runs on it. The loop looks alive while ignoring the one edit that
-    // invalidates the entire workspace.
+describe("the root-file trigger set is the plugins' claims, never a list of its own", () => {
+  it('names no lockfile or install setting in the watch sources', async () => {
+    // A SOURCE assertion: `watch.ts` once carried its own literal list of
+    // the lockfiles core folded, a copy that drifted. Core folds no root
+    // file now, so a lockfile triggers a cycle only as a claimed file
+    // (`VxPlugin.fingerprint`); a name re-added here would run cycles for a
+    // file no key reads, or — worse — hide that the claim is the rule.
     const read = (f: string) => Bun.file(path.join(import.meta.dir, '..', 'src', 'cli', f)).text()
-    // The filter reads the constant; the loop must not hand-roll a copy either.
-    expect(await read('watch-filter.ts')).toContain('WORKSPACE_FINGERPRINT_FILES')
     const src =
       (await read('watch.ts')) +
       (await read('watch-filter.ts')) +
       (await read('watch-set.ts')) +
       (await read('watch-judge.ts'))
-    // No hand-rolled literals: re-adding the list fails HERE rather than
-    // silently reintroducing the drift — and this guard is not redundant with
-    // the lockfile e2e in cli.test.ts. Measured: with the hand-rolled list
-    // restored, that e2e still PASSED, because both lists carried the same seven
-    // names then. It only starts failing once someone adds a name to one of
-    // them, which is exactly the moment nobody is looking (`.yarnrc.yml`,
-    // turborepo#12635, was the eighth).
-    for (const name of WORKSPACE_FINGERPRINT_FILES) {
-      expect({ name, hardcoded: src.includes(`'${name}'`) }).toEqual({ name, hardcoded: false })
-    }
-  })
-
-  it('the shared constant still covers every manager vx fingerprints', () => {
-    // A control on the constant itself, so "reads the shared list" cannot pass
-    // by the shared list quietly shrinking.
-    expect([...WORKSPACE_FINGERPRINT_FILES].sort()).toEqual([
+    const names = [
       '.npmrc',
       '.yarnrc.yml',
       'bun.lock',
@@ -581,9 +568,11 @@ describe('the root-file trigger set does not drift from the fingerprint', () => 
       'npm-shrinkwrap.json',
       'package-lock.json',
       'pnpm-lock.yaml',
-      'pnpm-workspace.yaml',
       'yarn.lock',
-    ])
+    ]
+    for (const name of names) {
+      expect({ name, hardcoded: src.includes(`'${name}'`) }).toEqual({ name, hardcoded: false })
+    }
   })
 })
 

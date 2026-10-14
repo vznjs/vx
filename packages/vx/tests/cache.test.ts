@@ -187,12 +187,10 @@ describe('Cache.key', () => {
     return {
       taskId: 'pkg#build',
       taskConfigHash: 'config-hash-base',
-      projectPackageJsonHash: 'pkg-hash-base',
       envValues: [],
       inputFiles: [],
       workspaceRoot,
       upstreamHashes: [],
-      workspaceFingerprint: 'ws-fp-base',
     }
   }
 
@@ -380,35 +378,11 @@ describe('Cache.key', () => {
     expect(a).toBe(b)
   })
 
-  it('changes when the workspace fingerprint changes', async () => {
-    const a = await cache.key({ ...baseInput(), workspaceFingerprint: 'a' })
-    const b = await cache.key({ ...baseInput(), workspaceFingerprint: 'b' })
-    expect(a).not.toBe(b)
-  })
-
   it('produces different keys for two projects with identical relative trees', async () => {
     const f = await writeInput('a.txt', 'shared')
     const a = await cache.key({ ...baseInput(), taskId: 'pkg-a#build', inputFiles: [f] })
     const b = await cache.key({ ...baseInput(), taskId: 'pkg-b#build', inputFiles: [f] })
     expect(a).not.toBe(b)
-  })
-
-  // v12 — project package.json hash folded into every task's cache key
-  // implicitly (Turbo/Nx "implicit dependencies" parity).
-  it('changes when the projectPackageJsonHash changes', async () => {
-    const a = await cache.key({ ...baseInput(), projectPackageJsonHash: 'aaa' })
-    const b = await cache.key({ ...baseInput(), projectPackageJsonHash: 'bbb' })
-    expect(a).not.toBe(b)
-  })
-
-  it('treats projectPackageJsonHash = "" (no package.json) deterministically', async () => {
-    // Empty string is the documented sentinel for "project has no
-    // package.json" (impossible in practice — workspace discovery
-    // requires one — but we don't fail-loud). Two cold runs with
-    // an empty pkg hash must collide on every other axis.
-    const a = await cache.key({ ...baseInput(), projectPackageJsonHash: '' })
-    const b = await cache.key({ ...baseInput(), projectPackageJsonHash: '' })
-    expect(a).toBe(b)
   })
 
   it('zero-byte input files participate in the key (existence matters)', async () => {
@@ -476,8 +450,6 @@ describe('Cache.key', () => {
       ...baseInput(),
       taskId: 'pkg#build',
       taskConfigHash: 'cfg-1',
-      projectPackageJsonHash: 'pkg-1',
-      workspaceFingerprint: 'ws-1',
       forwardArgs: ['--watch', '--bail'],
       envValues: [['MODE', 'prod']],
       runtimeValues: [['node -v', 'v20']],
@@ -505,8 +477,6 @@ describe('Cache.key', () => {
     await cache.key({
       ...baseInput(),
       taskConfigHash: 'cfg-x',
-      projectPackageJsonHash: 'pkg-x',
-      workspaceFingerprint: 'ws-x',
       forwardArgs: ['--flag'],
       envValues: [
         ['MODE', 'a'],
@@ -523,8 +493,9 @@ describe('Cache.key', () => {
     const byKind = (kind: string): Array<{ name: string; hash: string }> =>
       sink.filter((r) => r.kind === kind).map((r) => ({ name: r.name, hash: r.hash }))
 
-    expect(byKind('workspace')).toEqual([{ name: 'fingerprint', hash: 'ws-x' }])
-    expect(byKind('package')).toEqual([{ name: 'package.json', hash: 'pkg-x' }])
+    // Core keys no package file: no workspace or package.json row.
+    expect(byKind('workspace')).toEqual([])
+    expect(byKind('package')).toEqual([])
     expect(byKind('config')).toEqual([{ name: 'config', hash: 'cfg-x' }])
     // Value-bearing kinds capture a DIGEST, never the plaintext — secrets in
     // env / runtime output / argv must not land in cache.db — and a digest
@@ -552,7 +523,7 @@ describe('Cache.key', () => {
     expect(files.map((r) => r.name).sort()).toEqual(['one.txt', 'two.txt'])
     // Total rows = sum of every component above.
     expect(byKind('format')).toEqual([{ name: 'cache-version', hash: 'vx-cache-v43' }])
-    expect(sink.length).toBe(1 + 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 2)
+    expect(sink.length).toBe(1 + 1 + 1 + 2 + 1 + 1 + 1 + 2)
   })
 
   it('captureInto never stores a plaintext secret value (only digests)', async () => {
@@ -2700,12 +2671,10 @@ describe('Cache schema/version recovery', () => {
       const input: CacheKeyInput = {
         taskId: 'pkg#build',
         taskConfigHash: 'cfg',
-        projectPackageJsonHash: 'pkg',
         envValues: [],
         inputFiles: [],
         workspaceRoot: cacheDir,
         upstreamHashes: [],
-        workspaceFingerprint: 'fp',
       }
       const realKey = await cache.key(input)
       // xxh3 hex = 16 chars

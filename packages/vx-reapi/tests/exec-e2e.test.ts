@@ -67,9 +67,7 @@ describe.if(run)('remote execution against a live scheduler + worker', () => {
         runtime: [],
         workspaceRuntime: [],
         upstream: [],
-        packageJsonDigest: '',
         configDigest: 'y',
-        workspaceFingerprint: 'z',
       },
       ...over,
     }) as unknown as ExecuteRequest
@@ -187,9 +185,7 @@ describe.if(run)("the node_modules chain: remote:'only' install feeds remote bui
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: '',
             configDigest: 'c',
-            workspaceFingerprint: 'w',
           },
         } as Partial<ExecuteRequest>),
       )
@@ -222,9 +218,7 @@ describe.if(run)("the node_modules chain: remote:'only' install feeds remote bui
             runtime: [],
             workspaceRuntime: [],
             upstream: [{ taskId: 'pkg#install', hash: keyA, outputs: [] }],
-            packageJsonDigest: '',
             configDigest: 'c',
-            workspaceFingerprint: 'w',
           },
         } as Partial<ExecuteRequest>),
       )
@@ -254,9 +248,7 @@ describe.if(run)("the node_modules chain: remote:'only' install feeds remote bui
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: '',
             configDigest: 'c',
-            workspaceFingerprint: 'w',
           },
         } as Partial<ExecuteRequest>),
       )
@@ -292,9 +284,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
         runtime: [],
         workspaceRuntime: [],
         upstream: [],
-        packageJsonDigest: '',
         configDigest: 'c',
-        workspaceFingerprint: 'w',
       },
       ...over,
     }) as unknown as ExecuteRequest
@@ -368,9 +358,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [{ taskId: 'pkg#up', hash: key, outputs: ['pkg/gen/data.txt'] }],
-            packageJsonDigest: '',
             configDigest: 'c',
-            workspaceFingerprint: 'w',
           },
         }),
       )
@@ -400,9 +388,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
       runtime: [],
       workspaceRuntime: [],
       upstream: [{ taskId: 'pkg#up', hash, outputs: [] }],
-      packageJsonDigest: '',
       configDigest: 'c',
-      workspaceFingerprint: 'w',
     })
     try {
       await client.negotiate()
@@ -500,9 +486,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: '',
             configDigest: 'c',
-            workspaceFingerprint: 'w',
           },
         } as Partial<ExecuteRequest>),
       )
@@ -574,9 +558,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: '',
             configDigest: 'y',
-            workspaceFingerprint: 'z',
           },
         } as Partial<ExecuteRequest>),
       )
@@ -613,9 +595,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
           runtime: [],
           workspaceRuntime: [],
           upstream: [],
-          packageJsonDigest: '',
           configDigest: 'y',
-          workspaceFingerprint: 'z',
         },
       } as Partial<ExecuteRequest>
       const idA = await actionIdFor(a, spec)
@@ -661,9 +641,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: '',
             configDigest: 'y',
-            workspaceFingerprint: 'z',
           },
         }) as Partial<ExecuteRequest>
       const forward = await actionIdFor(root, spec({ ZED: 'z', ALPHA: 'a' }))
@@ -734,9 +712,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: '',
             configDigest: 'c',
-            workspaceFingerprint: 'w',
           },
         } as Partial<ExecuteRequest>),
       )
@@ -779,9 +755,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
             runtime: [],
             workspaceRuntime: [],
             upstream: [],
-            packageJsonDigest: '',
             configDigest: 'c',
-            workspaceFingerprint: 'w',
           },
           ...over,
         } as Partial<ExecuteRequest>)

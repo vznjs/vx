@@ -115,11 +115,10 @@ describe('an uncached producer that writes a same-project input', () => {
 
 describe('the run-start facts a producer can contradict, each one', () => {
   it(
-    "the project's package.json digest: a producer that rewrites it re-keys the reader",
+    'a listed package.json: a producer that rewrites it re-keys the reader',
     async () => {
-      // `build` reads only `src/**`; package.json reaches its key as the
-      // project's implicit input, through the per-run memo the up-front
-      // derivation filled before `gen` rewrote it.
+      // Core keys no package file; listed, package.json is an input like
+      // any other, its index OID learned before `gen` rewrote it.
       const manifest = (v: string) => JSON.stringify({ name: 'app', version: v })
       app = await addProject(root, 'app', {
         config: `
@@ -129,7 +128,10 @@ describe('the run-start facts a producer can contradict, each one', () => {
               build: {
                 dependsOn: ['gen'],
                 exec: { command: 'mkdir -p dist && cat package.json > dist/out.txt' },
-                cache: { inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['dist/**'] } },
+                cache: {
+                  inputs: { files: ['src/**', 'package.json'], tasks: [] },
+                  outputs: { files: ['dist/**'] },
+                },
               },
             },
           }
@@ -199,7 +201,7 @@ describe('execute-task drops what the command may have written, and nothing else
   async function survivors(
     config: TaskNode['config'],
     executor: TaskExecutor = localExecutor(),
-  ): Promise<{ partitions: string[]; manifests: string[]; said?: string[] }> {
+  ): Promise<{ partitions: string[]; said?: string[] }> {
     const dir = await addProject(root, 'app', { files: { 'config.json': 'X' } })
     const said: string[] = []
     const cache = new Cache(path.join(root, '.vx', 'cache'))
@@ -213,7 +215,6 @@ describe('execute-task drops what the command may have written, and nothing else
       git.setOids(p, new Map([[path.join(p, 'package.json'), digest]]))
     }
     const hashCache = createHashCache()
-    for (const p of [dir, OTHER]) hashCache.packageJson.set(p, Promise.resolve(digest))
     try {
       const n = {
         id: 'app#gen',
@@ -230,7 +231,6 @@ describe('execute-task drops what the command may have written, and nothing else
         node: n,
         upstream: [],
         workspaceRoot: root,
-        workspaceFingerprint: 'fp',
         cache,
         log: logger(said),
         executor,
@@ -253,7 +253,6 @@ describe('execute-task drops what the command may have written, and nothing else
       // which input it judged moved (M-3).
       return {
         partitions: [...git.keys()].map(name).sort(),
-        manifests: [...hashCache.packageJson.keys()].map(name).sort(),
         ...(said.length > 0 ? { said } : {}),
       }
     } finally {
@@ -269,10 +268,7 @@ describe('execute-task drops what the command may have written, and nothing else
   it(
     'an unsandboxed uncached task: its project and the workspace partition go, another project stays',
     async () => {
-      expect(await survivors({ exec: { command: 'true' } })).toEqual({
-        partitions: ['other'],
-        manifests: ['other'],
-      })
+      expect(await survivors({ exec: { command: 'true' } })).toEqual({ partitions: ['other'] })
     },
     TIMEOUT,
   )
@@ -280,10 +276,7 @@ describe('execute-task drops what the command may have written, and nothing else
   it(
     'a failed one too: a command that failed may still have written',
     async () => {
-      expect(await survivors({ exec: { command: 'false' } })).toEqual({
-        partitions: ['other'],
-        manifests: ['other'],
-      })
+      expect(await survivors({ exec: { command: 'false' } })).toEqual({ partitions: ['other'] })
     },
     TIMEOUT,
   )
@@ -294,7 +287,7 @@ describe('execute-task drops what the command may have written, and nothing else
       const cfg = {
         exec: { command: 'true', sandbox: { allow: { read: ['.'], write: ['../lib/x'] } } },
       }
-      expect(await survivors(cfg, ranHere)).toEqual({ partitions: [], manifests: [] })
+      expect(await survivors(cfg, ranHere)).toEqual({ partitions: [] })
     },
     TIMEOUT,
   )
@@ -302,7 +295,7 @@ describe('execute-task drops what the command may have written, and nothing else
   it(
     'control: a sandbox with no write grant, a remote executor and a cached task drop nothing',
     async () => {
-      const all = { partitions: ['app', 'other', 'workspace'], manifests: ['app', 'other'] }
+      const all = { partitions: ['app', 'other', 'workspace'] }
       const sandboxed = { exec: { command: 'true', sandbox: { allow: { read: ['.'] } } } }
       expect(await survivors(sandboxed, ranHere)).toEqual(all)
       await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
@@ -323,7 +316,7 @@ describe('execute-task drops what the command may have written, and nothing else
     'a persistent task, once ready',
     async () => {
       const cfg = { exec: { command: 'exec sleep 30', persistent: {} } }
-      expect(await survivors(cfg)).toEqual({ partitions: ['other'], manifests: ['other'] })
+      expect(await survivors(cfg)).toEqual({ partitions: ['other'] })
     },
     TIMEOUT,
   )
@@ -389,7 +382,7 @@ describe('the stability gate reads the reach', () => {
         nodes: prepared.nodes,
         cache: prepared.cache,
         workspaceRoot: prepared.workspaceRoot,
-        workspaceFingerprint: prepared.workspaceFingerprint,
+        claimedFiles: prepared.fingerprintWatch.names,
         nestedDirsByProject: prepared.nestedDirsByProject,
         gitFilesCache: prepared.gitFilesCache,
         hashCache: prepared.hashCache,

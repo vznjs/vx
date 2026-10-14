@@ -165,7 +165,6 @@ async function planUnit(args: {
   return plan({
     nodes: args.nodes,
     workspaceRoot: WS_ROOT,
-    workspaceFingerprint: 'fingerprint',
     cache: args.cache,
     nestedDirsByProject: new Map(),
     gitFilesCache: seededGitCache(),

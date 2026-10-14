@@ -29,11 +29,11 @@ import {
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
-  computeWorkspaceFingerprints,
   findWorkspaceRoot,
   cacheScopeEnvError,
   isCacheScope,
   type LoadReads,
+  readClaimedFiles,
   loadWorkspace,
   resolveCacheDir,
   resolveStoreRoot,
@@ -137,8 +137,7 @@ export interface PreparedRun {
    * mistaken for a workspace vx was never set up in.
    */
   anyProjectConfig: boolean
-  workspaceFingerprint: string
-  /** Whether a task has since rewritten what that fingerprint folded (fingerprint-watch.ts). */
+  /** The claimed root files, and whether a task has since rewritten one (fingerprint-watch.ts). */
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   /**
@@ -151,11 +150,9 @@ export interface PreparedRun {
   /** Every project discovery found, in or out of scope — header scope bar. */
   workspaceProjectCount: number
   /**
-   * Per-run memo for derived hashes — project package.json bytes
-   * keyed by projectDir, task-config hash keyed by config object
-   * identity. Shared across every task's `computeTaskHash` call so
-   * the same project's package.json (and the same task config
-   * object) aren't re-hashed on every task in that project.
+   * Per-run memo for derived hashes — task-config hash keyed by config
+   * object identity, resolved file lists. Shared across every task's
+   * `computeTaskHash` call so the same config object isn't re-hashed.
    */
   hashCache: HashCache
   /**
@@ -190,8 +187,8 @@ export interface PreparedRun {
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
   beginRun()
   mark('startup')
-  // The root manifest is read once for the root, the globs and the
-  // fingerprint. A watch cycle is a new run and reads it afresh.
+  // The root manifest is read once for the root and the globs, a claimed
+  // root file once. A watch cycle is a new run and reads them afresh.
   const reads: LoadReads = new Map()
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
   // A run with nothing staged reads the lock whatever discovery
@@ -279,7 +276,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     options.projects !== undefined ? [...options.projects, ...anchored] : hasBare ? 'all' : anchored
   // Its own mark: the package graph is the bulk of what used to be charged
   // to `open cache` (measured on a 1,000-project tree, 2026-09-20 — the
-  // graph 3-8 ms against the cache open's ~1 ms and the fingerprints' ~0.3),
+  // graph 3-8 ms against the cache open's ~1 ms and the root files' ~0.3),
   // so a reader profiling that stage was sent to the wrong code.
   mark('package graph')
 
@@ -308,14 +305,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     await storeRoot,
   )
   localCache.assertWritable()
-  // The task keys fold the files no plugin claims (`VxPlugin.fingerprint`).
+  // The root files the plugins claim (`VxPlugin.fingerprint`), whose bytes
+  // their claimants fold: read now so a task that rewrites one is caught.
   const fingerprintsAt = Date.now()
-  const fingerprints = await computeWorkspaceFingerprints(
-    workspaceRoot,
-    new Set(fingerprintClaims(plugins).keys()),
-    reads,
-  )
-  const workspaceFingerprint = fingerprints.unclaimed
+  const claimed = [...fingerprintClaims(plugins).keys()]
+  const claimedBytes = await readClaimedFiles(workspaceRoot, claimed, reads)
   mark('open cache')
 
   // Configs load FROM .vx/projects.lock.json with no evaluation and no check of
@@ -478,9 +472,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // returns.
   try {
     const hashCache = createHashCache()
-    const fingerprintWatch = new FingerprintWatch(workspaceRoot, fingerprints, fingerprintsAt)
+    const fingerprintWatch = new FingerprintWatch(
+      workspaceRoot,
+      claimed,
+      claimedBytes,
+      fingerprintsAt,
+    )
 
-    // Empty-cases bookkeeping. We still construct the cache + fingerprint
+    // Empty-cases bookkeeping. We still construct the cache + watch
     // so the caller's try/finally pattern can close it uniformly.
     const emptyRun = (reason?: 'none-affected'): PreparedRun => ({
       workspaceRoot,
@@ -499,7 +498,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
-      workspaceFingerprint,
       fingerprintWatch,
       nestedDirsByProject,
       gitFilesCache: new GitFilesCache(),
@@ -683,7 +681,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
           dropped,
           cache,
           workspaceRoot,
-          workspaceFingerprint,
           forwardArgs: options.forwardArgs,
           nestedDirsByProject,
           gitFilesCache,
@@ -719,7 +716,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       projects,
       hintProjects,
       anyProjectConfig: projectsWithConfigs.length > 0,
-      workspaceFingerprint,
       fingerprintWatch,
       nestedDirsByProject,
       gitFilesCache,

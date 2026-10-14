@@ -550,12 +550,12 @@ describe('vx run with pnpm() declared', () => {
       'b#build': 'cache-hit',
       'c#build': 'cache-hit',
     })
-    // CONTROL: with no plugin the same edit re-keys every task.
+    // CONTROL: with no plugin the same edit re-keys nothing — core keys no
+    // lockfile (2026-10-14); the plugin is the only way it reaches a key.
     await workspace()
     const bare = await hashes()
     await writeFile(path.join(root, 'pnpm-lock.yaml'), v9({ bar: '2.0.2' }))
-    const bareAfter = await hashes()
-    for (const id of Object.keys(bare)) expect(bareAfter[id]).not.toBe(bare[id])
+    expect(await hashes()).toEqual(bare)
   })
 
   it('a bump behind a `link:` re-keys the linking project too', async () => {
@@ -587,7 +587,7 @@ describe('vx run with pnpm() declared', () => {
     expect(affectedIds(root, 'build')).toEqual(['a#build', 'b#build', 'c#build'])
   })
 
-  it('`vx why` names the plugin part; the workspace fingerprint no longer moves', async () => {
+  it('`vx why` names the plugin part', async () => {
     await statuses()
     await writeFile(path.join(root, 'pnpm-lock.yaml'), v9({ bar: '2.0.1' }))
     await statuses()
@@ -599,7 +599,6 @@ describe('vx run with pnpm() declared', () => {
     const out = new TextDecoder().decode(why.stdout)
     expect(why.exitCode).toBe(0)
     expect(out).toMatch(/changed +plugin +@vzn\/vx-lockfile\/pnpm/)
-    expect(out).not.toMatch(/changed +workspace +fingerprint/)
   })
 
   it('`--affected` selects the projects the bump reaches', async () => {

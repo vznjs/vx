@@ -7,14 +7,15 @@
 // any core module's top level runs (`util/timing.ts` reads both at load).
 //
 // What it provides, and why each is needed:
-//   hash.xxHash3  — the key fold and the workspace fingerprint (xxh3.ts);
+//   hash.xxHash3  — the key fold (xxh3.ts);
 //   Glob          — `taskGlob` for input filtering and output overlap (glob.ts);
 //   file          — manifests, lockfiles, workspace globs (the VFS);
 //   nanoseconds   — `util/timing.ts` takes a start mark at module load;
 //   process.env   — `cache.inputs.env` values, and `VX_DEBUG_TIMING` at load;
 //   process.platform — `listProjects` picks its readdir strategy by it;
 //   process.stderr — the scheduler's and discovery's warnings;
-//   Buffer.from(…).indexOf — the `bun.lock` patch-key probe (fingerprint.ts).
+//   Buffer.from(…).indexOf — the `bun.lock` patch-key probe (fingerprint.ts),
+//                  which only `--affected` reaches; the planner never does.
 // Every call is counted in `platformCalls`.
 
 import { Glob } from './glob.js'

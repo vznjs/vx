@@ -296,12 +296,10 @@ describePerf('cache baseline: Cache.key', () => {
     baseInput = {
       taskId: 'p#build',
       taskConfigHash: 'cfg',
-      projectPackageJsonHash: 'pkg',
       envValues: [['NODE_ENV', 'production']],
       inputFiles: [],
       workspaceRoot: tmpdir,
       upstreamHashes: ['a', 'b', 'c'],
-      workspaceFingerprint: 'fp',
       forwardArgs: [],
     }
   })

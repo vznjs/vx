@@ -787,9 +787,16 @@ describe('executor capability — end-to-end via run()', () => {
       expect(inputs.upstream).toEqual([
         { taskId: 'pkg-a#codegen', hash: codegen!.hash!, outputs: ['pkg-a/gen.txt'] },
       ])
-      expect(inputs.packageJsonDigest).toMatch(/^[0-9a-f]+$/)
       expect(inputs.configDigest).toMatch(/^[0-9a-f]+$/)
-      expect(inputs.workspaceFingerprint.length).toBeGreaterThan(0)
+      // Core keys no package file: nothing beside the listed inputs.
+      expect(Object.keys(inputs).sort()).toEqual([
+        'configDigest',
+        'env',
+        'files',
+        'runtime',
+        'upstream',
+        'workspaceRuntime',
+      ])
     } finally {
       cleanup()
     }

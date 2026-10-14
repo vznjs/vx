@@ -21,12 +21,8 @@ import { isUserError, relPosix, secretMask, span, UserError, xxh3hex } from '../
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
 /**
- * Per-run memoization caches for the two derived hashes that don't
- * change across tasks within one run:
- *   - `packageJson`: keyed by absolute projectDir. Every task in a
- *     project re-reads the same `package.json`; without this, a
- *     monorepo with N projects × M tasks per project does N×M reads
- *     of the same bytes.
+ * Per-run memoization caches for what doesn't change across tasks within
+ * one run:
  *   - `projectFiles`: keyed by the project and its input DECLARATION.
  *     Tasks of one project that declare the same inputs and outputs
  *     resolve the same file list; see `ProjectFilesCache`.
@@ -35,11 +31,10 @@ import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
  *     JSON.stringify + xxh3 of it is deterministic. WeakMap so
  *     entries free when the orchestrator is done.
  *
- * Both fields are optional — the helpers fall back to computing
- * fresh when the cache is missing.
+ * The whole memo is optional — the helpers fall back to computing
+ * fresh when it is missing.
  */
 export interface HashCache {
-  packageJson: Map<string, Promise<string>>
   taskConfig: WeakMap<TaskConfig, string>
   runtime: Map<string, Promise<string>>
   workspaceRuntime: Map<string, Promise<string>>
@@ -49,7 +44,6 @@ export interface HashCache {
 
 export function createHashCache(): HashCache {
   return {
-    packageJson: new Map(),
     taskConfig: new WeakMap(),
     runtime: new Map(),
     workspaceRuntime: new Map(),
@@ -76,7 +70,6 @@ export interface ComputeHashArgs {
   node: TaskNode
   upstream: TaskOutcome[]
   workspaceRoot: string
-  workspaceFingerprint: string
   cache: CacheLayer
   forwardArgs?: readonly string[] | undefined
   nestedProjectDirs: string[]
@@ -100,8 +93,7 @@ export interface ComputeHashArgs {
 
 /**
  * Resolve every input the cache key depends on (file content, env
- * values, upstream hashes, config bytes, project package.json bytes,
- * forwardArgs) and ask the cache layer to combine them. Used by both
+ * values, upstream hashes, config bytes, forwardArgs) and ask the cache layer to combine them. Used by both
  * `executeTask` for the real run and `plan()` for `--dry-run` /
  * `--graph` previews.
  *
@@ -161,22 +153,12 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
       ? []
       : [{ path: relPosix(input.workspaceRoot, f), digest: digests[i]! }],
   )
-  // The package.json digest is a per-run memo that may predate this
-  // describe, so it is dated from the enumeration, the earliest a run
-  // learns anything.
   const indexedAt = args.gitFilesCache?.enumeratedAtMs ?? 0
   const facts: InputFact[] = sorted.map((f, i) => ({
     path: f,
     digest: digests[i]!,
     since: input.fileHashes?.has(f) === true ? indexedAt : hashedAt,
   }))
-  if (input.projectPackageJsonHash !== '') {
-    facts.push({
-      path: path.join(args.node.projectDir, 'package.json'),
-      digest: input.projectPackageJsonHash,
-      since: indexedAt,
-    })
-  }
   // Groups expanded: this list describes the INPUT ROOT, not the key, and a
   // group produces nothing of its own (see `CacheKeyInput.upstreamGraft`).
   // Sorted by hash so the list — and any action digest derived from it — is
@@ -220,9 +202,7 @@ export async function describeTaskInputs(args: ComputeHashArgs): Promise<{
       get upstream() {
         return (upstream ??= listUpstream())
       },
-      packageJsonDigest: input.projectPackageJsonHash,
       configDigest: input.taskConfigHash,
-      workspaceFingerprint: input.workspaceFingerprint,
     },
   }
 }
@@ -346,12 +326,6 @@ async function resolveKeyInput(
     }
   }
   const taskConfigHash = hashTaskConfig(cfg, args.hashCache)
-  const projectPackageJsonHash = await hashProjectPackageJson(
-    args.node.projectDir,
-    args.cache,
-    args.hashCache,
-    fileHashes,
-  )
 
   // Args after `--` reach a requested command; the default build (a keyed
   // group) runs none, and folded, they moved every key that folds its own.
@@ -361,7 +335,6 @@ async function resolveKeyInput(
   const input: CacheKeyInput = {
     taskId: args.node.id,
     taskConfigHash,
-    projectPackageJsonHash,
     envValues: resolved.envValues,
     runtimeValues: resolved.runtimeValues,
     workspaceRuntimeValues: resolved.workspaceRuntimeValues,
@@ -370,7 +343,6 @@ async function resolveKeyInput(
     upstreamHashes,
     upstreamIds,
     upstreamGraft,
-    workspaceFingerprint: args.workspaceFingerprint,
     forwardArgs: effectiveForwardArgs,
     ...(fileHashes !== undefined ? { fileHashes } : {}),
     ...(args.node.keyParts !== undefined ? { pluginParts: args.node.keyParts } : {}),
@@ -463,49 +435,4 @@ export function computeGroupHash(upstream: TaskOutcome[]): string {
     .sort()
     .join('|')
   return xxh3hex(`group|${ids}`)
-}
-
-/**
- * Hash the project's `package.json` bytes. Folded into every task's
- * cache key in that project so dep changes (devDependencies, scripts,
- * version bumps) invalidate the project's tasks even when
- * `cache.inputs.files` is narrow and doesn't cover the file.
- *
- * Matches Turbo and Nx's "implicit dependencies" behavior. Returns
- * '' for the edge case of a project without a package.json (impossible
- * in practice — workspace discovery requires one).
- *
- * Two optimizations: routed through `Cache.hashFile` so the mtime+size
- * fast path applies (an unchanged pkg.json takes a stat + SQLite SELECT
- * instead of a full file read). And memoized within-run per projectDir
- * so a monorepo with 100 projects × 3 tasks each does 100 lookups, not
- * 300.
- */
-async function hashProjectPackageJson(
-  projectDir: string,
-  cache: CacheLayer,
-  hashCache?: HashCache,
-  fileHashes?: ReadonlyMap<string, string>,
-): Promise<string> {
-  const cached = hashCache?.packageJson.get(projectDir)
-  if (cached !== undefined) return cached
-  const promise = doHashProjectPackageJson(projectDir, cache, fileHashes)
-  hashCache?.packageJson.set(projectDir, promise)
-  return promise
-}
-
-async function doHashProjectPackageJson(
-  projectDir: string,
-  cache: CacheLayer,
-  fileHashes?: ReadonlyMap<string, string>,
-): Promise<string> {
-  const filePath = path.join(projectDir, 'package.json')
-  // Clean tracked package.json: its index OID is already in hand —
-  // no exists probe, no stat, no SQLite.
-  const oid = fileHashes?.get(filePath)
-  if (oid !== undefined) return oid
-  if (!(await Bun.file(filePath).exists())) return ''
-  // Route through the cache layer's mtime+size fast path so the
-  // typical re-run sees a stat + SQLite lookup instead of a file read.
-  return cache.hashFile(filePath)
 }

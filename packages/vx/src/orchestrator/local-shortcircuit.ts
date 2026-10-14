@@ -52,7 +52,8 @@ export interface ShortCircuitArgs {
   nodes: Map<string, TaskNode>
   cache: CacheLayer
   workspaceRoot: string
-  workspaceFingerprint: string
+  /** The root files the plugins claim (`DeriveStableKeysArgs.claimedFiles`). */
+  claimedFiles: readonly string[]
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

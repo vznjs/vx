@@ -649,12 +649,10 @@ describe('LayeredCache', () => {
     const input = {
       taskId: 'pkg#build',
       taskConfigHash: 'cfg',
-      projectPackageJsonHash: 'pkg',
       envValues: [] as Array<[string, string]>,
       inputFiles: [],
       workspaceRoot,
       upstreamHashes: [],
-      workspaceFingerprint: 'ws',
     }
     expect(await layered.key(input)).toBe(await local.key(input))
   })

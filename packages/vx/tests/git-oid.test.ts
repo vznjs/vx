@@ -480,12 +480,10 @@ describe('Cache.key — fileHashes seam', () => {
   const baseKeyInput = (files: string[]) => ({
     taskId: 'p#build',
     taskConfigHash: 'cfg',
-    projectPackageJsonHash: 'pkg',
     envValues: [] as Array<[string, string]>,
     inputFiles: files,
     workspaceRoot: dir,
     upstreamHashes: [] as string[],
-    workspaceFingerprint: 'fp',
   })
 
   beforeEach(async () => {
@@ -558,7 +556,6 @@ describe('semantic guardrails — key stability across dirty↔clean transitions
       node: node(),
       upstream: [],
       workspaceRoot: root,
-      workspaceFingerprint: 'fp',
       cache,
       nestedProjectDirs: [],
       gitFilesCache: memo,

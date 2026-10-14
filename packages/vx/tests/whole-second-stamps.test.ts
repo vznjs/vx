@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, setSystemTime, spyOn } fro
 import { Cache } from '../src/cache/index.js'
 import { movedInput } from '../src/orchestrator/task-hash.js'
 import { FingerprintWatch } from '../src/orchestrator/fingerprint-watch.js'
-import { computeWorkspaceFingerprints } from '../src/workspace/index.js'
+import { readClaimedFiles } from '../src/workspace/index.js'
 
 /** A whole second, well in the past so no real file carries it. */
 const SECOND = 1_700_000_000_000
@@ -153,7 +153,7 @@ describe('a whole-second stamp', () => {
   })
 })
 
-// C-59 (A-2's lead): the run's watch over the fingerprinted files skipped a
+// C-59 (A-2's lead): the run's watch over the claimed root files skipped a
 // file whose ctime was older than the run's read by more than 50 ms, so a
 // lockfile a task rewrote 400 ms after the read, stamped back to the whole
 // second, read as untouched and every key kept the old lockfile's bytes.
@@ -165,8 +165,9 @@ describe("the fingerprint watch's whole-second stamp", () => {
   async function movedAt(ctime: number): Promise<readonly string[] | undefined> {
     const lock = path.join(root, 'pnpm-lock.yaml')
     writeFileSync(lock, 'AAAA')
-    const read = await computeWorkspaceFingerprints(root, new Set())
-    const watch = new FingerprintWatch(root, read, SECOND + 500)
+    const claimed = ['pnpm-lock.yaml']
+    const read = await readClaimedFiles(root, claimed)
+    const watch = new FingerprintWatch(root, claimed, read, SECOND + 500)
     writeFileSync(lock, 'BBBB')
     spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike, o?: fs.StatOptions) => {
       const st = realStat(p, o as never)

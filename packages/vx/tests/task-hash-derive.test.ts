@@ -22,16 +22,17 @@
 // argue with a failing test rather than silently changing what a key means.
 
 import { readFileSync } from 'node:fs'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test'
-import { Cache } from '../src/cache/index.js'
+import { Cache, GitFilesCache } from '../src/cache/index.js'
 import type { CacheLayer } from '../src/cache/index.js'
 import { computeGroupKey, computeTaskHash } from '../src/orchestrator/task-hash.js'
-import { createHashCache } from '../src/orchestrator/task-hash.js'
+import { createHashCache, type TaskInputComponent } from '../src/orchestrator/task-hash.js'
 import type { TaskConfig } from '../src/config.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
+import { relPosix } from '../src/util/index.js'
 
 // The fixture creates a real SQLite cache; under full-suite load the default
 // 5s hook budget is tight. File-scoped, matching tests/inputs.test.ts.
@@ -104,7 +105,7 @@ interface KeyArgs {
   forwardArgs?: readonly string[]
   cache?: CacheLayer
   hashCache?: ReturnType<typeof createHashCache>
-  workspaceFingerprint?: string
+  captureInto?: TaskInputComponent[]
 }
 
 async function key(a: KeyArgs = {}): Promise<string> {
@@ -112,11 +113,11 @@ async function key(a: KeyArgs = {}): Promise<string> {
     node: a.node ?? node(),
     upstream: a.upstream ?? [],
     workspaceRoot: root,
-    workspaceFingerprint: a.workspaceFingerprint ?? 'ws-fp',
     cache: a.cache ?? cache,
     nestedProjectDirs: [],
     ...(a.forwardArgs !== undefined ? { forwardArgs: a.forwardArgs } : {}),
     ...(a.hashCache !== undefined ? { hashCache: a.hashCache } : {}),
+    ...(a.captureInto !== undefined ? { captureInto: a.captureInto } : {}),
   })
 }
 
@@ -133,15 +134,6 @@ describe('computeTaskHash — determinism', () => {
     const a = await key({ node: node({ id: 'pkg#build' }) })
     const b = await key({ node: node({ id: 'pkg#test' }) })
     expect(a).not.toBe(b)
-  })
-
-  it('the workspace fingerprint folds in — a lockfile bump invalidates everything', async () => {
-    // This is the mechanism by which a dependency upgrade reaches tasks whose
-    // own inputs did not change. Without it, `pnpm up` leaves every task warm
-    // against binaries built from the old dependency tree.
-    expect(await key({ workspaceFingerprint: 'a' })).not.toBe(
-      await key({ workspaceFingerprint: 'b' }),
-    )
   })
 })
 
@@ -341,7 +333,6 @@ describe('computeTaskHash — forwardArgs are scoped to REQUESTED tasks', () => 
         node: defaultBuild,
         upstream: [],
         workspaceRoot: root,
-        workspaceFingerprint: 'ws-fp',
         cache,
         nestedProjectDirs: [],
         forwardArgs,
@@ -427,45 +418,70 @@ describe('computeTaskHash — upstream folding', () => {
   })
 })
 
-describe('computeTaskHash — package.json is an implicit input', () => {
-  // Turbo and Nx both fold the project manifest into every task's key. vx does
-  // the same, and the reason is a real footgun: a user writing
-  // `cache.inputs.files: ['src/**']` has excluded package.json without meaning
-  // to, so a dependency bump or a changed script would leave every task in
-  // that project warm against the old dependency tree.
+describe('computeTaskHash — core keys no package file', () => {
+  // A key holds what the config declares and nothing core knows about a
+  // language: no `package.json` part, no root lockfile or install settings.
+  // A lockfile plugin (`@vzn/vx-lockfile`) adds `package.json` to each
+  // task's inputs and folds the lockfile and settings itself.
 
-  it('SENSITIVITY: changing package.json moves the key even with narrow globs', async () => {
+  /** A fresh cache per read: `hashFile` memoizes on the file's stat. */
+  async function freshKey(a: KeyArgs, tag: string): Promise<string> {
+    const c = new Cache(path.join(root, `.vx-cache-${tag}`))
+    try {
+      return await key({ ...a, cache: c })
+    } finally {
+      c.close()
+    }
+  }
+
+  it('STABILITY: a package.json edit moves no key when no glob names it', async () => {
     const pkgPath = path.join(root, 'package.json')
     const original = await Bun.file(pkgPath).text()
     try {
-      // A fresh Cache per read: `hashFile` memoizes on (mtime, size, ctime,
-      // inode), and this test's whole point is to observe a content change.
-      const c1 = new Cache(path.join(root, '.vx-cache-pkg1'))
-      const before = await key({ cache: c1 })
-      c1.close()
-
+      const before = await freshKey({}, 'nopkg1')
       await writeFile(pkgPath, JSON.stringify({ name: 'pkg', dependencies: { left: '1.0.0' } }))
-
-      const c2 = new Cache(path.join(root, '.vx-cache-pkg2'))
-      const after = await key({ cache: c2 })
-      c2.close()
-
-      expect(after).not.toBe(before)
+      expect(await freshKey({}, 'nopkg2')).toBe(before)
     } finally {
       await writeFile(pkgPath, original)
     }
   })
 
-  it('a project with NO package.json hashes as empty rather than throwing', async () => {
-    // Workspace discovery requires a manifest, so this is unreachable in a
-    // real run — but the derivation must degrade to a defined value rather
-    // than throwing, because a throw here fails the run at hash time with no
-    // useful message.
+  it('SENSITIVITY: a package.json an input glob names moves the key', async () => {
+    // CONTROL for the row above: the file is an input like any other.
+    const n = node({}, { cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } } })
+    const pkgPath = path.join(root, 'package.json')
+    const original = await Bun.file(pkgPath).text()
+    try {
+      const before = await freshKey({ node: n }, 'pkgin1')
+      await writeFile(pkgPath, JSON.stringify({ name: 'pkg', dependencies: { left: '1.0.0' } }))
+      expect(await freshKey({ node: n }, 'pkgin2')).not.toBe(before)
+    } finally {
+      await writeFile(pkgPath, original)
+    }
+  })
+
+  it('STABILITY: a root lockfile or .npmrc edit moves no key', async () => {
+    const before = await freshKey({}, 'root1')
+    await writeFile(path.join(root, '.npmrc'), 'node-linker=hoisted\n')
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n")
+    try {
+      expect(await freshKey({}, 'root2')).toBe(before)
+    } finally {
+      await rm(path.join(root, '.npmrc'))
+      await rm(path.join(root, 'pnpm-lock.yaml'))
+    }
+  })
+
+  it('the key folds no package or workspace part: the capture is format and config alone', async () => {
+    const captured: TaskInputComponent[] = []
+    await key({ captureInto: captured })
+    expect(captured.map((c) => c.kind)).toEqual(['format', 'config'])
+  })
+
+  it('a project with NO package.json keys as one with one', async () => {
     const bare = await mkdtemp(path.join(os.tmpdir(), 'vx-nopkg-'))
     try {
-      const k = await key({ node: node({ projectDir: bare }) })
-      expect(typeof k).toBe('string')
-      expect(k.length).toBeGreaterThan(0)
+      expect(await key({ node: node({ projectDir: bare }) })).toBe(await key())
     } finally {
       await rm(bare, { recursive: true, force: true })
     }
@@ -517,38 +533,37 @@ describe('computeTaskHash — the per-run memo caches', () => {
     const b = await key({ node: node({}, { exec: { command: 'same' } }), hashCache: hc })
     expect(b).toBe(a)
   })
-
-  it('the package.json memo is per-project and survives a mid-run change', async () => {
-    // Also pinned as an invariant rather than a bug. The memo stores the
-    // PROMISE keyed by projectDir, so the manifest is read once per run no
-    // matter how many tasks a project has. A file edited while the run is in
-    // flight is therefore not observed — which is correct: a run must hash a
-    // single consistent snapshot of its inputs, not a moving target.
-    const pkgPath = path.join(root, 'package.json')
-    const original = await Bun.file(pkgPath).text()
-    const hc = createHashCache()
-    try {
-      const before = await key({ hashCache: hc })
-      await writeFile(pkgPath, JSON.stringify({ name: 'pkg', changed: true }))
-      const after = await key({ hashCache: hc })
-      expect(after).toBe(before)
-    } finally {
-      await writeFile(pkgPath, original)
-    }
-  })
 })
 
-describe('computeTaskHash — the trusted-OID fast path for package.json', () => {
+describe('computeTaskHash — the trusted-OID fast path for an input file', () => {
+  /** A run's git memo holding `rel` (under `dir`) at `oid`, and the workspace partition at `wsOid`. */
+  function trusted(dir: string, rel: string, oid: string, wsOid = oid): GitFilesCache {
+    const gfc = new GitFilesCache()
+    const abs = path.join(dir, rel)
+    gfc.set(dir, [rel])
+    gfc.setOids(dir, new Map([[abs, oid]]))
+    if (dir !== root) {
+      gfc.set(root, [relPosix(root, abs)])
+      gfc.setOids(root, new Map([[abs, wsOid]]))
+    }
+    return gfc
+  }
+  const reads = (files: string[], workspaceFiles?: string[]): Partial<TaskConfig> => ({
+    cache: {
+      inputs: { files, ...(workspaceFiles !== undefined ? { workspaceFiles } : {}) },
+      outputs: { files: [] },
+    },
+  })
+
   it('a trusted index OID short-circuits before any file read', async () => {
     // When the run's bulk `git ls-files -s` pass has already handed us the
-    // manifest's index OID, hashing it must cost nothing: no exists probe, no
-    // stat, no SQLite lookup, no read. This is the clean-tree path that makes
-    // key derivation on a large monorepo essentially free, so a regression
-    // that quietly reintroduces a per-project file read would not fail any
+    // file's index OID, hashing it must cost nothing: no stat, no SQLite
+    // lookup, no read. This is the clean-tree path that makes key
+    // derivation on a large monorepo essentially free, so a regression
+    // that quietly reintroduces a per-file read would not fail any
     // correctness test — only this one.
     // Built explicitly rather than by spreading `cache`: spreading a class
     // instance drops its prototype, so the methods would silently vanish.
-    // Derivation only ever reaches for these two.
     let hashFileCalls = 0
     const counting = {
       key: cache.key.bind(cache),
@@ -557,21 +572,15 @@ describe('computeTaskHash — the trusted-OID fast path for package.json', () =>
         return await cache.hashFile(p)
       },
     } as unknown as CacheLayer
-
-    const pkgPath = path.join(root, 'package.json')
-    const oids = new Map([[pkgPath, 'deadbeefdeadbeef']])
-    const gitFilesCache = { oidsFor: () => oids } as never
-
+    await writeFile(path.join(root, 'src.txt'), 'x')
     const k = await computeTaskHash({
-      node: node(),
+      node: node({}, reads(['src.txt'])),
       upstream: [],
       workspaceRoot: root,
-      workspaceFingerprint: 'ws-fp',
       cache: counting,
       nestedProjectDirs: [],
-      gitFilesCache,
+      gitFilesCache: trusted(root, 'src.txt', 'deadbeefdeadbeef'),
     })
-
     expect(hashFileCalls).toBe(0)
     expect(typeof k).toBe('string')
   })
@@ -580,18 +589,16 @@ describe('computeTaskHash — the trusted-OID fast path for package.json', () =>
     // Proves the short-circuit above is not just skipping work but supplying
     // the value. If the OID were ignored, these two would collide and the
     // clean-tree path would be hashing nothing at all.
-    const pkgPath = path.join(root, 'package.json')
+    await writeFile(path.join(root, 'src.txt'), 'x')
     const withOid = async (oid: string): Promise<string> =>
       await computeTaskHash({
-        node: node(),
+        node: node({}, reads(['src.txt'])),
         upstream: [],
         workspaceRoot: root,
-        workspaceFingerprint: 'ws-fp',
         cache,
         nestedProjectDirs: [],
-        gitFilesCache: { oidsFor: () => new Map([[pkgPath, oid]]) } as never,
+        gitFilesCache: trusted(root, 'src.txt', oid),
       })
-
     expect(await withOid('aaaaaaaaaaaaaaaa')).not.toBe(await withOid('bbbbbbbbbbbbbbbb'))
   })
 
@@ -605,47 +612,23 @@ describe('computeTaskHash — the trusted-OID fast path for package.json', () =>
     // agree wherever they overlap, which is exactly why a reversal would slip
     // through unnoticed — and it would change the key of every task that reads
     // workspace files. So this makes the two maps DISAGREE and asserts which
-    // one the key reflects.
-    //
-    // The project must be a SUBDIRECTORY of the workspace for the two lookups
-    // to be distinguishable at all; with projectDir === workspaceRoot they are
-    // the same partition and the precedence is unobservable.
+    // one the key reflects. The project must be a SUBDIRECTORY of the
+    // workspace for the two lookups to be distinguishable at all.
     const projectDir = path.join(root, 'pkg')
-    const pkgPath = path.join(projectDir, 'package.json')
-    const cfg: Partial<TaskConfig> = {
-      cache: {
-        inputs: { files: [], workspaceFiles: ['nothing-matches/**'] },
-        outputs: { files: [] },
-      },
-    }
-
+    await mkdir(projectDir, { recursive: true })
+    await writeFile(path.join(projectDir, 'src.txt'), 'x')
     const merged = async (projectOid: string): Promise<string> =>
       await computeTaskHash({
-        node: node({ projectDir }, cfg),
+        node: node({ projectDir }, reads(['src.txt'], ['nothing-matches/**'])),
         upstream: [],
         workspaceRoot: root,
-        workspaceFingerprint: 'ws-fp',
         cache,
         nestedProjectDirs: [],
-        gitFilesCache: {
-          oidsFor: (dir: string) =>
-            dir === projectDir
-              ? new Map([[pkgPath, projectOid]])
-              : new Map([[pkgPath, 'wwwwwwwwwwwwwwww']]),
-          // `resolveWorkspaceFiles` enumerates through the same object; an
-          // empty snapshot keeps this test about OID precedence alone.
-          snapshotFor: () => [],
-          markOutputsChanged: () => {},
-        } as never,
+        gitFilesCache: trusted(projectDir, 'src.txt', projectOid, 'wwwwwwwwwwwwwwww'),
       })
-
-    // The key tracks the PROJECT value: moving it moves the key, even though
-    // the workspace partition's entry for that same path never changes. Under
-    // reversed precedence the workspace value would win both times and these
-    // two would collide.
-    const a = await merged('aaaaaaaaaaaaaaaa')
-    const b = await merged('bbbbbbbbbbbbbbbb')
-    expect(a).not.toBe(b)
+    // Under reversed precedence the workspace value would win both times and
+    // these two would collide.
+    expect(await merged('aaaaaaaaaaaaaaaa')).not.toBe(await merged('bbbbbbbbbbbbbbbb'))
   })
 })
 
@@ -673,8 +656,6 @@ describe('the key FRAMES its list sections — moving a pair across a boundary m
     inputFiles: [] as string[],
     workspaceRoot: '/w',
     upstreamHashes: [] as string[],
-    workspaceFingerprint: 'fp',
-    projectPackageJsonHash: 'pkg',
     forwardArgs: [] as string[],
     envValues: [] as Array<[string, string]>,
     runtimeValues: [] as Array<[string, string]>,

@@ -31,7 +31,7 @@ setup and teardown wrap the run; commands adds a verb
 | `project`     | Add, remove or edit one loaded project's tasks.                                            |
 | `graph`       | Add or drop edges, mark tasks requested.                                                   |
 | `key`         | Contribute extra cache-key material per task.                                              |
-| `fingerprint` | Claim a lockfile out of the workspace fingerprint and key it per project.                  |
+| `fingerprint` | Claim a root file such as a lockfile and key it per project.                               |
 | `schedule`    | Return a priority per ready task.                                                          |
 | `admit`       | Vet each local dispatch against what is running right now; `false` holds the task.         |
 | `executor`    | Decide where one task's command runs.                                                      |

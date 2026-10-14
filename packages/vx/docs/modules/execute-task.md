@@ -14,7 +14,6 @@ export interface ExecuteArgs {
   node: TaskNode
   upstream: TaskOutcome[]
   workspaceRoot: string
-  workspaceFingerprint: string
   cache: CacheLayer
   cachePolicy?: CachePolicy // 4-axis read/write control; undefined → everything on
   forwardArgs?: readonly string[]
@@ -149,8 +148,8 @@ one-shot handler mid-cleanup.
    the listing (`described.added`, inputs.md's `addedInput`). A move withholds the save, says so on the
    status line, and drops the project's facts as an uncached command
    does (every partition when the task declares workspace outputs,
-   whose save would have marked them). A workspace fingerprint a task
-   rewrote since the run read it withholds the save too (the run's
+   whose save would have marked them). A claimed root file (a lockfile) a
+   task rewrote since the run read it withholds the save too (the run's
    `FingerprintWatch`, [`fingerprint-watch.md`](./fingerprint-watch.md),
    item 750). Otherwise `resolveOutputs(...)` →
    `cache.save({ hash, projectDir, outputFiles, entry })`.
@@ -210,8 +209,8 @@ exits — pass or fail — and after a persistent task becomes ready, the
 run drops the facts it holds about where `undeclaredWriteReach`
 (`sandbox-request.md`) says the task may have written: `'project'`
 deletes the project's git snapshot and its index OIDs, the
-workspace-wide partition and the project's `package.json` digest memo;
-`'workspace'` clears every partition and every digest. The next reader
+workspace-wide partition;
+`'workspace'` clears every partition. The next reader
 re-enumerates (one `git ls-files`) and hashes by content. A task on a
 remote executor wrote on its own disk and drops nothing (item 743:
 turborepo#13788, `tests/undeclared-writes.test.ts`). Any task that
@@ -270,16 +269,14 @@ end to end in `tests/tool-not-on-path.test.ts` and
 
 The pieces folded into `cache.key(...)`:
 
-| Field                    | Source                                                                                                                                                      |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `taskId`                 | `node.id`                                                                                                                                                   |
-| `taskConfigHash`         | `xxh3(JSON.stringify(hashableConfig(node.config)))` (internal `hashTaskConfig`; the projection drops `exec.remote`, which is placement, not key material)   |
-| `projectPackageJsonHash` | the git blob OID of `<projectDir>/package.json` — its index OID when the file is clean, else computed (internal `hashProjectPackageJson`); `''` when absent |
-| `envValues`              | `resolveInputs` reads host env for declared `inputs.env` names                                                                                              |
-| `inputFiles`             | `resolveInputs` glob result (gitignore + boundary-filtered, sorted)                                                                                         |
-| `upstreamHashes`         | `filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, ...)`                                                                                              |
-| `workspaceFingerprint`   | passed in                                                                                                                                                   |
-| `forwardArgs`            | `node.requested ? (args.forwardArgs ?? []) : []`                                                                                                            |
+| Field            | Source                                                                                                                                                    |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `taskId`         | `node.id`                                                                                                                                                 |
+| `taskConfigHash` | `xxh3(JSON.stringify(hashableConfig(node.config)))` (internal `hashTaskConfig`; the projection drops `exec.remote`, which is placement, not key material) |
+| `envValues`      | `resolveInputs` reads host env for declared `inputs.env` names                                                                                            |
+| `inputFiles`     | `resolveInputs` glob result (gitignore + boundary-filtered, sorted)                                                                                       |
+| `upstreamHashes` | `filterUpstreamHashes(upstream, cacheCfg?.inputs?.tasks, ...)`                                                                                            |
+| `forwardArgs`    | `node.requested ? (args.forwardArgs ?? []) : []`                                                                                                          |
 
 `forwardArgs` are scoped to user-requested tasks. The reason it's
 folded into the key for those tasks: `vx run test -- --watch` should

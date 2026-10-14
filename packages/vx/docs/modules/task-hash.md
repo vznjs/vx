@@ -4,8 +4,7 @@
 
 The single place that selects and assembles the parts of a task's
 cache key: resolved input files and `workspaceFiles`, env and runtime
-values, the task-config digest, the project `package.json` digest,
-the workspace fingerprint, the upstream hashes `inputs.tasks` keeps
+values, the task-config digest, the upstream hashes `inputs.tasks` keeps
 (a group's own upstream expanded through it), forwarded `--` args on
 a requested task, and the plugin parts the `key` stage attached
 (`node.keyParts`). Split out of `execute-task.ts` because the plan,
@@ -24,7 +23,6 @@ dependency matrix forbids. The byte-level folding itself stays in
 ```ts
 // Per-run memos of derived values, shared across every task's computeTaskHash call.
 export interface HashCache {
-  packageJson: Map<string, Promise<string>> // project package.json digest, by projectDir
   taskConfig: WeakMap<TaskConfig, string> // task-config digest, by config object identity
   runtime: Map<string, Promise<string>> // `inputs.runtime` output, by projectDir + '\0' + command
   workspaceRuntime: Map<string, Promise<string>> // `workspaceRuntime` output, by command
@@ -44,7 +42,6 @@ export interface ComputeHashArgs {
   node: TaskNode
   upstream: TaskOutcome[]
   workspaceRoot: string
-  workspaceFingerprint: string
   cache: CacheLayer
   forwardArgs?: readonly string[] | undefined
   nestedProjectDirs: string[]
@@ -84,8 +81,7 @@ export interface UpfrontGroupKey {
 
 - `computeTaskHash` — resolves `cache.inputs.files` (git-backed) and
   `workspaceFiles`, reads `cache.inputs.env` host values, runs the
-  `runtime` commands once per run, hashes the resolved task config and
-  the project `package.json`, folds in the filtered upstream hashes,
+  `runtime` commands once per run, hashes the resolved task config, folds in the filtered upstream hashes,
   and calls `cache.key({...})`. Timed as the `task hash` span.
 - `captureInto` — on a miss the orchestrator persists the captured
   components to `entry_inputs` inside the save transaction, so a later
@@ -97,8 +93,7 @@ export interface UpfrontGroupKey {
   per-file digests), which `captureInto` reduces to digests because
   its rows are persisted. Its `facts` date each digest: an index OID
   from the git enumeration's start (`GitFilesCache.enumeratedAtMs`), a
-  hashed file from the describe's own start (`describedAt`), the
-  `package.json` digest (a per-run memo) from the enumeration. Its
+  hashed file from the describe's own start (`describedAt`). Its
   `added` runs inputs.md's `addedInput` over the listings the key was
   filtered from, dated from the enumeration's start (the describe's
   own start with no run cache).

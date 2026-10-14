@@ -64,7 +64,11 @@ export function withheldLinkLine(taskId: string, w: WithheldLink): string
 export type WriteReach = 'none' | 'project' | 'workspace'
 export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
 export function commandWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
-export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): boolean
+export function mayWriteFingerprint(
+  node: TaskNode,
+  workspaceRoot: string,
+  claimed: readonly string[], // the root files the plugins claim
+): boolean
 ```
 
 - `prepareSandbox` prepares the runtime for a run when any task opts
@@ -120,8 +124,8 @@ export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): bool
   uncached task and `'none'` for a cached one; the stability gate reads
   it for a cached task too, as where that task may rewrite its own
   inputs in place (a formatter, item 750).
-- `mayWriteFingerprint` — may the command rewrite a file the workspace
-  fingerprint folds (`WORKSPACE_FINGERPRINT_FILES`, all at the root)? An
+- `mayWriteFingerprint` — may the command rewrite a root file a plugin
+  claims (`claimed`)? Never when nothing is claimed. An
   unsandboxed task only when the root is its own project; a sandboxed
   one when a write grant covers such a file. Anyone else writing there
   crosses a project boundary, out of contract. Read by the stability

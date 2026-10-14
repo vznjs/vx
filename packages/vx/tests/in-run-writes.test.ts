@@ -21,7 +21,7 @@ import { run } from './helpers/orchestrator.js'
 import { FingerprintWatch } from '../src/orchestrator/fingerprint-watch.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
 import { probesAfterWrites } from '../src/orchestrator/stable-keys.js'
-import { computeWorkspaceFingerprints } from '../src/workspace/index.js'
+import { readClaimedFiles } from '../src/workspace/index.js'
 import {
   commandWriteReach,
   mayWriteFingerprint,
@@ -29,7 +29,7 @@ import {
 } from '../src/orchestrator/sandbox-request.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
-import { writeEdges } from './helpers/plugin.js'
+import { writeEdges, writeLockClaim } from './helpers/plugin.js'
 
 const TIMEOUT = 30_000
 const READ_ONLY: CachePolicy = {
@@ -205,15 +205,17 @@ describe('a cached task that runs but does not save', () => {
   )
 })
 
-describe('a task that rewrites the lockfile the workspace fingerprint folded', () => {
+describe('a task that rewrites the lockfile a plugin folds', () => {
   // The root is a project (`.` in the workspace globs) whose `install`
   // stands in for `pnpm install` without `--frozen-lockfile`: it rewrites
   // `pnpm-lock.yaml` and the installed tree. `app#build` reads the installed
-  // tree, which no key names but the lockfile's digest stands for.
+  // tree, which no key names but the lockfile's digest stands for, folded
+  // by a plugin that claims it (core keys no root file).
   const INSTALL =
     'cp seed.txt pnpm-lock.yaml && mkdir -p node_modules && cp seed.txt node_modules/.dep'
 
   async function fixture(install = `{ exec: { command: '${INSTALL}' } }`): Promise<string> {
+    await writeLockClaim(root)
     await writeFile(
       path.join(root, 'pnpm-workspace.yaml'),
       'packages:\n  - "."\n  - "packages/*"\n',
@@ -309,7 +311,7 @@ describe('a task that rewrites the lockfile the workspace fingerprint folded', (
       await writeFile(path.join(root, 'seed.txt'), 'A')
       await runTask(['app#build', 'app#pack'])
       expect(status.filter((l) => l.includes('pnpm-lock.yaml'))).toEqual([
-        '[vx] a task rewrote `pnpm-lock.yaml` during the run, which every key folds (the workspace fingerprint): nothing keyed before it is restored or saved from here on',
+        '[vx] a task rewrote `pnpm-lock.yaml` during the run, which a plugin folds into every key: nothing keyed before it is restored or saved from here on',
       ])
       await runTask('app#build')
       expect(status.filter((l) => l.includes('pnpm-lock.yaml'))).toEqual([])
@@ -378,7 +380,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
         nodes: prepared.nodes,
         cache: prepared.cache,
         workspaceRoot: prepared.workspaceRoot,
-        workspaceFingerprint: prepared.workspaceFingerprint,
+        claimedFiles: prepared.fingerprintWatch.names,
         nestedDirsByProject: prepared.nestedDirsByProject,
         gitFilesCache: prepared.gitFilesCache,
         hashCache: prepared.hashCache,
@@ -523,7 +525,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
           nodes: prepared.nodes,
           cache: prepared.cache,
           workspaceRoot: prepared.workspaceRoot,
-          workspaceFingerprint: prepared.workspaceFingerprint,
+          claimedFiles: prepared.fingerprintWatch.names,
           nestedDirsByProject: prepared.nestedDirsByProject,
           gitFilesCache: prepared.gitFilesCache,
           hashCache: prepared.hashCache,
@@ -589,8 +591,12 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
     TIMEOUT,
   )
 
-  /** A root-project `install` upstream of `app#build`, folding `tasks`. */
-  async function underRoot(install: string, tasks?: string): Promise<boolean> {
+  /**
+   * A root-project `install` upstream of `app#build`, folding `tasks`; a
+   * plugin claims pnpm-lock.yaml unless `claimed` is false.
+   */
+  async function underRoot(install: string, tasks?: string, claimed = true): Promise<boolean> {
+    if (claimed) await writeLockClaim(root)
     await writeFile(
       path.join(root, 'pnpm-workspace.yaml'),
       'packages:\n  - "."\n  - "packages/*"\n',
@@ -615,6 +621,14 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
   )
 
   it(
+    'with no plugin claiming a root file, no key folds one: the same reader is',
+    async () => {
+      expect(await underRoot(`{ exec: { command: 'true' } }`, undefined, false)).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a cached root task: a reader folding its key is, one folding none is not',
     async () => {
       const install = `{
@@ -632,6 +646,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
   it(
     'a cached root task behind a task that folds no key of it: folding that task covers nothing',
     async () => {
+      await writeLockClaim(root)
       await writeFile(
         path.join(root, 'pnpm-workspace.yaml'),
         'packages:\n  - "."\n  - "packages/*"\n',
@@ -707,24 +722,32 @@ describe('commandWriteReach and mayWriteFingerprint — where a command may writ
     expect(undeclaredWriteReach(node({ exec: { command: 'x' }, cache: cached }), ws)).toBe('none')
   })
 
-  it('the fingerprinted files sit at the root: only the root project, or a grant over one', () => {
-    expect(mayWriteFingerprint(node({ exec: { command: 'x' } }, ws), ws)).toBe(true)
-    expect(mayWriteFingerprint(node({ exec: { command: 'x' } }), ws)).toBe(false)
-    expect(mayWriteFingerprint(node({}, ws), ws)).toBe(false)
-    expect(mayWriteFingerprint(sandboxed(undefined, ws), ws)).toBe(false)
-    expect(mayWriteFingerprint(sandboxed(['dist/**'], ws), ws)).toBe(false)
-    expect(mayWriteFingerprint(sandboxed(['pnpm-lock.yaml'], ws), ws)).toBe(true)
-    expect(mayWriteFingerprint(sandboxed(['../../bun.lock']), ws)).toBe(true)
-    expect(mayWriteFingerprint(sandboxed(['../../**']), ws)).toBe(true)
-    expect(mayWriteFingerprint(sandboxed(['../../packages/**']), ws)).toBe(false)
+  it('the claimed files sit at the root: only the root project, or a grant over one', () => {
+    const claimed = ['pnpm-lock.yaml', 'bun.lock']
+    const may = (n: TaskNode): boolean => mayWriteFingerprint(n, ws, claimed)
+    expect(may(node({ exec: { command: 'x' } }, ws))).toBe(true)
+    expect(may(node({ exec: { command: 'x' } }))).toBe(false)
+    expect(may(node({}, ws))).toBe(false)
+    expect(may(sandboxed(undefined, ws))).toBe(false)
+    expect(may(sandboxed(['dist/**'], ws))).toBe(false)
+    expect(may(sandboxed(['pnpm-lock.yaml'], ws))).toBe(true)
+    expect(may(sandboxed(['../../bun.lock']))).toBe(true)
+    expect(may(sandboxed(['../../**']))).toBe(true)
+    expect(may(sandboxed(['../../packages/**']))).toBe(false)
+    // A file no plugin claims is folded by no key.
+    expect(may(sandboxed(['../../yarn.lock']))).toBe(false)
+    // Nothing claimed: no root file reaches a key, the root task's writes included.
+    expect(mayWriteFingerprint(node({ exec: { command: 'x' } }, ws), ws, [])).toBe(false)
+    expect(mayWriteFingerprint(sandboxed(['../../**']), ws, [])).toBe(false)
   })
 })
 
-describe('FingerprintWatch — which fingerprinted files moved since the run read them', () => {
+describe('FingerprintWatch — which claimed files moved since the run read them', () => {
+  const CLAIMED = ['pnpm-lock.yaml', 'bun.lock']
   async function watching(): Promise<FingerprintWatch> {
     await writeFile(path.join(root, 'pnpm-lock.yaml'), 'X')
     const at = Date.now()
-    return new FingerprintWatch(root, await computeWorkspaceFingerprints(root, new Set()), at)
+    return new FingerprintWatch(root, CLAIMED, await readClaimedFiles(root, CLAIMED), at)
   }
 
   it('nothing is looked at again until a task that may write one ran', async () => {
@@ -764,30 +787,13 @@ describe('FingerprintWatch — which fingerprinted files moved since the run rea
     expect(watch.moved()).toBeUndefined()
   })
 
-  // A lockfile plugin claims its file out of the key digest (`fingerprint`
-  // seam), but its per-project parts are read from the same bytes, so the
-  // watch compares a claimed file too — against what the run read, not
-  // against nothing, which reads every claimed lockfile as moved after any
-  // writer and withholds the rest of the run for a file no one touched.
-  it('a claimed lockfile is watched against what the run read, like any other', async () => {
-    await writeFile(path.join(root, 'pnpm-lock.yaml'), 'X')
-    const claimed = new Set(['pnpm-lock.yaml'])
-    const untouched = new FingerprintWatch(
-      root,
-      await computeWorkspaceFingerprints(root, claimed),
-      Date.now(),
-    )
-    await writeFile(path.join(root, 'pnpm-lock.yaml'), 'X')
-    untouched.wrote()
-    expect(untouched.moved()).toBeUndefined()
-    const rewritten = new FingerprintWatch(
-      root,
-      await computeWorkspaceFingerprints(root, claimed),
-      Date.now(),
-    )
-    await writeFile(path.join(root, 'pnpm-lock.yaml'), 'Y')
-    rewritten.wrote()
-    expect(rewritten.moved()).toEqual(['pnpm-lock.yaml'])
+  // Core folds no root file: one no plugin claims is no key's, so its
+  // rewrite withholds nothing.
+  it('a file no plugin claims is not watched', async () => {
+    const watch = await watching()
+    await writeFile(path.join(root, 'yarn.lock'), 'Y')
+    watch.wrote()
+    expect(watch.moved()).toBeUndefined()
   })
 })
 
@@ -993,7 +999,7 @@ describe('a runtime probe that reads an upstream output', () => {
           nodes: prepared.nodes,
           cache: prepared.cache,
           workspaceRoot: prepared.workspaceRoot,
-          workspaceFingerprint: prepared.workspaceFingerprint,
+          claimedFiles: prepared.fingerprintWatch.names,
           nestedDirsByProject: prepared.nestedDirsByProject,
           gitFilesCache: prepared.gitFilesCache,
           hashCache: prepared.hashCache,

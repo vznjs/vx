@@ -509,7 +509,7 @@ describe('yarn() declared', () => {
       // resolved (another workspace depends on `^7` directly) rewrote
       // not one byte of yarn.lock when the catalog flipped `^6 → ^7`,
       // while `a`'s node_modules moved from 6.0.0 to 7.0.0. Only
-      // `.yarnrc.yml` changed, so the workspace fingerprint folds it.
+      // `.yarnrc.yml` changed, which yarn() claims and folds whole.
       await rc('^6.0.0')
       await writeFile(path.join(root, 'yarn.lock'), catalogLock({ seven: '7.0.0' }))
       commitAll(root)

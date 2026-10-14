@@ -28,7 +28,8 @@ export interface DeriveStableKeysArgs {
   nodes: Map<string, TaskNode>
   cache: CacheLayer
   workspaceRoot: string
-  workspaceFingerprint: string
+  /** The root files the plugins claim (`VxPlugin.fingerprint`), for `mayWriteFingerprint`. */
+  claimedFiles: readonly string[]
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache
@@ -58,7 +59,7 @@ export interface StableKey {
  * cache-enabled, non-group tasks paired with their keys.
  *
  * Reuses the run's `hashCache`, so execute-task's later computeTaskHash
- * for the same node hits the memo (package.json bytes + task config) —
+ * for the same node hits the memo (the task config hash, file lists) —
  * the key bytes are derived here, the heavy per-project hashing is
  * shared. No cache layer is touched: keys only.
  */
@@ -82,8 +83,8 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   //   - wsOutputUpstream: any upstream declares cache.outputs.workspaceFiles
   //     (root-anchored, boundary-ignoring outputs), or has no cache block
   //     and a sandbox write grant elsewhere in the workspace, or may rewrite
-  //     a file the workspace fingerprint folds (a root `pnpm install`): every
-  //     key folds that digest, taken once per run.
+  //     a root file a plugin claims (a root `pnpm install`): every key folds
+  //     what the claimant took from it, once per run.
   //   - rewritersById / unfoldedById: the projects of every upstream CACHED
   //     task that may rewrite its own inputs in place (a formatter declaring
   //     no outputs; `commandWriteReach`), and the subset this task's key does
@@ -93,7 +94,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   //     unfolded dependency covered is still uncovered here: its key is not
   //     in this one.
   //   - wsRewriters: the same for a cached rewriter whose reach is every
-  //     project (a write grant elsewhere in the workspace, or a fingerprinted
+  //     project (a write grant elsewhere in the workspace, or a claimed root
   //     file, `mayWriteFingerprint`); one this key does not fold makes it
   //     preliminary. A dependency this key folds needs no pass-through here:
   //     a keyed task with such a rewriter unfolded is unstable itself, and
@@ -175,14 +176,17 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
         ;(wide ??= projects.empty()).add(depNode.projectName)
       } else if (reach === 'workspace') wsOutputUpstream = true
       const cached = depNode.config.cache !== undefined
-      if (!cached && mayWriteFingerprint(depNode, args.workspaceRoot)) wsOutputUpstream = true
+      if (!cached && mayWriteFingerprint(depNode, args.workspaceRoot, args.claimedFiles))
+        wsOutputUpstream = true
       if (!anyUnfolded) continue
       // The cached twin: a formatter rewriting its own input ahead of a
       // reader that folds no key of it replayed seed B's build under seed A
       // on the fourth run, the same way (item 750).
       const rewrites = cached ? commandWriteReach(depNode, args.workspaceRoot) : 'none'
       const rewritesWs =
-        cached && (rewrites === 'workspace' || mayWriteFingerprint(depNode, args.workspaceRoot))
+        cached &&
+        (rewrites === 'workspace' ||
+          mayWriteFingerprint(depNode, args.workspaceRoot, args.claimedFiles))
       const rewritersOfDep = rewritersById.get(dep)
       const wsRewriterOfDep = wsRewriters.has(dep)
       if (
@@ -239,7 +243,6 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
             node,
             upstream,
             workspaceRoot: args.workspaceRoot,
-            workspaceFingerprint: args.workspaceFingerprint,
             cache: args.cache,
             forwardArgs: args.forwardArgs,
             nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
@@ -256,7 +259,6 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       node,
       upstream,
       workspaceRoot: args.workspaceRoot,
-      workspaceFingerprint: args.workspaceFingerprint,
       cache: args.cache,
       forwardArgs: args.forwardArgs,
       nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
@@ -339,7 +341,7 @@ export function probesAfterWrites(
   }
   if (!anyProbe) return late
   // A sandbox with no write grant still writes the declared outputs. A
-  // fingerprinted file is only writable where `commandWriteReach` is not
+  // claimed root file is only writable where `commandWriteReach` is not
   // 'none' already (`mayWriteFingerprint`).
   const writers = new Set<string>()
   for (const n of nodes.values()) {

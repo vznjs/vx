@@ -1,14 +1,15 @@
 // An output glob that covers a project's own package.json: Turbo caches it
-// (trpc's client build lists `package.json`, ec0b0a4), core refuses the
-// config. The mappers run such a task uncached; the copy of core's rule in
-// shared-outputs.ts is held to the loader in both directions.
+// (trpc's client build lists `package.json`, ec0b0a4), and vx would clean
+// it before every run. The mappers take it back; the config half of the
+// copy of core's rule in shared-outputs.ts is held to the loader in both
+// directions (core guards only the config file).
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { loadProjectConfig, type ProjectMeta } from '@vzn/vx'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
-import { ownFileOutput } from '../src/shared-outputs.js'
+import { ownFileOutput, ownFileTakeBacks } from '../src/shared-outputs.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 
 let root: string
@@ -32,7 +33,7 @@ async function pkg(name: string, scripts: Record<string, string>): Promise<Proje
 }
 
 describe('an output that covers the project’s own package.json', () => {
-  it('agrees with the loader on which globs it refuses', async () => {
+  it('agrees with the loader on which globs cover the config file', async () => {
     const dir = path.join(root, 'p')
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), '{"name":"p"}')
@@ -71,10 +72,10 @@ describe('an output that covers the project’s own package.json', () => {
         () => false,
         (e: Error) => e.message.includes("covers the project's own"),
       )
-      copy[g] = ownFileOutput([g]) !== undefined
+      copy[g] = ownFileTakeBacks([g], 'vx.config.mjs').includes('!vx.config.mjs')
     }
     expect(copy).toEqual(loader)
-    expect(Object.values(loader).filter(Boolean).length).toBe(9)
+    expect(Object.values(loader).filter(Boolean).length).toBe(5)
   })
 
   it('also flags a vx.config name the project does not have yet', () => {

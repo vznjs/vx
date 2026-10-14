@@ -66,26 +66,11 @@ export interface CacheKeyInput {
     readonly projectDir: string
   }>
   /**
-   * Workspace-level fingerprint — typically a hash of `pnpm-lock.yaml` +
-   * `pnpm-workspace.yaml`. Folds resolved dep versions and workspace shape
-   * into every task's key, so a lockfile bump invalidates everything.
-   */
-  workspaceFingerprint: string
-  /**
    * CLI args forwarded to the task (after `--`). Folded into the key so that
    * the same command with different forwarded args is treated as a distinct
    * run, never a spurious cache hit.
    */
   forwardArgs?: readonly string[]
-  /**
-   * Hash of the project's `package.json` bytes. Folded into the key
-   * implicitly (Turbo / Nx parity) so dep changes invalidate every
-   * task in that project, even when `cache.inputs.files` doesn't
-   * cover package.json. Empty string when the project has no
-   * package.json (impossible in practice — workspace discovery
-   * requires one — but we don't fail-loud here).
-   */
-  projectPackageJsonHash: string
   /**
    * Precomputed content hashes (git blob OIDs) keyed by absolute
    * path — typically the trusted-index OID map harvested by the

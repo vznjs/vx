@@ -76,12 +76,10 @@ describe('Cache.key over env values a 32-bit chain would merge (item 682)', () =
     const input = (v: string): CacheKeyInput => ({
       taskId: 'pkg#build',
       taskConfigHash: 'config',
-      projectPackageJsonHash: 'pkg',
       envValues: [['API_URL', v]],
       inputFiles: [],
       workspaceRoot: dir,
       upstreamHashes: ['u1', 'u2'],
-      workspaceFingerprint: 'ws',
     })
     const keys = new Set<string>()
     const n = 1 << 17

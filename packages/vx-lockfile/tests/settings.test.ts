@@ -19,10 +19,10 @@ afterEach(async () => {
 })
 
 const CASES = [
-  { make: pnpm, file: 'pnpm-lock.yaml', settings: ['pnpm-workspace.yaml', '.npmrc'] },
-  { make: bun, file: 'bun.lock', settings: ['bunfig.toml', '.npmrc'] },
-  { make: npm, file: 'package-lock.json', settings: ['.npmrc'] },
-  { make: yarn, file: 'yarn.lock', settings: ['.yarnrc.yml'] },
+  { make: pnpm, files: ['pnpm-lock.yaml'], settings: ['pnpm-workspace.yaml', '.npmrc'] },
+  { make: bun, files: ['bun.lock'], settings: ['bunfig.toml', '.npmrc'] },
+  { make: npm, files: ['npm-shrinkwrap.json', 'package-lock.json'], settings: ['.npmrc'] },
+  { make: yarn, files: ['yarn.lock'], settings: ['.yarnrc.yml'] },
 ] as const
 
 /** One run's key for a task at the root: a fresh context, as core hands each run. */
@@ -35,7 +35,7 @@ describe('install settings', () => {
   for (const c of CASES) {
     it(`${c.make.name}() claims ${c.settings.join(' and ')} and folds each into every task`, async () => {
       const plugin = c.make()
-      expect(plugin.fingerprint?.files).toEqual([c.file, ...c.settings])
+      expect(plugin.fingerprint?.files).toEqual([...c.files, ...c.settings])
       // No lockfile and no settings: nothing to fold.
       expect(await key(plugin)).toBeUndefined()
       const seen = new Set<string>()

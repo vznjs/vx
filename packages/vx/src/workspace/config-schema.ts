@@ -391,11 +391,10 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
           )
         }
         for (const file of claim.files as unknown[]) {
-          // A bare name at the workspace root: a lockfile core folds (taken
-          // out of the fingerprint), or a root file the plugin's stages read
-          // (`turbo.json`: nothing to take out; `--affected` and `vx watch`
-          // ask the claimant about it, item 961). A path is refused: the
-          // root arm `vx watch` keeps is not recursive.
+          // A bare name at the workspace root the plugin reads: a lockfile it
+          // folds, or a file its stages read (`turbo.json`; `--affected` and
+          // `vx watch` ask the claimant about it, item 961). A path is
+          // refused: the root arm `vx watch` keeps is not recursive.
           if (
             typeof file !== 'string' ||
             file === '' ||
@@ -821,7 +820,7 @@ export function validateProjectConfig(
           throw new UserError(
             `${where}.cache.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
               `task's outputs before it runs and restores them on a hit, so the project would lose ` +
-              `its manifest and config. Name the directory the task writes, such as "dist/**", ` +
+              `its config. Name the directory the task writes, such as "dist/**", ` +
               `or take the file back with "!${own}".`,
           )
         }
@@ -1159,15 +1158,17 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
 }
 
 /**
- * The project file an output glob would take, or null. `outputs: ['**']`
- * loaded, and the clean before the run deleted the project's source,
- * `package.json` and `vx.config` while the run reported success (item
- * 1002); the message for `'.'` had even suggested `**`.
+ * The project's config file if an output glob would take it. `outputs:
+ * ['**']` loaded, and the clean before the run deleted the project's
+ * source and `vx.config` while the run reported success (item 1002); the
+ * message for `'.'` had even suggested `**`. Core names no other project
+ * file: a file a plugin keys on is an input, and an output takes it out of
+ * the input set like any other.
  */
 function ownFilesCovered(glob: string, ownConfig: string | null): string[] {
-  const g = new Bun.Glob(normalizeGlob(glob))
-  const own = ownConfig === null ? ['package.json'] : ['package.json', path.basename(ownConfig)]
-  return own.filter((f) => g.match(f))
+  if (ownConfig === null) return []
+  const own = path.basename(ownConfig)
+  return new Bun.Glob(normalizeGlob(glob)).match(own) ? [own] : []
 }
 
 function takenBack(globs: readonly unknown[], file: string): boolean {

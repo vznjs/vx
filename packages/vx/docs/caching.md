@@ -31,6 +31,13 @@ opt _out_ via `cache: false`. We chose the strictest of the three.
 
 ## Cache key derivation
 
+Core keys no package file: no `package.json`, lockfile or install
+setting is a part of its own. A `package.json` keys a task as an input
+it lists (step 10), a lockfile or install setting as a plugin's key
+material (step 9); `@vzn/vx-lockfile`'s `pnpm()`, `bun()`, `npm()` and
+`yarn()` add both. Without a lockfile plugin an install moves no key, so
+a JS workspace declares one (`vx init` and `@vzn/vx-migrate` write it).
+
 The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
@@ -43,56 +50,7 @@ over (in order):
    identical everything else still produce distinct keys — protects
    against e.g. `pkg-a#build` accidentally cache-hitting on a
    `pkg-b#build` entry.
-3. **Workspace fingerprint** — xxh3 of every supported workspace
-   marker found at the root (see
-   [`modules/fingerprint.md`](./modules/fingerprint.md)):
-   `pnpm-lock.yaml`, `package-lock.json`, `npm-shrinkwrap.json`,
-   `yarn.lock`, `bun.lock`, `bun.lockb`, `pnpm-workspace.yaml`,
-   `.yarnrc.yml` (Yarn 4 catalogs, which `yarn.lock` does not record),
-   `.npmrc` and `bunfig.toml` (install settings no lockfile records),
-   and the content of each patch the Bun lockfile names under
-   patchedDependencies (it records a patch by path alone). Any
-   install-resolved change (a `bun install` that bumps `bun.lock`) or
-   any workspace-shape change invalidates _every_ cache entry. This is
-   the single global "the world changed" lever — and a plugin can take
-   files off it: `VxPlugin.fingerprint` claims a lockfile, core
-   leaves it out of this digest, and the plugin's `key` hook folds what
-   the file means for each project instead (`@vzn/vx-lockfile`'s `pnpm()`
-   folds the project's own resolved dependency closure and the root
-   package's, so `pnpm update foo` re-keys only the projects that depend
-   on `foo` — every project when the root does, since the root's tools
-   run from the root `node_modules/.bin` on every task's PATH; its `bun()` is the same
-   for `bun.lock`, and this repo declares that one). Each of those
-   plugins also claims its manager's install settings (`pnpm()`:
-   `pnpm-workspace.yaml`, `.npmrc`; `bun()`: `bunfig.toml`, `.npmrc`;
-   `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`) and folds each whole into
-   every task, so they leave this digest too.
-
-   The fingerprint is read once per run, before any task. A task in the
-   root project may rewrite one of these files — `pnpm install` without
-   `--frozen-lockfile` updates the lockfile and the installed tree — and
-   every key taken before it names the old one. So a task that may
-   (unsandboxed in the root project, or granted a write over one) tells
-   the run when its command ran, the run re-checks the files then (one
-   `stat` each, following a symlink as both reads do — an `lstat` missed
-   a lockfile rewritten through a link, item 760 — the bytes compared
-   for any written since the read), and
-   once one moved nothing keyed on the old digest is probed or saved for
-   the rest of the run, with one status line naming the file. Every
-   reader after such a task is keyed late, not up front. Without it the
-   run after a lockfile rewrite restored a build made against the old
-   install, and a save filed a build against the new install under the
-   old lockfile's key, replayed whenever the tree went back (item 750,
-   [`modules/fingerprint-watch.md`](./modules/fingerprint-watch.md)).
-
-4. **Project `package.json` hash** — the git blob OID of the project's
-   `package.json`: the index OID when the file is tracked and clean,
-   else `cache.hashFile`'s blob OID of the worktree bytes (empty when
-   there is none). Folded in implicitly (Turbo / Nx parity).
-   Covers the case where `cache.inputs.files: ['src/**']` is narrow
-   and a `package.json` dep change would otherwise leak undetected.
-   (Added at v12; rationale in [§ History](#history).)
-5. **Task config hash** — `xxh3(JSON.stringify(hashableConfig(node.config)))`
+3. **Task config hash** — `xxh3(JSON.stringify(hashableConfig(node.config)))`
    of the _evaluated_ task config. The projection is one field wide:
    `exec.remote` is dropped, because it says WHERE a task runs and not
    what it does (§ What's NOT in the key). Captures:
@@ -109,55 +67,87 @@ over (in order):
      `process.env`-read at config-load time injected. Bun's native
      `await import()` evaluates the module and bakes those values into
      the object before we serialize.
-6. **`forwardArgs`** — CLI args passed after `--`. Folded into the
+4. **`forwardArgs`** — CLI args passed after `--`. Folded into the
    key so `vx run test -- --watch` doesn't cache-hit a previous
    `vx run test`. Scoped to the user-requested tasks only — dependsOn-
    pulled deps don't see them (their cache identity stays clean) — and
    to a command: a requested default `build` runs none and folds none
    (X-119).
-7. **`cache.inputs.env` resolved values** — `[name, value]` pairs
+5. **`cache.inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current
    values; an unset name folds its bare name, with no `\0`, so unset
    and set-to-empty are two keys (the child tells them apart:
    `passThrough` leaves an unset name out). A name holding a NUL is
    refused at load.
-8. **`cache.inputs.runtime` resolved output** — `[command, output]`
+6. **`cache.inputs.runtime` resolved output** — `[command, output]`
    pairs, where `output` is the trimmed stdout of each command run via
    `sh -c` in the **project dir** at hash time; a command with stderr
    (or a NUL in stdout) folds `\0<stdout length>\0<stdout><stderr>`,
    so bytes moved between the streams move the key.
-   The runtime-output analog of step 7: the command _strings_ are in
-   the resolved config (step 5), their _output_ is resolved live every
+   The runtime-output analog of step 5: the command _strings_ are in
+   the resolved config (step 3), their _output_ is resolved live every
    run. Folded with the command count + each `command\0output` pair.
-9. **`cache.inputs.workspaceRuntime` resolved output** — same as step
+7. **`cache.inputs.workspaceRuntime` resolved output** — same as step
    8 but commands run at the **workspace root**, and the pairs fold
    into a **distinct namespace** (`ws-runtime-values:`) so an identical
    `(command, output)` never aliases the project-cwd `runtime` values.
-10. **Filtered upstream task cache hashes** — every upstream task's
-    own cache key, filtered by `cache.inputs.tasks` (default: all of
-    them). Sorted by hash before folding so the ordering of `dependsOn`
-    doesn't change the key. This is the cascade mechanism: if anything
-    beneath you changes, your hash changes too. The set is `dependsOn`'s,
-    never the run's selection: a dependency `--exclude-dependencies`
-    keeps from running is still folded, with the key a full run would
-    derive for it (nx#35234), so the flag moves no key. Its outputs are
-    whatever is on disk, which nothing proves current, so a task whose
-    key folds one, and everything built on it, may hit but does not
-    save (`orchestrator/excluded-keys.ts`); a task with
-    `cache.inputs.tasks: []` folds none and saves as usual.
-11. **Plugin key material** — the `{ name: value }` pairs a plugin's
-    `key(task, ctx)` stage returned for this task, stored on the node as
-    sorted `plugin/name` pairs and folded after the upstream keys and BEFORE the input files,
-    ONLY when non-empty — so a workspace with no `key` plugin derives
-    byte-identical keys to one before the stage existed (no
-    `CACHE_VERSION` bump when it shipped). `vx why` names a changed pair
-    as `plugin <plugin>/<name>`. Two plugins of one package (a plugin's
-    name is its package's) that return one name are told apart as
-    `<name>`, `<name>#2`, … in value order, so declaration order still
-    keys nothing (item 1028).
+8. **Filtered upstream task cache hashes** — every upstream task's
+   own cache key, filtered by `cache.inputs.tasks` (default: all of
+   them). Sorted by hash before folding so the ordering of `dependsOn`
+   doesn't change the key. This is the cascade mechanism: if anything
+   beneath you changes, your hash changes too. The set is `dependsOn`'s,
+   never the run's selection: a dependency `--exclude-dependencies`
+   keeps from running is still folded, with the key a full run would
+   derive for it (nx#35234), so the flag moves no key. Its outputs are
+   whatever is on disk, which nothing proves current, so a task whose
+   key folds one, and everything built on it, may hit but does not
+   save (`orchestrator/excluded-keys.ts`); a task with
+   `cache.inputs.tasks: []` folds none and saves as usual.
+9. **Plugin key material** — the `{ name: value }` pairs a plugin's
+   `key(task, ctx)` stage returned for this task, stored on the node as
+   sorted `plugin/name` pairs and folded after the upstream keys and BEFORE the input files,
+   ONLY when non-empty — so a workspace with no `key` plugin derives
+   byte-identical keys to one before the stage existed (no
+   `CACHE_VERSION` bump when it shipped). `vx why` names a changed pair
+   as `plugin <plugin>/<name>`. Two plugins of one package (a plugin's
+   name is its package's) that return one name are told apart as
+   `<name>`, `<name>#2`, … in value order, so declaration order still
+   keys nothing (item 1028).
 
-12. **Input files' content hashes** — `cache.inputs.files` resolved to
+   A plugin that reads a root file claims it (`VxPlugin.fingerprint`).
+   `@vzn/vx-lockfile`'s `pnpm()` folds the project's own resolved
+   dependency closure from `pnpm-lock.yaml` and the root package's, so
+   `pnpm update foo` re-keys only the projects that depend on `foo` —
+   every project when the root does, since the root's tools run from the
+   root `node_modules/.bin` on every task's PATH; `bun()`, `npm()` and
+   `yarn()` are the same for their lockfiles (`npm()` reads
+   `npm-shrinkwrap.json` over `package-lock.json`, as npm does; `bun()`
+   refuses a `bun.lockb` with no `bun.lock`, which it cannot read), and
+   this repo declares `bun()`. Each also claims its manager's install
+   settings (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`:
+   `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`)
+   and folds each whole into every task.
+
+   The run reads each claimed root file once, before any task. A task
+   in the root project may rewrite one — `pnpm install` without
+   `--frozen-lockfile` updates the lockfile and the installed tree — and
+   every key taken before it names the old one. So a task that may
+   (unsandboxed in the root project, or granted a write over one) tells
+   the run when its command ran, the run re-checks the claimed files
+   then (one `stat` each, following a symlink as both reads do — an
+   `lstat` missed a lockfile rewritten through a link, item 760 — the
+   bytes compared for any written since the read), and once one moved
+   nothing keyed on the old bytes is probed or saved for the rest of the
+   run, with one status line naming the file. Every reader after such a
+   task is keyed late, not up front. Without it the run after a lockfile
+   rewrite restored a build made against the old install, and a save
+   filed a build against the new install under the old lockfile's key,
+   replayed whenever the tree went back (item 750,
+   [`modules/fingerprint-watch.md`](./modules/fingerprint-watch.md)).
+   With nothing claimed, no root file is read or watched.
+
+10. **Input files' content hashes** — `cache.inputs.files` resolved to
     a concrete list of project-relative paths (gitignore-aware,
     declared-outputs-excluded, nested-projects-excluded), each file
     contributing its **git blob OID** (v20). On a clean tree the OID
@@ -227,7 +217,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     and every project under it is selected.
 
     A task with **no `cache` block** derives a key too — its dependents
-    fold it (step 10) — and, declaring nothing, folds **every file in
+    fold it (step 8) — and, declaring nothing, folds **every file in
     its project**: `**/*`, gitignore-aware, untracked files included,
     and its own outputs not excluded, since it declared none. So its
     key moves whenever it writes a file git does not ignore: a cached
@@ -240,8 +230,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
 
     Declaring nothing, such a task may also have **written** anywhere
     in its project, so what the run learned about that project at its
-    start — the git listing, the index OIDs, the `package.json` digest
-    — is dropped once its command exits, pass or fail, and a later key
+    start — the git listing and the index OIDs — is dropped once its command exits, pass or fail, and a later key
     re-lists and hashes by content. For the same reason a task after it
     in the same project (`dependsOn`, even with `tasks: []`) is never
     keyed up front by the local short-circuit or the remote prefetch.
@@ -694,8 +683,8 @@ before the command ran — at the task's start, or up front by the local
 short-circuit — and the save files the outputs under it, so the inputs
 must still be what it describes. Two checks, in order. The key
 re-derived just before the command (`describeTaskInputs`, which the
-executor seam needs anyway) must equal it. Then each input file and the
-project's `package.json` is `lstat`ed once: a file whose ctime falls
+executor seam needs anyway) must equal it. Then each input file is
+`lstat`ed once: a file whose ctime falls
 after, or within `FILE_HASH_RACY_MS` before, the moment its digest was
 learned — the enumeration's start for an index OID, the describe for a
 hashed file — is hashed again and compared, and a file that is gone has
@@ -708,7 +697,7 @@ edit, was filed under the key and restored over the original (item
 one status line names the file (``[vx] app#format: `packages/app/a.ts`
 changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
-derivation, step 12). This covers a formatter rewriting its own input
+derivation, step 10). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
 left remote (`--cache-download=none`) is held to the same checks: a moved
 key still lets a local consumer fetch its outputs, but the fetch saves
@@ -750,8 +739,8 @@ transitively: that key does not name the bytes they built from (`[vx] app#use: r
 over app#gen's outputs, which its key no longer describes — …`). Until
 2026-09-27 (A-12) they saved, and once the input was put back they hit
 the edit's output.
-A workspace fingerprint a task rewrote since the run read it (§ Cache
-key derivation, step 3) withholds the save the same way, and no key
+A claimed root file a task rewrote since the run read it (§ Cache key
+derivation, step 9) withholds the save the same way, and no key
 taken before it is probed or restored: a hit the up-front probe found
 goes back to the scheduler and runs once its deps are done. Until X-124
 that hit restored the old install's bytes.
@@ -917,28 +906,28 @@ the next warm run; the design note keeps that shape out of scope.
 
 A task's cache becomes invalid when any of these change:
 
-| Trigger                                                                                                                                  | Mechanism                                                                                                                                                                                       |
-| ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Edit a file in the task's `inputs.files` set                                                                                             | step 12 of key derivation                                                                                                                                                                       |
-| Edit a file in the task's `inputs.workspaceFiles` set (root-anchored; may live in ANY project's dir — the documented boundary exception) | step 12 — resolved workspace files join the same input-file list                                                                                                                                |
-| Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`)                                                                    | step 3 (workspace fingerprint) — or, for a lockfile a plugin claims, that plugin's `key` material (`@vzn/vx-lockfile`: only the projects whose dependency closure moved)                        |
-| Edit `pnpm-workspace.yaml`                                                                                                               | step 3                                                                                                                                                                                          |
-| Edit `package.json`'s `workspaces` field                                                                                                 | not step 3 — membership: a project that joins or leaves changes which projects exist and which nested dirs its parent's globs exclude (step 12); the file itself is hashed per project (step 4) |
-| Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 4 (project package.json hash)                                                                                                                                                              |
-| Edit the task's `vx.config.ts`                                                                                                           | step 5 (task config hash)                                                                                                                                                                       |
-| Edit a config file that the task config imports                                                                                          | step 5 (configHash sees the resolved object after Bun evaluates imports)                                                                                                                        |
-| Change CLI `forwardArgs` (after `--`)                                                                                                    | step 6                                                                                                                                                                                          |
-| Change a `cache.inputs.env` host value                                                                                                   | step 7                                                                                                                                                                                          |
-| Change the combined stdout+stderr of a `cache.inputs.runtime` command (resolved at hash time)                                            | step 8                                                                                                                                                                                          |
-| Change the combined stdout+stderr of a `cache.inputs.workspaceRuntime` command (resolved at hash time)                                   | step 9                                                                                                                                                                                          |
-| Upstream task's cache key changes (because its inputs changed)                                                                           | step 10                                                                                                                                                                                         |
-| Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                                                                                                    |
-| Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                                                                                              |
-| Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                                                                                             |
-| Edit `.vx/projects.lock.json`                                                                                                            | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                             |
-| Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception)                                                                       |
+| Trigger                                                                                                                                  | Mechanism                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Edit a file in the task's `inputs.files` set                                                                                             | step 10 of key derivation                                                                                                                                                                               |
+| Edit a file in the task's `inputs.workspaceFiles` set (root-anchored; may live in ANY project's dir — the documented boundary exception) | step 10 — resolved workspace files join the same input-file list                                                                                                                                        |
+| Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`)                                                                    | step 9 — the `key` material of the plugin that claims it (`@vzn/vx-lockfile`: only the projects whose dependency closure moved); **NOT a trigger** with no such plugin, since core keys no package file |
+| Edit an install setting (`.npmrc`, `bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`)                                                  | step 9 — the claiming lockfile plugin folds it whole into every task; **NOT a trigger** without one                                                                                                     |
+| Edit `package.json`'s `workspaces` field                                                                                                 | membership: a project that joins or leaves changes which projects exist and which nested dirs its parent's globs exclude (step 10)                                                                      |
+| Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 10 — an input file of every cached task when `@vzn/vx-lockfile` is declared (it adds `package.json` to `cache.inputs.files`), or when a task lists it; **NOT a trigger** otherwise                 |
+| Edit the task's `vx.config.ts`                                                                                                           | step 3 (task config hash)                                                                                                                                                                               |
+| Edit a config file that the task config imports                                                                                          | step 3 (configHash sees the resolved object after Bun evaluates imports)                                                                                                                                |
+| Change CLI `forwardArgs` (after `--`)                                                                                                    | step 4                                                                                                                                                                                                  |
+| Change a `cache.inputs.env` host value                                                                                                   | step 5                                                                                                                                                                                                  |
+| Change the combined stdout+stderr of a `cache.inputs.runtime` command (resolved at hash time)                                            | step 6                                                                                                                                                                                                  |
+| Change the combined stdout+stderr of a `cache.inputs.workspaceRuntime` command (resolved at hash time)                                   | step 7                                                                                                                                                                                                  |
+| Upstream task's cache key changes (because its inputs changed)                                                                           | step 8                                                                                                                                                                                                  |
+| Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                                                                                                            |
+| Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                                                                                                      |
+| Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                                                                                                     |
+| Edit `.vx/projects.lock.json`                                                                                                            | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                                     |
+| Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception)                                                                               |
 
-The cascade in step 10 is what makes monorepo caching work: edit a
+The cascade in step 8 is what makes monorepo caching work: edit a
 file in `lib/`, and every package that depends on `lib`'s `build` task
 re-runs automatically.
 
@@ -956,7 +945,7 @@ them (X-57). The same set fences the output clean, so a root
 glob pass drops a path under one of them (an ancestor lookup,
 A-11). The only way
 for project A to depend on project B's state via project-relative
-globs is `dependsOn` + upstream-hash propagation (step 10).
+globs is `dependsOn` + upstream-hash propagation (step 8).
 
 For a task with `exec.sandbox` and `cache`, the sandbox enforces that
 "only". A workspace package reached through a `node_modules` link is
@@ -1561,7 +1550,7 @@ CREATE INDEX runs_failed ON runs(hash) WHERE status = 'failed';
 
 -- The file-hash memo: a content hash per input file that git could not
 -- answer (untracked or dirty), keyed by the stat identity that proves
--- the bytes unchanged. Machine-local; § Cache key derivation step 12.
+-- the bytes unchanged. Machine-local; § Cache key derivation step 10.
 -- A writing close drops rows unwritten for 30 days, at most once a day
 -- (a memo miss is the whole cost of a dropped row; item 1082).
 CREATE TABLE file_hashes (
@@ -1769,15 +1758,16 @@ moat.
   transaction, which holds a small artifact's bytes itself; a large one
   adds a temp write and an atomic rename. Hashing dominates the run; storage itself
   is cheap. The remote upload (if any) is backgrounded.
-- **Workspace fingerprint** is computed once per `vx run` invocation
-  and reused for every task in that run; after a task that may rewrite
-  one of its files ran, one `stat` per file re-checks it (item 750).
+- **Claimed root files** (a lockfile plugin's lockfile and settings)
+  are read once per `vx run` invocation; after a task that may rewrite
+  one ran, one `stat` per file re-checks it (item 750). With no plugin
+  claiming one, nothing is read.
 
 ## What's NOT in the key (and why)
 
 - **`exec.env.passThrough` _values_.** Would force cache misses across
   machines with different CI flags, regions, or shell prompts. The
-  _names_ are in the config hash (step 5) so adding/removing a
+  _names_ are in the config hash (step 3) so adding/removing a
   passthrough still bumps the key for affected tasks.
 - **Files outside the project directory that aren't declared.**
   Workspace-root configs (`tsconfig.base.json`, etc.) are not
@@ -1836,6 +1826,9 @@ Not required when:
   background uploads) — key derivation and artifact bytes untouched.
 - Doc-only updates.
 - Refactors that don't change the bytes fed into the hash.
+- A key part leaves the chain: every key moves, so no unchanged key
+  holds wrong bytes (`v43` stayed when core stopped folding the
+  `workspace:` and `pkg:` parts, 2026-10-14).
 
 `tests/contract-stored-format.test.ts` holds the layout rows: it
 records the index's DDL beside `SCHEMA_VERSION` and a fixture
@@ -1860,6 +1853,9 @@ breaking footer).
 
 ### History
 
+- **v43 kept** (2026-10-14): core stopped folding the project's
+  `package.json` and the root fingerprint files; every key moved, so
+  nothing replays wrong bytes and no bump was needed.
 - **v42 → v43**: stored bytes wrong under an unchanged key (Security
   F4, 2026-10-14). A scoped run stored its local entries under the
   default key, so a later default run on the same disk replayed a PR's
@@ -2118,7 +2114,7 @@ breaking footer).
 
 - **v22 → v23**: fold `cache.inputs.runtime` / `workspaceRuntime`
   command output into the key (two namespaced sections after
-  env-values). The command _strings_ stay in the config hash (step 5);
+  env-values). The command _strings_ stay in the config hash (step 3);
   their combined trimmed stdout+stderr is resolved live at hash time
   and folded as `runtime-values:` (project-cwd) and `ws-runtime-values:`
   (root-cwd) sections, each `command\0output`. No SCHEMA bump — only
@@ -2221,7 +2217,7 @@ breaking footer).
   transitive-deps to nearest-holder frontier semantics (Turbo/Nx
   direct-deps parity, plus vx's sparse bridging through deps that
   don't declare the task). Task graphs lose the redundant deep edges,
-  so the filtered-upstream-hash set (step 10) shrinks for any task
+  so the filtered-upstream-hash set (step 8) shrinks for any task
   whose deps chain `'^task'` themselves — same inputs now derive a
   different key. Reachability/ordering is unchanged whenever holders
   chain `'^task'` (the universal pattern); a holder that doesn't is

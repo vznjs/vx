@@ -298,7 +298,7 @@ change seeds tasks in the projects it touches:
   (`files`, `workspaceFiles`), or a changed submodule or embedded
   repository is one its `workspaceFiles` may reach into (git reports it
   as one path; a glob whose fixed prefix is above or inside it counts);
-- every task of a project whose `package.json` or `vx.config.*`
+- every task of a project whose `vx.config.*`
   changed, or that holds a changed path no cached task of its declares
   (vx cannot prove that path re-keys nothing), or that holds a changed
   submodule or embedded repository (git reports it as one path, and no
@@ -1508,19 +1508,20 @@ It samples each file's later clock of mtime and ctime, so a replacement
 that carries the old file's mtime (`cp -p`, `rsync -a`, a `mv`) is an
 edit to it as it is to the OS watcher.
 
-### Workspace fingerprint changes
+### Claimed root file changes
 
-Edits to a lockfile (`pnpm-lock.yaml`, `bun.lock`, …) or
-`pnpm-workspace.yaml` at the root invalidate every task's cache key
-via the [workspace fingerprint](./caching.md#cache-key-derivation).
-Watch mode hears those because it watches the workspace root
-(non-recursively). A lockfile a plugin claims still triggers a cycle,
-and so does any other root file a plugin claims (`turbo.json` under
-`turbo()`, item 961), a plugin added to the workspace config mid-watch
-included from the cycle that loads it; the keys then decide which
-projects actually re-run. Every cycle's configs come from
-`.vx/projects.lock.json`, so a config edit alone changes no command, and a re-lock
-(`vx lock`) is a cycle that re-reads the watched set (item 971).
+A root file a plugin claims — a lockfile or install setting under
+`@vzn/vx-lockfile` (`pnpm-lock.yaml`, `bun.lock`, `.npmrc`, …),
+`turbo.json` under `turbo()` (item 961) — triggers a cycle, and so does
+`pnpm-workspace.yaml`. Watch mode hears them because it watches the
+workspace root (non-recursively); a plugin added to the workspace
+config mid-watch counts from the cycle that loads it. The keys then
+decide which projects actually re-run: core keys no package file, so a
+lockfile edit re-keys only through its claimant
+([cache key derivation](./caching.md#cache-key-derivation)). Every
+cycle's configs come from `.vx/projects.lock.json`, so a config edit
+alone changes no command, and a re-lock (`vx lock`) is a cycle that
+re-reads the watched set (item 971).
 
 ### Constraints
 
@@ -2993,11 +2994,10 @@ A row's kind is what the key folded: `file` (an input file, by blob
 id), `env` (a declared variable, by digest), `runtime` and
 `ws-runtime` (a declared command's output, `inputs.runtime` and
 `inputs.workspaceRuntime`), `forward` (the argv forwarded after `--`),
-`package` (the project's own `package.json`), `workspace` (the
-fingerprint: the lockfile and the other root manifests), `config` (the
-evaluated task config), `upstream` (a dependency's input key — a
-lockfile change moves it too, so that row rides with the
-fingerprint's), `plugin` (a `key` plugin's material, by name) and
+`config` (the evaluated task config), `upstream` (a dependency's input
+key — a lockfile change moves it too, so that row rides with the
+lockfile plugin's), `plugin` (a `key` plugin's material, by name; a
+lockfile plugin's dependency closure) and
 `format` (the key format vx itself folds: it moves only with an
 upgrade, and re-keys every task once, X-142).
 The component-level rows come from the `entry_inputs` input

@@ -14,11 +14,7 @@ import {
   taskGlob,
 } from '../util/index.js'
 import { asTrees } from '../cache/index.js'
-import {
-  PROJECT_CONFIG_FILENAMES,
-  WORKSPACE_CONFIG_FILENAMES,
-  WORKSPACE_FINGERPRINT_FILES,
-} from '../workspace/index.js'
+import { PROJECT_CONFIG_FILENAMES, WORKSPACE_CONFIG_FILENAMES } from '../workspace/index.js'
 import { isIgnoredDir } from './watch-fs.js'
 
 const IGNORED_SUFFIXES = ['.tsbuildinfo', '~']
@@ -245,7 +241,7 @@ export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set
  * watcher hears every write in the workspace; a key can see three kinds
  * of path and no other: a file inside a project's directory (its own
  * `inputs.files`, or its outputs, which the ignore filter drops next), a
- * workspace fingerprint file at the root, and a match of a declared
+ * root file a plugin claims, and a match of a declared
  * `inputs.workspaceFiles` glob. Everything else — a log written at the
  * root, a `coverage/` or `.turbo/` tree, an editor's scratch file — is
  * dropped before the trigger, so it costs no cycle. Before this rule the
@@ -277,8 +273,7 @@ export function makeRootEventFilter(
     if (
       isWorkspaceConfigFile(rel) ||
       claimedRootFiles.has(rel) ||
-      (!rel.includes('/') &&
-        (isWorkspaceFingerprintFile(rel) || rel === 'package.json' || rel === '.gitignore'))
+      (!rel.includes('/') && (shapesMembers(rel) || rel === 'package.json' || rel === '.gitignore'))
     ) {
       return true
     }
@@ -316,9 +311,10 @@ export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: s
  * watcher, a new output must stop being an event) or the workspace config
  * (a plugin's `project` stage). Until item 891 only a member directory
  * coming or going re-read the set, so each of these waited for a restart
- * while the loop looked alive. A root fingerprint file too, for
- * `pnpm-workspace.yaml`: a glob added there was a cycle that ran the new
- * packages and watched none of them (item 1018).
+ * while the loop looked alive. `pnpm-workspace.yaml` too: a glob added
+ * there was a cycle that ran the new packages and watched none of them
+ * (item 1018). A file a plugin claims re-reads the set as well (the
+ * caller asks: a lockfile plugin's `discover` edges come from it).
  */
 const PROJECT_CONFIGS: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 
@@ -326,14 +322,15 @@ export function shapesWatchedSet(filename: string): boolean {
   const base = path.basename(filename)
   return (
     base === 'package.json' ||
-    isWorkspaceFingerprintFile(base) ||
+    shapesMembers(base) ||
     PROJECT_CONFIGS.has(base) ||
     isWorkspaceConfigFile(filename.split(path.sep).join('/'))
   )
 }
 
-export function isWorkspaceFingerprintFile(name: string): boolean {
-  return FINGERPRINT_FILES.has(name)
+/** `pnpm-workspace.yaml`: discovery reads the member globs from it. */
+export function shapesMembers(name: string): boolean {
+  return name === 'pnpm-workspace.yaml'
 }
 
 /**
@@ -348,19 +345,6 @@ const WORKSPACE_CONFIGS: ReadonlySet<string> = new Set(WORKSPACE_CONFIG_FILENAME
 export function isWorkspaceConfigFile(name: string): boolean {
   return WORKSPACE_CONFIGS.has(name)
 }
-
-/**
- * True for a root file that re-keys EVERY task, so a change to one must trigger
- * a cycle even though it lives in no project dir.
- *
- * Reads the SHARED constant the fingerprint itself walks — this used to be a
- * third hand-rolled copy of that list, which is precisely the drift the
- * `--affected` wave exported the constant to prevent. A name added there but
- * not here would re-key every task while `vx watch` silently never re-ran on
- * it: the loop looks alive, and the one edit that invalidates the whole
- * workspace is the one it ignores.
- */
-const FINGERPRINT_FILES: ReadonlySet<string> = new Set(WORKSPACE_FINGERPRINT_FILES)
 
 /**
  * Paths as git spells them under `root`: a project reached through a

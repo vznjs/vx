@@ -307,7 +307,7 @@ export default defineProject({
     body: [
       'Hash the whole lockfile into every key and any `install` that touches it busts every cached task.',
       '`@vzn/vx-lockfile` keys each project on its own resolved dependency closure. Bump a test utility one package uses, and only that package’s tasks re-run. `--affected` follows the same closure.',
-      'It reads pnpm, Bun, npm and Yarn lockfiles, and gives vx the project edges they record.',
+      'It reads pnpm, Bun, npm and Yarn lockfiles, and gives vx the project edges they record. vx core keys no package file: without the plugin, an install re-keys nothing.',
     ],
     example: {
       lang: 'ts',

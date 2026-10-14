@@ -106,7 +106,6 @@ export interface PlanArgs {
   /** See `RunPlan.downloadDowngrades`. */
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
   workspaceRoot: string
-  workspaceFingerprint: string
   cache: CacheLayer
   cachePolicy?: CachePolicy
   forwardArgs?: readonly string[] | undefined
@@ -150,7 +149,6 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
         node,
         upstream,
         workspaceRoot: args.workspaceRoot,
-        workspaceFingerprint: args.workspaceFingerprint,
         cache: args.cache,
         forwardArgs: args.forwardArgs,
         nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],

@@ -103,7 +103,7 @@ describe('startRemotePrefetch', () => {
         nodes: prepared.nodes,
         cache: layer,
         workspaceRoot: prepared.workspaceRoot,
-        workspaceFingerprint: prepared.workspaceFingerprint,
+        claimedFiles: prepared.fingerprintWatch.names,
         nestedDirsByProject: prepared.nestedDirsByProject,
         gitFilesCache: prepared.gitFilesCache,
         hashCache: prepared.hashCache,

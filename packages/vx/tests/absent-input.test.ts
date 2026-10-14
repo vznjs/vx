@@ -63,8 +63,6 @@ describe('the key of an absent input', () => {
   const base = (inputFiles: string[]): CacheKeyInput => ({
     taskId: 'p#build',
     workspaceRoot: '/ws',
-    workspaceFingerprint: 'f',
-    projectPackageJsonHash: 'p',
     taskConfigHash: 'c',
     envValues: [],
     upstreamHashes: [],
@@ -131,7 +129,6 @@ describe('the inputs an executor is handed', () => {
         } as TaskNode,
         upstream: [],
         workspaceRoot: fx.root,
-        workspaceFingerprint: 'fp',
         cache,
         nestedProjectDirs: [],
       })

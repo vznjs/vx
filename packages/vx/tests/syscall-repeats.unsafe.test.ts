@@ -230,26 +230,25 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
   )
 
   it(
-    'the workspace fingerprint: one probe per candidate file, and one read of each present one',
+    'the claimed root files: one probe per claimed file, and one read of each present one',
     async () => {
       const root = path.join(dir, 'fp')
       await mkdir(root)
       await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
       await writeFile(path.join(root, 'bun.lock'), '{}\n')
+      const claimed = ['bun.lock', 'bunfig.toml', '.npmrc']
       const calls = await trace(
         dir,
         `
-        import { computeWorkspaceFingerprints } from '$SRC/workspace/index.js'
-        await computeWorkspaceFingerprints(${JSON.stringify(root)}, new Set())
+        import { readClaimedFiles } from '$SRC/workspace/index.js'
+        await readClaimedFiles(${JSON.stringify(root)}, ${JSON.stringify(claimed)})
         `,
       )
-      const { WORKSPACE_FINGERPRINT_FILES } = await import('../src/workspace/fingerprint.js')
-      expect(WORKSPACE_FINGERPRINT_FILES.length).toBeGreaterThan(2)
       // A probe ahead of the read (load-reads.ts): most candidates are
       // absent, and a failed open costs more than a stat that answers "no".
-      const present = new Set(['pnpm-workspace.yaml', 'bun.lock'])
-      for (const f of WORKSPACE_FINGERPRINT_FILES) {
-        const expected = present.has(f) ? ['stat', 'openat'] : ['stat']
+      // A root file no plugin claims is not looked at.
+      for (const f of [...claimed, 'pnpm-workspace.yaml']) {
+        const expected = f === 'bun.lock' ? ['stat', 'openat'] : claimed.includes(f) ? ['stat'] : []
         expect([f, on(calls, path.join(root, f))]).toEqual([f, expected])
       }
     },

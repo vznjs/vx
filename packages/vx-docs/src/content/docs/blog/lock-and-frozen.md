@@ -63,8 +63,8 @@ first line, which is the point.
 ## What the lock is not
 
 - **Not a cache key input.** `.vx/projects.lock.json` is excluded from every
-  task's input set and from the workspace fingerprint, so running `vx
-  lock` does not re-key the workspace.
+  task's input set, so running `vx lock` does not re-key the
+  workspace.
 - **Not a substitute for `cache.inputs.env`.** The lock freezes what a
   config *evaluated to*. An env var a task reads at run time is still a
   run-time input and belongs under `cache.inputs.env`, where it joins

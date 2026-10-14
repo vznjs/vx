@@ -25,7 +25,6 @@ export interface KeyExcludedArgs {
   dropped: ReadonlyMap<string, readonly string[]>
   cache: CacheLayer
   workspaceRoot: string
-  workspaceFingerprint: string
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: ReadonlyMap<string, string[]>
   gitFilesCache: GitFilesCache
@@ -57,7 +56,6 @@ export async function keyExcludedDependencies(args: KeyExcludedArgs): Promise<vo
       node,
       upstream,
       workspaceRoot: args.workspaceRoot,
-      workspaceFingerprint: args.workspaceFingerprint,
       cache: args.cache,
       forwardArgs: args.forwardArgs,
       nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],

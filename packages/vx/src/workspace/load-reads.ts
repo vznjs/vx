@@ -1,6 +1,6 @@
 // A load reads each root file once. Finding the root reads its manifest,
-// listing the package globs read it again and the workspace fingerprint a
-// third time. Every such read goes through a `LoadReads` the load owns, so
+// listing the package globs read it again, and the claimed root files are
+// read for the run (`readClaimedFiles`). Every such read goes through a `LoadReads` the load owns, so
 // a file costs one probe and one read per load however many stages ask for
 // it. The map lives exactly as long as the load: a `vx watch` cycle is a
 // new load and reads fresh bytes.
@@ -14,8 +14,8 @@ export type LoadReads = Map<string, Promise<Uint8Array | null>>
  * `file`'s bytes, read at most once per `reads`; null when there is no file
  * there (`Bun.file(<dir>).exists()` is false, so a directory is none).
  *
- * The probe stays ahead of the read: most names asked about are absent (six
- * of the seven fingerprint files, three of the four workspace config names),
+ * The probe stays ahead of the read: most names asked about are absent
+ * (three of the four workspace config names, a manager's settings files),
  * and a failed read costs 90–200 µs building its error where `exists()`
  * answers in 15–40 µs (measured 2026-09-24) — so one stat per present file
  * is cheaper than letting the open answer both questions.

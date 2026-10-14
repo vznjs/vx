@@ -290,9 +290,11 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
-    'workspace fingerprint: pnpm-lock.yaml change busts every task cache',
+    'no plugin: a root lockfile, .npmrc or package.json edit moves no key',
     async () => {
-      // Seed a lockfile.
+      // Core keys no package file (language-agnostic core, PR 4): without a
+      // lockfile plugin, none of these reaches a key — the price of the
+      // decision, which `@vzn/vx-lockfile` pays back.
       await writeFile(
         path.join(fixture.root, 'pnpm-lock.yaml'),
         "lockfileVersion: '9.0'\nimporters:\n  '.': {}\n",
@@ -304,32 +306,33 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
               },
             },
           }
         `,
       })
+      const status = async (): Promise<string | undefined> =>
+        (await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })).outcomes[0]
+          ?.status
+      expect(await status()).toBe('success')
+      expect(await status()).toBe('cache-hit')
 
-      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
-
-      // Same lockfile -> cache hits.
-      const r1 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      expect(r1.outcomes[0]?.status).toBe('cache-hit')
-      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).toBe(first)
-
-      // Lockfile changes (e.g. transitive resolution bump). No project file
-      // changed; cache must still bust because workspaceFingerprint differs.
-      await new Promise((r) => setTimeout(r, 5))
       await writeFile(
         path.join(fixture.root, 'pnpm-lock.yaml'),
         "lockfileVersion: '9.0'\nimporters:\n  '.': {}\n# bumped\n",
       )
-
-      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      expect(r2.outcomes[0]?.status).toBe('success')
-      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
+      expect(await status()).toBe('cache-hit')
+      await writeFile(path.join(fixture.root, '.npmrc'), 'node-linker=hoisted\n')
+      expect(await status()).toBe('cache-hit')
+      await writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'lockproj', version: '0.0.1' }),
+      )
+      expect(await status()).toBe('cache-hit')
+      // CONTROL: a declared input still moves it.
+      await writeFile(path.join(dir, 'src', 'x.txt'), 'v2')
+      expect(await status()).toBe('success')
     },
     TIMEOUT,
   )
@@ -754,40 +757,6 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
-    'workspace fingerprint: pnpm-workspace.yaml change busts every cached task',
-    async () => {
-      await addProject(fixture.root, 'wsy', {
-        files: { 'src/x.txt': 'v1' },
-        config: `
-          export default {
-            tasks: {
-              run: {
-                exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
-              },
-            },
-          }
-        `,
-      })
-      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      const out1 = await readFile(path.join(fixture.root, 'packages/wsy/out.txt'), 'utf8')
-
-      // Append a comment to pnpm-workspace.yaml. Workspace fingerprint shifts;
-      // every task's cache must invalidate.
-      await new Promise((r) => setTimeout(r, 5))
-      await writeFile(
-        path.join(fixture.root, 'pnpm-workspace.yaml'),
-        'packages:\n  - "packages/*"\n# bumped\n',
-      )
-
-      const r = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      expect(r.outcomes[0]?.status).toBe('success')
-      expect(await readFile(path.join(fixture.root, 'packages/wsy/out.txt'), 'utf8')).not.toBe(out1)
-    },
-    TIMEOUT,
-  )
-
-  it(
     'sibling-package input isolation: editing one package does not bust an unrelated sibling',
     async () => {
       const dirA = await addProject(fixture.root, 'sib-a', {
@@ -1042,50 +1011,6 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       // user-visible surface a thrown error must reach.
       const statusLines = fixture.log.filter((l) => l.includes('broken-spawn#run'))
       expect(statusLines.length).toBeGreaterThan(0)
-    },
-    TIMEOUT,
-  )
-
-  it(
-    "project's package.json change busts the cache, even with narrow inputs",
-    async () => {
-      // Reproduces the gap user flagged: cache.inputs.files: ['src/**']
-      // doesn't include package.json, so before v12 a deps bump
-      // wouldn't invalidate. Now folded in implicitly via
-      // projectPackageJsonHash.
-      const dir = await addProject(fixture.root, 'narrow-pkg', {
-        files: { 'src/x.txt': 'v1' },
-        config: `
-          export default {
-            tasks: {
-              run: {
-                exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
-              },
-            },
-          }
-        `,
-      })
-
-      await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      const first = await readFile(path.join(dir, 'out.txt'), 'utf8')
-
-      // Re-run with no changes — cache hit, same out.txt.
-      const r2 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      expect(r2.outcomes[0]?.status).toBe('cache-hit')
-
-      // Bump package.json — cache MUST bust now.
-      await new Promise((r) => setTimeout(r, 5))
-      const pkgPath = path.join(dir, 'package.json')
-      const pkg = JSON.parse(await readFile(pkgPath, 'utf8')) as {
-        dependencies?: Record<string, string>
-      }
-      pkg.dependencies = { 'fake-dep': '^1.2.3' }
-      await writeFile(pkgPath, JSON.stringify(pkg, null, 2))
-
-      const r3 = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
-      expect(r3.outcomes[0]?.status).toBe('success')
-      expect(await readFile(path.join(dir, 'out.txt'), 'utf8')).not.toBe(first)
     },
     TIMEOUT,
   )
@@ -1480,8 +1405,9 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
           .all('app-rec', 'build') as Array<{ kind: string; name: string }>
         const kinds = new Set(rows.map((r) => r.kind))
         expect(kinds.has('config')).toBe(true)
-        expect(kinds.has('package')).toBe(true)
-        expect(kinds.has('workspace')).toBe(true)
+        // Core keys no package file: no package or workspace row.
+        expect(kinds.has('package')).toBe(false)
+        expect(kinds.has('workspace')).toBe(false)
         expect(rows.some((r) => r.kind === 'file')).toBe(true)
         totalAfterMiss = (db.query('SELECT COUNT(*) AS n FROM entry_inputs').get() as { n: number })
           .n

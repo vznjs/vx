@@ -430,21 +430,19 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
   )
 
   it(
-    'the lockfile is in every hash (Turbo: the global hash); a package.json change re-keys its package',
+    'no lockfile or package.json is in a core hash (Turbo: the global hash); a lockfile plugin keys both',
     async () => {
+      // Turbo folds the lockfile into its global hash and each package's
+      // manifest into its own. vx core keys no package file (2026-10-14):
+      // `@vzn/vx-lockfile` lists the manifest and keys the lockfile per
+      // project, pinned in its own suite (discover.test.ts).
       const before = new Map((await dry(root, ['lint', '--all'])).map((t) => [t.id, t.hash]))
       await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9.0\n')
-      const locked = new Map((await dry(root, ['lint', '--all'])).map((t) => [t.id, t.hash]))
-      for (const [id, hash] of before) expect(locked.get(id)).not.toBe(hash)
-
       const pkgPath = path.join(root, 'packages', 'docs', 'package.json')
       const pkg = JSON.parse(await readFile(pkgPath, 'utf8'))
       await writeFile(pkgPath, JSON.stringify({ ...pkg, version: '0.0.1' }))
-      const bumped = new Map((await dry(root, ['lint', '--all'])).map((t) => [t.id, t.hash]))
-      expect(bumped.get('docs#lint')).not.toBe(locked.get('docs#lint'))
-      for (const id of ['app#lint', 'ui#lint', 'lib#lint']) {
-        expect(bumped.get(id)).toBe(locked.get(id))
-      }
+      const after = new Map((await dry(root, ['lint', '--all'])).map((t) => [t.id, t.hash]))
+      expect(after).toEqual(before)
     },
     TIMEOUT,
   )

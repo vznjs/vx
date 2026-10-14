@@ -90,13 +90,15 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
 3. Untracked files (`git ls-files --others --exclude-standard`) are
    unioned in — a brand-new source file is a change. `.vx/projects.lock.json` is
    filtered out, so re-running `vx lock` never selects everything.
-4. If `pnpm-workspace.yaml` or a ROOT lockfile no plugin claims
-   changed, **every** project is selected and the walk stops: those
-   files are folded into the workspace fingerprint, so they re-key
-   every task. A lockfile a `fingerprint` plugin claims
-   (`@vzn/vx-lockfile`) selects the projects whose dependency closure
-   moved instead — [`lockfile-claim.md`](./lockfile-claim.md); one that
-   appeared or went still selects everything.
+4. A changed ROOT file a `fingerprint` plugin claims (a lockfile under
+   `@vzn/vx-lockfile`) is asked of its claimant, which names the
+   projects whose dependency closure moved —
+   [`lockfile-claim.md`](./lockfile-claim.md); one that appeared or went,
+   or any "cannot tell", selects **every** project and the walk stops.
+   Core keys no root file itself, so an unclaimed one (a lockfile with
+   no plugin, `pnpm-workspace.yaml`) is an ordinary path, owned by the
+   root project. A patch `bun.lock` names selects everything only while
+   a plugin claims `bun.lock`.
 5. Otherwise each changed path reaches a project through **three
    channels**, and the union is returned:
    - **Containment.** Walk the path's ancestor dirs bottom-up until one

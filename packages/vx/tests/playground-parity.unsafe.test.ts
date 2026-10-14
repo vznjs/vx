@@ -614,13 +614,15 @@ describe('the playground bundle plans what the CLI plans', () => {
     expect(movedFrom(base.cli, wrongEnv.tasks)).toEqual(API_TASKS)
   })
 
-  it("never reaches the host's platform, and calls only the shim's hash, glob, file and Buffer", () => {
+  it("never reaches the host's platform, and calls only the shim's hash, glob and file", () => {
     expect({ bundleTrapHits, notTrappable }).toEqual({ bundleTrapHits: {}, notTrappable: [] })
     const called = new Set<string>()
     for (const { bundle } of outcomes.values()) {
       for (const k of Object.keys(bundle.platformCalls)) called.add(k)
     }
-    expect([...called].sort()).toEqual(['Buffer.from', 'Bun.Glob', 'Bun.file', 'Bun.hash.xxHash3'])
+    // `Buffer.from` was the bun.lock patch probe of the fingerprint core no
+    // longer folds (2026-10-14); only `--affected` reaches it now.
+    expect([...called].sort()).toEqual(['Bun.Glob', 'Bun.file', 'Bun.hash.xxHash3'])
   })
 
   it('the traps fire: a host call made while armed throws and is counted', () => {

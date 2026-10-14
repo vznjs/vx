@@ -172,7 +172,6 @@ export interface PruneResult {
 export interface CacheKeyInput {
   taskId: string
   taskConfigHash: string
-  projectPackageJsonHash: string // (v12) project's package.json bytes
   envValues: Array<[name: string, value: string | undefined]> // undefined = unset
   runtimeValues?: Array<[command: string, output: string]> // (v23) cache.inputs.runtime; folded as a namespaced section
   workspaceRuntimeValues?: Array<[command: string, output: string]> // (v23) cache.inputs.workspaceRuntime; distinct namespace
@@ -187,7 +186,6 @@ export interface CacheKeyInput {
     readonly hash: string
     readonly projectDir: string
   }>
-  workspaceFingerprint: string
   forwardArgs?: readonly string[] // CLI args after `--`
   fileHashes?: ReadonlyMap<string, string> // (v20) abs path → git blob OID; mapped paths skip hashFile
   pluginParts?: ReadonlyArray<readonly [name: string, value: string]> // `key` stage parts; folded as `plugin:<n>`
@@ -345,8 +343,6 @@ line, in this exact order:
 ```
 <CACHE_VERSION>
 task:<taskId>
-workspace:<workspaceFingerprint>
-pkg:<projectPackageJsonHash>
 config:<taskConfigHash>
 forward-args:<n>
   <arg> (n times, in caller order)

@@ -33,8 +33,7 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry> // the loaded projects: the workspace, or a scoped run's closure
   hintProjects: ReadonlyMap<string, ProjectEntry> // a typo's measure: every project when a `pkg#task` named none loaded
   anyProjectConfig: boolean // some package has a vx.config.* at all, whatever the scope
-  workspaceFingerprint: string
-  fingerprintWatch: FingerprintWatch // has a task rewritten what that digest folded? (fingerprint-watch.md)
+  fingerprintWatch: FingerprintWatch // the claimed root files: has a task rewritten one? (fingerprint-watch.md)
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache // per-run memo of `git ls-files`, by project dir
   workspaceProjectCount: number // every project discovery found, in or out of scope
@@ -87,9 +86,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    order, under the run's policy — one remote is one `LayeredCache`,
    two or more are chained, and none leaves the local store unwrapped
    as the floor.
-   `computeWorkspaceFingerprints` yields two digests from one read:
-   the config-evaluation key over every root file, and the task key
-   over the files no plugin's `fingerprint` claims.
+   `readClaimedFiles` reads the root files the plugins claim
+   (`VxPlugin.fingerprint`) once, for the `FingerprintWatch`; core
+   folds none of them into a key.
 5. **Build the task graph** — `buildTaskGraph(...)`, the whole graph;
    the `graph` and `key` stages see it all. A `^name` no project in the
    workspace declares is refused (`undeclaredDepsError`), with or without

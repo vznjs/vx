@@ -171,8 +171,10 @@ describe('vx why (e2e)', () => {
 })
 
 // Every component kind a key folds has a verdict row (item 256): the file
-// row was pinned above; the env, package, workspace-fingerprint, config and
-// upstream rows were read by eye until this walk pinned each one.
+// row was pinned above; the env, config and upstream rows were read by eye
+// until this walk pinned each one. Core keys no package file: package.json
+// is a file row when a task lists it, and a lockfile no plugin claims is no
+// row at all.
 describe('vx why (e2e) — every component kind names its row', () => {
   let root: string
   const APP = `
@@ -181,7 +183,7 @@ describe('vx why (e2e) — every component kind names its row', () => {
         build: {
           exec: { command: 'mkdir -p dist && echo hi > dist/out.txt' },
           dependsOn: ['^build'],
-          cache: { inputs: { files: ['src/**'], env: ['APP_MODE'] }, outputs: { files: ['dist/**'] } },
+          cache: { inputs: { files: ['src/**', 'package.json'], env: ['APP_MODE'] }, outputs: { files: ['dist/**'] } },
         },
       },
     }
@@ -225,7 +227,7 @@ describe('vx why (e2e) — every component kind names its row', () => {
   }
 
   it(
-    'env, package, workspace fingerprint, config and upstream, each as its own row',
+    'env, package.json as an input, config and upstream, each as its own row',
     async () => {
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
       expect(await why({ APP_MODE: 'prod' })).toMatch(/changed\s+env\s+APP_MODE\s+\w+ → \w+/)
@@ -235,26 +237,14 @@ describe('vx why (e2e) — every component kind names its row', () => {
         JSON.stringify({ name: 'app', version: '0.0.1' }),
       )
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
-      expect(await why({ APP_MODE: 'prod' })).toMatch(
-        /changed\s+package\s+package\.json\s+\w+ → \w+/,
-      )
+      const pkg = await why({ APP_MODE: 'prod' })
+      expect(pkg).toMatch(/what changed \(1 component, \d+ unchanged\)/)
+      expect(pkg).toMatch(/changed\s+file\s+packages\/app\/package\.json\s+\w+ → \w+/)
 
+      // No plugin claims the lockfile, so no key folds it: a hit.
       await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n# moved\n')
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
-      const lock = await why({ APP_MODE: 'prod' })
-      expect(lock).toMatch(/changed\s+workspace\s+fingerprint\s+\w+ → \w+/)
-      // The lockfile moved lib's key too, and app folds it: the upstream row
-      // rides with the fingerprint's.
-      expect(lock).toMatch(/changed\s+upstream\s+lib#build\s+\w+ → \w+/)
-      const todo = lock.slice(lock.indexOf('  what to do:\n'))
-      expect(
-        todo
-          .trimEnd()
-          .split('\n')
-          .map((l) => l.trim().split(/\s+/)[0]),
-      ).toEqual(['what', 'workspace'])
-      // The upstream row is only the carrier: the walk names lib's own move.
-      expect(lock).toContain('  root cause:\n    app#build ← lib#build ← workspace fingerprint\n')
+      expect(await why({ APP_MODE: 'prod' })).toContain('cache key unchanged')
 
       const appConfig = path.join(root, 'packages', 'app', 'vx.config.mjs')
       await writeFile(appConfig, APP.replace('echo hi', 'echo hey'))
@@ -462,7 +452,7 @@ describe('vx why (e2e) — the exact lines', () => {
       tasks: {
         build: {
           exec: { command: 'cat src/*.txt > out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          cache: { inputs: { files: ['src/**', 'package.json'] }, outputs: { files: ['out.txt'] } },
         },
       },
     }
@@ -550,17 +540,19 @@ describe('vx why (e2e) — the exact lines', () => {
       const r = await vx(root, ['why', 'app#build'])
       expect(r.code).toBe(0)
       const lines = r.out.split('\n')
-      expect(lines).toContain('  what changed (3 components, 4 unchanged):')
-      const head = lines.indexOf('  what changed (3 components, 4 unchanged):')
+      expect(lines).toContain('  what changed (3 components, 3 unchanged):')
+      const head = lines.indexOf('  what changed (3 components, 3 unchanged):')
       const rows = lines.slice(head + 1, lines.indexOf('', head))
       expect(rows).toHaveLength(3)
-      expect(rows[0]).toMatch(/^ {4}added {3}file {5}packages\/app\/src\/new\.txt {2}\+ [0-9a-f]+$/)
-      expect(rows[1]).toMatch(/^ {4}removed file {5}packages\/app\/src\/old\.txt {2}- [0-9a-f]+$/)
-      expect(rows[2]).toMatch(/^ {4}changed package {2}package\.json {2}[0-9a-f]+ → [0-9a-f]+$/)
+      // package.json is a file row like any other: core keys no package file.
+      expect(rows[0]).toMatch(
+        /^ {4}changed file {2}packages\/app\/package\.json {2}[0-9a-f]+ → [0-9a-f]+$/,
+      )
+      expect(rows[1]).toMatch(/^ {4}added {3}file {2}packages\/app\/src\/new\.txt {2}\+ [0-9a-f]+$/)
+      expect(rows[2]).toMatch(/^ {4}removed file {2}packages\/app\/src\/old\.txt {2}- [0-9a-f]+$/)
       // One line per kind, in the rows' order, padded as they are.
       expect(lines.slice(lines.indexOf('  what to do:') + 1, -1)).toEqual([
-        `    file     ${WHAT_TO_DO['file']}`,
-        `    package  ${WHAT_TO_DO['package']}`,
+        `    file  ${WHAT_TO_DO['file']}`,
       ])
     },
     TIMEOUT,
@@ -587,10 +579,9 @@ describe('vx why (e2e) — the exact lines', () => {
       try {
         const r = await vx(root, ['why', 'app#build'])
         const lines = r.out.split('\n')
-        expect(lines).toContain('    added   legacy   x  + ab')
+        expect(lines).toContain('    added   legacy  x  + ab')
         expect(lines.slice(lines.indexOf('  what to do:') + 1, -1)).toEqual([
-          `    file     ${WHAT_TO_DO['file']}`,
-          `    package  ${WHAT_TO_DO['package']}`,
+          `    file    ${WHAT_TO_DO['file']}`,
         ])
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
@@ -632,9 +623,9 @@ describe('vx why (e2e) — the exact lines', () => {
         const lines = (await vx(root, ['why', 'app#build'])).out.split('\n')
         expect(lines.filter((l) => l.startsWith('    ') && l.includes('format'))).toEqual([
           expect.stringMatching(
-            /^ {4}changed format {3}cache-version {2}vx-cache-v0 → vx-cache-v\d+$/,
+            /^ {4}changed format {2}cache-version {2}vx-cache-v0 → vx-cache-v\d+$/,
           ),
-          `    format   ${WHAT_TO_DO['format']}`,
+          `    format  ${WHAT_TO_DO['format']}`,
         ])
       } finally {
         const back = new Database(path.join(root, '.vx', 'cache', 'cache.db'))

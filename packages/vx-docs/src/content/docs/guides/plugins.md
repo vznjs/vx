@@ -141,9 +141,9 @@ export function toolVersions(): VxPlugin {
 }
 ```
 
-A lockfile is claimed the same way, and core then leaves it out of every
-task's key: [`@vzn/vx-lockfile`](../configure/#lockfiles) keys each project
-on its own dependencies.
+A lockfile is claimed the same way: core keys no package file, and
+[`@vzn/vx-lockfile`](../configure/#lockfiles) keys each project on its
+own dependencies.
 
 ## Keys and order
 

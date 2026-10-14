@@ -29,7 +29,7 @@ import type { VxPlugin } from './plugin.js'
 import { isDefaultBuild } from './projects.js'
 
 /** Every file in this set re-keys each of its project's tasks, whatever their inputs. */
-const KEYED_BY_EVERY_TASK = new Set(['package.json', ...PROJECT_CONFIG_FILENAMES])
+const KEYED_BY_EVERY_TASK: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 
 /**
  * The projects every task of which the change reaches: the whole ones the

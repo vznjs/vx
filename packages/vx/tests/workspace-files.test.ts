@@ -324,7 +324,6 @@ describe('inputs.workspaceFiles resolution', () => {
           },
           upstream: [],
           workspaceRoot: root,
-          workspaceFingerprint: 'fp',
           cache,
           nestedProjectDirs: [],
         })
@@ -360,8 +359,6 @@ describe('inputs.workspaceFiles resolution', () => {
           inputFiles,
           workspaceRoot: root,
           upstreamHashes: [],
-          workspaceFingerprint: 'fp',
-          projectPackageJsonHash: 'pkg',
         })
       expect(await keyFor(empty)).toBe(await keyFor(absent))
     } finally {
@@ -534,7 +531,6 @@ describe('GitFilesCache workspace-wide partition', () => {
           },
           upstream: [],
           workspaceRoot: root,
-          workspaceFingerprint: 'fp',
           cache,
           nestedProjectDirs: [],
           gitFilesCache: {

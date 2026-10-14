@@ -41,16 +41,16 @@ single root file when it has no internals to hide. The design and
 migration history live in
 [`design/module-isolation-2026-06.md`](./design/module-isolation-2026-06.md).
 
-| Module         | Form                        | Contract highlights                                                                                                                                    |
-| -------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                                       |
-| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                           |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint |
-| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                                  |
-| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal         |
-| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                        |
-| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                               |
-| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                     |
+| Module         | Form                        | Contract highlights                                                                                                                                 |
+| -------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                                    |
+| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                        |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, claimed root files |
+| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                               |
+| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal      |
+| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                     |
+| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                            |
+| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                  |
 
 Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `settings.ts` (every setting once:
@@ -362,7 +362,7 @@ never branches on layering.
    1. `prepareRun` (shared with `planRun`): workspace discovery
       (`loadWorkspace` + the `config` stage, `listProjects`) →
       package graph → local `Cache` open (the policy's local slice) +
-      workspace fingerprints → **scoped** config loading via
+      the claimed root files → **scoped** config loading via
       `loadProjects`, the `project` stage included (only in-scope
       projects + their transitive dep closure, loaded from
       `.vx/projects.lock.json` with no evaluation and no staleness check of its
@@ -432,8 +432,7 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       command outputs (deduped per run).
       b. `filterUpstreamHashes` — apply `cache.inputs.tasks` filters
       to the upstream outcomes (default = all upstream).
-      c. `hashTaskConfig` (resolved config JSON) +
-      project package.json bytes (both memoized per run).
+      c. `hashTaskConfig` (resolved config JSON, memoized per run).
       d. `cache.key({...})` → 16-hex xxHash3 key.
       e. If reads are on: consume the up-front probe when present,
       else `cache.get(hash)`. On hit, `cleanOutputs` +
@@ -691,9 +690,9 @@ The codebase consistently chooses the same trade-offs:
    the _evaluated_ config object, not from the file's text. Imports
    and computed values participate naturally.
 5. **Cascade through the dependency graph.** Upstream cache changes
-   invalidate dependents via folded-in upstream hashes; workspace-
-   level changes (lockfile, workspace yaml) cascade to every task
-   via the workspace fingerprint.
+   invalidate dependents via folded-in upstream hashes. Core keys no
+   package file: a lockfile or install setting reaches a key through
+   the plugin that claims it (`@vzn/vx-lockfile`).
 6. **Fail loud on the contract.** Cache key shape change → bump
    `CACHE_VERSION`. Schema mismatch on the SQLite tables → drop and
    rebuild. Don't try to be clever with stale data.

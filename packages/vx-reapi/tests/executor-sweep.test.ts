@@ -60,9 +60,7 @@ const request = (over: Record<string, unknown> = {}): ExecuteRequest =>
       runtime: [],
       workspaceRuntime: [],
       upstream: [],
-      packageJsonDigest: '',
       configDigest: 'y',
-      workspaceFingerprint: 'z',
     },
     ...over,
   }) as unknown as ExecuteRequest
@@ -601,15 +599,23 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
     expect(fake.actions.has(execDigestFor('k-keyed').hash)).toBe(true)
   })
 
-  // The key folds the project's package.json whether a glob lists it or
-  // not; the worker ran without it, so `"type": "module"` or a bin lookup
-  // saw another task than the one keyed (item 1037).
-  it("the project's package.json is in the input root, held to the key's digest", async () => {
+  // Core keys no package file: the project's package.json is in the input
+  // root as an input the key listed (the lockfile plugin adds it), held to
+  // that digest like any other (item 1037), and not otherwise.
+  it("the project's package.json is in the input root only as a listed input", async () => {
     await writeFile(path.join(root, 'pkg', 'package.json'), '{"type":"module"}\n')
     fake.onExecute = () => ({ response: { result: { exit_code: 0 } } })
     const base = request()
+    await withExecutor((run) => run(request({ cacheKey: 'k-nopkg' })))
+    expect(inputRoot().has('pkg/package.json')).toBe(false)
     const withPkg = (digest: string, cacheKey: string) =>
-      request({ cacheKey, inputs: { ...base.inputs!, packageJsonDigest: digest } })
+      request({
+        cacheKey,
+        inputs: {
+          ...base.inputs!,
+          files: [...base.inputs!.files, { path: 'pkg/package.json', digest }],
+        },
+      })
     await withExecutor((run) => run(withPkg(PKG_OID, 'k-pkg')))
     expect(inputRoot().get('pkg/package.json')).toEqual(
       expect.objectContaining({ name: 'package.json' }),

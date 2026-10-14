@@ -83,7 +83,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   restored on disk before this task runs, so an input-shipping executor can
   put them in the input root; empty when that dependency has no local cache
   entry; read from the index up front for a plugin executor, never for
-  the local floor), `packageJsonDigest`, `configDigest`, `workspaceFingerprint`.
+  the local floor), and `configDigest`.
   Present on the miss path of a cacheable task only; a task with no
   `cache` ships nothing. Built by `task-hash.describeTaskInputs` from the
   SAME resolution that produced the key, so it cannot drift from what a

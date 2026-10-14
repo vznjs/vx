@@ -868,11 +868,12 @@ describe('fingerprint claim — a plugin keys a lockfile per project', () => {
       // The plugin's per-project material moves it.
       await workspace([CLAIM("'closure-2'")])
       expect(await hash()).not.toBe(claimed)
-      // CONTROL: without the claim the same lockfile edit re-keys the task.
+      // Without the claim the edit moves nothing either: core keys no
+      // lockfile (2026-10-14); only a plugin's material reaches the key.
       await workspace([])
       const bare = await hash()
       await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nv3\n')
-      expect(await hash()).not.toBe(bare)
+      expect(await hash()).toBe(bare)
     },
     TIMEOUT,
   )

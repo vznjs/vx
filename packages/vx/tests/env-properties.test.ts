@@ -192,7 +192,6 @@ describe('the key, over random hosts and configs', () => {
       requested: true,
     } as unknown as TaskNode
     const hashCache = createHashCache()
-    hashCache.packageJson.set(projectDir, Promise.resolve('pkg'))
     const names = new Set([...DOC_ESSENTIALS, ...HOST_ONLY, ...IDENTS])
     const saved = new Map([...names].map((n) => [n, process.env[n]]))
     try {
@@ -205,7 +204,6 @@ describe('the key, over random hosts and configs', () => {
         node,
         upstream: [],
         workspaceRoot: projectDir,
-        workspaceFingerprint: 'fp',
         cache,
         nestedProjectDirs: [],
         hashCache,
