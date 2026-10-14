@@ -70,6 +70,8 @@ means for a directory it only ever adds to.
   the wipe itself is bounded by the declaration.
 - Another project's directory. Boundaries are hard.
 - `.git` and the `.vx` cache directory, whatever the glob says.
+- A file git tracks. A committed file under an output glob is still
+  saved and restored, but the wipe never deletes it.
 - `node_modules`, unless a glob names it. `**/*.js` leaves installed
   files alone; `node_modules/**` is a legitimate output of an install
   task.
