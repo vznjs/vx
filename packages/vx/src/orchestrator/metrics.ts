@@ -5,11 +5,14 @@
 // aggregate over the runs / entries tables. The schema itself is owned by
 // src/cache/cache.ts.
 //
-// Pure SQL + JSON-safe return shapes. No Cache lifecycle here; the
+// Pure SQL + JSON-safe return shapes (`inputWriters` also stats the
+// files it names). No Cache lifecycle here; the
 // caller opens and closes. bigints are serialized as decimal strings
 // for JSON compatibility (matches the WireEvent timeUnixNano rule).
 
 import type { Database } from 'bun:sqlite'
+import { statSync } from 'node:fs'
+import path from 'node:path'
 // The keyed-run predicate lives beside the schema in cache/cache.ts, so a
 // rule written once cannot drift.
 import { KEYED_RUNS_SQL } from '../cache/index.js'
@@ -873,6 +876,69 @@ export function rootCauses(
   }
   walk([taskId], entries)
   return roots
+}
+
+export interface InputWriter {
+  /** The task whose key read the file. */
+  taskId: string
+  /** Workspace-relative, as the key names it. */
+  file: string
+  /** The tasks that were running when the file last changed. */
+  writers: string[]
+}
+
+/**
+ * Slack around a task's recorded window: its edges are rounded to the
+ * millisecond and a write lands just before the process exits.
+ */
+const WRITE_SLACK_MS = 5
+
+/**
+ * For each moved input file of `taskId` and of each root cause, the
+ * recorded tasks that were running when the file last changed: a task
+ * that writes a file another key reads re-keys that task on every run.
+ * The file's mtime against the recorded windows, so
+ * a writer that runs each time is named from its latest run, and an
+ * edit made outside a run names none.
+ */
+export function inputWriters(
+  db: Database,
+  workspaceRoot: string,
+  taskId: string,
+  entries: CacheKeyDiff['entries'],
+  roots: readonly RootCause[],
+): InputWriter[] {
+  const during = db.query(
+    `SELECT project, task FROM runs
+      WHERE started_at <= ?1 + ${WRITE_SLACK_MS} AND ended_at >= ?1 - ${WRITE_SLACK_MS}
+        AND status != 'skipped'
+      GROUP BY project, task ORDER BY MIN(started_at) LIMIT 3`,
+  )
+  const out: InputWriter[] = []
+  const owners = [
+    { taskId, entries },
+    ...roots.map((r) => ({ taskId: r.chain.at(-1)!, entries: r.entries })),
+  ]
+  for (const owner of owners) {
+    for (const e of owner.entries) {
+      if (e.kind !== 'file' || e.change === 'removed') continue
+      let mtime: number
+      try {
+        mtime = statSync(path.join(workspaceRoot, e.name)).mtimeMs
+      } catch {
+        continue
+      }
+      const rows = during.all(mtime) as { project: string; task: string }[]
+      if (rows.length > 0) {
+        out.push({
+          taskId: owner.taskId,
+          file: e.name,
+          writers: rows.map((r) => `${r.project}#${r.task}`),
+        })
+      }
+    }
+  }
+  return out
 }
 
 // ---------------------------------------------------------------------------

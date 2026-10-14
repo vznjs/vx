@@ -37,6 +37,7 @@ setup and teardown wrap the run; commands adds a verb
 | `executor`    | Decide where one task's command runs.                                                      |
 | `cache`       | Provide a layer where artifacts live.                                                      |
 | `telemetry`   | Receive plain-data run records. Cannot change behaviour, by construction.                  |
+| `output`      | Return a Logger that draws the run's terminal output in place of vx's.                     |
 | `setup`       | Once per run, after the planning stages and before the first task.                         |
 | `commands`    | Add a CLI verb. A verb named like a core verb is refused, so nothing shadows `vx run`.     |
 | `teardown`    | Flush and close at the end of the run.                                                     |

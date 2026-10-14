@@ -118,6 +118,7 @@ src/orchestrator/metrics.ts
 src/orchestrator/miss-reason.ts
 src/orchestrator/miss-save.ts
 src/orchestrator/options.ts
+src/orchestrator/output-host.ts
 src/orchestrator/output-log.ts
 src/orchestrator/path-links.ts
 src/orchestrator/persistent.ts
@@ -183,6 +184,7 @@ src/workspace/config-cache.ts
 src/workspace/config-eval.ts
 src/workspace/config-imports.ts
 src/workspace/config-schema.ts
+src/workspace/dependency-rules.ts
 src/workspace/filter.ts
 src/workspace/fingerprint.ts
 src/workspace/index.ts

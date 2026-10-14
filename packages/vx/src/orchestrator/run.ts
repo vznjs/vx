@@ -65,6 +65,7 @@ import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './
 import { installPlugins, PluginSetupError } from './plugin.js'
 import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
+import { claimOutput, guardedOutput } from './output-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
 import { defaultLogger, type DefaultLogger, resolveOutputView, type Logger } from './logger.js'
@@ -337,16 +338,26 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // Tasks run with colour forced (exec/env.ts); where the terminal prints
   // plain, their escapes are stripped. A custom logger gets the task's
   // bytes as written, as the cache holds them: it formats its own output.
-  const unsubscribeTerminal = bus.subscribe(
-    terminalSubscriber(terminal === null || colors.enabled ? sink : plainOutput(sink)),
-  )
+  const render = terminalSubscriber(terminal === null || colors.enabled ? sink : plainOutput(sink))
+  let unsubscribeTerminal = bus.subscribe(render)
   const detach = (): void => {
     unsubscribeTerminal()
     terminal?.settle()
   }
+  // A plugin's `output` renders the run from its start; core's renderer
+  // stays the fallback. Only core's own renderer is replaceable: an
+  // embedder's `log` is never consulted away.
+  const takeOutput =
+    terminal === null
+      ? undefined
+      : (claimed: { logger: Logger; owner: string }): void => {
+          terminal.settle()
+          unsubscribeTerminal()
+          unsubscribeTerminal = bus.subscribe(guardedOutput(claimed, render))
+        }
   let held = false
   try {
-    const summary = await runOnBus(options, bus, colors, terminal)
+    const summary = await runOnBus(options, bus, colors, terminal, takeOutput)
     if (summary.persistent === undefined) return summary
     // Servers handed back still running still write: `vx watch dev` printed
     // none of its server's log while it idled, the renderer gone with this
@@ -370,6 +381,7 @@ async function runOnBus(
   bus: EventBus,
   colors: ColorSupport,
   terminal: DefaultLogger | null,
+  takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
   // A server's output goes through a cell of its own: a later watch cycle
@@ -890,6 +902,20 @@ async function runOnBus(
       remoteCacheEnabled,
       concurrency,
       workspaceProjectCount,
+    }
+
+    // Asked only when a plugin declares `output`: a plain run pays nothing.
+    if (takeOutput !== undefined && prepared.plugins.some((p) => p.output !== undefined)) {
+      const json = options.json === true
+      const claimed = await claimOutput(prepared.plugins, {
+        workspaceRoot,
+        cacheDir,
+        warn: (m: string) => log.status(m),
+        isTTY: (json ? process.stderr : process.stdout).isTTY === true,
+        ci: ciContext.ci,
+        json,
+      })
+      if (claimed !== undefined) takeOutput(claimed)
     }
 
     // Lifecycle hooks drive the default logger's dynamic status line

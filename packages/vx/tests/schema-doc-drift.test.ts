@@ -620,7 +620,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig(`{ plugins: [${plugin('p', '{ setup() {}, excutor() {} }')}] }`),
   ],
   [
-    "plugins[<i>] (plugin '<name>') must contribute at least one of config/discover/project/graph/key/fingerprint/schedule/admit/executor/cache/telemetry/setup/commands/teardown",
+    "plugins[<i>] (plugin '<name>') must contribute at least one of config/discover/project/graph/key/fingerprint/schedule/admit/executor/cache/telemetry/output/setup/commands/teardown",
     workspaceConfig(`{ plugins: [${plugin('p', '{}')}] }`),
   ],
   [

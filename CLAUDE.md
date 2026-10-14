@@ -26,7 +26,7 @@ the workspace root (2026-10-13).
 
 Pipeline stages a plugin can fill, in order: `config` → `discover` → `project` →
 `graph` → `key` → `fingerprint` → `schedule` → `admit` → `executor` /
-`cache` → `telemetry`, with `setup` / `teardown` around the run, plus
+`cache` → `telemetry` / `output`, with `setup` / `teardown` around the run, plus
 `commands` (CLI verbs). Design: `docs/design/pipeline-2026-09.md`.
 
 Decision drivers, in order: **performance, modularity, extensibility.**

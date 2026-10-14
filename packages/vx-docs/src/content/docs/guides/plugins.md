@@ -55,6 +55,7 @@ runs and is stored on this machine.
 | execute     | `executor(ctx)`        | where one task's command runs                             |
 | store       | `cache(ctx)`           | where artifacts live                                      |
 | observe     | `telemetry(ctx)`       | where run records go; it can never change the run         |
+| render | `output(ctx)` | who draws the terminal: a `Logger` in place of vx's own |
 | setup       | `setup(ctx)`           | once per run, before the first task                       |
 | cli         | `commands`             | which verbs `vx` has                                      |
 | teardown    | `teardown()`           | flush and close at the end of the run                     |
@@ -75,6 +76,7 @@ interface VxPlugin {
   executor?(ctx): TaskExecutor | undefined
   cache?(ctx): RemoteCacheLayer | undefined
   telemetry?(ctx): TelemetrySink | TelemetrySink[] | undefined
+  output?(ctx): Logger | undefined // draw the run yourself
   commands?: { [verb]: { description: string; run(argv, ctx): number | Promise<number> } }
   setup?(ctx): void | Promise<void>
   teardown?(): void | Promise<void>
@@ -241,6 +243,35 @@ function hello(): VxPlugin {
 }
 
 export default defineWorkspace({ plugins: [hello()] })
+```
+
+## Draw the terminal
+
+`output` takes the terminal for a run, as a live dashboard would. Return
+a `Logger`, the object `run({ log })` takes, and it receives every line
+and task chunk vx would have printed, the summary included. Return
+`undefined` to leave vx's own output. The first plugin that returns one
+draws the run. `ctx.isTTY`, `ctx.ci` and `ctx.json` say where it would
+draw; decline off a terminal so pipes, CI and agents read what they
+always did. A `Logger` that throws hands the rest of the run back to
+vx's renderer, with one warning.
+
+```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function dots(): VxPlugin {
+  return definePlugin(import.meta, {
+    output(ctx) {
+      if (!ctx.isTTY || ctx.ci || ctx.json) return undefined
+      return {
+        status: (line) => process.stdout.write(`${line}\n`),
+        taskStdout: () => {},
+        taskStderr: () => {},
+        taskComplete: (_, outcome) => process.stdout.write(outcome.status === 'failed' ? 'F' : '.'),
+      }
+    },
+  })
+}
 ```
 
 ## Where a task runs

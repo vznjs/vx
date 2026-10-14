@@ -73,6 +73,8 @@ const CONFIG = (dep: boolean) => `export default {
       cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
     },
     fail: { exec: { command: 'exit 3' } },
+    // Rewrites an input build reads, so \`vx why\` names a writer.
+    stamp: { exec: { command: 'printf changed > src/a.txt' } },
     flaky: {
       // A failure names a file, so vx last prints its locations.
       exec: { command: 'test -f ../../flag || { echo src/a.txt:1:2; exit 1; }' },
@@ -161,7 +163,7 @@ beforeAll(async () => {
     `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}], cache: { retention: { olderThan: '3650d', maxSize: '10G' } } }\n`,
   )
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
-  await writeFile(path.join(root, 'packages/lib/src/a.txt'), 'changed')
+  expect(vx(['run', 'lib#stamp']).code).toBe(0)
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
   expect(vx(['run', 'fail', '--filter', 'app...']).code).toBe(1)
   // One key that passed, then failed: a flaky task for \`vx info\`.

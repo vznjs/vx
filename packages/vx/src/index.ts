@@ -167,6 +167,7 @@ export type {
   PluginOptionKinds,
   CacheContext,
   ExecutorContext,
+  OutputContext,
   CommandContext,
   FingerprintChange,
   FingerprintClaim,
@@ -259,6 +260,7 @@ export {
   cacheKeyDiff,
   latestRunId,
   resolveRunId,
+  inputWriters,
   rootCauses,
   runFailures,
   taskLog,
@@ -267,6 +269,7 @@ export {
 export type {
   CacheKeyDiff,
   OutputLocation,
+  InputWriter,
   RootCause,
   RunFailures,
   TaskFailure,

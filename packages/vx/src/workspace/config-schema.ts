@@ -114,6 +114,8 @@ for (const s of SETTINGS) {
     GROUP_FIELDS.get(at)!.add(parts[i]!)
   }
 }
+// A list of objects, so no setting: no variable or flag can say it.
+GROUP_FIELDS.get('run.rules')!.add('dependencies')
 
 /** A setting's value or the level holding it, held to the schema. */
 function validateSettingsAt(value: unknown, at: string, configPath: string): void {
@@ -134,7 +136,34 @@ function validateSettingsAt(value: unknown, at: string, configPath: string): voi
     }
     return
   }
-  validateSettingValue(value, at, where)
+  if (at === 'run.rules.dependencies') validateDependencyRules(value, where)
+  else validateSettingValue(value, at, where)
+}
+
+const RULE_FIELDS = new Set(['from', 'allow', 'deny'])
+
+function validateDependencyRules(value: unknown, where: string): void {
+  const shape = `an array of { from, allow?, deny? }, each a selector like 'tag:app' or '@acme/*'`
+  if (!Array.isArray(value)) throw new UserError(`${where} must be ${shape}`)
+  const selector = (v: unknown) => typeof v === 'string' && v.trim() !== '' && v !== 'tag:'
+  for (const [i, rule] of (value as unknown[]).entries()) {
+    const at = `${where}[${i}]`
+    if (typeof rule !== 'object' || rule === null || Array.isArray(rule))
+      throw new UserError(`${at} must be { from, allow?, deny? }`)
+    assertKnownFields(rule, RULE_FIELDS, at)
+    const { from, allow, deny } = rule as Record<string, unknown>
+    if (!selector(from)) throw new UserError(`${at}.from must be a selector like 'tag:app'`)
+    for (const [k, list] of [
+      ['allow', allow],
+      ['deny', deny],
+    ] as const) {
+      if (list !== undefined && (!Array.isArray(list) || !list.every(selector)))
+        throw new UserError(`${at}.${k} must be an array of selectors like 'tag:lib'`)
+    }
+    // A rule that says nothing reads as a constraint and checks nothing.
+    if (allow === undefined && deny === undefined)
+      throw new UserError(`${at} names neither \`allow\` nor \`deny\``)
+  }
 }
 
 /** `value` as the setting at `path` takes it, refused in `where`'s words. */

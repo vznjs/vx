@@ -16,6 +16,7 @@ export {
   WORKSPACE_FINGERPRINT_FILES,
   type WorkspaceFingerprints,
 } from './fingerprint.js'
+export { checkDependencyRules } from './dependency-rules.js'
 export { computeNestedProjectDirs } from './nested-dirs.js'
 export { buildPackageGraph, type PackageGraph } from './package-graph.js'
 export {

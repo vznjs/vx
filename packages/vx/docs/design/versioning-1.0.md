@@ -47,7 +47,7 @@ the values it takes and each refusal's exact words are recorded in
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | (top)                  | `cache`, `plugins`, `run`, `watch`                                                                                                            |
 | `run`                  | `affectedBase`, `concurrency`, `continue`, `frozen`, `killGrace`, `readyNotice`, `retries`, `rules`, `schedule`, `teardownTimeout`, `timeout` |
-| `run.rules`            | `exclusiveOutputs`, `upfrontKeys`                                                                                                             |
+| `run.rules`            | `dependencies`, `exclusiveOutputs`, `upfrontKeys`                                                                                             |
 | `cache`                | `dir`, `download`, `inputStability`, `policy`, `retention`, `scope`                                                                           |
 | `cache.retention`      | `maxSize`, `olderThan`                                                                                                                        |
 | `cache.inputStability` | `severity`, `strategy`                                                                                                                        |
@@ -80,7 +80,7 @@ Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
 
 - **Hooks**, in pipeline order: `config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
-  `setup`, `commands`, `teardown`. A plugin is
+  `output`, `setup`, `commands`, `teardown`. A plugin is
   `definePlugin(import.meta, hooks)`, and its name is its package's.
 - **Telemetry records**, schema version 3. The kinds are `run.start`,
   `task.start`, `task.log`, `task.sample`, `task.end` and `run.end`; each record

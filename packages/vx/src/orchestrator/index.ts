@@ -76,6 +76,7 @@ export {
   installPlugins,
   type CacheContext,
   type ExecutorContext,
+  type OutputContext,
   type CommandContext,
   type GraphHookContext,
   type KeyHookContext,
@@ -165,6 +166,7 @@ export {
   latestRunId,
   listInvocations,
   listRuns,
+  inputWriters,
   rootCauses,
   whyDidThisRerun as whyDidThisRerunQuery,
 } from './metrics.js'
@@ -180,6 +182,7 @@ export { resolveRunId, shortRunId } from './run-id.js'
 export type {
   CacheEntryRow,
   CacheKeyDiff,
+  InputWriter,
   RootCause,
   CacheKeyExplanation,
   InputDiffEntry,

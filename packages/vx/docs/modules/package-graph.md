@@ -24,7 +24,21 @@ export function buildPackageGraph(
 ): PackageGraph
 
 export const SEMVER_RANGE: RegExp // the ranges handed to Bun.semver (below)
+
+// dependency-rules.ts: throws VX_E_DEPENDENCY_RULE naming every broken edge
+export function checkDependencyRules(
+  rules: readonly DependencyRule[],
+  projects: readonly string[],
+  tags: ReadonlyMap<string, readonly string[]>, // each project's config tags
+  graph: PackageGraph, // built with the task edges
+): void
 ```
+
+`checkDependencyRules` is `vx lock`'s check of `run.rules.dependencies`
+(lock-only, owner 2026-10-13): for each project a rule's `from` selects,
+each `directDeps` entry must match an `allow` selector when `allow` is
+given, and no `deny` one. A selector is `tag:<glob>` or a name glob
+(`compileNameGlob`, `--filter`'s matcher).
 
 `directDeps` is the adjacency `buildTaskGraph` walks for `'^name'`
 frontier expansion; `transitiveDeps` / `transitiveDependents` serve

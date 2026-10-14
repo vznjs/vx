@@ -1716,7 +1716,8 @@ content hash of each config file. "Every project" is the set a run
 sees, a plugin's `discover` stage included (X-143). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
 included, and checks the graph rules (`run.rules`) a frozen run no
-longer checks: a broken one prints `vx lock: vx-lock.json not written:
+longer checks, `dependencies` (which projects a project may depend on,
+`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `vx lock: vx-lock.json not written:
 <the rule's refusal>` and writes nothing.
 
 ```
@@ -2531,6 +2532,12 @@ not read them; `dependsOn` already cascades). Exclude the outputs from
 the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.
 
+#### `VX_E_DEPENDENCY_RULE`
+
+`vx lock` found a project depending on one a `run.rules.dependencies`
+rule denies or does not allow. Each line names both projects and the
+rule. Drop the dependency, or change the project's tags or the rule.
+
 #### `VX_E_INTERNAL`
 
 A defect in vx; stderr carries the stack. Report it with that stack at
@@ -2716,7 +2723,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
 - `plugins` names every plugin `vx.workspace.*` declares and the seams
   each fills, in pipeline order (`config`, `discover`, `project`, `graph`, `key`,
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
-  `setup`, `commands`), or `none`. It reads the declarations: a plugin
+  `output`, `setup`, `commands`), or `none`. It reads the declarations: a plugin
   that declines a task at run time still lists its seam here.
 - `workers` is the count a run defaults to and where it comes from:
   `vx.workspace.ts`'s `run.concurrency` when set, else the cores this
@@ -2877,6 +2884,18 @@ which names the `vx why` to run next; a `config` line names the
 `vx show` that prints the task's config now. `--format json` carries
 the walk as `roots` (`chain`, `entries`).
 
+A moved input file whose last change fell inside a recorded task's run
+window names that task: a task that writes a file another key reads (a
+build rewriting a translation file in another package) re-keys that key
+on every run, so the miss is right and only moving the write ends it.
+`--format json` carries these as `writers` (`taskId`, `file`,
+`writers`); an edit made outside a run names none.
+
+```
+  changed during a run:
+    packages/lib/src/gen.txt  while app#build ran
+```
+
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
 names the hit and its tier, so only an executed run carries the word.
 A skipped task never ran and derived no key: its line is `skipped · no key`.
@@ -2901,7 +2920,7 @@ task with no `cache` block derives a key too — it is what dependents
 fold — but saves no entry, so for it the verb can only report the key
 change and says so.
 `--format json` emits one machine-readable object (`{ taskId, runId,
-why, diff, roots }`); when the task's recorded runs predate run ids, `{ taskId,
+why, diff, roots, writers }`); when the task's recorded runs predate run ids, `{ taskId,
 why, diff, explanation }`, `why` and `diff` null and `explanation` the
 latest cache entry's key.
 
