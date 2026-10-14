@@ -11,11 +11,13 @@
 //     eval-free.
 //   - `vx lock --check` AUDITS it: full re-evaluation + deep equality.
 
+import { readFileSync } from 'node:fs'
 import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { relPosix, UserError, xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
+import { validateProjectConfig } from './config-schema.js'
 
 export const LOCKFILE_NAME = '.vx/projects.lock.json'
 export const LOCKFILE_VERSION = 2
@@ -30,6 +32,33 @@ export interface Lockfile {
 
 export function lockfilePath(root: string): string {
   return path.join(root, LOCKFILE_NAME)
+}
+
+/** What a run says when a crash came from a hand-broken lock entry (M, 2026-10-14). */
+export const LOCK_INVALID = `${LOCKFILE_NAME} is invalid, run \`vx lock\``
+
+/**
+ * Whether the lock holds an entry `vx lock` could not have written. Runs
+ * validate no entry, so a hand-broken one crashed deep in a run with a
+ * raw TypeError; asked only on that crash's path, so a run pays nothing.
+ */
+export function lockEntryBroken(root: string): boolean {
+  let projects: unknown
+  try {
+    projects = (JSON.parse(readFileSync(lockfilePath(root), 'utf8')) as { projects?: unknown })
+      .projects
+  } catch {
+    return false
+  }
+  if (typeof projects !== 'object' || projects === null) return false
+  for (const [name, entry] of Object.entries(projects)) {
+    try {
+      validateProjectConfig(entry as ProjectConfig, `${LOCKFILE_NAME}: "${name}"`, null)
+    } catch {
+      return true
+    }
+  }
+  return false
 }
 
 /** What a run says when there is no lock to read. */

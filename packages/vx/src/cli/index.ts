@@ -8,6 +8,8 @@ import { FOREIGN_VERBS } from './foreign-flags.js'
 import {
   errorDocument,
   hideEnvFromTasks,
+  isFsRefusal,
+  isOutOfFds,
   isUserError,
   maskedLine,
   nearest,
@@ -40,6 +42,29 @@ export async function run(argv: readonly string[]): Promise<number> {
   // and a deep reader trusts what it reads.
   checkSettingsEnv()
 
+  try {
+    return await dispatch(command, rest)
+  } catch (err) {
+    throw await brokenLockNamed(err)
+  }
+}
+
+/**
+ * A crash from a hand-broken lock entry is that entry's fault: runs validate
+ * no entry, so it surfaced as a raw TypeError (M, 2026-10-14). The lock is
+ * read only on the crash path, so a normal run pays nothing.
+ */
+async function brokenLockNamed(err: unknown): Promise<unknown> {
+  if (isUserError(err) || isFsRefusal(err) || isOutOfFds(err)) return err
+  try {
+    const { findWorkspaceRoot, LOCK_INVALID, lockEntryBroken } =
+      await import('../workspace/index.js')
+    if (lockEntryBroken(await findWorkspaceRoot(process.cwd()))) return new UserError(LOCK_INVALID)
+  } catch {}
+  return err
+}
+
+async function dispatch(command: string | undefined, rest: string[]): Promise<number> {
   switch (command) {
     case undefined: {
       // A bare `vx` where no workspace is printed 151 lines of help, none

@@ -266,6 +266,29 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
+    'a hand-broken lock entry says the lock is invalid, not a raw crash (M, 2026-10-14)',
+    async () => {
+      // Runs validate no entry (no cost on a run); a crash it causes is
+      // named on the failure path only.
+      await addProject(root, 'app', ENV_CONFIG)
+      expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
+      const file = path.join(root, '.vx/projects.lock.json')
+      const invalid = '.vx/projects.lock.json is invalid, run `vx lock`'
+      for (const app of [
+        { tasks: { build: { exec: 'x' } } },
+        { tasks: { build: { exec: { command: 'x' }, cache: { inputs: { files: 'src' } } } } },
+      ]) {
+        await writeFile(file, JSON.stringify({ version: 2, projects: { app } }))
+        const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
+        expect(run.code).toBe(1)
+        expect(run.err + run.out).toContain(invalid)
+        expect(run.err + run.out).not.toContain('TypeError')
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     '--check names a locked project that no longer has a config in the workspace',
     async () => {
       await addProject(root, 'app', ENV_CONFIG)

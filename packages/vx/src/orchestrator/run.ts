@@ -5,6 +5,8 @@
 import type { ProjectEntry } from '../workspace/index.js'
 import {
   inputStabilityEnv,
+  LOCK_INVALID,
+  lockEntryBroken,
   loadWorkspace,
   unreachedHint,
   unreachedPackages,
@@ -52,6 +54,7 @@ import {
   teardownTimeoutMs,
   secretMask,
   isFsRefusal,
+  isUserError,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
@@ -1169,6 +1172,7 @@ async function runOnBus(
         wallclockEndNs: at,
       }
     }
+    let lockBroken: boolean | undefined
     const outcomes = await runGraph({
       nodes,
       concurrency,
@@ -1190,7 +1194,15 @@ async function runOnBus(
         log.taskComplete(o.node, o)
         narrowDemand(o.node.id)
       },
-      onError: (node, line) => log.taskStderr(node, line),
+      // A crash a hand-broken lock entry caused is named as that; asked
+      // only here, so a run that does not crash pays nothing.
+      onError: (node, line, err) =>
+        log.taskStderr(
+          node,
+          !isUserError(err) && !isFsRefusal(err) && (lockBroken ??= lockEntryBroken(workspaceRoot))
+            ? `[vx] ${node.id}: ${LOCK_INVALID}\n`
+            : line,
+        ),
       execute: (node, upstream) => {
         const kept = keepServer(node)
         return kept !== undefined
