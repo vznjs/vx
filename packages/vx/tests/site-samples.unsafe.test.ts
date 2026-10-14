@@ -1619,7 +1619,16 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
   // `@vzn/vx` is core's own src/index.ts: a user's tsc over a package that
   // includes its vx.config.ts walked core's Bun-only sources and printed
   // 527 errors, where `@vzn/vx/config` checked clean (J-94).
+  // The exception: cli.md shows the starter `vx init` writes where there is
+  // no package.json, so nothing installed; only `@vzn/vx` resolves there,
+  // served by the running vx (core-alias.ts), and no tsc walks it.
+  const init = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'init.ts'), 'utf8')
+  const STARTER = [
+    "import { defineWorkspace } from '@vzn/vx'",
+    "import { defineProject } from '@vzn/vx'",
+  ].filter((line) => init.includes(line))
   it('no page, README or example imports only config.ts exports from @vzn/vx', async () => {
+    expect(STARTER).toHaveLength(2)
     const schema = new Set(Object.keys(await import('../src/config.js')))
     for (const t of ['ProjectConfig', 'WorkspaceConfig', 'TaskConfig']) schema.add(t)
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
@@ -1644,7 +1653,8 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
         const names = m[1]!.split(',').map((n) => n.trim().replace(/^type /, ''))
         if (!names.every((n) => schema.has(n))) continue
         schemaImports++
-        if (m[2] === '@vzn/vx') offenders.push(`${path.relative(repo, f)}: ${m[0]}`)
+        const starter = f.endsWith(path.join('vx', 'docs', 'cli.md')) && STARTER.includes(m[0])
+        if (m[2] === '@vzn/vx' && !starter) offenders.push(`${path.relative(repo, f)}: ${m[0]}`)
       }
     }
     expect(offenders).toEqual([])
@@ -1655,11 +1665,15 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
 describe('an install at the workspace root names the flag pnpm and Yarn 1 require', () => {
   // pnpm 9 refuses `pnpm add -D` at a workspace root (ERR_PNPM_ADDING_TO_ROOT)
   // and Yarn 1 refuses `yarn add -D` there without -W; the README lines
-  // and the quickstart said neither (J-95). vx init's own line is the source.
+  // and the quickstart said neither (J-95). The install vx-migrate runs (for
+  // `vx init` too) is the source.
   it('every `pnpm add -D` / `yarn add -D` in a page or README is the root form init prints', () => {
-    const init = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'init.ts'), 'utf8')
-    expect(init).toContain("pnpm: 'pnpm add -D -w'")
-    expect(init).toContain('`${INSTALL.yarn} -W`')
+    const adopt = readFileSync(
+      path.resolve(import.meta.dir, '..', '..', 'vx-migrate', 'src', 'adopt.ts'),
+      'utf8',
+    )
+    expect(adopt).toContain("['pnpm', 'add', '-D', '-w', ...packages]")
+    expect(adopt).toContain("['yarn', 'add', '-D', '-W', ...packages]")
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const files = [
       ...handAuthoredSitePages(),

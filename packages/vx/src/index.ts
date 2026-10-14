@@ -95,11 +95,11 @@ export type { CacheLayer, RemoteCacheLayer, RunRecord, InvocationRecord } from '
 // out-of-process service/CLI needs these. `loadProjectConfig` is the RAW
 // per-file load (`vx lock` freezes exactly that); the resolved view a run
 // or `vx show` sees — plugin stages applied — is `loadResolvedProjects`
-// below. `listPackages` and `findManifestRoot` are the package manager's
-// members and root, which an adoption tool maps from; a run reads neither.
-export { findManifestRoot, findWorkspaceRoot, listPackages } from './workspace/index.js'
+// below. `PROJECT_CONFIG_FILENAMES` are the names a project's config may
+// have, in precedence order, for a tool that finds or writes one.
+export { findWorkspaceRoot, PROJECT_CONFIG_FILENAMES } from './workspace/index.js'
 export { loadProjectConfig } from './workspace/index.js'
-export type { PackageMeta, ProjectMeta } from './workspace/index.js'
+export type { ProjectMeta } from './workspace/index.js'
 // The run path's RESOLVED view — plugin `config` and `project` stages
 // applied — for a reader outside the CLI
 // (`@vzn/vx-schedule-history`, an embedder's task catalog). What `vx show`
@@ -107,18 +107,21 @@ export type { PackageMeta, ProjectMeta } from './workspace/index.js'
 export { loadResolvedProjects } from './orchestrator/index.js'
 export type { ProjectEntry } from './workspace/index.js'
 // The migration seam: how a generated config is planned, rendered, guarded
-// and written. `vx init` (package.json scripts) uses it in core;
-// `@vzn/vx-migrate` (Turbo, Nx) and any other adoption tool use it from here.
+// and written. `@vzn/vx-migrate` (package.json scripts, Turbo, Nx) and any
+// other adoption tool use it from here; `taskNameProblem` is why a name
+// cannot be a task's, so a mapper leaves such a script out.
 export {
   applyMigration,
   foldScriptHooks,
   PERSISTENT_TODO,
   pruneOrphanPersistentNotes,
   quoteTsLiteral,
+  taskNameProblem,
 } from './workspace/index.js'
 export type {
   ApplyMigrationArgs,
   MigrationFormat,
+  MigrationMember,
   GeneratedProject,
   GeneratedTask,
   MigrationPlan,

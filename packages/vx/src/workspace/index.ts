@@ -39,6 +39,7 @@ export {
   cacheScopeError,
   inputStabilityEnv,
   isCacheScope,
+  taskNameProblem,
   validateProjectConfig,
   validateWorkspace,
 } from './config-schema.js'
@@ -59,28 +60,20 @@ export {
   type ProjectEntry,
   type ProjectMeta,
 } from './workspace.js'
-// `vx init`'s package-manager members (its scripts mapper), never a run's.
-export {
-  discoverPackages,
-  findManifestRoot,
-  listPackages,
-  loadPackageWorkspace,
-  type PackageMeta,
-} from './packages.js'
 export type { LoadReads } from './load-reads.js'
-// The migration seam (see migration.ts) and core's own mapper, the scripts one.
+// The migration seam (see migration.ts).
 export {
   applyMigration,
   foldScriptHooks,
-  PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
   pruneOrphanPersistentNotes,
   quoteTsLiteral,
   type ApplyMigrationArgs,
   type MigrationFormat,
+  type MigrationMember,
   type GeneratedProject,
   type GeneratedTask,
   type MigrationPlan,
   type RawExpr,
+  vxInvocation,
 } from './migration.js'
-export { delegatedScript, migrateScripts } from './migrate-scripts.js'

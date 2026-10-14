@@ -1,7 +1,7 @@
 // Item 812's sweep of nx-inputs, nx-outputs and nx-deps: pure functions,
 // held here by their exact outputs. Each row fails with one line undone.
 import { describe, expect, it } from 'bun:test'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { emptyNxInputs, expandNxInputs } from '../src/nx/nx-inputs.js'
 import { mapNxOutputs, nxDefaultOutputs, nxProjectOutputs } from '../src/nx/nx-outputs.js'
 import { mapNxDeps, matchNxProjects } from '../src/nx/nx-deps.js'

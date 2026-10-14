@@ -12,6 +12,7 @@ src/manifest-graph.ts
 src/manifests.ts
 src/mapping-cache.ts
 src/migrate-nx.ts
+src/migrate-scripts.ts
 src/migrate-turbo.ts
 src/migrate-vite-task.ts
 src/migrate.ts
@@ -30,9 +31,12 @@ src/nx/nx-inputs.ts
 src/nx/nx-map.ts
 src/nx/nx-outputs.ts
 src/nx/nx-upstream.ts
+src/package-fs.ts
+src/packages.ts
 src/paths.ts
 src/plugin-gaps.ts
 src/remote-breaker.ts
+src/remote-cache.ts
 src/remote-deadline.ts
 src/remote-retry.ts
 src/remote-token.ts

@@ -23,9 +23,12 @@ import {
   type GeneratedTask,
   type MigrationPlan,
 } from '../src/workspace/index.js'
-import { cacheTodo } from '../src/workspace/migration.js'
 import { UserError } from '../src/util/index.js'
 import { withForwardArgs } from '../src/exec/index.js'
+
+/** The cache TODO a mapper writes (vx-migrate's wording), suggesting `outputs`. */
+const cacheTodo = (outputs: string): string =>
+  `cache: add \`cache: { inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] } }\` with this package's real inputs and outputs`
 
 let root: string
 let stdout: string
@@ -200,13 +203,17 @@ describe('applyMigration', () => {
     const hint =
       'no task caches yet: uncomment the cache line in each TODO task with its real globs, and a second run hits'
     mkdirSync(path.join(root, 'app'))
-    await apply(plan([['app', [task('build', exec('next build'), [cacheTodo('next build')])]]]))
+    await apply(
+      plan([
+        ['app', [task('build', exec('next build'), [cacheTodo("'.next/**', '!.next/cache/**'")])]],
+      ]),
+    )
     expect(stdout.split('\n')).toContain(hint)
     // A task that already caches: the run can hit, and the line would mislead.
     stdout = ''
     const built = { ...exec('tsc'), cache: { inputs: { files: [] }, outputs: { files: [] } } }
     await apply(
-      plan([['app', [task('build', built), task('pack', exec('x'), [cacheTodo('x')])]]]),
+      plan([['app', [task('build', built), task('pack', exec('x'), [cacheTodo("'dist/**'")])]]]),
       {
         force: true,
       },
@@ -223,8 +230,8 @@ describe('applyMigration', () => {
         [
           'app',
           [
-            task('build', exec('next build'), [cacheTodo('next build')]),
-            task('pack', built, [cacheTodo('x')]),
+            task('build', exec('next build'), [cacheTodo("'.next/**', '!.next/cache/**'")]),
+            task('pack', built, [cacheTodo("'dist/**'")]),
           ],
         ],
       ]),

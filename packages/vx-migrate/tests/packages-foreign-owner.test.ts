@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { findManifestRoot } from '../src/workspace/packages.js'
+import { findManifestRoot } from '../src/packages.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 let shared: string

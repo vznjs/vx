@@ -656,7 +656,7 @@ export default defineProject({
     category: 'adoption',
     hook: 'Install, init, run.',
     body: [
-      '`vx init` writes a `vx.config.ts` per package from its `package.json` scripts. Add the cache block each TODO shows, and the second run of a task is up-to-date in milliseconds.',
+      '`vx init` writes a `vx.config.ts` per package from its `package.json` scripts, through `@vzn/vx-migrate`; with no `package.json`, an empty root project to declare tasks in. Add the cache block each TODO shows, and the second run of a task is up-to-date in milliseconds.',
       'No account, no service to sign up for: the cache is a directory on your machine.',
     ],
     example: {

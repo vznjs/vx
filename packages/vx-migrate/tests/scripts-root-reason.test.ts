@@ -1,6 +1,6 @@
-// `vx init` leaves out a root script that shares a member's task name, and
-// said of a root left with none that "its scripts run the workspace": a
-// bun root whose one script is `eslint .` runs nothing of the workspace.
+// The scripts mapper leaves out a root script that shares a member's task
+// name, and said of a root left with none that "its scripts run the
+// workspace": a bun root whose one script is `eslint .` runs nothing of it.
 // The note names the reason that held.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -26,12 +26,6 @@ async function rootNote(rootScripts: Record<string, string>): Promise<string[]> 
     }),
   )
   await writeFile(path.join(root, 'bun.lock'), '')
-  // Installed already: init would otherwise install it, and the sandbox has no network.
-  await mkdir(path.join(root, 'node_modules', '@vzn', 'vx-lockfile'), { recursive: true })
-  await writeFile(
-    path.join(root, 'node_modules', '@vzn', 'vx-lockfile', 'package.json'),
-    '{"name":"@vzn/vx-lockfile"}',
-  )
   const dir = path.join(root, 'packages', 'web')
   await mkdir(dir, { recursive: true })
   await writeFile(
@@ -40,7 +34,7 @@ async function rootNote(rootScripts: Record<string, string>): Promise<string[]> 
   )
   expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)
   const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, 'init'],
+    cmd: [process.execPath, '--no-install', BIN, '--no-install'],
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',

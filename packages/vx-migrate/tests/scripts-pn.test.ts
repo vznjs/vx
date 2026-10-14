@@ -1,6 +1,6 @@
 // `pn`, pnpm's own short name, read as pnpm by `vx init` (D-97).
 import { expect, it } from 'bun:test'
-import { migrateScripts } from '../src/workspace/migrate-scripts.js'
+import { migrateScripts } from '../src/migrate-scripts.js'
 
 const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
   name,

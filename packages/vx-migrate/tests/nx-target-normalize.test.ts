@@ -4,7 +4,7 @@
 // graph that skipped it wrote a failing placeholder.
 
 import { describe, expect, it } from 'bun:test'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 
 describe('a target with neither executor nor command', () => {

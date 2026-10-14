@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, spyOn } from 'bun:test'
-import { discoverPackages, loadPackageWorkspace } from '../src/workspace/packages.js'
+import { discoverPackages, loadPackageWorkspace } from '../src/packages.js'
 
 let tmp: string | undefined
 

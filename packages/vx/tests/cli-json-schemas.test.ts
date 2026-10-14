@@ -13,7 +13,8 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'bun:test'
+import { applyMigration } from '../src/workspace/index.js'
 import type {
   CacheConfig,
   CacheInputs,
@@ -327,30 +328,54 @@ beforeAll(async () => {
   outputs['lock']!.push(JSON.parse(noLock.out))
   expect(vx(['lock']).code).toBe(0)
   json('lock', ['--check'])
-  // The init plan: a script with a TODO, and the Turbo `--keep` file.
+  // The init plan core writes itself: a directory with no package.json
+  // (a repo with one is @vzn/vx-migrate's plan).
   const fresh = await mkdtemp(path.join(tmpdir(), 'vx-init-json-'))
   try {
-    await mkdir(path.join(fresh, 'packages', 'a'), { recursive: true })
-    await writeFile(
-      path.join(fresh, 'package.json'),
-      '{"name":"r","private":true,"workspaces":["packages/*"]}',
-    )
-    await writeFile(
-      path.join(fresh, 'packages', 'a', 'package.json'),
-      '{"name":"a","scripts":{"build":"tsc"}}',
-    )
-    const plan = (...extra: string[]): unknown => {
-      const p = Bun.spawnSync({
-        cmd: [process.execPath, BIN, 'init', '--dry', '--format', 'json', ...extra],
-        cwd: fresh,
-        env: { ...process.env, NO_COLOR: '1' },
+    const p = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'init', '--dry', '--format', 'json'],
+      cwd: fresh,
+      env: { ...process.env, NO_COLOR: '1' },
+    })
+    if (p.exitCode !== 0) throw new Error(`vx init: ${p.exitCode}\n${p.stderr.toString()}`)
+    outputs['init']!.push(JSON.parse(p.stdout.toString()))
+    // A mapper's plan, as @vzn/vx-migrate hands it to the seam: a task with a TODO.
+    await mkdir(path.join(fresh, 'a'))
+    let printed = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      printed += String(chunk)
+      return true
+    })
+    try {
+      await applyMigration({
+        root: fresh,
+        metas: [],
+        plan: {
+          headerNotes: [],
+          projects: [
+            {
+              name: 'a',
+              dir: path.join(fresh, 'a'),
+              importLines: [],
+              tasks: [
+                { name: 'build', todos: ['add a cache block'], task: { exec: { command: 'tsc' } } },
+              ],
+            },
+          ],
+          extraFiles: [],
+          notes: [],
+        },
+        source: 'package.json scripts',
+        verb: 'vx-migrate',
+        dry: true,
+        force: false,
+        init: true,
+        json: true,
       })
-      if (p.exitCode !== 0) throw new Error(`vx init: ${p.exitCode}\n${p.stderr.toString()}`)
-      return JSON.parse(p.stdout.toString())
+    } finally {
+      vi.restoreAllMocks()
     }
-    outputs['init']!.push(plan())
-    await writeFile(path.join(fresh, 'turbo.json'), '{"tasks":{"build":{}}}')
-    outputs['init']!.push(plan('--keep'))
+    outputs['init']!.push(JSON.parse(printed))
   } finally {
     await rm(fresh, { recursive: true, force: true })
   }

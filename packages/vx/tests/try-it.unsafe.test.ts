@@ -260,7 +260,8 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     commit(root)
     const [file, libConfig] = guideFences('Turborepo', 'ts')
     const [initFence, cacheLine, migrateFence] = guideFences('Turborepo', 'text')
-    expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
+    // `vx init` runs the installed vx-migrate (else the registry's, through bun x).
+    expect(step(root, 'npm install -D @vzn/vx @vzn/vx-migrate').code).toBe(0)
     const [initCmd, initOut] = transcript(initFence!)
     expect(initCmd).toBe('npx @vzn/vx init --keep')
     const init = step(root, initCmd)
@@ -288,7 +289,8 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     commit(root)
     const [file, libConfig] = guideFences('Nx', 'ts')
     const [initFence, migrateFence] = guideFences('Nx', 'text')
-    expect(step(root, 'npm install -D @vzn/vx').code).toBe(0)
+    // `vx init` runs the installed vx-migrate (else the registry's, through bun x).
+    expect(step(root, 'npm install -D @vzn/vx @vzn/vx-migrate').code).toBe(0)
     const [initCmd, initOut] = transcript(initFence!)
     expect(initCmd).toBe('npx @vzn/vx init --keep')
     const init = step(root, initCmd)

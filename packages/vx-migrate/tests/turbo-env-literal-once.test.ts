@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 
 it('a literal env name vx cannot key is one note with its task count, no task todo', async () => {

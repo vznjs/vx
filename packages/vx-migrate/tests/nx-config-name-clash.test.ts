@@ -5,7 +5,7 @@
 // `a:vite:build` to it, and an edge to the configuration reaches its base.
 
 import { describe, expect, it } from 'bun:test'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 
 const graph = {

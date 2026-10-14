@@ -2,7 +2,7 @@
 // that part: mapped verbatim it ran the sibling's task again outside the
 // graph (pinia's online-playground `build`).
 import { expect, it } from 'bun:test'
-import { migrateScripts } from '../src/workspace/migrate-scripts.js'
+import { migrateScripts } from '../src/migrate-scripts.js'
 
 const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
   name,

@@ -18,8 +18,8 @@ that binary.
    workspace, `pnpm add -D -w @vzn/vx`: npm refuses `workspace:*`; Bun:
    `bun add -d @vzn/vx`).
 2. Run `npx @vzn/vx init` (Bun: `bunx @vzn/vx init`; npm refuses a repo
-   whose `devEngines` names Bun). It writes a `vx.config.ts` per package from its
-   scripts, and a `.vx/workspace.ts`. A root script that checks the whole
+   whose `devEngines` names Bun). It runs `@vzn/vx-migrate`, which writes a
+   `vx.config.ts` per package from its scripts, and a `.vx/workspace.ts`. A root script that checks the whole
    repo (`format: prettier --check .`) becomes a task in a root
    `vx.config.ts`; one that runs the members (`pnpm -r build`) does not,
    nor one named like a package's own task (a root `lint` beside a
@@ -27,6 +27,8 @@ that binary.
    nothing is cached yet: add the one each `build`'s TODO shows. A
    repo with `turbo.json` or `nx.json` starts at
    [Coming from Turbo, Nx or Vite Task](#coming-from-turbo-nx-or-vite-task) instead.
+   With no `package.json` at all (a Go or Rust repo), it writes
+   `.vx/workspace.ts` and an empty root `vx.config.ts` to declare tasks in.
 
 `vx init` is how every repo starts. The `.vx/workspace.ts` it writes
 marks the workspace root.

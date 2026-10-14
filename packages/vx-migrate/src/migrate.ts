@@ -1,15 +1,16 @@
-// `vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry]
+// `vx-migrate [--from turbo|nx|vite-task|scripts] [--native|--keep] [--no-install] [--dry]
 // [--force] [--mjs]` — one vx.config.ts per workspace package from an
 // existing Turbo or Nx setup (`--keep`: the workspace file that reads it
-// live instead, as `vx init` writes it), and vx installed with the repo's
-// manager.
+// live instead), from Vite Task, or from package.json scripts, and vx
+// installed with the repo's manager. `vx init` hands every repo with a
+// package.json here (M, 2026-10-14: core reads no package.json).
 // Without either mode flag a terminal is asked; anything else is native. Source auto-detect: turbo.json → Turbo;
 // .nx/workspace-data/project-graph.json, nx.json or a Lerna-on-Nx lerna.json → Nx (the resolved
-// graph, exported by nx if absent); `vite-plus` in the root package.json → Vite Task, last:
-// vite-plus is a whole toolchain, so beside turbo.json or Nx it is not the task runner.
+// graph, exported by nx if absent); `vite-plus` in the root package.json → Vite Task:
+// vite-plus is a whole toolchain, so beside turbo.json or Nx it is not the task runner;
+// else the package.json scripts.
 // The mappers return a plan; core's migration seam
-// (`applyMigration`) renders, guards, writes and reports, so what this
-// package writes reads exactly like what `vx init` writes.
+// (`applyMigration`) renders, guards, writes and reports.
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -17,24 +18,38 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   applyMigration,
-  findManifestRoot,
   findWorkspaceRoot,
   isUserError,
-  listPackages,
   type MigrationFormat,
   type MigrationPlan,
   UserError,
 } from '@vzn/vx'
+import { migrateScripts } from './migrate-scripts.js'
+import type { LoadReads } from './package-fs.js'
+import {
+  discoverPackages,
+  findManifestRoot,
+  loadPackageWorkspace,
+  type PackageMeta,
+  type PackageWorkspace,
+  reachesManifest,
+  unreachedHint,
+  unreachedPackages,
+} from './packages.js'
+import { relPosix } from './paths.js'
+import { REMOTE_CACHE, remoteCacheNote } from './remote-cache.js'
 import { migrateNx, NX_GRAPH_REL, nxWorkspaceFields } from './migrate-nx.js'
 import { exportGraph } from './nx/export-graph.js'
 import { readNxJson } from './nx/nx-map.js'
 import {
   type AdoptionMode,
   install,
+  installArgv,
   listedPackages,
   missingPackages,
   MODE_QUESTION,
   ownVersion,
+  type PackageManager,
   packageManagerOf,
   parseModeAnswer,
   uninstall,
@@ -42,6 +57,7 @@ import {
 import { migrateTurbo } from './migrate-turbo.js'
 import { migrateViteTask } from './migrate-vite-task.js'
 import { turboConfigFile } from './turbo/turbo-map.js'
+import { lockfilePlugin } from './workspace-notes.js'
 import {
   extendWorkspaceFile,
   generatedPlugins,
@@ -57,7 +73,7 @@ export interface MigrateArgs {
   force: boolean
   /** `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts`. */
   mjs: boolean
-  from?: 'turbo' | 'nx' | 'vite-task'
+  from?: 'turbo' | 'nx' | 'vite-task' | 'scripts'
   /** `--native` / `--keep`; unset asks a terminal and is native elsewhere. */
   mode?: AdoptionMode
   /** `--no-install`: leave package.json's dependencies alone. */
@@ -70,7 +86,7 @@ export interface MigrateArgs {
 }
 
 const USAGE =
-  'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
+  'usage: vx-migrate [--from turbo|nx|vite-task|scripts] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
 
 export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
   const out: MigrateArgs = { dry: false, force: false, mjs: false }
@@ -94,11 +110,8 @@ export function parseMigrateArgs(args: readonly string[]): MigrateArgs {
       out.mode = mode
     } else if (a === '--from' || a?.startsWith('--from=')) {
       const v = a === '--from' ? args[++i] : a.slice('--from='.length)
-      if (v !== 'turbo' && v !== 'nx' && v !== 'vite-task') {
-        return {
-          ...out,
-          error: `--from must be turbo, nx or vite-task (package.json scripts: \`vx init\`)`,
-        }
+      if (v !== 'turbo' && v !== 'nx' && v !== 'vite-task' && v !== 'scripts') {
+        return { ...out, error: '--from must be turbo, nx, vite-task or scripts' }
       }
       out.from = v
     } else if (a === '--help' || a === '-h') return { ...out, help: true }
@@ -134,13 +147,13 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx-migrate: ${parsed.error}\n`)
     return 1
   }
-  // No .vx/workspace.ts yet is the usual case here: this writes it.
-  const root = await findWorkspaceRoot(process.cwd())
-    .catch(() => findManifestRoot(process.cwd()))
-    .catch(async (err: unknown) => {
-      throw isUserError(err) ? await noRootReason(process.cwd(), err) : err
-    })
-  const metas = await listPackages(root)
+  const reads: LoadReads = new Map()
+  const root = await migrationRoot(process.cwd(), reads).catch(async (err: unknown) => {
+    throw isUserError(err) ? await noRootReason(process.cwd(), err) : err
+  })
+  const workspace = await loadPackageWorkspace(root, reads)
+  const nameless: string[] = []
+  const metas = await discoverPackages(workspace, nameless)
 
   const turboFile = await turboConfigFile(root)
   const hasTurbo = turboFile !== null
@@ -171,7 +184,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     throw new UserError('--from turbo, but no turbo.json at the workspace root')
   }
 
-  const runner: 'turbo' | 'nx' | 'vite-task' | undefined =
+  const runner: 'turbo' | 'nx' | 'vite-task' | 'scripts' =
     parsed.from ??
     (hasTurbo
       ? 'turbo'
@@ -179,23 +192,38 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
         ? 'nx'
         : (await hasVitePlus(root))
           ? 'vite-task'
-          : undefined)
-  if (runner === undefined) {
-    throw new UserError(
-      'nothing to migrate: no turbo.json, no Nx workspace and no vite-plus — ' +
-        'for package.json scripts, run `vx init`',
-    )
-  }
+          : 'scripts')
+  if (runner === 'scripts') return scripts(root, workspace, metas, nameless, parsed)
   if (runner === 'vite-task' && parsed.mode === 'keep') {
     throw new UserError(
       '--keep: no plugin runs a Vite Task config live; drop --keep to write vx.config files',
     )
   }
+  const runnerFile =
+    runner === 'turbo' ? path.basename(turboFile ?? 'turbo.json') : lerna ? 'lerna.json' : 'nx.json'
+  // A second `vx init` after the native migration refused to overwrite
+  // the configs it wrote, exit 1: the first-run walk (2026-10-09). Set up
+  // is an answer, with the next step.
+  const existing = workspaceFileAt(root)
+  if (
+    runner !== 'vite-task' &&
+    existing !== undefined &&
+    !parsed.force &&
+    !parsed.dry &&
+    parsed.mode === undefined &&
+    metas.some((m) => m.configPath !== null) &&
+    !readFileSync(path.join(root, existing), 'utf8').includes(`${runner}(`)
+  ) {
+    process.stdout.write(
+      `vx is already set up here (${existing} and the projects' vx.config files); --force regenerates them from ${runnerFile}.\n\nnext: ${adoptionNext(root, runner, runnerFile, ['@vzn/vx'])}\n`,
+    )
+    return 0
+  }
   const mode =
     runner === 'vite-task'
       ? 'native'
       : (parsed.mode ?? (await askMode(runner, lerna ? 'lerna.json' : undefined, parsed.dry)))
-  if (mode === 'keep' && runner !== 'vite-task') return keep(root, runner, hasTurbo, lerna, parsed)
+  if (mode === 'keep' && runner !== 'vite-task') return keep(root, runner, runnerFile, parsed)
 
   const format: MigrationFormat = parsed.mjs ? 'mjs' : 'ts'
   // No workspace file yet, or one vx wrote (a `--keep` adoption's): this run
@@ -267,7 +295,12 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       plan.extraFiles.some((f) => existsSync(path.join(root, f.relPath))))
   const kept = (adopted ?? []).filter((p) => !ADOPTION_PLUGINS.has(`${p.pkg}#${p.factory}`))
   const plugins = writesWorkspace
-    ? [...kept, ...workspacePlugins(root).filter((p) => !kept.some((k) => k.factory === p.factory))]
+    ? [
+        ...kept,
+        ...workspacePlugins(root, runner === 'vite-task' ? undefined : runner).filter(
+          (p) => !kept.some((k) => k.factory === p.factory),
+        ),
+      ]
     : []
   let workspaceText: string | undefined
   if (writesWorkspace) {
@@ -301,11 +334,12 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   )
   // Nothing written imports vx-migrate or runs its bins: a `--keep`
   // adoption's install of it is dropped with turbo() / nx().
-  const needsSelf =
-    runsBins ||
-    (workspaceText ?? readFileSync(path.join(root, existingWorkspace!), 'utf8')).includes(
-      "'@vzn/vx-migrate'",
-    )
+  const finalWorkspace = workspaceText ?? readFileSync(path.join(root, existingWorkspace!), 'utf8')
+  const needsSelf = runsBins || finalWorkspace.includes("'@vzn/vx-migrate'")
+  const cacheNote =
+    runner === 'vite-task'
+      ? undefined
+      : remoteCacheNote(root, runner, finalWorkspace.includes(`${REMOTE_CACHE[runner]}(`))
   const headerNotes = refused
     ? []
     : [
@@ -314,10 +348,17 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           : []),
         ...(await prepareRepo(
           root,
-          ['@vzn/vx', ...(needsSelf ? ['@vzn/vx-migrate'] : []), ...plugins.map((p) => p.pkg)],
+          [
+            ...new Set([
+              '@vzn/vx',
+              ...(needsSelf ? ['@vzn/vx-migrate'] : []),
+              ...plugins.map((p) => p.pkg),
+            ]),
+          ],
           parsed,
           needsSelf ? [] : ['@vzn/vx-migrate'],
         )),
+        ...(cacheNote === undefined ? [] : [cacheNote]),
       ]
   return applyMigration({
     root,
@@ -432,125 +473,307 @@ async function prepareRepo(
 }
 
 /**
- * `--keep`: the workspace file `vx init` writes, declaring `turbo()` or
- * `nx()`, so the runner's own config stays the source. `vx init` is the
- * one writer of that file; this runs the installed one.
+ * `--keep`: `.vx/workspace.ts` declaring `turbo()` or `nx()`, so the
+ * runner's own config stays the source, beside the plugins the repo calls
+ * for (its remote cache among them), and the one command from here to a
+ * run. A workspace file already here is kept when it declares the runner.
  */
 async function keep(
   root: string,
   runner: 'turbo' | 'nx',
-  hasTurbo: boolean,
-  lerna: boolean,
+  source: string,
   args: MigrateArgs,
 ): Promise<number> {
-  // `vx init` reads turbo.json first.
-  if (runner === 'nx' && hasTurbo) {
+  const format: MigrationFormat = args.mjs ? 'mjs' : 'ts'
+  const name = `.vx/workspace.${format}`
+  const all = [{ pkg: '@vzn/vx-migrate', factory: runner }, ...workspacePlugins(root, runner)]
+  const existing = workspaceFileAt(root)
+  const before =
+    existing === undefined || args.force
+      ? undefined
+      : readFileSync(path.join(root, existing), 'utf8')
+  if (before !== undefined && !before.includes(`${runner}(`)) {
     throw new UserError(
-      '--keep with --from nx: turbo.json is here too, and vx init adopts it first',
+      `${existing} exists; add ${runner}() from @vzn/vx-migrate to its plugins, or --force replaces it`,
     )
   }
-  // The plugins go into the file `vx init` writes, or into one already
-  // here in that shape; another shape is the user's, and left alone.
-  const existing = workspaceFileAt(root)
-  const plugins =
-    existing === undefined ||
-    extendWorkspaceFile(readFileSync(path.join(root, existing), 'utf8'), []) !== null
-      ? workspacePlugins(root)
-      : []
+  // A kept file in the one-line shape gains the plugins it lacks; any
+  // other shape is the user's, and left alone.
+  const extended = before === undefined ? null : extendWorkspaceFile(before, all)
+  const text = before === undefined ? renderWorkspaceFile(all, format) : (extended ?? before)
+  const declares = before === undefined || extended !== null
   for (const note of await prepareRepo(
     root,
-    ['@vzn/vx', '@vzn/vx-migrate', ...plugins.map((p) => p.pkg)],
+    [...new Set(['@vzn/vx', '@vzn/vx-migrate', ...(declares ? all.map((p) => p.pkg) : [])])],
     args,
   )) {
     ;(args.json ? process.stderr : process.stdout).write(`vx-migrate: ${note}\n`)
   }
-  // `vx init` adopts nx() by nx.json, and a Lerna repo may have none: it
-  // would map the scripts instead, so the file is written here.
-  if (lerna) return keepLerna(root, plugins, args)
-  const flags = [
-    args.dry && '--dry',
-    args.json && '--format=json',
-    args.force && '--force',
-    args.mjs && '--mjs',
-  ].filter((f): f is string => typeof f === 'string')
-  const code = await Bun.spawn(
-    [process.execPath, '--no-install', coreBin(root), 'init', '--keep', ...flags],
-    { cwd: root, stdio: ['inherit', 'inherit', 'inherit'] },
-  ).exited
-  const written = workspaceFileAt(root)
-  if (code !== 0 || args.dry || written === undefined || plugins.length === 0) return code
-  const file = path.join(root, written)
-  const text = readFileSync(file, 'utf8')
-  const extended = extendWorkspaceFile(text, plugins)
-  if (extended !== null && extended !== text) {
-    await Bun.write(file, extended)
-    const names = undeclared(text, plugins).map((p) => `${p.factory}()`)
-    process.stdout.write(`vx-migrate: declared ${names.join(', ')} in ${written}\n`)
+  const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
+  if (!args.dry) {
+    if (before === undefined) {
+      if (existing !== undefined && existing !== name) await rm(path.join(root, existing))
+      await Bun.write(path.join(root, name), text)
+    } else if (text !== before) await Bun.write(path.join(root, existing!), text)
+    // vx's own housekeeping, as a run's first cache open writes it.
+    if (ignore.length > 0) await Bun.write(path.join(root, '.vx', '.gitignore'), DOT_VX_GITIGNORE)
   }
+  const cache = REMOTE_CACHE[runner]
+  const cacheLine =
+    before?.includes(`${cache}(`) === true
+      ? undefined
+      : remoteCacheNote(root, runner, text.includes(`${cache}(`))
+  const added = before === undefined ? [] : undeclared(before, all).map((p) => `${p.factory}()`)
+  const wrote =
+    before === undefined
+      ? args.dry
+        ? `would write ${name} (dry run, nothing written).`
+        : `wrote ${name}.`
+      : text === before
+        ? `${existing} already declares ${runner}().`
+        : `${args.dry ? 'would declare' : 'declared'} ${added.join(', ')} in ${existing}.`
+  const next = adoptionNext(root, runner, source, [
+    ...new Set(['@vzn/vx', '@vzn/vx-migrate', ...(declares ? all.map((p) => p.pkg) : [])]),
+  ])
+  if (args.json) {
+    process.stdout.write(
+      `${JSON.stringify({
+        dry: true,
+        source,
+        files: [
+          ...(text === before
+            ? []
+            : [{ path: before === undefined ? name : existing!, contents: text }]),
+          ...ignore.map((p) => ({ path: p, contents: DOT_VX_GITIGNORE })),
+        ],
+        kept: text === before ? [existing] : [],
+        replaced:
+          before === undefined && existing !== undefined && existing !== name ? [existing] : [],
+        todos: [],
+        notes: cacheLine === undefined ? [] : [cacheLine],
+        next,
+      })}\n`,
+    )
+    return 0
+  }
+  process.stdout.write(
+    `${args.dry && before === undefined ? `── ${name} ──\n${text}\n` : ''}` +
+      `vx-migrate: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.\n` +
+      `${wrote}\n${cacheLine === undefined ? '' : `${cacheLine}\n`}\n`,
+  )
+  // A run reads only the lock; with the plugins installed it is written
+  // now, else `next` names `vx lock` after the install.
+  const locks = !args.dry && !next.includes(' lock && ')
+  const code = locks ? await lockWorkspace(root) : 0
+  process.stdout.write(`${locks ? '\n' : ''}next: ${next}\n`)
   return code
 }
 
-/** `--keep --dry --format json` in a Lerna repo: core's `schemas/init.json` document. */
-function lernaPlan(
-  files: { path: string; contents: string }[],
-  kept: string[],
-  replaced: string[],
-): number {
-  process.stdout.write(
-    `${JSON.stringify({ dry: true, source: 'lerna.json', files, kept, replaced, todos: [], notes: [], next: null })}\n`,
-  )
-  return 0
+/** `.vx/.gitignore`'s text, as core writes it: the machine-local cache stays out of git. */
+const DOT_VX_GITIGNORE = '/cache\n'
+
+// npx and bunx name the package: their bare `vx` is a stranger's npm package.
+const EXEC: Record<PackageManager, string> = {
+  pnpm: 'pnpm vx',
+  yarn: 'yarn vx',
+  bun: 'bunx @vzn/vx',
+  npm: 'npx @vzn/vx',
 }
 
-/** `--keep` in a Lerna repo with no nx.json: the workspace file declaring `nx()`. */
-async function keepLerna(
+/**
+ * Install what the workspace file imports, if missing, then run the repo's
+ * build. Pinned to this release: every @vzn package releases in lockstep,
+ * and `latest` beside an older vx mismatched them (agent trial 2).
+ */
+export function adoptionNext(
   root: string,
-  plugins: readonly WorkspacePlugin[],
+  runner: 'turbo' | 'nx',
+  source: string,
+  needs: readonly string[] = ['@vzn/vx', '@vzn/vx-migrate'],
+  version: string | null = ownVersion(),
+): string {
+  const pm = packageManagerOf(root)
+  const missing = needs.filter(
+    (p) => !existsSync(path.join(root, 'node_modules', p, 'package.json')),
+  )
+  // A global vx (no runner started this one) runs the workspace's plugins as they are.
+  const vx = process.env['npm_config_user_agent'] === undefined ? 'vx' : EXEC[pm]
+  const run = `${vx} run ${firstTask(path.join(root, source), runner)} --all`
+  if (missing.length === 0) return run
+  const pinned = version === null ? missing : missing.map((p) => `${p}@${version}`)
+  return `${installArgv(root, pm, pinned).join(' ')} && ${vx} lock && ${run}`
+}
+
+/** `build` when the runner's config names it, else the first task it names. */
+function firstTask(file: string, runner: 'turbo' | 'nx'): string {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return 'build'
+  }
+  if (/"build"\s*:/.test(text)) return 'build'
+  const field = runner === 'turbo' ? '(?:tasks|pipeline)' : 'targetDefaults'
+  const first = new RegExp(`"${field}"\\s*:\\s*\\{\\s*"([^"]+)"`).exec(text)?.[1]
+  return first ?? 'build'
+}
+
+/**
+ * package.json scripts → one vx.config.ts per package, and the workspace
+ * file declaring the lockfile plugin its lockfile calls for: `vx init`'s
+ * mapper until core stopped reading package.json (M, 2026-10-14).
+ */
+async function scripts(
+  root: string,
+  workspace: PackageWorkspace,
+  metas: readonly PackageMeta[],
+  nameless: readonly string[],
   args: MigrateArgs,
 ): Promise<number> {
-  const format = args.mjs ? 'mjs' : 'ts'
-  const name = `.vx/workspace.${format}`
-  const existing = workspaceFileAt(root)
-  const all = [{ pkg: '@vzn/vx-migrate', factory: 'nx' }, ...plugins]
-  if (existing !== undefined && !args.force) {
-    const text = readFileSync(path.join(root, existing), 'utf8')
-    const extended = extendWorkspaceFile(text, all)
-    if (extended === null) {
-      throw new UserError(
-        `${existing} exists; add nx() from @vzn/vx-migrate to its plugins, or --force replaces it`,
-      )
-    }
-    if (!args.dry && extended !== text) await Bun.write(path.join(root, existing), extended)
-    const names = undeclared(text, all).map((p) => `${p.factory}()`)
-    if (args.json) {
-      return lernaPlan(
-        extended === text ? [] : [{ path: existing, contents: extended }],
-        extended === text ? [existing] : [],
-        [],
-      )
-    }
-    if (names.length > 0)
-      process.stdout.write(
-        `vx-migrate: ${args.dry ? 'would declare' : 'declared'} ${names.join(', ')} in ${existing}\n`,
-      )
-    return 0
-  }
-  const text = renderWorkspaceFile(all, format)
-  if (args.json) {
-    return lernaPlan(
-      [{ path: name, contents: text }],
-      [],
-      existing !== undefined && existing !== name ? [existing] : [],
+  if (args.mode !== undefined) {
+    throw new UserError(
+      `--${args.mode} answers a Turbo or Nx repo's question, and no turbo.json or nx.json is at ${relPosix(process.cwd(), root) || '.'}`,
     )
   }
-  if (args.dry) {
-    process.stdout.write(`── ${name} ──\n${text}\nvx-migrate: would write ${name} (dry run)\n`)
-    return 0
+  const unmapped = namelessNotes(root, nameless)
+  // Only a workspace file this run writes declares it; one already here is the user's.
+  const lockfile = workspaceFileAt(root) === undefined ? lockfilePlugin(root) : undefined
+  const plugins =
+    lockfile === undefined ? [] : [{ pkg: '@vzn/vx-lockfile', factory: lockfile.factory }]
+  const plan = migrateScripts(
+    metas,
+    metas.some((m) => m.dir === root) ? undefined : await readRootManifest(root),
+    root,
+  )
+  const empty = plan.projects.length === 0
+  // Single-project mode with packages the root's missing `workspaces` never
+  // reaches: the scripts exist, the globs do not (item 248).
+  const unreached = empty ? await unreachedPackages(workspace) : []
+  // Globs that reach no package: "no scripts" was true and named nothing
+  // to fix (M-42). Asked of the globs, not of `metas`: a nameless or
+  // shared-name member is matched yet absent from `metas` (M-46).
+  const globs = workspace.packageGlobs.filter((g) => g !== '.')
+  const noMembers =
+    empty && globs.length > 0 && !(await reachesManifest(workspace))
+      ? [
+          `the workspace globs (${globs.map((g) => `"${g}"`).join(', ')}) match no package.json: add a package under one, or fix the glob`,
+        ]
+      : []
+  const installed = await prepareRepo(
+    root,
+    plugins.map((p) => p.pkg),
+    args,
+  )
+  return applyMigration({
+    root,
+    metas,
+    plan,
+    source: 'package.json scripts',
+    verb: 'vx-migrate',
+    notes: [
+      ...noMembers,
+      ...(await unreadWorkspaces(root, workspace.packageGlobs)),
+      ...unmapped,
+      ...installed,
+    ],
+    unmapped: unmapped.length > 0,
+    ...(unreached.length > 0 ? { emptyReason: unreachedHint(unreached, root) } : {}),
+    dry: args.dry,
+    json: args.json === true,
+    force: args.force,
+    init: true,
+    format: args.mjs ? 'mjs' : 'ts',
+    plugins,
+    ...(args.noInstall === true ? {} : { lock: lockWorkspace }),
+  })
+}
+
+/**
+ * A member whose package.json has no `name` is no project, so its scripts
+ * map to nothing, and init said nothing of them (D-106).
+ */
+function namelessNotes(root: string, dirs: readonly string[]): string[] {
+  const withScripts = dirs
+    .filter((dir) => {
+      const scripts = (
+        JSON.parse(readText(path.join(dir, 'package.json')) || '{}') as { scripts?: unknown }
+      ).scripts
+      return (
+        typeof scripts === 'object' &&
+        scripts !== null &&
+        Object.values(scripts).some((v) => typeof v === 'string' && v !== '')
+      )
+    })
+    .map((dir) => relPosix(root, dir))
+    .sort()
+    // The root's own manifest is the empty relative path: a nameless
+    // single-package repo read `not mapped:  — its package.json…` (M-54).
+    .map((rel) => (rel === '' ? 'the root' : rel))
+  if (withScripts.length === 0) return []
+  const shown =
+    withScripts.slice(0, 3).join(', ') +
+    (withScripts.length > 3 ? `, and ${withScripts.length - 3} more` : '')
+  return [
+    `not mapped: ${shown} — ${withScripts.length === 1 ? 'its package.json has' : 'their package.json files have'} no "name", and vx names a project by it; give ${withScripts.length === 1 ? 'it one' : 'each one'} and run \`vx init\` again`,
+  ]
+}
+
+/**
+ * `pnpm-workspace.yaml`'s `packages` decides the members, as pnpm reads it,
+ * and a root `workspaces` that lists other globs was dropped without a word:
+ * a bun or npm repo with a stale yaml lost those members (M-51).
+ */
+async function unreadWorkspaces(root: string, globs: readonly string[]): Promise<string[]> {
+  if (!existsSync(path.join(root, 'pnpm-workspace.yaml'))) return []
+  const ws = (await readRootManifest(root))['workspaces']
+  const list = Array.isArray(ws)
+    ? ws
+    : typeof ws === 'object' &&
+        ws !== null &&
+        Array.isArray((ws as { packages?: unknown }).packages)
+      ? (ws as { packages: unknown[] }).packages
+      : undefined
+  if (list === undefined) return []
+  const pkg = list.filter((g): g is string => typeof g === 'string')
+  if ([...pkg].sort().join('\0') === [...globs].sort().join('\0')) return []
+  return [
+    `pnpm-workspace.yaml's \`packages\` lists the members, as pnpm reads them; package.json's \`workspaces\` (${pkg.map((g) => `"${g}"`).join(', ')}) is not read: if bun, npm or yarn installs this repo, copy those globs into pnpm-workspace.yaml's \`packages\`, or delete that key so package.json decides`,
+  ]
+}
+
+/** The root package.json as an object, `{}` when unreadable or not one. */
+async function readRootManifest(root: string): Promise<Record<string, unknown>> {
+  const pj: unknown = await Bun.file(path.join(root, 'package.json'))
+    .json()
+    .catch(() => ({}))
+  return typeof pj === 'object' && pj !== null && !Array.isArray(pj)
+    ? (pj as Record<string, unknown>)
+    : {}
+}
+
+function readText(file: string): string {
+  try {
+    return readFileSync(file, 'utf8').replace(/^﻿/, '')
+  } catch {
+    return ''
   }
-  if (existing !== undefined && existing !== name) await rm(path.join(root, existing))
-  await Bun.write(path.join(root, name), text)
-  process.stdout.write(`vx-migrate: lerna.json found — wrote ${name} declaring nx()\n`)
-  return 0
+}
+
+/**
+ * The workspace root, or where this run makes one: the package manager's
+ * root. A nested workspace the outer one does not list is its own: the
+ * outer .vx/workspace.ts made init report the outer configs and write
+ * nothing.
+ */
+async function migrationRoot(cwd: string, reads: LoadReads): Promise<string> {
+  const marked = await findWorkspaceRoot(cwd).catch(() => undefined)
+  if (marked === undefined) return findManifestRoot(cwd, reads)
+  const manifest = await findManifestRoot(cwd, reads).catch(() => marked)
+  if (manifest.startsWith(`${marked}${path.sep}`)) {
+    const nested = await loadPackageWorkspace(manifest, reads).catch(() => undefined)
+    if (nested !== undefined && nested.packageGlobs.length > 0) return manifest
+  }
+  return marked
 }
 
 /**

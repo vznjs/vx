@@ -6,8 +6,9 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { discoverPackages, loadPackageWorkspace } from '../src/workspace/packages.js'
-import { relPosix, UserError } from '../src/util/index.js'
+import { discoverPackages, loadPackageWorkspace } from '../src/packages.js'
+import { UserError } from '@vzn/vx'
+import { relPosix } from '../src/paths.js'
 
 let top: string
 let root: string

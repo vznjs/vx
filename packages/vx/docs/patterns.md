@@ -92,12 +92,12 @@ parser's docblock marks them (`src/graph/dependency-spec.ts`).
 
 ### Workspace discovery
 
-| Capability                                            | Source       | vx source                        |
-| ----------------------------------------------------- | ------------ | -------------------------------- |
-| Read `pnpm-workspace.yaml` (`vx init`)                | pnpm + Turbo | `src/workspace/packages.ts`      |
-| Read `package.json` `workspaces` (`vx init`)          | Turbo        | `src/workspace/packages.ts`      |
-| Build package-dep graph from workspace `dependencies` | Turbo + Nx   | `src/workspace/package-graph.ts` |
-| Lockfile fingerprint at workspace level               | Turbo + Nx   | `src/workspace/fingerprint.ts`   |
+| Capability                                            | Source       | vx source                         |
+| ----------------------------------------------------- | ------------ | --------------------------------- |
+| Read `pnpm-workspace.yaml` (adoption)                 | pnpm + Turbo | `@vzn/vx-migrate`'s `packages.ts` |
+| Read `package.json` `workspaces` (adoption)           | Turbo        | `@vzn/vx-migrate`'s `packages.ts` |
+| Build package-dep graph from workspace `dependencies` | Turbo + Nx   | `src/workspace/package-graph.ts`  |
+| Lockfile fingerprint at workspace level               | Turbo + Nx   | `src/workspace/fingerprint.ts`    |
 
 ### Cache topology
 

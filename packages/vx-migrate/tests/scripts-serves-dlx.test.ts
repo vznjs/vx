@@ -2,7 +2,7 @@
 // the program: docusaurus's `netlify:test` (`pnpm dlx --package netlify-cli
 // netlify dev`) mapped as a one-shot task.
 import { expect, it } from 'bun:test'
-import { migrateScripts } from '../src/workspace/migrate-scripts.js'
+import { migrateScripts } from '../src/migrate-scripts.js'
 
 it('reads the program past a launcher’s --package value', () => {
   const scripts: Record<string, string> = {

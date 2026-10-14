@@ -416,12 +416,17 @@ describe('vx migrate (turbo)', () => {
   })
 
   it(
-    'refuses to overwrite existing vx.config.* without --force',
+    'says it is set up; asked --native again, refuses to overwrite without --force',
     async () => {
       const again = await vx(root, [])
-      expect(again.code).toBe(1)
-      expect(again.err).toContain('--force')
-      expect(again.err).toContain('packages/app/vx.config.ts')
+      expect([again.code, again.out.split('\n')[0]]).toEqual([
+        0,
+        "vx is already set up here (.vx/workspace.ts and the projects' vx.config files); --force regenerates them from turbo.json.",
+      ])
+      const native = await vx(root, ['--native'])
+      expect(native.code).toBe(1)
+      expect(native.err).toContain('--force')
+      expect(native.err).toContain('packages/app/vx.config.ts')
     },
     TIMEOUT,
   )
@@ -688,7 +693,7 @@ describe('vx migrate (lerna)', () => {
     ],
   ] as const) {
     it(
-      `${label}: ${mapped ? 'the exported graph is the source' : 'Lerna’s own runner, nothing to read'}`,
+      `${label}: ${mapped ? 'the exported graph is the source' : 'Lerna’s own runner: the scripts are the source'}`,
       async () => {
         const root = await lernaRepo(files)
         try {
@@ -701,17 +706,13 @@ describe('vx migrate (lerna)', () => {
                   r.out.includes('vx-migrate: nx graph → vx.config.ts'),
                   await nxCalls(root),
                 ]
-              : [r.code, r.err, false, 0],
-          ).toEqual(
-            mapped
-              ? [0, '', true, 1]
               : [
-                  1,
-                  'vx-migrate: nothing to migrate: no turbo.json, no Nx workspace and no vite-plus — for package.json scripts, run `vx init`\n',
-                  false,
-                  0,
+                  r.code,
+                  r.err,
+                  r.out.includes('vx-migrate: package.json scripts → vx.config.ts'),
+                  await nxCalls(root),
                 ],
-          )
+          ).toEqual([0, '', true, mapped ? 1 : 0])
         } finally {
           await rm(root, { recursive: true, force: true })
         }
@@ -1281,15 +1282,14 @@ describe('vx migrate source detection', () => {
   )
 
   it(
-    'neither source is an error that names `vx init` for package.json scripts',
+    'neither source: the package.json scripts are mapped',
     async () => {
       const root = await makeRoot('vx-migrate-det3-')
       try {
         await addPackage(root, 'a', { build: 'tsc' })
-        const r = await vx(root, [])
-        expect(r.code).toBe(1)
-        expect(r.err).toContain('no turbo.json')
-        expect(r.err).toContain('vx init')
+        const r = await vx(root, ['--dry'])
+        expect([r.code, r.err]).toEqual([0, ''])
+        expect(r.out).toContain('vx-migrate: package.json scripts → vx.config.ts')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -1313,11 +1313,13 @@ describe('parseMigrateArgs', () => {
   it('positionals error', () => {
     expect(parseMigrateArgs(['turbo']).error).toContain('turbo')
   })
-  // Turbo and Nx (owner, 2026-10-01), Vite Task (YA-1): lage, wireit and scripts are refused.
-  it('--from takes turbo, nx or vite-task; any other name, scripts included, names `vx init`', () => {
-    for (const v of ['scripts', 'lage', 'wireit', 'package.json'])
+  // Turbo and Nx (owner, 2026-10-01), Vite Task (YA-1), the scripts `vx init`
+  // mapped (M, 2026-10-14): lage and wireit are refused.
+  it('--from takes turbo, nx, vite-task or scripts; any other name is refused', () => {
+    expect(parseMigrateArgs(['--from', 'scripts']).from).toBe('scripts')
+    for (const v of ['lage', 'wireit', 'package.json'])
       expect(parseMigrateArgs(['--from', v]).error).toBe(
-        '--from must be turbo, nx or vite-task (package.json scripts: `vx init`)',
+        '--from must be turbo, nx, vite-task or scripts',
       )
   })
 })
@@ -1499,7 +1501,7 @@ describe('vx migrate (nx) — a server target is persistent', () => {
 
 describe('the writer: what the sweep found unheld', () => {
   const USAGE =
-    'usage: vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
+    'usage: vx-migrate [--from turbo|nx|vite-task|scripts] [--native|--keep] [--no-install] [--dry [--format json]] [--force] [--mjs]'
 
   it('parseMigrateArgs: --from=<source>, --help, and an unknown flag by name', () => {
     expect(parseMigrateArgs(['--from=nx'])).toEqual({
@@ -1666,7 +1668,7 @@ describe('the preset, exactly', () => {
 
 describe('vx migrate — a repo core finds no workspace root in', () => {
   it(
-    'names a Rush workspace, and leaves any other refusal as core words it',
+    'names a Rush workspace, and with no package.json names `vx init`',
     async () => {
       const seen: Record<string, VxResult> = {}
       for (const [name, file, text] of [
@@ -1688,10 +1690,11 @@ describe('vx migrate — a repo core finds no workspace root in', () => {
         out: '',
         err: 'vx-migrate: a Rush workspace: vx does not yet discover projects from rush.json (it finds them through package.json workspaces or pnpm-workspace.yaml)\n',
       })
-      expect(seen['none']!.code).toBe(1)
-      expect(seen['none']!.err).toStartWith(
-        'vx-migrate: Could not find a workspace root in any parent of <dir> ',
-      )
+      expect(seen['none']).toEqual({
+        code: 1,
+        out: '',
+        err: 'vx-migrate: no package.json or pnpm-workspace.yaml in <dir> or any parent, so nothing to map: `vx init` sets up a workspace without one\n',
+      })
     },
     TIMEOUT,
   )

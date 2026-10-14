@@ -8,7 +8,7 @@ pipeline with a plugin hook at every stage.
 
 ```sh
 bun add -d @vzn/vx      # or npm / pnpm / yarn
-vx init                 # scaffold .vx/workspace.ts + a vx.config.ts per package
+vx init                 # .vx/workspace.ts + a vx.config.ts per package (via @vzn/vx-migrate)
 vx run build --all
 ```
 

@@ -12,7 +12,8 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { isLiteralPattern, pruneOrphanPersistentNotes, type PackageMeta, UserError } from '@vzn/vx'
+import { isLiteralPattern, pruneOrphanPersistentNotes, UserError } from '@vzn/vx'
+import type { PackageMeta } from '../packages.js'
 import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'

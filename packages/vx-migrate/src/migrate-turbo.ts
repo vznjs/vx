@@ -9,9 +9,9 @@ import {
   type MigrationFormat,
   type MigrationPlan,
   PERSISTENT_TODO,
-  type PackageMeta,
   quoteTsLiteral as quote,
 } from '@vzn/vx'
+import type { PackageMeta } from './packages.js'
 import {
   mapTurboWorkspace,
   rootTaskProject,

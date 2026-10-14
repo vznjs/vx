@@ -22,7 +22,6 @@ import {
   loadWorkspaceConfig,
   validateProjectConfig,
 } from '../src/workspace/project-loader.js'
-import { discoverPackages, loadPackageWorkspace } from '../src/workspace/packages.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const CONFIG_PATH = '/ws/pkg/vx.config.ts'
@@ -463,64 +462,6 @@ async function failure(
   }
 }
 
-const DISCOVERY_CASES: Array<[string, () => Promise<string | null>]> = [
-  [
-    'failed to parse <file>: <why>',
-    () => failure({ 'pnpm-workspace.yaml': 'packages: [\n' }, loadPackageWorkspace),
-  ],
-  [
-    '<file>: packages must be an array of glob strings',
-    () => failure({ 'pnpm-workspace.yaml': 'packages: "packages/*"\n' }, loadPackageWorkspace),
-  ],
-  [
-    '<file>: must be a JSON object',
-    () => failure({ 'package.json': 'null' }, loadPackageWorkspace),
-  ],
-  [
-    '<file>: "name" must be a string with no surrounding whitespace',
-    () => failure({ 'package.json': '{"name":123}' }, loadPackageWorkspace),
-  ],
-  [
-    '<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>',
-    () => failure({ 'package.json': '{"name":"a#b"}' }, loadPackageWorkspace),
-  ],
-  [
-    "<file>: must be a mapping (packages: and pnpm's settings)",
-    () => failure({ 'pnpm-workspace.yaml': '- packages/*\n' }, loadPackageWorkspace),
-  ],
-  [
-    '<file>: workspaces must be an array of glob strings',
-    () => failure({ 'package.json': '{"name":"r","workspaces":[1]}' }, loadPackageWorkspace),
-  ],
-  [
-    '<file>: workspaces.packages must be an array of glob strings',
-    () =>
-      failure(
-        { 'package.json': '{"name":"r","workspaces":{"packages":"x"}}' },
-        loadPackageWorkspace,
-      ),
-  ],
-  [
-    `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read`,
-    () =>
-      failure(
-        { 'package.json': '{"name":"r","workspaces":["packages/!(x)"]}' },
-        loadPackageWorkspace,
-      ),
-  ],
-  [
-    'workspace member <dir> (<abs>) is outside the workspace root <root>: vx keeps every project under the root',
-    () =>
-      failure(
-        {
-          'w/package.json': '{"name":"r","workspaces":["../ext/*"]}',
-          'ext/e/package.json': '{"name":"e"}',
-        },
-        async (root) => discoverPackages(await loadPackageWorkspace(path.join(root, 'w'))),
-      ),
-  ],
-]
-
 /** A `.vx/workspace.ts` exporting `body`, loaded through the real loader. */
 function workspaceConfig(body: string): () => Promise<string | null> {
   return () =>
@@ -687,11 +628,6 @@ pinTable(
   'docs/schema.md task-validation table matches the loader',
   '## Schema validation errors',
   CASES,
-)
-pinTable(
-  'docs/schema.md package-manager table matches the loader',
-  'Package-manager errors',
-  DISCOVERY_CASES,
 )
 pinTable(
   'docs/schema.md workspace-config table matches the loader',

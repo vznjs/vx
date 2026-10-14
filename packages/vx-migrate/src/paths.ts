@@ -13,7 +13,7 @@
 // cheapest moment to collapse a duplicate is before it does.
 
 import path from 'node:path'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from './packages.js'
 
 /** `to` relative to `from`, POSIX-separated — core's `relPosix`, which is not on the façade. */
 export function relPosix(from: string, to: string): string {

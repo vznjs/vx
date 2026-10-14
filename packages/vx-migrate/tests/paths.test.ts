@@ -4,7 +4,7 @@
 // workspace; these rows exist so the next one is not either.
 
 import { describe, expect, it } from 'bun:test'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { packageScripts, relPosix } from '../src/paths.js'
 
 const meta = (packageJson: unknown): PackageMeta =>

@@ -115,7 +115,6 @@ here, itself or in a brace group.
 | File                                       | Topic                                                                                                                                           |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`workspace.md`](./workspace.md)           | `src/workspace/{workspace,load-reads,repo-id}.ts` — `findWorkspaceRoot`, `findProjectConfigs`, names, cacheDir, store id; root reads once.      |
-| [`packages.md`](./packages.md)             | `src/workspace/packages.ts` — package-manager members and root, read by `vx init` alone.                                                        |
 | [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `.vx/workspace.*` evaluation.                                                               |
 | [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                          |
 |                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader, the config worker and the playground run (see config-schema.md). |
@@ -127,7 +126,7 @@ here, itself or in a brace group.
 | [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).                                                               |
 | [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — reads the root files a plugin claims (a lockfile, install settings); folds none.                               |
 | [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `.vx/projects.lock.json` freeze / trust / audit.                                                                  |
-| [`migration.md`](./migration.md)           | `src/workspace/{migration,migrate-scripts}.ts` — the plan → files seam `vx init` and `@vzn/vx-migrate` share; the scripts mapper.               |
+| [`migration.md`](./migration.md)           | `src/workspace/migration.ts` — the plan → files seam `@vzn/vx-migrate` and any adoption tool write through.                                     |
 |                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md).                                                       |
 
 ## Graph + scheduler

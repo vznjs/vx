@@ -88,9 +88,15 @@ export default defineProject({
         // fails instead of skipping under VX_REQUIRE_NX. Both are key
         // inputs: a skip-mode hit must never answer for the live run.
         // VX_REQUIRE_REFTABLE: head-stamp-reftable.test.ts fails on a git
-        // too old for reftable instead of skipping.
+        // too old for reftable instead of skipping; VX_REQUIRE_NONROOT:
+        // packages-foreign-owner.test.ts fails as root instead of skipping.
         env: {
-          passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE'],
+          passThrough: [
+            'VX_NX_MODULES',
+            'VX_REQUIRE_NX',
+            'VX_REQUIRE_REFTABLE',
+            'VX_REQUIRE_NONROOT',
+          ],
           define: SUITE_ENV,
         },
         sandbox: SUITE_SANDBOX,
@@ -99,7 +105,7 @@ export default defineProject({
       cache: {
         inputs: {
           files: ['src/**', 'tests/**', 'package.json'],
-          env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE'],
+          env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],
         },
         outputs: { files: [] },
       },

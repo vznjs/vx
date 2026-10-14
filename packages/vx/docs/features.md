@@ -146,7 +146,7 @@ config key or an environment variable is missing here.
 
 ## Adoption
 
-- **Start in a minute** (`vx init`, `--dry`, `--format json`, `--force`, `--mjs`) — write `.vx/workspace.ts`, one `vx.config.ts` per package and `.vx/projects.lock.json`; `--dry --format json` hands an agent the plan as data. [page](https://vznjs.github.io/vx/features/quickstart/) · post: [Hello, vx](https://vznjs.github.io/vx/blog/hello-vx/)
+- **Start in a minute** (`vx init`, `--dry`, `--format json`, `--force`, `--mjs`) — write `.vx/workspace.ts`, one `vx.config.ts` per package (through `@vzn/vx-migrate`; with no `package.json`, one empty root project) and `.vx/projects.lock.json`; `--dry --format json` hands an agent the plan as data. [page](https://vznjs.github.io/vx/features/quickstart/) · post: [Hello, vx](https://vznjs.github.io/vx/blog/hello-vx/)
 - **Migrate from Turborepo or Nx** (`vx init`, `--native`, `--keep`, `@vzn/vx-migrate`) — native config, or keep `turbo()` / `nx()` as a start. [page](https://vznjs.github.io/vx/features/migrate/) · posts: [From Turborepo](https://vznjs.github.io/vx/blog/from-turborepo/), [From Nx](https://vznjs.github.io/vx/blog/from-nx/)
 - **Keep a Turbo or Nx remote cache** (`turboCache()`, `nxCache()`) — reuse the cache server you have. [page](https://vznjs.github.io/vx/features/keep-remote-cache/) · post: [From Nx: keep the graph, drop the platform](https://vznjs.github.io/vx/blog/from-nx/)
 - **One binary** — one file, nothing to install underneath. [page](https://vznjs.github.io/vx/features/one-binary/) · post: [One binary](https://vznjs.github.io/vx/blog/one-binary/)
@@ -154,7 +154,7 @@ config key or an environment variable is missing here.
 - **Graph explorer** (`--dry=json`) — paste your own plan to see what each task waits on, what waits on it, and why. [page](https://vznjs.github.io/vx/guides/graph-explorer/)
 - **Benchmarks you can re-run** (`@vzn/vx-bench`) — vx against Turborepo and Nx. [page](https://vznjs.github.io/vx/features/benchmarks/) · posts: [Benchmarks you can re-run](https://vznjs.github.io/vx/blog/honest-benchmarks/), [Why vx is fast](https://vznjs.github.io/vx/blog/why-vx-is-fast/)
 - **npm pre/post scripts** — `pre<x>` and `post<x>` hooks fold into `x`'s command when `vx init` maps scripts. [page](https://vznjs.github.io/vx/features/npm-hooks/) · post: [From npm scripts or Vite Task](https://vznjs.github.io/vx/blog/from-scripts-and-vite-task/)
-- **Vite Task adoption** (`bunx @vzn/vx-migrate`) — writes configs from vite-plus `run.tasks` as well as Turbo and Nx. [page](https://vznjs.github.io/vx/features/vite-task-adoption/) · post: [From npm scripts or Vite Task](https://vznjs.github.io/vx/blog/from-scripts-and-vite-task/)
+- **Vite Task adoption** (`bunx @vzn/vx-migrate`) — writes configs from vite-plus `run.tasks` as well as Turbo, Nx and `package.json` scripts (`--from scripts` picks them beside the others). [page](https://vznjs.github.io/vx/features/vite-task-adoption/) · post: [From npm scripts or Vite Task](https://vznjs.github.io/vx/blog/from-scripts-and-vite-task/)
 - **Nx executors as one process** (`nx-exec`) — any Nx executor runs as one vx task with its Nx env set. [page](https://vznjs.github.io/vx/features/nx-exec/) · post: [From Nx: keep the graph, drop the platform](https://vznjs.github.io/vx/blog/from-nx/)
 - **Programmatic API** (`run`, `planRun`) — run or plan from your own scripts via `@vzn/vx`. [page](https://vznjs.github.io/vx/features/programmatic-api/) · post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 

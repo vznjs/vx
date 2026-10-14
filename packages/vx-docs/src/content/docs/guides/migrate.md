@@ -46,10 +46,10 @@ error names the same fix.
 ### Check the mapping first
 
 `npx @vzn/vx init --keep` writes only this `.vx/workspace.ts` (and
-`.vx/.gitignore`, which keeps `.vx/cache` out of git), then prints a
-`next:` line. That line installs `@vzn/vx-migrate` and `@vzn/vx-lockfile`
-(the file declares your lockfile's plugin: `npm()`, `pnpm()`, `bun()` or
-`yarn()`) with your lockfile's manager, then builds once through
+`.vx/.gitignore`, which keeps `.vx/cache` out of git), installs what it
+imports with your lockfile's manager (`@vzn/vx-migrate`, and
+`@vzn/vx-lockfile` for your lockfile's plugin: `npm()`, `pnpm()`, `bun()`
+or `yarn()`), and writes the lock. Its `next:` line builds once through
 `turbo()`: a check that the mapping holds before you write configs, not a
 way to keep running the repo. `bunx @vzn/vx-migrate --dry` then previews
 the configs and `bunx @vzn/vx-migrate` writes them, takes `turbo()` out of
@@ -60,21 +60,33 @@ the configs and `bunx @vzn/vx-migrate` writes them, takes `turbo()` out of
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { turbo } from '@vzn/vx-migrate'
 import { npm } from '@vzn/vx-lockfile'
+import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
-export default { plugins: [turbo(), npm()] } satisfies WorkspaceConfig
+export default {
+  plugins: [
+    turbo(),
+    npm(),
+    scheduleHistoryPlugin(),
+  ],
+} satisfies WorkspaceConfig
 ```
 
 ```text
 $ npx @vzn/vx init --keep
-vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
+vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
+vx-migrate: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
+vx-migrate: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
 wrote .vx/workspace.ts.
 
-next: npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx lock && npx @vzn/vx run build --all
+vx lock: locked 0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
+
+next: npx @vzn/vx run build --all
 ```
 
-The `next:` line uses your lockfile's manager (`pnpm add -D -w …` beside
-`pnpm-lock.yaml`, `yarn add -D -W …` beside a Yarn 1 lockfile) and names only what is not installed yet,
+The install uses your lockfile's manager (`pnpm add -D -w …` beside
+`pnpm-lock.yaml`, `yarn add -D -W …` beside a Yarn 1 lockfile) and adds only what is not installed yet,
 pinned to a released vx's own version (`@vzn/vx-migrate@<version>`): every `@vzn` package releases in lockstep.
+`--no-install` skips it, and the `next:` line names it instead.
 `vx init --keep --dry` prints the file instead of writing it; `--mjs` writes
 `.vx/workspace.mjs` without the type import. An existing
 `.vx/workspace.ts` that does not declare `turbo()` is left alone: add it
@@ -93,11 +105,9 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 
 ```text
 $ bunx @vzn/vx-migrate
-vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
 vx-migrate: npm uninstall @vzn/vx-migrate
 vx-migrate: turbo.json → vx.config.ts
 note: dropped turbo() from .vx/workspace.ts
-note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
 note: removed @vzn/vx-migrate (npm uninstall @vzn/vx-migrate)
 
 3 tasks migrated clean, 0 TODOs
@@ -223,41 +233,51 @@ The command itself comes from your `package.json` script, with its
    Nx installed while a config still runs an `nx-exec` line.
 
 To check the mapping first, `npx @vzn/vx init --keep` writes only this
-`.vx/workspace.ts` (and `.vx/.gitignore`); its `next:` line installs
-`@vzn/vx-migrate` and `@vzn/vx-lockfile`, then builds once through
-`nx()`. `bunx @vzn/vx-migrate` then writes the configs, takes `nx()` out
+`.vx/workspace.ts` (and `.vx/.gitignore`), installs what it imports
+(`@vzn/vx-migrate`, `@vzn/vx-lockfile`) and writes the lock; its `next:`
+line builds once through `nx()`. `bunx @vzn/vx-migrate` then writes the configs, takes `nx()` out
 of `.vx/workspace.ts` and uninstalls `@vzn/vx-migrate` unless a written
 task runs an `nx-exec` or `nx-env` line, or `nxCache()` needs it.
 
 A Lerna 6+ repo whose root scripts call `lerna run` runs on Nx's task
 runner, `nx.json` or not, so `bunx @vzn/vx-migrate` maps it as an Nx repo
-from the graph `nx graph` exports. `vx init --keep` adopts by `nx.json` alone and
-maps such a repo's scripts instead.
+from the graph `nx graph` exports; so does `vx init`, which runs it.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
 import { npm } from '@vzn/vx-lockfile'
+import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
-export default { plugins: [nx(), npm()] } satisfies WorkspaceConfig
+export default {
+  plugins: [
+    nx(),
+    npm(),
+    scheduleHistoryPlugin(),
+  ],
+} satisfies WorkspaceConfig
 ```
 
 ```text
 $ npx @vzn/vx init --keep
-vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
+vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
+vx-migrate: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
+vx-migrate: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
 wrote .vx/workspace.ts.
 
-next: npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx lock && npx @vzn/vx run build --all
+vx lock: locked 0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
+
+next: npx @vzn/vx run build --all
 ```
 
 `bunx @vzn/vx-migrate`, like `vx init`, reports what it wrote, then locks the configs:
 
 ```text
 $ bunx @vzn/vx-migrate
-vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
+vx-migrate: npm uninstall @vzn/vx-migrate
 vx-migrate: nx graph → vx.config.ts
 note: dropped nx() from .vx/workspace.ts
-note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
+note: removed @vzn/vx-migrate (npm uninstall @vzn/vx-migrate)
 note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 
 2 tasks migrated clean, 0 TODOs

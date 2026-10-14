@@ -2,20 +2,21 @@
 
 Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-migrate/> · source: <https://github.com/vznjs/vx>
 
-Everything for adopting [`@vzn/vx`](https://vznjs.github.io/vx/) from Turborepo, Nx or Vite Task, in one package with zero dependencies:
+Everything for adopting [`@vzn/vx`](https://vznjs.github.io/vx/) from Turborepo, Nx, Vite Task or plain `package.json` scripts, in one package with zero dependencies:
 
 - **`turbo()`** — a temporary start for a Turbo repository: the plugin makes each package-manager member a project (`discover`; core finds only directories holding a `vx.config`) and fills vx's `project` stage from `turbo.json` and each package's `package.json` scripts until the migrator writes native config.
 - **`nx()`** — the same temporary start for an Nx repository, filled from Nx's resolved project graph. Executor targets (`@nx/js:tsc`, `@nx/vite:build`, your own) run as themselves through **`nx-exec`**, one executor per process.
-- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, or vite-plus's `run.tasks` (Vite Task, `vp run`), plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second.
+- **`bunx @vzn/vx-migrate`** — write one `vx.config.ts` per workspace package from your `turbo.json`, an exported Nx project graph, vite-plus's `run.tasks` (Vite Task, `vp run`), or else each package's `package.json` scripts, plus the workspace file every run needs. Runs without a workspace file, so it is the first command, not the second; `vx init` runs it in any repo with a `package.json`.
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
 ```sh
 npm install -D @vzn/vx @vzn/vx-migrate   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
-In a Turbo or Nx repo, `npx @vzn/vx init` writes the `.vx/workspace.ts` that
-declares `turbo()` or `nx()` and prints the install-and-run line. Add
-`turboCache()` or `nxCache()` to keep your remote cache:
+In a Turbo or Nx repo, `npx @vzn/vx init --keep` runs this package, which
+writes the `.vx/workspace.ts` that declares `turbo()` or `nx()`, installs
+what it imports and writes the lock. Where the repo shows a remote cache it
+declares `turboCache()` or `nxCache()` too; by hand it reads:
 
 ```ts
 // .vx/workspace.ts — a Turbo repo mid-migration, with its remote cache
@@ -212,30 +213,32 @@ Why the command carries the options: vx's key sees them (resolved-config hashing
 ## `bunx @vzn/vx-migrate` — write the configs
 
 ```bash
-bunx @vzn/vx-migrate           # auto-detect: turbo.json, .nx/workspace-data/project-graph.json, nx.json or lerna.json, then vite-plus
+bunx @vzn/vx-migrate           # auto-detect: turbo.json, .nx/workspace-data/project-graph.json, nx.json or lerna.json, then vite-plus, else package.json scripts
 bunx @vzn/vx-migrate --dry     # print the generated files + the report instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
 bunx @vzn/vx-migrate --from vite-task # Vite Task beside turbo.json or Nx
+bunx @vzn/vx-migrate --from scripts   # package.json scripts beside any of them
 bunx @vzn/vx-migrate --native  # write vx.config.ts files without asking
-bunx @vzn/vx-migrate --keep    # keep turbo.json / nx.json as the source: turbo() or nx(), as `vx init` writes it
+bunx @vzn/vx-migrate --keep    # keep turbo.json / nx.json as the source: turbo() or nx(), with its plugins
 bunx @vzn/vx-migrate --help    # the usage, exit 0
 ```
 
 It is the one command a repo needs (`pnpx @vzn/vx-migrate` in a pnpm repo works the same):
 
-- In a terminal it asks which adoption you want: **native** (the default, a `vx.config.ts` per package) or **keep** (the workspace file `vx init` writes, declaring `turbo()` or `nx()`). `--native` / `--keep` answer it; with no terminal (CI, a pipe) it is native.
-- With no `.vx/workspace.*` yet, it writes one declaring the plugins the repo calls for (`src/workspace-plugins.ts`): the `@vzn/vx-lockfile` factory for the lockfile (`pnpm()`, `bun()`, `npm()`, `yarn()`), `scheduleHistoryPlugin()`, and `github()` when `.github/workflows` exists, from `@vzn/vx-ci`, each installed beside `@vzn/vx` at vx-migrate's own version. Keep adds them to the file `vx init` writes, or to one already in that shape; any other workspace file is the user's and left alone. Native over a file vx wrote (a keep adoption's) rewrites it: `turbo()` and `nx()` go, since the configs written replace them, and the other plugins stay.
+- In a Turbo or Nx repo, in a terminal, it asks which adoption you want: **native** (the default, a `vx.config.ts` per package) or **keep** (a workspace file declaring `turbo()` or `nx()`). `--native` / `--keep` answer it; with no terminal (CI, a pipe) it is native. Elsewhere both are refused. A repo already set up (a workspace file declaring neither, and project configs) is said to be, exit 0, unless `--force`.
+- Native or keep, a remote cache the repo shows is declared: `turboCache()` for turbo.json's enabled `remoteCache`, a `turbo link`ed `.turbo/config.json` or a CI file (`.github/workflows/*`, `.gitlab-ci.yml`, `.circleci/config.yml`) setting `TURBO_TOKEN`; `nxCache()` for one setting `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. The report names the file that showed it. Nx Cloud (`nxCloudId`, `nxCloudAccessToken`, the `nx-cloud` runner) is named instead: vx does not speak its wire.
+- With no `.vx/workspace.*` yet, it writes one declaring the plugins the repo calls for (`src/workspace-plugins.ts`): the remote cache above, the `@vzn/vx-lockfile` factory for the lockfile (`pnpm()`, `bun()`, `npm()`, `yarn()`), `scheduleHistoryPlugin()`, and `github()` when `.github/workflows` exists, from `@vzn/vx-ci`, each installed beside `@vzn/vx` at vx-migrate's own version. Keep adds them to the file it writes, or to one already in that shape; any other workspace file is the user's and left alone. Native over a file vx wrote (a keep adoption's) rewrites it: `turbo()` and `nx()` go, since the configs written replace them, and the other plugins stay.
 - It installs what the written files import with the repo's own manager (`packageManager`, else the lockfile): `@vzn/vx`, the declared plugins' packages, and `@vzn/vx-migrate` for keep or when a written task runs its `nx-exec` or `nx-env` bin (`pnpm add -D -w`, `yarn add -D -W` on Yarn 1 and without `-W` on Yarn 2+, `bun add -d`, `npm install -D`). A package the root both lists and has installed at vx-migrate's own version is left alone; any other is installed at that version. Native removes a listed `@vzn/vx-migrate` when nothing written needs it (no `nx-exec` / `nx-env` task, no `turboCache()` or `nxCache()` left in the workspace file): `pnpm remove -w`, `yarn remove` (`-W` on Yarn 1), `bun remove`, `npm uninstall`. `--no-install` skips both.
 - Native, once the files are written, it ends with `vx lock`: `.vx/projects.lock.json` is written and the graph rules are checked, in one line before `next:`. A refusal is printed and the configs stay written (exit 0). `--no-install` skips it, since the plugins the workspace file declares are not installed yet, and `next:` then starts with `vx lock`.
 
-A Lerna repo is an Nx one: Lerna 6+ runs `lerna run` on Nx's task runner over the graph `nx graph` exports, nx.json or not, so a `lerna.json` with no nx.json and no turbo.json is mapped from that graph, and keep writes the workspace file declaring `nx()` (`vx init` adopts by nx.json, and would map the scripts). Lerna is the installed one, else the root manifest's range; with neither, the lerna.json is another tool's (lerna-lite reads it too, and runs no Nx). A root whose scripts never `lerna run` runs its tasks another way and publishes with Lerna (webdriverio: `run-s`, `pnpm -r`), so its scripts stay the source. Not where Lerna runs its own runner: `useNx: false`, or Lerna 5 without `useNx: true`; those are `vx init`'s scripts mapping. Beside turbo.json, Turbo runs the tasks and Lerna only publishes: turbo.json is the source.
+A Lerna repo is an Nx one: Lerna 6+ runs `lerna run` on Nx's task runner over the graph `nx graph` exports, nx.json or not, so a `lerna.json` with no nx.json and no turbo.json is mapped from that graph, and keep writes the workspace file declaring `nx()`. Lerna is the installed one, else the root manifest's range; with neither, the lerna.json is another tool's (lerna-lite reads it too, and runs no Nx). A root whose scripts never `lerna run` runs its tasks another way and publishes with Lerna (webdriverio: `run-s`, `pnpm -r`), so its scripts stay the source. Not where Lerna runs its own runner: `useNx: false`, or Lerna 5 without `useNx: true`; those map their scripts. Beside turbo.json, Turbo runs the tasks and Lerna only publishes: turbo.json is the source.
 
 Your `package.json` scripts are never edited. `--dry` installs nothing and says what it would install.
 
 `--dry` prints the files instead of writing them; `--force` overwrites existing ones; `--mjs` writes `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts` — the same objects with no type import and no `satisfies`, for a package whose own `tsconfig` includes every `.ts` under it and would compile the config into its dist (TanStack/query, 2026-09-11).
 
-`package.json` scripts are core's own `vx init`. What this package writes reads exactly like what `vx init` writes: both hand a plan to core's migration seam (`applyMigration` from `@vzn/vx`), which renders, refuses to overwrite without `--force`, writes and reports. Anything a source cannot say becomes a `TODO(vx-migrate)` comment, never a silent wrong value.
+Every source hands a plan to core's migration seam (`applyMigration` from `@vzn/vx`), which renders, refuses to overwrite without `--force`, writes and reports. Anything a source cannot say becomes a `TODO(vx-migrate)` comment, never a silent wrong value.
 
 ### Turbo
 
@@ -252,7 +255,7 @@ Reads the root pipeline (`tasks` in Turbo 2, `pipeline` in Turbo 1), per-package
 
 ### Nx
 
-Reads the **resolved** project graph only (`.nx/workspace-data/project-graph.json` when exported, else the one the workspace's own `nx graph` exports into a temp file, as `nx()` does; with no `node_modules/.bin/nx`, as in a fresh clone, it stops and names the repo manager's install), through the same mapper `nx()` runs live, executors aside (below). Targets Nx plugins infer at runtime are frozen as the snapshot saw them. `nx:run-commands` is the one shell line `nx()` runs (see [`nx:run-commands`](#nxrun-commands) above: where, parallel or in order, forwarded arguments, `env`, `readyWhen`) — storybook's `compile` is `cd ../../.. && node ./scripts/build/build-package.ts --cwd code/lib/cli`; a plain `command` is that shorthand; `nx:run-script` is the package's script body with its `pre<name>` / `post<name>` hooks folded in (or `yarn run <name>` when the body calls yarn's `run` builtin; an empty script is the placeholder with a todo), `nx:noop` is a group task; Nx 15–16's `@nrwl/workspace:run-commands` and `run-script` (and their `@nx/workspace:` names) are the `nx:` executors they re-exported; **an executor target is its `nx-exec` line**, as `nx()` runs it: the migrator translates no executor, so Nx and `@vzn/vx-migrate` stay installed until each such line is rewritten as the command it runs (a server executor Nx knows, `@nx/js:node` or a dev server, is still a persistent task). The report also says what `.vx/workspace.ts` still holds, as the Turbo migration does: the `nx()` `vx init` declared, which keeps reading nx.json, and a lockfile with no `@vzn/vx-lockfile` plugin, where Nx keyed each project on the npm packages it depends on. A written command that still runs Nx itself (a run-commands `nx run b:build`, `npx nx test b`, a script's `nx exec -- tsc`) carries a TODO: it works only while Nx is installed. An Nx project no workspace glob lists (an integrated repo's `project.json` library) gets a `package.json` (`name`, `private`) where it has none, and a note names the directories to add to `workspaces` (or `pnpm-workspace.yaml`), so the package manager installs it and a lockfile plugin names it; the migrator never edits the root manifest. A target with `configurations` writes one task per configuration (`build`, `build:ci`). A project's Nx `tags` are written as its `tags`. Named inputs expand from `nx.json` when readable. An output path is kept as written, a `!` one too (`{projectRoot}/dist` → `dist`, `{projectRoot}/bin/tool` → `bin/tool`; one naming an unset `{options.x}` is dropped, as Nx drops it; a dotted `{options.outputPath.base}` walks the options, as Nx does; an extglob is put in vx's grammar: Next's inferred `.next/!(cache)/**/*` is `.next/*/**/*` with `!.next/cache/**/*`, `@(js|map)` is `{js,map}`, and a form with no vx spelling is dropped with a TODO): vx reads a bare path as the file or the whole tree under it, so a directory and an extensionless binary both save and restore. nx.json's `parallel`, `defaultBase` and `maxCacheSize`, which `nx()` applies live, are each a field of the `.vx/workspace.ts` it writes (`run.concurrency`, `run.affectedBase`, `cache.retention.maxSize`), read from nx.json alone, never the environment; beside a workspace file already there, or for a size vx cannot read (`1.5 GB`), each is a note naming the field to add. vx derives package edges from `package.json`; an Nx graph edge with no manifest path (`implicitDependencies`, a tsconfig path) becomes, for each `^target` of the dependant, an explicit `pkg#target` edge to what Nx's own walk reaches — each dependency that has the target, and through one that lacks it, its dependencies — so the order and the key are Nx's. The reverse too: where a project's manifest names a workspace package its Nx graph does not reach (an `implicitDependencies: ["!a"]` that breaks a manifest cycle), its `^target` becomes the explicit edges Nx draws, since vx's `^` would follow the manifest and bring the cycle back.
+Reads the **resolved** project graph only (`.nx/workspace-data/project-graph.json` when exported, else the one the workspace's own `nx graph` exports into a temp file, as `nx()` does; with no `node_modules/.bin/nx`, as in a fresh clone, it stops and names the repo manager's install), through the same mapper `nx()` runs live, executors aside (below). Targets Nx plugins infer at runtime are frozen as the snapshot saw them. `nx:run-commands` is the one shell line `nx()` runs (see [`nx:run-commands`](#nxrun-commands) above: where, parallel or in order, forwarded arguments, `env`, `readyWhen`) — storybook's `compile` is `cd ../../.. && node ./scripts/build/build-package.ts --cwd code/lib/cli`; a plain `command` is that shorthand; `nx:run-script` is the package's script body with its `pre<name>` / `post<name>` hooks folded in (or `yarn run <name>` when the body calls yarn's `run` builtin; an empty script is the placeholder with a todo), `nx:noop` is a group task; Nx 15–16's `@nrwl/workspace:run-commands` and `run-script` (and their `@nx/workspace:` names) are the `nx:` executors they re-exported; **an executor target is its `nx-exec` line**, as `nx()` runs it: the migrator translates no executor, so Nx and `@vzn/vx-migrate` stay installed until each such line is rewritten as the command it runs (a server executor Nx knows, `@nx/js:node` or a dev server, is still a persistent task). The report also says what `.vx/workspace.ts` still holds, as the Turbo migration does: the `nx()` a keep adoption declared, which keeps reading nx.json, and a lockfile with no `@vzn/vx-lockfile` plugin, where Nx keyed each project on the npm packages it depends on. A written command that still runs Nx itself (a run-commands `nx run b:build`, `npx nx test b`, a script's `nx exec -- tsc`) carries a TODO: it works only while Nx is installed. An Nx project no workspace glob lists (an integrated repo's `project.json` library) gets a `package.json` (`name`, `private`) where it has none, and a note names the directories to add to `workspaces` (or `pnpm-workspace.yaml`), so the package manager installs it and a lockfile plugin names it; the migrator never edits the root manifest. A target with `configurations` writes one task per configuration (`build`, `build:ci`). A project's Nx `tags` are written as its `tags`. Named inputs expand from `nx.json` when readable. An output path is kept as written, a `!` one too (`{projectRoot}/dist` → `dist`, `{projectRoot}/bin/tool` → `bin/tool`; one naming an unset `{options.x}` is dropped, as Nx drops it; a dotted `{options.outputPath.base}` walks the options, as Nx does; an extglob is put in vx's grammar: Next's inferred `.next/!(cache)/**/*` is `.next/*/**/*` with `!.next/cache/**/*`, `@(js|map)` is `{js,map}`, and a form with no vx spelling is dropped with a TODO): vx reads a bare path as the file or the whole tree under it, so a directory and an extensionless binary both save and restore. nx.json's `parallel`, `defaultBase` and `maxCacheSize`, which `nx()` applies live, are each a field of the `.vx/workspace.ts` it writes (`run.concurrency`, `run.affectedBase`, `cache.retention.maxSize`), read from nx.json alone, never the environment; beside a workspace file already there, or for a size vx cannot read (`1.5 GB`), each is a note naming the field to add. vx derives package edges from `package.json`; an Nx graph edge with no manifest path (`implicitDependencies`, a tsconfig path) becomes, for each `^target` of the dependant, an explicit `pkg#target` edge to what Nx's own walk reaches — each dependency that has the target, and through one that lacks it, its dependencies — so the order and the key are Nx's. The reverse too: where a project's manifest names a workspace package its Nx graph does not reach (an `implicitDependencies: ["!a"]` that breaks a manifest cycle), its `^target` becomes the explicit edges Nx draws, since vx's `^` would follow the manifest and bring the cycle back.
 
 ### Vite Task
 
@@ -271,6 +274,252 @@ Detected when the root `package.json` lists `vite-plus`, after turbo.json and Nx
 | `cache: false`, root `run.cache` `false` / `tasks: false` | no `cache` block                                                                                                                                                                                       |
 | a `package.json` script                                   | a task, uncached; with root `run.cache.scripts` a TODO for its cache                                                                                                                                   |
 | `run.enablePrePostScripts` (default `true`)               | a script's `pre<name>` / `post<name>` folded into its command; `false` keeps them tasks of their own                                                                                                   |
+
+### package.json scripts
+
+Where no runner's config is the source (or under `--from scripts`), each
+package's `package.json` scripts become its `vx.config.ts`, plus a
+`.vx/workspace.ts` that declares the `@vzn/vx-lockfile` plugin for the lockfile at
+the root (`pnpm()`, `bun()`, `npm()` or `yarn()`; `{ plugins: [] }`
+without one): package edges (`^build`, `--affected`) come from it.
+Running and caching here are the floor, so it declares no executor or
+cache, and the file carries no comment (it is the user's). When
+`@vzn/vx-lockfile` is not installed, it installs it with that manager,
+pinned to its own version, before `vx lock` runs (`--dry` names the
+command instead). A workspace file already there is left as it is. A workspace with no scripts at
+all still gets the workspace file, a printed example config, and the
+next command to run. A root
+`package.json` with no `workspaces` field is single-project mode, and
+when `packages/*/package.json` files sit below it unreached, both
+the mapper and a run that finds no config say so instead ("package.json
+declares no workspaces … Add "workspaces": ["packages/*"] to
+package.json and re-run") rather than "no scripts" or "run vx init". A
+workspace whose globs match no `package.json` gets a note naming them
+(M-42); a nameless member, or two sharing a name, is matched and
+named on its own line instead (M-46). When such skipped scripts are all there
+is, the report opens `no package.json scripts became tasks.` rather than
+saying there are none (M-59). When `pnpm-workspace.yaml` lists the
+members and the root `package.json`'s `workspaces` lists other globs,
+the note names the unread list (M-51): pnpm reads only the yaml, while
+bun, npm and yarn read `package.json`. With
+no `package.json` or `pnpm-workspace.yaml` here or above, it stops and
+names `vx init`, which sets up a workspace without one. Every
+generated config is typed for the editor through
+`import type { ProjectConfig } from '@vzn/vx/config'` and `satisfies
+ProjectConfig` — a type-only import Bun erases, so the file loads in a
+workspace that runs the `vx` binary without the package installed. The
+workspace file takes the same form (`satisfies WorkspaceConfig`). A
+runtime `import { defineWorkspace } from '@vzn/vx'` costs nothing extra
+since 2026-09-10: the running `vx` serves its own core to that
+specifier (bin.ts registers the alias), so a config or a plugin package
+never loads a second copy, and a workspace that runs the binary needs
+no `@vzn/vx` installed for it — the type-only form is still what the
+scaffold writes, because it types the same with no import to resolve
+in an editor without the package. A workspace that imports a PLUGIN
+package at runtime without having installed it is told so, and to
+install its dependencies. `--mjs` writes the same objects as `vx.config.mjs` and
+`.vx/workspace.mjs`, with no type import and no `satisfies`: a package whose
+own `tsconfig` includes every `.ts` under it compiles a `vx.config.ts`
+into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
+`.mjs` is outside that include.
+A file it writes that `.gitignore` drops (vueuse ignores
+`packages/**/*.mjs`) gets a `note:` naming it and the `!vx.config.mjs`
+line that keeps it, since a commit would leave it behind unnoticed.
+When a whole directory is ignored, such as the old layout's `/.vx/`
+cache line now hiding `.vx/workspace.ts` and the lock, the note names
+that directory instead: git re-includes nothing inside an ignored
+directory, so no `!` line helps. vx never edits `.gitignore`.
+A package with a `tsconfig.json` and no `"type": "module"` gets
+`vx.config.mts`: tsc (node16, nodenext) reads a `.ts` there as
+CommonJS, and its type import of the ESM `@vzn/vx/config` fails
+(TS1479, TS1541: medusa's plugin builds, 2026-10-14); an output that
+takes the config back names the `.mts`. The files written
+then go through the repo's own formatter when its root installs one
+(`prettier --write`, `biome format --write`, `oxfmt` or `dprint fmt`,
+the first found), and a `note:` says so: create-t3-turbo's `prettier
+--check` failed on the quotes of a written config. A formatter that
+fails leaves the files as written and the note names its error.
+
+Each script becomes a task with its command verbatim. `build` gets
+`dependsOn: ['^build']` (a `build` that only delegates, `pnpm run
+compile`, is a group, and the edge goes on the script that does the
+work) and **no cache block** — under a
+`TODO(vx-migrate)` showing the block to add with the package's real
+inputs and outputs, and the same block commented as the task's first
+line: set the real globs and delete the `// `. A task without a cache block always runs; a block
+with EMPTY outputs is not "uncached" but a no-output task that hits on
+unchanged inputs and skips the build with nothing to restore (a deleted
+`dist` stays deleted under a green `up-to-date` run — what `vx init`
+generated until 2026-09-04), and a guessed `dist/**` would restore the
+wrong tree for every package that writes elsewhere. The block the TODO
+shows names `dist/**`, or the default output of the framework the command
+runs: `.next/**` minus `!.next/cache/**` for `next build`, `.output/**`
+for Nuxt, `build/**` for Remix, React Router, Create React App and
+Docusaurus, `public/**` for Gatsby, `storybook-static/**` for Storybook;
+for any other command, the directory it names with `--outDir` / `--out-dir`
+/ `-d`, else the ones it cleans first (`del-cli distribution`, `rimraf lib
+types`), unless it makes one again with `mkdir` (D-90).
+A package in a cycle of builds (nuxt's `@nuxt/nitro-server` devDepends
+on `nuxt`, which depends on it; pnpm sorts it away) gets, instead of
+`^build`, an edge to each build outside its cycle that `^build` would
+reach, and a TODO to order the cycle: `^build` there refuses the run.
+A script that runs a workspace package's bin the package gets only
+through the root's dependencies (vite's playgrounds run `vite` from the
+root's `vite: workspace:*`) also waits on that package's build
+(`vite#build`): no `^build` edge reaches it.
+`test` / `typecheck` wait for
+`build` when the package has one (`lint` reads sources and gets no
+edge); `dev` / `start` / `serve` / `watch` /
+`preview` become persistent tasks, with a TODO to add `readyWhen` when
+another task depends on one, and so does a watcher: a `watch` segment in the script's name (`build:watch`),
+a `--watch` flag, `tsc -w` / `rollup -w`, or nodemon (D-40), and a server:
+`serve <dir>`, `http-server`, bare `vite`, a tool's `dev` / `serve` /
+`start` / `preview` verb (`next start`, `netlify dev`), or a script that
+runs such a script of its package by name (`cross-env X=1 pnpm start`) or
+through a runner (`run-p web api`, `concurrently "npm:web" "npm:api"`, D-113),
+outside quotes and not sent to the background with `&` (D-91), read past
+a launcher's `--package <name>` / `-p <name>` (`pnpm dlx --package
+netlify-cli netlify dev`, D-112). A
+script whose name no task may carry (`lint#fix`, `^up`; the schema's
+rule, item 1000) is left out with a TODO rather than written into a
+config every later command refuses, and a `__proto__` script is written
+as a computed key, since a literal `__proto__:` sets the prototype. An
+existing `.vx/workspace.*` in any extension the loader reads (`.mts`
+included) is kept, and `--force` REPLACES a package's config of another
+extension (`replaced:` in the report) rather than writing a second one
+the loader would choose between by its order (item 1033). Without
+`--force`, it never overwrites: a package that already has a vx
+config keeps it, untouched, the rest get theirs, and the report lists
+the kept ones under `kept`, so a half-adopted workspace adopts the rest
+(M-52). A Turbo, Nx or Vite Task migration still refuses an existing config.
+
+Two npm conventions are mapped rather than copied, because copying them
+loses behaviour. `pre<x>` / `post<x>` hooks, which npm runs around `x`
+without being named, are folded into `x`'s command in that order, each
+in its own subshell, so the chain stops at the first that fails whatever
+a part holds (a `;`, an `exit`), and forwarded `--` args reach `x` alone,
+as npm hands them to the script and not its hooks (item 905), appended
+as text, so no part sees them as `$1` (X-60). The
+command is a small shell function, `vx_script`, around the three parts;
+it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
+npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
+Every project gets a `vx.config.ts` (owner, 2026-10-14): a member with
+no script to run (none, or only lifecycle hooks: a types-only or config
+package), or with none a Turbo or Nx repo runs, gets one declaring
+`tasks: {}`. A project that already has a config keeps it. A package with no `build` script whose `prepack`, `prepublishOnly`,
+`prepublish` or `prepare` runs a builder (`bob build`, `tsc`, `tsup`, …)
+is named in the report, which says to add a `build` script running it
+(react-navigation's twelve packages, whose root `build` is `lerna run
+prepack`, mapped with no build at all).
+Where the package's manager runs no such hooks every `pre<x>` and
+`post<x>` is a task of its own: Yarn 2+ (the nearest `packageManager:
+yarn@2+`, or a Berry `yarn.lock`, D-31; a `packageManager` naming none of npm,
+pnpm, yarn or bun defers to the lockfile, D-96), npm under `ignore-scripts=true`
+in the `.npmrc` beside its lockfile, pnpm under
+`enable-pre-post-scripts=false` there or `enablePrePostScripts: false` in
+`pnpm-workspace.yaml` (D-33). Bun and Yarn 1 run them whatever those say.
+Under Yarn 2+ a segment's `run <script>`, Yarn's shell builtin, is written
+`yarn run <script>`: vx's shell has no `run` (D-92).
+A Yarn 2+ repo on Plug'n'Play (no `nodeLinker: node-modules` or `pnpm` in
+`.yarnrc.yml`) keeps its bins in `.pnp.cjs`, where vx's PATH finds none;
+the report says so and names `nodeLinker: node-modules` or `yarn exec
+'<command>'` (D-108).
+A script reading `$npm_package_version`, `$npm_package_name` or
+`$npm_lifecycle_event`, which every manager sets and vx does not, gets
+them under `exec.env.define`, the first two read from an imported
+`package.json` so a version bump reaches them; any other `$npm_*` it
+reads gets a TODO (D-34). Among several packages, a workspace root
+script that runs the members (`pnpm -r build`, `--filter`, `-C`, pnpm's `pn` alias
+included (D-97), Yarn's
+`--cwd` and `yarn workspace <name>`, npm's `--prefix`, npm's
+and Yarn's workspace flags, a `cd` into or above a member, turbo, nx, lerna, `vp run`, vx itself) is not mapped
+(a flag counts on the package manager, or after `node <bin> run`, and not on the program it
+runs: berry's `yarn node -r ./setup.ts` is node's `--require`, D-81; bun's
+`cd test && …` enters no member, D-83),
+nor is one that runs such a script by name (vite's `ci-docs`: `pnpm build &&
+pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
+"npm:x"` too, lexical's `ci-check`, D-95), and neither is one whose name a member's task carries, so `--all` never runs
+a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
+`test: vitest`) and become the root's own tasks in a root vx.config, when
+the root has a `"name"` (vx skips a nameless root's config) and no config
+of its own; one already there, hand-written or from an earlier
+`vx init`, stays as written, `--force` included, and is listed under
+`kept`. The report names each script left out and why
+(a `pre` / `post` hook goes with its script, D-85), its examples of running
+the members spelled by the repo's manager (`--workspaces` under npm, `yarn
+workspaces foreach` under Yarn 2+), and says which;
+with nothing mapped it names the root whenever it has a script, a member
+or not (pnpm's root is not), and why: its scripts run the workspace, or
+share a member's task name (listed), or both; it tells a root with no `"name"` to add one
+first (vuejs/core), naming the scripts that would then map (react, D-87), and a root whose
+`"name"` a member also carries to rename it, since a root config would make the
+workspace refuse every run for the duplicate (insomnia, D-129). A single-package repo's root is its project and maps.
+A lone root beside a `lerna.json` (Lerna-classic: packages listed there, not
+in `workspaces`) gets a note naming the `workspaces` globs to add, Lerna's
+`packages/*` default when it lists none (D-111).
+A member whose package.json has no `name` is no project; one with a
+script is named in the report, to be given a name (remix's
+`packages/component/bench`, D-106).
+A member's script that runs another member's work (`pnpm -C ../pinia
+run build`, `yarn workspace <name>`, `-r` / `--filter`, a `cd` or `-C`
+/ `--cwd` / `--prefix` into another member) keeps its command and gets a
+TODO naming that part: the graph runs that member's task once, so name it
+under `dependsOn` and drop it from the command (pinia). A directory inside
+the member or the root is no other member.
+A script that is nothing but `npm run <other>` (`pnpm <other>`, `yarn
+<other>`, `bun run <other>`, `npm test`, `npm start`) becomes a **group**
+over `<other>` — `dependsOn` and no command — so the graph runs and
+caches the target instead of a package-manager subprocess it cannot
+see. When `build` is such a group, the task it reaches that runs a
+command takes `^build` and the cache TODO, since a group has nothing
+to cache; it and the groups on the way drop the wait on `build` a
+`typecheck` or `test` would carry, since they are the build (D-16). Bare, a package manager's own command is not a script: `bun test`
+is Bun's test runner, `bun build` its bundler, `pnpm install` and `yarn
+add` the managers' verbs, so each stays a command (item 908), and so do
+the names each manager reserves or hands on: `pnpm docs` and `pnpm
+version` (npm's), `bun deploy`, `yarn check` (D-32); `pnpm test`, `yarn
+test` and `bun lint` do run the script. Arguments, flags or a `&&`
+chain make it a real command again and
+it is left verbatim, and so is one whose target becomes no task (a
+lifecycle script, or a hook folded into another script): a group over
+it would name a task nothing defines (D-12). A verbatim chain whose
+parts run this package's own scripts (`check: pnpm run build && pnpm run
+lint`) gets a TODO naming those parts: each ran again inside the command,
+beside its own task, so `vx run check` built twice (M-41). So does a
+part that runs them through `run-s`, `run-p` or `npm-run-all`
+(`build: run-p build:*`), unless the task is persistent (M-48). Its
+order may matter, so it is not made a group.
+
+The report lists each TODO once per reason: tasks that share one are
+named together (the first five, then a count; the files carry each),
+and when no task caches it says uncommenting a TODO task's cache line
+makes the second run a hit. Its `next:` line is a command the user can type: the
+runner that started vx (`npx`, `pnpm`, `yarn`, `bunx`, read from
+`npm_config_user_agent`) with the installed `vx` bin, else the
+`@vzn/vx` package (`npx` under Yarn 1, which has no `dlx`); with no
+runner, a bare `vx`. Outside a git work tree it starts with
+`git init`, and with no script mapped with declaring a task, since the
+run would refuse without either. It runs `build`, else the first task that
+neither serves (`persistent`) nor changes the repo (`clean`, `release`,
+`publish`, `deploy`, `version`, `format`, `fix`, …), else the first task
+(react-navigation was told `vx run clean --all`).
+
+### Errors reading the members
+
+The root a migration starts from and its members are the package manager's (`src/packages.ts`): the nearest `pnpm-workspace.yaml`, or `package.json` with `workspaces`, that lists the directory it runs in. What it refuses:
+
+| Symptom                                                                                                      | Cause                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `failed to parse <file>: <why>`                                                                              | A `package.json` / `pnpm-workspace.yaml` is not valid.                                                                                                                                                                                                     |
+| `<file>: packages must be an array of glob strings`                                                          | `pnpm-workspace.yaml` `packages:` is a bare string, etc.                                                                                                                                                                                                   |
+| `<file>: must be a JSON object`                                                                              | A `package.json` (the root's or a member's) is `null`, a list or a scalar; it crashed with a TypeError until item 988.                                                                                                                                     |
+| `<file>: "name" must be a string with no surrounding whitespace`                                             | A `package.json` `name` is a number, an object, or has surrounding whitespace (npm refuses one too); `{"name":123}` planned `123#build` until item 988.                                                                                                    |
+| `<file>: "name" cannot hold "#" — vx addresses a task as <name>#<task>`                                      | A `package.json` `name` holds `#` (npm refuses one too): `{"name":"a#b"}` planned `a#b#build` under `--all`, but `vx run a#b#build` and a `dependsOn` split at the first `#` and found nothing.                                                            |
+| `<file>: must be a mapping (packages: and pnpm's settings)`                                                  | `pnpm-workspace.yaml` is a list or a scalar. A mapping with no `packages:`, or an empty one (pnpm 10 settings or catalogs in a single-package repo) is not an error: the root's `package.json` decides, as without the file (item 984).                    |
+| `<file>: workspaces must be an array of glob strings`                                                        | `package.json` `workspaces` holds a non-string entry.                                                                                                                                                                                                      |
+| `workspace member <dir> (<abs>) is outside the workspace root <root>: vx keeps every project under the root` | A member glob (`../ext/*`, an absolute path) reached a package outside the root. npm and pnpm take one; `--affected` asks git from the root and missed edits there. Move the root up to a directory that holds every member.                               |
+| `<file>: workspaces.packages must be an array of glob strings`                                               | The yarn-legacy `workspaces: { packages: [...] }` form holds a non-string entry.                                                                                                                                                                           |
+| `<file>: <field> entry "<glob>" is an extglob, which vx's glob engine does not read`                         | A member glob holds `!(…)`, `@(…)`, `+(…)`, `*(…)` or `?(…)`. `Bun.Glob` has no extglob (its scan widened `packages/!(x)` to include x, turborepo#3766); a whole-segment `!(a\|b)` gets its exact rewrite, `["packages/*", "!packages/a", "!packages/b"]`. |
 
 ## `turboCache()` — a Turbo remote cache
 

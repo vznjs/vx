@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { migrateScripts } from '../src/workspace/migrate-scripts.js'
+import { migrateScripts } from '../src/migrate-scripts.js'
 
 // The root is no member: discovery passes it as `outside`.
 const meta = (name: string, dir: string, scripts: Record<string, string>) => ({

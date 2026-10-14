@@ -9,9 +9,9 @@ package-manager member list. `vx lock` finds the directories
 (`findProjectConfigs`) and records each by directory; a run takes its
 projects from the lock (`lockedProjects`), then the plugin `discover`
 stage, which may add directories (`discoveredProject`), name them and give
-edges (`linkDiscoveredEdges`). `checkProjectNames` ends the stage. The
-package manager's members are `packages.ts`'s, read by `vx init` alone
-([`packages.md`](./packages.md)). Design:
+edges (`linkDiscoveredEdges`). `checkProjectNames` ends the stage. Core reads
+no package manager's members; `@vzn/vx-migrate` does, for an adoption.
+Design:
 `docs/design/language-agnostic-core-2026-10.md`.
 
 ## Public surface
@@ -183,7 +183,7 @@ the plugin `config` stage applied).
   [`project-loader.md`](./project-loader.md)), for `vx lock`; a run reads
   the lock.
 - **Doesn't read package manifests.** A `discover` plugin does
-  (`@vzn/vx-lockfile`); `vx init` reads them through `packages.ts`.
+  (`@vzn/vx-lockfile`); `@vzn/vx-migrate` reads them for an adoption.
 - **Doesn't compute the package graph.** That's
   [`package-graph.md`](./package-graph.md).
 - **Doesn't filter projects.** `--filter` / `--affected` happen in

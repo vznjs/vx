@@ -6,7 +6,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { GeneratedTask, PackageMeta } from '@vzn/vx'
+import type { GeneratedTask } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 
 let root: string

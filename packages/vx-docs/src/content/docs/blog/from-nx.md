@@ -45,14 +45,22 @@ config: review them and fill the TODOs.
 
 To check the mapping before any config exists, `npx @vzn/vx init --keep`
 writes only a `.vx/workspace.ts` that runs the graph through `nx()` from
-`@vzn/vx-migrate`, and its `next:` line installs it and builds once:
+`@vzn/vx-migrate`, installs what it imports, and its `next:` line builds
+once:
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
 import { npm } from '@vzn/vx-lockfile'
+import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
-export default { plugins: [nx(), npm()] } satisfies WorkspaceConfig
+export default {
+  plugins: [
+    nx(),
+    npm(),
+    scheduleHistoryPlugin(),
+  ],
+} satisfies WorkspaceConfig
 ```
 
 It is a check, not a way to keep Nx's config: vx's benchmarks measure

@@ -3,7 +3,8 @@
 
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import { type MigrationFormat, type MigrationPlan, type PackageMeta } from '@vzn/vx'
+import { type MigrationFormat, type MigrationPlan } from '@vzn/vx'
+import type { PackageMeta } from './packages.js'
 import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'

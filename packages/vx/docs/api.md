@@ -56,7 +56,7 @@ type · `src/workspace/migration.ts`
 ```ts
 export interface ApplyMigrationArgs {
   root: string
-  metas: readonly PackageMeta[]
+  metas: readonly MigrationMember[]
   plan: MigrationPlan
   source: string
   verb: string
@@ -65,6 +65,7 @@ export interface ApplyMigrationArgs {
   init?: boolean
   notes?: readonly string[]
   unmapped?: boolean
+  emptyReason?: string
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<number>
@@ -623,50 +624,6 @@ convention, not proof — a command may exit 137 on its own.
 export function exitSignal(code: number): string | undefined
 ```
 
-## `findManifestRoot`
-
-function · `src/workspace/packages.ts`
-
-Where `vx init` (and `@vzn/vx-migrate`) puts `.vx/workspace.ts` when
-there is none yet: the package manager's workspace root. A directory is a root
-CANDIDATE when it contains `pnpm-workspace.yaml` or a `package.json`.
-
-The nearest candidate that CLAIMS `start` wins — one of the directories
-between it and `start` matches one of its package globs. Every workspace
-member has its own `package.json`, so stopping at the first candidate would
-make a run from inside a package treat that package as the whole workspace:
-`^task` edges vanish, upstream hashes drop out of the cache key (stale
-hits), and a second cache dir appears under the member. Claiming is decided
-with the same globs `loadPackageWorkspace` applies, so "the root that claims me"
-and "the root that lists me as a project" cannot diverge. An outer root
-that lists both the claimer and the claimed member outranks the claimer:
-from the claimer's own directory the walk reaches the outer root too.
-
-When no candidate claims `start` — a standalone package, or a subdirectory
-of a single-project repo — the nearest candidate wins (the root itself IS
-the project). Throws a `UserError` when there is no candidate before `/`.
-A load that goes on to `loadPackageWorkspace` passes its `reads`, so the
-root's manifest is read once for both.
-
-Inside git the walk never goes above the git top-level ({@link gitTop}),
-so a manifest above the checkout is never even read: a `package.json`
-planted in a shared directory above it claimed it, and its workspace
-config ran as you (owner, 2026-10-13: "find the root based on git").
-
-Outside git the walk stops above `start` at a manifest another user
-owns (root aside), the same case without a top-level to stop at
-(git's `safe.directory`). The directory you run in is yours to
-judge, and costs no stat. Run as root, vx trusts every owner, as a
-container over a mounted checkout needs. `uid` is for tests.
-
-```ts
-export async function findManifestRoot(
-  start: string,
-  reads: LoadReads = new Map(),
-  uid: number = process.getuid?.() ?? 0,
-): Promise<string>
-```
-
 ## `findWorkspaceRoot`
 
 function · `src/workspace/workspace.ts`
@@ -968,16 +925,6 @@ type · `src/orchestrator/plugin.ts`
 export interface KeyHookContext extends BaseContext {}
 ```
 
-## `listPackages`
-
-function · `src/workspace/packages.ts`
-
-The members of the package-manager workspace at `root`.
-
-```ts
-export async function listPackages(root: string): Promise<PackageMeta[]>
-```
-
 ## `loadProjectConfig`
 
 function · `src/workspace/project-loader.ts`
@@ -1153,6 +1100,23 @@ type · `src/workspace/migration.ts`
 export type MigrationFormat = 'ts' | 'mjs'
 ```
 
+## `MigrationMember`
+
+type · `src/workspace/migration.ts`
+
+A project the adoption tool found: its name, directory and the vx config
+it already has. `packageJson.type` picks `vx.config.mts` for a CommonJS
+TypeScript package.
+
+```ts
+export interface MigrationMember {
+  readonly name: string
+  readonly dir: string
+  readonly configPath: string | null
+  readonly packageJson?: object
+}
+```
+
 ## `MigrationPlan`
 
 type · `src/workspace/migration.ts`
@@ -1325,21 +1289,6 @@ export interface OutputView {
   mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad' | 'hash-only'
   gha?: boolean
   ci?: boolean
-}
-```
-
-## `PackageMeta`
-
-type · `src/workspace/packages.ts`
-
-A workspace member: its `package.json#name`, directory, manifest and vx config.
-
-```ts
-export interface PackageMeta {
-  name: string
-  dir: string
-  packageJson: PackageJson
-  configPath: string | null
 }
 ```
 
@@ -1571,6 +1520,21 @@ empty plan).
 
 ```ts
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
+```
+
+## `PROJECT_CONFIG_FILENAMES`
+
+const · `src/workspace/workspace.ts`
+
+```ts
+export const PROJECT_CONFIG_FILENAMES = [
+  'vx.config.ts',
+  'vx.config.mts',
+  'vx.config.js',
+  'vx.config.mjs',
+  'vx.config.cts',
+  'vx.config.cjs',
+]
 ```
 
 ## `ProjectConfig`
@@ -2240,6 +2204,16 @@ export interface TaskLogEntry {
   charsFull: number
   truncatedHeadChars: number
 }
+```
+
+## `taskNameProblem`
+
+function · `src/workspace/config-schema.ts`
+
+Why `name` cannot be a task name, or null; `vx init` skips such a script (item 1033).
+
+```ts
+export function taskNameProblem(name: string): string | null
 ```
 
 ## `TaskNode`
