@@ -1,74 +1,66 @@
 {
-  "version": 1,
+  "version": 2,
   "projects": {
     "app": {
-      "configPath": "packages/app/vx.config.mjs",
-      "configHash": "b24dc90afd7280fa",
-      "config": {
-        "tasks": {
-          "build": {
-            "dependsOn": [
-              "^build"
-            ],
-            "exec": {
-              "command": "echo app ci"
-            },
-            "cache": {
-              "inputs": {
-                "files": [
-                  "src/**"
-                ]
-              },
-              "outputs": {
-                "files": []
-              }
-            }
+      "tasks": {
+        "build": {
+          "dependsOn": [
+            "^build"
+          ],
+          "exec": {
+            "command": "echo app ci"
           },
-          "dev": {
-            "exec": {
-              "command": "echo dev",
-              "persistent": {}
+          "cache": {
+            "inputs": {
+              "files": [
+                "src/**"
+              ]
+            },
+            "outputs": {
+              "files": []
             }
+          }
+        },
+        "dev": {
+          "exec": {
+            "command": "echo dev",
+            "persistent": {}
           }
         }
       }
     },
     "lib": {
-      "configPath": "packages/lib/vx.config.mjs",
-      "configHash": "12470c2e6967c59a",
-      "config": {
-        "tasks": {
-          "build": {
-            "description": "compile",
-            "exec": {
-              "command": "echo lib",
-              "env": {
-                "passThrough": [
-                  "HOME"
-                ]
-              },
-              "timeout": "1m",
-              "retries": 1
+      "tasks": {
+        "build": {
+          "description": "compile",
+          "exec": {
+            "command": "echo lib",
+            "env": {
+              "passThrough": [
+                "HOME"
+              ]
             },
-            "cache": {
-              "inputs": {
-                "files": [
-                  "src/**"
-                ],
-                "env": [
-                  "LOCK_FIXTURE_MODE"
-                ]
-              },
-              "outputs": {
-                "files": [
-                  "dist/**"
-                ]
-              }
+            "timeout": "1m",
+            "retries": 1
+          },
+          "cache": {
+            "inputs": {
+              "files": [
+                "src/**"
+              ],
+              "env": [
+                "LOCK_FIXTURE_MODE"
+              ]
+            },
+            "outputs": {
+              "files": [
+                "dist/**"
+              ]
             }
           }
         }
       }
     }
   },
-  "validated": "b93f7d6c7eb63073"
+  "validated": "3131474bcd6eec2c"
 }

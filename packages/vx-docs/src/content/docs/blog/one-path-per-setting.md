@@ -58,22 +58,18 @@ $ VX_RUN_KILL_GRACE=2000 vx run build
 vx: VX_RUN_KILL_GRACE takes a duration with its unit, like '2000ms' or '2s' (got 2000)
 ```
 
-## Old names say their new name
+## Old names stop working
 
-The names from before vx 0.0.637 are refused, and the error names the
-new spelling, so nothing is ignored without a word:
-
-```sh frame="terminal"
-$ VX_KILL_GRACE_MS=2000 vx run build
-vx: VX_KILL_GRACE_MS was renamed VX_RUN_KILL_GRACE (a duration like '500ms', '30s' or '5m', at most 24 days) in vx 0.0.637
-```
-
-The same goes for an old key in `vx.workspace.ts`:
+The names from before vx 0.0.637 are gone, with no alias. An old key in
+`vx.workspace.ts` is an unknown field, and an old flag an unknown flag:
 
 ```sh frame="terminal"
 $ vx run build
-vx: /repo/vx.workspace.ts has field "concurrency", which vx 0.0.637 removed — use `run: { concurrency }` (4, '50%')
+vx: /repo/vx.workspace.ts has unknown field "concurrency" (allowed: cache, plugins, run, watch)
 ```
+
+An old variable such as `VX_KILL_GRACE_MS` is no longer read; set
+`VX_RUN_KILL_GRACE` instead.
 
 A few settings are read before the workspace file loads, such as
 `run.outputLogs` and `debug.timing`. Those are set only by a variable

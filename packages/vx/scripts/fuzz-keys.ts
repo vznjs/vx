@@ -12,7 +12,7 @@
 //   bun scripts/fuzz-keys.ts <dir> [steps=300] [seed=1] [--policies]
 //
 // `<dir>` is deleted and rebuilt. A seed replays exactly. `--policies`
-// runs each step under a random `--force` / `--no-cache` / `--cache=…`.
+// runs each step under a random `--force` / `--no-cache` / `--cache-policy=…`.
 // Git runs with no global or system config. A failure prints the step, the
 // op and both outputs, and exits 2; a vx failure exits 1.
 import { execSync, spawnSync } from 'node:child_process'
@@ -288,7 +288,15 @@ const ops: Array<[string, (p: string) => void]> = [
   ],
 ]
 
-const POLICIES = [[], [], [], ['--force'], ['--no-cache'], ['--cache=local:r'], ['--cache=local:w']]
+const POLICIES = [
+  [],
+  [],
+  [],
+  ['--force'],
+  ['--no-cache'],
+  ['--cache-policy=local:r'],
+  ['--cache-policy=local:w'],
+]
 for (let i = 0; i < steps; i++) {
   const [name, op] = pick(ops)
   const p = pick(['a', 'b'])

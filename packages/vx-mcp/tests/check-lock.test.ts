@@ -1,6 +1,6 @@
 // checkLock is `vx lock --check --format json` through MCP, held to the
 // CLI's own answer: missing, current, then drifted.
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
@@ -45,7 +45,11 @@ it("each state is the CLI's answer, with its exit code", async () => {
   const missing = await both()
   expect(vx('lock').exitCode).toBe(0)
   const current = await both()
-  await appendFile(path.join(root, 'packages', 'a', 'vx.config.mjs'), '// edited\n')
+  // A comment evaluates the same; a changed command is drift.
+  await writeFile(
+    path.join(root, 'packages', 'a', 'vx.config.mjs'),
+    `export default { tasks: { build: { exec: { command: 'echo edited' } } } }\n`,
+  )
   const drifted = await both()
   for (const [got, want] of [missing, current, drifted]) expect(got).toEqual(want)
   expect(

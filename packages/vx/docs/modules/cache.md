@@ -19,7 +19,7 @@ and key derivation logic live here.
   it to derive the keys the CLI would; `Cache.key` delegates to it
   (item 691).
 - `policy.ts` — `CachePolicy` (local/remote × read/write) and the
-  `--cache=<spec>` grammar.
+  `--cache-policy=<spec>` grammar.
 - `zstd.ts` — artifact framing: the declared-size gate against a
   decompression bomb, the bounded one-call and streamed decoders.
 - `file-hashes.ts` — `FileHashStore`: the per-file blob-OID memo over
@@ -316,9 +316,9 @@ export const SCHEMA_VERSION = 'v34'
 export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
 export const KEYED_RUNS_SQL = "hash <> ''"
 
-// The four independent cache axes, and the `--cache=<spec>` parser over
+// The four independent cache axes, and the `--cache-policy=<spec>` parser over
 // them. `FULL_CACHE_POLICY` is every axis on — the default a run starts
-// from before `--cache`, `--no-cache` and `--force` resolve.
+// from before `--cache-policy`, `--no-cache` and `--force` resolve.
 export interface CachePolicy {
   localRead: boolean
   localWrite: boolean

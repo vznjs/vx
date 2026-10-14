@@ -1462,7 +1462,7 @@ export class Cache implements CacheLayer {
   // the entries row. It's part of the contract so LayeredCache can
   // route metadata to `ingest()` on remote-hit without a separate API.
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
-    // Local reads disabled (e.g. `--force` / `--cache=local:w`): report a
+    // Local reads disabled (e.g. `--force` / `--cache-policy=local:w`): report a
     // miss so the task re-executes. The artifact + index are untouched.
     if (!this.read) return null
     return this.guard(async () => {
@@ -1552,7 +1552,7 @@ export class Cache implements CacheLayer {
    * serve hits out of the PRE-EXISTING local cache" — it must not throw
    * away bytes this run just downloaded. `LayeredCache` calls this to
    * deliver an artifact it ingested from the remote; under
-   * `--cache=local:,remote:rw` the gated `get` returned null for the row
+   * `--cache-policy=local:,remote:rw` the gated `get` returned null for the row
    * `ingest` had just written, so the task re-executed and re-uploaded on
    * every single run.
    */
@@ -2007,7 +2007,7 @@ export class Cache implements CacheLayer {
     // SQLite, not the artifact. Remote-hit ingestion takes metadata
     // through `ingest()` arguments — the artifact stays clean bytes.
     //
-    // Local writes disabled (e.g. `--cache=local:,remote:rw`): produce
+    // Local writes disabled (e.g. `--cache-policy=local:,remote:rw`): produce
     // no `<hash>.tar.zst` and no index row. The LayeredCache wrapping us
     // still uploads to remote — it calls `packArtifact` itself to get
     // the bytes, since there's no local artifact to read off disk.
@@ -2605,7 +2605,7 @@ export class Cache implements CacheLayer {
    * scan of the index and one read of the sweep's clock — never the
    * sweep's readdir. Null when nothing was due or the directory is not this
    * handle's to write. The local WRITE axis does not gate it: under
-   * `--cache=local:r,remote:rw` a save writes nothing here, but every remote
+   * `--cache-policy=local:r,remote:rw` a save writes nothing here, but every remote
    * hit is still ingested (`ingest`, ungated by design), and gated on that
    * axis the retention never ran while the store grew hit by hit (A-7).
    */

@@ -413,7 +413,7 @@ function unchangedKeyNote(
     } | null
   )?.p
   if (policy !== undefined && !policy.split(',').some((axis) => axis === 'lR' || axis === 'rR')) {
-    return 'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)'
+    return 'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)'
   }
   // `get` answers null, not undefined, for no row.
   const createdAt = (
@@ -473,7 +473,7 @@ function unchangedKeyNote(
             } | null
           )?.p
     if (prevPolicy !== undefined && !prevPolicy.split(',').some((a) => a === 'lW' || a === 'rW')) {
-      return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache without write), so there was nothing to hit'
+      return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit'
     }
     return 'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
   }

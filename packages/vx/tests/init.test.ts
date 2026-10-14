@@ -219,23 +219,6 @@ describe('vx init source detection', () => {
     },
     TIMEOUT,
   )
-
-  it(
-    '`vx migrate` points at @vzn/vx-migrate and exits 1',
-    async () => {
-      // The verb left core with the Turbo and Nx mappers; a remembered
-      // command lands on the pointer, never on a silent unknown verb.
-      const root = await makeRoot('vx-init-moved-')
-      try {
-        const r = await vx(root, ['migrate'])
-        expect(r.code).toBe(1)
-        expect(r.err).toContain('bunx @vzn/vx-migrate')
-      } finally {
-        await rm(root, { recursive: true, force: true })
-      }
-    },
-    TIMEOUT,
-  )
 })
 
 // ─── Parser ───────────────────────────────────────────────────────────
@@ -2280,13 +2263,10 @@ describe('vx init (package.json scripts)', () => {
     }
   })
 
-  it('a workspace with no scripts anywhere is scaffolded by init; `vx migrate` only points', async () => {
+  it('a workspace with no scripts anywhere is scaffolded by init', async () => {
     const empty = await makeRoot('vx-migrate-empty-')
     try {
       await addPackage(empty, 'a', {})
-      const m = await vx(empty, ['migrate'])
-      expect(m.code).toBe(1)
-      expect(m.err).toContain('bunx @vzn/vx-migrate')
       const r = await vx(empty, ['init'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
       expect(r.out).toContain('no package.json scripts to turn into tasks')

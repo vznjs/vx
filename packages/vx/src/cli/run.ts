@@ -25,15 +25,7 @@ import {
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
 import { parseDecimalInt } from '../util/index.js'
-import {
-  kindHint,
-  parseSettingValue,
-  RENAMED,
-  renamedRefusal,
-  type Setting,
-  SETTINGS,
-  settingRefusal,
-} from '../settings.js'
+import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
@@ -60,7 +52,7 @@ export interface RunArgs {
    */
   settings: Record<string, unknown>
   /**
-   * Resolved 4-axis cache policy after applying `--cache` / `--no-cache`
+   * Resolved 4-axis cache policy after applying `--cache-policy` / `--no-cache`
    * / `--force` in precedence order. Defaults to all-on.
    */
   cache: CachePolicy
@@ -126,12 +118,11 @@ const GENERIC_FLAGS = SETTINGS.filter(
     !['run.continue', 'run.frozen', 'cache.dir', 'cache.policy', 'cache.scope'].includes(s.path),
 )
 
-/** The setting a flag names, by its name or alias. */
+/** The setting a flag names. */
 function settingFlagOf(a: string): { s: Setting; name: string } | undefined {
   for (const s of GENERIC_FLAGS) {
-    for (const name of [s.flag!.name, s.flag!.alias]) {
-      if (name !== undefined && flagOf(a, name) !== undefined) return { s, name }
-    }
+    const name = s.flag!.name
+    if (flagOf(a, name) !== undefined) return { s, name }
   }
   return undefined
 }
@@ -183,9 +174,9 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
   out.forwardArgs = sepIdx === -1 ? [] : args.slice(sepIdx + 1)
 
   // Cache policy is resolved AFTER the loop in precedence order:
-  // start all-true → apply each `--cache` spec → `--no-cache` forces
+  // start all-true → apply each `--cache-policy` spec → `--no-cache` forces
   // all false → `--force` forces both reads false. So `--no-cache`
-  // beats `--force`, and `--cache` is the base both may override.
+  // beats `--force`, and `--cache-policy` is the base both may override.
   let cachePolicy: CachePolicy = { ...FULL_CACHE_POLICY }
   let cacheSpecError: string | undefined
   let cacheFlag = false
@@ -252,16 +243,16 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       if (v === undefined || !isCacheScope(v))
         return { ...out, error: cacheScopeError('--cache-scope') }
       out.cacheScope = v
-    } else if (flagOf(a, '--cache-policy') ?? flagOf(a, '--cache')) {
+    } else if (flagOf(a, '--cache-policy')) {
       cacheFlag = true
-      const name = (flagOf(a, '--cache-policy') ?? flagOf(a, '--cache'))!
+      const name = flagOf(a, '--cache-policy')!
       const v = a === name ? before[++i] : a!.slice(name.length + 1)
       if (v === undefined)
         return {
           ...out,
           error: `${name} requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)`,
         }
-      // A spec with no segment at all applies NOTHING, so `--cache=`
+      // A spec with no segment at all applies NOTHING, so `--cache-policy=`
       // (an empty shell var, or someone reaching for "no cache") left
       // all four axes ON — the opposite of the intent. Reject it; an
       // empty flag list for a NAMED layer (`local:`) stays valid and
@@ -276,7 +267,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         cachePolicy = parseCachePolicy(v, cachePolicy)
         if (/remote:[rw]/.test(v)) out.remoteRequested = true
       } catch (err) {
-        cacheSpecError = `--cache: ${err instanceof Error ? err.message : String(err)}`
+        cacheSpecError = `--cache-policy: ${err instanceof Error ? err.message : String(err)}`
       }
     } else if (a === '--no-cache') {
       noCacheFlag = true
@@ -379,10 +370,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       const value = parseSettingValue(set.kind, v)
       if (value === null) return { ...out, error: settingRefusal(set.path, name, v) }
       out.settings[set.path] = value
-    } else if (a !== undefined && RENAMED.has(a.split('=')[0]!)) {
-      const old = a.split('=')[0]!
-      const v = a === old ? before[i + 1] : a.slice(old.length + 1)
-      return { ...out, error: renamedRefusal(old, RENAMED.get(old)!, v) }
     } else if (a !== undefined && a.startsWith('-')) {
       return { ...out, error: `unknown flag: ${a}${flagHint(verb, a)}` }
     } else if (a !== undefined) {
@@ -615,7 +602,7 @@ export async function resolveRunOptions(
     ...(parsed.remoteRequested ? { remoteRequested: true } : {}),
     ...(parsed.cacheScope !== undefined ? { cacheScope: parsed.cacheScope } : {}),
     // A laptop reads the shared cache and never writes it (owner,
-    // 2026-10-03); naming the remote in `--cache` is asking to.
+    // 2026-10-03); naming the remote in `--cache-policy` is asking to.
     ...(!parsed.remoteRequested && !onCI(process.env['CI'])
       ? { remoteReadOnlyByDefault: true }
       : {}),

@@ -348,7 +348,7 @@ The function returns `false` (no-op, byte-identical to today) unless
 **all** hold:
 
 - `policy.localRead` is true (a `--no-cache` / `--force` /
-  `--cache=local:` run reads nothing locally → nothing to short-circuit;
+  `--cache-policy=local:` run reads nothing locally → nothing to short-circuit;
   see §--no-cache).
 - The graph has at least one task with a dep — a flat graph has no
   ordering edges to relax.
@@ -632,7 +632,7 @@ terminal between its `┌─`/`└─` brackets (`logger.ts:289-291`,
 - **`--force`** (reads off, writes on): `localRead` false → no-op. Tasks
   re-execute and refresh the cache, as today. Correct — `--force` _means_
   "re-run everything," short-circuiting a restore would defeat it.
-- **`--cache=local:r` / `local:rw`**: `localRead` true → eligible. A
+- **`--cache-policy=local:r` / `local:rw`**: `localRead` true → eligible. A
   read-only local policy short-circuits hits (correct — restore is a
   read).
 - **`--frozen`**: orthogonal. Frozen loads configs from the lock; key

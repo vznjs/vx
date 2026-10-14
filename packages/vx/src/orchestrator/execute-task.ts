@@ -129,7 +129,7 @@ export interface ExecuteArgs {
    */
   remoteOnly?: boolean
   /**
-   * Plan-time `--download` decision for THIS task (run.ts). `'deferred'`
+   * Plan-time `--cache-download` decision for THIS task (run.ts). `'deferred'`
    * means: do not clean, do not save — the executor is expected to leave
    * the outputs in the remote store and hand back a closure. An executor
    * that ignores it and materialises anyway simply gets no local entry;

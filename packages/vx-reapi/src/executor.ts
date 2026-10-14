@@ -1008,7 +1008,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
 
       // A remote-only task's outputs stay remote — materialising node_modules
       // onto the submitter's disk is precisely what `remote: 'only'` forbids.
-      // `--download=none` defers the same transfer WITHOUT making it
+      // `--cache-download=none` defers the same transfer WITHOUT making it
       // permanent: the bytes stay in the CAS and core gets a closure to pull
       // them if a locally-placed consumer turns out to need them.
       // Started before the logs are read, not after: a server that keeps

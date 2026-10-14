@@ -10,7 +10,6 @@ import {
   hideEnvFromTasks,
   isUserError,
   maskedLine,
-  MOVED_VERBS,
   nearest,
   UserError,
   wantsJson,
@@ -71,7 +70,7 @@ export async function run(argv: readonly string[]): Promise<number> {
         // for the whole reference: it printed 145 lines and no hint.
         const resolved = await (await plugins()).resolvePluginCommand(verb)
         const unknown = resolved === null || 'declaredVerbs' in resolved
-        const pointer = MOVED_VERBS[verb] ?? FOREIGN_VERBS[verb]
+        const pointer = FOREIGN_VERBS[verb]
         if (unknown && pointer !== undefined) {
           process.stderr.write(`${pointer}\n`)
           return 1
@@ -179,10 +178,9 @@ export async function run(argv: readonly string[]): Promise<number> {
         resolved !== null && 'loadError' in resolved
           ? `\n  (plugin verbs could not be looked up: vx.workspace failed to load: ${resolved.loadError})`
           : ''
-      // A verb core owned once (`migrate`, `prune`) and a package owns now:
-      // the pointer, but only after the plugins had their chance — a
-      // workspace that declares a plugin verb of that name keeps it.
-      const moved = MOVED_VERBS[command] ?? FOREIGN_VERBS[command]
+      // Another tool's verb: the pointer, but only after the plugins had
+      // their chance — a workspace that declares a plugin verb of that name keeps it.
+      const moved = FOREIGN_VERBS[command]
       if (moved !== undefined) {
         return unknown(`${moved}${loadNote}\n`)
       }

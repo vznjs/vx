@@ -1,4 +1,4 @@
-// `--download` policy: which tasks may leave their outputs in the remote
+// `--cache-download` policy: which tasks may leave their outputs in the remote
 // store instead of landing them on this machine, and which must not.
 //
 // See docs/design/download-policy-cas-cache-2026-08.md. Two decisions live
@@ -27,7 +27,7 @@ export type DownloadMode = 'eager' | 'deferred' | 'never'
  * (the shape the design doc first sketched): that rule fires whenever a
  * sibling reads the project at all, which is every ordinary workspace —
  * `test` reads `src/**` while `build` writes `dist/**` — and would leave
- * `--download=none` with nothing to defer. Comparing the globs' static
+ * `--cache-download=none` with nothing to defer. Comparing the globs' static
  * prefixes answers the question actually being asked, and stays
  * conservative in every direction that matters: a leading wildcard yields
  * `.` and reaches everything, a cacheable task with no declared `files`
@@ -176,7 +176,7 @@ export function resolveDownloadModes(args: {
     //
     // SURFACED counts as asked-for. A requested GROUP has no outputs of its
     // own — `markSurfacedDeps` marks the real tasks it chains — so keying on
-    // `requested` alone made `vx run ci --download=toplevel` (ci being a
+    // `requested` alone made `vx run ci --cache-download=toplevel` (ci being a
     // group) bring home NOTHING, which is the one thing the mode exists to
     // avoid. run.ts already pairs the two flags for the same reason when it
     // decides which persistent children to keep alive.

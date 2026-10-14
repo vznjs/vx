@@ -31,13 +31,11 @@ export interface Setting {
   /** One line for the docs table. */
   readonly doc: string
   /** The verb whose flag sets it (`vx run --timeout`); none → env and config only. */
-  readonly flag?: { readonly verb: 'run' | 'watch'; readonly name: string; readonly alias?: string }
+  readonly flag?: { readonly verb: 'run' | 'watch'; readonly name: string }
   /** The task field that overrides it, and beats every run-level source. */
   readonly task?: string
   /** False: read before `vx.workspace` loads, so flag and env only. */
   readonly config?: false
-  /** Its environment variable or flag before 0.0.637, refused with this one named. */
-  readonly was?: readonly string[]
 }
 
 const SCHEDULES = ['most-work', 'critical-path', 'direct-dependents', 'ready-order'] as const
@@ -70,7 +68,6 @@ export const SETTINGS: readonly Setting[] = [
     doc: "A task's time limit, for tasks without their own `exec.timeout` (`'30m'`).",
     flag: { verb: 'run', name: '--timeout' },
     task: 'exec.timeout',
-    was: ['VX_TASK_TIMEOUT'],
   },
   {
     path: 'run.retries',
@@ -79,7 +76,6 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'Re-runs of a failed task, for tasks without their own `exec.retries`.',
     flag: { verb: 'run', name: '--retries' },
     task: 'exec.retries',
-    was: ['--retry'],
   },
   {
     path: 'run.continue',
@@ -102,7 +98,6 @@ export const SETTINGS: readonly Setting[] = [
     default: '2s',
     doc: 'How long a task that ignores SIGTERM gets before SIGKILL.',
     flag: { verb: 'run', name: '--kill-grace' },
-    was: ['VX_KILL_GRACE_MS'],
   },
   {
     path: 'run.teardownTimeout',
@@ -110,7 +105,6 @@ export const SETTINGS: readonly Setting[] = [
     default: '3s',
     doc: "The bound on each plugin's end-of-run flush and teardown.",
     flag: { verb: 'run', name: '--teardown-timeout' },
-    was: ['VX_TEARDOWN_TIMEOUT_MS'],
   },
   {
     path: 'run.readyNotice',
@@ -118,7 +112,6 @@ export const SETTINGS: readonly Setting[] = [
     default: '10s',
     doc: 'How long a persistent task may take to match `readyWhen` before vx says it waits.',
     flag: { verb: 'run', name: '--ready-notice' },
-    was: ['VX_READY_NOTICE_MS'],
   },
   {
     path: 'run.frozen',
@@ -163,8 +156,7 @@ export const SETTINGS: readonly Setting[] = [
     kind: { type: 'string' },
     default: 'every layer reads and writes',
     doc: "Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.",
-    flag: { verb: 'run', name: '--cache-policy', alias: '--cache' },
-    was: ['VX_CACHE'],
+    flag: { verb: 'run', name: '--cache-policy' },
   },
   {
     path: 'cache.scope',
@@ -178,7 +170,7 @@ export const SETTINGS: readonly Setting[] = [
     kind: { type: 'enum', values: ['all', 'toplevel', 'none'] },
     default: 'all',
     doc: 'Which remote hits land on disk: every one, only the requested tasks, or none.',
-    flag: { verb: 'run', name: '--cache-download', alias: '--download' },
+    flag: { verb: 'run', name: '--cache-download' },
   },
   {
     path: 'cache.inputStability.strategy',
@@ -186,7 +178,6 @@ export const SETTINGS: readonly Setting[] = [
     default: 'immutable',
     doc: 'What a write to an input during the command means for the save, for tasks without their own.',
     task: 'cache.inputStability.strategy',
-    was: ['VX_INPUT_STABILITY'],
   },
   {
     path: 'cache.inputStability.severity',
@@ -194,7 +185,6 @@ export const SETTINGS: readonly Setting[] = [
     default: 'warn',
     doc: 'Whether a skipped save warns or fails the task, for tasks without their own.',
     task: 'cache.inputStability.severity',
-    was: ['VX_INPUT_STABILITY_SEVERITY'],
   },
   {
     path: 'watch.poll',
@@ -209,7 +199,6 @@ export const SETTINGS: readonly Setting[] = [
     default: '30s',
     doc: 'How long one config evaluation may take.',
     config: false,
-    was: ['VX_CONFIG_WORKER_TIMEOUT_MS'],
   },
   {
     path: 'debug.timing',
@@ -217,7 +206,6 @@ export const SETTINGS: readonly Setting[] = [
     default: 'false',
     doc: "Print the run's stage timings to stderr.",
     config: false,
-    was: ['VX_TIMING'],
   },
   {
     path: 'debug.dumpable',
@@ -225,7 +213,6 @@ export const SETTINGS: readonly Setting[] = [
     default: 'false',
     doc: 'Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.',
     config: false,
-    was: ['VX_DUMPABLE'],
   },
 ]
 
@@ -364,32 +351,8 @@ export function settingEnv(path: string, env: NodeJS.ProcessEnv = process.env): 
   return v
 }
 
-/** An environment variable or flag renamed in 0.0.637, with the setting it became. */
-export const RENAMED: ReadonlyMap<string, Setting> = new Map(
-  SETTINGS.flatMap((s) => (s.was ?? []).map((w) => [w, s] as const)),
-)
-
-/**
- * The refusal of a renamed name. A value the new name takes is handed back
- * as the line to type; any other value gets the kind's hint instead.
- */
-export function renamedRefusal(old: string, s: Setting, value?: string): string {
-  const now = old.startsWith('--') ? s.flag!.name : envName(s.path)
-  if (value !== undefined && parseSettingValue(s.kind, value) !== null)
-    return `${old} was renamed ${now} in vx 0.0.637 — use ${now}=${value}`
-  return `${old} was renamed ${now} (${kindHint(s.kind)}) in vx 0.0.637`
-}
-
-/**
- * Refuse an old setting variable in the environment, and validate every
- * set setting variable once, so a deep reader can trust what it reads.
- */
+/** Validate every set setting variable once, so a deep reader can trust what it reads. */
 export function checkSettingsEnv(env: NodeJS.ProcessEnv = process.env): void {
-  for (const [old, s] of RENAMED) {
-    if (old.startsWith('VX_') && env[old] !== undefined) {
-      throw new UserError(renamedRefusal(old, s, env[old]), 'VX_E_USAGE')
-    }
-  }
   for (const s of SETTINGS) settingEnv(s.path, env)
 }
 

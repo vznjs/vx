@@ -50,7 +50,7 @@ export interface PlannedTask {
   executor?: string
   /**
    * `'deferred'` when this task's outputs would stay in the remote store
-   * (`--download=none` / `toplevel`). Attached only when it is TRUE — an
+   * (`--cache-download=none` / `toplevel`). Attached only when it is TRUE — an
    * eager task is the default and saying so on every line says nothing.
    */
   download?: 'deferred'
@@ -91,17 +91,17 @@ export interface RunPlan {
   /** Set when `--affected` left nothing to run: the line the run would print, and why. */
   noneAffected?: string
   /**
-   * Producers `--download` WANTED to defer but could not, mapped to why.
-   * Without this the gate is invisible: a user asks for `--download=none`,
+   * Producers `--cache-download` WANTED to defer but could not, mapped to why.
+   * Without this the gate is invisible: a user asks for `--cache-download=none`,
    * gets no deferral, and has nothing to read. Empty/absent under
-   * `--download=all`, which defers nothing by definition.
+   * `--cache-download=all`, which defers nothing by definition.
    */
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
 }
 
 export interface PlanArgs {
   nodes: Map<string, TaskNode>
-  /** Per-task `--download` decision, when the policy is not `all`. */
+  /** Per-task `--cache-download` decision, when the policy is not `all`. */
   downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
   /** See `RunPlan.downloadDowngrades`. */
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
@@ -166,7 +166,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
 
       // Prediction keys off READS: a no-read policy re-executes every task,
       // so nothing is probed. Whether that run is a miss or no cache at all
-      // is the WRITE axes': `--force` and `--cache=local:w` save what they
+      // is the WRITE axes': `--force` and `--cache-policy=local:w` save what they
       // run, and the plan called them `no-cache`, the label a task with no
       // `cache` block gets (item 991). The probe below routes through the
       // policy-aware cache layer, which itself respects read gating.

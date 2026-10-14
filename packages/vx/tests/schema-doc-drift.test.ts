@@ -124,10 +124,6 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
   ],
   ['<level> has unknown field "<key>"', () => validated({ tasks: { b: { ...ok, caches: {} } } })],
   [
-    '<level> has field "<key>", which vx <version> removed — use <replacement>',
-    () => validated({ tasks: { b: { exec: { command: 'x', resources: { cpus: 1 } } } } }),
-  ],
-  [
     '<level> must be an object (fields: <fields>), not an array',
     () =>
       validated({
@@ -587,10 +583,6 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   [
     "cache.retention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>MB', '<n>GB')",
     workspaceConfig('{ cache: { retention: { maxSize: "10" } } }'),
-  ],
-  [
-    '<file> has field "<key>", which vx <version> removed — use <replacement>',
-    workspaceConfig('{ concurrency: 2 }'),
   ],
   ['plugins must be an array of plugin objects', workspaceConfig('{ plugins: {} }')],
   ['plugins[<i>] must be an object', workspaceConfig('{ plugins: ["nope"] }')],

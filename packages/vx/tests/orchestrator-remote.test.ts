@@ -1011,7 +1011,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     TIMEOUT,
   )
 
-  // turborepo#8418: `--cache=remote:rw` still served the entry from the
+  // turborepo#8418: `--cache-policy=remote:rw` still served the entry from the
   // local cache.
   it(
     'local:,remote:rw re-executes over a LOCAL-only entry and uploads the result',

@@ -166,7 +166,7 @@ describe('cache.scope', () => {
     TIMEOUT,
   )
 
-  it('the CLI turns remote writes off off CI, unless --cache names the remote', async () => {
+  it('the CLI turns remote writes off off CI, unless --cache-policy names the remote', async () => {
     const fixture = await makeWorkspace('vx-cache-scope-cli-')
     const saved = process.env['CI']
     const scopeOf = async (args: string[], ci: string | undefined): Promise<unknown> => {
@@ -180,7 +180,9 @@ describe('cache.scope', () => {
       expect(await scopeOf(['build', '--all'], undefined)).toBe(true)
       expect(await scopeOf(['build', '--all'], 'false')).toBe(true)
       expect(await scopeOf(['build', '--all'], 'true')).toBeUndefined()
-      expect(await scopeOf(['build', '--all', '--cache=remote:rw'], undefined)).toBeUndefined()
+      expect(
+        await scopeOf(['build', '--all', '--cache-policy=remote:rw'], undefined),
+      ).toBeUndefined()
     } finally {
       if (saved === undefined) delete process.env['CI']
       else process.env['CI'] = saved
@@ -259,13 +261,13 @@ describe('cache.scope', () => {
     TIMEOUT,
   )
 
-  it('VX_CACHE_POLICY is the spec a run takes when no --cache names one', () => {
+  it('VX_CACHE_POLICY is the spec a run takes when no --cache-policy names one', () => {
     const saved = process.env['VX_CACHE_POLICY']
     try {
       process.env['VX_CACHE_POLICY'] = 'local:r,remote:'
       const off = { localRead: true, localWrite: false, remoteRead: false, remoteWrite: false }
       expect(parseRunArgs(['build']).cache).toEqual(off)
-      expect(parseRunArgs(['build', '--cache=local:rw']).cache).toEqual({
+      expect(parseRunArgs(['build', '--cache-policy=local:rw']).cache).toEqual({
         localRead: true,
         localWrite: true,
         remoteRead: true,
@@ -518,7 +520,7 @@ describe('cache.policy', () => {
           'success',
         )
         expect(readOnly.store.size).toBe(0)
-        // `--cache` or `VX_CACHE_POLICY` hands `run()` a whole policy: the workspace's is not read.
+        // `--cache-policy` or `VX_CACHE_POLICY` hands `run()` a whole policy: the workspace's is not read.
         expect(
           await runUnder(fixture, readOnly.layer, `{ cache: { policy: 'remote:r' } }`, {
             cache: FULL_CACHE_POLICY,
@@ -567,9 +569,7 @@ describe('cache.policy', () => {
         expect(await refusal(`{ cache: { policy: 'local:x' } }`)).toBe(
           "vx.workspace: `cache.policy`: invalid flag 'x' for 'local': expected 'r' and/or 'w'",
         )
-        expect(await refusal(`{ cacheScope: 'pr-1' }`)).toContain(
-          'has field "cacheScope", which vx 0.0.637 removed — use `cache: { scope }`',
-        )
+        expect(await refusal(`{ cacheScope: 'pr-1' }`)).toContain('has unknown field "cacheScope"')
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }
@@ -587,7 +587,7 @@ describe('cache.policy', () => {
         noCache: true,
         force: true,
       })
-      expect(parseRunArgs(['build', '--cache=remote:']).cacheFlags).toBeUndefined()
+      expect(parseRunArgs(['build', '--cache-policy=remote:']).cacheFlags).toBeUndefined()
       process.env['VX_CACHE_POLICY'] = 'remote:'
       expect(parseRunArgs(['build']).cacheFlags).toBeUndefined()
     } finally {

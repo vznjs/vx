@@ -5,9 +5,9 @@
 followed. The verb move-out happened DIFFERENTLY from the plan below and
 is finished: `vx migrate` went to `@vzn/vx-migrate` (2026-09-11), `vx
 prune` was removed outright rather than moved, `vx upgrade` stayed in
-core, and `@vzn/vx-cli-extras` was never created. `src/util/verbs.ts` is
-the list that ships. Read § What moves out of core as the plan it was;
-`MOVED_VERBS` is what became of it.**
+core, and `@vzn/vx-cli-extras` was never created. Read § What moves out
+of core as the plan it was; the moved verbs left no pointer behind
+(2026-10-14).**
 
 ## Why
 

@@ -38,7 +38,7 @@ interface RemoteCacheLayer {
 - **`put` takes a `Blob`.** Core passes `Bun.file(<local artifact>)`, so
   a plugin that hands the Blob to `fetch` uploads it as a stream, and one
   that needs a digest first reads `body.stream()` twice. The one mode
-  with no local artifact (`--cache=local:,remote:rw`) packs in memory as
+  with no local artifact (`--cache-policy=local:,remote:rw`) packs in memory as
   today and passes `new Blob([bytes])`. That mode keeps its memory
   profile by necessity, as the save path already documents.
 - **No bytes union.** The old `ArrayBuffer | Uint8Array` shapes are not

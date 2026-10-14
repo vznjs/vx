@@ -1,5 +1,5 @@
 // The run-level cache policy: four axes (local/remote × read/write) and
-// the `--cache=<spec>` grammar that sets them. Pure data + parsing; no I/O.
+// the `--cache-policy=<spec>` grammar that sets them. Pure data + parsing; no I/O.
 
 import { UserError } from '../util/index.js'
 
@@ -30,13 +30,13 @@ export const FULL_CACHE_POLICY: CachePolicy = {
   remoteWrite: true,
 }
 
-/** No axis on (`--no-cache`, `--cache=local:`): no cache answers for any task. */
+/** No axis on (`--no-cache`, `--cache-policy=local:`): no cache answers for any task. */
 export function cachesNothing(p: CachePolicy): boolean {
   return !(p.localRead || p.localWrite || p.remoteRead || p.remoteWrite)
 }
 
 /**
- * Parse a `--cache=<spec>` value into a `CachePolicy`, starting from a
+ * Parse a `--cache-policy=<spec>` value into a `CachePolicy`, starting from a
  * base (defaults to {@link FULL_CACHE_POLICY}). The spec is a
  * comma-separated list of `layer:flags` segments where `layer` is
  * `local` or `remote` and `flags` is any subset of `r` (read) and `w`

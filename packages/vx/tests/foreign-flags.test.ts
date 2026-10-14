@@ -30,7 +30,6 @@ const SAME: ReadonlyArray<readonly string[]> = [
   ['--summarize'],
   ['--output-logs', 'errors-only'],
   ['--no-cache'],
-  ['--cache', 'local:rw,remote:r'],
   ['--cache-dir', 'x'],
   ['--profile'],
   ['--all'],
@@ -89,7 +88,11 @@ const ALIAS: ReadonlyArray<readonly [readonly string[], readonly string[]]> = [
     ['--concurrency', '3'],
   ],
   [['--exclude-task-dependencies'], ['--exclude-dependencies']],
-  [['--skip-remote-cache'], ['--cache', 'local:rw,remote:']],
+  [['--skip-remote-cache'], ['--cache-policy', 'local:rw,remote:']],
+  [
+    ['--cache', 'local:rw,remote:r'],
+    ['--cache-policy', 'local:rw,remote:r'],
+  ],
   [['-r'], ['--all']],
   [['--recursive'], ['--all']],
   [['-w'], ['--filter', '//']],
@@ -122,10 +125,10 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
   ],
   [['--scope', 'app'], '--scope (turbo): use `--filter <pkg>`'],
   [['--since=main'], "--since (turbo): use `--filter '[<ref>]'` or `--affected=<ref>`"],
-  [['--remote-only'], '--remote-only (turbo): use `--cache local:,remote:rw`'],
+  [['--remote-only'], '--remote-only (turbo): use `--cache-policy local:,remote:rw`'],
   [
     ['--remote-cache-read-only'],
-    '--remote-cache-read-only (turbo): use `--cache local:rw,remote:r`',
+    '--remote-cache-read-only (turbo): use `--cache-policy local:rw,remote:r`',
   ],
   [
     ['--token', 't'],
@@ -302,14 +305,14 @@ describe('Turbo and Nx flags on vx run', () => {
       [['--nxBail=true'], ['--continue=never']],
       [['--exclude-task-dependencies=false'], []],
       [['--skip-remote-cache=false'], []],
-      [['--skip-remote-cache=true'], ['--cache', 'local:rw,remote:']],
+      [['--skip-remote-cache=true'], ['--cache-policy', 'local:rw,remote:']],
     ]) {
       const got = parseRunArgs(['build', ...foreign!])
       expect([foreign, got.error]).toEqual([foreign, undefined])
       expect([foreign, got]).toEqual([foreign, parseRunArgs(['build', ...vx!])])
     }
     expect(parseRunArgs(['build', '--remote-only=true']).error).toBe(
-      '--remote-only (turbo): use `--cache local:,remote:rw`',
+      '--remote-only (turbo): use `--cache-policy local:,remote:rw`',
     )
     // CONTROL: any other value is vx's own: a path stays a path.
     expect(parseRunArgs(['build', '--summarize=out.json']).summarize).toBe('out.json')

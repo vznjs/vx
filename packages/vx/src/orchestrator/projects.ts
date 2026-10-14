@@ -247,7 +247,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // A project the lock holds whose config file is gone ran nothing under
   // --frozen, green, though the lock promises what runs is what was
   // locked (X-144); a run never even asks such a project for a task.
-  // Refused as a moved config is (D-88). With no lock at all, nothing was
+  // With no lock at all, nothing was
   // locked: a repo of config-less projects needs none.
   if (lock) {
     const bare = args.projectMetas.filter((m) => m.configPath === null)
@@ -255,7 +255,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     const gone = held === null ? undefined : bare.find((m) => Object.hasOwn(held.projects, m.name))
     if (gone !== undefined && held !== null)
       throw new UserError(
-        `${LOCKFILE_NAME} locks "${gone.name}" at ${held.projects[gone.name]!.configPath}, but it has no config now — ` +
+        `${LOCKFILE_NAME} locks "${gone.name}", but it has no config now — ` +
           `run \`vx lock\` to refresh, or delete ${LOCKFILE_NAME}`,
       )
   }
@@ -272,7 +272,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     const loaded = lock
       ? withFile.length === 0
         ? []
-        : await frozenProjectConfigs(await lock(), withFile, workspaceRoot, args.evalCache?.store)
+        : frozenProjectConfigs(await lock(), withFile, workspaceRoot)
       : await loadProjectConfigs(
           withFile.map((m) => m.configPath),
           args.evalCache !== undefined ? { evalCache: args.evalCache } : {},

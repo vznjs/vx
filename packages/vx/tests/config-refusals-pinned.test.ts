@@ -36,10 +36,10 @@ describe('the plugin-shape refusals, whole', () => {
     )
   })
 
-  it('the removed backend seam', () => {
+  it('the removed backend seam, as any hook vx does not know', () => {
     const p = Object.assign(testPlugin('pin-backend', { teardown() {} }), { backend: () => {} })
     expect(refusal({ plugins: [p] })).toBe(
-      `${WS}: \`plugins[0].backend\` is no longer a capability — the whole-run backend seam was removed in 2026-08. Use \`executor\` to change where a single task's command runs (see docs/architecture.md § plugin capabilities).`,
+      `${WS}: plugin 'pin-backend' declares 'backend', which is no plugin hook (hooks: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, output, setup, commands, teardown)`,
     )
   })
 

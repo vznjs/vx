@@ -88,7 +88,7 @@ success because the same hash means the same bytes. (Thanks to a
 reader's comment.)
 
 Swap the directory for S3, R2 or your own HTTP server. vx does the
-rest: the local cache stays in front, `--cache` and `cache.policy` gate
+rest: the local cache stays in front, `--cache-policy` and `cache.policy` gate
 the remote, a remote error turns into a miss and a warning naming the
 plugin, uploads run in the background, and every artifact gets the same
 integrity check as a local one. vx bounds no call, so a

@@ -712,7 +712,7 @@ describe.if(run)('chaining robustness (audit fixes)', () => {
   }, 180_000)
 
   it('download: deferred leaves the outputs remote until materialize() is called', async () => {
-    // `--download=none`'s wire half: the action still runs on the worker and
+    // `--cache-download=none`'s wire half: the action still runs on the worker and
     // the result is authoritative, but no output byte crosses to the
     // submitter until core asks. Asserted on the ARTIFACT (the file's
     // presence), not on a count of calls.

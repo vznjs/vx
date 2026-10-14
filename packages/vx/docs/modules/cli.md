@@ -71,9 +71,7 @@ directory the run never used. Plugin warnings go to stderr. A plugin
 verb the dispatcher could never reach — one naming a core verb, or one
 plugins of two packages both declare — is refused by the workspace VALIDATOR
 (`validateWorkspace`, against `util/verbs.ts`), so a run refuses it
-exactly as a reading verb or the plugin-verb lookup does. `MOVED_VERBS`
-there maps a verb a package owns now (`migrate`, `prune`) or that was
-removed (`stats`) to its pointer; a plugin may still declare one.
+exactly as a reading verb or the plugin-verb lookup does.
 
 ## What this does NOT do
 
@@ -81,8 +79,7 @@ removed (`stats`) to its pointer; a plugin may still declare one.
   is gated by env (`NO_COLOR` / `FORCE_COLOR` / TTY).
 - No completion installed for you: `vx completions bash|zsh|fish`
   prints the script; sourcing it is the user's.
-- No subcommand aliases beyond the help / version sugar (`stats`
-  was removed, H-19).
+- No subcommand aliases beyond the help / version sugar.
 - No service commands — there is no daemon, server or worker verb in
   core and no separate service package (removed 2026-09-02). A plugin
   that wants a verb adds it through `commands`; `vx mcp` is the
@@ -91,8 +88,7 @@ removed (`stats`) to its pointer; a plugin may still declare one.
 ## Tests
 
 `tests/cli.test.ts` covers the dispatcher table — help, version,
-unknown subcommand, and the service-command redirects (each moved
-command must NOT report "unknown command"). Per-subcommand parser tests
+unknown subcommand. Per-subcommand parser tests
 live alongside.
 
 ## Replacing this module

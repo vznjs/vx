@@ -35,7 +35,7 @@ vulnerability), never in a public issue.
   choosing is trusted as a writer, as it is in every action cache. Use a
   store only your builds write to, or `turboCache()`'s signature key,
   which refuses an artifact a keyholder did not sign. A job you do not
-  trust (a fork's pull request) reads at most: `--cache=local:rw,remote:r`,
+  trust (a fork's pull request) reads at most: `--cache-policy=local:rw,remote:r`,
   or the tools' own `TURBO_REMOTE_CACHE_READ_ONLY`, `TURBO_CACHE` and
   `NX_SKIP_REMOTE_CACHE`, which the cache plugins honour (L-34).
 
@@ -44,7 +44,7 @@ vulnerability), never in a public issue.
 A pull request that can write the cache the default branch reads can
 plant bytes main later replays (CREEP, CVE-2025-36852). The boundary is
 the credential, enforced by the cache server: the default branch's job
-holds a token that writes the trusted keys, and a pull request's job
+holds a token that writes the default keys, and a pull request's job
 holds one that cannot (read-only, or confined by the server to its own
 namespace), or none.
 

@@ -168,7 +168,7 @@ function compactCachePolicy(p: CachePolicy): string {
  * local cache writes NOWHERE, yet the write axis reads as on. Normalising
  * here — the ONE place both `run()` and `planRun()` derive it from — is
  * what keeps `--dry` describing the run you are about to get: reading the
- * raw request made the plan label `--cache=local:,remote:rw` "cache miss —
+ * raw request made the plan label `--cache-policy=local:,remote:rw` "cache miss —
  * would exec" (a result that will be stored) for a run in which caching is
  * entirely off.
  */
@@ -187,7 +187,7 @@ function effectiveCachePolicy(requested: CachePolicy, hasRemoteLayer: boolean): 
  *     ingests hits into local for execute-task's lazy probe. The gate asks
  *     the layer (`hasRemote`), not `instanceof LayeredCache` — a
  *     third-party remote layer stalls on the classify just as hard.
- *   - the policy reads locally (a `--no-cache`/`--force`/`--cache=local:`
+ *   - the policy reads locally (a `--no-cache`/`--force`/`--cache-policy=local:`
  *     run reads nothing locally → nothing to restore → skip);
  *   - there is at least one task.
  * A flat graph has no ordering to bypass, but the classify pass is worth
@@ -755,7 +755,7 @@ async function runOnBus(
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer)
     if (options.remoteRequested === true && !prepared.hasRemoteLayer) {
       log.status(
-        'vx: --cache named the remote cache, but no cache plugin in vx.workspace.* supplies one — the remote axes are off for this run',
+        'vx: --cache-policy named the remote cache, but no cache plugin in vx.workspace.* supplies one — the remote axes are off for this run',
       )
     }
     const deferredOutputs = new DeferredOutputs({
@@ -1314,7 +1314,7 @@ async function runOnBus(
     const stillDeferred = deferredOutputs.pending()
     if (stillDeferred.length > 0) {
       log.status(
-        `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--download=none): ${stillDeferred.join(', ')}`,
+        `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--cache-download=none): ${stillDeferred.join(', ')}`,
       )
     }
 

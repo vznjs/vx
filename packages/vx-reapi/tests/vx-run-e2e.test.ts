@@ -113,7 +113,7 @@ describe.if(armed)('vx run with reapi({ execute: true }) — the install-as-acti
     }
   }, 240_000)
 
-  it('--download=none moves no output bytes to the submitter, and converges later', async () => {
+  it('--cache-download=none moves no output bytes to the submitter, and converges later', async () => {
     // Phase 1's headline claim, proven end to end against a real cluster:
     // a run that wants only the verdict executes remotely and leaves every
     // output byte in the CAS. Then the SAME workspace run eagerly picks the
