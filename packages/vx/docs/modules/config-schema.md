@@ -12,7 +12,12 @@ what a config may SAY, the loader decides HOW a file is evaluated.
 ## Public surface
 
 ```ts
-export function validateProjectConfig(config: ProjectConfig, configPath: string): void
+// `ownConfig`: the config file outputs may not cover (null: none); defaults to `configPath`
+export function validateProjectConfig(
+  config: ProjectConfig,
+  configPath: string,
+  ownConfig?: string | null,
+): void
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void
 // `cache.scope`'s rule, which `VX_CACHE_SCOPE` (read in prepare) shares, and that variable's refusal
 export function isCacheScope(v: unknown): v is string
@@ -37,7 +42,8 @@ export function nonJsonMessage(configPath: string, found: NonJsonValue): string
 same object shape: the loader after evaluation, `lockfile.ts` on a frozen
 entry read back from `.vx/lock.json` (a hand-editable file — the same
 boundary), and `orchestrator/projects.ts` after each plugin's `project`
-edit (a broken edit is refused naming the plugin). `validateWorkspace`
+edit (a broken edit is refused naming the plugin; there `configPath` is
+that label and `ownConfig` the project's config file, or null with none). `validateWorkspace`
 runs once per `.vx/workspace.*` load: fields, plugin shapes, and the verb
 rules (a plugin may not shadow a core verb; a verb has one owner, a package).
 

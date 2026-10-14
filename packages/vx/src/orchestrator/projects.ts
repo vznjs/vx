@@ -308,7 +308,12 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             packageJson: meta.packageJson as unknown as Readonly<Record<string, unknown>>,
             projects: args.projectMetas,
           },
-          (plugin) => validateProjectConfig(config, `${where} (after plugin '${plugin.name}')`),
+          (plugin) =>
+            validateProjectConfig(
+              config,
+              `${where} (after plugin '${plugin.name}')`,
+              meta.configPath,
+            ),
         )
       }
       const built = withDefaultBuild(config)
