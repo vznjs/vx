@@ -380,8 +380,7 @@ export interface ScheduleHookContext extends BaseContext {
 /** A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns. */
 export interface CacheContext extends BaseContext {
   /**
-   * The run's `cache.scope`: `undefined` when trusted, `'read-only'`, or an
-   * untrusted scope's name (`'pr-123'`). Core already keys a scoped run's
+   * The run's `cache.scope` (`'pr-123'`), `undefined` when none. Core already keys a scoped run's
    * writes apart; a remote reads it to pick a credential or check a token's
    * claims (an OIDC branch) for every call it makes.
    */

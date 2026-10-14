@@ -17,9 +17,9 @@ import {
   type CachePolicy,
   FULL_CACHE_POLICY,
   parseCachePolicy,
-  scopeCachePolicy,
   GitFilesCache,
   LayeredCache,
+  ScopedCache,
   applyGitEnumeration,
   gitPathspecs,
   MAX_SCOPED_PATHSPECS,
@@ -297,18 +297,17 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const envScope = process.env['VX_CACHE_SCOPE'] || undefined
   if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
   const workspacePolicy = workspaceCachePolicy(workspaceConfig)
-  const cacheScope =
-    options.cacheScope ??
-    envScope ??
-    workspaceConfig?.cache?.scope ??
-    // A workspace policy naming the remote asks to write it, as `--cache` does.
-    (options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy)
-      ? undefined
-      : options.defaultCacheScope)
-  const policy: CachePolicy = scopeCachePolicy(
-    options.cache ?? applyCacheFlags(workspacePolicy ?? FULL_CACHE_POLICY, options.cacheFlags),
-    cacheScope,
-  )
+  const cacheScope = options.cacheScope ?? envScope ?? workspaceConfig?.cache?.scope
+  const asked =
+    options.cache ?? applyCacheFlags(workspacePolicy ?? FULL_CACHE_POLICY, options.cacheFlags)
+  // A laptop reads the shared cache and does not write it unless a policy
+  // names the remote (owner, 2026-10-03; Security F1, 2026-10-14): a key
+  // holds only declared inputs, so a laptop's write could be replayed on CI.
+  // A workspace policy naming the remote asks to write it, as `--cache` does.
+  const readOnly =
+    options.remoteReadOnlyByDefault === true &&
+    !(options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy))
+  const policy: CachePolicy = readOnly ? { ...asked, remoteWrite: false } : asked
   const localCache = new Cache(
     cacheDir,
     { read: policy.localRead, write: policy.localWrite },
@@ -466,7 +465,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
           workspaceRoot,
           cacheDir,
           warn: (m) => log.status(m),
-          scope: cacheScope === 'trusted' ? undefined : cacheScope,
+          scope: cacheScope,
           localCache,
           policy,
         })
@@ -479,6 +478,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     localCache.close()
     throw err
   }
+  // One scoping rule above every layer, local and remote alike.
+  if (cacheScope !== undefined) cache = new ScopedCache(cache, cacheScope)
   // Ask the LAYER, don't infer. Identity against `localCache` answers a
   // DIFFERENT question — "did the plugin hand back something other than the
   // handle I passed in?" — which an ordinary pass-through decorator (a

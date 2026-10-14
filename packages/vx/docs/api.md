@@ -361,7 +361,6 @@ export interface CachePolicy {
   localWrite: boolean
   remoteRead: boolean
   remoteWrite: boolean
-  remoteScope?: string
 }
 ```
 
@@ -2087,7 +2086,7 @@ export interface RunOptions {
   cacheFlags?: CacheFlags
   remoteRequested?: boolean
   cacheScope?: string
-  defaultCacheScope?: string
+  remoteReadOnlyByDefault?: boolean
   frozen?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'

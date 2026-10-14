@@ -9,6 +9,14 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: read the default key first; a scope only names writes
+
+a cache scope reads the default key first and writes only its own key, locally and remotely; 'trusted' and 'read-only' are plain scope names, so set cache.policy 'remote:r' for a read-only run. Off CI the default policy writes no remote. RunOptions.defaultCacheScope is now remoteReadOnlyByDefault; CachePolicy.remoteScope and scopeCachePolicy are gone. Every cached task misses once after upgrading to vx-cache-v43.
+
+## cache: never delete a committed file under an output
+
+GitFilesCache output-split helpers are removed; committed files under outputs are never cleaned.
+
 ## plugin: output stage lets a plugin draw the terminal
 
 PLUGIN_HOOKS gains `output` after `telemetry` (15 hooks).

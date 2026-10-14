@@ -294,6 +294,8 @@ export default defineWorkspace({
 })
 ```
 
+Off CI a run reads the remote and does not write it unless its policy names the remote. Give the write token only to the default branch's CI and a read-only one to laptops and pull request jobs: the server's token is the boundary (`docs/security.md` § Cache poisoning). The same holds for `nxCache()`.
+
 Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `npx turbo login && npx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, in Turbo's order: a Vercel build's `VERCEL_ARTIFACTS_TOKEN` and `VERCEL_ARTIFACTS_OWNER` (the team id, where `TURBO_TOKEN` with a team is not set), then the repo's `.turbo/config.json` (what `turbo link` writes: `apiUrl`, `teamId`, `teamSlug`, `token`), then the root `turbo.json`'s `remoteCache` (`apiUrl`, `teamId`, `teamSlug`), whose `enabled: false` declines unless the options name a cache. With no token the plugin **declines** and the run stays local.
 
 | Option            | Environment variable                                                                                                                     | Meaning                                                                                                                                                                                                                                                                       |

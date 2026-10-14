@@ -48,10 +48,16 @@ holds a token that writes the trusted keys, and a pull request's job
 holds one that cannot (read-only, or confined by the server to its own
 namespace), or none.
 
-`cache.scope` is the client half. `'pr-123'` reads its own keys,
-then the trusted ones, and writes only its own, which `github()` sets on
-Actions (`pr-<n>`, `ref-<name>`; the default branch stays trusted)
-and `VX_CACHE_SCOPE` or `--cache-scope` sets on any CI.
+`cache.scope` is the client half. `'pr-123'` reads the default keys,
+then its own, and writes only its own, which `github()` sets on
+Actions (`pr-<n>`, `ref-<name>`; the default branch sets none)
+and `VX_CACHE_SCOPE` or `--cache-scope` sets on any CI. Whether a run
+writes is `cache.policy`'s call: off CI the default reads the remote and
+writes nothing, since a key holds only declared inputs and a laptop's
+undeclared tool or file would replay on CI. A laptop that should never
+write gets a read-only token too. The local cache follows the same
+key rule, so on one disk a PR's entries sit under its scope's keys and
+a persistent runner never serves them to main.
 It keeps honest runs apart and stops a non-hermetic PR build from
 landing where main reads; it is not a boundary, since the PR's own
 config decides it and any run holding a write credential can write any

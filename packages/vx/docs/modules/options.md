@@ -26,7 +26,7 @@ export interface RunOptions {
   cacheFlags?: CacheFlags // with no `cache`: --no-cache / --force over the workspace's cache.policy
   remoteRequested?: boolean // a --cache spec named a remote axis
   cacheScope?: string // --cache-scope, above VX_CACHE_SCOPE and vx.workspace
-  defaultCacheScope?: string // the cache.scope when vx.workspace names none; the CLI passes 'read-only' off CI
+  remoteReadOnlyByDefault?: boolean // the default policy writes no remote; the CLI passes it off CI
   frozen?: boolean // run the lock's graph
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'

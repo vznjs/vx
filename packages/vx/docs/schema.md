@@ -1629,7 +1629,7 @@ export default defineWorkspace({
     download: 'all',
     retention: { olderThan: '30d', maxSize: '10GB' },
     policy: 'local:rw,remote:r',
-    scope: 'trusted',
+    scope: 'main',
     inputStability: { strategy: 'immutable', severity: 'warn' },
   },
   watch: { poll: false },
@@ -1677,7 +1677,7 @@ default and where it came from.
 | `cache.retention.maxSize`                      | `VX_CACHE_RETENTION_MAX_SIZE`       | —                                 | a size like '500MB' or '10GB'                                           | none                                       | Evict least-recently-used entries at each run's end until the cache is under this (`'10GB'`).                                                                                 |
 | `cache.retention.olderThan`                    | `VX_CACHE_RETENTION_OLDER_THAN`     | —                                 | a duration like '45s', '12h' or '30d'                                   | none                                       | Evict entries unused for this long at each run's end (`'30d'`).                                                                                                               |
 | `cache.policy`                                 | `VX_CACHE_POLICY`                   | `--cache-policy` (`--cache`)      | a non-blank string                                                      | every layer reads and writes               | Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top. Was `VX_CACHE`.                                                         |
-| `cache.scope`                                  | `VX_CACHE_SCOPE`                    | `--cache-scope`                   | a non-blank string                                                      | read-only off CI, trusted on CI            | Where remote writes land: `'trusted'`, `'read-only'`, or an untrusted scope (`'pr-123'`).                                                                                     |
+| `cache.scope`                                  | `VX_CACHE_SCOPE`                    | `--cache-scope`                   | a non-blank string                                                      | none (the default keys)                    | Where cache writes land (`'pr-123'`): reads try the default key, then the scope's.                                                                                            |
 | `cache.download`                               | `VX_CACHE_DOWNLOAD`                 | `--cache-download` (`--download`) | one of 'all', 'toplevel', 'none'                                        | all                                        | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                                                 |
 | `cache.inputStability.strategy`                | `VX_CACHE_INPUT_STABILITY_STRATEGY` | —                                 | one of 'immutable', 'mutable', 'unchecked'                              | immutable                                  | What a write to an input during the command means for the save, for tasks without their own. A task's own `cache.inputStability.strategy` beats it. Was `VX_INPUT_STABILITY`. |
 | `cache.inputStability.severity`                | `VX_CACHE_INPUT_STABILITY_SEVERITY` | —                                 | one of 'warn', 'error'                                                  | warn                                       | Whether a skipped save warns or fails the task, for tasks without their own. A task's own `cache.inputStability.severity` beats it. Was `VX_INPUT_STABILITY_SEVERITY`.        |
@@ -1797,28 +1797,31 @@ interface CacheSettings {
 - **`cache.policy`** — which layers a run reads and writes, in
   `--cache-policy`'s spec (`'local:rw,remote:r'`; a layer the spec leaves out
   stays on; the grammar is in `docs/cli.md` § Cache policy). Omitted,
-  every layer reads and writes. `VX_CACHE_POLICY` beats it and
+  every layer reads and writes on CI, and `vx run` off CI (`CI` unset,
+  `0` or `false`) reads the remote and does not write it: a key holds
+  only declared inputs, so a laptop's write could replay on CI. The
+  policy alone decides whether a layer is written; `cache.scope` never
+  does. `VX_CACHE_POLICY` beats it and
   `vx run --cache-policy` (or `--cache`) beats both; `--no-cache` and `--force` still apply on top. A spec
-  naming the remote (`remote:rw`) asks to write it, so `vx run` off CI
-  takes `'trusted'`, not `'read-only'`, when no scope is named. Parsed
+  naming the remote (`remote:rw`) asks to write it, off CI too. Parsed
   before any task: a bad spec is refused naming `cache.policy`. Whatever
   the policy, a lookup asks the local cache first, then each remote in
   the order the plugins declare them. Not folded into any cache key.
 - **`cache.download`** — which remote hits land on this machine:
   `all` (the default), only the requested tasks' (`toplevel`), or
   `none` (`docs/cli.md` § `--cache-download`).
-- **`cache.scope`** — where this run's remote cache writes land.
-  `'trusted'` reads and writes the task keys: the default branch's CI.
-  `'read-only'` reads them and writes nothing: a laptop. Omitted, `vx
-run` takes `'read-only'` off CI (`CI` unset, `0` or `false`) and
-  `'trusted'` on CI or when the policy names the remote; `run()` takes
-  `RunOptions.defaultCacheScope`, else `'trusted'`.
-  Any other name (`'pr-123'`; letters, digits, `. _ - / @`, at most 128) is an untrusted scope: a remote read tries the scope's key, then
-  the trusted one, and a write goes to the scope's only, so a pull request
-  never writes what the default branch reads, and two scopes never see
-  each other. A scope's key is derived from the task key, so every
-  remote wire stores it unchanged. A clamp on the policy, never a
-  widening. `github()` sets it on Actions: `pr-<n>`, `ref-<name>` off
+- **`cache.scope`** — where this run's cache writes land (2026-10-14).
+  Omitted, a run reads and writes the default keys. A name (`'pr-123'`;
+  letters, digits, `. _ - / @`, at most 128) reads the default key first,
+  then the scope's, and writes only the scope's, so a pull request never
+  writes what the default branch reads, and two scopes never see each
+  other. A default artifact the ingest refuses falls through to the
+  scope's key. A scope's key is derived from the task key, so every
+  remote wire stores it unchanged. The rule holds for the local cache
+  as for every remote, so on one disk an entry a scope saved is a miss
+  for another scope or none, and an unscoped one serves every run. The scope never decides whether a run writes; `cache.policy`
+  does.
+  `github()` sets it on Actions: `pr-<n>`, `ref-<name>` off
   the default branch. `VX_CACHE_SCOPE` beats both, and `vx run --cache-scope` beats all three. A client-side convention, not a security
   boundary: a run holding a write credential can write any key, so only
   a cache server that scopes writes by token can refuse one
@@ -2341,7 +2344,7 @@ Workspace-config errors:
 | `cache must be an object like { dir, policy, scope }; a task caches through its own cache in its project's vx.config`                                                                 | Not an object: Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `cache.dir holds a NUL, which no path can carry`                                                                                                                                      | No path can hold a NUL; the cache directory's error blamed the workspace's permissions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `run.affectedBase must be a git ref like 'origin/main'`                                                                                                                               | Empty, holding whitespace or a NUL, or starting with `-`, which git would read as an option.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `cache.scope must be 'trusted', 'read-only', or a scope name of <rule>`                                                                                                               | Not a string, or a scope name holding a character a cache key cannot carry.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `cache.scope must be a scope name of <rule>`                                                                                                                                          | Not a string, or a scope name holding a character a cache key cannot carry.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `cache.retention names neither olderThan nor maxSize`                                                                                                                                 | An empty policy would evict nothing and read as one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `cache.retention.olderThan of 0 evicts every entry after every run`                                                                                                                   | Every run would evict what it just saved; `vx cache prune` refuses it too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `cache.retention.maxSize of 0 evicts every entry after every run`                                                                                                                     | The same, for the size bound.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |

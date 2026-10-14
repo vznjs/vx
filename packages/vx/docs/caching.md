@@ -35,7 +35,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v42'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v43'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -627,7 +627,16 @@ The CLI maps three flags to a policy (precedence: start all-on → apply
 off): `--no-cache` = everything off (no read, no write, no output
 clean); `--force` = reads off / writes on (re-execute and refresh the
 cache, outputs cleaned); `--cache=<spec>` = explicit per-layer control.
-See `docs/cli.md` § Cache control.
+Off CI, unless a spec names the remote, `remoteWrite` starts off: a key
+holds only declared inputs, so a laptop's undeclared tool or file could
+replay on CI. See `docs/cli.md` § Cache control.
+
+The setup we recommend for a shared remote: the write token only in the
+default branch's CI (a protected environment), a read-only token on
+laptops and in pull request jobs, and `cache.scope` (`github()` sets it)
+so a PR's own writes, when its token allows them, land apart. The token
+is the boundary; the policy and the scope are the client's half
+(`docs/security.md` § Cache poisoning).
 
 One subtlety: when `localWrite` is off but `remoteWrite` is on
 (`--cache=local:,remote:rw`), there's no on-disk artifact for the
@@ -1888,6 +1897,11 @@ breaking footer).
 
 ### History
 
+- **v42 → v43**: stored bytes wrong under an unchanged key (Security
+  F4, 2026-10-14). A scoped run stored its local entries under the
+  default key, so a later default run on the same disk replayed a PR's
+  bytes. A scoped run now stores under the scope's key locally as it
+  does remotely; the fix cannot reach an entry already saved that way.
 - **v41 → v42**: the stored output became both streams in the order
   the run printed them (`orchestrator/output-log.ts`), so a hit replays
   stderr too. A v41 entry holds stdout alone.

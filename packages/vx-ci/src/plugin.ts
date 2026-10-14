@@ -41,7 +41,7 @@ export interface GithubPluginOptions {
   checkName?: string
   /**
    * Set the workspace's `cache.scope` from the run's ref when it names none:
-   * a push to the default branch stays trusted, a pull request writes to
+   * a push to the default branch keeps the default keys, a pull request writes to
    * `pr-<n>`, any other ref to `ref-<name>`. Default: on; `false` opts out.
    */
   cacheScope?: boolean

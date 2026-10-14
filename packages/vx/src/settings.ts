@@ -169,8 +169,8 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'cache.scope',
     kind: { type: 'string' },
-    default: 'read-only off CI, trusted on CI',
-    doc: "Where remote writes land: `'trusted'`, `'read-only'`, or an untrusted scope (`'pr-123'`).",
+    default: 'none (the default keys)',
+    doc: "Where cache writes land (`'pr-123'`): reads try the default key, then the scope's.",
     flag: { verb: 'run', name: '--cache-scope' },
   },
   {

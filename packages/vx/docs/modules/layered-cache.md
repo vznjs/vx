@@ -26,13 +26,9 @@ embedder via `RunOptions.remoteCache`. Core builds every
   remote in the background; an in-flight map shared with `get`
   guarantees **at most one remote GET per key**, and a settled miss
   blocks a second lazy probe.
-- **Scopes**: a policy carrying `remoteScope` (the workspace's
-  `cache.scope`, an untrusted scope) reads the scope's key, then
-  the task key (a batch probe that found only the task key skips the
-  scope's GET), and writes the scope's key only. The scope's key is
-  `xxh3(scope, task key)`, 16 hex like a task key, so every wire stores
-  it unchanged; what it returns is ingested under the task key, whose
-  record check refuses an artifact packed under another.
+- **Scopes** are not this layer's: `ScopedCache` (`scoped-cache.ts`)
+  sits above every layer and hands it the scope's key as a key like any
+  other.
 
 ## Public surface
 

@@ -1291,7 +1291,7 @@
         "$CONFIG: `cache.scope` must be a non-blank string (got 65536)": ["65536"],
         "$CONFIG: `cache.scope` must be a non-blank string (got 2147483648)": ["2147483648"],
         "$CONFIG: `cache.scope` must be a non-blank string (got \"\")": ["\"\""],
-        "$CONFIG: `cache.scope` must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'": [
+        "$CONFIG: `cache.scope` must be a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'": [
           "\"(\""
         ],
         "$CONFIG: `cache.scope` must be a non-blank string (got [])": ["[]"],

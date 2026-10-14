@@ -79,11 +79,11 @@ plant bytes that main later replays. That attack is CREEP
 Nx's advisory names its bucket-based self-hosted cache packages as
 affected.
 
-vx gives each run a cache scope. A pull request reads the trusted keys and
+vx gives each run a cache scope. A pull request reads the default keys and
 writes only its own, so it never writes what main reads. On GitHub Actions,
 `github()` from `@vzn/vx-ci` sets the scope from the ref. The scope is the
 client half: the real boundary is a token your cache server limits, so give
-pull request jobs one that cannot write the trusted keys
+pull request jobs one that cannot write the default keys
 ([security model](../../security/#cache-poisoning)).
 
 ## Where Nx wins

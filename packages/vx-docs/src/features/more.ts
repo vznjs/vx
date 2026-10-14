@@ -991,19 +991,19 @@ export const MORE: readonly Feature[] = [
   },
   {
     slug: 'cache-scope',
-    title: 'Only trusted runs write the shared cache',
+    title: 'A pull request writes only its own cache scope',
     category: 'cache',
-    hook: 'Main writes the remote cache; a laptop or a fork only reads it.',
+    hook: 'Main writes the shared cache; a pull request reads it and writes only its own scope.',
     body: [
       'A shared cache is only as trustworthy as the runs that write to it. A pull request from a fork should never be able to plant an artifact that main will replay.',
-      "`cache: { scope: 'trusted' }` lets a run write the remote cache; `'read-only'` only reads; a named scope keeps a branch’s writes to itself. Set it in config, with `VX_CACHE_SCOPE`, or with `--cache-scope` for one run.",
+      "With no scope, a run reads and writes the default entries. `cache: { scope: 'pr-123' }` reads them first, then the scope’s, and writes only the scope’s. Whether a run writes at all is `cache.policy`: off CI, a run reads the remote and writes nothing. Set the scope in config, with `VX_CACHE_SCOPE`, or with `--cache-scope` for one run.",
     ],
     example: {
       lang: 'ts',
-      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  cache: { scope: process.env['CI'] ? 'trusted' : 'read-only' },\n})",
+      code: "// vx.workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  cache: { scope: process.env['PR'] ? 'pr-' + process.env['PR'] : undefined },\n})",
     },
     image: 'cache-scope.png',
-    imageAlt: 'Trusted CI writing the remote cache, a laptop only reading.',
+    imageAlt: 'CI writing the remote cache, a laptop only reading.',
     docs: {
       label: 'cache.scope',
       href: 'schema/',
@@ -1690,9 +1690,9 @@ export const MORE: readonly Feature[] = [
     slug: 'ref-cache-scope',
     title: 'Cache scope from the branch',
     category: 'ci',
-    hook: 'On Actions, main writes trusted cache entries and a pull request writes only its own.',
+    hook: 'On Actions, main writes the default cache entries and a pull request writes only its own.',
     body: [
-      'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the ref: the default branch is trusted, a pull request gets a scope of its own.',
+      'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the ref: the default branch writes the default entries, a pull request gets a scope of its own.',
       'No config needed; set `cache.scope` yourself to override it.',
     ],
     example: {

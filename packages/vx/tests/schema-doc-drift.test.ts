@@ -571,10 +571,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     "run.affectedBase must be a git ref like 'origin/main'",
     workspaceConfig('{ run: { affectedBase: "--output=x" } }'),
   ],
-  [
-    "cache.scope must be 'trusted', 'read-only', or a scope name of <rule>",
-    workspaceConfig('{ cache: { scope: "pr 123" } }'),
-  ],
+  ['cache.scope must be a scope name of <rule>', workspaceConfig('{ cache: { scope: "pr 123" } }')],
   [
     'cache.retention names neither olderThan nor maxSize',
     workspaceConfig('{ cache: { retention: {} } }'),
