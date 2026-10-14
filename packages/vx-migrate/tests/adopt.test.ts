@@ -258,6 +258,32 @@ async function solidShaped(): Promise<{ root: string; env: Record<string, string
   return { root, env }
 }
 
+/** What the fake pnpm would have installed: the native run ends with
+ *  `vx lock`, which loads the plugins the workspace declares. Stand-ins, as
+ *  the sandbox lets this suite read no other package but core. */
+async function installPlugins(root: string): Promise<void> {
+  const scope = path.join(root, 'node_modules', '@vzn')
+  await mkdir(scope, { recursive: true })
+  await symlink(path.resolve(import.meta.dir, '..', '..', 'vx'), path.join(scope, 'vx'))
+  for (const [pkg, factories] of [
+    ['vx-lockfile', ['pnpm', 'bun', 'npm', 'yarn']],
+    ['vx-schedule-history', ['scheduleHistoryPlugin']],
+  ] as const) {
+    await mkdir(path.join(scope, pkg))
+    await writeFile(
+      path.join(scope, pkg, 'package.json'),
+      JSON.stringify({ name: `@vzn/${pkg}`, type: 'module', main: 'index.js' }),
+    )
+    await writeFile(
+      path.join(scope, pkg, 'index.js'),
+      "import { definePlugin } from '@vzn/vx'\n" +
+        factories
+          .map((f) => `export const ${f} = () => definePlugin(import.meta, { setup() {} })\n`)
+          .join(''),
+    )
+  }
+}
+
 async function migrate(root: string, env: Record<string, string>, args: string[]) {
   // --no-install, as the bin's shebang runs it.
   const proc = Bun.spawn([process.execPath, '--no-install', BIN, ...args], {
@@ -283,12 +309,7 @@ describe('vx-migrate ends with the lock', () => {
   it('writes vx-lock.json once the plugins resolve; --no-install leaves it to vx lock', async () => {
     const { root, env } = await solidShaped()
     try {
-      await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
-      for (const pkg of ['vx', 'vx-lockfile', 'vx-schedule-history'])
-        await symlink(
-          path.resolve(import.meta.dir, '..', '..', pkg),
-          path.join(root, 'node_modules', '@vzn', pkg),
-        )
+      await installPlugins(root)
       const skipped = await migrate(root, env, ['--no-install', '--dry'])
       expect(skipped.out).not.toContain('vx lock:')
       const r = await migrate(root, env, [])
@@ -607,13 +628,7 @@ describe('vx init in a Turbo repo', () => {
             path.resolve(import.meta.dir, '..'),
             path.join(root, 'node_modules', '@vzn', 'vx-migrate'),
           )
-          // What the fake pnpm would have installed: the native run ends
-          // with `vx lock`, which loads the plugins the workspace declares.
-          for (const pkg of ['vx', 'vx-lockfile', 'vx-schedule-history'])
-            await symlink(
-              path.resolve(import.meta.dir, '..', '..', pkg),
-              path.join(root, 'node_modules', '@vzn', pkg),
-            )
+          await installPlugins(root)
           const r = await init(root, env, keep ? ['--keep'] : [])
           const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
           expect([
