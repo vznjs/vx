@@ -22,8 +22,13 @@ import { Cache } from '../src/cache/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { teardownPlugins } from '../src/orchestrator/plugin-host.js'
-import { planRun, run, type Logger } from '../src/index.js'
-import { createEventBus } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/index.js'
+import { lock, planRun, run } from './helpers/orchestrator.js'
+import {
+  createEventBus,
+  planRun as planFromLock,
+  run as runFromLock,
+} from '../src/orchestrator/index.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
 
 /** Short enough that a hung plugin does not hold the suite for 3s. */
@@ -241,7 +246,7 @@ describe('the lifecycle is reached on a run that FAILED', () => {
 // at the end of every run (item 849). The CLI in a child, since the exit is
 // the subject.
 describe('the lifecycle is reached on a run a signal stops', () => {
-  const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+  const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
   let root: string
 
   beforeEach(async () => {
@@ -578,6 +583,10 @@ describe('the lifecycle is reached on a run that never started', () => {
 
   it('a stage that throws inside prepareRun tears every plugin down (item 1029)', async () => {
     // The factories ran and the cache was open; the throw left both.
+    // `vx lock` runs the graph stage too, so the lock is written before
+    // the stage throws, and the run and plan read it as is.
+    await withPlugins('')
+    await lock(root)
     await withPlugins(`graph() { throw new Error('graph boom') },`)
     const close = Cache.prototype.close
     const closes = spyOn(Cache.prototype, 'close').mockImplementation(function (this: Cache) {
@@ -585,9 +594,19 @@ describe('the lifecycle is reached on a run that never started', () => {
       close.call(this)
     })
     try {
-      expect(await settle(runT())).toContain('graph boom')
       expect(
-        await settle(planRun({ cwd: root, projects: ['a'], tasks: ['t'], log: quiet })),
+        await settle(
+          runFromLock({
+            cwd: root,
+            projects: ['a'],
+            tasks: ['t'],
+            log: quiet,
+            handleSignals: false,
+          }),
+        ),
+      ).toContain('graph boom')
+      expect(
+        await settle(planFromLock({ cwd: root, projects: ['a'], tasks: ['t'], log: quiet })),
       ).toContain('graph boom')
     } finally {
       closes.mockRestore()

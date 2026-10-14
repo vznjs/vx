@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 let root: string
 

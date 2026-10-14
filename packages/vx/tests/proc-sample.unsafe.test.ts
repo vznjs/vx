@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { psTimeMs, sampleTrees } from '../src/exec/proc-sample.js'
-import { run } from '../src/index.js'
+import { run } from './helpers/orchestrator.js'
 import {
   createTelemetrySource,
   type RunContextRecord,

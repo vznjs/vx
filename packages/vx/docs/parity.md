@@ -103,6 +103,6 @@ deliberate divergence is marked **≠** and explained.
   reasoning: union not intersection under § Deliberate divergences,
   cleaned-not-additive outputs under § Where vx is ahead.
 - What neither runner does and vx does — the
-  resolved-config hash, `vx lock` + `vx run --frozen`, `vx why`, restore-ahead
+  resolved-config hash, `vx lock` (runs read only the lock), `vx why`, restore-ahead
   scheduling — is `docs/comparison.md` § Where vx is ahead; the parity
   map lists only what a user of the other runner would look for.

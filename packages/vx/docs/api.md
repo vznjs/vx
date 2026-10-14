@@ -1842,7 +1842,6 @@ export interface RunOptions {
   remoteRequested?: boolean
   cacheScope?: string
   remoteReadOnlyByDefault?: boolean
-  frozen?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   flow?: 'focused' | 'broad'
@@ -1955,7 +1954,6 @@ export interface RunSettings {
   killGrace?: Duration
   teardownTimeout?: Duration
   readyNotice?: Duration
-  frozen?: boolean
   rules?: WorkspaceRules
 }
 ```

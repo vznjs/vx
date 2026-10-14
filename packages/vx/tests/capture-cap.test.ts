@@ -14,7 +14,8 @@ import {
   droppedOutputLine,
   runCommand,
 } from '../src/exec/runner.js'
-import { run, type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { gitIn, makeWorkspace, addProject } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000

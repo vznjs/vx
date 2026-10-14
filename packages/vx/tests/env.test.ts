@@ -10,7 +10,7 @@ import {
 } from '../src/exec/env.js'
 import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
 import { resolveInputs } from '../src/cache/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 describe('buildIsolatedEnv', () => {

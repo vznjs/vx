@@ -13,11 +13,10 @@
 //   one edited     — one package's source changed per rep (one miss, every
 //                    other task a hit: the edit-and-rerun dev loop)
 //
-// vx is invoked as a real subprocess (`bun src/bin.ts run build --all
-// --frozen`, or the same through `$VX_BIN`) so process startup and discovery
-// are included — the same costs a user pays. It runs from a `vx lock`
-// snapshot taken once before the reps, as CI would; a config edit after it
-// is re-locked explicitly (`vx lock`), never by the bench. The source path
+// vx is invoked as a real subprocess (`bun src/bin.ts run build --all`, or
+// the same through `$VX_BIN`) so process startup and discovery are
+// included — the same costs a user pays. It runs from a `vx lock` snapshot
+// taken once before the reps, as every run does. The source path
 // pays ~40 ms of transpile per run that the `--bytecode` release binary
 // does not (measured 2026-09-09 on a two-package workspace: 114 vs
 // 71 ms), so a small-workspace number should be taken through VX_BIN.
@@ -55,7 +54,7 @@ async function vx(cwd: string, args: readonly string[]): Promise<number> {
   return (Bun.nanoseconds() - t0) / 1e6
 }
 
-const vxRun = (cwd: string) => vx(cwd, ['run', 'build', '--all', '--frozen'])
+const vxRun = (cwd: string) => vx(cwd, ['run', 'build', '--all'])
 
 const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-bench-'))
 const gen = Bun.spawnSync({

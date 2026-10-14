@@ -9,7 +9,7 @@ import { parseLastArgs } from '../src/cli/last.js'
 import { formatRunList, formatTaskRows } from '../src/cli/last.js'
 import type { RunSummaryRow } from '../src/orchestrator/index.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 const APP_CONFIG = `

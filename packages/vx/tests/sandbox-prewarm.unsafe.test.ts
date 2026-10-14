@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const available = await sandboxAvailable('sandbox prewarm test')
 const bwrap = Bun.which('bwrap')
 
@@ -109,6 +109,9 @@ const r = await run({ cwd: ${JSON.stringify(root)}, tasks: ['app#check'], handle
 console.log('ok=' + r.ok)
 `,
       )
+      // run() reads only the lock.
+      const vx = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+      expect(Bun.spawnSync({ cmd: [process.execPath, vx, 'lock'], cwd: root }).exitCode).toBe(0)
       const r = Bun.spawnSync({
         cmd: [process.execPath, embedder],
         cwd: root,

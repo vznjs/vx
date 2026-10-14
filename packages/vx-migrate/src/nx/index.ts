@@ -545,6 +545,9 @@ async function graphInputKey(
   // and stays in.
   const nxCache = (p: string): boolean =>
     p.startsWith('.nx/cache/') || p.startsWith('.nx/workspace-data/')
+  // vx's own directory (the lock `vx lock` rewrites, the workspace file):
+  // Nx reads nothing there, and under a root project each lock re-exported.
+  const vxDir = (p: string): boolean => p.startsWith('.vx/')
   // What can move the graph: a file under a project root (its sources, the
   // configs a plugin infers targets from), or a root file Nx reads. A task's
   // stray write at the root (a report, a log) is not, and counting it
@@ -556,7 +559,9 @@ async function graphInputKey(
     p.endsWith('/project.json') ||
     roots.some((r) => r === '' || p.startsWith(`${r}/`)) ||
     (!p.includes('/') && ROOT_GRAPH_FILE.test(p))
-  const listed = [...new Set(changed.filter((p) => !inCache(p) && !nxCache(p) && graphFile(p)))]
+  const listed = [
+    ...new Set(changed.filter((p) => !inCache(p) && !nxCache(p) && !vxDir(p) && graphFile(p))),
+  ]
   // A manifest needs no read of its own: git lists it when it is edited, and
   // HEAD moves when an edit is committed (reading all 2,000 cost 50 ms at
   // 1,000 projects). nx.json's chain does: a base may sit in node_modules,

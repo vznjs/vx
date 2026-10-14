@@ -86,7 +86,7 @@ export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
-  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and .vx/lock.json under --frozen
+  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims and .vx/projects.lock.json
   fenced?: (ownDir: string, abs: string) => boolean,
 ): (filename: string) => boolean
 export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean // inside a configured project nested under ownDir, its own config aside
@@ -252,13 +252,13 @@ are refused too: they format one run's result.
      `tests/watch-loop.test.ts`). The outputs come from the run
      path's staged load (`sweepConfigs` → `loadProjects`), so an
      output a `project` plugin gave a config-less package is ignored
-     like a declared one, and a pure config is served from its cached
-     evaluation; a config that fails to load drops the sweep to the
+     like a declared one, and each config is read from `.vx/projects.lock.json`;
+     a config that fails to load drops the sweep to the
      files that do load. The sweep's load is also what
      `watchedProjects` reads the cross edges from, so a watch start is
      the initial run's scoped load plus one sweep, not a third load;
      and the options every cycle re-runs carry no `staged` map — a
-     cycle after an edit evaluates live (`tests/staged-once.test.ts`).
+     cycle reloads from the lock afresh (`tests/staged-once.test.ts`).
    - Catch UNDECLARED writes by settled state — a file's bytes, a
      directory's entry names and sizes, absence — judged one debounce
      window after events stop, and never while a cycle runs (its own
@@ -414,7 +414,7 @@ settled state), `tests/watch-loop-selfwrite.test.ts` (a file rewritten
 with different bytes every run), `tests/watch-signals.test.ts` (SIGINT
 and SIGTERM during the initial run and a cycle; a Ctrl-C reaches the
 cycle's task and the held dev server as SIGINT), and
-`tests/staged-once.test.ts` (a cycle evaluates live).
+`tests/staged-once.test.ts` (a cycle loads afresh).
 
 ## Replacing this module
 

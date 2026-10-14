@@ -3,7 +3,7 @@
 // workspace (~330 ms a run on vercel/ai). It keys on the names a wildcard
 // can match, and on those core cannot key.
 import { describe, expect, it } from 'bun:test'
-import { planRun } from '@vzn/vx'
+import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
 

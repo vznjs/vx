@@ -9,7 +9,7 @@ import path from 'node:path'
 import { describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import { createSaveLane } from '../src/orchestrator/save-lane.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 

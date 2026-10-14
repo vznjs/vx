@@ -61,16 +61,17 @@ terminal and a task succeeding or failing. Read it alongside
  │       task's cache key) and `files` (the bytes, for the mid-run
  │       fingerprint check).
  │    7. SCOPED config loading — only in-scope projects plus their
- │       transitive dependency closure evaluate ('^task' frontier
+ │       transitive dependency closure load ('^task' frontier
  │       expansion never escapes the closure); one staged load,
- │       loadProjects, shared with every reading verb. Under --frozen,
- │       configs load from .vx/lock.json — no evaluation, no staleness
- │       check of its own (vx lock --check is the audit), frozen-env
- │       semantics; a missing lock or entry is a hard UserError.
- │       Otherwise loadProjectConfigs in one batch: native Bun await
- │       import() with a content-hash query-string bust, cached
- │       evaluations served for pure configs; the loader validates
- │       each TaskConfig shape, and the plugin `project` stage runs
+ │       loadProjects, shared with every reading verb. A run's configs
+ │       load from .vx/projects.lock.json — no evaluation, no staleness check
+ │       of its own (vx lock --check is the audit), frozen-env
+ │       semantics; a missing lock or entry is a hard UserError. The
+ │       verbs that evaluate (vx lock, the readers) use
+ │       loadProjectConfigs in one batch: native Bun await import()
+ │       with a content-hash query-string bust, cached evaluations
+ │       served for pure configs; the loader validates each
+ │       TaskConfig shape. Either way the plugin `project` stage runs
  │       on each config with a re-validation after every plugin.
  │    8. computeNestedProjectDirs — set of projects rooted inside each
  │       project, computed over EVERY config-bearing project (loaded

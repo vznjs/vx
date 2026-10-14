@@ -12,7 +12,6 @@
 // per-task input globs — the cache key is the source of truth, and
 // filtering would mean re-doing the glob/boundary work on every event.
 
-import { settleFrozen } from './frozen.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseRunArgs, resolveRunOptions, type RunArgs } from './run.js'
@@ -103,9 +102,6 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`${refused}\n`)
     return 1
   }
-  const frozen = await settleFrozen(process.cwd(), parsed.frozenFlag)
-  if (typeof frozen === 'number') return frozen
-  parsed.frozen = frozen
   if (parsed.tasks.length === 0) {
     process.stderr.write(
       `vx watch: missing task name (vx watch <task>, e.g. vx watch build)${seeHelp('watch')}\n`,
@@ -270,16 +266,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
 
     const load: CliLoadOptions = {
       ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
-      ...(opts.frozen === true ? { frozen: true } : {}),
+      fromLock: true,
     }
     const swept = await sweepConfigs(allProjects, workspaceRoot, load, opts.tasks)
     const watched = await watchedProjects(workspaceRoot, allProjects, scope, load, swept.staged)
     const ws = await loadCliWorkspace(workspaceRoot)
     const claimsOf = (plugins: Parameters<typeof fingerprintClaims>[0]): Set<string> =>
-      new Set([
-        ...fingerprintClaims(plugins).keys(),
-        ...(opts.frozen === true ? [LOCKFILE_NAME] : []),
-      ])
+      new Set([...fingerprintClaims(plugins).keys(), LOCKFILE_NAME])
     await runWatchLoop({
       opts,
       held,
@@ -325,7 +318,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
           fenceDirs: fenceDirs(all),
         }
       },
-      // Under --frozen every cycle's configs are the lock's, so a re-lock is
+      // Every cycle's configs are the lock's, so a re-lock is
       // the one edit that changes what a cycle runs; unheard, the loop ran
       // the old lock until a restart (item 971).
       claimedRootFiles: claimsOf(ws.plugins),

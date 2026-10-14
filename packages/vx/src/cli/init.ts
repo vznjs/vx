@@ -345,11 +345,16 @@ async function adopt(
     )
     return 0
   }
+  const next = adoptionNext(root, runner, source, needs)
   process.stdout.write(
-    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.\n` +
-      `${wrote}\n${cacheLine}\nnext: ${adoptionNext(root, runner, source, needs)}\n`,
+    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.\n` +
+      `${wrote}\n${cacheLine}\n`,
   )
-  return 0
+  // A run reads only the lock; with the plugin installed it is written now,
+  // else `next` names `vx lock` after the install.
+  const code = args.dry || next.includes(' lock && ') ? 0 : await lockAfterMigration(root)
+  process.stdout.write(`next: ${next}\n`)
+  return code
 }
 
 const REMOTE_CACHE = { turbo: 'turboCache', nx: 'nxCache' } as const
@@ -528,7 +533,7 @@ export function adoptionNext(
   const install = installCommand(root, pm)
   // A source checkout is 0.0.0, which npm never had.
   const pinned = version === '0.0.0' ? missing : missing.map((p) => `${p}@${version}`)
-  return `${install} ${pinned.join(' ')} && ${run}`
+  return `${install} ${pinned.join(' ')} && ${vx} lock && ${run}`
 }
 
 function readText(file: string): string {

@@ -1,10 +1,10 @@
-// A committed `.vx/lock.json` is a 1.0 contract surface
+// A committed `.vx/projects.lock.json` is a 1.0 contract surface
 // (docs/design/versioning-1.0.md): users check it in, and CI runs
-// `vx lock --check && vx run … --frozen` against it. `tests/contract/
-// .vx/lock.json` is the lock this vx writes for one fixture workspace. A
+// `vx lock --check && vx run …` against it. `tests/contract/
+// .vx/projects.lock.json` is the lock this vx writes for one fixture workspace. A
 // later vx must write the same bytes (so a format change is a reviewed diff
 // of that file) and must accept the committed one: `--check` passes and
-// `--frozen` runs from it. A change to the entry shape, or to
+// a run reads it. A change to the entry shape, or to
 // `LOCKFILE_VERSION`, fails here before it fails every user's CI.
 // The last field, `validated`, is a digest under vx's version: it is the
 // one line another vx writes differently, and a reader never requires it.
@@ -18,6 +18,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
+// The real CLI: a run here must read the committed lock, not re-lock first.
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const RECORD = path.join(import.meta.dir, 'contract', 'lock.json')
 
@@ -74,24 +75,24 @@ afterAll(async () => {
 
 it('vx lock writes tests/contract/lock.json byte for byte', () => {
   expect(vx('ci', 'lock').code).toBe(0)
-  const live = readFileSync(path.join(root, '.vx/lock.json'), 'utf8')
+  const live = readFileSync(path.join(root, '.vx/projects.lock.json'), 'utf8')
   if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
     writeFileSync(RECORD, live)
   }
   expect(live).toBe(readFileSync(RECORD, 'utf8'))
 })
 
-it('the committed lock passes --check and drives a --frozen run', () => {
-  writeFileSync(path.join(root, '.vx/lock.json'), readFileSync(RECORD, 'utf8'))
+it('the committed lock passes --check and drives a run', () => {
+  writeFileSync(path.join(root, '.vx/projects.lock.json'), readFileSync(RECORD, 'utf8'))
   const check = vx('ci', 'lock', '--check')
   expect([check.code, check.out]).toEqual([0, check.out])
   // Run under another mode: a live evaluation would print `app local`, so
   // `app ci` proves the config came from the lock.
-  const frozen = vx('local', 'run', 'build', '--all', '--frozen', '--output-logs=full')
-  expect(frozen.code).toBe(0)
+  const run = vx('local', 'run', 'build', '--all', '--output-logs=full')
+  expect(run.code).toBe(0)
   expect(
     ['app ci', 'app local', 'lib'].filter(
-      (s) => frozen.out.includes(`echo ${s}`) || frozen.out.includes(s),
+      (s) => run.out.includes(`echo ${s}`) || run.out.includes(s),
     ),
   ).toEqual(['app ci', 'lib'])
 }, 30_000)

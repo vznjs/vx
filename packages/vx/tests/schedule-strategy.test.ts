@@ -105,7 +105,7 @@ describe('schedule strategy', () => {
 })
 
 describe('schedule in .vx/workspace.mjs reaches the run', () => {
-  const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+  const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
   const config = `const t = (n, deps = []) => ({ dependsOn: deps, exec: { command: 'echo ' + n + ' >> ../../order.txt' } })
 export default { tasks: { solo: t('solo'), deep: t('deep'), d1: t('d1', ['deep']), d2: t('d2', ['d1']), all: { dependsOn: ['solo', 'd2'] } } }
 `

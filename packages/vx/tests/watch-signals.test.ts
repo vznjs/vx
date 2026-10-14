@@ -11,7 +11,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { describePid, isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+
+/** `vx lock` in `root`, without the review copies: a cycle reads its configs from the lock. */
+function lock(root: string): void {
+  const r = Bun.spawnSync(
+    [process.execPath, path.resolve(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
+    { cwd: root, stderr: 'pipe', env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' } },
+  )
+  if (r.exitCode !== 0) throw new Error(`vx lock: ${r.stderr.toString()}`)
+}
 
 async function waitForPid(file: string, timeoutMs: number): Promise<number> {
   const deadline = Date.now() + timeoutMs
@@ -163,7 +172,8 @@ describe('vx watch under a signal (e2e)', () => {
 
   // WD-22: the server's TERM trap writes got.txt, then takes 0.6 s to exit,
   // so the SIGINT lands while the cycle is still stopping it. A server is
-  // stopped only when its own config changed, so the edit is to that.
+  // stopped only when its own locked config changed, so the edit is to
+  // that and the re-lock starts the cycle; the edit's own cycle keeps it.
   it('SIGINT while a cycle stops the held server runs no cycle after it', async () => {
     const config = (nap: string): string => `
         export default {
@@ -191,13 +201,17 @@ describe('vx watch under a signal (e2e)', () => {
     })()
     await waitForText(async () => out, 'watching', 10_000)
     await Bun.write(path.join(dir, 'vx.config.mjs'), config('0.06'))
+    // One `time` line per run's summary: the edit's cycle has ended.
+    const runsEnded = (): number => out.split('\n  time ').length - 1
+    await waitForText(async () => (runsEnded() === 2 ? 'yes' : ''), 'yes', 10_000)
+    lock(root)
     const got = path.join(dir, 'got.txt')
     await waitForText(async () => ((await Bun.file(got).exists()) ? 'yes' : ''), 'yes', 10_000)
     proc.kill('SIGINT')
     expect(await proc.exited).toBe(0)
     await reader
     const after = out
-      .slice(out.indexOf('re-running...'))
+      .slice(out.lastIndexOf('re-running...'))
       .split('\n')
       .slice(1)
       .filter((l) => l.trim() !== '' && !l.startsWith('app#dev │'))
@@ -206,7 +220,9 @@ describe('vx watch under a signal (e2e)', () => {
 
   // A config that does not parse at start ended watch with exit 1, while
   // the same break mid-watch was a failed cycle the fix re-ran (item 1017).
-  it('a config broken at start is a failed cycle: watch keeps watching, and the fix re-runs', async () => {
+  // `vx lock` refuses the break and writes no lock, so the cycle fails on
+  // that, and the fix runs once locked.
+  it('a config broken at start is a failed cycle: watch keeps watching, and the locked fix re-runs', async () => {
     const dir = await addProject(root, 'app', `export default { tasks: {`)
     const proc = Bun.spawn([process.execPath, BIN, 'watch', 'quick', '--all'], {
       cwd: root,
@@ -223,12 +239,13 @@ describe('vx watch under a signal (e2e)', () => {
         for await (const chunk of proc.stderr) err += new TextDecoder().decode(chunk)
       })(),
     ]
-    await waitForText(async () => err, 'vx watch: cycle failed:', 10_000)
+    await waitForText(async () => err, 'vx watch: cycle failed: no lock: run `vx lock`', 10_000)
     await waitForText(async () => out, 'watching', 10_000)
     await Bun.write(
       path.join(dir, 'vx.config.mjs'),
       `export default { tasks: { quick: { exec: { command: 'echo fixed > fixed.txt' } } } }`,
     )
+    lock(root)
     await waitForText(
       async () => ((await Bun.file(path.join(dir, 'fixed.txt')).exists()) ? 'yes' : ''),
       'yes',

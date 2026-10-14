@@ -1,19 +1,19 @@
-// Unit tests for `src/workspace/lockfile.ts` — the `.vx/lock.json` boundary and
+// Unit tests for `src/workspace/lockfile.ts` — the `.vx/projects.lock.json` boundary and
 // the frozen-config trust model.
 //
 // `tests/lock.test.ts` drives `vx lock` end-to-end through the real CLI (three
 // tests). This file covers the layer underneath, which is where the rules
 // actually live, and it matters for two reasons:
 //
-//   1. `.vx/lock.json` is a COMMITTED, HAND-EDITABLE file. That makes
+//   1. `.vx/projects.lock.json` is a COMMITTED, HAND-EDITABLE file. That makes
 //      `readLockfile` a system boundary in this codebase's sense — the one
 //      place validation is not merely allowed but required. Its own docstring
 //      says so. Every rejection there is a message a user reads while their CI
 //      is red, so the messages are asserted, not just the throws.
 //
 //   2. `frozenProjectConfig` implements a deliberate ASYMMETRY that is easy to
-//      mistake for a bug and "fix": a `--frozen` run TRUSTS the lock and does
-//      no staleness check, while `vx lock --check` audits it by full
+//      mistake for a bug and "fix": every run TRUSTS the lock and does no
+//      staleness check, while `vx lock --check` audits it by full
 //      re-evaluation, and a run validates no entry either. The consequence is
 //      that a hand-tampered lock IS executed.
 //      That is the documented trust model — the 2026-07-26 audit recorded it as
@@ -83,12 +83,11 @@ function lock(over: Partial<Lockfile> = {}): Lockfile {
 }
 
 describe('lockfilePath', () => {
-  it('is .vx/lock.json at the workspace root', () => {
+  it('is .vx/projects.lock.json at the workspace root', () => {
     // The name is part of the user contract — it is committed, it appears in
-    // .gitignore discussions, and `--frozen` error messages tell people to
-    // delete it by name.
-    expect(lockfilePath(root)).toBe(path.join(root, '.vx/lock.json'))
-    expect(LOCKFILE_NAME).toBe('.vx/lock.json')
+    // .gitignore discussions, and a run's refusals name it.
+    expect(lockfilePath(root)).toBe(path.join(root, '.vx/projects.lock.json'))
+    expect(LOCKFILE_NAME).toBe('.vx/projects.lock.json')
   })
 })
 
@@ -215,7 +214,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     // considered difference.
     //
     // The old degradation was at least honest — a bogus "0" entry cannot satisfy
-    // a real lookup, so a `--frozen` run failed later at `frozenProjectConfig`
+    // a real lookup, so a run failed later at `frozenProjectConfig`
     // with "has no entry for X" — but it named the wrong thing: the file was
     // malformed, not missing an entry. Refusing at the boundary says so.
     await writeRaw(
@@ -241,7 +240,7 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
 
   it('overwrites rather than merging', async () => {
     // `vx lock` re-freezes the whole workspace; a stale project left behind
-    // from a previous lock would be executed by a later `--frozen` run.
+    // from a previous lock would be executed by a later run.
     await writeLockfile(root, {
       version: LOCKFILE_VERSION,
       projects: { old: CONFIG },
@@ -252,7 +251,7 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
   })
 
   it('replaces the file by rename, never rewriting it in place (item 972)', async () => {
-    // A write in place truncates first, and a `--frozen` reader in between
+    // A write in place truncates first, and a run reading in between
     // reads an empty lock. The inode says which happened: a second name
     // hard-linked to the old lock keeps the old bytes only when the lock
     // was replaced, and nothing but the lock is left in the directory.
@@ -264,17 +263,17 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     expect(await Bun.file(other).text()).toBe(before)
     expect(Object.keys((await readLockfile(root))?.projects ?? {})).toEqual(['pkg'])
     expect((await readdir(root)).sort()).toEqual(['.vx', 'other.json'])
-    expect(await readdir(path.join(root, '.vx'))).toEqual(['lock.json'])
+    expect(await readdir(path.join(root, '.vx'))).toEqual(['projects.lock.json'])
   })
 
   it('a rename that fails leaves no temp behind and rejects (item 972)', async () => {
     // A directory where the lock goes: the rename onto it fails.
     await mkdir(path.join(lockfilePath(root), 'x'), { recursive: true })
     await expect(writeLockfile(root, lock())).rejects.toThrow()
-    expect(await readdir(path.join(root, '.vx'))).toEqual(['lock.json'])
+    expect(await readdir(path.join(root, '.vx'))).toEqual(['projects.lock.json'])
   })
 
-  it('a refused write names .vx/lock.json, not its temp (item 972)', async () => {
+  it('a refused write names .vx/projects.lock.json, not its temp (item 972)', async () => {
     // What a read-only checkout prints comes from this message. A root run
     // is refused no write for permissions, and `Bun.write` makes a missing
     // directory, so a FILE where the root should be stands in for it.
@@ -328,7 +327,7 @@ describe('frozenProjectConfig — the trust model', () => {
         frozenProjectConfig(lock(), { name, configPath: path.join(root, 'x/vx.config.ts') }, root),
       )
       expect(err.message).toBe(
-        `.vx/lock.json has no entry for "${name}" (x/vx.config.ts) — run \`vx lock\` to refresh, or delete .vx/lock.json`,
+        `.vx/projects.lock.json has no entry for "${name}" (x/vx.config.ts) — run \`vx lock\``,
       )
     }
   })
@@ -349,7 +348,7 @@ describe('frozenProjectConfig — the trust model', () => {
   it('DELIBERATE: a hand-tampered stored config IS executed', async () => {
     // The asymmetry, stated as a test so nobody "fixes" it by accident.
     //
-    // A `--frozen` run does NO staleness check. That is on purpose:
+    // A run does NO staleness check. That is on purpose:
     // `vx lock --check` re-evaluates everything, so a byte-hash re-check here
     // would be redundant work AND a weaker guarantee pretending to add safety
     // (a file hash cannot see a config's IMPORT CLOSURE or its env reads,

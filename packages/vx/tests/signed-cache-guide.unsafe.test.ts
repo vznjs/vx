@@ -10,7 +10,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { CORE_INDEX } from './helpers/local-workspace.js'
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 const GUIDE = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/guides/plugins.md')
 

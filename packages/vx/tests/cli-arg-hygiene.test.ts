@@ -14,7 +14,7 @@ import path from 'node:path'
 import { parseRunArgs } from '../src/cli/run.js'
 import { parseConcurrency } from '../src/settings.js'
 import { parseDuration, parsePruneArgs, parseSize } from '../src/cli/cache.js'
-import { run } from '../src/cli/index.js'
+import { run } from './helpers/cli.js'
 
 describe('--cache-policy spec validation', () => {
   it('rejects an empty spec instead of silently leaving caching FULL', () => {

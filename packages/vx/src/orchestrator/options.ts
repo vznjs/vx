@@ -48,7 +48,7 @@ export interface RunOptions {
   affectedReasons?: Map<string, AffectedReason>
   /**
    * Configs a selection pass in this same process already loaded and
-   * staged with the same `cacheDir` and `frozen` (the CLI walks every
+   * staged with the same `cacheDir` (the CLI walks every
    * `pkg#task` edge for `--filter 'app...'` and `--affected`). The run
    * seeds and scopes as it always does and reuses these entries instead
    * of evaluating and staging them again. One run only — never carry a
@@ -101,15 +101,6 @@ export interface RunOptions {
    * `cache.policy` names the remote.
    */
   remoteReadOnlyByDefault?: boolean
-  /**
-   * CI mode: load configs FROM the committed .vx/lock.json instead of
-   * evaluating them (frozen-env reproducibility). Requires the lock
-   * to exist and pass its content-hash tripwire. Local runs default
-   * to live evaluation — byte hashes can't see a config's import
-   * closure, so a strict local mode would give false confidence.
-   * Pair with `vx lock --check` in CI for the full evaluation audit.
-   */
-  frozen?: boolean
   /**
    * Explicit per-task output volume for the default logger. ALWAYS
    * overrides the flow default. 'full': frames for work + one-liners

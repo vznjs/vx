@@ -8,6 +8,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { addProject } from './helpers/workspace.js'
 import {
+  BIN,
   SETTLE_MS,
   executions,
   initialOnly,
@@ -18,6 +19,16 @@ import {
 
 describe('vx watch loop (e2e): the watched set', () => {
   const f = useWatchFixture()
+  // A cycle's configs are the lock's: a config a running watch should see
+  // takes a re-lock, which is itself a cycle.
+  const relock = (): void => {
+    const r = Bun.spawnSync([process.execPath, BIN, 'lock'], {
+      cwd: f.root,
+      stderr: 'pipe',
+      env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+    })
+    if (r.exitCode !== 0) throw new Error(`vx lock: ${r.stderr.toString()}`)
+  }
 
   it('a package added under a running watch is a cycle that runs it, and its edits are cycles from then on', async () => {
     // Its directory appears as one entry under `packages/` — the glob's
@@ -46,6 +57,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
     await mkdir(path.join(bDir, 'src'), { recursive: true })
     await writeFile(path.join(bDir, 'src', 'b.txt'), 'b1\n')
+    relock()
     await until(
       async () => (await executions(f.log)) === 2,
       'the cycle after the package was added',
@@ -245,6 +257,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       path.join(bDir, 'package.json'),
       JSON.stringify({ name: 'b', version: '0.0.0' }),
     )
+    relock()
     await until(async () => (await executions(f.log)) === 2, 'the cycle after the manifest')
     await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'the re-armed set')
     await Bun.sleep(SETTLE_MS)
@@ -314,6 +327,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         },
       }\n`,
     )
+    relock()
     await until(
       () => w.out().includes('vx watch: watching the workspace root'),
       'the swap to the root watcher',
@@ -354,6 +368,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       path.join(f.dir, 'inputs.mjs'),
       inputs(", workspaceFiles: ['tsconfig.base.json']"),
     )
+    relock()
     await until(
       () => w.out().includes('vx watch: watching the workspace root'),
       'the swap to the root watcher',
@@ -382,6 +397,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     expect(await tags()).toEqual([])
 
     await edit()
+    relock()
     await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'c joins the set')
     await Bun.sleep(SETTLE_MS)
     expect(await tags()).toEqual(['c'])
@@ -395,6 +411,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     await writeFile(path.join(app('d'), 'vx.config.mjs'), buildLogging('d'))
     await writeFile(path.join(app('d'), 'src', 'd.txt'), 'd1\n')
     await writeFile(path.join(app('d'), 'package.json'), '{"name":"d","version":"0.0.0"}')
+    relock()
     await until(() => w.out().includes('vx watch: watching 3 project(s)'), 'd joins the set')
     await until(async () => (await tags()).includes('d'), 'the cycle that runs d')
   }
@@ -418,10 +435,10 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
   }, 40_000)
 
-  it('a package added with a broken config is watched, so the fix to its config is a cycle', async () => {
-    // The cycle the new package starts fails to load its config; the re-read
-    // that arms the package ran only after a cycle that loaded, so the fix,
-    // written inside a package nothing watched, was silence.
+  it('a package added with a broken config is watched: the lock refuses it, and once fixed and locked its edits are cycles', async () => {
+    // The cycle the new package starts fails: its config is not in the lock.
+    // The re-read that arms the package ran only after a cycle that loaded,
+    // so an edit inside it after the fix was silence.
     f.watch = startWatch(f.root)
     const w = f.watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
@@ -430,9 +447,10 @@ describe('vx watch loop (e2e): the watched set', () => {
     const bDir = await addProject(f.root, 'b', 'export default {\n')
     await until(
       () => w.err().includes('vx watch: cycle failed'),
-      'the cycle over the broken config',
+      'the cycle over the unlocked package',
     )
     await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'b joins the set')
+    expect(() => relock()).toThrow('vx lock: ')
 
     await mkdir(path.join(bDir, 'src'), { recursive: true })
     await writeFile(path.join(bDir, 'src', 'b.txt'), 'b1\n')
@@ -447,8 +465,14 @@ describe('vx watch loop (e2e): the watched set', () => {
         },
       }\n`,
     )
+    relock()
     await until(async () => (await executions(f.log)) === 2, 'the cycle after the fix')
     await Bun.sleep(SETTLE_MS)
     expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b1\n')
+
+    await writeFile(path.join(bDir, 'src', 'b.txt'), 'b2\n')
+    await until(async () => (await executions(f.log)) === 3, 'the cycle after an edit in b')
+    await Bun.sleep(SETTLE_MS)
+    expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b2\n')
   }, 40_000)
 })

@@ -23,7 +23,7 @@ import {
   ScopedCache,
 } from '../src/cache/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const BUILD_CONFIG = `

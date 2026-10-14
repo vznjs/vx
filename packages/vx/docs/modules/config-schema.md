@@ -40,7 +40,7 @@ export function nonJsonMessage(configPath: string, found: NonJsonValue): string
 
 `validateProjectConfig` is the one boundary three readers cross with the
 same object shape: the loader after evaluation, `lockfile.ts` on a frozen
-entry read back from `.vx/lock.json` (a hand-editable file — the same
+entry read back from `.vx/projects.lock.json` (a hand-editable file — the same
 boundary), and `orchestrator/projects.ts` after each plugin's `project`
 edit (a broken edit is refused naming the plugin; there `configPath` is
 that label and `ownConfig` the project's config file, or null with none). `validateWorkspace`

@@ -4,16 +4,16 @@ Empirical overhead numbers vs. Turborepo and Nx on synthetic workspaces.
 Updated as the runners evolve.
 
 Every harness (`compare.ts`, `run.ts`, `ab.ts`, `real/turbo-repo.sh`,
-`real/nx-repo.sh`) runs vx from a `vx lock` snapshot (`--frozen`), the
-lock taken once per workspace before the timed reps, as CI runs vx
+`real/nx-repo.sh`) runs vx from a `vx lock` snapshot, the lock taken
+once per workspace before the timed reps, as every run reads one
 (2026-09-29). A section dated before that ran vx without a lock,
-evaluating every config per run, except rows marked `(frozen)`; the
-2026-09-03 stress run measured both, and its frozen row is now the
+evaluating every config per run, except rows marked `(lock)`; the
+2026-09-03 stress run measured both, and its lock row is now the
 headline `vx`. The harness never re-locks: a config edited after the
 lock is re-locked by running `vx lock` again, and `vx lock --check` is
-what fails loudly on a stale lock (a `--frozen` run trusts it, owner
-2026-06-13, `docs/design/config-lock-2026-06.md`); only a project the
-lock lacks fails the frozen run itself.
+what fails loudly on a stale lock (a run trusts it, owner 2026-06-13,
+`docs/design/config-lock-2026-06.md`); only a project the lock lacks
+fails the run itself.
 
 Only the native-config runs (each runner on the same graph from its own
 config: the stress run, the head-to-heads, the scaling table) measure
@@ -159,8 +159,8 @@ once in a rotated order, min and median per arm, and an A/A arm (the
 same vx twice) as the noise floor. Every arm after the first prints its
 min against the first arm's as a signed percent. An arm is a compiled binary or a
 checkout; the runs see git's defaults and no `BUN_OPTIONS`. A `run` is
-timed `--frozen`: each arm runs `vx lock` in its own copy with its own
-vx once, before the warm-up.
+timed from a `vx lock` snapshot: each arm runs `vx lock` in its own
+copy with its own vx once, before the warm-up.
 
 ```bash
 bun packages/vx-bench/ab.ts 15 base=/tmp/vx-old@/tmp/w1 main=/tmp/vx-new@/tmp/w2 \
@@ -175,8 +175,8 @@ measured with its own core.
 
 `packages/vx-bench/perf-guard.ts` runs in every PR's gate as
 `@vzn/vx-bench#check.perf`. It builds a 25- and a 100-package workspace
-and drives core in-process through five phases: cold run, up-to-date
-run, restore run, plan, one-edit run. Two kinds of number, against
+and drives core in-process through five phases, each from a `vx lock`
+taken first: cold run, up-to-date run, restore run, plan, one-edit run. Two kinds of number, against
 `packages/vx-bench/perf-baseline.json`:
 
 - **Counts**: processes spawned, xxh3 calls, blob-hash updates, SQLite
@@ -184,17 +184,9 @@ run, restore run, plan, one-edit run. Two kinds of number, against
   that grows fails; one that shrinks passes. Statements gated by the
   50 ms racy-mtime windows (the directory snapshots) are left out; they
   move with load.
-- **`--frozen` never does more**: every phase also runs `--frozen` from
-  a `vx lock` (`<phase> --frozen @n`), and any count of it above the
-  same phase's with no lock fails, whatever the baseline says. Time is
-  not held, so the work is the pin of the rule that the lock is never
-  slower. Measured on the 1,090-package bench (2026-10-09): first task
-  cold 320 against 460 ms, warm 337 against 365, restore 745 against
-  761 (min of 5 to 15 interleaved).
 - **Time**, printed only: each timed phase's min over 7 reps at 100
   packages, divided by a calibration loop run between reps, flagged past
-  1.5× the baseline, and each `--frozen` phase's ratio to no lock. It
-  fails nothing: beside the test shards it read 1.97× on a PR that
+  1.5× the baseline. It fails nothing: beside the test shards it read 1.97× on a PR that
   slowed no phase.
 
 Each measure runs in a child with a hermetic environment, since vx
@@ -241,12 +233,12 @@ this machine (macOS arm64, Bun 1.4.0). The harness then gave Nx npm
 where Turbo had bun (§ Why Nx is slower), so the Nx row is slower than a
 fair one. Every runner runs as in CI (`CI=1`), so Nx's daemon is off:
 
-| Runner      | Version | Warm (no restore) | Warm (restore) |
-| ----------- | ------- | ----------------- | -------------- |
-| vx          | 0.0.0   | 76 ms             | 83 ms          |
-| vx (frozen) | 0.0.0   | 83 ms             | 88 ms          |
-| turbo       | 2.10.12 | **71 ms**         | 97 ms          |
-| nx          | 23.2.0  | 540 ms            | 531 ms         |
+| Runner       | Version | Warm (no restore) | Warm (restore) |
+| ------------ | ------- | ----------------- | -------------- |
+| vx (no lock) | 0.0.0   | 76 ms             | 83 ms          |
+| vx (lock)    | 0.0.0   | 83 ms             | 88 ms          |
+| turbo        | 2.10.12 | **71 ms**         | 97 ms          |
+| nx           | 23.2.0  | 540 ms            | 531 ms         |
 
 Read it honestly: at 46 packages Turborepo 2.10 and vx are within a few
 milliseconds of each other on a fully-cached run, and neither keeps a
@@ -265,12 +257,12 @@ with the table above). Turbo 2.11.3 (no daemon for `turbo run`) and Nx
 system of the invocation and every child it waited for; a daemon that
 outlives the invocation would not be counted, and none runs here:
 
-| Runner      | Version | Warm (no restore) | Warm (restore) | CPU, cold |
-| ----------- | ------- | ----------------- | -------------- | --------- |
-| vx          | 0.0.0   | 79 ms             | 104 ms         | 846 ms    |
-| vx (frozen) | 0.0.0   | **74 ms**         | **95 ms**      | 826 ms    |
-| turbo       | 2.11.3  | 86 ms             | 136 ms         | 1.33 s    |
-| nx          | 23.2.1  | 844 ms            | 862 ms         | 43.79 s   |
+| Runner       | Version | Warm (no restore) | Warm (restore) | CPU, cold |
+| ------------ | ------- | ----------------- | -------------- | --------- |
+| vx (no lock) | 0.0.0   | 79 ms             | 104 ms         | 846 ms    |
+| vx (lock)    | 0.0.0   | **74 ms**         | **95 ms**      | 826 ms    |
+| turbo        | 2.11.3  | 86 ms             | 136 ms         | 1.33 s    |
+| nx           | 23.2.1  | 844 ms            | 862 ms         | 43.79 s   |
 
 The ideal schedule is 10.00 s; cold, vx and Turbo both add under half a
 second to it and Nx about 12 s. Warm they are within a few milliseconds at this size (the
@@ -281,22 +273,22 @@ The same harness at **476 packages / 1,428 graph nodes**
 (`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02, same machine; a mid-size data
 point — the committed `packages/vx-bench/RESULTS.md` is § Head to head):
 
-| Runner      | Warm (no restore) | Warm (restore) |
-| ----------- | ----------------- | -------------- |
-| vx          | **297 ms**        | **416 ms**     |
-| vx (frozen) | 285 ms            | 399 ms         |
-| turbo       | 342 ms            | 612 ms         |
-| nx          | 1.38 s            | 1.33 s         |
+| Runner       | Warm (no restore) | Warm (restore) |
+| ------------ | ----------------- | -------------- |
+| vx (no lock) | **297 ms**        | **416 ms**     |
+| vx (lock)    | 285 ms            | 399 ms         |
+| turbo        | 342 ms            | 612 ms         |
+| nx           | 1.38 s            | 1.33 s         |
 
 The same size on the four-core Linux container (2026-09-25, after items
 744, 753 and 754, the fixed harness, median of 1; ideal schedule 1m 36s):
 
-| Runner      | Warm (no restore) | Warm (restore) | CPU, cold |
-| ----------- | ----------------- | -------------- | --------- |
-| vx          | **225 ms**        | **367 ms**     | 7.06 s    |
-| vx (frozen) | 209 ms            | 377 ms         | 6.94 s    |
-| turbo       | 247 ms            | 392 ms         | 13.84 s   |
-| nx          | 1.84 s            | 1.89 s         | 7m 23s    |
+| Runner       | Warm (no restore) | Warm (restore) | CPU, cold |
+| ------------ | ----------------- | -------------- | --------- |
+| vx (no lock) | **225 ms**        | **367 ms**     | 7.06 s    |
+| vx (lock)    | 209 ms            | 377 ms         | 6.94 s    |
+| turbo        | 247 ms            | 392 ms         | 13.84 s   |
+| nx           | 1.84 s            | 1.89 s         | 7m 23s    |
 
 Read it honestly: the 2026-09-24 run on this box had Turbo 2.11 winning
 both warm columns (303 and 446 ms against vx's 376 and 478). Item 744
@@ -376,12 +368,12 @@ macOS machine). The whole 3,270-task shape
 on this box with `nx:run-script` and bun (2026-09-25, after items 744, 753 and
 754, median of 1):
 
-| Runner      | Warm (no restore) | Warm (restore) | CPU, cold   |
-| ----------- | ----------------- | -------------- | ----------- |
-| vx          | **359 ms**        | **653 ms**     | **16.05 s** |
-| vx (frozen) | 292 ms            | 651 ms         | 16.46 s     |
-| turbo       | 431 ms            | 722 ms         | 33.27 s     |
-| nx          | 4.50 s            | 4.60 s         | 20m 55s     |
+| Runner       | Warm (no restore) | Warm (restore) | CPU, cold   |
+| ------------ | ----------------- | -------------- | ----------- |
+| vx (no lock) | **359 ms**        | **653 ms**     | **16.05 s** |
+| vx (lock)    | 292 ms            | 651 ms         | 16.46 s     |
+| turbo        | 431 ms            | 722 ms         | 33.27 s     |
+| nx           | 4.50 s            | 4.60 s         | 20m 55s     |
 
 The day before, Turbo 2.11 won both warm columns here (496 and 856 ms
 against vx's 678 and 971). Item 744 found why: vx's stable-key pass
@@ -437,8 +429,7 @@ does not run, so no edit row compares fairly).
 Same repo, same hardware, same commands, every tool at concurrency 10, each in its own native
 config: Turborepo 2.11.7 (`turbo.json`), Nx 23.3.0 (`nx:run-commands` targets,
 `^` inputs, `.env` loading off), Vite Task (`vp run`, vite-plus 1.1.0, tasks in each `vite.config.ts`).
-vx runs from a `vx lock` snapshot (`--frozen`), as a CI pipeline runs it;
-_vx, no lock_ evaluates every config per run. Both order tasks with
+vx runs from a `vx lock` snapshot, as every vx run does, and orders tasks with
 `scheduleHistoryPlugin({ file: 'vx-timings.json' })`, from timings an earlier
 run recorded; cache wipes keep that file, as CI caches it. This machine: linux x64, 4 cores.
 `bun packages/vx-bench/compare.ts 3`; the committed
@@ -446,12 +437,12 @@ run recorded; cache wipes keep that file, as CI caches it. This machine: linux x
 
 **Time each tool adds over the ideal run:**
 
-|                                       | vx          | vx, no lock | Turborepo | Nx         | Vite Task |
-| ------------------------------------- | ----------- | ----------- | --------- | ---------- | --------- |
-| **Nothing changed**                   | **856 ms**  | 1.18 s      | 855 ms    | 23.22 s    | 11.24 s   |
-| **Nothing changed, outputs restored** | **1.45 s**  | 1.73 s      | 1.50 s    | 21.64 s    | 11.21 s   |
-| **Cold build**                        | **7.73 s**  | 7.82 s      | 10.32 s   | 3 min 23 s | 9.44 s    |
-| **Cold build: CPU the runner burns**  | **36.42 s** | 37.65 s     | 1 min 3 s | 5 min 35 s | 25.64 s   |
+|                                       | vx          | Turborepo | Nx         | Vite Task |
+| ------------------------------------- | ----------- | --------- | ---------- | --------- |
+| **Nothing changed**                   | **856 ms**  | 855 ms    | 23.22 s    | 11.24 s   |
+| **Nothing changed, outputs restored** | **1.45 s**  | 1.50 s    | 21.64 s    | 11.21 s   |
+| **Cold build**                        | **7.73 s**  | 10.32 s   | 3 min 23 s | 9.44 s    |
+| **Cold build: CPU the runner burns**  | **36.42 s** | 1 min 3 s | 5 min 35 s | 25.64 s   |
 
 Time each tool adds over the ideal run; lower is better.
 
@@ -482,7 +473,7 @@ commands, `src/**` inputs and `dist/**` outputs for every runner, then times
 each runner through the three states CI sees: cold, nothing changed and
 outputs restored. Fairness is deliberate: vx runs
 as the **compiled binary** real users install (not TS source), from a
-`vx lock` taken once before the reps (`--frozen`, as CI runs it); the
+`vx lock` taken once before the reps, as every run reads one; the
 workspace is git-committed with `node_modules`/`.turbo`/`.nx` ignored;
 **every runner is pinned to the same concurrency**; and runners are
 measured **strictly one at a time**, daemons stopped between them, so they
@@ -509,27 +500,25 @@ the head-to-head table above (2026-09-03); an earlier run of that shape
 used to sit here with a different verdict on the warm row, and one page
 carrying both was a contradiction, so it is gone.
 
-**`vx lock` + `--frozen`** is the headline `vx` row (since 2026-09-29;
-before, it was its own `vx (frozen)` row): it executes the frozen
-`.vx/lock.json` graph with **zero per-run config evaluation**, and
-`vx (no lock)` keeps the per-run evaluation's cost in view. Read the
-difference as a tie, not a win: since the config-evaluation cache
-(2026-09-02) the plain warm run evaluates nothing either for a config
-the purity gate can prove pure, and it serves the same validated object
-from `cache.db` without re-validating it, while `--frozen` parses the
-whole lock and reads one remembered verdict for it (the lock is
-hand-editable, so it is a boundary; X-181). What frozen still skips is the per-config identity
-stat; what it still pays is the lock's own parse. Measured 2026-09-12
-on the 1,000-project bench, compiled binary, 12 interleaved reps:
-plain min 154 / median 177 ms, frozen 148 / 165 — ~5%, the identity
-stats; the `load configs` stage reads 20–25 ms plain against 6–10 ms
-of lock read plus 12–14 ms of load frozen. The 83 vs 76 ms above
-(2026-09-03, median of 1) is the same tie under a laptop's noise.
-`--frozen` is for what it guarantees — what runs is what was locked,
-whatever a config would read from the environment — and for configs
-the gate cannot prove pure, which evaluate live on every plain run and
-come from the lock under `--frozen`. In your repo: `vx lock`, then
-commit `.vx/lock.json`.
+**`vx lock`** is what the `vx` row runs (since 2026-09-29), as every
+run does: it executes the `.vx/projects.lock.json` graph with **zero per-run
+config evaluation**. The dated rows above that ran with no lock read
+as a tie, not a loss: since the config-evaluation cache (2026-09-02) a
+run with no lock evaluated nothing either for a config the purity gate
+could prove pure, and served the same validated object from `cache.db`
+without re-validating it, while a lock run parses the whole lock and
+reads one remembered verdict for it (the lock is hand-editable, so it
+is a boundary; X-181). What the lock still skips is the per-config
+identity stat; what it still pays is the lock's own parse. Measured
+2026-09-12 on the 1,000-project bench, compiled binary, 12 interleaved
+reps: no lock min 154 / median 177 ms, lock 148 / 165 — ~5%, the
+identity stats; the `load configs` stage read 20–25 ms with no lock
+against 6–10 ms of lock read plus 12–14 ms of load from the lock. The
+83 vs 76 ms above (2026-09-03, median of 1) is the same tie under a
+laptop's noise. The lock is for what it guarantees — what runs is what
+was locked, whatever a config would read from the environment — and
+for configs the gate cannot prove pure, which no run evaluates. In
+your repo: `vx lock`, then commit `.vx/projects.lock.json`.
 
 ## How the overhead scales with the workspace (2026-09-10)
 
@@ -604,8 +593,7 @@ Recorded time runs 1 to 3 take 220.6 s, 220.5 s and 220.5 s.
 
 ## Time to first task, cold (2026-10-09)
 
-From `vx run` to the first task starting, cold, `--frozen` from a
-`vx lock`, on the 1,090-package bench, min of interleaved runs, linux
+From `vx run` to the first task starting, cold, from a `vx lock`, on the 1,090-package bench, min of interleaved runs, linux
 x64, 4 cores, vx from source, Turborepo 2.11.7:
 
 | vx at                                             | First task |
@@ -746,8 +734,8 @@ purity gate it needed (`caching.md` § Config evaluation cache): a config
 whose import closure is provably pure is served validated from
 `cache.db`, keyed on the blob id of every file in the closure; anything
 the gate cannot prove evaluates live. `load configs` is 16–25 ms per
-1,000 configs since. `vx run --frozen` is not a faster version of that
-path (see the head-to-head above, 2026-09-12): it is the env-independent
-one, and the eval-free one for impure configs.
+1,000 configs since. A run from the lock is not a faster version of
+that path (see the head-to-head above, 2026-09-12): it is the
+env-independent one, and the eval-free one for impure configs.
 
 **Source vs binary.** The runner invokes `bun packages/vx/src/bin.ts` by default, which pays ~40 ms of transpile per run that the `--bytecode` release binary does not (2026-09-09: 114 vs 71 ms on a two-package workspace; 20 projects warm 109 vs 64 ms). Set `VX_BIN=<path>` to time the shipped binary instead.

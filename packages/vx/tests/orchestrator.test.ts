@@ -17,7 +17,7 @@ import {
   TIMEOUT,
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { waitForProducers } from './helpers/local-workspace.js'
 
 describe('orchestrator e2e — keys, inputs and invalidation', () => {

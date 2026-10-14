@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { run } from '@vzn/vx'
+import { run } from '../../vx/tests/helpers/orchestrator.js'
 
 const GITHUB_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const ENV = ['GITHUB_TOKEN', 'GITHUB_REPOSITORY', 'GITHUB_SHA', 'GITHUB_API_URL'] as const

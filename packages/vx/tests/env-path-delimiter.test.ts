@@ -9,7 +9,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { buildIsolatedEnv } from '../src/exec/env.js'
 import { shellVerdict } from '../src/orchestrator/shell-verdict.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const D = path.delimiter

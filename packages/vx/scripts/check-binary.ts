@@ -143,6 +143,8 @@ const env: Record<string, string> = {}
 for (const [k, v] of Object.entries(process.env)) {
   if (k !== 'VX_DOTENV_PROBE' && v !== undefined) env[k] = v
 }
+// A run reads only the lock.
+Bun.spawnSync({ cmd: [out, 'lock'], cwd: dotenv, env, stdout: 'pipe', stderr: 'pipe' })
 const probe = Bun.spawnSync({
   cmd: [out, 'run', 'a#probe'],
   cwd: dotenv,
@@ -196,6 +198,13 @@ export default { tasks: { probe: { exec: { command: \`echo "resolved=\${m},\${e}
 `,
 )
 Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: resolve })
+// `vx lock` evaluates the config, so it is the import that must resolve.
+const resolveLock = Bun.spawnSync({
+  cmd: [out, 'lock'],
+  cwd: resolve,
+  stdout: 'pipe',
+  stderr: 'pipe',
+})
 const resolved = Bun.spawnSync({
   cmd: [out, 'run', 'a#probe'],
   cwd: resolve,
@@ -203,7 +212,7 @@ const resolved = Bun.spawnSync({
   stderr: 'pipe',
 })
 rmSync(resolve, { recursive: true, force: true })
-const resolvedOut = text(resolved.stdout) + text(resolved.stderr)
+const resolvedOut = text(resolveLock.stderr) + text(resolved.stdout) + text(resolved.stderr)
 const got2 = /^resolved=(\S+)$/m.exec(resolvedOut)?.[1]
 if (resolved.exitCode !== 0 || got2 !== 'via-main,via-exports') {
   process.stderr.write(
@@ -257,6 +266,7 @@ const git = (...args: string[]): void => {
   })
 }
 git('init', '-q')
+Bun.spawnSync({ cmd: [out, 'lock'], cwd: bare, stdout: 'pipe', stderr: 'pipe' })
 git('add', '-A')
 git('commit', '-qm', 'init')
 const build = () =>

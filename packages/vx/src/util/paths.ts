@@ -19,7 +19,7 @@ export function toPosix(p: string): string {
 export const DOT_VX_GITIGNORE = '/cache\n'
 
 /** `.vx/.gitattributes`' text: GitHub collapses the machine lock in a diff. */
-export const DOT_VX_GITATTRIBUTES = 'lock.json linguist-generated=true\n'
+export const DOT_VX_GITATTRIBUTES = 'projects.lock.json linguist-generated=true\n'
 
 export function relPosix(from: string, to: string): string {
   return toPosix(path.relative(from, to))

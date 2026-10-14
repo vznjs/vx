@@ -13,7 +13,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const RECORD = path.join(import.meta.dir, 'contract', 'exit-codes.json')
 
 /** Each documented outcome: its cli.md section, then the arguments that reach it. */

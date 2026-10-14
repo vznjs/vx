@@ -4,7 +4,19 @@ import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { gitInitCommit } from './helpers/workspace.js'
-import { run, type Logger, type RunOptions } from '../src/orchestrator/index.js'
+import {
+  run as coreRun,
+  type Logger,
+  type RunOptions,
+  type RunSummary,
+} from '../src/orchestrator/index.js'
+import { lock, run } from './helpers/orchestrator.js'
+
+/** Two runs over one lock: the helper's lock flips process.env while it runs, and a concurrent lock refuses that as a config changing a built-in. */
+async function twice(opts: RunOptions): Promise<[RunSummary, RunSummary]> {
+  await lock(opts.cwd)
+  return Promise.all([coreRun(opts), coreRun(opts)])
+}
 
 const silent: Logger = {
   status: () => {},
@@ -124,7 +136,7 @@ describe('in-flight dedup', () => {
     try {
       const inflight = new Map<string, Promise<void>>()
       const opts: RunOptions = { cwd: root, tasks: ['slow'], log: silent, inflight }
-      const [a, b] = await Promise.all([run(opts), run(opts)])
+      const [a, b] = await twice(opts)
       expect(a.ok).toBe(true)
       expect(b.ok).toBe(true)
       // One real execution; the second run joined the first and restored.
@@ -147,7 +159,7 @@ describe('in-flight dedup', () => {
     try {
       const inflight = new Map<string, Promise<void>>()
       const opts: RunOptions = { cwd: root, tasks: ['slow'], log: silent, inflight }
-      const [a, b] = await Promise.all([run(opts), run(opts)])
+      const [a, b] = await twice(opts)
       expect(a.ok).toBe(true)
       expect(b.ok).toBe(true)
       // Exactly one real execution…
@@ -183,7 +195,7 @@ describe('in-flight dedup', () => {
 
       const inflight = new Map<string, Promise<void>>()
       const opts: RunOptions = { cwd: root, tasks: ['build'], log: silent, inflight }
-      const [a, b] = await Promise.all([run(opts), run(opts)])
+      const [a, b] = await twice(opts)
       expect(a.ok).toBe(true)
       expect(b.ok).toBe(true)
       // Both runs restored `app#build` from the artifact the warm run saved.
@@ -222,7 +234,7 @@ describe('in-flight dedup', () => {
         )
         const inflight = new Map<string, Promise<void>>()
         const opts: RunOptions = { cwd: root, tasks: ['meet'], log: silent, inflight, cache }
-        const [a, b] = await Promise.all([run(opts), run(opts)])
+        const [a, b] = await twice(opts)
         expect([a.ok, b.ok]).toEqual([true, true])
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -237,7 +249,7 @@ describe('in-flight dedup', () => {
       // (neither has saved yet) and execute. This is the control that
       // proves the dedup above is what changed the outcome.
       const opts: RunOptions = { cwd: root, tasks: ['slow'], log: silent }
-      await Promise.all([run(opts), run(opts)])
+      await twice(opts)
       expect(await counter(root)).toBe('xx')
     } finally {
       await rm(root, { recursive: true, force: true })

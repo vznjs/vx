@@ -547,8 +547,8 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
       readFileSync(path.join(repo, 'packages', 'vx-bench', 'results.json'), 'utf8'),
     ) as { tasks: number; baseline: Record<string, number>; rows: Row[] }
     const by = (name: string): Row => results.rows.find((r) => r['runner'] === name)!
-    // The table's five columns, left to right.
-    const runners = ['vx', 'vx (no lock)', 'turbo', 'nx', 'vite-task'] as const
+    // The table's four columns, left to right.
+    const runners = ['vx', 'turbo', 'nx', 'vite-task'] as const
 
     const start = doc.indexOf(`## Head to head: ${results.tasks.toLocaleString('en-US')} tasks`)
     expect(start).toBeGreaterThan(0)
@@ -566,7 +566,7 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
       const label = Object.keys(FIELD).find((k) => cells[0]! === `**${k.replace(/\*\*$/, '')}**`)
       if (label === undefined) continue
       rowsChecked += 1
-      cells.slice(1, 6).forEach((cell, i) => {
+      cells.slice(1, 5).forEach((cell, i) => {
         const runner = runners[i]!
         const shown = parse(
           cell

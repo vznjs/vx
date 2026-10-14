@@ -16,6 +16,7 @@ import path from 'node:path'
 import { run, type Logger } from '@vzn/vx'
 
 const PLUGIN = path.resolve(import.meta.dir, '..', 'vx-schedule-history', 'src', 'index.ts')
+const BIN = path.resolve(import.meta.dir, '..', 'vx', 'src', 'bin.ts')
 const WORKERS = 4
 const LIBS = 8
 const SLOW = 3
@@ -85,6 +86,9 @@ async function arm(which: Arm): Promise<number[]> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-timings-bench-'))
   try {
     await workspace(root, which === 'cold, with file')
+    // A run reads configs only from the lock.
+    const locked = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: root })
+    if (locked.exitCode !== 0) throw new Error(`vx lock failed:\n${locked.stderr.toString()}`)
     // One run first: it writes the file (with-file arm) or the history.
     if (which !== 'cold, no file') await wall(root)
     const times: number[] = []

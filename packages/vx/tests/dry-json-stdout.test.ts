@@ -2,7 +2,6 @@
 // nothing else. A `project` stage's warning (turbo() warns there) went
 // through the plan's default logger to stdout ahead of the JSON, and the
 // output did not parse (C-6).
-import { rmSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -11,7 +10,8 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { gitInitCommit } from './helpers/workspace.js'
 
-const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
+const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 let root: string
 
 beforeEach(async () => {
@@ -55,25 +55,32 @@ it('a stage warning goes to stderr, and --dry=json stdout parses', () => {
   )
 })
 
-it('a frozen run that writes its lock first prints a stage warning once', () => {
+it('`vx lock` and the run over its lock each print a stage warning once', () => {
   const count = (args: string[]) => {
     const p = Bun.spawnSync({
-      cmd: ['bun', CLI, 'run', 'build', '--all', ...args],
+      cmd: ['bun', BIN, ...args],
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, CI: '1', GITHUB_ACTIONS: '', VX_RUN_FROZEN: '', NO_COLOR: '1' },
+      env: {
+        ...process.env,
+        CI: '1',
+        GITHUB_ACTIONS: '',
+        VX_LOCK_REVIEW_FILES: 'false',
+        NO_COLOR: '1',
+      },
     })
     const all = p.stdout.toString() + p.stderr.toString()
     return { code: p.exitCode, warned: all.split('careful: app').length - 1 }
   }
-  // The lock it writes loads the plugin, then the run loads it again.
-  expect({ dry: count(['--dry']), run: (rmLock(), count([])) }).toEqual({
+  // Each loads the plugin once: the lock to stage the configs, the run to stage the locked ones.
+  expect({
+    lock: count(['lock']),
+    dry: count(['run', 'build', '--all', '--dry']),
+    run: count(['run', 'build', '--all']),
+  }).toEqual({
+    lock: { code: 0, warned: 1 },
     dry: { code: 0, warned: 1 },
     run: { code: 0, warned: 1 },
   })
 })
-
-function rmLock(): void {
-  rmSync(path.join(root, '.vx/lock.json'), { force: true })
-}

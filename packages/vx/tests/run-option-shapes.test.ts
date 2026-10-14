@@ -6,7 +6,8 @@
 import { rm } from 'node:fs/promises'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { planRun, run, type Logger, type RunOptions } from '../src/orchestrator/index.js'
+import { type Logger, type RunOptions } from '../src/orchestrator/index.js'
+import { planRun, run } from './helpers/orchestrator.js'
 
 const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 let root: string

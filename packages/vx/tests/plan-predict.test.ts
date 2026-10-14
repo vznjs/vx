@@ -33,7 +33,7 @@ import { type CacheLayer, type CachePolicy, GitFilesCache } from '../src/cache/i
 import type { TaskNode } from '../src/graph/index.js'
 import type { HistoryProvider, HistoryTable, TaskHistory } from '../src/orchestrator/history.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { planRun, run } from '../src/orchestrator/index.js'
+import { planRun, run } from './helpers/orchestrator.js'
 import { plan, type CacheStatus, type RunPlan } from '../src/orchestrator/plan.js'
 import { UserError } from '../src/util/index.js'
 

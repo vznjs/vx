@@ -488,7 +488,7 @@ describe('vx info (e2e)', () => {
       expect(r.out).toMatch(row('cache entries', '0 (0 B)'))
       expect(r.out).toMatch(row('task runs (24h)', '0'))
       expect(r.out).toMatch(row('flaky tasks', 'none'))
-      expect(r.out).toMatch(row('.vx/lock.json', 'no'))
+      expect(r.out).toMatch(row('projects lock', 'no'))
       // Control for the orphans row below: nothing on disk the index does
       // not know, so the doctor says nothing about it.
       expect(r.out).not.toContain('orphans:')
@@ -853,7 +853,7 @@ describe('vx info — the rendered rows', () => {
         'task runs (24h):  5 (2 cache hits: 1 up-to-date, 1 restored)',
         'flaky tasks:      none',
         'sandbox:          available (1 task declares exec.sandbox)',
-        '.vx/lock.json:    yes',
+        'projects lock:    yes',
       ].join('\n'),
     )
   })
@@ -910,7 +910,7 @@ describe('vx info — the rendered rows', () => {
         'task runs (24h):  0 (0 cache hits)',
         'flaky tasks:      2 — a#test (3 of 7 runs failed on unchanged inputs); b#e2e (1 of 4 runs failed)',
         'sandbox:          unavailable — bwrap missing; 2 tasks declare exec.sandbox and will fail',
-        '.vx/lock.json:    no',
+        'projects lock:    no',
       ].join('\n'),
     )
   })

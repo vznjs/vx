@@ -1,6 +1,6 @@
 // e2e for cache.inputs.runtime / workspaceRuntime. Spawns the real CLI:
-// the headline property (output resolved live even under --frozen) only
-// holds across real invocations.
+// the headline property (output resolved live though the command is the
+// lock's) only holds across real invocations.
 
 import { existsSync } from 'node:fs'
 import { readFile, rm, writeFile } from 'node:fs/promises'
@@ -10,14 +10,15 @@ import { addProject, gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers
 
 setDefaultTimeout(30_000)
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+const REAL_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-runtime-e2e-', rootName: 'root' })
 }
 
-async function vx(root: string, args: string[], env: Record<string, string> = {}) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
+async function vx(root: string, args: string[], env: Record<string, string> = {}, bin = BIN) {
+  const proc = Bun.spawn([process.execPath, bin, ...args], {
     cwd: root,
     env: { ...process.env, CI: '', GITHUB_ACTIONS: '', ...env },
     stdout: 'pipe',
@@ -108,7 +109,7 @@ describe('runtime inputs — e2e', () => {
     expect(existsSync(log)).toBe(false)
   })
 
-  it('stays live under --frozen (re-resolves output after lock)', async () => {
+  it('stays live from the lock (re-resolves output after lock)', async () => {
     const log = path.join(root, 'execlog')
     await writeFile(path.join(root, 'marker'), 'A')
     await addProject(
@@ -129,14 +130,14 @@ describe('runtime inputs — e2e', () => {
     gitIn(root)('add', '-A')
     gitIn(root)('commit', '-q', '-m', 'init')
 
-    const lock = await vx(root, ['lock'])
+    const lock = await vx(root, ['lock'], {}, REAL_BIN)
     expect(lock.code).toBe(0)
-    const r1 = await vx(root, ['run', 'build', '--all', '--frozen'])
+    const r1 = await vx(root, ['run', 'build', '--all'], {}, REAL_BIN)
     expect(r1.code).toBe(0)
     expect((await readFile(log, 'utf8')).trim().split('\n').length).toBe(1)
 
     await writeFile(path.join(root, 'marker'), 'B') // command string unchanged; output differs
-    const r2 = await vx(root, ['run', 'build', '--all', '--frozen'])
+    const r2 = await vx(root, ['run', 'build', '--all'], {}, REAL_BIN)
     expect(r2.code).toBe(0)
     // Lock froze only the command 'cat marker'; output is resolved live →
     // the changed output must produce a miss and re-execute.

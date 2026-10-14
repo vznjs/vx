@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const SMALL = process.env['VX_SMALL_DISK']
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 // 700 KB of noise: zstd cannot shrink it, so the artifact needs that much room.

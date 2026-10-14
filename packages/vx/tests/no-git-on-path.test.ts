@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { gitIgnored } from '../src/cli/watch-filter.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 /** A PATH with bun and sh alone: the child cannot find git. */
 async function pathWithoutGit(): Promise<string> {

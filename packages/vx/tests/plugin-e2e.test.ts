@@ -8,7 +8,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
-import { planRun, run } from '../src/index.js'
+import { planRun, run } from './helpers/orchestrator.js'
+import { run as runFromLock } from '../src/orchestrator/index.js'
 import { pluginSource } from './helpers/plugin.js'
 
 async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => void }> {
@@ -193,7 +194,8 @@ describe('Plugin API — end-to-end via run()', () => {
       expect(order()).not.toContain('setup')
       expect(order()).toContain('schedule')
       order().length = 0
-      const summary = await run({ ...opts, handleSignals: false })
+      // From the lock the plan wrote: locking again runs the stages it runs.
+      const summary = await runFromLock({ ...opts, handleSignals: false })
       expect(summary.ok).toBe(true)
       expect(order()).toEqual([
         'config',

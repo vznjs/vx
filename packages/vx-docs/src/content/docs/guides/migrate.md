@@ -65,10 +65,10 @@ export default { plugins: [turbo(), npm()] } satisfies WorkspaceConfig
 
 ```text
 $ npx @vzn/vx init --keep
-vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
+vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
 wrote .vx/workspace.ts.
 
-next: npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx run build --all
+next: npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx lock && npx @vzn/vx run build --all
 ```
 
 The `next:` line uses your lockfile's manager (`pnpm add -D -w …` beside
@@ -104,7 +104,7 @@ files written:
   packages/app/vx.config.ts
   packages/lib/vx.config.ts
 
-vx lock: locked 2 project configs → .vx/lock.json
+vx lock: locked 2 project configs → .vx/projects.lock.json
 
 next: bunx @vzn/vx run build --all
 ```
@@ -147,7 +147,8 @@ and vx keys every task on the whole file until a plugin claims it.
 ### Try it in five minutes
 
 [`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
-is a Turbo repo with that `.vx/workspace.ts` added. The first runs go
+is a Turbo repo with that `.vx/workspace.ts` added, and the
+`.vx/projects.lock.json` `vx lock` wrote (a run refuses without one). The first runs go
 through `turbo()`, the bridge; the last runs on the written configs alone,
 the goal. Each line and its comment is what a test runs and sees on each commit
 (`packages/vx/tests/examples.unsafe.test.ts`).
@@ -238,10 +239,10 @@ export default { plugins: [nx(), npm()] } satisfies WorkspaceConfig
 
 ```text
 $ npx @vzn/vx init --keep
-vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.
+vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
 wrote .vx/workspace.ts.
 
-next: npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx run build --all
+next: npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx lock && npx @vzn/vx run build --all
 ```
 
 `bunx @vzn/vx-migrate` reports what it wrote, then locks the configs:
@@ -259,7 +260,7 @@ files written:
   packages/app/vx.config.ts
   packages/lib/vx.config.ts
 
-vx lock: locked 2 project configs → .vx/lock.json
+vx lock: locked 2 project configs → .vx/projects.lock.json
 
 next: bunx @vzn/vx run build --all
 ```

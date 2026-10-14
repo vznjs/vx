@@ -12,7 +12,7 @@ import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orch
 import { packArtifactBytes, planArtifact } from '../src/cache/archive.js'
 import type { CacheGetContext } from '../src/cache/cache.js'
 import { LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 const CFG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },

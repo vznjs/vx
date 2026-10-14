@@ -9,7 +9,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { gitInitCommit } from './helpers/workspace.js'
 
-const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 const roots: string[] = []
 afterAll(() => {
   for (const r of roots) rmSync(r, { recursive: true, force: true })
@@ -46,7 +46,7 @@ function vx(root: string, ...args: string[]): { code: number; stdout: string; st
   const r = Bun.spawnSync({
     cmd: [process.execPath, CLI, 'run', 'pkg-a#hello', '--no-cache', ...args],
     cwd: root,
-    env: { ...process.env, CI: '', VX_RUN_FROZEN: 'false', NO_COLOR: '1' },
+    env: { ...process.env, CI: '', NO_COLOR: '1' },
     stdout: 'pipe',
     stderr: 'pipe',
   })

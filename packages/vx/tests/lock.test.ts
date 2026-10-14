@@ -1,4 +1,4 @@
-// .vx/lock.json e2e. Each step spawns the real CLI as a subprocess because
+// .vx/projects.lock.json e2e. Each step spawns the real CLI as a subprocess because
 // the whole point is cross-invocation env drift: the lock is written
 // under one environment and checked / run under another.
 //
@@ -6,9 +6,9 @@
 //   - `vx lock --check` re-evaluates configs in the current env and
 //     deep-compares against the lock → catches env drift that file
 //     hashes cannot see.
-//   - `vx run --frozen` checks nothing and TRUSTS the lock → frozen-env
-//     semantics; the run succeeds with the locked value. A plain
-//     `vx run` evaluates live and never reads the lock.
+//   - `vx run` checks nothing and TRUSTS the lock → frozen-env
+//     semantics; the run succeeds with the locked value. It never
+//     evaluates a config.
 
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -69,7 +69,7 @@ describe('vx lock (e2e)', () => {
       await addProject(root, 'app', ENV_CONFIG)
       // Control: every project configured — no note on either line.
       const lockAll = await vx(root, ['lock'], {})
-      expect(lockAll.out).toBe('vx lock: locked 1 project config → .vx/lock.json\n')
+      expect(lockAll.out).toBe('vx lock: locked 1 project config → .vx/projects.lock.json\n')
       expect((await vx(root, ['lock', '--check'], {})).out).toBe(
         'vx lock --check: up to date (1 project)\n',
       )
@@ -78,7 +78,7 @@ describe('vx lock (e2e)', () => {
       await addProject(root, 'bare')
       const lock = await vx(root, ['lock'], {})
       expect(lock.code).toBe(0)
-      expect(lock.out).toBe('vx lock: locked 1 project config → .vx/lock.json\n')
+      expect(lock.out).toBe('vx lock: locked 1 project config → .vx/projects.lock.json\n')
       const check = await vx(root, ['lock', '--check'], {})
       expect(check.code).toBe(0)
       expect(check.out).toBe('vx lock --check: up to date (1 project)\n')
@@ -94,7 +94,9 @@ describe('vx lock (e2e)', () => {
       // project was not in the lock.
       await addProject(root, '__proto__', ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
-      const lockJson = JSON.parse(await Bun.file(path.join(root, '.vx/lock.json')).text()) as {
+      const lockJson = JSON.parse(
+        await Bun.file(path.join(root, '.vx/projects.lock.json')).text(),
+      ) as {
         projects: object
       }
       expect(Object.keys(lockJson.projects)).toEqual(['__proto__'])
@@ -103,7 +105,7 @@ describe('vx lock (e2e)', () => {
       )
       const frozen = await vx(
         root,
-        ['run', 'build', '--all', '--no-cache', '--frozen', '--output-logs', 'full'],
+        ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
         { X: 'b' },
       )
       expect(frozen.code).toBe(0)
@@ -113,14 +115,14 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'freezes env-dependent configs: live runs see env; --frozen trusts the lock; --check audits',
+    'freezes env-dependent configs: a run trusts the lock; --check audits',
     async () => {
       await addProject(root, 'app', ENV_CONFIG)
 
       // Lock under X=a — the resolved command is frozen with 'a'.
       const lock = await vx(root, ['lock'], { X: 'a' })
       expect(lock.code).toBe(0)
-      const lockJson = (await Bun.file(path.join(root, '.vx/lock.json')).json()) as {
+      const lockJson = (await Bun.file(path.join(root, '.vx/projects.lock.json')).json()) as {
         version: number
         projects: Record<string, { tasks: { build: { exec: { command: string } } } }>
       }
@@ -138,19 +140,10 @@ describe('vx lock (e2e)', () => {
       expect(checkDrift.code).toBe(1)
       expect(checkDrift.err).toBe(DRIFT)
 
-      // Plain `vx run` evaluates LIVE — local truth, no lock consumed.
-      const live = await vx(
-        root,
-        ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
-        { X: 'b' },
-      )
-      expect(live.code).toBe(0)
-      expect(live.out).toContain('flavor-b')
-
-      // `--frozen` consumes the lock: frozen value wins regardless of env.
+      // A run consumes the lock: the frozen value wins regardless of env.
       const frozen = await vx(
         root,
-        ['run', 'build', '--all', '--no-cache', '--frozen', '--output-logs', 'full'],
+        ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
         {
           X: 'b',
         },
@@ -163,7 +156,7 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'a changed config file: live runs use the edit; --frozen keeps the freeze until re-lock',
+    'a changed config file: a run keeps the freeze until re-lock',
     async () => {
       const dir = await addProject(root, 'app', ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
@@ -177,22 +170,12 @@ describe('vx lock (e2e)', () => {
       expect(check.code).toBe(1)
       expect(check.err).toBe(DRIFT)
 
-      // Plain runs evaluate live — the edit takes effect immediately,
-      // stale lock or not.
-      const live = await vx(
-        root,
-        ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
-        { X: 'a' },
-      )
-      expect(live.code).toBe(0)
-      expect(live.out).toContain('edited')
-
-      // --frozen trusts the lock outright — no staleness checks; the
+      // A run trusts the lock outright — no staleness checks; the
       // pipeline's `vx lock --check` (above, exit 1) is the guard.
       // It runs the FROZEN config, not the edited file.
       const frozen = await vx(
         root,
-        ['run', 'build', '--all', '--no-cache', '--frozen', '--output-logs', 'full'],
+        ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
         {
           X: 'a',
         },
@@ -205,7 +188,7 @@ describe('vx lock (e2e)', () => {
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
       const healed = await vx(
         root,
-        ['run', 'build', '--all', '--no-cache', '--frozen', '--output-logs', 'full'],
+        ['run', 'build', '--all', '--no-cache', '--output-logs', 'full'],
         {
           X: 'a',
         },
@@ -236,7 +219,7 @@ describe('vx lock (e2e)', () => {
       expect(typo.err).toContain('vx lock: unknown flag: --chek')
       expect(typo.out).toBe('')
       // The audit a CI step asked for must not become a write that passes.
-      expect(await Bun.file(path.join(root, '.vx/lock.json')).exists()).toBe(false)
+      expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(false)
       // Control: the spelled flag reaches the audit.
       expect((await vx(root, ['lock', '--check'], {})).err).toContain('run `vx lock` first')
     },
@@ -251,7 +234,7 @@ describe('vx lock (e2e)', () => {
       const bytes = await Bun.file(path.join(dir, 'vx.config.mjs')).bytes()
       await rm(path.join(dir, 'vx.config.mjs'))
       await writeFile(path.join(dir, 'vx.config.ts'), bytes)
-      const frozen = await vx(root, ['run', 'build', '--all', '--no-cache', '--frozen'], {
+      const frozen = await vx(root, ['run', 'build', '--all', '--no-cache'], {
         X: 'a',
       })
       expect(frozen.code).toBe(0)

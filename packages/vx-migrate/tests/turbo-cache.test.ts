@@ -9,7 +9,8 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { run, type RemoteCacheLayer } from '@vzn/vx'
+import { type RemoteCacheLayer } from '@vzn/vx'
+import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import {
   artifactTag,

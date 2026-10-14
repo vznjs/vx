@@ -2,8 +2,8 @@
 // end (item 588): `build` fills `dist`, `individual` depends on it and adds
 // `dist/individual` (twenty's twenty-ui; storybook's sandbox/build is the
 // same shape). Before 588 the pair was refused at graph build, and since
-// X-53 it is again unless the workspace sets `rules: { exclusiveOutputs:
-// false }`, which every fixture here does (`additive`). Every row
+// X-53 `vx lock` refuses it again unless the workspace sets `rules: {
+// exclusiveOutputs: false }`, which every fixture here does (`additive`). Every row
 // compares the tree under `dist` byte for byte with a COLD run of the same
 // sources in a fresh workspace, which is the design note's acceptance:
 // whatever the cache did, the tree is what the two commands produce.
@@ -13,7 +13,9 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { planRun, prepareRun, run } from '../src/orchestrator/index.js'
+import { planRun as planFromLock } from '../src/orchestrator/index.js'
+import { lock, prepareRun, run } from './helpers/orchestrator.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
 import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 
@@ -123,18 +125,29 @@ describe('overlapping outputs under the default rules', () => {
           files: { 'src/a.txt': 'A1', 'srcb/b.txt': 'B1' },
           config: configFor(SHAPES.subdirectory),
         })
-        const lock = Bun.spawnSync({
+        const refused = Bun.spawnSync({
           cmd: [process.execPath, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
           cwd: root,
           stderr: 'pipe',
         })
-        expect(lock.exitCode).toBe(1)
-        expect(lock.stderr.toString()).toMatch(
-          /^vx lock: \.vx\/lock\.json not written: app#build and app#individual both declare the output .* run\.rules\.exclusiveOutputs: false/,
+        expect(refused.exitCode).toBe(1)
+        expect(refused.stderr.toString()).toMatch(
+          /^vx lock: \.vx\/projects\.lock\.json not written: app#build and app#individual both declare the output .* run\.rules\.exclusiveOutputs: false/,
         )
-        // The run plans the pair: the rules are the lock's to check.
-        const plan = await planRun({ cwd: root, tasks: TASKS, log: silent })
-        expect(plan.tasks.map((t) => t.node.id)).toContain('app#build')
+        // The rules are the lock's to check: a lock written while the rule
+        // was off still plans the pair once the rule is back on.
+        await Bun.write(
+          path.join(root, '.vx/workspace.mjs'),
+          'export default { run: { rules: { exclusiveOutputs: false } } }\n',
+        )
+        await lock(root)
+        await writeLocalWorkspace(root)
+        const plan = await planFromLock({ cwd: root, tasks: TASKS, log: silent })
+        expect(plan.tasks.map((t) => t.node.id).sort()).toEqual([
+          'app#build',
+          'app#individual',
+          'app#noop',
+        ])
       } finally {
         await rm(root, { recursive: true, force: true })
       }

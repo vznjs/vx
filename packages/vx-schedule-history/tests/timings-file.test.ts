@@ -6,7 +6,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { planRun, run, type HistoryTable, type Logger } from '@vzn/vx'
+import { type HistoryTable, type Logger } from '@vzn/vx'
+import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { readTimings, writeTimings } from '../src/timings-file.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')

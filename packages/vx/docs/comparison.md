@@ -111,7 +111,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Auto-input inference                                                        | —                                                    | —                                                        | **yes** (`fspy`, see §3)           | — out of scope (see §3)                                                                                 |
 | Root-anchored inputs/outputs                                                | `$TURBO_ROOT$/…`                                     | `{workspaceRoot}/…`                                      | (none)                             | `cache.inputs/outputs.workspaceFiles`                                                                   |
 | Runtime-command inputs (tool versions, probes)                              | — (vercel/turborepo#4124)                            | `runtime` input                                          | (none)                             | `cache.inputs.runtime` / `workspaceRuntime`                                                             |
-| Frozen / locked resolved configs                                            | —                                                    | —                                                        | —                                  | `vx lock` + `vx run --frozen`                                                                           |
+| Frozen / locked resolved configs                                            | —                                                    | —                                                        | —                                  | `vx lock` (every run reads it)                                                                          |
 | Migration generator from other runners                                      | —                                                    | —                                                        | —                                  | `bunx @vzn/vx-migrate` (Turbo, Nx → vx.config.ts)                                                       |
 | Named / reusable input sets                                                 | (none)                                               | `namedInputs` at workspace + project level               | (none)                             | rejected by design — TS arrays/imports compose                                                          |
 | Per-task env inputs                                                         | `env: ["NODE_ENV"]`                                  | `inputs: [{env: "NODE_ENV"}]`                            | `env: [...]` + `untrackedEnv`      | `cache.inputs.env: string[]`                                                                            |
@@ -328,7 +328,7 @@ prune` policy at the end of every run,
   fail-on-violation).
 - Root-anchored inputs/outputs (`workspaceFiles`) and runtime-command
   inputs (`runtime` / `workspaceRuntime`).
-- `vx lock` / `vx run --frozen`, `vx init` / `@vzn/vx-migrate`, `vx show`.
+- `vx lock` (runs read only the lock), `vx init` / `@vzn/vx-migrate`, `vx show`.
 - **The plugin pipeline (2026-09-02).** One `VxPlugin` hooks every
   stage — `config`, `discover`, `project`, `graph`, `key`, `fingerprint`,
   `schedule`, `admit` — beside the `executor` / `cache` / `telemetry` / `output`
@@ -441,8 +441,8 @@ Things `@vzn/vx` does that the others don't:
   backfill — misses still own the pool. Remote runs get the same idea
   as async prefetch (remote GETs overlap execution, at most one per
   key).
-- **`vx lock` / `--frozen`.** Configs are programs; the lock freezes
-  the resolved objects for CI reproducibility, with a full
+- **`vx lock`.** Configs are programs; the lock freezes the resolved
+  objects and every run reads only it, with a full
   re-evaluation audit (`vx lock --check`). No analog in Turbo/Nx.
 - **`bunx @vzn/vx-migrate`.** One command generates per-package `vx.config.ts`
   from Turbo or Nx, with TODO comments for

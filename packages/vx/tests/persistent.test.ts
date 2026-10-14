@@ -16,7 +16,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { planRun, run, type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/orchestrator/index.js'
+import { lock, planRun, run } from './helpers/orchestrator.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
@@ -795,6 +796,8 @@ describe('exec.persistent (e2e)', () => {
       })
       const parsed = parseRunArgs(['dev', '--filter', 'front...', '--concurrency', '2'])
       expect(parsed.error).toBeUndefined()
+      // The filter walks the locked graph.
+      await lock(fixture.root)
       const resolved = await resolveRunOptions(parsed, fixture.root, parsed.tasks)
       if ('error' in resolved || 'nothingSelected' in resolved) throw new Error('unreachable')
       const r = await run({ ...resolved, log: silentLogger(fixture) })

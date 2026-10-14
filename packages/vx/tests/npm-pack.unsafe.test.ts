@@ -216,14 +216,17 @@ describe('the npm tarballs', () => {
       }
       return Object.fromEntries(last.tasks.map((t) => [`${t.project}#${t.task}`, t.status]))
     }
-    const run = (): number | null =>
+    const vx = (...args: string[]): number | null =>
       Bun.spawnSync({
-        cmd: ['npx', 'vx', 'run', 'build', '--all'],
+        cmd: ['npx', 'vx', ...args],
         cwd: repo,
         env: withNpm(),
         stdout: 'pipe',
         stderr: 'pipe',
       }).exitCode
+    const run = (): number | null => vx('run', 'build', '--all')
+    // A user's first step: a run refuses with no lock.
+    expect(vx('lock')).toBe(0)
     expect(run()).toBe(0)
     expect(statuses()).toEqual({ 'app#build': 'success', 'lib#build': 'success' })
     expect(run()).toBe(0)

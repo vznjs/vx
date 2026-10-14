@@ -22,7 +22,7 @@ import {
 import type { TaskNode } from '../src/graph/index.js'
 import type { Logger, RunSummary } from '../src/orchestrator/index.js'
 import { failedLabel } from '../src/orchestrator/events.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'

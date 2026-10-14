@@ -1205,16 +1205,18 @@ describe('the plugins guide names the remote seam core defines', () => {
   })
 })
 
-describe('the CI guide states what --frozen measured, not what it once claimed', () => {
-  it('its frozen figures are the benchmarks page’s head-to-head', () => {
+describe('the CI guide quotes only run figures benchmarks.md measured', () => {
+  it('every figure beside its lock is on the benchmarks page', () => {
     // It sold `--frozen` as "roughly 10–21%" off a warm run; the 2026-09-12
-    // measurement reads the row as a tie (item 346, 2026-09-19).
+    // measurement read the row as a tie (item 346, 2026-09-19), and every run
+    // now reads the lock (2026-10-14).
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    expect(bench).toContain('plain min 154 / median 177 ms, frozen 148 / 165')
-    const page = readFileSync(path.join(GUIDES, 'ci.md'), 'utf8').replace(/\s+/g, ' ')
-    expect(page).toContain('median of 177 ms')
-    expect(page).toContain('165')
-    expect(page).not.toMatch(/10–21%/)
+    const ci = section(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8'), 'GitHub Actions')
+    expect(ci).toContain('`vx lock --check`')
+    for (const m of ci.matchAll(/(\d+(?:[–-]\d+)?)\s?(%|ms)\b/g)) {
+      expect(m[0]).toBe(bench.includes(m[1]!) ? m[0] : `${m[0]} — not on benchmarks.md`)
+    }
+    expect(ci).not.toMatch(/10–21%/)
   })
 })
 

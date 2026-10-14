@@ -8,7 +8,7 @@ import {
 } from './helpers/workspace.js'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { prepareRun } from '../src/orchestrator/prepare.ts'
+import { prepareRun } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/orchestrator/logger.ts'
 
 function makeWorkspace(): Promise<string> {

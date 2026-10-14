@@ -74,7 +74,7 @@ gap before its description.
 - `Execution (for run)` — concurrency, `--schedule`,
   `--exclude-dependencies`, `--no-cache` / `--force`, `--cache-policy`,
   `--continue`, `--retries`, `--timeout`, `--kill-grace`,
-  `--teardown-timeout`, `--ready-notice`, `--frozen`, `--output-logs`,
+  `--teardown-timeout`, `--ready-notice`, `--output-logs`,
   `--cache-download`, `--verbosity`.
 - `Planning (for run — skips execution)` — `--dry`, `--graph`.
 - `Artifacts (for run)` — `--summarize`, `--profile`, `--report`,

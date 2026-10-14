@@ -1,14 +1,17 @@
-// A TS config may build any task string from `process.env`, not only the
-// command: `vx show` masked the command and `env.define` and printed a
-// runtime probe, `readyWhen` and the description with the value; the run
-// history stored a probe's command as its row name, so `vx why` printed
-// it; `--dry` and the picker printed the description (L-11).
+// A task string may hold a secret's value, not only the command: `vx show`
+// masked the command and `env.define` and printed a runtime probe,
+// `readyWhen` and the description with the value; the run history stored a
+// probe's command as its row name, so `vx why` printed it; `--dry` and the
+// picker printed the description (L-11). `vx lock` refuses a config that
+// evaluates to a secret where it runs (lock-secret.test.ts), but a lock
+// written where the value was no secret reaches a run where it is: here the
+// lock is written with neither variable set.
 import { readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { pickTask } from '../src/cli/select.js'
-import { run, type Logger } from '../src/orchestrator/index.js'
+import { type Logger, run } from '../src/orchestrator/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const TOKEN = 'tokenvalue123'
@@ -20,31 +23,36 @@ let saved: [string | undefined, string | undefined]
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-config-mask-' })
   saved = [process.env.API_TOKEN, process.env.GH_PAT]
-  process.env.API_TOKEN = TOKEN
-  process.env.GH_PAT = PAT
   await addProject(
     root,
     'app',
-    `const t = process.env.API_TOKEN
-const p = process.env.GH_PAT
-export default { tasks: {
+    `export default { tasks: {
   t: {
-    description: \`deploys \${t} \${p}\`,
+    description: 'deploys ${TOKEN} ${PAT}',
     exec: { command: 'true', env: { secret: ['GH_PAT'] } },
     cache: {
-      inputs: { files: ['package.json'], runtime: [\`echo \${t}\`, \`echo \${p}\`] },
+      inputs: { files: ['package.json'], runtime: ['echo ${TOKEN} $STAMP', 'echo ${PAT} $STAMP'] },
       outputs: { files: [] },
     },
   },
-  srv: { exec: { command: 'true', persistent: { readyWhen: \`up \${t}\` } } },
+  srv: { exec: { command: 'true', persistent: { readyWhen: 'up ${TOKEN}' } } },
   wait: { exec: {
     command: 'exec sleep 30',
     timeout: '1500ms',
     env: { secret: ['GH_PAT'] },
-    persistent: { readyWhen: \`up \${t} \${p}\` },
+    persistent: { readyWhen: 'up ${TOKEN} ${PAT}' },
   } },
 } }`,
   )
+  const { API_TOKEN: _t, GH_PAT: _p, ...clean } = process.env
+  const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {
+    cwd: root,
+    env: { ...clean, VX_LOCK_REVIEW_FILES: 'false' },
+    stderr: 'pipe',
+  })
+  expect(lock.stderr.toString()).toBe('')
+  process.env.API_TOKEN = TOKEN
+  process.env.GH_PAT = PAT
 })
 afterEach(async () => {
   for (const [name, value] of [
@@ -79,7 +87,7 @@ it('vx show masks every string of the task', () => {
       '  command:        true',
       '  env.secret:     GH_PAT',
       '  inputs.files:   package.json',
-      '  inputs.runtime: echo ***, echo ***',
+      '  inputs.runtime: echo *** $STAMP, echo *** $STAMP',
       '  outputs.files:  ',
       '',
     ].join('\n'),
@@ -99,26 +107,27 @@ it('vx show masks every string of the task', () => {
   }
   expect([json.config.description, json.config.cache.inputs.runtime]).toEqual([
     'deploys *** ***',
-    ['echo ***', 'echo ***'],
+    ['echo *** $STAMP', 'echo *** $STAMP'],
   ])
 }, 20_000)
 
 it("vx why names a runtime probe's row masked, and the history holds no value", async () => {
-  vx(['run', 't', '--all'], { API_TOKEN: 'tokenbefore111', GH_PAT: 'patbefore222' })
-  vx(['run', 't', '--all'])
+  vx(['run', 't', '--all'], { STAMP: '1' })
+  vx(['run', 't', '--all'], { STAMP: '2' })
   const why = JSON.parse(vx(['why', 'app#t', '--format', 'json'])) as {
     diff: { entries: Array<{ change: string; kind: string; name: string }> }
   }
   expect(why.diff.entries.map((e) => `${e.change} ${e.kind} ${e.name}`)).toEqual([
-    'changed config config',
-    'changed runtime echo ***',
-    'changed runtime echo *** (2)',
+    'changed runtime echo *** $STAMP',
+    'changed runtime echo *** $STAMP (2)',
   ])
   const pretty = vx(['why', 'app#t'])
   expect(pretty.split('\n').filter((l) => l.startsWith('    changed runtime'))).toEqual([
-    expect.stringMatching(/^ {4}changed runtime {2}echo \*\*\* {2}[0-9a-f]{16} → [0-9a-f]{16}$/),
     expect.stringMatching(
-      /^ {4}changed runtime {2}echo \*\*\* \(2\) {2}[0-9a-f]{16} → [0-9a-f]{16}$/,
+      /^ {4}changed runtime {2}echo \*\*\* \$STAMP {2}[0-9a-f]{16} → [0-9a-f]{16}$/,
+    ),
+    expect.stringMatching(
+      /^ {4}changed runtime {2}echo \*\*\* \$STAMP \(2\) {2}[0-9a-f]{16} → [0-9a-f]{16}$/,
     ),
   ])
   expect(leaks(pretty)).toBe(false)
@@ -131,7 +140,7 @@ it("vx why names a runtime probe's row masked, and the history holds no value", 
     )
   ).join('')
   expect(db.includes('echo ***')).toBe(true)
-  expect(['tokenbefore111', 'patbefore222', TOKEN, PAT].filter((v) => db.includes(v))).toEqual([])
+  expect([TOKEN, PAT].filter((v) => db.includes(v))).toEqual([])
 }, 30_000)
 
 it('--dry masks the description, as text and as JSON', () => {
@@ -152,7 +161,7 @@ it("the picker's menu masks the description", async () => {
   output.on('data', (c: Buffer) => {
     printed += c.toString()
   })
-  const picking = pickTask(root, { input, output })
+  const picking = pickTask(root, { input, output }, { fromLock: true })
   while (!printed.includes('Pick a task')) await Bun.sleep(5)
   input.write('9\n')
   await picking

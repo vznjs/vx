@@ -35,7 +35,7 @@ it('writes the lock minified, a pretty review copy per config, and .vx/.gitattri
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })
   expect(vx(r, 'lock').code).toBe(0)
-  const lock = (await text(path.join(r, '.vx', 'lock.json')))!
+  const lock = (await text(path.join(r, '.vx', 'projects.lock.json')))!
   expect(lock.split('\n')).toHaveLength(2)
   expect(lock).toStartWith('{"version":2,"projects":{"a":')
   const review = (await text(path.join(dir, 'vx.lock.json')))!
@@ -43,7 +43,7 @@ it('writes the lock minified, a pretty review copy per config, and .vx/.gitattri
   expect(JSON.parse(review)).toMatchObject(locked as object)
   expect(review).toStartWith('{\n  "tasks": {')
   expect(await text(path.join(r, '.vx', '.gitattributes'))).toBe(
-    'lock.json linguist-generated=true\n',
+    'projects.lock.json linguist-generated=true\n',
   )
   expect(vx(r, 'lock', '--check').code).toBe(0)
 })

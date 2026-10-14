@@ -41,16 +41,16 @@ single root file when it has no internals to hide. The design and
 migration history live in
 [`design/module-isolation-2026-06.md`](./design/module-isolation-2026-06.md).
 
-| Module         | Form                        | Contract highlights                                                                                                                            |
-| -------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                               |
-| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                   |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint  |
-| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                          |
-| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal |
-| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                |
-| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                       |
-| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                             |
+| Module         | Form                        | Contract highlights                                                                                                                                    |
+| -------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                                       |
+| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                           |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint |
+| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                                  |
+| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal         |
+| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                        |
+| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                               |
+| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                     |
 
 Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `settings.ts` (every setting once:
@@ -364,9 +364,9 @@ never branches on layering.
       package graph → local `Cache` open (the policy's local slice) +
       workspace fingerprints → **scoped** config loading via
       `loadProjects`, the `project` stage included (only in-scope
-      projects + their transitive dep closure evaluate; `--frozen`
-      loads from `.vx/lock.json` instead of evaluating, with no
-      staleness check of its own — `vx lock --check` is the audit) →
+      projects + their transitive dep closure, loaded from
+      `.vx/projects.lock.json` with no evaluation and no staleness check of its
+      own — `vx lock --check` is the audit) →
       cache layer resolved (an injected `RunOptions.remoteCache`, else
       each plugin's remote, layered over the local cache, else the
       bare local cache) → bulk `git ls-files` populate (started at the
@@ -720,9 +720,9 @@ architecture:
   executor changes where a command runs, never the command.
   Presets-as-imports cover config reuse.
 - **No daemon.** Every `vx run` is a fresh process. Workspace
-  re-discovery + config evaluation is cheap enough on Bun that a
-  daemon doesn't pay for itself (and config loading is scoped to the
-  run's dependency closure).
+  re-discovery + the lock read is cheap enough on Bun that a daemon
+  doesn't pay for itself (and config loading is scoped to the run's
+  dependency closure).
 - **No nested task graphs.** The unit of caching, scheduling, and
   reporting is the task. For parallelism, define separate tasks
   linked by `dependsOn`. For chained commands inside one task, use

@@ -12,7 +12,7 @@ import { describe, expect, it } from 'bun:test'
 import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
-import { run } from '../src/index.js'
+import { run } from './helpers/orchestrator.js'
 import { invocationCommand } from '../src/orchestrator/run.js'
 import { busLogger, createEventBus } from '../src/orchestrator/events.js'
 import {

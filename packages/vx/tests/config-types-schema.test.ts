@@ -47,7 +47,6 @@ const RUN = [
   'affectedBase',
   'concurrency',
   'continue',
-  'frozen',
   'killGrace',
   'readyNotice',
   'retries',

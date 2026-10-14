@@ -9,7 +9,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const NONE = 'vx last: no recorded runs yet — run something first\n'
 
 let root = ''

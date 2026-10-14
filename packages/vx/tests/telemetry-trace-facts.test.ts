@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import type { RunSummaryRecord, TelemetryRecord } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 const roots: string[] = []
 afterAll(async () => {

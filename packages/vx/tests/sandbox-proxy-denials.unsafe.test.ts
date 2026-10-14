@@ -9,7 +9,7 @@ import { realpathSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { resolveSandboxConfig } from '../src/exec/index.js'
 import { refusedConnections, reportableViolations } from '../src/exec/sandbox-violations.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 

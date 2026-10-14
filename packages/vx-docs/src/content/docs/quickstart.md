@@ -62,6 +62,7 @@ Installed from npm, the command is `npx @vzn/vx` (pnpm: `pnpm vx`, Bun:
 `bunx @vzn/vx`); the lines below drop the prefix.
 
 ```bash
+vx lock                   # resolve each config into .vx/projects.lock.json, which runs read
 vx run build --all        # every package, in dependency order
 vx run test --affected    # changed since main or the last commit, and dependents
 vx run build --all --dry  # the plan; runs nothing
@@ -70,7 +71,8 @@ vx run build              # ⇢ success local — after dist/ is deleted; else u
 vx run build --graph      # the task graph as Graphviz DOT
 ```
 
-The first run stores the result. The second finds nothing changed and
+A run never evaluates a `vx.config.ts`: after editing one, run `vx lock`
+again and commit `.vx/projects.lock.json`. The first run stores the result. The second finds nothing changed and
 `dist/` still as stored, so it restores nothing: the task's frame closes
 `up-to-date` (`► success fresh` in the `--output-logs full` row). Delete
 `dist/` and the next run restores it from the cache: `restored-local`, the

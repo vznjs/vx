@@ -17,8 +17,9 @@
 //
 // Both cases run IN-PROCESS on purpose. Driving the real CLI spawns a
 // fresh process per run, which can never reproduce this; and the fs.watch
-// path is a known load-flake. Two `run()` calls with an edit in between
-// are exactly what a watch cycle does, minus the timing.
+// path is a known load-flake. Two `run()` calls with an edit in between,
+// each locking in process first, are a long-lived process re-evaluating,
+// minus the timing.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -28,7 +29,8 @@ import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { loadProjectConfig, loadProjectConfigs } from '../src/workspace/project-loader.js'
 import { configEvalWorkerCount } from '../src/workspace/config-eval.js'
-import { run, type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 const TIMEOUT = 30_000
 
@@ -306,7 +308,7 @@ describe('a typo in a cache-key field', () => {
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
 
-      const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+      const bin = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
       const proc = Bun.spawn([process.execPath, bin, 'run', 'build'], {
         cwd: root,
         env: { ...process.env },
@@ -388,7 +390,7 @@ describe('what the transpiler was told besides the bytes', () => {
         "declare const BUILD_MODE: string\nexport default { tasks: { build: { exec: { command: 'echo MODE_' + BUILD_MODE } } } }\n",
       )
       git(root, 'init', '-q')
-      const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+      const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
       const build = (mode: string) => {
         const p = Bun.spawnSync({
           cmd: ['bun', CLI, 'run', 'build'],
@@ -427,14 +429,19 @@ describe('what the transpiler was told besides the bytes', () => {
       )
       git(root, 'init', '-q')
       const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+      // `vx lock` is what evaluates the config, so it is the process given the flag.
       const build = (mode: string) => {
-        const p = Bun.spawnSync({
-          cmd: ['bun', '--define', `BUILD_MODE="${mode}"`, CLI, 'run', 'build'],
-          cwd: pkg,
-          stdout: 'pipe',
-          stderr: 'pipe',
-          env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
-        })
+        const vx = (...args: string[]) =>
+          Bun.spawnSync({
+            cmd: ['bun', ...args],
+            cwd: pkg,
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+          })
+        const lock = vx('--define', `BUILD_MODE="${mode}"`, CLI, 'lock')
+        if (lock.exitCode !== 0) return [lock.exitCode, lock.stderr.toString()]
+        const p = vx(CLI, 'run', 'build')
         const out = p.stdout.toString() + p.stderr.toString()
         return [p.exitCode, /MODE_\w+/.exec(out)?.[0] ?? out]
       }
@@ -491,7 +498,7 @@ describe('a config the project stage edits in place', () => {
         )
       }
       git(root, 'init', '-q')
-      const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+      const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
       const run = () => {
         const p = Bun.spawnSync({
           cmd: ['bun', CLI, 'run', 'build', '--all', '--output-logs', 'full'],

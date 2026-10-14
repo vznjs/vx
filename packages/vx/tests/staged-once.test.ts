@@ -1,4 +1,4 @@
-// A run evaluates and stages each config ONCE. The CLI's selection pass
+// A run stages each locked config ONCE. The CLI's selection pass
 // stages every config when a filter walks the graph (`app...`,
 // `--affected` with a diff) to read the `pkg#task` edges; the run used to
 // load them all again — the `project` stage's cost paid twice, its
@@ -6,8 +6,9 @@
 // every "no vx equivalent" line doubled under `--affected`). The staged
 // load now travels into the run (`RunOptions.staged`) and `vx watch`
 // shares its sweep with the watched-set walk, while every cycle after an
-// edit still evaluates live. The counter is a `project` plugin that
-// appends the project's name to a file outside the workspace.
+// edit stages again. The counter is a `project` plugin that appends the
+// project's name to a file outside the workspace; `vx lock`'s own staging
+// is cleared before each count.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -74,6 +75,13 @@ export default { plugins: [${pluginSource(
       deps: { lib: '0.0.0' },
       files: { 'src/a.txt': 'a1\n' },
     })
+    const lock = Bun.spawnSync([process.execPath, BIN, 'lock'], {
+      cwd: root,
+      stderr: 'pipe',
+      env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+    })
+    expect(lock.stderr.toString()).toBe('')
+    await rm(counter)
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
@@ -121,7 +129,7 @@ export default { plugins: [${pluginSource(
     expect(await stageCalls(counter)).toEqual(['app', 'lib'])
   }, 30_000)
 
-  it('vx watch shares its sweep with the watched-set walk, and every cycle evaluates live', async () => {
+  it('vx watch shares its sweep with the watched-set walk, and every cycle stages again', async () => {
     const proc = Bun.spawn([process.execPath, BIN, 'watch', 'build', '--filter', 'app'], {
       cwd: root,
       stdout: 'pipe',
@@ -144,7 +152,7 @@ export default { plugins: [${pluginSource(
       await writeFile(path.join(lib, 'src', 'l.txt'), 'l2\n')
       await until(
         async () => (await stageCalls(counter)).length === 6,
-        'the cycle after the edit to stage live',
+        'the cycle after the edit to stage again',
       )
       expect(await stageCalls(counter)).toEqual(['app', 'app', 'app', 'lib', 'lib', 'lib'])
     } finally {

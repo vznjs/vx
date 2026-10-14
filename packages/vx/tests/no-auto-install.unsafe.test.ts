@@ -49,8 +49,9 @@ export const x = typeof isOdd
     })
     const url = `http://127.0.0.1:${registry.port}/`
     // The file itself, not `bun <file>`: the shebang is the launch under test.
+    // `vx lock` is the verb that evaluates configs; a run reads the lock.
     const p = Bun.spawn({
-      cmd: [BIN, 'run', 'a'],
+      cmd: [BIN, 'lock'],
       cwd: root,
       env: {
         ...process.env,

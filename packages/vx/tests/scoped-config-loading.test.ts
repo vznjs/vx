@@ -1,7 +1,7 @@
 // Scoped config loading: only configs of in-scope projects and their
-// transitive dependency closure are evaluated. On a 1090-package
-// repo, `vx run one#task` must not pay 1090 config imports — and a
-// broken config in an unrelated package must not fail the run.
+// transitive dependency closure are loaded. On a 1090-package repo,
+// `vx run one#task` must not pay 1090 config imports. A run reads the
+// lock and evaluates no config; `vx lock` evaluates every one.
 
 import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
@@ -11,7 +11,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { loadProjects, loadResolvedProjects, run } from '../src/orchestrator/index.js'
+import { loadProjects, loadResolvedProjects } from '../src/orchestrator/index.js'
+import { lock, run } from './helpers/orchestrator.js'
+import { run as runFromLock } from '../src/orchestrator/index.js'
 import { buildPackageGraph, listProjects, loadWorkspace } from '../src/workspace/index.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
 
@@ -75,15 +77,16 @@ describe('scoped config loading', () => {
   })
 
   it(
-    'anchored run loads only the target + its dep closure',
+    'an anchored run evaluates no config, a broken one out of scope included',
     async () => {
       await addProject('lib', GOOD)
       await addProject('app', GOOD, ['lib'])
-      await addProject('unrelated', BROKEN)
-
-      // unrelated's config throws on evaluation — the run only
+      await addProject('unrelated', GOOD)
+      await lock(root)
+      // unrelated's config now throws on evaluation — the run only
       // succeeds if it was never loaded.
-      const r = await run({ cwd: root, tasks: ['app#build'], log: silent() })
+      await writeFile(path.join(root, 'packages', 'unrelated', 'vx.config.mjs'), BROKEN)
+      const r = await runFromLock({ cwd: root, tasks: ['app#build'], log: silent() })
       expect(r.ok).toBe(true)
       expect(r.outcomes.map((o) => o.node.id).sort()).toEqual(['app#build'])
     },
@@ -200,13 +203,11 @@ describe('scoped config loading', () => {
   )
 
   it(
-    'full-scope runs still surface broken configs',
+    '`vx lock` surfaces a broken config, in scope of no run',
     async () => {
       await addProject('a', GOOD)
       await addProject('unrelated', BROKEN)
-      await expect(run({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
-        /never be evaluated/,
-      )
+      await expect(lock(root)).rejects.toThrow(/never be evaluated/)
     },
     TIMEOUT,
   )

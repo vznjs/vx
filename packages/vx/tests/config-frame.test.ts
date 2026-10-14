@@ -70,8 +70,8 @@ describe('configErrorFrame', () => {
   })
 })
 
-describe('vx prints a config refusal with its frame', () => {
-  it('on stderr, under the one line it printed before', async () => {
+describe('vx lock prints a config refusal with its frame', () => {
+  it('on stderr, under its refusal line', async () => {
     // Canonical: a macOS temp dir is reached through a symlink.
     const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-e2e-' }))
     try {
@@ -82,7 +82,7 @@ describe('vx prints a config refusal with its frame', () => {
         JSON.stringify({ name: 'b', version: '0.0.0' }),
       )
       await writeFile(path.join(pkg, 'vx.config.mjs'), CONFIG.replace("'lint.fix'", 'lint'))
-      const r = Bun.spawnSync(['bun', BIN, 'run', 'build', '--all'], {
+      const r = Bun.spawnSync(['bun', BIN, 'lock'], {
         cwd: root,
         env: { ...process.env, NO_COLOR: '1' },
         stdout: 'pipe',
@@ -91,7 +91,7 @@ describe('vx prints a config refusal with its frame', () => {
       expect(r.exitCode).toBe(1)
       const err = r.stderr.toString()
       expect(err.split('\n')[0]).toStartWith(
-        'vx: packages/b/vx.config.mjs:7:15: tasks.lint.exec has unknown field "comand"',
+        'vx lock: .vx/projects.lock.json not written: packages/b/vx.config.mjs:7:15: tasks.lint.exec has unknown field "comand"',
       )
       expect(err).toContain(
         "> 7 |       exec: { comand: 'x', timeout: -1 },\n    |               ^\n",

@@ -24,11 +24,10 @@ import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.j
 import { ownRssHighWater } from '../src/exec/runner.js'
 import {
   LocalHistoryProvider,
-  planRun,
-  run,
   type RunSummaryRecord,
   type TelemetryRecord,
 } from '../src/orchestrator/index.js'
+import { planRun, run } from './helpers/orchestrator.js'
 import { pluginSource } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
 

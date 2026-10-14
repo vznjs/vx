@@ -88,7 +88,7 @@ describe('Cache.holdsNothing', () => {
 })
 
 describe('a run on an empty local cache', () => {
-  const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+  const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
   const run = async (ws: string): Promise<string> => {
     const proc = Bun.spawn([process.execPath, BIN, 'run', 'build', '--all'], {
       cwd: ws,
