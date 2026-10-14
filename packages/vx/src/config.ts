@@ -108,15 +108,12 @@ export interface CacheSettings {
    */
   policy?: string
   /**
-   * Where this run's remote cache writes land. `'trusted'` reads and
-   * writes the trusted keys, for the default branch's CI. `'read-only'`
-   * reads them and writes nothing; omitted, `vx run` off CI takes it, and
-   * on CI (or with a policy naming the remote) `'trusted'`. Any other
-   * name (`'pr-123'`) is an untrusted scope: reads try the scope's keys,
-   * then the trusted ones, and writes go to the scope's only, so a PR never
-   * writes what the default branch reads. A client-side convention, not a
-   * security boundary: only a cache server that scopes writes by token
-   * can refuse a run that ignores it.
+   * Where this run's cache writes land. Omitted, a run reads and writes the
+   * default keys. A name (`'pr-123'`) reads the default key first, then the
+   * scope's, and writes only the scope's, so a PR never writes what the
+   * default branch reads. Whether a run writes at all is `policy`'s call.
+   * A client-side convention, not a security boundary: the boundary is a
+   * cache token the server limits.
    */
   scope?: string
   /** Which remote hits land on disk: `all` (the default), only the requested tasks' (`toplevel`), or `none`. */

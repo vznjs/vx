@@ -167,7 +167,7 @@ function genWorkspace(r: R): Obj {
           return fields({ olderThan, maxSize })
         }),
         policy: maybe(r, () => pick(r, ['local:rw,remote:r', 'remote:', 'local:r'])),
-        scope: maybe(r, () => pick(r, ['trusted', 'read-only', 'pr-123', '@team/ci'])),
+        scope: maybe(r, () => pick(r, ['main', 'pr-123', '@team/ci'])),
         download: maybe(r, () => pick(r, ['all', 'none'])),
         inputStability: maybe(r, () =>
           fields({

@@ -44,7 +44,7 @@ import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 // declared no plugins and ran the workspace bare, `cacheDirectory` left the
 // cache where it was — a config that loads and quietly does nothing it says.
 const CACHE_SCOPE_RULE =
-  "must be 'trusted', 'read-only', or a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'"
+  "must be a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'"
 
 /** `cache.scope`'s rule, shared with `VX_CACHE_SCOPE`. */
 export function isCacheScope(v: unknown): v is string {
@@ -1008,7 +1008,7 @@ export const REMOVED_FIELDS: ReadonlyMap<
       // Settings went into groups (docs/schema.md § Settings).
       cacheScope: {
         removedIn: '0.0.637',
-        use: "`cache: { scope }` ('trusted', 'read-only', 'pr-123')",
+        use: "`cache: { scope }` ('pr-123')",
       },
       concurrency: { removedIn: '0.0.637', use: "`run: { concurrency }` (4, '50%')" },
       schedule: { removedIn: '0.0.637', use: '`run: { schedule }`' },

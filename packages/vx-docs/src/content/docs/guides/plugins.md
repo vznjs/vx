@@ -335,7 +335,7 @@ Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
 asked first, then each plugin's remote in the order `plugins` lists them;
 `--cache`, `VX_CACHE_POLICY` and `cache.policy` gate every remote, and
 `--cache-scope` keeps writes apart. The hook's `ctx.scope` is that scope
-(`undefined` when trusted, `'read-only'`, or a name like `'pr-123'`), so a
+(a name like `'pr-123'`, `undefined` when none), so a
 remote can pick a credential per scope or check a token's branch. A remote error is a miss and one
 warning per kind of failure, naming the plugin, the request, the artifact
 and the remote's `endpoint` (`download <hash> from <endpoint> failed: HTTP

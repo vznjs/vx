@@ -40,6 +40,7 @@ src/cache/output-index.ts
 src/cache/policy.ts
 src/cache/run-history.ts
 src/cache/schema.ts
+src/cache/scoped-cache.ts
 src/cache/tar-stream.ts
 src/cache/zstd.ts
 src/cli/cache.ts

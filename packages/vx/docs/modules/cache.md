@@ -324,12 +324,9 @@ export interface CachePolicy {
   localWrite: boolean
   remoteRead: boolean
   remoteWrite: boolean
-  remoteScope?: string // an untrusted scope: read own then trusted keys, write own
 }
 export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
-// The run's `cache.scope` applied: 'read-only' clears remoteWrite, a name sets remoteScope.
-export function scopeCachePolicy(policy: CachePolicy, scope: string | undefined): CachePolicy
 // `--no-cache` (all off) beats `--force` (reads off), over whichever spec set the base
 export interface CacheFlags {
   noCache?: boolean
@@ -630,7 +627,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v42'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v43'`; `SCHEMA_VERSION` is
 `'v34'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

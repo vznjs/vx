@@ -617,7 +617,7 @@ export async function resolveRunOptions(
     // A laptop reads the shared cache and never writes it (owner,
     // 2026-10-03); naming the remote in `--cache` is asking to.
     ...(!parsed.remoteRequested && !onCI(process.env['CI'])
-      ? { defaultCacheScope: 'read-only' }
+      ? { remoteReadOnlyByDefault: true }
       : {}),
     flow: detectFlow(parsed),
     ...(parsed.frozen ? { frozen: true } : {}),
