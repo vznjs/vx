@@ -2188,7 +2188,7 @@ breaking footer).
 - **v9 → v10** (PR #7): on-disk layout switched from per-entry
   `meta.json` + `outputs/` directory to a workspace-wide `cache.db`
   (SQLite) plus output files directly at `<hash>/` and log files at
-  `logs/<hash>.{stdout,stderr}`. Adds run history for `vx stats`.
+  `logs/<hash>.{stdout,stderr}`. Adds run history for `vx info`.
   Removes the per-entry manifest.
 - **v10 → v11** (PR #19): analytics columns added to the `runs`
   table: `run_id` (UUIDv7), `cpu_ms`, `peak_rss_bytes`,

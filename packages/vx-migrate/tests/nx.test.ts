@@ -1540,7 +1540,7 @@ describe('nx() under vx lock and --frozen', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx lock: locked 0 project configs → vx-lock.json (3 projects have no vx.config; their tasks are never frozen)\n',
+        out: 'vx lock: locked 0 project configs → vx-lock.json (no vx.config, so never frozen: app, lib, ws)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all', '--frozen')

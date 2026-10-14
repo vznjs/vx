@@ -65,3 +65,32 @@ it('vx lock freezes the discovered project, so lock --check && run --frozen succ
   const frozen = await vx(root, ['run', 'build', '--all', '--frozen'])
   expect(`${frozen.code}\n${frozen.err}`).toStartWith('0\n')
 }, 30_000)
+
+it('the bare-project note names only projects a plugin gives tasks', async () => {
+  // solidjs/solid after vx-migrate: solid-ssr has no task Turbo runs, so no
+  // vx.config, and `vx lock` counted it as "1 project has no vx.config;
+  // their tasks are never frozen" without naming it, though it had none.
+  await addProject(root, 'empty')
+  await addProject(root, 'mapped')
+  await Bun.write(
+    path.join(root, 'vx.workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource('org/tools', `{ discover() { return [{ dir: 'tools/gen', name: 'gen' }] } }`),
+      pluginSource(
+        'org/mapper',
+        `{ project(config, ctx) { if (ctx.name === 'mapped') config.tasks = { build: { exec: { command: 'echo m' } } } } }`,
+      ),
+    ]),
+  )
+  const lock = await vx(root, ['lock'])
+  expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
+  expect(lock.out).toBe(
+    'vx lock: locked 2 project configs → vx-lock.json (no vx.config, so never frozen: mapped)\n',
+  )
+  const check = await vx(root, ['lock', '--check'])
+  expect(check.out).toBe(
+    'vx lock --check: up to date (2 projects; not audited, no vx.config: mapped)\n',
+  )
+  const json = await vx(root, ['lock', '--check', '--format', 'json'])
+  expect(JSON.parse(json.out).notAudited).toBe(1)
+}, 30_000)
