@@ -342,6 +342,47 @@ describe('project stage', () => {
   )
 
   it(
+    "a plugin's output is judged against the project's own config file, not the refusal's label",
+    async () => {
+      // The label `<path> (after plugin 'org/x')` was read as the config
+      // path, so `*` covered its basename `x')` and no `!` could take it back.
+      await pkg('a', build)
+      await pkg('b', build)
+      const outputs = (globs: string[]) =>
+        `{ cache: { inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(globs)} } } }`
+      await workspace([
+        pluginSource(
+          'org/x',
+          `{ project(config, ctx) {
+            if (ctx.name === 'a') config.tasks.build = { ...config.tasks.build, ...${outputs(['*', '!package.json', '!vx.config.mjs'])} }
+          } }`,
+        ),
+        pluginSource(
+          'org/y',
+          `{ graph(nodes) {
+            const n = nodes.get('b#build'); n.config = { ...n.config, ...${outputs(['*', '!package.json', '!vx.config.mjs'])} }
+          } }`,
+        ),
+      ])
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      expect(plan.tasks.map((t) => t.node.config.cache?.outputs.files)).toEqual([
+        ['*', '!package.json', '!vx.config.mjs'],
+        ['*', '!package.json', '!vx.config.mjs'],
+      ])
+      await workspace([
+        pluginSource(
+          'org/x',
+          `{ project(config) { config.tasks.build = { ...config.tasks.build, ...${outputs(['*', '!package.json'])} } } }`,
+        ),
+      ])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        /\(after plugin 'org\/x'\): tasks\.build\.cache\.outputs\.files: "\*" covers the project's own vx\.config\.mjs/,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a plugin that puts a value JSON cannot carry into a config is refused like a user would be (item 701)',
     async () => {
       // A Map where `sandbox` goes passes the schema (an object with no

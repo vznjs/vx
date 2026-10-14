@@ -35,10 +35,11 @@ export async function applyGraphStage(
     (plugin) => {
       for (const n of nodes.values()) {
         if (isDefaultBuild(n.config)) continue
-        const where = configPaths.get(n.projectName) ?? `${n.projectName} (no config file)`
+        const own = configPaths.get(n.projectName) ?? null
         validateProjectConfig(
           { tasks: { [n.taskName]: n.config } },
-          `${where} (after plugin '${plugin.name}')`,
+          `${own ?? `${n.projectName} (no config file)`} (after plugin '${plugin.name}')`,
+          own,
         )
       }
     },
