@@ -174,6 +174,8 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
         const env = {
           PATH: `${path.join(root, 'node_modules', '.bin')}${path.delimiter}${process.env['PATH']}`,
           HOME: process.env['HOME']!,
+          // The sandbox's own temp dir: the npm() stand-in writes there.
+          TMPDIR: tmpdir(),
           NX_DAEMON: 'false',
           NX_TUI: 'false',
           NX_NO_CLOUD: 'true',
