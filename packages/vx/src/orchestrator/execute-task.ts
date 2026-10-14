@@ -71,6 +71,7 @@ import {
   placeholderSweeper,
   reachedWithheld,
   sandboxRequestFor,
+  sandboxReadable,
   sweepPlaceholders,
   undeclaredWriteReach,
   untouchedPlaceholderLine,
@@ -1561,6 +1562,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       deferSave: args.deferSave,
       // A sink listens: say what the save cost.
       measure: args.explainMiss !== undefined,
+      ...(userSandbox
+        ? {
+            readable: sandboxReadable(
+              node,
+              cfg.exec!.sandbox!,
+              args.workspaceRoot,
+              args.nestedProjectDirs,
+            ),
+          }
+        : {}),
     })
     args.deferredSaves?.set(node.id, landed)
   } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants !== true) {

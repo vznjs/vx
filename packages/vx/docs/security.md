@@ -151,7 +151,11 @@ A task with `exec.sandbox` runs where only what it declares exists:
 - a symlinked output must resolve inside its project: vx packs outputs
   outside the sandbox, and a link to another project's file would have
   carried that file into the cache (L-23). An output directory linked out
-  of the project refuses the task by name (X-88).
+  of the project refuses the task by name (X-88). Inside the project, a
+  link must name a file the task could read (a read or write grant, its
+  `node_modules`) or one of its own outputs, so `dist/x -> ../.env` under
+  `read: ['src/']` is refused, and Linux judges making the link by the
+  link, never its target (`tests/sandbox-output-link.unsafe.test.ts`).
 - vx's own environment, which holds the variables a task is not given
   (a token, a key), is unreadable: the task cannot see vx's
   `/proc/<pid>/environ` on Linux or read it through `ps eww` on macOS

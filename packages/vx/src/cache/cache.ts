@@ -1991,6 +1991,8 @@ export class Cache implements CacheLayer {
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
+    /** See `CacheLayer.save`. */
+    readable?: ((real: string) => boolean) | undefined
   }): Promise<void> {
     // Layout (v17, extended additively for workspaceFiles): one
     // `<hash>.tar.zst` per entry. Tar carries ONLY the things you'd
@@ -2188,6 +2190,7 @@ export class Cache implements CacheLayer {
     outputFiles: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
+    readable?: ((real: string) => boolean) | undefined
   }): Promise<Uint8Array> {
     // stdout is ALWAYS present in the artifact, even if empty, so the
     // layout is predictable: a successful read finds `stdout` and
@@ -2211,6 +2214,7 @@ export class Cache implements CacheLayer {
       outputs: this.outputsOf(args),
       exec: usageOfEntry(args.entry),
       within: args.projectDir,
+      readable: args.readable,
     })
     if (plan.size > this.artifactCeiling) {
       throw new Error(

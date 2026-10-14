@@ -1155,7 +1155,7 @@ it (never following it). An output DIRECTORY that is a symlink
 (`dist -> real-out`) is followed: its target is cleaned, saved and
 restored as the output; one that resolves outside the project refuses
 the task, naming the link. A link to a directory, a dangling one, or
-one whose target is outside the project cannot be stored — the save refuses it by name and caches nothing, so
+one whose target is outside the project or, for a sandboxed task, a file its grants do not let it read cannot be stored — the save refuses it by name and caches nothing, so
 the next run executes again. A link to another output of the same task
 is stored wherever it is: `gen/latest -> v2.txt` under a
 `workspaceFiles` output caches (A-53). The clean also prunes the directories it

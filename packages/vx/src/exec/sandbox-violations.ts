@@ -744,6 +744,9 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
   }))
 }
 
+/** Write syscalls that act on a path's last component, not what a link there names. */
+const NAME_SYSCALL = /^(?:symlink|unlink|rename|rmdir|mknod|link)/
+
 /**
  * The writes SRT's Linux observer saw that this task's binds do not cover.
  * The observer reports every write-intent syscall as `deny <syscall>
@@ -774,7 +777,12 @@ export function refusedWrites(
     // `5>out.log` in the project reported a write to `out.log` and failed
     // a clean task (2026-10-02).
     if (/^\/(?:dev|proc)\//.test(raw)) continue
-    const abs = toRealPath(raw)
+    // These act on the name itself, never through it: resolving the link
+    // `ln -s ../src/a.ts dist/a` just made judged the write by `src/a.ts`,
+    // and a clean task failed with a fix that granted `write: ['src/']`.
+    const abs = NAME_SYSCALL.test(syscall)
+      ? path.join(toRealPath(path.dirname(raw)), path.basename(raw))
+      : toRealPath(raw)
     if (isUnderAny(abs, binds) || underGlob(abs, globs)) continue
     // A directory a write bind lies in exists, since bwrap made it to mount
     // the bind: `mkdir -p node_modules/.cache/tool` under a grant of
