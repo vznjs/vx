@@ -95,7 +95,7 @@ describe('cli run()', () => {
       await said(['run', 'build', '--output-logs=loud']),
       await said(['cache', 'bogus']),
       // CONTROL: a near miss keeps its one name.
-      await said(['cache', 'prnue']),
+      await said(['cache', 'claen']),
     ]).toEqual([
       [1, 'vx watch: unknown flag: --debounce=abc (see `vx watch --help`)\n'],
       [1, 'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n'],
@@ -107,8 +107,8 @@ describe('cli run()', () => {
         1,
         "vx run: --output-logs must be one of 'full', 'errors-only', 'hash-only', 'none' (got loud) (see `vx run --help`)\n",
       ],
-      [1, 'vx cache: unknown subcommand: bogus. The subcommand is prune (see `vx cache --help`)\n'],
-      [1, 'vx cache: unknown subcommand: prnue. Did you mean prune? (see `vx cache --help`)\n'],
+      [1, 'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n'],
+      [1, 'vx cache: unknown subcommand: claen. Did you mean clean? (see `vx cache --help`)\n'],
     ])
   })
 
@@ -325,8 +325,8 @@ describe('cli run()', () => {
       ['last', '--lst'],
       ['show', '--formt'],
       ['why', 'x', '--rn', '1'],
-      ['cache', 'prune', '--dry-rn'],
-      ['cache', 'prune', '--dry'],
+      ['cache', 'clean', '--dry-rn'],
+      ['cache', 'clean', '--dry'],
       ['run', 'build', '--concurency', '2'],
       ['info', '--json'],
       ['last', '--json'],
@@ -337,7 +337,7 @@ describe('cli run()', () => {
       // edits from a flag the verb takes.
       ['info', 'format'],
       ['lock', 'foo'],
-      ['cache', 'prune', 'foo'],
+      ['cache', 'clean', 'foo'],
     ]) {
       stderr = ''
       // `last` and `why` refuse by throwing, which bin.ts prints as-is.
@@ -355,8 +355,8 @@ describe('cli run()', () => {
       'vx last: unknown flag: --lst (did you mean --list?) (see `vx last --help`)',
       'vx show: unknown flag: --formt (did you mean --format?) (see `vx show --help`)',
       'vx why: unknown flag: --rn (did you mean --run?) (see `vx why --help`)',
-      'vx cache prune: unknown flag: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
-      'vx cache prune: unknown flag: --dry (did you mean --dry-run?) (see `vx cache --help`)',
+      'vx cache clean: unknown flag: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
+      'vx cache clean: unknown flag: --dry (did you mean --dry-run?) (see `vx cache --help`)',
       'vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
       'vx info: unknown flag: --json (did you mean --format json?) (see `vx info --help`)',
       'vx last: unknown flag: --json (did you mean --format json?) (see `vx last --help`)',
@@ -364,7 +364,7 @@ describe('cli run()', () => {
       'vx upgrade: unknown flag: --json (see `vx upgrade --help`)',
       'vx info: unexpected argument: format (see `vx info --help`)',
       'vx lock: unexpected argument: foo (see `vx lock --help`)',
-      'vx cache prune: unexpected argument: foo (see `vx cache --help`)',
+      'vx cache clean: unexpected argument: foo (see `vx cache --help`)',
     ])
   })
 
@@ -1672,7 +1672,7 @@ describe('parseRunArgs', () => {
     expect(run).not.toContain('vx last [RUNID]')
     expect(run).toContain('Full reference: vx help')
     const cache = verbHelpText('cache')
-    expect(cache).toContain('vx cache prune --older-than 30d')
+    expect(cache).toContain('vx cache clean --older-than 30d')
     expect(cache).toContain('--dry-run')
     expect(cache).not.toContain('Selection (for run):')
     const last = verbHelpText('last')
@@ -1709,6 +1709,7 @@ describe('parseRunArgs', () => {
       '--cache-dir',
       '--dry-run',
       '--format',
+      '--global',
       '--max-size',
       '--older-than',
     ])
@@ -1944,7 +1945,7 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--dry']).dry).toBe('text')
     expect(parseRunArgs(['build', '--dry=text']).dry).toBe('text')
     expect(parseRunArgs(['build', '--dry=json']).dry).toBe('json')
-    // Turbo's spelling (foreign-flags.ts); `vx cache prune --dry-run` is its own flag.
+    // Turbo's spelling (foreign-flags.ts); `vx cache clean --dry-run` is its own flag.
     expect(parseRunArgs(['build', '--dry-run']).dry).toBe('text')
   })
 
@@ -2230,8 +2231,8 @@ describe('parseSize', () => {
 })
 
 describe('parsePruneArgs', () => {
-  it('rejects empty args', () => {
-    expect(parsePruneArgs([]).error).toMatch(/--older-than|--max-size/)
+  it('takes no bound as a clear', () => {
+    expect(parsePruneArgs([]).error).toBeUndefined()
   })
 
   it('parses --older-than as a wall-clock cutoff', () => {
@@ -2294,7 +2295,7 @@ describe('parsePruneArgs', () => {
   })
 })
 
-describe('vx cache prune command', () => {
+describe('vx cache clean command', () => {
   let workspaceRoot: string
   const origCwd = process.cwd()
 
@@ -2318,18 +2319,6 @@ describe('vx cache prune command', () => {
     vi.restoreAllMocks()
   })
 
-  it('errors when called with no policy', async () => {
-    let stderr = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
-      stderr += String(chunk)
-      return true
-    })
-    const code = await run(['cache', 'prune'])
-    expect(code).toBe(1)
-    expect(stderr).toContain('--older-than')
-  })
-
   it('errors with no subcommand at all, naming the one that exists', async () => {
     let stderr = ''
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
@@ -2339,7 +2328,7 @@ describe('vx cache prune command', () => {
     })
     expect(await run(['cache'])).toBe(1)
     expect(stderr).toBe(
-      'vx cache: missing subcommand. Try `vx cache prune --older-than 30d` or `vx cache prune --max-size 1G` (see `vx cache --help`)\n',
+      'vx cache: missing subcommand. Try `vx cache clean --older-than 30d` to trim the cache, or `vx cache clean` to clear it (see `vx cache --help`)\n',
     )
   })
 
@@ -2351,7 +2340,7 @@ describe('vx cache prune command', () => {
       return true
     })
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-    const code = await run(['cache', 'prune', '--older-than', '1s'])
+    const code = await run(['cache', 'clean', '--older-than', '1s'])
     expect(code).toBe(0)
     expect(stdout).toContain('Pruned 0 entries')
   })
@@ -2371,10 +2360,10 @@ describe('vx cache prune command', () => {
   // The words a user arrives with: `stats` is what the other runners call
   // it, and vx's answer is a different VERB, not a missing one. Walked the
   // first-run path to find this (2026-09-20) — the help screen lists only
-  // `prune`, so a reader sent there learns what vx does not have.
+  // `clean`, so a reader sent there learns what vx does not have.
   it.each([
     ['stats', '`vx info` reports the cache directory'],
-    ['clean', '`vx cache prune` is the eviction verb'],
+    ['clear', '`vx cache clean` with no bound clears the whole cache'],
     ['dir', '`vx info` prints the cache directory'],
   ])('points %s at the verb that answers it', async (sub, hint) => {
     let stderr = ''
@@ -2394,8 +2383,8 @@ describe('vx cache prune command', () => {
       stderr += String(chunk)
       return true
     })
-    expect(await run(['cache', 'prun'])).toBe(1)
-    expect(stderr).toContain('Did you mean prune?')
+    expect(await run(['cache', 'clen'])).toBe(1)
+    expect(stderr).toContain('Did you mean clean?')
   })
 })
 

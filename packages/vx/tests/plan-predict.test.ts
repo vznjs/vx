@@ -744,7 +744,7 @@ describe('planRun() — planning executes nothing', () => {
       // Warm planning is equally inert: the probe is an existence check, so
       // it must not re-execute and must not touch the entry's LRU timestamp
       // (an `accessed_at` bump here would let `--dry` rescue an entry a
-      // `vx cache prune --max-size` was about to evict).
+      // `vx cache clean --max-size` was about to evict).
       const warm = await planRun({ cwd: root, tasks: ['build'], log: quietLogger })
       expect(warm.tasks.map((t) => t.cacheStatus)).toEqual(['hit-local'])
       expect(await Bun.file(ranLog).text()).toBe('x\n')

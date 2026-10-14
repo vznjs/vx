@@ -41,8 +41,9 @@ error names the same fix.
 2. Run `npx @vzn/vx init --keep`. Beside `turbo.json` or `turbo.jsonc` it writes this
    `.vx/workspace.ts` (and `.vx/.gitignore`, which keeps `.vx/cache` out of git) and nothing
    else, then prints a `next:` line.
-3. Run that line. It installs `@vzn/vx-migrate` with your lockfile's
-   manager, then builds once through `turbo()`: a check that the mapping
+3. Run that line. It installs `@vzn/vx-migrate` and `@vzn/vx-lockfile`
+   (the file declares your lockfile's plugin: `npm()`, `pnpm()`, `bun()`
+   or `yarn()`) with your lockfile's manager, then builds once through `turbo()`: a check that the mapping
    holds before you write configs, not a way to keep running the repo.
 4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
    with `bunx @vzn/vx-migrate`: one `vx.config.ts` per package, plus a
@@ -57,8 +58,9 @@ error names the same fix.
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { turbo } from '@vzn/vx-migrate'
+import { npm } from '@vzn/vx-lockfile'
 
-export default { plugins: [turbo()] } satisfies WorkspaceConfig
+export default { plugins: [turbo(), npm()] } satisfies WorkspaceConfig
 ```
 
 ```text
@@ -66,7 +68,7 @@ $ npx @vzn/vx init --keep
 vx init: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
 wrote .vx/workspace.ts.
 
-next: npm install -D @vzn/vx-migrate && npx @vzn/vx lock && npx @vzn/vx run build --all
+next: npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx lock && npx @vzn/vx run build --all
 ```
 
 The `next:` line uses your lockfile's manager (`pnpm add -D -w …` beside
@@ -204,8 +206,8 @@ The command itself comes from your `package.json` script, with its
    (and `.vx/.gitignore`) and nothing else. With `turbo.json` there too, it declares `turbo()`.
    A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`;
    an Nx Cloud workspace is named instead, since vx cannot share its cache.
-3. Run the `next:` line it prints. It installs `@vzn/vx-migrate`, then
-   builds once through `nx()`: a check that the mapping holds before you
+3. Run the `next:` line it prints. It installs `@vzn/vx-migrate` and
+   `@vzn/vx-lockfile`, then builds once through `nx()`: a check that the mapping holds before you
    write configs, not a way to keep running the repo.
 4. `vx-migrate` reads the resolved graph, never `nx.json` alone: an
    exported `.nx/workspace-data/project-graph.json`, else the one your
@@ -230,8 +232,9 @@ maps such a repo's scripts instead.
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
+import { npm } from '@vzn/vx-lockfile'
 
-export default { plugins: [nx()] } satisfies WorkspaceConfig
+export default { plugins: [nx(), npm()] } satisfies WorkspaceConfig
 ```
 
 ```text
@@ -239,7 +242,7 @@ $ npx @vzn/vx init --keep
 vx init: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
 wrote .vx/workspace.ts.
 
-next: npm install -D @vzn/vx-migrate && npx @vzn/vx lock && npx @vzn/vx run build --all
+next: npm install -D @vzn/vx-migrate @vzn/vx-lockfile && npx @vzn/vx lock && npx @vzn/vx run build --all
 ```
 
 `bunx @vzn/vx-migrate` reports what it wrote, then locks the configs:
@@ -321,7 +324,7 @@ test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --opti
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
 | `nx graph`                           | `vx run build --all --graph`                              |
-| `nx reset`                           | `vx cache prune --older-than <age>` trims it; delete the cache store `vx info` names to drop it all; there is no daemon |
+| `nx reset`                           | `vx cache clean` clears it all; `--older-than <age>` trims it; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
 
 Generators, Nx Console and module-boundary rules have no vx equivalent;

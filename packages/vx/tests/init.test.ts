@@ -2498,3 +2498,144 @@ describe('vx init --plugin <seam>', () => {
     TIMEOUT,
   )
 })
+
+describe('vx init declares the lockfile plugin', () => {
+  // Package edges (`^build`, --affected) come from @vzn/vx-lockfile alone,
+  // so a workspace file without it has none.
+  // A stand-in: the sandbox lets this suite read only core, not packages/vx-lockfile.
+  const standIn = async (dir: string) => {
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: '@vzn/vx-lockfile', type: 'module', exports: './index.js' }),
+    )
+    await writeFile(
+      path.join(dir, 'index.js'),
+      "import { definePlugin } from '@vzn/vx'\nexport const pnpm = () => definePlugin(import.meta, { setup() {} })\n",
+    )
+  }
+  const linkLockfile = (root: string) =>
+    standIn(path.join(root, 'node_modules', '@vzn', 'vx-lockfile'))
+  const lockfileWorkspace = async () => {
+    const root = await makeRoot('vx-init-lockfile-')
+    await addPackage(root, 'app', { build: 'tsc' })
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n")
+    return root
+  }
+
+  it(
+    'writes pnpm() for a pnpm-lock.yaml, and the lock checks clean',
+    async () => {
+      const root = await lockfileWorkspace()
+      try {
+        await linkLockfile(root)
+        const r = await vx(root, ['init'])
+        expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+        expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
+          "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
+            "import { pnpm } from '@vzn/vx-lockfile'\n\n" +
+            'export default { plugins: [pnpm()] } satisfies WorkspaceConfig\n',
+        )
+        expect(r.out).not.toContain('pnpm add')
+        expect((await vx(root, ['lock', '--check'])).code).toBe(0)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'installs it with the repo’s manager when missing',
+    async () => {
+      const root = await lockfileWorkspace()
+      const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-init-pm-'))
+      try {
+        await standIn(path.join(bin, 'pkg'))
+        // A stand-in pnpm: records its argv and installs the package.
+        await writeFile(
+          path.join(bin, 'pnpm'),
+          `#!/bin/sh\necho "$@" > argv\ncp -R ${path.join(bin, 'pkg')} node_modules/@vzn/vx-lockfile\n`,
+          { mode: 0o755 },
+        )
+        const proc = Bun.spawn([process.execPath, BIN, 'init'], {
+          cwd: root,
+          env: { ...process.env, PATH: `${bin}:${process.env['PATH']}` },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+        expect(code).toBe(0)
+        expect((await Bun.file(path.join(root, 'argv')).text()).trim()).toBe(
+          `add -D -w @vzn/vx-lockfile${VERSION === '0.0.0' ? '' : `@${VERSION}`}`,
+        )
+        expect(out).toContain('note: ran pnpm add -D -w @vzn/vx-lockfile')
+        expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toContain('pnpm()')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+        await rm(bin, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a dry run installs nothing and says what it would run',
+    async () => {
+      const root = await lockfileWorkspace()
+      try {
+        const r = await vx(root, ['init', '--dry'])
+        expect(r.code).toBe(0)
+        expect(r.out).toContain('note: would run pnpm add -D -w @vzn/vx-lockfile')
+        expect(existsSync(path.join(root, 'node_modules', '@vzn', 'vx-lockfile'))).toBe(false)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '--keep declares yarn() beside turbo() and installs it in next:',
+    async () => {
+      const root = await makeScriptsWorkspace()
+      try {
+        await Bun.write(path.join(root, 'turbo.json'), '{ "tasks": { "build": {} } }\n')
+        await Bun.write(path.join(root, 'yarn.lock'), '__metadata:\n  version: 8\n')
+        const r = await vx(root, ['init', '--keep'])
+        expect(r.code).toBe(0)
+        expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
+          "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
+            "import { turbo } from '@vzn/vx-migrate'\n" +
+            "import { yarn } from '@vzn/vx-lockfile'\n\n" +
+            'export default { plugins: [turbo(), yarn()] } satisfies WorkspaceConfig\n',
+        )
+        expect(r.out).toContain('yarn add -D @vzn/vx-migrate')
+        expect(r.out).toContain(' @vzn/vx-lockfile')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'CONTROL: a workspace file already here is left as it is',
+    async () => {
+      const root = await lockfileWorkspace()
+      try {
+        await mkdir(path.join(root, '.vx'))
+        await writeFile(path.join(root, '.vx/workspace.ts'), 'export default { plugins: [] }\n')
+        const r = await vx(root, ['init'])
+        expect(r.code).toBe(0)
+        expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
+          'export default { plugins: [] }\n',
+        )
+        expect(r.out).not.toContain('vx-lockfile')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})

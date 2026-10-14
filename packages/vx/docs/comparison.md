@@ -139,7 +139,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Log replay on hit        | yes                                        | yes                    | yes                          | yes                                                                                                                                                                       |
 | Output restore on hit    | yes                                        | yes                    | yes                          | yes                                                                                                                                                                       |
 | Output cleaning          | (no — additive)                            | (no)                   | (materialized)               | **yes** — wipe before exec AND before restore                                                                                                                             |
-| Cache pruning            | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `cache.retention: { olderThan, maxSize }` in `.vx/workspace.ts` (run end), `vx cache prune --older-than / --max-size`                                                     |
+| Cache pruning            | `cacheMaxAge`, `cacheMaxSize` in config    | `maxCacheSize`         | `vp run cache clean`         | `cache.retention: { olderThan, maxSize }` in `.vx/workspace.ts` (run end), `vx cache clean --older-than / --max-size`                                                     |
 | Stats / run history      | `--summarize` JSON files                   | Nx Cloud dashboard     | `--last-details`             | `runs` + `invocations` tables in `cache.db` (direct SQL); `vx info`; `vx last`                                                                                            |
 | Per-run JSON summary     | `--summarize`                              | `--outputStyle`        | `--last-details`             | `--summarize[=<path>]`                                                                                                                                                    |
 | Flaky task detection     | —                                          | Nx Cloud (paid)        | —                            | **local** — same key failed after it passed: the task's row, `--summarize` (`flaky`), `vx info`                                                                           |
@@ -291,7 +291,7 @@ upstream repos.
    time: a task's command is exactly what its config says.
    - vite-task: `enablePrePostScripts` (default true).
 
-10. **`vx prune` — shipped (2026-08-25), `@vzn/vx-prune` from 2026-09-10, removed 2026-09-11, back 2026-10-03 as a verb of `@vzn/vx-lockfile`.** Workspace subset for Docker
+10. **`vx prune` — shipped (2026-08-25), `@vzn/vx-prune` from 2026-09-10, removed 2026-09-11, back 2026-10-03 as a verb of `@vzn/vx-lockfile`, removed 2026-10-14.** Workspace subset for Docker
     builds: targets + transitive workspace deps, workspace lists rewritten,
     root manifests and vx configs, each lockfile (bun, pnpm, npm, yarn)
     PRUNED to what the subset installs so it installs frozen, `--docker`

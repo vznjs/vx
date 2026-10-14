@@ -1019,18 +1019,18 @@ export const MORE: readonly Feature[] = [
     category: 'cache',
     hook: 'Evict by age or size, oldest use first, by hand or on a schedule.',
     body: [
-      'Caches grow. `vx cache prune` removes entries older than a cutoff or trims the cache to a size, least recently used first.',
+      'Caches grow. `vx cache clean` removes entries older than a cutoff or trims the cache to a size, least recently used first.',
       'Set `cache.retention` once and vx keeps to it; `--dry-run` shows what would go first.',
     ],
     example: {
       lang: 'sh',
-      code: 'vx cache prune --older-than 30d\nvx cache prune --max-size 10G --dry-run',
+      code: 'vx cache clean --older-than 30d\nvx cache clean --max-size 10G --dry-run',
     },
     image: 'cache-prune.png',
     imageAlt: 'Cache pruning by age and size.',
     docs: {
-      label: 'vx cache prune',
-      href: 'cli/#vx-cache-prune',
+      label: 'vx cache clean',
+      href: 'cli/#vx-cache-clean',
     },
     deepDive: {
       label: 'One command to know your workspace',
@@ -1852,31 +1852,6 @@ export const MORE: readonly Feature[] = [
     deepDive: {
       label: 'The local floor',
       href: 'blog/the-local-floor/',
-    },
-  },
-  {
-    slug: 'vx-prune',
-    title: 'Ship one app, not the monorepo',
-    category: 'extend',
-    hook: '`vx prune` copies a project and its dependencies with a pruned lockfile, for a Docker build.',
-    body: [
-      'A Docker image for one app should not install the whole monorepo’s dependencies. `vx prune @demo/web --docker` writes just the projects it needs and a lockfile cut down to them.',
-      'Copy `json/` first and install, then `full/`, and the install layer caches until a dependency changes.',
-      'For the image that only runs the app, `--production` also leaves out workspace packages that only dev dependencies pull in.',
-    ],
-    example: {
-      lang: 'text',
-      code: '$ vx prune @demo/web --docker\nvx prune: 2 projects → out (json/ + full/), bun.lock pruned',
-    },
-    image: 'vx-prune.png',
-    imageAlt: 'vx prune writing a pruned workspace for Docker.',
-    docs: {
-      label: 'vx prune',
-      href: 'cli/',
-    },
-    deepDive: {
-      label: 'Ship one app, not the whole monorepo',
-      href: 'blog/vx-prune/',
     },
   },
   {

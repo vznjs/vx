@@ -92,11 +92,28 @@ export function extendWorkspaceFile(
     '',
     'export default {',
     '  plugins: [',
-    ...(kept === '' ? [] : [`    ${kept},`]),
+    ...topLevel(kept).map((k) => `    ${k},`),
     ...entries(added, '    '),
     '  ],',
     `}${tail}`,
   ].join('\n')
+}
+
+/** `a(), b({ x, y })` → `['a()', 'b({ x, y })']`: the commas outside any bracket. */
+function topLevel(list: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let from = 0
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i]!
+    if ('([{'.includes(c)) depth++
+    else if (')]}'.includes(c)) depth--
+    else if (c === ',' && depth === 0) {
+      out.push(list.slice(from, i))
+      from = i + 1
+    }
+  }
+  return [...out, list.slice(from)].map((e) => e.trim()).filter((e) => e !== '')
 }
 
 /**

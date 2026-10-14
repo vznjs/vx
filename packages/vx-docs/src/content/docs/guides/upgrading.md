@@ -13,6 +13,14 @@ first; its text is that footer: what changed and what to do.
 
 --frozen, --no-frozen, run.frozen, VX_RUN_FROZEN and run({ frozen }) are gone. Every run, watch cycle, --affected selection and the picker loads configs only from .vx/projects.lock.json (was .vx/lock.json); with no lock a run stops with "run `vx lock`". Run `vx lock` after a config change (`vx lock --check` in CI).
 
+## vx-lockfile: remove the vx prune verb
+
+`vx prune` is gone; it is an unknown verb.
+
+## cli: rename vx cache prune to vx cache clean
+
+`vx cache prune` is now `vx cache clean`; the old name is an unknown subcommand. A bare `vx cache clean` clears this repo's cache and run history instead of exiting 1.
+
 ## lock: write the lock minified, a review copy per config
 
 .vx/lock.json is written minified; re-run vx lock and commit the lock and each project's vx.lock.json.

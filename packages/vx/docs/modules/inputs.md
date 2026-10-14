@@ -274,7 +274,7 @@ host's `process.env`):
 
 - Globs run against the project dir (a literal is a tree here too); a
   `!` entry takes its matches back (A-44).
-- `.git` and `.vx/cache` excluded whatever the glob (`OUTPUT_NEVER`: no task
+- `.git`, `.vx` and `vx.lock.json` excluded whatever the glob (`OUTPUT_NEVER`: no task
   produces them and their loss is unrecoverable), and every
   `node_modules` unless a glob names one (A-13): `**/*.js` cleaned the
   installed files, while an install task's `node_modules/**` keeps them.

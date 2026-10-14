@@ -169,7 +169,7 @@ function validateDependencyRules(value: unknown, where: string): void {
 /** `value` as the setting at `path` takes it, refused in `where`'s words. */
 function validateSettingValue(value: unknown, path: string, where: string): void {
   const { kind } = setting(path)
-  // The bound `vx cache prune` refuses too: each run would empty the cache,
+  // The bound `vx cache clean` refuses too: each run would empty the cache,
   // the entries it just saved included, so nothing ever hits (item 969).
   if (
     path === 'cache.retention.olderThan' &&

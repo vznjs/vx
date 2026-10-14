@@ -56,7 +56,7 @@ export async function discoverCliProjects(workspace: Workspace): Promise<Project
 
 /**
  * `--cache-dir <path>` / `--cache-dir=<path>` for a verb that reads the
- * cache a run wrote — `why`, `last`, `info`, `cache prune`. Same rules as
+ * cache a run wrote — `why`, `last`, `info`, `cache clean`. Same rules as
  * `vx run`'s: a value is required, and the space form refuses a value
  * that looks like a flag (an unquoted empty shell variable would otherwise
  * swallow the next flag as the path). Returns null when `args[i]` is not

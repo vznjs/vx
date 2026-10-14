@@ -4,7 +4,7 @@
 // worktree's `.git` is a file and is a top-level; a submodule's points into
 // the superproject's `.git/modules`, so the walk goes on to it. Outside git
 // the walk reaches `/`, and a file another user owns is refused.
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -80,5 +80,15 @@ it.skipIf(skipAsRoot('workspace root file owner'))(
       'VX_E_NO_WORKSPACE',
       '.',
     ])
+  },
+)
+
+it.skipIf(skipAsRoot('workspace root file link owner'))(
+  'outside git, a link another user planted to a root-owned file is refused',
+  async () => {
+    await rm(path.join(shared, '.vx/workspace.ts'))
+    // Root owns it; the link and its `.vx` are this (the planting) user's.
+    await symlink('/etc/hosts', path.join(shared, '.vx/workspace.ts'))
+    expect(await found('repo', process.getuid!() + 1)).toBe('VX_E_NO_WORKSPACE')
   },
 )

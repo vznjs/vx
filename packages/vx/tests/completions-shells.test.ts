@@ -87,7 +87,7 @@ describe.skipIf(FISH === null)('fish', () => {
     expect([ask('vx ca'), ask('vx run --conc'), ask('vx cache ')]).toEqual([
       ['cache'],
       ['--concurrency'],
-      ['prune'],
+      ['clean'],
     ])
   })
 })

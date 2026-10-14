@@ -681,11 +681,13 @@ async function resolveRuntimeValues(
 /**
  * What no output glob reaches. An output is otherwise taken as written —
  * `node_modules/**` IS an install task's output, so `ALWAYS_IGNORE` does not
- * apply here — but these two directories no task produces, and a root
- * project declaring `**` would otherwise wipe its repository and the cache
- * it is restoring from (2026-09-16).
+ * apply here — but no task produces these, and a root project declaring
+ * `**` would otherwise wipe its repository and the cache it is restoring
+ * from (2026-09-16). `.vx` whole and each `vx.lock.json` are vx's own: as
+ * outputs, the clean deleted an uncommitted workspace config and a hit
+ * restored a lock or ignore file the key does not see over the current one.
  */
-const OUTPUT_NEVER = ['**/.git/**', '**/.vx/cache/**']
+const OUTPUT_NEVER = ['**/.git/**', '**/.vx/**', '**/vx.lock.json']
 
 /**
  * What a set of output globs may not reach: `OUTPUT_NEVER`, and every

@@ -489,8 +489,8 @@ describe('the strict-output-ownership post names what the wipe never touches', (
     )
     const arr = /const OUTPUT_NEVER = \[([^\]]*)\]/.exec(src)
     expect(arr).not.toBeNull()
-    const names = [...arr![1]!.matchAll(/'\*\*\/([^']+)\/\*\*'/g)].map((m) => m[1]!)
-    expect(names.length).toBe(2)
+    const names = [...arr![1]!.matchAll(/'\*\*\/([^'/]+)(?:\/\*\*)?'/g)].map((m) => m[1]!)
+    expect(names).toEqual(['.git', '.vx', 'vx.lock.json'])
     for (const name of names) expect(section![1]!).toContain('`' + name + '`')
     expect(section![1]!).toContain('`node_modules/**` is a legitimate output')
   })
@@ -1600,7 +1600,7 @@ describe('the values post states the principles CLAUDE.md numbers', () => {
 
 describe("the site's Turbo and Nx verb rows say what `vx <verb>` says", () => {
   // The migrate guide mapped `nx reset` to "nothing" while `vx reset` named
-  // `vx cache prune` (J-90).
+  // `vx cache clean` (J-90).
   it('a row naming `nx <verb>` or `turbo <verb>` (no flag that changes it) holds the command and flags of its FOREIGN_VERBS hint', () => {
     let rows = 0
     for (const page of handAuthoredSitePages()) {

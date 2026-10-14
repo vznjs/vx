@@ -45,7 +45,7 @@ async function refused(argv: string[]): Promise<[number, string]> {
 const HLP: Record<string, string[]> = {
   run: ['run', 'build', '--hlp'],
   watch: ['watch', 'build', '--hlp'],
-  cache: ['cache', 'prune', '--hlp'],
+  cache: ['cache', 'clean', '--hlp'],
   why: ['why', 'build', '--hlp'],
 }
 

@@ -68,6 +68,7 @@ export interface ApplyMigrationArgs {
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<number>
+  plugins?: readonly WorkspacePlugin[]
 }
 ```
 
@@ -674,7 +675,8 @@ not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
 
 Outside git, a file another user owns is refused (root aside): a
 `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
-code that would run as you. Inside git the walk never leaves your
+code that would run as you. The owner is the file's own, a link's
+included, and its `.vx` directory's. Inside git the walk never leaves your
 checkout. The directory you run in is yours to judge, and costs no
 stat. Run as root, vx trusts every owner, as a container over a mounted
 checkout needs. `uid` is for tests.

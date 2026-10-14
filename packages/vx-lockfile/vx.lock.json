@@ -123,13 +123,6 @@
             "read": [
               "**/*"
             ],
-            "write": [
-              "/tmp/pnpm-store-operation-locks-*/"
-            ],
-            "machLookup": [
-              "com.apple.trustd.agent",
-              "com.apple.SystemConfiguration.DNSConfiguration"
-            ],
             "systemInfo": [
               "vfs.disk-space",
               "net.link.addr"

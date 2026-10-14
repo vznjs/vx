@@ -80,8 +80,7 @@ A value whose name holds `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`
 or `CREDENTIAL` is masked without being asked. `GH_PAT` holds none of
 those words, so it is listed in `secret`. Masking covers more than the
 live log: the output the cache keeps and a hit replays, the command a
-remote cache receives, `vx show`, `vx why`, `vx last`, telemetry, and the
-errors `vx mcp` gives an agent. A multi-line key is masked line by line,
+remote cache receives, `vx show`, `vx why`, `vx last` and telemetry. A multi-line key is masked line by line,
 and a value split across two chunks of output is still caught.
 
 ## When a variable changes the output

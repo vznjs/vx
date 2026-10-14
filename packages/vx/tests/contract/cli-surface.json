@@ -4,6 +4,7 @@
       "--cache-dir",
       "--dry-run",
       "--format",
+      "--global",
       "--help",
       "--max-size",
       "--older-than"
@@ -130,6 +131,7 @@
       "json",
       "pretty"
     ],
+    "cache --global": [],
     "cache --max-size": [
       "10K",
       "1G",

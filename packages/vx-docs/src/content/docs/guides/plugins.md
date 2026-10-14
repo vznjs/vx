@@ -470,7 +470,7 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 | --------------------------- | ------------------------------------------ |
 | [`@vzn/vx-reapi`](../../plugins/vx-reapi/)             | `cache`, `executor` ([CI and remote](../ci/#remote-cache)) |
 | [`@vzn/vx-migrate`](../../plugins/vx-migrate/)           | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../migrate/)) |
-| [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/)          | `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)), `commands` (`vx prune`) |
+| [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/)          | `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)) |
 | [`@vzn/vx-schedule-history`](../../plugins/vx-schedule-history/)  | `schedule`, `admit`, `commands`            |
 | [`@vzn/vx-otel`](../../plugins/vx-otel/)              | `telemetry` ([below](#opentelemetry))      |
 | [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry` ([GitHub Actions](../ci/#github-actions)) |

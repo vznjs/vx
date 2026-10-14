@@ -778,7 +778,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
       // normal close. A throw there (SQLITE_BUSY past the busy_timeout, a
       // full disk) once skipped close() entirely — leaking the SQLite handle
       // and, with it, the run's deferred accessed_at flush, so an LRU
-      // `vx cache prune` could evict entries this run just hit — and then
+      // `vx cache clean` could evict entries this run just hit — and then
       // failed the finished run with a stack. History is observability: the
       // verdict stands, the line says what was lost, and close() still runs.
       const closeSpy = spyOn(Cache.prototype, 'close')
@@ -1536,7 +1536,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
       // cache in a `finally`, "on EVERY exit path, not just the happy one",
       // because a throw between opening the cache and the normal close
       // leaks the handle AND loses the run's touch record, after which an
-      // LRU `vx cache prune` can evict entries the run just hit.
+      // LRU `vx cache clean` can evict entries the run just hit.
       //
       // Nothing pinned that: deleting the `finally`'s close survives the
       // whole repo (item 447). The row above — "a run record that cannot be

@@ -1,7 +1,9 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
+import path from 'node:path'
 import { Cache } from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
-import { errorCode, nearest, parseDuration, parseSize } from '../util/index.js'
+import { errorCode, nearest, parseDuration, parseSize, relPosix, treeBytes } from '../util/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import {
@@ -19,8 +21,8 @@ export { parseDuration, parseSize } from '../util/index.js'
 /**
  * `vx cache stats` is a habit from the other runners, and vx's answer is a
  * different VERB rather than a missing one — saying so where the user typed
- * it beats sending them to a help screen that lists only `prune` (walked the
- * first-run path, 2026-09-20). A typo of `prune` itself gets the same
+ * it beats sending them to a help screen that lists only `clean` (walked the
+ * first-run path, 2026-09-20). A typo of `clean` itself gets the same
  * nearest-neighbour hint a task, flag or project name gets.
  */
 const CACHE_ELSEWHERE: Record<string, string> = {
@@ -32,34 +34,39 @@ const CACHE_ELSEWHERE: Record<string, string> = {
   ls: '`vx info` reports the cache entry count and size, and `vx last --list` the recent runs',
   dir: '`vx info` prints the cache directory this workspace uses',
   path: '`vx info` prints the cache directory this workspace uses',
-  clean: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  clear: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  rm: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  delete: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  evict: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  gc: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  purge: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+  clear:
+    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+  rm: '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+  delete:
+    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+  reset:
+    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+  wipe: '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+  evict: '`vx cache clean` is the eviction verb (`--older-than`, `--max-size`)',
+  gc: '`vx cache clean` is the eviction verb (`--older-than`, `--max-size`)',
+  purge:
+    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
 }
 
 function cacheSubHint(sub: string): string {
   const elsewhere = CACHE_ELSEWHERE[sub]
   if (elsewhere !== undefined) return ` — ${elsewhere}`
-  const best = nearest(sub, ['prune'])
-  // `prune` is the one subcommand: name it when nothing is near (M-58).
-  return best === undefined ? '. The subcommand is prune' : `. Did you mean ${best}?`
+  const best = nearest(sub, ['clean'])
+  // `clean` is the one subcommand: name it when nothing is near (M-58).
+  return best === undefined ? '. The subcommand is clean' : `. Did you mean ${best}?`
 }
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args
   switch (sub) {
-    case 'prune':
-      return await pruneCmd(rest)
+    case 'clean':
+      return await cleanCmd(rest)
     case undefined:
-      // A bare `vx cache prune` refuses too: the hint names a whole command.
+      // A bare `vx cache clean` refuses too: the hint names a whole command.
       return refuse(
         'cache',
         args,
-        `missing subcommand. Try \`vx cache prune --older-than 30d\` or \`vx cache prune --max-size 1G\`${seeHelp('cache')}`,
+        `missing subcommand. Try \`vx cache clean --older-than 30d\` to trim the cache, or \`vx cache clean\` to clear it${seeHelp('cache')}`,
         'VX_E_USAGE',
       )
     default:
@@ -79,6 +86,8 @@ interface PruneArgs {
   format?: 'pretty' | 'json'
   /** `--cache-dir`: prune the cache a run with the same flag uses. */
   cacheDir?: string
+  /** `--global`: clear every repository's store under `~/.vx`. */
+  global?: boolean
   error?: string
 }
 
@@ -104,7 +113,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       // the deliberate way to do it.
       if (ms === 0) {
         return {
-          error: `--older-than 0 would evict every entry — to clear the cache, delete the cache store \`vx info\` names`,
+          error: `--older-than 0 would evict every entry — \`vx cache clean\` with no bound clears the whole cache`,
         }
       }
       out.olderThanMs = Date.now() - ms
@@ -118,7 +127,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         return { error: `--max-size must be a size like 500M or 1G (got ${v})${seeHelp('cache')}` }
       if (bytes === 0) {
         return {
-          error: `--max-size 0 would evict every entry — to clear the cache, delete the cache store \`vx info\` names`,
+          error: `--max-size 0 would evict every entry — \`vx cache clean\` with no bound clears the whole cache`,
         }
       }
       // A bare number is bytes to `parseSize` (a computed size needs that),
@@ -134,6 +143,8 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       out.maxBytes = bytes
     } else if (a === '--dry-run') {
       out.dryRun = true
+    } else if (a === '--global') {
+      out.global = true
     } else if (a === '--format' || a?.startsWith('--format=')) {
       const v = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'cache')
       if (typeof v === 'object') return v
@@ -142,31 +153,38 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       const cd = parseCacheDirFlag(args, i)
       if (cd === null)
         return {
-          error: `${refusedWord(a ?? '')}: ${a}${flagHint('cache prune', a ?? '')}${seeHelp('cache')}`,
+          error: `${refusedWord(a ?? '')}: ${a}${flagHint('cache clean', a ?? '')}${seeHelp('cache')}`,
         }
       if ('error' in cd) return { error: `${cd.error}${seeHelp('cache')}` }
       out.cacheDir = cd.cacheDir
       i = cd.next
     }
   }
-  if (out.olderThanMs === undefined && out.maxBytes === undefined) {
-    return { error: `needs --older-than <duration> or --max-size <size>${seeHelp('cache')}` }
+  if (out.global === true && (out.olderThanMs !== undefined || out.maxBytes !== undefined)) {
+    return {
+      error: `--global clears every repository's store and takes no --older-than or --max-size${seeHelp('cache')}`,
+    }
+  }
+  if (out.global === true && out.cacheDir !== undefined) {
+    return {
+      error: `--global clears the stores under ~/.vx and takes no --cache-dir${seeHelp('cache')}`,
+    }
   }
   return out
 }
 
-async function pruneCmd(args: readonly string[]): Promise<number> {
+async function cleanCmd(args: readonly string[]): Promise<number> {
   const parsed = parsePruneArgs(args)
-  if (parsed.error) return refuse('cache prune', args, parsed.error, 'VX_E_USAGE')
+  if (parsed.error) return refuse('cache clean', args, parsed.error, 'VX_E_USAGE')
   const cwd = process.cwd()
   let root: string
   try {
     root = await findWorkspaceRoot(cwd)
   } catch (err) {
-    return refuse('cache prune', args, (err as Error).message, errorCode(err))
+    return refuse('cache clean', args, (err as Error).message, errorCode(err))
   }
   // Honor `--cache-dir`, `defineWorkspace({ cacheDir: '...' })` and a
-  // `config` plugin's edit of it — `vx run` and `vx cache prune` must
+  // `config` plugin's edit of it — `vx run` and `vx cache clean` must
   // operate on the same directory or prune silently no-ops against the
   // wrong path.
   // A dry run only reads: it never resets the index (item 896).
@@ -180,6 +198,9 @@ async function pruneCmd(args: readonly string[]): Promise<number> {
     const ws = await loadCliWorkspace(root)
     dir = ws.cacheDir
     storeRoot = await ws.storeRoot
+  }
+  if (parsed.olderThanMs === undefined && parsed.maxBytes === undefined) {
+    return clear(args, root, dir, storeRoot, parsed)
   }
   // A workspace that never ran has nothing to prune, and opening the cache
   // to find that out made it: `.vx/cache` with a database and a
@@ -240,4 +261,83 @@ function printPruned(
   process.stdout.write(
     `${dry ? 'Would prune' : 'Pruned'} ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)}${dry ? '' : ' freed'})${orphans}\n`,
   )
+}
+
+/** `vx cache clean --format json` with no bound (schemas/cache.json `clear`). */
+export interface ClearResult {
+  dryRun: boolean
+  /** Workspace-relative inside the workspace, else absolute. */
+  cleared: string[]
+  bytesFreed: number
+}
+
+/**
+ * `vx cache clean` with no bound: delete the cache directory (its index,
+ * run history and any artifacts kept beside it) and the store its index
+ * names (`~/.vx/<id>/cache`, shared by the repository's checkouts), as
+ * `nx reset` does. `--global` takes every store under `~/.vx` too. The
+ * workspace config, the lock and `.vx/.gitignore` sit outside them all.
+ */
+async function clear(
+  args: readonly string[],
+  root: string,
+  dir: string,
+  storeRoot: string | null,
+  parsed: PruneArgs,
+): Promise<number> {
+  // The store the index recorded wins over today's (a changed HOME), as a
+  // run reads it; a directory with no index is not a vx cache to delete.
+  const targets: string[] = []
+  if (existsSync(path.join(dir, 'cache.db'))) {
+    const cache = new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
+    const store = cache.storeDir
+    cache.close()
+    targets.push(dir)
+    if (store !== undefined) targets.push(store)
+  } else if (storeRoot !== null) targets.push(storeRoot)
+  if (parsed.global === true) {
+    const vxHome = path.join(process.env['HOME'] || homedir(), '.vx')
+    const ids = existsSync(vxHome) ? readdirSync(vxHome) : []
+    for (const id of ids) targets.push(path.join(vxHome, id, 'cache'))
+  }
+  // `cache.dir: '.vx'` (or the root) would take the workspace config and
+  // the lock with it.
+  const dotVx = path.join(root, '.vx')
+  const doomed = [...new Set(targets.map((t) => path.resolve(t)))].filter((t) => existsSync(t))
+  const unsafe = doomed.find((t) => t === dotVx || !path.relative(t, dotVx).startsWith('..'))
+  if (unsafe !== undefined) {
+    return refuse(
+      'cache clean',
+      args,
+      `cache directory ${unsafe} holds the workspace config and lock; set cache.dir to a directory of its own`,
+      'VX_E_CONFIG',
+    )
+  }
+  const dry = parsed.dryRun === true
+  const bytes = doomed.reduce((n, t) => n + treeBytes(t), 0)
+  if (!dry && doomed.length > 0) {
+    // A clear beside a run deletes what the run is restoring or saving; it
+    // waits for the run's lock, as a trim does.
+    const release = await acquireRunLock(root, { log: warnToStderr })
+    try {
+      for (const t of doomed) rmSync(t, { recursive: true, force: true })
+    } finally {
+      await release()
+    }
+  }
+  const shown = doomed.map((t) => (path.relative(root, t).startsWith('..') ? t : relPosix(root, t)))
+  if (parsed.format === 'json') {
+    const result: ClearResult = { dryRun: dry, cleared: shown, bytesFreed: bytes }
+    process.stdout.write(`${JSON.stringify(result)}\n`)
+  } else if (shown.length === 0) process.stdout.write('Nothing to clear: no cache here\n')
+  else {
+    const scope =
+      parsed.global === true
+        ? "every repository's store and this workspace's run history"
+        : "this repository's store, shared by its checkouts, and this workspace's run history"
+    process.stdout.write(
+      `${dry ? 'Would clear' : 'Cleared'} ${scope} (${formatBytes(bytes)}${dry ? '' : ' freed'}):\n${shown.map((t) => `  ${t}\n`).join('')}`,
+    )
+  }
+  return 0
 }

@@ -169,9 +169,9 @@ describe('a refusal under --format json', () => {
       whyUsage: await refusal(['why', '--format', 'json']),
       whyHistory: await refusal(['why', 'a#build', '--format', 'json']),
       lastHistory: await refusal(['last', '--format', 'json']),
-      pruneUsage: await refusal(['cache', 'prune', '--bogus', '--format', 'json']),
+      pruneUsage: await refusal(['cache', 'clean', '--bogus', '--format', 'json']),
       pruneWorkspace: await refusal(
-        ['cache', 'prune', '--max-size', '1G', '--format', 'json'],
+        ['cache', 'clean', '--max-size', '1G', '--format', 'json'],
         bare,
       ),
       cacheSub: await refusal(['cache', 'bogus', '--format', 'json']),

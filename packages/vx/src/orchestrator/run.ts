@@ -708,7 +708,7 @@ async function runOnBus(
   // bumps are flushed, so a throw between opening the cache and the
   // normal close leaked the SQLite handle (it matters in a long-lived
   // host) AND lost this run's touch record, after which an LRU
-  // `vx cache prune` can evict entries the run just hit. Once-only
+  // `vx cache clean` can evict entries the run just hit. Once-only
   // because the normal path closes before the persistent-task wait —
   // holding the handle open for a dev server's whole lifetime would be
   // worse — and because close() re-runs its retention DELETEs.

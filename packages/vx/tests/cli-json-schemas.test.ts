@@ -40,6 +40,7 @@ import type {
   RunPlan,
 } from '../src/orchestrator/index.js'
 import type { PruneResult } from '../src/cache/layer.js'
+import type { ClearResult } from '../src/cli/cache.js'
 import type { TaskNode } from '../src/graph/index.js'
 import type { Tally } from '../src/orchestrator/tally.js'
 import {
@@ -312,8 +313,9 @@ beforeAll(async () => {
   // A config that does not load: \`vx info\` names it.
   await addProject(root, 'broken', { config: 'export default { tasks: 1 }' })
   json('info', [])
-  json('cache', ['prune', '--max-size', '1K', '--dry-run'])
-  json('cache', ['prune', '--max-size', '1K'])
+  json('cache', ['clean', '--max-size', '1K', '--dry-run'])
+  json('cache', ['clean', '--max-size', '1K'])
+  json('cache', ['clean', '--dry-run'])
   // A refusal: exit 1, and the error document on stdout.
   const refused = vx(['run', 'nope', '--all', '--format', 'json'])
   if (refused.code !== 1) throw new Error(`vx run nope: ${refused.code}\n${refused.err}`)
@@ -436,7 +438,9 @@ describe('each schema object is its source type', () => {
         workers: true,
         memory: true,
         cacheDir: true,
+        cacheDirBytes: true,
         cacheStore: true,
+        cacheStoreBytes: true,
         cacheVersion: true,
         schemaVersion: true,
         cacheEntries: true,
@@ -611,7 +615,7 @@ describe('each schema object is its source type', () => {
   })
 
   it('cache', () => {
-    expect(props('cache')).toEqual(
+    expect(def('cache', 'prune')).toEqual(
       keys<PruneResult & { dryRun: boolean }>({
         dryRun: true,
         evicted: true,
@@ -619,6 +623,9 @@ describe('each schema object is its source type', () => {
         orphans: true,
         orphanBytes: true,
       }),
+    )
+    expect(def('cache', 'clear')).toEqual(
+      keys<ClearResult>({ dryRun: true, cleared: true, bytesFreed: true }),
     )
   })
 

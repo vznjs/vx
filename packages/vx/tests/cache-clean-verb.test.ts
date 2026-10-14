@@ -1,4 +1,4 @@
-// `vx cache prune` through the real binary: what a dry run leaves, what it
+// `vx cache clean` through the real binary: what a dry run leaves, what it
 // says it would reap, and the exit outside a workspace. A sweep of
 // `cli/cache.ts` (E-9) found each unheld: the dry-run flag could stop
 // reaching the cache (a dry run that deletes), the orphan wording could
@@ -33,7 +33,7 @@ async function vx(
   return { code, out, err }
 }
 
-describe('vx cache prune', () => {
+describe('vx cache clean', () => {
   let root = ''
   let cacheDir = ''
   beforeEach(async () => {
@@ -66,14 +66,14 @@ describe('vx cache prune', () => {
       const old = new Date(Date.now() - 2 * 60 * 60 * 1000)
       await utimes(orphan, old, old)
 
-      const dry = await vx(root, ['cache', 'prune', '--max-size', '1B', '--dry-run'])
+      const dry = await vx(root, ['cache', 'clean', '--max-size', '1B', '--dry-run'])
       expect({ code: dry.code, err: dry.err }).toEqual({ code: 0, err: '' })
       expect(dry.out).toMatch(
         /^Would prune 1 entry \(\d+ B\), would reap 1 orphaned artifact \(6 B\)\n$/,
       )
       expect(await artifacts()).toEqual([...saved, 'ab'.repeat(8)].sort())
 
-      const real = await vx(root, ['cache', 'prune', '--max-size', '1B'])
+      const real = await vx(root, ['cache', 'clean', '--max-size', '1B'])
       expect({ code: real.code, err: real.err }).toEqual({ code: 0, err: '' })
       expect(real.out).toMatch(
         /^Pruned 1 entry \(\d+ B freed\), reaped 1 orphaned artifact \(6 B\)\n$/,
@@ -88,9 +88,9 @@ describe('vx cache prune', () => {
     async () => {
       const bare = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-prune-bare-')))
       try {
-        const r = await vx(bare, ['cache', 'prune', '--max-size', '1G'])
+        const r = await vx(bare, ['cache', 'clean', '--max-size', '1G'])
         expect({ code: r.code, out: r.out }).toEqual({ code: 1, out: '' })
-        expect(r.err).toStartWith('vx cache prune: no .vx/workspace.ts in ')
+        expect(r.err).toStartWith('vx cache clean: no .vx/workspace.ts in ')
       } finally {
         await rm(bare, { recursive: true, force: true })
       }
