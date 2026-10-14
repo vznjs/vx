@@ -111,12 +111,20 @@ ${body}
 }
 
 /** What `--check` compares: the text and its styling, never a duration or the core count. */
-function normalize(svg: string): string {
-  return svg
-    .replace(/height="\d+"|viewBox="[^"]*"|y="\d+"|style="animation-delay:[^"]*"/g, '')
-    .replace(/\d+(\.\d+)?(ms|s)\b/g, 'N')
-    .replace(/\d+ workers/g, 'N workers')
-    .replace(/ +/g, ' ')
+export function normalize(svg: string): string {
+  return (
+    svg
+      .replace(/height="\d+"|viewBox="[^"]*"|y="\d+"|style="animation-delay:[^"]*"/g, '')
+      .replace(/\d+(\.\d+)?(ms|s)\b/g, 'N')
+      .replace(/\d+ workers/g, 'N workers')
+      // The footer drops a spread value equal to one already on the row, so
+      // which of max/avg/min print is a timing too.
+      .replace(
+        / <tspan opacity="[\d.]+">·<\/tspan> <tspan opacity="[\d.]+">(?:max|avg|min) N<\/tspan>/g,
+        '',
+      )
+      .replace(/ +/g, ' ')
+  )
 }
 
 const BASIC_LOCK = {
