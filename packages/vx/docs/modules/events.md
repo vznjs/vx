@@ -15,6 +15,9 @@ run removes on its way out (`orchestrator.md`).
 - `createEventBus()` — synchronous, order-preserving fan-out; its
   subscribers are `RunEventSubscriber`s, `(event: RunEvent) => void`.
 - `busLogger(bus)` — `Logger`-shaped facade that emits events.
+- `notePrintedByLock(lines)` — the warnings the lock a frozen run wrote
+  first printed (`vx run` with no `vx-lock.json`); the run's logger skips
+  each once, so a plugin's warning does not print twice.
 - `terminalSubscriber(sink)` — drives a concrete renderer.
 - `WireEvent` + `toWireEvent` — the SERIALIZABLE projection (task ids
   instead of node back-refs; bigint ns as decimal strings), and
