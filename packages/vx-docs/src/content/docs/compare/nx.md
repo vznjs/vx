@@ -37,22 +37,22 @@ a nothing-changed run of this benchmark took 87 s against 25 s off
 
 ## Feature by feature
 
-|                                     | vx                                                                     | Nx                                                      |
-| ----------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------- |
-| Config                              | TypeScript, evaluated into the cache key                               | JSON (`project.json`, `nx.json`), plus inferred targets |
-| Daemon                              | None; nothing boots per task                                           | On by default locally                                   |
-| Outputs on run and restore          | Wiped first: no stale file survives a hit                              | Additive                                                |
-| Task sandbox                        | Free and local, opt-in per task (Linux, macOS)                         | An Nx Cloud feature                                     |
-| Remote cache                        | Any wire through a plugin: Bazel REAPI, Turbo's, Nx's self-hosted spec | Nx Cloud or a plugin                                    |
-| Flaky task detection                | Local: the same key failed after it passed                             | Nx Cloud                                                |
-| Why a task missed                   | `vx why` diffs two keys: the file, env var or upstream that moved      | Shows hashes, not the diff                              |
-| Tasks on other machines             | `@vzn/vx-reapi` over Bazel's REAPI, on servers you run or rent         | Nx Agents on Nx Cloud                                   |
-| Plugins                             | Every pipeline stage, 15 hooks; core applies none                      | Inferred tasks, graph data, generators, executors       |
-| Non-JS projects                     | Yes: any directory with a `vx.config`; edges are declared, not read from Cargo or Go files                     | Gradle, Maven and .NET                                  |
-| One task, many modes (`build:prod`) | No: a TypeScript function per mode, two tasks                          | `configurations` and `-c`                               |
-| Terminal output                     | Streamed blocks you can scroll, copy and pipe                          | Terminal UI                                             |
-| Windows                             | WSL2                                                                   | Native                                                  |
-| Install                             | One binary; no Bun, Node optional                                      | npm and Node                                            |
+|                                     | vx                                                                                         | Nx                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| Config                              | TypeScript, evaluated into the cache key                                                   | JSON (`project.json`, `nx.json`), plus inferred targets |
+| Daemon                              | None; nothing boots per task                                                               | On by default locally                                   |
+| Outputs on run and restore          | Wiped first: no stale file survives a hit                                                  | Additive                                                |
+| Task sandbox                        | Free and local, opt-in per task (Linux, macOS)                                             | An Nx Cloud feature                                     |
+| Remote cache                        | Any wire through a plugin: Bazel REAPI, Turbo's, Nx's self-hosted spec                     | Nx Cloud or a plugin                                    |
+| Flaky task detection                | Local: the same key failed after it passed                                                 | Nx Cloud                                                |
+| Why a task missed                   | `vx why` diffs two keys: the file, env var or upstream that moved                          | Shows hashes, not the diff                              |
+| Tasks on other machines             | `@vzn/vx-reapi` over Bazel's REAPI, on servers you run or rent                             | Nx Agents on Nx Cloud                                   |
+| Plugins                             | Every pipeline stage, 15 hooks; core applies none                                          | Inferred tasks, graph data, generators, executors       |
+| Non-JS projects                     | Yes: any directory with a `vx.config`; edges are declared, not read from Cargo or Go files | Gradle, Maven and .NET                                  |
+| One task, many modes (`build:prod`) | No: a TypeScript function per mode, two tasks                                              | `configurations` and `-c`                               |
+| Terminal output                     | Streamed blocks you can scroll, copy and pipe                                              | Terminal UI                                             |
+| Windows                             | WSL2                                                                                       | Native                                                  |
+| Install                             | One binary; no Bun, Node optional                                                          | npm and Node                                            |
 
 Every row is held in [vx vs Turborepo vs Nx](../../comparison/), which
 links each claim to its source.

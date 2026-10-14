@@ -4,6 +4,7 @@
 // plugin `project` stage, which can give tasks to a package that never
 // wrote a `vx.config.ts`.
 
+import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import {
@@ -277,8 +278,18 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     if (gone !== undefined) {
       const rel = relPosix(workspaceRoot, gone.dir) || '.'
       const named = gone.name === pathName(workspaceRoot, gone.dir) ? '' : ` ("${gone.name}")`
+      const file = relPosix(gone.dir, gone.configPath)
+      // exists() says false for a file behind a directory this user may not
+      // search too; asked only on this failure path, so a run pays no stat.
+      const denied = await stat(gone.configPath).then(
+        () => null,
+        (err: NodeJS.ErrnoException) =>
+          err.code === 'EACCES' || err.code === 'EPERM' ? err.code : null,
+      )
       throw new UserError(
-        `${LOCKFILE_NAME} locks ${rel}${named}, but its ${relPosix(gone.dir, gone.configPath)} is gone — run \`vx lock\``,
+        denied !== null
+          ? `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is not readable by this user (${denied})`
+          : `${LOCKFILE_NAME} locks ${rel}${named}, but its ${file} is gone — run \`vx lock\``,
       )
     }
     const loaded =

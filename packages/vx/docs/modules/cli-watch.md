@@ -226,8 +226,11 @@ are refused too: they format one run's result.
      name on the way down (`armAncestors`): an inotify watch holds an
      inode, so a directory removed and made again (`rm -rf packages &&
 git checkout packages`) was no event to its own arm, nor to the
-     root's (`tests/watch-recreated-dirs.test.ts`). A project's
-     parent's `.gitignore` is heard there too, as the root's is.
+     root's (`tests/watch-recreated-dirs.test.ts`). Every directory
+     above it up to the root is watched for the next name as well:
+     FSEvents reports no child of a watched directory removed with it,
+     so on macOS the parent's arm alone never heard `packages/` go. A
+     project's parent's `.gitignore` is heard there too, as the root's is.
    - Filter out `node_modules` / `.git` / `.vx/cache` path segments,
      `.tsbuildinfo` / `~` suffixes (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger

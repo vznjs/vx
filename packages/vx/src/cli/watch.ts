@@ -802,7 +802,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // drops every name but its own files: silence until a restart. So each
   // is watched from its nearest directory that exists, for the next name
   // on the way down: its parent while it is there, an ancestor when the
-  // parent went too (`apps/` removed under `apps/web/site`).
+  // parent went too (`apps/` removed under `apps/web/site`). Every
+  // directory above it up to the root is watched for the next name too:
+  // FSEvents reports nothing for a watched directory's children when the
+  // directory itself goes with them, so on macOS the parent's arm alone
+  // never heard `packages/` removed under `packages/a` (inotify did).
   const ancestorArms = new Map<string, WatchHandle>()
   let ancestorNames = new Map<string, Set<string>>()
   const armAncestors = (): void => {
@@ -816,7 +820,16 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         name = path.basename(dir)
         dir = path.dirname(dir)
       }
-      ancestorNames.set(dir, (ancestorNames.get(dir) ?? new Set()).add(name))
+      for (;;) {
+        const names = ancestorNames.get(dir) ?? new Set<string>()
+        // A directory already holding this name was climbed from here before.
+        const climbed = names.has(name)
+        ancestorNames.set(dir, names.add(name))
+        // Outside the root (a preset a config imports from `../`) only the nearest arm.
+        if (climbed || !dir.startsWith(workspaceRoot + path.sep)) break
+        name = path.basename(dir)
+        dir = path.dirname(dir)
+      }
     }
     for (const [dir, handle] of ancestorArms) {
       if (ancestorNames.has(dir) && !stale(dir)) continue

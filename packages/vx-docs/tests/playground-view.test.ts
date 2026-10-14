@@ -93,14 +93,18 @@ const entry = (
 
 let planner: Planner
 let configs: Record<string, unknown>
+/** The same configs by file, as the planner takes them (`vx lock` keys by directory). */
+let byFile: Record<string, unknown>
 
 beforeAll(async () => {
   planner = (await import(path.resolve(import.meta.dir, '../dist', PLANNER_FILE))) as Planner
   configs = {}
+  byFile = {}
   for (const [name, text] of Object.entries(CONFIG_TEXTS)) {
     const r = await planner.evaluateConfig(text, 10_000)
     if (!r.ok) throw new Error(`${name}: ${r.error}`)
     configs[name] = r.config
+    byFile[`packages/${name}/vx.config.mjs`] = r.config
   }
 })
 
@@ -258,7 +262,7 @@ describe('the playground view', () => {
     const r = await planner.planPlayground({
       root: PLAYGROUND_ROOT,
       files: FILES,
-      configs,
+      configs: byFile,
       env: ENV,
       tasks: TASKS,
     })
@@ -275,7 +279,7 @@ describe('the playground view', () => {
     const one = await planner.planPlayground({
       root: PLAYGROUND_ROOT,
       files: FILES,
-      configs,
+      configs: byFile,
       env: ENV,
       tasks: ['app#build'],
     })

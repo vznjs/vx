@@ -1385,7 +1385,8 @@ run...` precedes it.
    lock at start the first cycle fails saying so, and the watch waits
    for one. A project directory, or one a config imports from,
    removed and made again (a checkout that restores `packages/`) is
-   heard from its nearest directory that exists, and a watch whose
+   heard from its nearest directory that exists and each one above it,
+   and a watch whose
    directory was replaced is armed again (an OS watch holds the deleted
    one; `watch-recreated-dirs.test.ts`). Under `--filter` or
    `--affected` the scope is the one resolved at start, and a new
@@ -1795,8 +1796,8 @@ Every run consumes it: configs come from the
 lock with no evaluation, no staleness check and no schema validation
 of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
-locked directory whose config file is gone (X-144) or a missing lock is
-a hard error; a config added since the lock is no project until
+locked directory whose config file is gone (X-144) or that this user
+may not search (EACCES, named as such), or a missing lock, is a hard error; a config added since the lock is no project until
 `vx lock`). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once

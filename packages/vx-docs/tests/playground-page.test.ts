@@ -143,15 +143,17 @@ describe('the playground on playground/', () => {
   it('ships the task table for every task, from the config texts', async () => {
     const planner = (await import(path.join(DIST, PLANNER_FILE))) as Planner
     const configs: Record<string, unknown> = {}
+    const byFile: Record<string, unknown> = {}
     for (const [name, t] of Object.entries(CONFIG_TEXTS)) {
       configs[name] = ((await planner.evaluateConfig(t, 10_000)) as { config: unknown }).config
+      byFile[`packages/${name}/vx.config.mjs`] = configs[name]
     }
     const rows = tableRows(only(staticPart, /(<table class="graph\b[\s\S]*?<\/table>)/g))
     expect(rows).toEqual(staticTable(staticProjects(FILES, configs), TASKS).map(staticCells))
     const plan = await planner.planPlayground({
       root: PLAYGROUND_ROOT,
       files: FILES,
-      configs,
+      configs: byFile,
       env: ENV,
       tasks: TASKS,
     })
@@ -228,7 +230,7 @@ describe('the playground on playground/', () => {
     // no chunk the element reaches carries core's discovery or the config
     // evaluator, and the positive shows the markers are the planner's.
     const planner = readFileSync(path.join(DIST, PLANNER_FILE), 'utf8')
-    const MARKERS = ['Duplicate package name', 'did not export a default object']
+    const MARKERS = ['two projects are named', 'did not export a default object']
     expect(MARKERS.map((m) => planner.includes(m))).toEqual([true, true])
     for (const name of closure(found)) {
       const body = readFileSync(path.join(DIST, '_astro', name), 'utf8')

@@ -30,24 +30,24 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 
 ## Feature by feature
 
-|                            | vx                                                                | Turborepo                                    |
-| -------------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
-| Config                     | TypeScript, evaluated into the cache key                          | JSON (`turbo.json`), static                  |
-| Default inputs             | None: you declare `cache.inputs.files`                            | Every tracked file in the package            |
-| Outputs on run and restore | Wiped first: no stale file survives a hit                         | Additive: stale files survive                |
-| Task sandbox               | Free and local, opt-in per task (Linux, macOS)                    | Its docs describe no file sandbox            |
-| Clean-tree hashing         | No source reads: git index OIDs                                   | git OIDs                                     |
-| Daemon                     | None                                                              | None for `turbo run` since 2.8.11            |
-| Remote cache               | Any wire through a plugin; `turboCache()` speaks Turbo's own      | Vercel's `/v8/artifacts`, hosted or your own |
-| Plugins                    | Every pipeline stage, 15 hooks; core applies none                 | Its docs describe no plugin surface          |
-| Why a task missed          | `vx why` diffs two keys: the file, env var or upstream that moved | `--summarize` shows hashes, not the diff     |
-| Watch mode                 | `vx watch <task>`                                                 | `turbo watch`                                |
-| Prune for Docker           | No equivalent                                                     | `turbo prune`                                |
-| Import boundaries          | No: a lint's job                                                  | `boundaries`                                 |
-| Non-JS projects            | Yes: any directory with a `vx.config`; edges are declared, not read from Cargo or Go files                | Experimental: Go, Cargo, uv                  |
-| Terminal output            | Streamed blocks you can scroll, copy and pipe                     | Terminal UI                                  |
-| Windows                    | WSL2                                                              | Native                                       |
-| Install                    | One binary; no Bun, Node optional                                 | npm and Node                                 |
+|                            | vx                                                                                         | Turborepo                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| Config                     | TypeScript, evaluated into the cache key                                                   | JSON (`turbo.json`), static                  |
+| Default inputs             | None: you declare `cache.inputs.files`                                                     | Every tracked file in the package            |
+| Outputs on run and restore | Wiped first: no stale file survives a hit                                                  | Additive: stale files survive                |
+| Task sandbox               | Free and local, opt-in per task (Linux, macOS)                                             | Its docs describe no file sandbox            |
+| Clean-tree hashing         | No source reads: git index OIDs                                                            | git OIDs                                     |
+| Daemon                     | None                                                                                       | None for `turbo run` since 2.8.11            |
+| Remote cache               | Any wire through a plugin; `turboCache()` speaks Turbo's own                               | Vercel's `/v8/artifacts`, hosted or your own |
+| Plugins                    | Every pipeline stage, 15 hooks; core applies none                                          | Its docs describe no plugin surface          |
+| Why a task missed          | `vx why` diffs two keys: the file, env var or upstream that moved                          | `--summarize` shows hashes, not the diff     |
+| Watch mode                 | `vx watch <task>`                                                                          | `turbo watch`                                |
+| Prune for Docker           | No equivalent                                                                              | `turbo prune`                                |
+| Import boundaries          | No: a lint's job                                                                           | `boundaries`                                 |
+| Non-JS projects            | Yes: any directory with a `vx.config`; edges are declared, not read from Cargo or Go files | Experimental: Go, Cargo, uv                  |
+| Terminal output            | Streamed blocks you can scroll, copy and pipe                                              | Terminal UI                                  |
+| Windows                    | WSL2                                                                                       | Native                                       |
+| Install                    | One binary; no Bun, Node optional                                                          | npm and Node                                 |
 
 Every row is held in [vx vs Turborepo vs Nx](../../comparison/), which
 links each claim to its source.

@@ -2346,6 +2346,7 @@ Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projec
 | `<dir>: a project is named by its path unless named, and this one holds "#" …`                  | A path no task spec can address: set `name` in its config.                |
 | `<dir>: "//" names the workspace root — set another \`name\``                                   | A config away from the root says `name: '//'`.                            |
 | `.vx/projects.lock.json locks <dir>, but its <file> is gone — run \`vx lock\``                  | A locked project's config was deleted or renamed (X-144).                 |
+| `.vx/projects.lock.json locks <dir>, but its <file> is not readable by this user (<code>)`      | This user may not search the project's directory (D-132).                 |
 | `.vx/projects.lock.json has unsupported version <n> (this vx expects 3) — re-run \`vx lock\``   | A lock an earlier vx wrote (version 2 keyed by name).                     |
 | `git ls-files failed (exit <n>): <why>`                                                         | `vx lock` could not list the configs (a torn index).                      |
 
