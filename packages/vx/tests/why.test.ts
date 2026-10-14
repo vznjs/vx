@@ -895,7 +895,7 @@ describe('vx why — a secret-named env input', () => {
   )
 })
 
-describe('vx why — an input a task wrote (Growth funnel F5)', () => {
+describe('vx why — an input another task rewrites', () => {
   it(
     'names the task that was running when the moved file last changed',
     async () => {
