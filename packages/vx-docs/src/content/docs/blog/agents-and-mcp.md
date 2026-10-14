@@ -46,10 +46,10 @@ does.
 | `pruneCache`      | Free cache space by age or size; a dry run unless the call says `dryRun: false`.                          |
 | `planInit`        | What would adopting vx write here? Each file and its TODOs, as `vx init --dry --format json` plans them.   |
 | `searchDocs`      | Where is this documented? The reference sections that match, offline, as `vx docs` finds them.  |
-| `checkLock`       | Is the config lock current? Each drift `vx lock --check` finds, before a `--frozen` run.                     |
+| `checkLock`       | Is the config lock current? Each drift `vx lock --check` finds, before a run.                     |
 | `getConfig`       | What does this task declare? Its resolved inputs, outputs, env and sandbox, as `vx show` prints them.     |
 | `getFailures`     | Why did the last run fail? Each failed task's output and the files it names.                              |
-| `getWorkspaceInfo` | What is this workspace? Versions and state, the plugins declared, the flaky tasks, whether `.vx/lock.json` exists — the facts a bug report needs. |
+| `getWorkspaceInfo` | What is this workspace? Versions and state, the plugins declared, the flaky tasks, whether `.vx/projects.lock.json` exists — the facts a bug report needs. |
 | `runTasks` | Run these tasks. The exit code and the run summary, from `vx run --format json`. |
 | `planTasks` | What would run, and why. The plan from `vx run --dry=json`; nothing runs. |
 

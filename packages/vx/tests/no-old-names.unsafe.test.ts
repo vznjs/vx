@@ -41,9 +41,13 @@ const SKIP = [
   /^packages\/vx\/docs\/(history|design)\//,
   /^packages\/vx\/docs\/STATUS\.md$/,
   /^packages\/vx-docs\/src\/content\/docs\/guides\/upgrading\.md$/,
-  // Marketing owns the blog's sweep (2026-10-14).
-  /^packages\/vx-docs\/src\/content\/docs\/blog\//,
 ]
+
+// A post may show the rename itself, as long as it names the new spelling.
+const NAMES_THE_RENAME: ReadonlyMap<string, string> = new Map([
+  ['packages/vx-docs/src/content/docs/blog/one-path-per-setting.md', 'VX_RUN_KILL_GRACE'],
+  ['packages/vx-docs/src/content/docs/blog/upgrade-you-can-trust.md', '--retries'],
+])
 
 const TEXT = /\.(md|mdx|ts|tsx|js|mjs|cjs|json|ya?ml|astro|sh)$/
 
@@ -62,7 +66,8 @@ it('no text outside the breaking lists names a setting, flag or verb that stoppe
   for (const f of files) {
     const lines = withoutBreaking(f, readFileSync(path.join(ROOT, f), 'utf8')).split('\n')
     lines.forEach((line, i) => {
-      for (const [re, now] of OLD) if (re.test(line)) found.push(`${f}:${i + 1} → ${now}`)
+      for (const [re, now] of OLD)
+        if (re.test(line) && NAMES_THE_RENAME.get(f) !== now) found.push(`${f}:${i + 1} → ${now}`)
     })
   }
   expect(found).toEqual([])

@@ -56,7 +56,7 @@ stopped mattering:
   names the dirty ones. A clean tree of thousands of files is keyed with
   no read of a source file ([the details](../keys-from-git/)).
 - **A run evaluates no config.** It reads the resolved objects from
-  `.vx/lock.json`, which `vx lock` writes.
+  `.vx/projects.lock.json`, which `vx lock` writes.
 - **The graph algorithms are bitsets**, so building priorities over
   3,270 tasks is milliseconds, not seconds.
 - **A warm hit on a current tree is N stats and zero writes**, because

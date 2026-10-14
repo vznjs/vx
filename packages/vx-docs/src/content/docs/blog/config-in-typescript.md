@@ -88,7 +88,7 @@ allowed:
   is the one named exception for files at the workspace root.
 - **Being impure without saying so.** A config that reads
   `process.env`, the clock or the network freezes that answer into
-  `.vx/lock.json` when `vx lock` evaluates it, and `vx lock --check`
+  `.vx/projects.lock.json` when `vx lock` evaluates it, and `vx lock --check`
   re-evaluates it and reports the drift. A config that reads
   `process.env` should be one that has to.
 
@@ -96,7 +96,7 @@ allowed:
 
 When "evaluated live" is exactly what a CI pipeline must not do,
 [`vx lock`](../lock-and-frozen/) evaluates every config once and writes
-the resolved objects to `.vx/lock.json`; `vx run --frozen` consumes the
+the resolved objects to `.vx/projects.lock.json`; every `vx run` reads the
 lock with no evaluation at all, and `--check` catches drift a byte hash
 cannot see.
 

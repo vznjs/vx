@@ -66,17 +66,17 @@ where the shorter one was killed.
 Evaluating a hundred TypeScript files per run is not free, and caching
 the evaluation is unsound for a program that reads the environment or
 the clock. A run evaluates no config: it reads the resolved objects
-from `.vx/lock.json`, and only `vx lock` evaluates them.
+from `.vx/projects.lock.json`, and only `vx lock` evaluates them.
 
 ## Freezing the evaluation: `vx lock`
 
 Sometimes you want the evaluation pinned rather than repeated. `vx lock`
 evaluates every config now and writes the resolved objects plus a
-content hash of each file to `.vx/lock.json`; `vx run --frozen` consumes
+content hash of each file to `.vx/projects.lock.json`; every `vx run` reads
 the lock with no evaluation at all, and `vx lock --check` re-evaluates
 everything against it and exits non-zero on drift, including drift a
 byte hash cannot see: an env value read at eval time, an import that
-changed. The CI recipe is `vx lock --check && vx run … --frozen`. That
+changed. The CI recipe is `vx lock --check && vx run …`. That
 gets [its own post](../lock-and-frozen/).
 
 ## Why not named inputs
