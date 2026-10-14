@@ -191,7 +191,6 @@ async function evaluateEntry(root: string, meta: ConfiguredMeta): Promise<Lockfi
   }
 }
 
-/** Names shown per note: a turbo() repo can have hundreds of bare projects. */
 /**
  * `vx init`'s last step: the lock, as `vx lock` writes it. A refusal (a
  * graph rule, a config that does not load) is printed and leaves the
@@ -207,6 +206,7 @@ export async function lockAfterMigration(root: string): Promise<number> {
   }
 }
 
+/** Names shown per note: a turbo() repo can have hundreds of bare projects. */
 const BARE_SHOWN = 5
 
 function bareNames(bare: readonly string[]): string {

@@ -14,7 +14,6 @@
 
 import {
   cpSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -312,46 +311,20 @@ const BUILT = [
 
 /** `bunx @vzn/vx-migrate` as bunx runs it: bunx names itself in
  *  `npm_config_user_agent`, and the report's `next:` line names the runner.
- *  Its `npm` calls are recorded, then done as `step` does them. */
+ *  Its `npm` calls go to this checkout, so the lock runs on installed plugins. */
 function migrate(root: string): [number | null, string] {
-  const bin = mkdtempSync(path.join(os.tmpdir(), 'vx-try-npm-'))
-  const calls = path.join(bin, 'calls')
-  writeFileSync(path.join(bin, 'npm'), `#!/bin/sh\necho "$@" >> "${calls}"\n`)
-  chmodSync(path.join(bin, 'npm'), 0o755)
-  try {
-    const r = Bun.spawnSync({
-      cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
-      cwd: root,
-      env: {
-        ...process.env,
-        PATH: `${bin}${path.delimiter}${process.env['PATH']}`,
-        NO_COLOR: '1',
-        npm_config_user_agent: `bun/${Bun.version}`,
-      },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const lines = existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n') : []
-    for (const line of lines) {
-      const removed = /^uninstall((?: @vzn\/[\w-]+)+)$/.exec(line)
-      if (removed === null) {
-        expect(step(root, `npm ${line}`).code).toBe(0)
-        continue
-      }
-      const manifest = path.join(root, 'package.json')
-      const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as {
-        devDependencies?: Record<string, string>
-      }
-      for (const name of removed[1]!.trim().split(' ')) {
-        delete pkg.devDependencies?.[name]
-        rmSync(path.join(root, 'node_modules', name), { force: true })
-      }
-      writeFileSync(manifest, JSON.stringify(pkg, null, 2))
-    }
-    return [r.exitCode, r.stdout.toString()]
-  } finally {
-    rmSync(bin, { recursive: true, force: true })
-  }
+  const r = Bun.spawnSync({
+    cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
+    cwd: root,
+    env: withCheckoutNpm({
+      ...process.env,
+      NO_COLOR: '1',
+      npm_config_user_agent: `bun/${Bun.version}`,
+    }),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  return [r.exitCode, r.stdout.toString()]
 }
 
 /** The guide's last step: vx-migrate already took the plugin out of

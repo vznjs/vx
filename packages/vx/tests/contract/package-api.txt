@@ -369,6 +369,7 @@ export interface ApplyMigrationArgs {
   unmapped?: boolean
   format?: MigrationFormat
   json?: boolean
+  lock?: (root: string) => Promise<number>
 }
 == type At (src/config.ts)
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
