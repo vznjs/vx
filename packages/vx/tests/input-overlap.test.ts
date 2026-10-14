@@ -203,24 +203,28 @@ describe('rules.upfrontKeys end to end', () => {
     },
   } }`
 
-  it('a run refuses the reader before any task runs; off, it runs as before', async () => {
+  it('`vx lock` refuses the reader, unless the rule is off; a run never checks it', async () => {
     const root = await makeWorkspace({ prefix: 'vx-upfront-' })
     try {
-      const dir = await addProject(root, 'app', { files: { 'src/a.txt': 'A1' }, config })
-      await expect(run({ cwd: root, tasks: ['test'], log: silent })).rejects.toThrow(
+      await addProject(root, 'app', { files: { 'src/a.txt': 'A1' }, config })
+      const lock = () =>
+        Bun.spawnSync({
+          cmd: [process.execPath, path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
+          cwd: root,
+          stderr: 'pipe',
+        })
+      const refused = lock()
+      expect(refused.exitCode).toBe(1)
+      expect(refused.stderr.toString()).toMatch(
         /app#test reads "\*\*" in cache\.inputs\.files, which matches app#build's output/,
       )
-      expect(await Bun.file(path.join(dir, 'out.txt')).exists()).toBe(false)
+      const plan = await planRun({ cwd: root, tasks: ['test'], log: silent })
+      expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#build', 'app#test'])
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
         'export default { run: { rules: { upfrontKeys: false } } }\n',
       )
-      const r = await run({ cwd: root, tasks: ['test'], log: silent })
-      expect(r.outcomes.map((o) => `${o.node.id} ${o.status}`).sort()).toEqual([
-        'app#build success',
-        'app#test success',
-      ])
-      expect(await Bun.file(path.join(dir, 'out.txt')).text()).toBe('A1')
+      expect(lock().exitCode).toBe(0)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

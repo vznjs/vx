@@ -921,10 +921,10 @@ export const MORE: readonly Feature[] = [
     slug: 'upfront-keys',
     title: 'Every key known before the run',
     category: 'cache',
-    hook: 'vx refuses an input glob another task’s outputs could match, so keys never wait on a build.',
+    hook: '`vx lock` refuses an input glob another task’s outputs could match, so keys never wait on a build.',
     body: [
       'If `test` reads `dist/**` that `build` writes, its key depends on what `build` produces, and no one can know it until `build` runs. Plans and remote caches stop working.',
-      'The `upfrontKeys` rule, on by default, refuses that overlap at load and names the fix: exclude the output from the glob. The dependency’s key already reaches the reader through `dependsOn`.',
+      'The `upfrontKeys` rule, on by default, makes `vx lock` refuse that overlap and name the fix: exclude the output from the glob. The dependency’s key already reaches the reader through `dependsOn`.',
     ],
     example: {
       lang: 'text',
@@ -1524,7 +1524,7 @@ export const MORE: readonly Feature[] = [
     category: 'config',
     hook: 'Checks for configs that would make runs slow or wrong, on by default, each one optional.',
     body: [
-      'Two tasks writing the same `dist/**` delete each other’s output. An input glob that reads another task’s output makes keys wait on builds. vx refuses both at load, with the fix.',
+      'Two tasks writing the same `dist/**` delete each other’s output. An input glob that reads another task’s output makes keys wait on builds. `vx lock` refuses both, with the fix; runs never check.',
       'Each rule can be turned off in `.vx/workspace.ts` when you know better.',
     ],
     example: {

@@ -41,12 +41,12 @@ and the line to add to `exec.sandbox`.
 
 vx cleans a task's outputs before it runs and before a cache restore. Two
 tasks that declare the same output would delete each other's work, so
-`vx lock` refuses the graph, and so does a run that is not frozen, before
-anything starts:
+`vx lock` refuses the graph and writes no lock. A run never checks the
+rules: it runs what the lock froze.
 
 ```sh frame="terminal"
-$ vx run @demo/api#bundle
-vx: @demo/api#bundle and @demo/api#build both declare the output "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false in .vx/workspace.ts to let a dependant add to its upstream's outputs.
+$ vx lock
+vx lock: .vx/lock.json not written: @demo/api#bundle and @demo/api#build both declare the output "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false in .vx/workspace.ts to let a dependant add to its upstream's outputs.
 ```
 
 This is a workspace rule. Rules are checks that keep vx fast and

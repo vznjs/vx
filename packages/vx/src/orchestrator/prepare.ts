@@ -536,10 +536,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // the whole workspace: a `^name` nothing loaded declares may be declared
     // by a config the scope left out, so the builder hands it back instead of
     // refusing it, and the rest decide.
-    const graphRules: GraphRules = {
-      ...runRules(workspaceConfig),
-      ...(options.frozen === true ? { locked: true } : {}),
-    }
+    // A run never checks the graph rules: `vx lock` and `vx lock --check`
+    // do (owner, 2026-10-14). `exclusiveOutputs: false` still asks the walk
+    // for its addition marks.
+    const graphRules: GraphRules = { ...runRules(workspaceConfig), locked: true }
     const unproven: Array<[taskId: string, name: string]> = []
     const graphOf = (req: typeof requested) =>
       buildTaskGraph({

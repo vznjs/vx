@@ -1708,8 +1708,8 @@ the lock already printed (a plugin's, a config's) once; a project missing
 from a lock that exists is still a hard error. Run `vx lock --check`
 first in a pipeline that commits its lock: that audit re-evaluates
 everything and checks the rules, making any per-run re-check redundant.
-A run that is not frozen checks the rules itself, since its configs are
-not the locked ones. An embedder's `run({ frozen: true })` with no lock
+No run checks the rules, frozen or not: only `vx lock` and
+`vx lock --check` do (owner, 2026-10-14). An embedder's `run({ frozen: true })` with no lock
 is refused, as before.
 
 ## `vx lock`
@@ -1720,8 +1720,8 @@ current environment and stores the post-evaluation objects, by project
 name. "Every project" is the set a run
 sees, a plugin's `discover` stage included (X-143). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
-included, and checks the graph rules (`run.rules`) a frozen run no
-longer checks, `dependencies` (which projects a project may depend on,
+included, and checks the graph rules (`run.rules`), which no run
+checks, `dependencies` (which projects a project may depend on,
 `VX_E_DEPENDENCY_RULE`) among them: a broken one prints `vx lock: .vx/lock.json not written:
 <the rule's refusal>` and writes nothing.
 

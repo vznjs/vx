@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## check graph rules only in vx lock, never in a run
+
+a run no longer refuses overlapping outputs or an input glob that matches another task's outputs. Run `vx lock` (or `vx lock --check` in CI) to check run.rules.
+
 ## move the workspace config and lock into .vx
 
 vx.workspace.* and vx-lock.json are no longer read. Move the workspace config to .vx/workspace.ts (its relative imports gain a ../) and re-run vx lock.

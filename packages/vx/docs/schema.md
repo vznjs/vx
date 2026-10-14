@@ -1713,7 +1713,7 @@ interface RunSettings {
   readyNotice?: Duration
   /** Load configs from .vx/lock.json; on when CI is set. */
   frozen?: boolean
-  /** Graph rules `vx lock` and every unfrozen run check; each on unless set to false. */
+  /** Graph rules `vx lock` checks, never a run; each on unless set to false. */
   rules?: { exclusiveOutputs?: boolean; upfrontKeys?: boolean; dependencies?: DependencyRule[] }
 }
 
@@ -1753,8 +1753,8 @@ interface CacheSettings {
   evaluating them; on when `CI` is set. A frozen run checks no graph
   rules: `vx lock` checked them when it wrote the lock, and with no lock
   the run writes one first (`docs/cli.md` § `--frozen`).
-- **`run.rules`** — checked by `vx lock`, `vx lock --check` and every
-  run that is not frozen; `dependencies` by `vx lock` alone.
+- **`run.rules`** — checked by `vx lock` and `vx lock --check` only;
+  no run checks them.
 - **`cache.dir`** — unset, the workspace keeps its index and history in
   `.vx/cache` and its entries and artifacts in its repository's shared
   store (`~/.vx/<id>/cache`), where every other checkout of the
