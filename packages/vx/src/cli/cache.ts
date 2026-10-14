@@ -1,7 +1,8 @@
-import { existsSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
+import path from 'node:path'
 import { Cache } from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
-import { errorCode, nearest, parseDuration, parseSize } from '../util/index.js'
+import { errorCode, nearest, parseDuration, parseSize, relPosix } from '../util/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import {
@@ -32,21 +33,22 @@ const CACHE_ELSEWHERE: Record<string, string> = {
   ls: '`vx info` reports the cache entry count and size, and `vx last --list` the recent runs',
   dir: '`vx info` prints the cache directory this workspace uses',
   path: '`vx info` prints the cache directory this workspace uses',
-  clean: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  clear: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  rm: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  delete: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+  clean: '`vx cache clear` deletes the whole cache, and `vx cache prune` evicts by age or size',
+  rm: '`vx cache clear` deletes the whole cache, and `vx cache prune` evicts by age or size',
+  delete: '`vx cache clear` deletes the whole cache, and `vx cache prune` evicts by age or size',
+  reset: '`vx cache clear` deletes the whole cache, and `vx cache prune` evicts by age or size',
+  wipe: '`vx cache clear` deletes the whole cache, and `vx cache prune` evicts by age or size',
   evict: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
   gc: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  purge: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+  purge: '`vx cache clear` deletes the whole cache, and `vx cache prune` evicts by age or size',
 }
 
 function cacheSubHint(sub: string): string {
   const elsewhere = CACHE_ELSEWHERE[sub]
   if (elsewhere !== undefined) return ` — ${elsewhere}`
-  const best = nearest(sub, ['prune'])
-  // `prune` is the one subcommand: name it when nothing is near (M-58).
-  return best === undefined ? '. The subcommand is prune' : `. Did you mean ${best}?`
+  const best = nearest(sub, ['prune', 'clear'])
+  // Name the subcommands when nothing is near (M-58).
+  return best === undefined ? '. The subcommands are prune and clear' : `. Did you mean ${best}?`
 }
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {
@@ -54,12 +56,14 @@ export async function cacheCmd(args: readonly string[]): Promise<number> {
   switch (sub) {
     case 'prune':
       return await pruneCmd(rest)
+    case 'clear':
+      return await clearCmd(rest)
     case undefined:
       // A bare `vx cache prune` refuses too: the hint names a whole command.
       return refuse(
         'cache',
         args,
-        `missing subcommand. Try \`vx cache prune --older-than 30d\` or \`vx cache prune --max-size 1G\`${seeHelp('cache')}`,
+        `missing subcommand. Try \`vx cache prune --older-than 30d\`, \`vx cache prune --max-size 1G\` or \`vx cache clear\`${seeHelp('cache')}`,
         'VX_E_USAGE',
       )
     default:
@@ -104,7 +108,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       // the deliberate way to do it.
       if (ms === 0) {
         return {
-          error: `--older-than 0 would evict every entry — to clear the cache, delete the cache store \`vx info\` names`,
+          error: `--older-than 0 would evict every entry — \`vx cache clear\` deletes the whole cache`,
         }
       }
       out.olderThanMs = Date.now() - ms
@@ -118,7 +122,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         return { error: `--max-size must be a size like 500M or 1G (got ${v})${seeHelp('cache')}` }
       if (bytes === 0) {
         return {
-          error: `--max-size 0 would evict every entry — to clear the cache, delete the cache store \`vx info\` names`,
+          error: `--max-size 0 would evict every entry — \`vx cache clear\` deletes the whole cache`,
         }
       }
       // A bare number is bytes to `parseSize` (a computed size needs that),
@@ -240,4 +244,122 @@ function printPruned(
   process.stdout.write(
     `${dry ? 'Would prune' : 'Pruned'} ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)}${dry ? '' : ' freed'})${orphans}\n`,
   )
+}
+
+/** `vx cache clear --format json` (schemas/cache.json `clear`). */
+export interface ClearResult {
+  dryRun: boolean
+  /** Workspace-relative inside the workspace, else absolute. */
+  cleared: string[]
+  bytesFreed: number
+}
+
+interface ClearArgs {
+  dryRun?: boolean
+  format?: 'pretty' | 'json'
+  /** `--cache-dir`: clear the cache a run with the same flag uses. */
+  cacheDir?: string
+  error?: string
+}
+
+function parseClearArgs(args: readonly string[]): ClearArgs {
+  const out: ClearArgs = {}
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    if (a === '--dry-run') out.dryRun = true
+    else if (a === '--format' || a?.startsWith('--format=')) {
+      const v = formatValue(a === '--format' ? args[++i] : a.slice('--format='.length), 'cache')
+      if (typeof v === 'object') return v
+      out.format = v
+    } else {
+      const cd = parseCacheDirFlag(args, i)
+      if (cd === null)
+        return {
+          error: `${refusedWord(a ?? '')}: ${a}${flagHint('cache clear', a ?? '')}${seeHelp('cache')}`,
+        }
+      if ('error' in cd) return { error: `${cd.error}${seeHelp('cache')}` }
+      out.cacheDir = cd.cacheDir
+      i = cd.next
+    }
+  }
+  return out
+}
+
+/**
+ * `vx cache clear`: delete the cache directory (its index, run history and
+ * any artifacts kept beside it) and the store its index names
+ * (`~/.vx/<id>/cache`), as `nx reset` and `turbo`'s `rm -rf` do. The
+ * workspace config, the lock and `.vx/.gitignore` sit outside both.
+ */
+async function clearCmd(args: readonly string[]): Promise<number> {
+  const parsed = parseClearArgs(args)
+  if (parsed.error) return refuse('cache clear', args, parsed.error, 'VX_E_USAGE')
+  let root: string
+  try {
+    root = await findWorkspaceRoot(process.cwd())
+  } catch (err) {
+    return refuse('cache clear', args, (err as Error).message, errorCode(err))
+  }
+  let dir: string
+  let storeRoot: string | null = null
+  if (parsed.cacheDir !== undefined) dir = await cliCacheDir(root, parsed.cacheDir)
+  else {
+    const ws = await loadCliWorkspace(root)
+    dir = ws.cacheDir
+    storeRoot = await ws.storeRoot
+  }
+  // The store the index recorded wins over today's (a changed HOME), as a
+  // run reads it; a directory with no index is not a vx cache to delete.
+  const targets: string[] = []
+  if (existsSync(path.join(dir, 'cache.db'))) {
+    const cache = new Cache(dir, undefined, undefined, undefined, 'preview', storeRoot)
+    const store = cache.storeDir
+    cache.close()
+    targets.push(dir)
+    if (store !== undefined) targets.push(store)
+  } else if (storeRoot !== null) targets.push(storeRoot)
+  // `cache.dir: '.vx'` (or the root) would take the workspace config and
+  // the lock with it.
+  const dotVx = path.join(root, '.vx')
+  const doomed = [...new Set(targets.map((t) => path.resolve(t)))].filter((t) => existsSync(t))
+  const unsafe = doomed.find((t) => t === dotVx || !path.relative(t, dotVx).startsWith('..'))
+  if (unsafe !== undefined) {
+    return refuse(
+      'cache clear',
+      args,
+      `cache directory ${unsafe} holds the workspace config and lock; set cache.dir to a directory of its own`,
+      'VX_E_CONFIG',
+    )
+  }
+  const dry = parsed.dryRun === true
+  const bytes = doomed.reduce((n, t) => n + treeBytes(t), 0)
+  if (!dry && doomed.length > 0) {
+    // A clear beside a run deletes what the run is restoring or saving; it
+    // waits for the run's lock, as a prune does.
+    const release = await acquireRunLock(root, { log: warnToStderr })
+    try {
+      for (const t of doomed) rmSync(t, { recursive: true, force: true })
+    } finally {
+      await release()
+    }
+  }
+  const shown = doomed.map((t) => (path.relative(root, t).startsWith('..') ? t : relPosix(root, t)))
+  if (parsed.format === 'json') {
+    const result: ClearResult = { dryRun: dry, cleared: shown, bytesFreed: bytes }
+    process.stdout.write(`${JSON.stringify(result)}\n`)
+  } else if (shown.length === 0) process.stdout.write('Nothing to clear: no cache here\n')
+  else {
+    process.stdout.write(
+      `${dry ? 'Would clear' : 'Cleared'} ${shown.join(' and ')} (${formatBytes(bytes)}${dry ? '' : ' freed'})\n`,
+    )
+  }
+  return 0
+}
+
+/** Bytes under `p`, links not followed. */
+function treeBytes(p: string): number {
+  const st = lstatSync(p, { throwIfNoEntry: false })
+  if (st === undefined) return 0
+  if (!st.isDirectory()) return st.size
+  return readdirSync(p).reduce((n, e) => n + treeBytes(path.join(p, e)), 0)
 }

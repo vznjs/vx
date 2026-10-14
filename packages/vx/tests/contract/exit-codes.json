@@ -11,6 +11,7 @@
   "watch: nothing affected since the ref: vx watch build --affected=HEAD": 0,
   "cache prune: no policy: vx cache prune": 1,
   "cache prune: a policy: vx cache prune --older-than 1d": 0,
+  "cache clear: a dry run: vx cache clear --dry-run": 0,
   "lock: write: vx lock": 0,
   "lock --check: up to date: vx lock --check": 0,
   "show: vx show": 0,

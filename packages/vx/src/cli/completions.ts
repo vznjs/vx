@@ -30,7 +30,7 @@ export function verbFlags(verb: string): string[] {
 
 /** The words that follow `vx <verb>` besides flags: subcommands and fixed choices. */
 const VERB_WORDS: Readonly<Record<string, readonly string[]>> = {
-  cache: ['prune'],
+  cache: ['prune', 'clear'],
   completions: [...SHELLS],
 }
 

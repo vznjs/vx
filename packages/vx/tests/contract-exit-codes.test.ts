@@ -30,6 +30,7 @@ const CASES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['watch: nothing affected since the ref', ['watch', 'build', '--affected=HEAD']],
   ['cache prune: no policy', ['cache', 'prune']],
   ['cache prune: a policy', ['cache', 'prune', '--older-than', '1d']],
+  ['cache clear: a dry run', ['cache', 'clear', '--dry-run']],
   ['lock: write', ['lock']],
   ['lock --check: up to date', ['lock', '--check']],
   ['show', ['show']],

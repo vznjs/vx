@@ -106,7 +106,10 @@ describe('cli run()', () => {
         1,
         "vx run: --output-logs must be one of 'full', 'errors-only', 'hash-only', 'none' (got loud) (see `vx run --help`)\n",
       ],
-      [1, 'vx cache: unknown subcommand: bogus. The subcommand is prune (see `vx cache --help`)\n'],
+      [
+        1,
+        'vx cache: unknown subcommand: bogus. The subcommands are prune and clear (see `vx cache --help`)\n',
+      ],
       [1, 'vx cache: unknown subcommand: prnue. Did you mean prune? (see `vx cache --help`)\n'],
     ])
   })
@@ -2338,7 +2341,7 @@ describe('vx cache prune command', () => {
     })
     expect(await run(['cache'])).toBe(1)
     expect(stderr).toBe(
-      'vx cache: missing subcommand. Try `vx cache prune --older-than 30d` or `vx cache prune --max-size 1G` (see `vx cache --help`)\n',
+      'vx cache: missing subcommand. Try `vx cache prune --older-than 30d`, `vx cache prune --max-size 1G` or `vx cache clear` (see `vx cache --help`)\n',
     )
   })
 
@@ -2373,7 +2376,7 @@ describe('vx cache prune command', () => {
   // `prune`, so a reader sent there learns what vx does not have.
   it.each([
     ['stats', '`vx info` reports the cache directory'],
-    ['clean', '`vx cache prune` is the eviction verb'],
+    ['clean', '`vx cache clear` deletes the whole cache'],
     ['dir', '`vx info` prints the cache directory'],
   ])('points %s at the verb that answers it', async (sub, hint) => {
     let stderr = ''

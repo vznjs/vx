@@ -31,6 +31,7 @@ released binary carries its own Bun and the row never says it.
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
 vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
+vx cache clear [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
@@ -1585,11 +1586,12 @@ Evict old or oversized cache entries. Operates on the entries and
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
 
-`prune` is the only `vx cache` subcommand: the statistics other runners
-put under a `cache` verb — the directory, the entry count, the size —
-are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
-`clean`, `gc`, `purge` and their neighbours say so (`list` also names
-`vx last --list`) rather than printing a bare "unknown subcommand".
+`prune` and [`clear`](#vx-cache-clear) are the `vx cache` subcommands:
+the statistics other runners put under a `cache` verb — the directory,
+the entry count, the size — are part of [`vx info`](#vx-info), and
+`vx cache stats`, `list`, `ls`, `gc` and their neighbours say so (`list`
+also names `vx last --list`; `clean`, `purge`, `reset` and `wipe` name
+`vx cache clear`) rather than printing a bare "unknown subcommand".
 
 ```
 vx cache prune --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
@@ -1645,8 +1647,8 @@ write `10G`, or `10B` when bytes really are the unit.
 evict every entry in the cache, which is far more often a
 computed-to-zero retention than an intent — and no flag combination
 expresses "wipe the cache" (running with neither flag is an error, not a
-full prune). Delete the cache store `vx info` names when that is really
-what you want: the entries live there, not in the workspace's `.vx/cache`.
+full prune). `vx cache clear` deletes the whole cache when that is really
+what you want.
 
 ```
 $ vx cache prune --older-than 30d
@@ -1692,6 +1694,37 @@ Exit codes:
 directory a run would use. `--cache-dir <path>` (cwd-relative, as on
 `vx run`) names another one, so a run that wrote elsewhere can be
 pruned there.
+
+## `vx cache clear`
+
+`vx cache clear` deletes the whole cache: the cache directory
+(`.vx/cache`, or `cache.dir` / `--cache-dir`: the index, run history and
+logs) and the store its index names, where the entries live
+(`~/.vx/<id>/cache`). It prints what it freed. `.vx/workspace.ts`, the
+lock and `.vx/.gitignore` sit outside both and stay; a `cache.dir` that
+holds them (`.vx`, the workspace root) is refused. A directory with no
+`cache.db` is not a vx cache and is left alone; a workspace that never
+ran says `Nothing to clear: no cache here`. The next run misses every
+task once and saves again.
+
+```
+$ vx cache clear
+Cleared .vx/cache and /home/me/.vx/3f2a9c01b4d5e6f7/cache (1.4 GB freed)
+
+$ vx cache clear --dry-run
+Would clear .vx/cache and /home/me/.vx/3f2a9c01b4d5e6f7/cache (1.4 GB)
+
+$ vx cache clear --format json
+{"dryRun":false,"cleared":[".vx/cache","/home/me/.vx/3f2a9c01b4d5e6f7/cache"],"bytesFreed":1503238553}
+```
+
+It waits for a `vx run` on the same workspace to finish first, as a
+prune does (the run's lock), so it never deletes what that run is
+restoring or saving. `--cache-dir <path>` clears the cache a run with the
+same flag uses. The store is shared by every checkout of the
+repository, so their entries go too; other repositories' stores under
+`~/.vx` stay. `--format json` prints `{ dryRun, cleared, bytesFreed }`
+(`schemas/cache.json`), `cleared` listing the directories.
 
 ## `--frozen` (run flag)
 
@@ -2431,8 +2464,8 @@ copy to the source.
 
 ## Machine-readable output
 
-`vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune` take
-`--format json`. Each prints one JSON document on one line, as
+`vx show`, `vx info`, `vx why`, `vx last`, `vx cache prune` and
+`vx cache clear` take `--format json`. Each prints one JSON document on one line, as
 `vx run --format json` does, whose shape is a
 checked-in JSON Schema (draft 2020-12) shipped with the package:
 `schemas/show.json`, `schemas/info.json`, `schemas/why.json`,

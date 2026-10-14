@@ -17,12 +17,12 @@ import path from 'node:path'
 
 const ROOT = path.resolve(import.meta.dir, '..')
 const DOC = readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8')
-const SECTIONS = {
-  cache: 'vx cache prune',
-  show: 'vx show',
-  info: 'vx info',
-  why: 'vx why',
-  last: 'vx last',
+const SECTIONS: Record<string, string[]> = {
+  cache: ['vx cache prune', 'vx cache clear'],
+  show: ['vx show'],
+  info: ['vx info'],
+  why: ['vx why'],
+  last: ['vx last'],
 }
 
 type Schema = Record<string, unknown>
@@ -110,9 +110,10 @@ describe('docs/cli.md prints each verb JSON shape as its schema closes it', () =
     expect(jsonText('vx cache prune')).toContain('{ dryRun, evicted')
   })
 
-  for (const [verb, heading] of Object.entries(SECTIONS)) {
+  for (const [verb, headings] of Object.entries(SECTIONS)) {
+    const heading = headings.join(' and ')
     const root = schemaOf(verb)
-    const shown = shapes(jsonText(heading))
+    const shown = shapes(headings.map(jsonText).join(' '))
 
     it(`${heading}: every shape shown is an object the schema closes`, () => {
       const known = objects(root)

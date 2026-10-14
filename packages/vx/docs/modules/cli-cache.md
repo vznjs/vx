@@ -1,8 +1,8 @@
-# `src/cli/cache.ts` — `vx cache prune`
+# `src/cli/cache.ts` — `vx cache prune` and `vx cache clear`
 
 ## Purpose
 
-Implements `vx cache prune`. Both parsers are `util/size.ts`'s,
+Implements `vx cache prune` and `vx cache clear`. Both parsers are `util/size.ts`'s,
 re-exported here: the workspace's `cache.retention` field reads the
 same spellings the flags do. Drives
 `Cache.prune({...})` from `src/cache/cache.ts` against the cache
@@ -23,6 +23,11 @@ interface PruneArgs {
 }
 
 export function parsePruneArgs(args: readonly string[]): PruneArgs
+export interface ClearResult {
+  dryRun: boolean
+  cleared: string[]
+  bytesFreed: number
+}
 export { parseDuration, parseSize } from '../util/index.js'
 ```
 
@@ -39,8 +44,7 @@ vx cache prune --older-than 30d --cache-dir <path>
 
 At least one of `--older-than` / `--max-size` is required, and neither
 may be zero — a policy that would evict every entry is refused with
-"to clear the cache, delete the cache store `vx info` names" (the
-entries live in `~/.vx/<id>/cache`, not `.vx/cache`). A bare number for `--max-size`
+"`vx cache clear` deletes the whole cache". A bare number for `--max-size`
 is refused too: `--max-size 10` would read as ten bytes and evict
 nearly everything; give a unit. Both policies may be combined:
 age-based eviction first, then LRU eviction if the total is still
@@ -63,6 +67,16 @@ workspace — `[vx] waiting for another vx run (pid N) on this workspace
 to finish…` after a second — instead of evicting the hits that run has
 just probed; the age cutoff is taken before the wait, so what the run
 touched survives it. A dry run takes no lock.
+
+## `vx cache clear`
+
+Deletes the cache directory a run would use (`.vx/cache`, `cache.dir`,
+`--cache-dir`) when it holds a `cache.db`, and the store that index
+records (`Cache.storeDir`, else `resolveStoreRoot`): the entries live
+in `~/.vx/<id>/cache`. A target that is `.vx` or holds it (the
+workspace config, the lock, `.vx/.gitignore`) is refused. The size is
+summed before the delete (links not followed); the delete takes the run
+lock, as a prune does. `--dry-run` deletes nothing and takes no lock.
 
 ## Parsers
 
