@@ -13,6 +13,7 @@ const SRC = path.resolve(import.meta.dir, '..', 'src')
 // Each entry names the path the site probes; all are files by construction.
 const FILE_PATH_SITES: Record<string, number> = {
   'cli/init.ts': 3, // turbo.json, nx.json, a scaffold's file
+  'cli/lock.ts': 1, // a vx.lock.json left beside no config
   'cli/plugin-templates.ts': 2, // the cache example's has() and get(): artifact file paths
   'handoff.ts': 4, // a package.json, .git/HEAD, a worktree's .git file, a .vx/workspace.*
   'orchestrator/doctor.ts': 1, // the lockfile

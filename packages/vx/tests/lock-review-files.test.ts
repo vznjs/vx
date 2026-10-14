@@ -68,6 +68,24 @@ it('vx lock --check fails on a stale or missing review copy', async () => {
   expect(vx(r, 'lock', '--check').code).toBe(0)
 })
 
+it('vx lock --check fails on a review copy whose config is gone', async () => {
+  // Its config deleted, the project kept (its package.json): the copy
+  // still showed reviewers tasks nothing runs, and the audit passed.
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-orphan-' }))
+  const dir = await addProject(r, 'a', { config: CONFIG })
+  await addProject(r, 'b', { config: CONFIG })
+  expect(vx(r, 'lock').code).toBe(0)
+  await rm(path.join(dir, 'vx.config.mjs'))
+  expect(vx(r, 'lock').code).toBe(0)
+  const orphan = vx(r, 'lock', '--check')
+  expect([orphan.code, orphan.err]).toEqual([
+    1,
+    `vx lock --check: packages/a/vx.lock.json has no vx.config beside it — delete it\n`,
+  ])
+  await rm(path.join(dir, 'vx.lock.json'))
+  expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
+})
+
 it('lock.reviewFiles: false writes none and checks none; an existing .gitattributes stays', async () => {
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-off-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })

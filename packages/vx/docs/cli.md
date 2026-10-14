@@ -1791,7 +1791,8 @@ project that differs gets one message, whether its config, a file it
 imports or the environment it reads changed. A lock an earlier vx wrote
 fails the shape check and asks for `vx lock`. It also checks the graph rules over the configs as they
 evaluate now, and that each `vx.lock.json` is what its project resolves to
-here (unless `lock.reviewFiles` is off). The CI recipe is `vx lock --check && vx run …`.
+here, and that none is left beside a deleted `vx.config` (delete that one
+yourself: vx never deletes a committed file), unless `lock.reviewFiles` is off. The CI recipe is `vx lock --check && vx run …`.
 `--format json` prints the audit as one document
 (`schemas/lock.json`, exit code unchanged; a missing lock is one of
 its `problems`); it answers `--check` only.
