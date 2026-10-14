@@ -78,7 +78,11 @@ With neither bound, deletes the cache directory a run would use (`.vx/cache`, `c
 `--cache-dir`) when it holds a `cache.db`, and the store that index
 records (`Cache.storeDir`, else `resolveStoreRoot`): the entries live
 in `~/.vx/<id>/cache`. A target that is `.vx` or holds it (the
-workspace config, the lock, `.vx/.gitignore`) is refused. The size is
+workspace config, the lock, `.vx/.gitignore`) is refused. A cache
+directory other than `.vx/cache` is the user's: only `vxCacheEntries`
+(the index and its WAL, `VX_ARTIFACT_NAME` files, `runs/`, `failures/`,
+`lockfile-claims/`, an unchanged `*` `.gitignore`) go, then the
+directory if empty (item 968). The size is
 summed before the delete (links not followed); the delete takes the run
 lock, as a prune does. `--dry-run` deletes nothing and takes no lock.
 `--global` adds every `~/.vx/*/cache` and is refused with a bound or

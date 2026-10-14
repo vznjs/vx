@@ -135,4 +135,27 @@ describe('vx cache clean with no bound clears the cache', () => {
     },
     TIMEOUT,
   )
+  it(
+    'in a cache.dir the user named, deletes only what vx wrote there (item 968)',
+    async () => {
+      // `cache.dir` may be a shared directory (`build/`, `~/.cache`); the
+      // clear took it whole, the user's own files with it.
+      const shared = path.join(home, 'shared')
+      const env = { VX_CACHE_DIR: shared }
+      expect((await vx(['run', 'build', '--all'], env)).code).toBe(0)
+      await Bun.write(path.join(shared, 'release.tar.zst'), 'mine')
+      await Bun.write(path.join(shared, 'notes', 'keep.txt'), 'mine')
+      expect(existsSync(path.join(shared, 'cache.db'))).toBe(true)
+
+      const r = await vx(['cache', 'clean'], env)
+      expect(r.code).toBe(0)
+      expect(readdirSync(shared).sort()).toEqual(['notes', 'release.tar.zst'])
+      expect(await Bun.file(path.join(shared, 'notes', 'keep.txt')).text()).toBe('mine')
+      // Control: vx's own files are gone, so the next run misses and saves again.
+      const again = await vx(['run', 'build', '--all'], env)
+      expect(again.code).toBe(0)
+      expect(existsSync(path.join(shared, 'cache.db'))).toBe(true)
+    },
+    TIMEOUT,
+  )
 })
