@@ -158,7 +158,7 @@ author.
   same task cache key as a live evaluation of the same bytes.
 - `fresh: true` (what `vx lock` uses) bypasses the cache in both
   directions, even when an `evalCache` is passed beside it.
-- The store honours the run's local read/write axes: `--cache=local:`
+- The store honours the run's local read/write axes: `--cache-policy=local:`
   neither reads nor writes it.
 - Rows not written for 30 days are pruned on any handle's
   `Cache.close()` but a reading verb's, whatever its write axis. A hit does not

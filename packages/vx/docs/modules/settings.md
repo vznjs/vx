@@ -14,10 +14,8 @@ one and be missing in another (`tests/settings.test.ts`).
 ```ts
 export const SETTINGS: readonly Setting[]
 export const SETTING_GROUPS: readonly ['run', 'cache', 'watch']
-export const RENAMED: ReadonlyMap<string, Setting>
 export function setting(path: string): Setting
 export function kindHint(kind: SettingKind): string
-export function renamedRefusal(old: string, s: Setting, value?: string): string
 export function atPath(config: unknown, path: string): unknown
 export function runRules(workspace: unknown): { exclusiveOutputs?: boolean; upfrontKeys?: boolean }
 export function envName(path: string): string
@@ -37,8 +35,8 @@ export function resolveSetting(
 
 - Precedence: flag, then variable, then `vx.workspace`, then the
   default. A task's `exec.timeout` / `exec.retries` beats all of them.
-- A renamed variable or flag (`was`) is refused naming its new name;
-  there are no aliases.
+- No aliases: until 1.0 an old variable is ignored and an old flag is
+  an unknown flag.
 - A setting with `config: false` is read before `vx.workspace` loads,
   so it has a variable and maybe a flag, no key.
 - The CLI checks every set variable up front (`checkSettingsEnv`), so a

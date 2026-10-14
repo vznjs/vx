@@ -258,7 +258,7 @@ on a PR, the same diff between its base and head needs the title marked
   for byte, then writes the committed lock back and requires
   `vx lock --check` to pass and `vx run --frozen` to run from it (under an
   environment a live evaluation would read differently). A change to the
-  format, to how `configHash` is taken, or to `LOCKFILE_VERSION` fails
+  format or to `LOCKFILE_VERSION` fails
   here; a lock written by 1.x is valid for every later 1.x.
 - **The npm tarballs.** `tests/npm-pack.unsafe.test.ts` emits every
   package the release publishes, runs `npm pack --dry-run --json` on
@@ -316,35 +316,13 @@ These may change in any release.
 
 ## Deprecation
 
-A contract surface is removed in three steps:
-
-1. **A minor deprecates it.** The surface keeps working and warns once
-   per run, naming what replaces it. A config field's warning comes from
-   `config-schema.ts`; a flag's comes from the CLI's parser.
-2. **At least one more minor ships with the warning.**
-3. **The next major removes it.** When a removed field is used, the
-   refusal names the replacement and the version that removed it.
-
-The removal is held in code. `REMOVED_FIELDS` in `config-schema.ts`
-maps each level's field set to the fields it once took, each with the
-version that removed it and what to use instead. The unknown-field check
-consults it before it calls a key unknown, so a removed field gets a
-refusal of its own:
-
-```text
-vx.config.ts: tasks.build.exec has field "resources", which vx 0.0.19 removed — use
-`@vzn/vx-schedule-history`, which learns each task's reservation from its run history
-(declare one by hand with its `reservations: { 'pkg#task': { cpus, memory } }`)
-```
-
-An entry stays for good, since a config written against an old release
-meets it whenever it upgrades. `tests/contract-removed-fields.test.ts`
-holds that example word for word and every entry to the same shape (out
-of its level's accepted fields, a semver `removedIn`, a replacement).
-
-No field is deprecated today, so step 1's warning has no code yet. The
-first deprecation builds it beside `REMOVED_FIELDS`, with a row that
-it prints once per run.
+Until 1.0 a breaking change ships with no alias, rename notice or
+migration shim (owner, 2026-10-14): an old config key fails the unknown
+field check, an old flag the unknown flag check, and an old variable is
+ignored. The release notes and the change's record name each rename.
+From 1.0 a contract surface is removed in three steps: a minor
+deprecates it and warns once per run naming what replaces it, at least
+one more minor ships with the warning, and the next major removes it.
 
 A fix for a stale hit or wrong bytes ships in a patch, even when it
 changes what a glob or a key means (item 667 did both). Its release

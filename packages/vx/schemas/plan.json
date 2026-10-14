@@ -35,7 +35,7 @@
           },
           "download": {
             "const": "deferred",
-            "description": "outputs would stay remote (--download)"
+            "description": "outputs would stay remote (--cache-download)"
           },
           "description": { "type": "string" },
           "affected": {
@@ -80,7 +80,7 @@
     },
     "downloadDowngrades": {
       "type": "array",
-      "description": "producers --download wanted to defer but could not, and why",
+      "description": "producers --cache-download wanted to defer but could not, and why",
       "items": {
         "type": "object",
         "additionalProperties": false,

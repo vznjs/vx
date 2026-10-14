@@ -213,7 +213,7 @@ additive when phase 2's plugin lands. `TaskOutcome.where` (§4) SHIPPED
 summary rows and the OTel span (`vx.task.where`) surface it. Absent =
 local host; never persisted to the analytics store. The `outputs`
 DISCRIMINATOR stays unshipped with the same reasoning as `'only'` was
-staged: `deferred`/`cache` have no consumer until the `--download` +
+staged: `deferred`/`cache` have no consumer until the `--cache-download` +
 CAS-shaped-local-cache arc, and a shipped enum nothing reads is a
 half-finished implementation.
 
@@ -233,7 +233,7 @@ Patterns this implies, documented rather than abstracted away:
 | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `executor` capability + `localExecutor`                                            | **Add**                                                                       |
 | `exec.remote` schema field + placement rule                                        | **Add** — SHIPPED 2026-08-23 as `boolean` (`'only'` deferred, see §5)         |
-| `--download=all\|toplevel\|none` run option                                        | **Add** (phase 3; phase 1–2 behave as `all`)                                  |
+| `--cache-download=all\|toplevel\|none` run option                                  | **Add** (phase 3; phase 1–2 behave as `all`)                                  |
 | `cache` capability, `LayeredCache`, prefetch, shortcircuit, stable-keys            | **Keep** — generic second-tier machinery; REAPI plugs in                      |
 | `telemetry` capability and its record types, `TaskLogBuffer`, fingerprints         | **Keep** — the analytics seam a community cloud builds on                     |
 | `run-context.ts` (git/CI/host/PR scope)                                            | **Keep** — provider-neutral context every ctx receives                        |
@@ -358,7 +358,7 @@ nothing in it depends on a later phase.
    returns inputs, placement rule + `exec.remote`, `TaskOutcome.where`;
    `backend`/`eventSink` deprecated. Plugin: `Execute`, Merkle tree builder,
    digest cache, `install` docs, pnpm slicing. Outputs always downloaded.
-3. **Download policy + CAS-shaped local cache** — `--download`, `deferred`
+3. **Download policy + CAS-shaped local cache** — `--cache-download`, `deferred`
    outputs, local cache as CAS + AC; `isOutputsCurrent` gains the per-output
    content hash it has wanted.
 4. **Port vx-cloud's dist to `executor`; delete whole-run delegation.**

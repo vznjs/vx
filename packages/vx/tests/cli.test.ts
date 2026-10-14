@@ -11,7 +11,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { planned } from './helpers/parity.js'
 import { makeWorkspace } from './helpers/workspace.js'
-import { editDistance, MOVED_VERBS, nearest } from '../src/util/index.js'
+import { editDistance, nearest } from '../src/util/index.js'
 
 describe('cli run()', () => {
   let stdout: string
@@ -147,11 +147,6 @@ describe('cli run()', () => {
         'vx help: unknown command: rnu. Did you mean run? (see `vx help`)\n' +
         'vx help: unknown command: no-such-verb (see `vx help`)\n',
     })
-    // A verb core once owned points where it went, as `vx migrate` does.
-    stderr = ''
-    expect(await run(['help', 'migrate'])).toBe(1)
-    expect(stderr).toBe(`${MOVED_VERBS['migrate']}\n`)
-    expect(stderr.startsWith('vx migrate moved to @vzn/vx-migrate')).toBe(true)
   })
 
   // Every argument error points at the verb's own help, which is only
@@ -530,7 +525,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
   // `--dry` called a cacheable task under a policy that reads and writes
   // nothing `no-cache`, the real run `miss` and its footer "1 miss": a
   // miss is a lookup that failed, and this run looked nothing up.
-  for (const flag of ['--no-cache', '--cache=local:']) {
+  for (const flag of ['--no-cache', '--cache-policy=local:']) {
     it(`${flag}: the plan and the run both call the task no-cache`, async () => {
       const { readFile } = await import('node:fs/promises')
       let stdout = ''
@@ -1725,14 +1720,12 @@ describe('parseRunArgs', () => {
     expect([...documentedFlags('run')].sort()).toEqual([
       '--affected',
       '--all',
-      '--cache',
       '--cache-dir',
       '--cache-download',
       '--cache-policy',
       '--cache-scope',
       '--concurrency',
       '--continue',
-      '--download',
       '--dry',
       '--exclude-dependencies',
       '--filter',
@@ -1775,11 +1768,11 @@ describe('parseRunArgs', () => {
     }
   })
 
-  it('parses --cache-dir (space + = forms) without colliding with --cache', () => {
+  it('parses --cache-dir (space + = forms) without colliding with --cache-policy', () => {
     expect(parseRunArgs(['build', '--cache-dir', '/tmp/x']).cacheDir).toBe('/tmp/x')
     expect(parseRunArgs(['build', '--cache-dir=./out/cache']).cacheDir).toBe('./out/cache')
-    // --cache still parses its own policy spec, undisturbed.
-    expect(parseRunArgs(['build', '--cache=local:r']).cacheDir).toBeUndefined()
+    // --cache-policy still parses its own policy spec, undisturbed.
+    expect(parseRunArgs(['build', '--cache-policy=local:r']).cacheDir).toBeUndefined()
     expect(parseRunArgs(['build']).cacheDir).toBeUndefined()
     expect(parseRunArgs(['build', '--cache-dir']).error).toBe('--cache-dir requires a path')
   })
@@ -1830,30 +1823,30 @@ describe('parseRunArgs', () => {
     })
   })
 
-  it('--cache=<spec> sets named layers exactly and leaves others (= and space forms)', () => {
+  it('--cache-policy=<spec> sets named layers exactly and leaves others (= and space forms)', () => {
     // remote read-only: local stays rw (default), remote drops write.
-    expect(parseRunArgs(['build', '--cache=local:rw,remote:r']).cache).toEqual({
+    expect(parseRunArgs(['build', '--cache-policy=local:rw,remote:r']).cache).toEqual({
       localRead: true,
       localWrite: true,
       remoteRead: true,
       remoteWrite: false,
     })
     // local read-only, remote untouched (still rw).
-    expect(parseRunArgs(['build', '--cache=local:r']).cache).toEqual({
+    expect(parseRunArgs(['build', '--cache-policy=local:r']).cache).toEqual({
       localRead: true,
       localWrite: false,
       remoteRead: true,
       remoteWrite: true,
     })
     // remote: with empty flags turns remote fully off; local untouched.
-    expect(parseRunArgs(['build', '--cache=remote:']).cache).toEqual({
+    expect(parseRunArgs(['build', '--cache-policy=remote:']).cache).toEqual({
       localRead: true,
       localWrite: true,
       remoteRead: false,
       remoteWrite: false,
     })
     // Space form parses identically to the = form.
-    expect(parseRunArgs(['build', '--cache', 'local:r']).cache).toEqual({
+    expect(parseRunArgs(['build', '--cache-policy', 'local:r']).cache).toEqual({
       localRead: true,
       localWrite: false,
       remoteRead: true,
@@ -1861,10 +1854,16 @@ describe('parseRunArgs', () => {
     })
   })
 
-  it('--cache rejects unknown layers and flags', () => {
-    expect(parseRunArgs(['build', '--cache=disk:r']).error).toMatch(/^--cache: invalid layer/)
-    expect(parseRunArgs(['build', '--cache=local:x']).error).toMatch(/^--cache: invalid flag/)
-    expect(parseRunArgs(['build', '--cache=local']).error).toMatch(/^--cache: invalid segment/)
+  it('--cache-policy rejects unknown layers and flags', () => {
+    expect(parseRunArgs(['build', '--cache-policy=disk:r']).error).toMatch(
+      /^--cache-policy: invalid layer/,
+    )
+    expect(parseRunArgs(['build', '--cache-policy=local:x']).error).toMatch(
+      /^--cache-policy: invalid flag/,
+    )
+    expect(parseRunArgs(['build', '--cache-policy=local']).error).toMatch(
+      /^--cache-policy: invalid segment/,
+    )
   })
 
   it('--no-cache beats --force regardless of order', () => {
@@ -1878,10 +1877,10 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--force', '--no-cache']).cache).toEqual(allOff)
   })
 
-  it('--force layers on top of a --cache base (reads off, writes from spec)', () => {
-    // --cache=remote: turns remote off; --force then drops reads. Result:
+  it('--force layers on top of a --cache-policy base (reads off, writes from spec)', () => {
+    // --cache-policy=remote: turns remote off; --force then drops reads. Result:
     // local write-only re-exec with remote fully off.
-    expect(parseRunArgs(['build', '--cache=remote:', '--force']).cache).toEqual({
+    expect(parseRunArgs(['build', '--cache-policy=remote:', '--force']).cache).toEqual({
       localRead: false,
       localWrite: true,
       remoteRead: false,
@@ -2073,12 +2072,12 @@ describe('parseRunArgs', () => {
     )
     // Each value-taking flag says what the value is, not only that it is missing.
     expect(
-      ['--concurrency', '--cache', '--verbosity', '--tag'].map(
+      ['--concurrency', '--cache-policy', '--verbosity', '--tag'].map(
         (f) => parseRunArgs(['build', f]).error,
       ),
     ).toEqual([
       "--concurrency requires a value (a positive integer, or a share of the cores like '50%')",
-      '--cache requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)',
+      '--cache-policy requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)',
       '--verbosity requires a value (a non-negative integer)',
       '--tag requires a value (k=v)',
     ])
@@ -2607,19 +2606,25 @@ describe('--continue parsing', () => {
   })
 })
 
-describe('--download accepts exactly its three modes', () => {
+describe('--cache-download accepts exactly its three modes', () => {
   it('names each one, in both spellings', () => {
     // `none` had no row: the enum guard lists it, and dropping that member
-    // turns `--download=none` — the form that keeps every intermediate
+    // turns `--cache-download=none` — the form that keeps every intermediate
     // output remote — into an argument error. The modes decide which
     // outputs come home, so each is worth its own assertion rather than a
     // check that SOME value parses.
     for (const mode of ['all', 'toplevel', 'none'] as const) {
-      expect(parseRunArgs(['build', `--download=${mode}`]).settings['cache.download']).toBe(mode)
-      expect(parseRunArgs(['build', '--download', mode]).settings['cache.download']).toBe(mode)
+      expect(parseRunArgs(['build', `--cache-download=${mode}`]).settings['cache.download']).toBe(
+        mode,
+      )
+      expect(parseRunArgs(['build', '--cache-download', mode]).settings['cache.download']).toBe(
+        mode,
+      )
     }
     // The control: the guard still refuses what is not a mode.
-    expect(parseRunArgs(['build', '--download=some']).error).toContain('--download must be')
+    expect(parseRunArgs(['build', '--cache-download=some']).error).toContain(
+      '--cache-download must be',
+    )
   })
 })
 
@@ -2634,7 +2639,7 @@ describe('unknown-flag hints reach three edits', () => {
   it('a flag sharing the stem but past three edits gets no hint', () => {
     // The distance was capped at 3, so "three or more" read as three: the
     // same-stem budget offered `--concurrency` for `--continue-on-error`
-    // (nine edits) and `--cache` for `--cache-directory`.
+    // (nine edits) and `--cache-policy` for `--cache-directory`.
     expect(parseRunArgs(['build', '--continue-on-error']).error).toBe(
       'unknown flag: --continue-on-error',
     )

@@ -159,14 +159,15 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: false,
     outcome: 'same',
     // Turbo 2.11's own help: "Equivalent to `--cache=local:r,remote:r`".
-    vx: "`--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache local:r,remote:r`",
+    vx: "`--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache-policy local:r,remote:r`",
   },
   {
     runner: 'turbo',
     names: ['--cache'],
     value: true,
-    outcome: 'same',
-    vx: '`--cache local:rw,remote:r`',
+    outcome: 'alias',
+    vx: '`--cache-policy`, the same spec (`local:rw,remote:r`)',
+    to: (v) => ['--cache-policy', v ?? ''],
   },
   {
     runner: 'turbo',
@@ -297,7 +298,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: false,
     bool: true,
     outcome: 'refuse',
-    vx: 'use `--cache local:,remote:rw`',
+    vx: 'use `--cache-policy local:,remote:rw`',
   },
   {
     runner: 'turbo',
@@ -305,7 +306,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: false,
     bool: true,
     outcome: 'refuse',
-    vx: 'use `--cache local:rw,remote:r`',
+    vx: 'use `--cache-policy local:rw,remote:r`',
   },
   {
     runner: 'turbo',
@@ -532,8 +533,8 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: false,
     bool: true,
     outcome: 'alias',
-    vx: '`--cache local:rw,remote:`',
-    to: () => ['--cache', 'local:rw,remote:'],
+    vx: '`--cache-policy local:rw,remote:`',
+    to: () => ['--cache-policy', 'local:rw,remote:'],
   },
   {
     runner: 'nx',

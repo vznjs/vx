@@ -282,7 +282,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       }
       // The loose schema's shape (unknown-typed hooks) plus the one retired
       // key this loader still refuses by name.
-      const plug = p as Partial<Plugin> & { name?: unknown; backend?: unknown }
+      const plug = p as Partial<Plugin> & { name?: unknown }
       // A plugin's name is its package name and nothing else. `definePlugin`
       // reads it and stamps it under a registry symbol; a plain object, or
       // one whose `name` was overwritten after the stamp, is refused here —
@@ -303,21 +303,6 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
       if (plug.name !== pkg) {
         throw new UserError(
           `${configPath}: \`plugins[${i}].name\` overrides the package name ('${String(plug.name)}' over '${pkg}') — a plugin's name is its package name; drop the field`,
-        )
-      }
-      // The whole-run `backend` seam was REMOVED on 2026-08-23 with vx
-      // cloud: a run always executes in the `vx run` process. Nothing
-      // consults `.backend` any more, so leaving it in `caps` below meant a
-      // plugin declaring ONLY `backend` — a third-party one written against
-      // the old API, say — validated as "contributes a capability" and was
-      // then silently ignored. Refuse it by name and point at the seam that
-      // replaced it; a silent no-op is the failure this validation exists
-      // to prevent.
-      if (plug.backend !== undefined) {
-        throw new UserError(
-          `${configPath}: \`plugins[${i}].backend\` is no longer a capability — the whole-run ` +
-            `backend seam was removed in 2026-08. Use \`executor\` to change where a single ` +
-            `task's command runs (see docs/architecture.md § plugin capabilities).`,
         )
       }
       // A misspelled hook (`excutor`, `setUp`) was never called and never
@@ -970,70 +955,6 @@ const CACHE_INPUT_FIELDS = new Set([
 ])
 const CACHE_OUTPUT_FIELDS = new Set(['files', 'workspaceFiles'])
 
-/** A field a release took out of the schema, and what took its place. */
-interface Removal {
-  /** The vx version whose schema first refused it. */
-  removedIn: string
-  /** What to write instead, as a sentence fragment after "use". */
-  use: string
-}
-
-/**
- * Fields the schema once accepted, by the level that held them (keyed by
- * that level's field set). A removed field is refused naming its
- * replacement and the version that removed it, never as an unknown field a
- * reader must research (docs/design/versioning-1.0.md § Deprecation). An
- * entry stays for good: a config written against an old release meets it
- * whenever it upgrades.
- */
-export const REMOVED_FIELDS: ReadonlyMap<
-  ReadonlySet<string>,
-  Readonly<Record<string, Removal>>
-> = new Map([
-  [
-    EXEC_FIELDS,
-    {
-      // Reservations left core with the `admit` seam (item 157).
-      resources: {
-        removedIn: '0.0.19',
-        use:
-          "`@vzn/vx-schedule-history`, which learns each task's reservation from its run " +
-          "history (declare one by hand with its `reservations: { 'pkg#task': { cpus, memory } }`)",
-      },
-    },
-  ],
-  [
-    WORKSPACE_FIELDS,
-    {
-      // Settings went into groups (docs/schema.md § Settings).
-      cacheScope: {
-        removedIn: '0.0.637',
-        use: "`cache: { scope }` ('pr-123')",
-      },
-      concurrency: { removedIn: '0.0.637', use: "`run: { concurrency }` (4, '50%')" },
-      schedule: { removedIn: '0.0.637', use: '`run: { schedule }`' },
-      affectedBase: { removedIn: '0.0.637', use: '`run: { affectedBase }`' },
-      timeout: { removedIn: '0.0.637', use: "`run: { timeout }`, a duration ('30m')" },
-      rules: { removedIn: '0.0.637', use: '`run: { rules }`' },
-      cacheDir: { removedIn: '0.0.637', use: '`cache: { dir }`' },
-      cacheRetention: {
-        removedIn: '0.0.637',
-        use: "`cache: { retention }` ({ olderThan: '30d' })",
-      },
-      inputStability: { removedIn: '0.0.637', use: '`cache: { inputStability }`' },
-    },
-  ],
-  [
-    CACHE_FIELDS,
-    {
-      rewrittenInputs: {
-        removedIn: '0.0.636',
-        use: "`inputStability: { strategy: 'immutable' | 'mutable' }` ('withhold', 'compare')",
-      },
-    },
-  ],
-])
-
 /**
  * Another runner's spelling of a field vx has under another name, by the
  * level that meets it (D-37): a Turbo `outputs: [...]` or Nx `command` on
@@ -1214,12 +1135,6 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
   }
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) {
-      const removal = REMOVED_FIELDS.get(allowed)?.[key]
-      if (removal !== undefined) {
-        throw new UserError(
-          `${where} has field "${key}", which vx ${removal.removedIn} removed — use ${removal.use}`,
-        )
-      }
       // The nearest accepted spelling first: the list says what the level
       // takes, the hint says which one was meant.
       const foreign = FOREIGN_FIELDS.get(allowed)?.[key]

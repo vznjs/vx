@@ -12,7 +12,7 @@ import { nearest } from '../util/index.js'
 export const FLAG_VALUES: Readonly<Record<string, readonly string[]>> = {
   '--format': ['pretty', 'json'],
   '--output-logs': ['full', 'errors-only', 'hash-only', 'none'],
-  '--download': ['all', 'toplevel', 'none'],
+  '--cache-download': ['all', 'toplevel', 'none'],
 }
 
 export type CompletionShell = 'bash' | 'zsh' | 'fish'

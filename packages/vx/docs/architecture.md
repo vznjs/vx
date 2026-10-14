@@ -341,7 +341,7 @@ never branches on layering.
    verb is asked of the workspace's plugins (`commands` seam — `vx mcp`
    is one).
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
-   object (including the 4-axis cache policy from `--cache` /
+   object (including the 4-axis cache policy from `--cache-policy` /
    `--no-cache` / `--force`). Surfaces parse errors as `RunArgs.error`
    so the caller prints + exits before doing any I/O.
 4. **`cli/run.ts:runCmd`** resolves the project scope:

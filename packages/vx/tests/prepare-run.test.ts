@@ -711,7 +711,7 @@ describe('the cache handle honours the resolved policy and dir', () => {
 describe('the remote-axis clamp cannot drift between run and planRun', () => {
   it('both call sites derive the policy from the same helper', async () => {
     // A SOURCE assertion because the defect has no runtime shape at one site:
-    // `planRun` read the UNCLAMPED policy, so `--dry --cache=local:,remote:rw`
+    // `planRun` read the UNCLAMPED policy, so `--dry --cache-policy=local:,remote:rw`
     // with no remote predicted a miss for a run that would store nothing. The
     // 2026-07-27 fix was structural — hoist the clamp so both derive from one
     // helper — and the thing worth guarding is that neither site drifts back to

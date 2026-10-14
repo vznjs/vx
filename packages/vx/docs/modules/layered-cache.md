@@ -81,7 +81,7 @@ and every read of the body sees the same bytes: a re-save of the key
 renames others over the live name, and a body opened by that name read
 them mid-upload. A plugin that must digest first reads `body.stream()`
 twice. The one
-exception is `--cache=local:,remote:rw`: with no local artifact the bytes
+exception is `--cache-policy=local:,remote:rw`: with no local artifact the bytes
 are packed in memory during `save` and sent as `new Blob([bytes])`.
 
 ## The never-fail contract
@@ -149,7 +149,7 @@ any, after `run()` has drained every upload and prefetch.
 1. `local.save(args)` — synchronous (honors its own local-write gate).
 2. If `policy.remoteWrite`: queue the PUT in the bounded background
    pool with a file-backed `Blob` over the just-written local artifact
-   (or, when local writes are disabled — `--cache=local:,remote:rw` —
+   (or, when local writes are disabled — `--cache-policy=local:,remote:rw` —
    bytes packed in memory NOW, while the outputs are still on disk).
    The task's worker slot is released immediately; `run()` drains
    before close.

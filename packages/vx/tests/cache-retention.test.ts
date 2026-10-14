@@ -71,7 +71,7 @@ describe('Cache.evictIfDue', () => {
   }
 
   it('applies under a local-read-only policy, whose run still ingests remote hits (A-7)', async () => {
-    // What `--cache=local:r,remote:rw` leaves here: a save writes nothing,
+    // What `--cache-policy=local:r,remote:rw` leaves here: a save writes nothing,
     // and every remote hit lands through `ingest`.
     const producer = new Cache(path.join(root, 'remote'))
     const readOnly = new Cache(cacheDir, { read: true, write: false })

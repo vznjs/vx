@@ -144,7 +144,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                                  alone.',
     '      --force                     Skip cache reads but still write: every task',
     '                                  runs and refreshes its entry.',
-    '      --cache-policy, --cache <spec>  Per-layer read/write: a comma list of',
+    '      --cache-policy <spec>       Per-layer read/write: a comma list of',
     '                                  <layer>:<flags> (layer local or remote, flags',
     '                                  from rw). A named layer is set to exactly its',
     '                                  flags; unnamed layers keep theirs. Examples:',
@@ -154,7 +154,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                                  read the default keys first.',
     '      --cache-dir <path>          Cache directory (cwd-relative); default',
     '                                  .vx/cache, entries in ~/.vx/<id>/cache.',
-    '      --cache-download, --download <mode>  all (default) | toplevel | none:',
+    '      --cache-download <mode>     all (default) | toplevel | none:',
     '                                  where remote outputs land.',
     '      --retries <n>               Up to <n> more runs of a failed task, for',
     '                                  tasks without their own exec.retries. Not',
@@ -381,7 +381,7 @@ export function documentedFlags(verb: string, text = helpText()): string[] {
     if (/^[A-Z][A-Za-z ]*(?: \(for [a-z]+\))?:$/.test(line))
       inVerb = line.endsWith(`(for ${verb}):`)
     if (!inVerb) continue
-    // `--cache-policy, --cache <spec>`: a flag and its alias.
+    // `--frozen, --no-frozen`: a flag and its negation.
     const own = /^\s+(--[a-zA-Z][a-zA-Z-]*)(?:, (--[a-zA-Z][a-zA-Z-]*))?/.exec(line)
     if (own !== null) for (const f of own.slice(1)) if (f !== undefined) flags.add(f)
   }

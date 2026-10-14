@@ -27,13 +27,13 @@ $ vx run build --all --no-cache
 ```
 
 `--force` runs everything again and refreshes the cache with the result.
-`--no-cache` neither reads nor writes. For finer control, `--cache` takes
+`--no-cache` neither reads nor writes. For finer control, `--cache-policy` takes
 a read/write spec per layer:
 
 ```sh frame="terminal"
-$ vx run build --all --cache=local:rw,remote:r   # read the remote, never upload
-$ vx run build --all --cache=local:r             # read local, write nothing local
-$ vx run build --all --cache=local:,remote:rw    # skip local, still upload
+$ vx run build --all --cache-policy=local:rw,remote:r   # read the remote, never upload
+$ vx run build --all --cache-policy=local:r             # read local, write nothing local
+$ vx run build --all --cache-policy=local:,remote:rw    # skip local, still upload
 ```
 
 `VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and
@@ -51,8 +51,8 @@ export default defineWorkspace({ cache: { policy: 'local:rw,remote:r' } })
 An empty spec is refused, never read as "everything on":
 
 ```sh frame="terminal"
-$ vx run build --all --cache=
-vx run: --cache needs a spec like local:r, local:rw, remote:, or local:,remote:rw — pass --no-cache to disable every axis (see `vx run --help`)
+$ vx run build --all --cache-policy=
+vx run: --cache-policy needs a spec like local:r, local:rw, remote:, or local:,remote:rw — pass --no-cache to disable every axis (see `vx run --help`)
 ```
 
 ## One store for every checkout

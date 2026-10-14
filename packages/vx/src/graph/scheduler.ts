@@ -128,7 +128,7 @@ export interface TaskOutcome {
   unkeyed?: true
   /**
    * The run's cache policy read and wrote nothing (`--no-cache`,
-   * `--cache=local:`): no cache answered for this task, so a run of it is
+   * `--cache-policy=local:`): no cache answered for this task, so a run of it is
    * `no-cache`, not a miss. Set by `run()`; `ranNoCache` reads it.
    */
   cacheOff?: true
@@ -168,7 +168,7 @@ export interface TaskOutcome {
    *  when the task ran somewhere other than this host. Telemetry-only. */
   where?: string
   /** `'deferred'` when the task's outputs were left in the remote store
-   *  (`--download=none`) instead of landing on this machine. Absent for
+   *  (`--cache-download=none`) instead of landing on this machine. Absent for
    *  every ordinary outcome. Telemetry-only. */
   outputs?: 'deferred'
   /**

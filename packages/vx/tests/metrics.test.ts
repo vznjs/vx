@@ -906,7 +906,7 @@ describe('whyDidThisRerunQuery', () => {
       'cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit',
     )
     expect(verdict({ policy: 'lW', entryAt: 500 })).toBe(
-      'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache without read)',
+      'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)',
     )
     expect(verdict({ entryAt: 2500 })).toBe(
       'cache key unchanged — no entry for this key was in the cache when it ran (pruned or evicted), so it executed and saved one',
@@ -924,7 +924,7 @@ describe('whyDidThisRerunQuery', () => {
       'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
     expect(verdict({})).toBe(unsaved)
     expect(verdict({ prevPolicy: 'lR' })).toBe(
-      'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache without write), so there was nothing to hit',
+      'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit',
     )
     // CONTROL: a previous run that was a hit saved nothing of its own.
     expect(verdict({ prevHit: true })).toBe(unknown)

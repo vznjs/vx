@@ -36,7 +36,7 @@ has no vx spelling, on purpose).
    (Turbo `affected_test.rs`, Nx `command-line-utils.spec.ts`).
 4. Path filters take a glob (`./packages/*`, `{apps/**}`), matched
    against the project's own dir (Turbo `infer_pkg_test.rs`).
-5. A `--cache` spec naming a remote axis with no remote layer says so
+5. A `--cache-policy` spec naming a remote axis with no remote layer says so
    (Turbo `run_caching.rs`).
 6. Pins: the cycle message names the path; an unknown `pkg#task`
    target is named as such; `--concurrency <n>%`; `pkg#task` runs

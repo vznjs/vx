@@ -90,7 +90,7 @@ today's derivation.
 
 ## Which runs bypass the memo (they derive as today, and write nothing)
 
-Any run without `shouldShortCircuit`: `--force`, `--cache=local:w` or
+Any run without `shouldShortCircuit`: `--force`, `--cache-policy=local:w` or
 anything without local read, or any remote layer. The remote prefetch keeps
 calling `deriveStableKeys` directly. Also bypassed: a `cache` other than the bare `localCache` (#16), inputs A–E,
 a runtime-input failure, and a missing, unparsable or wrong-`v` memo row.

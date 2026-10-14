@@ -86,7 +86,7 @@ export interface RunOptions {
    */
   cacheFlags?: CacheFlags
   /**
-   * The caller asked for a remote axis by name (`--cache=remote:rw`). With
+   * The caller asked for a remote axis by name (`--cache-policy=remote:rw`). With
    * no cache plugin supplying a remote layer the axes are inert, and a CI
    * job that believes it is filling a shared cache deserves one line
    * saying it is not.

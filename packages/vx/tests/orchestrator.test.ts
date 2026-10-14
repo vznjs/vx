@@ -1134,7 +1134,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
   // nx#29854: `--skip-nx-cache` on one target still served its dependencies
   // from the cache. vx's policy is the run's, whatever was named.
   it(
-    '--force, --no-cache and --cache=local:w re-execute the dependencies of the named task too',
+    '--force, --no-cache and --cache-policy=local:w re-execute the dependencies of the named task too',
     async () => {
       const counted = (name: string) =>
         `node -e 'require("fs").appendFileSync("../../runs.txt", "${name} ")' && echo ${name} > dist.txt`
@@ -1185,7 +1185,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
   )
 
   it(
-    'local read-only (--cache=local:r) restores a hit but does NOT write a miss',
+    'local read-only (--cache-policy=local:r) restores a hit but does NOT write a miss',
     async () => {
       const dir = await addProject(fixture.root, 'local-read-only', {
         files: { 'src/in.txt': 'v1' },

@@ -28,7 +28,6 @@ export {
   readLockfile,
   writeLockfile,
   type Lockfile,
-  type LockfileEntry,
 } from './lockfile.js'
 export {
   loadProjectConfig,

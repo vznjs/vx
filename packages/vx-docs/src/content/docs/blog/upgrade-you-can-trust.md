@@ -104,7 +104,7 @@ provenance attached, so no long-lived npm token exists to steal.
 ## A CLI that does not guess
 
 Numbers are strict. `0x10`, `1e3` and `2.7` are refused, never read as
-something you did not mean, and an old flag names its new one:
+something you did not mean, and a misspelled flag names the nearest one:
 
 ```sh frame="terminal"
 $ vx run build --concurrency 0x10
@@ -114,7 +114,7 @@ $ vx run build --timeout 1e3
 vx run: --timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1e3) (see `vx run --help`)
 
 $ vx run build --retry 2
-vx run: --retry was renamed --retries (a non-negative integer) in vx 0.0.637 (see `vx run --help`)
+vx run: unknown flag: --retry (did you mean --retries?) (see `vx run --help`)
 ```
 
 `vx help` lists every verb, `vx help <verb>` shows one, and `vx version`

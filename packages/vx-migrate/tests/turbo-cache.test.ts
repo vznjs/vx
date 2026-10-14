@@ -642,7 +642,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
   })
 
   // A CI keeps an untrusted pull request off the shared cache with Turbo's
-  // own switches; vx read and wrote it regardless. They narrow `--cache`.
+  // own switches; vx read and wrote it regardless. They narrow `--cache-policy`.
   it('Turbo’s TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY narrow the remote', () => {
     const access = (env: Record<string, string>) => {
       const a = turboRemoteAccess(env)
@@ -658,7 +658,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
       access({ TURBO_REMOTE_CACHE_READ_ONLY: 'false' }),
     ]).toEqual(['rw', 'r', '', 'w', 'r', 'r', 'rw'])
     expect(() => access({ TURBO_CACHE: 'remote:x' })).toThrow(
-      'vx/turbo-cache: TURBO_CACHE "remote:x" is not --cache\'s syntax (e.g. local:rw,remote:r)',
+      'vx/turbo-cache: TURBO_CACHE "remote:x" is not --cache-policy\'s syntax (e.g. local:rw,remote:r)',
     )
     const saved = { ...process.env }
     try {

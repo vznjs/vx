@@ -1,5 +1,5 @@
 // The run-scoped registry of tasks whose outputs were left in the remote
-// store (`--download=none`), and the lazy materialisation that fetches
+// store (`--cache-download=none`), and the lazy materialisation that fetches
 // them when a locally-placed task turns out to need them.
 //
 // See docs/design/download-policy-cas-cache-2026-08.md §5. The two
@@ -9,7 +9,7 @@
 //     remote store (the executor's own record) is the entry.
 //   - Materialisation CONVERGES: after the bytes land, core runs the
 //     ordinary `cache.save`, so the machine is indistinguishable from a
-//     `--download=all` run and every later reader (get, prune, verify,
+//     `--cache-download=all` run and every later reader (get, prune, verify,
 //     metrics) sees one entry shape, not two.
 
 import {
@@ -74,7 +74,7 @@ export class DeferredOutputs {
    */
   async materializeFor(node: TaskNode): Promise<void> {
     // Nothing deferred, nothing to find: the closure walk is the size of
-    // the graph, and every task of a run without `--download=none` paid it
+    // the graph, and every task of a run without `--cache-download=none` paid it
     // (1.4 s of a 3,270-task cold run's main thread).
     if (this.entries.size === 0) return
     const needed: string[] = []
@@ -141,7 +141,7 @@ export class DeferredOutputs {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       throw new Error(
-        `could not fetch deferred outputs of ${taskId}: ${msg} — re-run it with --force, or use --download=all`,
+        `could not fetch deferred outputs of ${taskId}: ${msg} — re-run it with --force, or use --cache-download=all`,
       )
     }
     const outputFiles = await resolveOutputs(cleanArgs)

@@ -83,11 +83,11 @@ a big `node_modules` upload does not make every probe wait that long too.
 
 ## Leave the bytes on the server
 
-`--download` decides where a remotely executed task's outputs land:
+`--cache-download` decides where a remotely executed task's outputs land:
 
 ```sh frame="terminal"
-$ vx run test --all --download=none       # only the verdict comes home
-$ vx run app#build --download=toplevel    # only what you asked for
+$ vx run test --all --cache-download=none       # only the verdict comes home
+$ vx run app#build --cache-download=toplevel    # only what you asked for
 ```
 
 With `none`, outputs stay on the server and come down only when a local

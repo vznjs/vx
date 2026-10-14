@@ -50,14 +50,12 @@
     "run": [
       "--affected",
       "--all",
-      "--cache",
       "--cache-dir",
       "--cache-download",
       "--cache-policy",
       "--cache-scope",
       "--concurrency",
       "--continue",
-      "--download",
       "--dry",
       "--exclude-dependencies",
       "--filter",
@@ -97,14 +95,12 @@
     "watch": [
       "--affected",
       "--all",
-      "--cache",
       "--cache-dir",
       "--cache-download",
       "--cache-policy",
       "--cache-scope",
       "--concurrency",
       "--continue",
-      "--download",
       "--exclude-dependencies",
       "--filter",
       "--force",
@@ -195,14 +191,6 @@
     "run --affected": [
       "*"
     ],
-    "run --cache": [
-      "local:r",
-      "local:rw",
-      "local:w",
-      "remote:r",
-      "remote:rw",
-      "remote:w"
-    ],
     "run --cache-dir": [
       "*"
     ],
@@ -232,11 +220,6 @@
       "dependencies-successful",
       "deps-ok",
       "never"
-    ],
-    "run --download": [
-      "all",
-      "none",
-      "toplevel"
     ],
     "run --dry": [
       "json",
@@ -334,14 +317,6 @@
     "watch --affected": [
       "*"
     ],
-    "watch --cache": [
-      "local:r",
-      "local:rw",
-      "local:w",
-      "remote:r",
-      "remote:rw",
-      "remote:w"
-    ],
     "watch --cache-dir": [
       "*"
     ],
@@ -371,11 +346,6 @@
       "dependencies-successful",
       "deps-ok",
       "never"
-    ],
-    "watch --download": [
-      "all",
-      "none",
-      "toplevel"
     ],
     "watch --exclude-dependencies": [
       "*"

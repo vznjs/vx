@@ -15,7 +15,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       completions / help / version); any other verb is asked of the
  │       workspace's plugins (`commands` seam — `vx mcp` is one).
  │    3. cli/run.ts:parseRunArgs(argv) → RunArgs (validated; resolves
- │       the 4-axis cache policy from --cache / --no-cache / --force).
+ │       the 4-axis cache policy from --cache-policy / --no-cache / --force).
  │    4. cli/run.ts:runCmd resolves the project scope:
  │         - bare positionals respect --all / --filter / --affected / cwd
  │         - anchored positionals (pkg#task) target directly
@@ -622,8 +622,8 @@ mid-debug would be hostile.
 
 `--force` turns only the READ axes off: every task re-executes, but
 fresh artifacts are still written (outputs ARE cleaned so the saved
-snapshot is clean). `--cache=<spec>` gives per-layer control. Full
-semantics: [`cli.md` § Cache control](./cli.md#cache-control---cache---no-cache---force)
+snapshot is clean). `--cache-policy=<spec>` gives per-layer control. Full
+semantics: [`cli.md` § Cache control](./cli.md#cache-control---cache-policy---no-cache---force)
 and [`caching.md` § Cache policy](./caching.md#cache-policy-readwrite-axes).
 
 ## Planning paths (`--dry`, `--graph`)

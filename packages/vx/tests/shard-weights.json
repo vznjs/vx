@@ -55,7 +55,6 @@
   "contract-cli-wire.test.ts": 6,
   "contract-config-schema.test.ts": 43,
   "contract-package-api.test.ts": 250,
-  "contract-removed-fields.test.ts": 1,
   "contract-task-globs.test.ts": 138,
   "contract-versioning-doc.test.ts": 279,
   "core-alias.test.ts": 102,

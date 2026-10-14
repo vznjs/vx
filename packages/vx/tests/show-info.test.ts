@@ -614,19 +614,6 @@ describe('vx info (e2e)', () => {
     },
     TIMEOUT,
   )
-
-  it(
-    'vx stats is gone: a pointer to vx info, exit 1, nothing on stdout',
-    async () => {
-      const stats = await vx(root, ['stats'])
-      expect([stats.code, stats.out, stats.err]).toEqual([
-        1,
-        '',
-        'vx stats was removed (H-19): run `vx info`, which prints the same report\n',
-      ])
-    },
-    TIMEOUT,
-  )
 })
 
 describe('vx info — a config that will not load counts as zero, for every number', () => {
