@@ -395,7 +395,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
 
   it('names a VANISHED artifact as such, not as an unreadable one', async () => {
     await saveEntry('gone')
-    // A concurrent `vx cache prune` is the documented way this happens. The
+    // A concurrent `vx cache clean` is the documented way this happens. The
     // caller has ALREADY wiped the declared outputs by now, so the restore
     // must fail rather than report a green hit over an emptied tree.
     //

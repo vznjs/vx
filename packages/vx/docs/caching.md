@@ -1128,7 +1128,7 @@ has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
 An eviction can still land between a hit's probe and its restore: a
-`vx cache prune` in another shell, or the `cache.retention` of another
+`vx cache clean` in another shell, or the `cache.retention` of another
 workspace that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
 bumps and reads its fresh hits as old. The restore then finds no
@@ -1155,14 +1155,14 @@ The run must be able to write here — it records its history at the
 end of every run, hit or miss — so a directory this user cannot write
 into (another user's `.vx/cache`, a read-only checkout) fails the run before
 any task: `cache directory <path> is not writable (EACCES: …)`, with
-`--cache-dir <path>` as the way out. `vx cache prune` is refused the
+`--cache-dir <path>` as the way out. `vx cache clean` is refused the
 same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on: a config
 that misses the evaluation cache is evaluated live and not stored.
 Where the directory cannot be created at all (a read-only checkout with
 no cache yet) a run says `cannot create cache directory <path>
 (EACCES: …)`, naming the workspace `cache.dir` field and `--cache-dir`;
-the readers and `vx cache prune` find no cache and go on.
+the readers and `vx cache clean` find no cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
 of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
@@ -1425,7 +1425,7 @@ miss, and the save that follows replaces it. An inline artifact with no
 row is indexed the same way, from its bytes, in one transaction; a reset
 keeps the `artifacts` table, but deleting `store.db` or `cache.db` by
 hand takes the inline artifacts with it. A `.tmp-*` a crashed save
-left is never a hit. `vx cache prune` sweeps row-less files, and so does a run whose workspace declares `cache.retention`, at
+left is never a hit. `vx cache clean` sweeps row-less files, and so does a run whose workspace declares `cache.retention`, at
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
 the policy sums index rows, so orphans alone never make it due). A
 row-less artifact may be in use: two vx versions share one store, and
@@ -1464,7 +1464,7 @@ and stamp are one write transaction, so another version's open waits
 rather than landing between them; an index already current is opened
 without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
-says why (item 896; `vx cache prune --dry-run` previews the reset
+says why (item 896; `vx cache clean --dry-run` previews the reset
 instead, item 1083).
 That open prints nothing (owner, 2026-10-06: the cache is vx's to
 keep). The artifacts stay: each is indexed again from its own bytes
@@ -1856,7 +1856,7 @@ The cache records the version it was written under
 (`schema_meta.cache_version`). After an upgrade every cached task
 misses once and re-saves, with nothing printed (owner, 2026-10-06: the
 cache is vx's to keep). The index survives, so the old entries stay
-until they age out under `vx cache prune --older-than` or
+until they age out under `vx cache clean --older-than` or
 `cache.retention`; no key derives to them again.
 
 Required when:
@@ -2104,7 +2104,7 @@ breaking footer).
   artifact is gone or cannot produce an output the index recorded (the
   caller has already wiped the declared outputs by then, so a quiet
   return reported a green hit over an emptied tree — reachable via a
-  concurrent `vx cache prune`); the tar reader rejects an entry whose
+  concurrent `vx cache clean`); the tar reader rejects an entry whose
   declared size runs past the end of the archive (`subarray` clamps, so
   it used to install short, NUL-padded content as a cache hit instead of
   degrading to a miss); and directory entries now get the same

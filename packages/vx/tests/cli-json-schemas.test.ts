@@ -615,7 +615,7 @@ describe('each schema object is its source type', () => {
   })
 
   it('cache', () => {
-    expect(def('cache', 'prune')).toEqual(
+    expect(def('cache', 'clean')).toEqual(
       keys<PruneResult & { dryRun: boolean }>({
         dryRun: true,
         evicted: true,

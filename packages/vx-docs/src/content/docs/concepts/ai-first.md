@@ -25,14 +25,14 @@ has: `npx skills add vznjs/vx/packages/vx/skills/vx`. Every question has a comma
 | What is this workspace?                       | `vx info --format json`                              |
 | What ran, how fast, what flaked?              | `vx last --stats --format json`                      |
 | Is the lock current? What would `vx init` do? | `vx lock --check --format json`, `vx init --dry --format json` |
-| Free cache space.                             | `vx cache prune --max-size 1G --dry-run`             |
+| Free cache space.                             | `vx cache clean --max-size 1G --dry-run`             |
 
 The agent runs with your permissions, as you would; nothing sits between
 it and the shell.
 
 ## JSON with a contract
 
-`vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune` take
+`vx show`, `vx info`, `vx why`, `vx last` and `vx cache clean` take
 `--format json`. Each prints one document whose shape is a JSON Schema
 shipped in the package, and every object closes its key set, so a new
 field is a schema change, never a surprise. `vx run --format json`

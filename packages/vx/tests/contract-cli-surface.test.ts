@@ -58,7 +58,7 @@ function flagValues(): Record<string, string[]> {
     const parse = PARSE[verb]!
     for (const flag of verbFlags(verb).sort()) {
       if (flag === '--help') continue
-      // A cache prune needs a policy; anything but that is the flag's own verdict.
+      // A cache clean needs a policy; anything but that is the flag's own verdict.
       const policy = verb === 'cache' && flag !== '--older-than' && flag !== '--max-size'
       const extra = policy ? ['--max-size', '1G'] : []
       const needsValue = parse([flag, ...extra]) !== null

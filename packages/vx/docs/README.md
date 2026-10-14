@@ -166,7 +166,7 @@ vx watch dev                    # re-run on file change
 vx run build --dry              # predicted hits/misses, no execution
 vx why app#build                # what changed the key last time
 vx last                         # replay the previous run's summary
-vx cache prune --older-than 7d --max-size 5gb
+vx cache clean --older-than 7d --max-size 5gb
 ```
 
 Remote caching is plugin-driven: a `cache` plugin fills core's

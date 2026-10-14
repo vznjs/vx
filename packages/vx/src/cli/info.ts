@@ -113,7 +113,7 @@ export function renderInfo(f: InfoFacts): string {
       ? ([
           [
             'orphans',
-            `${f.orphans.artifacts} artifact${f.orphans.artifacts === 1 ? '' : 's'} (${formatBytes(f.orphans.bytes)}) the index does not know — \`vx cache prune\` reaps them`,
+            `${f.orphans.artifacts} artifact${f.orphans.artifacts === 1 ? '' : 's'} (${formatBytes(f.orphans.bytes)}) the index does not know — \`vx cache clean\` reaps them`,
           ],
         ] as [string, string][])
       : []),

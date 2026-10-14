@@ -482,10 +482,10 @@ describe('repoIdOf', () => {
     }
     const info = vx('info')
     expect(info).toMatch(/cache entries:\s+1 \(/)
-    expect(vx('cache', 'prune', '--max-size', '1B', '--dry-run')).toMatch(
+    expect(vx('cache', 'clean', '--max-size', '1B', '--dry-run')).toMatch(
       /^0 Would prune 1 entry \(/,
     )
-    expect(vx('cache', 'prune', '--max-size', '1B')).toMatch(/^0 Pruned 1 entry \(/)
+    expect(vx('cache', 'clean', '--max-size', '1B')).toMatch(/^0 Pruned 1 entry \(/)
     rmSync(path.join(a.root, '.vx', 'cache'), { recursive: true })
     expect(await build(a)).toEqual({ status: 'success', restored: undefined })
   })
@@ -502,7 +502,7 @@ describe('repoIdOf', () => {
     const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
     const vx = (...args: string[]): string[] => {
       const p = Bun.spawnSync({
-        cmd: [process.execPath, bin, 'cache', 'prune', '--max-size', '1B', ...args],
+        cmd: [process.execPath, bin, 'cache', 'clean', '--max-size', '1B', ...args],
         cwd: a.root,
         env: { ...process.env, NO_COLOR: '1' },
       })

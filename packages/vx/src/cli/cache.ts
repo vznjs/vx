@@ -21,8 +21,8 @@ export { parseDuration, parseSize } from '../util/index.js'
 /**
  * `vx cache stats` is a habit from the other runners, and vx's answer is a
  * different VERB rather than a missing one — saying so where the user typed
- * it beats sending them to a help screen that lists only `prune` (walked the
- * first-run path, 2026-09-20). A typo of `prune` itself gets the same
+ * it beats sending them to a help screen that lists only `clean` (walked the
+ * first-run path, 2026-09-20). A typo of `clean` itself gets the same
  * nearest-neighbour hint a task, flag or project name gets.
  */
 const CACHE_ELSEWHERE: Record<string, string> = {
@@ -34,41 +34,39 @@ const CACHE_ELSEWHERE: Record<string, string> = {
   ls: '`vx info` reports the cache entry count and size, and `vx last --list` the recent runs',
   dir: '`vx info` prints the cache directory this workspace uses',
   path: '`vx info` prints the cache directory this workspace uses',
-  clean:
-    '`vx cache prune` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
   clear:
-    '`vx cache prune` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
-  rm: '`vx cache prune` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+  rm: '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
   delete:
-    '`vx cache prune` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
   reset:
-    '`vx cache prune` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
-  wipe: '`vx cache prune` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
-  evict: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
-  gc: '`vx cache prune` is the eviction verb (`--older-than`, `--max-size`)',
+    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+  wipe: '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+  evict: '`vx cache clean` is the eviction verb (`--older-than`, `--max-size`)',
+  gc: '`vx cache clean` is the eviction verb (`--older-than`, `--max-size`)',
   purge:
-    '`vx cache prune` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
+    '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it',
 }
 
 function cacheSubHint(sub: string): string {
   const elsewhere = CACHE_ELSEWHERE[sub]
   if (elsewhere !== undefined) return ` — ${elsewhere}`
-  const best = nearest(sub, ['prune'])
-  // `prune` is the one subcommand: name it when nothing is near (M-58).
-  return best === undefined ? '. The subcommand is prune' : `. Did you mean ${best}?`
+  const best = nearest(sub, ['clean'])
+  // `clean` is the one subcommand: name it when nothing is near (M-58).
+  return best === undefined ? '. The subcommand is clean' : `. Did you mean ${best}?`
 }
 
 export async function cacheCmd(args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args
   switch (sub) {
-    case 'prune':
-      return await pruneCmd(rest)
+    case 'clean':
+      return await cleanCmd(rest)
     case undefined:
-      // A bare `vx cache prune` refuses too: the hint names a whole command.
+      // A bare `vx cache clean` refuses too: the hint names a whole command.
       return refuse(
         'cache',
         args,
-        `missing subcommand. Try \`vx cache prune --older-than 30d\` to trim the cache, or \`vx cache prune\` to clear it${seeHelp('cache')}`,
+        `missing subcommand. Try \`vx cache clean --older-than 30d\` to trim the cache, or \`vx cache clean\` to clear it${seeHelp('cache')}`,
         'VX_E_USAGE',
       )
     default:
@@ -115,7 +113,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       // the deliberate way to do it.
       if (ms === 0) {
         return {
-          error: `--older-than 0 would evict every entry — \`vx cache prune\` with no bound clears the whole cache`,
+          error: `--older-than 0 would evict every entry — \`vx cache clean\` with no bound clears the whole cache`,
         }
       }
       out.olderThanMs = Date.now() - ms
@@ -129,7 +127,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
         return { error: `--max-size must be a size like 500M or 1G (got ${v})${seeHelp('cache')}` }
       if (bytes === 0) {
         return {
-          error: `--max-size 0 would evict every entry — \`vx cache prune\` with no bound clears the whole cache`,
+          error: `--max-size 0 would evict every entry — \`vx cache clean\` with no bound clears the whole cache`,
         }
       }
       // A bare number is bytes to `parseSize` (a computed size needs that),
@@ -155,7 +153,7 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
       const cd = parseCacheDirFlag(args, i)
       if (cd === null)
         return {
-          error: `${refusedWord(a ?? '')}: ${a}${flagHint('cache prune', a ?? '')}${seeHelp('cache')}`,
+          error: `${refusedWord(a ?? '')}: ${a}${flagHint('cache clean', a ?? '')}${seeHelp('cache')}`,
         }
       if ('error' in cd) return { error: `${cd.error}${seeHelp('cache')}` }
       out.cacheDir = cd.cacheDir
@@ -175,18 +173,18 @@ export function parsePruneArgs(args: readonly string[]): PruneArgs {
   return out
 }
 
-async function pruneCmd(args: readonly string[]): Promise<number> {
+async function cleanCmd(args: readonly string[]): Promise<number> {
   const parsed = parsePruneArgs(args)
-  if (parsed.error) return refuse('cache prune', args, parsed.error, 'VX_E_USAGE')
+  if (parsed.error) return refuse('cache clean', args, parsed.error, 'VX_E_USAGE')
   const cwd = process.cwd()
   let root: string
   try {
     root = await findWorkspaceRoot(cwd)
   } catch (err) {
-    return refuse('cache prune', args, (err as Error).message, errorCode(err))
+    return refuse('cache clean', args, (err as Error).message, errorCode(err))
   }
   // Honor `--cache-dir`, `defineWorkspace({ cacheDir: '...' })` and a
-  // `config` plugin's edit of it — `vx run` and `vx cache prune` must
+  // `config` plugin's edit of it — `vx run` and `vx cache clean` must
   // operate on the same directory or prune silently no-ops against the
   // wrong path.
   // A dry run only reads: it never resets the index (item 896).
@@ -265,7 +263,7 @@ function printPruned(
   )
 }
 
-/** `vx cache prune --format json` with no bound (schemas/cache.json `clear`). */
+/** `vx cache clean --format json` with no bound (schemas/cache.json `clear`). */
 export interface ClearResult {
   dryRun: boolean
   /** Workspace-relative inside the workspace, else absolute. */
@@ -274,7 +272,7 @@ export interface ClearResult {
 }
 
 /**
- * `vx cache prune` with no bound: delete the cache directory (its index,
+ * `vx cache clean` with no bound: delete the cache directory (its index,
  * run history and any artifacts kept beside it) and the store its index
  * names (`~/.vx/<id>/cache`, shared by the repository's checkouts), as
  * `nx reset` does. `--global` takes every store under `~/.vx` too. The
@@ -309,7 +307,7 @@ async function clear(
   const unsafe = doomed.find((t) => t === dotVx || !path.relative(t, dotVx).startsWith('..'))
   if (unsafe !== undefined) {
     return refuse(
-      'cache prune',
+      'cache clean',
       args,
       `cache directory ${unsafe} holds the workspace config and lock; set cache.dir to a directory of its own`,
       'VX_E_CONFIG',

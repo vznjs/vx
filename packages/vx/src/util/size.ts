@@ -49,7 +49,7 @@ export function parseDuration(input: string): number | null {
 
 /**
  * Human-readable byte size with KB/MB/GB/TB/PB suffixes and one
- * decimal of precision below 10 of any unit. Used by `vx info`, `vx cache prune` and the
+ * decimal of precision below 10 of any unit. Used by `vx info`, `vx cache clean` and the
  * run's `cacheRetention` line.
  */
 export function formatBytes(n: number): string {

@@ -250,7 +250,7 @@ describe('the bash script, run', () => {
   })
 
   it('after a verb: its subcommands and choices, and a plugin verb only --help', async () => {
-    expect(await offers(script, { words: ['vx', 'cache', 'p'], cword: 2 })).toEqual(['prune'])
+    expect(await offers(script, { words: ['vx', 'cache', 'c'], cword: 2 })).toEqual(['clean'])
     expect(await offers(script, { words: ['vx', 'completions', ''], cword: 2 })).toEqual([
       'bash',
       'zsh',

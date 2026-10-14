@@ -1,7 +1,7 @@
 // The cache on a full disk (A-14). SQLite answers a full disk with
 // `SQLITE_FULL`, not an `ENOSPC` errno, and each write below reached the
 // user as a stack: the file-hash memo (the run never started), the output
-// snapshot flush after a green restore, and `vx cache prune`, the one verb
+// snapshot flush after a green restore, and `vx cache clean`, the one verb
 // meant to free the disk, which freed nothing. A failed in-memory save also
 // left its temp behind. Memo writes now give way, and prune unlinks first.
 //

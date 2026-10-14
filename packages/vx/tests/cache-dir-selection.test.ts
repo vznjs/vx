@@ -128,11 +128,11 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         const { chmod, readdir } = await import('node:fs/promises')
         for (const f of await readdir(ro)) await chmod(path.join(ro, f), 0o444)
         await chmod(ro, 0o555)
-        const pruned = await vx(['cache', 'prune', '--max-size', '1K'])
+        const pruned = await vx(['cache', 'clean', '--max-size', '1K'])
         expect(pruned.code).toBe(1)
         expect(pruned.err).toMatch(/^vx: cache directory .* is not writable \(EACCES: /)
         expect(pruned.err).not.toContain('\n    at ')
-        const dry = await vx(['cache', 'prune', '--max-size', '1K', '--dry-run'])
+        const dry = await vx(['cache', 'clean', '--max-size', '1K', '--dry-run'])
         expect(`${dry.code}\n${dry.err}`).toStartWith('0\n')
       },
       TIMEOUT,

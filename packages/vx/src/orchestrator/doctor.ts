@@ -268,7 +268,7 @@ async function collectWorkspaceInfo(
     workers: workersFact(resolveSetting('run.concurrency', workspaceConfig)),
     memory: memoryFact(),
     cacheDir,
-    // On disk, not the index's sum: the size `vx cache prune` would free.
+    // On disk, not the index's sum: the size `vx cache clean` would free.
     cacheDirBytes: treeBytes(cacheDir),
     // The store the index records, else the one a first run would open.
     cacheStore,
@@ -283,7 +283,7 @@ async function collectWorkspaceInfo(
     settings: settingsFact(workspaceConfig),
     cacheRetention: retentionFact(workspaceConfig),
     // A row-less artifact is indexed again only when its task asks for its
-    // key; the rest only `vx cache prune` reclaims (after an upgrade's
+    // key; the rest only `vx cache clean` reclaims (after an upgrade's
     // schema reset, most often).
     orphans: { artifacts: orphans.orphans, bytes: orphans.orphanBytes },
     runs24h: stats.runCountLast24h,

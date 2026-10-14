@@ -39,7 +39,7 @@ export function projectNamed(typed: string, projects): string | undefined // `ca
 export function shouldShortCircuit(nodes, policy, cache): boolean
 export function invocationCommand(argv: readonly string[]): string // the args after `--` as `<n arguments>`
 export function runLockPath(workspaceRoot: string, dir?: string): string // the lock directory
-// The workspace's run lock (below); `vx cache prune` takes it too.
+// The workspace's run lock (below); `vx cache clean` takes it too.
 export function acquireRunLock(
   workspaceRoot: string,
   opts: { log: (line: string) => void; signal?: AbortSignal; dir?: string },
@@ -300,7 +300,7 @@ container's pid 1 that never waits) still answers signal 0 with its
 start time unchanged, and the next run waited for the reaper, or for
 good. A process inside a task of the run that holds the lock
 (`VX_RUN_WORKSPACE` names the same lock) is refused rather than left
-to wait for its own parent: `vx cache prune` in a task waited for good
+to wait for its own parent: `vx cache clean` in a task waited for good
 (X-104). The start time is read once per process for its entry, and
 `/proc/<pid>/stat` once per poll while waiting; elsewhere, where it
 would cost a `ps` spawn per run, and under a procfs mounted for another
@@ -319,7 +319,7 @@ at once coordinates them itself through `RunOptions.inflight`. Taking
 and releasing costs five calls — the mkdir, the entry's write, the
 rename, the unlink and the rmdir — with nothing read back: the unlink of
 its own entry is the release's proof that no later run reclaimed the
-lock (`tests/syscall-repeats.unsafe.test.ts`). `vx cache prune` (not
+lock (`tests/syscall-repeats.unsafe.test.ts`). `vx cache clean` (not
 `--dry-run`) takes the same lock before it evicts: a prune beside a run
 removed the artifacts the run had just probed as hits, whose
 `accessed_at` bumps were not flushed yet (nx#36688). The run survives

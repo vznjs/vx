@@ -553,7 +553,7 @@ describe('vx info (e2e)', () => {
         const r = await vx(root, ['info'])
         expect(r.code).toBe(0)
         expect(r.out).toMatch(
-          /^orphans: +1 artifact \(2\.0 KB\) the index does not know — `vx cache prune` reaps them$/m,
+          /^orphans: +1 artifact \(2\.0 KB\) the index does not know — `vx cache clean` reaps them$/m,
         )
       } finally {
         await rm(aged, { force: true })
@@ -906,7 +906,7 @@ describe('vx info — the rendered rows', () => {
         'cache versions:   keys vx-cache-v39 · index schema v28',
         'cache entries:    3 (3.0 GB of 10 GB, 30%)',
         'cache retention:  each run evicts entries unused for 30d, and the oldest entries past 10G',
-        'orphans:          1 artifact (512 B) the index does not know — `vx cache prune` reaps them',
+        'orphans:          1 artifact (512 B) the index does not know — `vx cache clean` reaps them',
         'task runs (24h):  0 (0 cache hits)',
         'flaky tasks:      2 — a#test (3 of 7 runs failed on unchanged inputs); b#e2e (1 of 4 runs failed)',
         'sandbox:          unavailable — bwrap missing; 2 tasks declare exec.sandbox and will fail',

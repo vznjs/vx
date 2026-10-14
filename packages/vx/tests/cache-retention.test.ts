@@ -1,5 +1,5 @@
 // Item 658: the workspace's `cache.retention` evicts from the local cache at
-// the end of a run, by the policy `vx cache prune` takes as flags. Three
+// the end of a run, by the policy `vx cache clean` takes as flags. Three
 // claims are held here: `evictIfDue` evicts exactly what `prune` would and
 // nothing when nothing is due; an entry the run itself just used is not
 // due for its stale timestamp (the deferred `accessed_at` bump lands first,
@@ -387,7 +387,7 @@ describe('the cache.retention field', () => {
 
   it('refuses the bounds that evict every entry after every run (item 969)', () => {
     // Each loaded and then emptied the cache at the end of every run, the
-    // entries that run had just saved included; `vx cache prune` already
+    // entries that run had just saved included; `vx cache clean` already
     // refused all three.
     expect([
       refusal({ olderThan: '0s' }),

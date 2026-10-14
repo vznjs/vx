@@ -18,7 +18,7 @@ import path from 'node:path'
 const ROOT = path.resolve(import.meta.dir, '..')
 const DOC = readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8')
 const SECTIONS: Record<string, string[]> = {
-  cache: ['vx cache prune'],
+  cache: ['vx cache clean'],
   show: ['vx show'],
   info: ['vx info'],
   why: ['vx why'],
@@ -106,8 +106,8 @@ describe('docs/cli.md prints each verb JSON shape as its schema closes it', () =
       'a',
     ])
     expect(shapes('`{ ok: false }` and `{a, b}`')).toEqual(['ok'])
-    expect(jsonText('vx cache prune')).not.toContain('olderThan')
-    expect(jsonText('vx cache prune')).toContain('{ dryRun, evicted')
+    expect(jsonText('vx cache clean')).not.toContain('olderThan')
+    expect(jsonText('vx cache clean')).toContain('{ dryRun, evicted')
   })
 
   for (const [verb, headings] of Object.entries(SECTIONS)) {

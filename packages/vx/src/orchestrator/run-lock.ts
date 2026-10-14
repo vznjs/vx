@@ -330,7 +330,7 @@ export async function acquireRunLock(
   opts: RunLockOptions,
 ): Promise<() => Promise<void>> {
   const lockDir = runLockPath(workspaceRoot, opts.dir)
-  // A task's own process (`vx cache prune` in a task) would wait for the
+  // A task's own process (`vx cache clean` in a task) would wait for the
   // run that started it, which holds the lock until that task ends.
   const outer = process.env[VX_RUN_WORKSPACE_ENV]
   if (outer !== undefined && runLockPath(outer, opts.dir) === lockDir) {

@@ -1,8 +1,8 @@
-# `src/cli/cache.ts` — `vx cache prune`
+# `src/cli/cache.ts` — `vx cache clean`
 
 ## Purpose
 
-Implements `vx cache prune`, which trims with a bound and clears with
+Implements `vx cache clean`, which trims with a bound and clears with
 none. Both parsers are `util/size.ts`'s,
 re-exported here: the workspace's `cache.retention` field reads the
 same spellings the flags do. Drives
@@ -31,23 +31,24 @@ export interface ClearResult {
   bytesFreed: number
 }
 export { parseDuration, parseSize } from '../util/index.js'
+// util's treeBytes (bytes on disk under a path) sizes a clear and `vx info`'s rows
 ```
 
 ## Subcommand surface
 
 ```
-vx cache prune --older-than <duration>
-vx cache prune --max-size <size>
-vx cache prune --older-than 7d --max-size 500M   # both
-vx cache prune --max-size 1G --dry-run           # say what the policy would reap; delete nothing
-vx cache prune --max-size 1G --format json       # schemas/cache.json
-vx cache prune --older-than 30d --cache-dir <path>
-vx cache prune                                   # no bound: clear the cache
-vx cache prune --global                          # and every repo's store
+vx cache clean --older-than <duration>
+vx cache clean --max-size <size>
+vx cache clean --older-than 7d --max-size 500M   # both
+vx cache clean --max-size 1G --dry-run           # say what the policy would reap; delete nothing
+vx cache clean --max-size 1G --format json       # schemas/cache.json
+vx cache clean --older-than 30d --cache-dir <path>
+vx cache clean                                   # no bound: clear the cache
+vx cache clean --global                          # and every repo's store
 ```
 
 Neither bound may be zero — a policy that would evict every entry is
-refused with "`vx cache prune` with no bound clears the whole cache". A bare number for `--max-size`
+refused with "`vx cache clean` with no bound clears the whole cache". A bare number for `--max-size`
 is refused too: `--max-size 10` would read as ten bytes and evict
 nearly everything; give a unit. Both policies may be combined:
 age-based eviction first, then LRU eviction if the total is still
@@ -110,7 +111,7 @@ the caller surfaces `--max-size must be a size like 500M or 1G (got <value>)`.
 ## Tests
 
 `tests/cli.test.ts`: `parseDuration` and `parseSize` units and parse
-failures; `vx cache prune` reports 0 entries
+failures; `vx cache clean` reports 0 entries
 pruned from an empty cache, and rejects an unknown subcommand.
 Eviction, orphan reaping and `dryRun` are tested in
 `tests/cache.test.ts` against `Cache.prune`; clearing in

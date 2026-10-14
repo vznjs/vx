@@ -30,7 +30,7 @@ released binary carries its own Bun and the row never says it.
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
-vx cache prune [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]
+vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
@@ -1577,7 +1577,7 @@ the watch loop — a failed cycle just prints the framed FAILED block
 and waits for the next change. This matches `turbo watch` / `nx
 watch`.
 
-## `vx cache prune`
+## `vx cache clean`
 
 Evict old or oversized cache entries. Operates on the entries and
 `<hash>.tar.zst` artifacts of the store the workspace's index records
@@ -1585,21 +1585,20 @@ Evict old or oversized cache entries. Operates on the entries and
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
 
-`prune` is the only `vx cache` subcommand: the statistics other runners
+`clean` is the only `vx cache` subcommand: the statistics other runners
 put under a `cache` verb — the directory, the entry count, the size —
 are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `gc` and their neighbours say so (`list` also names `vx last --list`;
-`clean`, `clear`, `purge`, `reset` and `wipe` name a bare
-`vx cache prune`) rather than printing a bare "unknown subcommand".
+`clear`, `purge`, `reset` and `wipe` name a bare `vx cache clean`) rather than printing a bare "unknown subcommand".
 
 ```
-vx cache prune --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
-vx cache prune --max-size <size>            # After age-based pruning, evict LRU until under <size>.
-vx cache prune ... --dry-run                # Say what either policy would reap; delete nothing.
-vx cache prune ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
-vx cache prune ... --cache-dir <path>       # The cache a run with the same flag uses.
-vx cache prune                              # No bound: clear the whole cache (below).
-vx cache prune --global                     # Also clear every other repository's store.
+vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
+vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
+vx cache clean ... --dry-run                # Say what either policy would reap; delete nothing.
+vx cache clean ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
+vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
+vx cache clean                              # No bound: clear the whole cache (below).
+vx cache clean --global                     # Also clear every other repository's store.
 ```
 
 With no bound it clears the cache ([below](#with-no-bound-clear-the-cache)).
@@ -1646,20 +1645,20 @@ write `10G`, or `10B` when bytes really are the unit.
 
 **A zero bound is rejected.** `--max-size 0` and `--older-than 0d` would
 evict every entry in the cache, which is far more often a
-computed-to-zero retention than an intent. `vx cache prune` with no
+computed-to-zero retention than an intent. `vx cache clean` with no
 bound clears the whole cache when that is really what you want.
 
 ```
-$ vx cache prune --older-than 30d
+$ vx cache clean --older-than 30d
 Pruned 42 entries (1.3 GB freed)
 
-$ vx cache prune --older-than 7d --max-size 500M
+$ vx cache clean --older-than 7d --max-size 500M
 Pruned 18 entries (320 MB freed)
 
-$ vx cache prune --older-than 30d      # after a SCHEMA_VERSION bump
+$ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
 Pruned 0 entries (0 B freed), reaped 42 orphaned artifacts (1.3 GB)
 
-$ vx cache prune --older-than 30d --dry-run
+$ vx cache clean --older-than 30d --dry-run
 Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
 ```
 
@@ -1688,7 +1687,7 @@ Exit codes:
   nothing is created.
 - `1` — parse error, missing policy, or workspace-discovery error.
 
-`vx cache prune` resolves the workspace root from cwd and honors a
+`vx cache clean` resolves the workspace root from cwd and honors a
 `defineWorkspace({ cache: { dir } })` override — it prunes the same
 directory a run would use. `--cache-dir <path>` (cwd-relative, as on
 `vx run`) names another one, so a run that wrote elsewhere can be
@@ -1696,7 +1695,7 @@ pruned there.
 
 ### With no bound: clear the cache
 
-`vx cache prune` with neither `--older-than` nor `--max-size` clears
+`vx cache clean` with neither `--older-than` nor `--max-size` clears
 the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
 `--cache-dir`: the index and this workspace's run history, so `vx last`
 and `vx why` start over) and the store its index names, where the
@@ -1711,12 +1710,12 @@ cache and is left alone; a workspace that never ran says
 and saves again.
 
 ```
-$ vx cache prune
+$ vx cache clean
 Cleared this repository's store, shared by its checkouts, and this workspace's run history (1.4 GB freed):
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
-$ vx cache prune --global --dry-run
+$ vx cache clean --global --dry-run
 Would clear every repository's store and this workspace's run history (3.1 GB):
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
@@ -2372,7 +2371,7 @@ none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
 kebab-case row. A `[=<bool>]` row takes `=true` (the flag bare) and `=false` (left out), as Turbo's and Nx's parsers do. `vx run-many` and `vx affected` name the
 `vx run` that does the same, and the other verbs a hand types from
 either tool name what does it here: `graph` (`--graph`), `ls`
-(`vx show`), `query` (`--dry=json`), `reset` (`vx cache prune`), and
+(`vx show`), `query` (`--dry=json`), `reset` (`vx cache clean`), and
 `daemon`, `login`, `logout`, `link` and `unlink`, which vx has no use
 for. Nx's `project:target` (`vx run web:build`,
 when `web` declares `build`) is answered with `vx run web#build`: from
@@ -2466,7 +2465,7 @@ copy to the source.
 
 ## Machine-readable output
 
-`vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune` take
+`vx show`, `vx info`, `vx why`, `vx last` and `vx cache clean` take
 `--format json`. Each prints one JSON document on one line, as
 `vx run --format json` does, whose shape is a
 checked-in JSON Schema (draft 2020-12) shipped with the package:
@@ -2566,7 +2565,7 @@ message is that plugin's or check's: do what it says.
 #### `VX_E_FS`
 
 The file system refused a write: permissions, a full disk. The message
-names the path. Free space (`vx cache prune --max-size <size>` trims the
+names the path. Free space (`vx cache clean --max-size <size>` trims the
 cache) or grant the write, then re-run.
 
 #### `VX_E_FDS`
@@ -2768,7 +2767,7 @@ cache dir:        /work/repo/.vx/cache (8.2 MB, this workspace's run history)
 cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
 cache versions:   keys vx-cache-v43 · index schema v34
 cache entries:    42 (1.3 GB)
-orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
+orphans:          3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
 task runs (24h):  7 (5 cache hits)
 flaky tasks:      1 — web#test (3 of 11 runs failed on unchanged inputs)
 sandbox:          available (9 tasks declare exec.sandbox)
@@ -2830,7 +2829,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   live: the store shared by this repo's checkouts (`docs/caching.md`),
   with its size on disk, or `none: the cache dir holds the entries` when
   the workspace names its cache dir. Before a first run it is the store a
-  run would open. A bare `vx cache prune` frees both sizes.
+  run would open. A bare `vx cache clean` frees both sizes.
 - `cache entries` counts the entries and their size; with a
   `cacheRetention.maxSize` it reads against it (`812 (3.0 GB of 10 GB,
 30%)`), and a `cache retention` row says what each run's end evicts.
@@ -2849,7 +2848,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   save temps the index has no row for, older than an hour (what a
   `SCHEMA_VERSION` reset leaves behind; a fresh one is a save in
   flight). A task that asks for one's key again indexes it and hits;
-  the rest only `vx cache prune` reclaims, so the doctor says so.
+  the rest only `vx cache clean` reclaims, so the doctor says so.
 - `--format json` prints the same facts as one typed object, for a
   script or a bug-report template: `vx`, `vxPath` (the file that ran),
   `handedOffFrom` (the vx that handed the call to the project's own, else
@@ -2877,7 +2876,7 @@ declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
   pretty rows render this object;
   there is no second source.
 - `--cache-dir <path>` reads the cache a run with the same flag uses, as
-  `vx why`, `vx last` and `vx cache prune` do.
+  `vx why`, `vx last` and `vx cache clean` do.
 
 Exit codes: `0` the facts printed, a config that did not load included;
 `1` no workspace here or above, or a parse error.
@@ -3119,14 +3118,14 @@ line of its own without them, X-140). The
 replayed `$ vx run …` or `$ vx watch …` line and that one keep each
 argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
 
-`vx why`, `vx last`, `vx info` and `vx cache prune` all read the cache
+`vx why`, `vx last`, `vx info` and `vx cache clean` all read the cache
 a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
 (cwd-relative, absolute used as-is): a run that wrote its history
 elsewhere is replayed, explained, reported on and pruned there. Without
 the flag they open the workspace's cache (`defineWorkspace({ cache: { dir } })`
 or `.vx/cache`). A `--cache-dir` that is not there is refused by name
 (`--cache-dir .vx/cahce: no such directory`). In a workspace that never
-ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache prune`
+ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache clean`
 (dry or not) read it as empty and create nothing (item 900, E-7, E-38).
 
 Exit codes: `0` the run (or the list) printed, `--list` with no runs
@@ -3485,7 +3484,7 @@ Only a run's own output (`vx run`, `vx watch`) is painted, and the
 help on a terminal: headings bold, `vx <verb>` and each flag or example
 in cyan; `NO_COLOR` or `FORCE_COLOR=0` turns it off
 (`tests/help-colors.test.ts`). Every other verb (`show`, `info`, `why`,
-`last`, a `--dry` plan, `--graph`, `cache prune`), and the help off a
+`last`, a `--dry` plan, `--graph`, `cache clean`), and the help off a
 terminal, prints plain text whatever `FORCE_COLOR` says, so a script
 that forces colour for a run's log still parses them
 (`tests/cli-colors-e2e.test.ts`).

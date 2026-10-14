@@ -1,4 +1,4 @@
-// `vx cache prune` with no bound, through the real binary: it deletes the
+// `vx cache clean` with no bound, through the real binary: it deletes the
 // workspace's `.vx/cache` and the store its index names (`~/.vx/<id>/cache`),
 // and nothing else in `.vx`; `--global` takes every store under `~/.vx`.
 // Before it, a bare prune was refused and the docs said to delete the
@@ -14,7 +14,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
 
-describe('vx cache prune with no bound clears the cache', () => {
+describe('vx cache clean with no bound clears the cache', () => {
   let root = ''
   let home = ''
   const vx = async (args: string[], env: Record<string, string> = {}) => {
@@ -64,7 +64,7 @@ describe('vx cache prune with no bound clears the cache', () => {
       expect(readdirSync(store()).length).toBeGreaterThan(0)
       const st = store()
 
-      const dry = await vx(['cache', 'prune', '--dry-run', '--format', 'json'])
+      const dry = await vx(['cache', 'clean', '--dry-run', '--format', 'json'])
       expect({ code: dry.code, err: dry.err }).toEqual({ code: 0, err: '' })
       const plan = JSON.parse(dry.out) as { dryRun: boolean; cleared: string[]; bytesFreed: number }
       expect([plan.dryRun, plan.cleared, plan.bytesFreed > 0]).toEqual([
@@ -74,7 +74,7 @@ describe('vx cache prune with no bound clears the cache', () => {
       ])
       expect([existsSync(path.join(root, '.vx', 'cache')), existsSync(st)]).toEqual([true, true])
 
-      const real = await vx(['cache', 'prune'])
+      const real = await vx(['cache', 'clean'])
       expect({ code: real.code, err: real.err }).toEqual({ code: 0, err: '' })
       expect(real.out).toBe(
         `Cleared this repository's store, shared by its checkouts, and this workspace's run history (${real.out.split('(')[1]!.split(')')[0]}):\n  .vx/cache\n  ${st}\n`,
@@ -99,9 +99,9 @@ describe('vx cache prune with no bound clears the cache', () => {
       expect((await vx(['run', 'build', '--all'])).code).toBe(0)
       const other = path.join(home, '.vx', 'another-repo', 'cache')
       await Bun.write(path.join(other, 'cache.db'), 'x')
-      const bounded = await vx(['cache', 'prune', '--global', '--older-than', '1d'])
+      const bounded = await vx(['cache', 'clean', '--global', '--older-than', '1d'])
       expect([bounded.code, existsSync(other)]).toEqual([1, true])
-      const r = await vx(['cache', 'prune', '--global', '--format', 'json'])
+      const r = await vx(['cache', 'clean', '--global', '--format', 'json'])
       expect(r.code).toBe(0)
       const cleared = (JSON.parse(r.out) as { cleared: string[] }).cleared
       expect(cleared).toContain(other)
@@ -118,7 +118,7 @@ describe('vx cache prune with no bound clears the cache', () => {
   it(
     'a workspace that never ran has nothing to clear',
     async () => {
-      const r = await vx(['cache', 'prune'])
+      const r = await vx(['cache', 'clean'])
       expect(r).toEqual({ code: 0, out: 'Nothing to clear: no cache here\n', err: '' })
     },
     TIMEOUT,
@@ -128,7 +128,7 @@ describe('vx cache prune with no bound clears the cache', () => {
     'refuses a cache.dir that holds the workspace config',
     async () => {
       await Bun.write(path.join(root, '.vx', 'cache.db'), '')
-      const r = await vx(['cache', 'prune', '--cache-dir', '.vx'])
+      const r = await vx(['cache', 'clean', '--cache-dir', '.vx'])
       expect(r.code).toBe(1)
       expect(r.err).toContain('holds the workspace config and lock')
       expect(existsSync(path.join(root, '.vx', 'sentinel.json'))).toBe(true)
