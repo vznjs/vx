@@ -799,7 +799,7 @@ describe('output negation', () => {
   )
 
   it(
-    'a top-level output beside no config of its spelling stays cached, until one is added (sanity `*.js`)',
+    'a top-level output beside a config of its spelling takes that config back (sanity `*.js`)',
     async () => {
       await pkg('app', { build: 'echo shim > cli.mjs' })
       await writeFile(
@@ -813,17 +813,12 @@ describe('output negation', () => {
         )!.node.config.cache
       expect((await cacheOf())?.outputs.files).toEqual(['lib/**', '*.mjs'])
       // A config the mapped task now lives beside: the kept mapping is
-      // re-made, and the output that would clean it runs uncached.
+      // re-made, and the output takes the config back.
       await writeFile(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
         'export default { tasks: {} }\n',
       )
-      const log = silent()
-      await planRun({ cwd: root, tasks: ['app#build'], log })
-      expect(await cacheOf()).toBeUndefined()
-      expect(log.lines.join('\n')).toContain(
-        `output "*.mjs" covers the project's own vx.config.mjs`,
-      )
+      expect((await cacheOf())?.outputs.files).toEqual(['lib/**', '*.mjs', '!vx.config.mjs'])
     },
     TIMEOUT,
   )

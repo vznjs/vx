@@ -1698,7 +1698,7 @@ describe('vx migrate — a repo core finds no workspace root in', () => {
 })
 
 describe('an output beside the config vx-migrate writes', () => {
-  it('is held to that file: `*.mjs` caches beside vx.config.ts, not beside vx.config.mjs', async () => {
+  it('is held to that file: `*.mjs` beside vx.config.mjs takes that file back', async () => {
     const root = await makeRoot('vx-migrate-own-config-')
     try {
       await writeFile(
@@ -1711,10 +1711,16 @@ describe('an output beside the config vx-migrate writes', () => {
       // The tracked set says the package has no `.mjs` source.
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
-      const cached = async (format: 'ts' | 'mjs') =>
-        (await migrateTurbo(root, [meta], format)).projects[0]!.tasks[0]!.task!['cache'] !==
-        undefined
-      expect([await cached('ts'), await cached('mjs')]).toEqual([true, false])
+      const outputs = async (format: 'ts' | 'mjs') =>
+        (
+          (await migrateTurbo(root, [meta], format)).projects[0]!.tasks[0]!.task!['cache'] as {
+            outputs: { files: string[] }
+          }
+        ).outputs.files
+      expect([await outputs('ts'), await outputs('mjs')]).toEqual([
+        ['*.mjs'],
+        ['*.mjs', '!vx.config.mjs'],
+      ])
     } finally {
       await rm(root, { recursive: true, force: true })
     }

@@ -94,7 +94,7 @@ describe('an output that covers the project’s own package.json', () => {
     expect(ownFileOutput(['*.json'], null)).toEqual({ glob: '*.json', file: 'package.json' })
   })
 
-  it('turbo(): the task runs uncached with a todo, and the workspace loads', async () => {
+  it("turbo(): takes the manifest back, stays cached, and counts the build's own rewrite as unchanged", async () => {
     await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { build: {} } }))
     const a = await pkg('a', { build: 'tsdown' })
     await writeFile(
@@ -109,7 +109,15 @@ describe('an output that covers the project’s own package.json', () => {
       persistentTodo: 'PERSIST',
     })
     const t = m.projects[0]!.tasks[0]!
-    expect([t.name, t.task?.['cache'], t.todos]).toEqual(['build', undefined, [TODO]])
+    expect([t.name, t.task?.['cache'], t.todos]).toEqual([
+      'build',
+      {
+        inputs: { files: ['**/*'] },
+        outputs: { files: ['package.json', 'dist/**', '!package.json'] },
+        inputStability: { strategy: 'mutable' },
+      },
+      [],
+    ])
   })
 
   it('nx(): a cached target takes the manifest back and stays cached', async () => {

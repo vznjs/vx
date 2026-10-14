@@ -24,8 +24,7 @@ import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
-  ownFileOutput,
-  ownFileTodo,
+  ownFileTakeBacks,
   excludeSiblingOutputs,
   excludeWorkspaceOutputs,
   resolveSharedOutputs,
@@ -2171,11 +2170,13 @@ function buildTask(
       todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }
     }
-    const own = ownFileOutput(outFiles, opts.ownConfig?.(pkgDir))
-    if (own !== undefined) {
-      todos.push(ownFileTodo(own))
-      return { name, todos, task, uses }
-    }
+    // An output over the project's own package.json (trpc's builds list
+    // it: tsdown rewrites `exports`) is taken back and keeps the cache, as
+    // nx() does (owner, 2026-10-03). The build rewrites an input the key
+    // folds, so its identical rewrite counts as unchanged ('mutable').
+    const takeBacks = ownFileTakeBacks(outFiles, opts.ownConfig?.(pkgDir))
+    outFiles.push(...takeBacks)
+    const rewritesManifest = takeBacks.includes('!package.json')
 
     const cacheEnv = uniq([...global('env'), ...envNames], hidden('env'))
 
@@ -2198,7 +2199,11 @@ function buildTask(
     const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
     const ws = takingBack(wsOutFiles)
     if (ws.length > 0) outputs.workspaceFiles = ws
-    task.cache = { inputs, outputs }
+    task.cache = {
+      inputs,
+      outputs,
+      ...(rewritesManifest ? { inputStability: { strategy: 'mutable' } } : {}),
+    }
   }
 
   return { name, todos, task, uses }
