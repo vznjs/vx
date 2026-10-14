@@ -63,6 +63,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
 export interface GitEnumeration {
   all: string[] // every path git listed, root-relative
+  tracked: readonly string[] // every index path (a submodule as its gitlink), root-relative: never cleaned
+  scopes: readonly string[] // the pathspecs listed, root-relative
   trusted: Map<string, string> // path → index OID, for the tracked-clean ones
   dirty: boolean | null
   vars: string | null // `git var -l` output, read once for config lookups
@@ -70,8 +72,6 @@ export interface GitEnumeration {
   untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
-  tracked: readonly string[] // every index path (a submodule as its gitlink), root-relative: never cleaned
-  scopes: readonly string[] // the pathspecs listed, root-relative
   blobCheck: IndexBlobCheck // the blob-size check's input (A-60)
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)
 }
