@@ -1050,12 +1050,16 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 
 type · `src/orchestrator/lockfile-claim.ts`
 
-The two hooks a lockfile plugin spreads into `definePlugin`.
+What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `importers` for its own stages.
 
 ```ts
 export interface LockfileClaimHooks {
   readonly fingerprint: FingerprintClaim
   key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
+  importers(ctx: {
+    readonly workspaceRoot: string
+    readonly cacheDir: string
+  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
 }
 ```
 
@@ -1071,6 +1075,22 @@ export interface LockfileClaimOptions {
   readonly version: number
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
+  readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+}
+```
+
+## `LockfileImporter`
+
+type · `src/orchestrator/lockfile-claim.ts`
+
+What a lockfile records of one importer's links to the workspace's other
+importers: dependency name → importer directory (root-relative POSIX,
+`.` for the root).
+
+```ts
+export interface LockfileImporter {
+  readonly deps: Readonly<Record<string, string>>
+  readonly peers: Readonly<Record<string, string>>
 }
 ```
 

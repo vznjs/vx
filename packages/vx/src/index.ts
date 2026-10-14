@@ -145,6 +145,7 @@ export {
   reachDigests,
   type LockfileClaimHooks,
   type LockfileClaimOptions,
+  type LockfileImporter,
   type ReachGraph,
 } from './orchestrator/index.js'
 export type {

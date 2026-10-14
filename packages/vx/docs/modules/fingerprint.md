@@ -88,9 +88,10 @@ Whichever of these exist at the workspace root, in this fixed order:
 names: a workspace's `catalog:` dependency is recorded as that literal,
 and a real Yarn 4.18.1 install that flipped the catalog `^6 → ^7`, both
 ranges already resolved, rewrote not one byte of `yarn.lock` while the
-workspace's `node_modules` moved to 7 (turborepo#12635). No plugin
-claims it: `yarn()` keys each workspace on every entry of a catalog's
-package, and which one the catalog names is this file's to say.
+workspace's `node_modules` moved to 7 (turborepo#12635). `yarn()` keys
+each workspace on every entry of a catalog's package, and which one the
+catalog names is this file's to say, so `yarn()` claims it and folds it
+whole into every task.
 
 `.npmrc` and `bunfig.toml` are here because an install setting moves
 `node_modules` under a byte-identical lockfile: bun 1.4.2 with
@@ -98,6 +99,9 @@ package, and which one the catalog names is this file's to say.
 every dependency out of the root `node_modules`, and pnpm's `node-linker`
 and hoisting settings have the same shape. A build that imported an
 undeclared, hoisted package kept its green hit where it now fails (D-7).
+`@vzn/vx-lockfile` claims its manager's settings (`pnpm()`:
+`pnpm-workspace.yaml`, `.npmrc`; `bun()`: `bunfig.toml`, `.npmrc`;
+`npm()`: `.npmrc`) and folds each whole into every task.
 Only the root copies are read.
 
 Missing files are skipped (not all workspaces use every manager). The

@@ -10,8 +10,8 @@
 //
 // Bun.JSONC is the parser: no dependency, and the file is Bun's own.
 
-import { reachDigests } from '@vzn/vx'
-import { depsOf, record, type Json } from './json.js'
+import { reachDigests, type LockfileImporter } from '@vzn/vx'
+import { depsOf, peerOnly, record, type Json } from './json.js'
 
 export interface Lockfile {
   readonly version: string
@@ -19,6 +19,10 @@ export interface Lockfile {
   readonly workspaces: ReadonlyMap<string, ReadonlyMap<string, string>>
   /** workspace package name → its dir */
   readonly workspaceDirs: ReadonlyMap<string, string>
+  /** root-relative dir → its installed dependencies (`dependencies` win, as Bun 1.4 installs them) */
+  readonly workspaceInstalled: ReadonlyMap<string, ReadonlyMap<string, string>>
+  /** root-relative dir → the peers it installs no entry for */
+  readonly workspacePeers: ReadonlyMap<string, ReadonlySet<string>>
   /** node_modules path → the package there */
   readonly packages: ReadonlyMap<string, Entry>
   /** `patchedDependencies`: `name@version` (or `name`) → the patch file's path */
@@ -63,10 +67,17 @@ export function parseLockfile(text: string): Lockfile {
   }
   const workspaces = new Map<string, ReadonlyMap<string, string>>()
   const workspaceDirs = new Map<string, string>()
+  const workspaceInstalled = new Map<string, ReadonlyMap<string, string>>()
+  const workspacePeers = new Map<string, ReadonlySet<string>>()
   for (const [dir, manifest] of Object.entries(record(d['workspaces']) ?? {})) {
     const m = record(manifest) ?? {}
     const key = dir === '' ? '.' : dir
     workspaces.set(key, depsOf(m))
+    workspaceInstalled.set(
+      key,
+      depsOf(m, ['devDependencies', 'optionalDependencies', 'dependencies']),
+    )
+    workspacePeers.set(key, peerOnly(m))
     if (typeof m['name'] === 'string') workspaceDirs.set(m['name'], key)
   }
   const packages = new Map<string, Entry>()
@@ -96,6 +107,8 @@ export function parseLockfile(text: string): Lockfile {
     version: String(d['lockfileVersion']),
     workspaces,
     workspaceDirs,
+    workspaceInstalled,
+    workspacePeers,
     packages,
     patches,
     global,
@@ -131,6 +144,87 @@ function packageLevels(path: string): string[] {
     out.push(part.startsWith('@') && i + 1 < parts.length ? `${part}/${parts[++i]}` : part)
   }
   return out
+}
+
+/**
+ * Each workspace's dependencies that resolve to a `workspace:` package: an
+ * installed entry is a dep, a peer with none of the same name a peer. A
+ * `workspace:` path or alias (`workspace:../b`, `workspace:@s/b@^1`) names
+ * its target, which Bun links though `packages` holds no nested entry for
+ * it, and so does an `npm:` alias no entry installs under its own name (a
+ * satisfied one: Bun links the workspace package); anything else resolves
+ * through Bun's layout.
+ */
+export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImporter> {
+  const out = new Map<string, LockfileImporter>()
+  const viaLayout = (from: string, name: string): string | undefined => {
+    const key = resolve(lock, from, name)
+    const id = key === undefined ? '' : lock.packages.get(key)!.id
+    const at = id.indexOf('@workspace:')
+    return at === -1 ? undefined : id.slice(at + '@workspace:'.length) || '.'
+  }
+  for (const dir of lock.workspaces.keys()) {
+    const from = importerFrom(lock, dir)
+    const links = { deps: {} as Record<string, string>, peers: {} as Record<string, string> }
+    const add = (kind: 'deps' | 'peers', name: string, target: string | undefined): void => {
+      if (target !== undefined && target !== dir && lock.workspaces.has(target)) {
+        links[kind][name] = target
+      }
+    }
+    for (const [name, spec] of lock.workspaceInstalled.get(dir)!) {
+      add('deps', name, workspaceSpecTarget(lock, dir, from, name, spec) ?? viaLayout(from, name))
+    }
+    for (const name of lock.workspacePeers.get(dir)!) add('peers', name, viaLayout(from, name))
+    out.set(dir, links)
+  }
+  return out
+}
+
+const ALIAS = /^(@[^@/]+\/[^@/]+|[^@/.][^@/]*)(?:@.*)?$/
+
+/**
+ * The workspace dir a spec names past Bun's layout: `workspace:<path>`,
+ * `workspace:<name>@<range>`, or `npm:<name>@<range>` when the entry the
+ * dependency resolves to is not a `<name>` package.
+ */
+function workspaceSpecTarget(
+  lock: Lockfile,
+  dir: string,
+  from: string,
+  key: string,
+  spec: string,
+): string | undefined {
+  if (spec.startsWith('npm:')) {
+    const alias = ALIAS.exec(spec.slice('npm:'.length))?.[1]
+    const at = resolve(lock, from, key)
+    if (alias === undefined || lock.packages.get(at ?? '')?.id.startsWith(`${alias}@`)) {
+      return undefined
+    }
+    return lock.workspaceDirs.get(alias)
+  }
+  if (!spec.startsWith('workspace:')) return undefined
+  const rest = spec.slice('workspace:'.length)
+  if (rest.startsWith('.') || rest.startsWith('/')) return joinPosix(dir, rest)
+  const alias = ALIAS.exec(rest)
+  return alias === null ? undefined : lock.workspaceDirs.get(alias[1]!)
+}
+
+/** `packages/a` + `../b` → `packages/b`. POSIX, as the lockfile writes paths. */
+function joinPosix(base: string, rel: string): string {
+  const parts: string[] = []
+  for (const seg of `${base}/${rel}`.split('/')) {
+    if (seg === '' || seg === '.') continue
+    if (seg === '..') parts.pop()
+    else parts.push(seg)
+  }
+  return parts.length === 0 ? '.' : parts.join('/')
+}
+
+/** The node_modules path a workspace resolves from: its own name, or the root's ''. */
+function importerFrom(lock: Lockfile, dir: string): string {
+  if (dir === '.') return ''
+  for (const [name, wsDir] of lock.workspaceDirs) if (wsDir === dir) return name
+  return ''
 }
 
 /**
@@ -204,8 +298,7 @@ export function importerDigests(
     // Its dir, as pnpm's importers fold theirs (item 1073).
     const own = node(`workspace\0${dir}`, `workspace\0${dir}`)
     importers.set(dir, own)
-    let from = ''
-    for (const [name, wsDir] of lock.workspaceDirs) if (wsDir === dir && dir !== '.') from = name
+    const from = importerFrom(lock, dir)
     for (const [name, spec] of deps) {
       const target = resolve(lock, from, name)
       if (target !== undefined) edges[own]!.push(index.get(target)!)

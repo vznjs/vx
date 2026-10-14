@@ -70,7 +70,8 @@
       "cache": {
         "inputs": {
           "files": [
-            "**/*"
+            "**/*",
+            "package.json"
           ]
         },
         "outputs": {

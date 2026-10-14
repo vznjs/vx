@@ -301,6 +301,14 @@ Every package's key also folds the root package's own dependencies:
 their bins run from the root `node_modules/.bin`, which is on every
 task's PATH. So bumping a root devDependency re-runs every package.
 
+Each plugin also folds its manager's install settings into every task
+(`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`: `bunfig.toml`,
+`.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`), adds a package's
+`package.json` to its cached tasks' inputs, and gives vx the project
+edges the lockfile records: what `^build` waits on, and what `--filter`
+and `--affected` follow. A yarn 1 lockfile records no workspaces, so
+`yarn()` gives no edges there and says so.
+
 `vx why` names the part `plugin @vzn/vx-lockfile/pnpm`. An unreadable
 lockfile stops the run and names the install to re-run. An import you
 never declared is in no package's key.

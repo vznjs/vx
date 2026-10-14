@@ -248,6 +248,56 @@ describe('key', () => {
   })
 })
 
+// A `discover` hook reads each importer's links from the memo the digests
+// live in, so a warm run parses nothing to learn its edges (language-
+// agnostic core, PR 2). Lines `dir>target` link two importers.
+describe('importers', () => {
+  const withImporters = (scope?: 'project' | 'workspace') =>
+    lockfileClaim({
+      file: 'bun.lock',
+      version: 1,
+      ...(scope === undefined ? {} : { scope }),
+      digest: () => new Map(),
+      importers: (text) => {
+        calls.push(text)
+        const out = new Map<string, { deps: Record<string, string>; peers: {} }>()
+        for (const line of text.split('\n')) {
+          const [dir, target] = line.split('>')
+          if (dir && target) out.set(dir, { deps: { [target]: target }, peers: {} })
+        }
+        return out
+      },
+    })
+
+  it('are undefined without a file, then served from the memo in a new process', async () => {
+    expect(await withImporters().importers(ctx())).toBeUndefined()
+    await lock('packages/a>packages/b\n')
+    const want = new Map([['packages/a', { deps: { 'packages/b': 'packages/b' }, peers: {} }]])
+    expect(await withImporters().importers(ctx())).toEqual(want)
+    expect(calls).toHaveLength(1)
+    const memo = JSON.parse(await readFile(MEMO(), 'utf8')) as {
+      edges: Record<string, unknown>
+    }
+    memo.edges['packages/a'] = { deps: { b: 'planted' }, peers: {} }
+    await writeFile(MEMO(), JSON.stringify(memo))
+    expect(await withImporters().importers(ctx())).toEqual(
+      new Map([['packages/a', { deps: { b: 'planted' }, peers: {} }]]),
+    )
+    expect(calls).toHaveLength(1)
+  })
+
+  it('scope: workspace still records them, and its memo is not a project-scope memo', async () => {
+    await lock('packages/a>packages/b\n')
+    const want = new Map([['packages/a', { deps: { 'packages/b': 'packages/b' }, peers: {} }]])
+    expect(await withImporters('workspace').importers(ctx())).toEqual(want)
+    expect(await withImporters('workspace').importers(ctx())).toEqual(want)
+    expect(calls).toHaveLength(1)
+    // A project-scope claimant does not read the workspace memo's empty digests.
+    await withImporters().importers(ctx())
+    expect(calls).toHaveLength(2)
+  })
+})
+
 describe('affected', () => {
   const projects = () => [
     { name: 'a', dir: path.join(root, 'packages/a') },

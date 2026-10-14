@@ -122,6 +122,7 @@ export {
   reachDigests,
   type LockfileClaimHooks,
   type LockfileClaimOptions,
+  type LockfileImporter,
   type ReachGraph,
 } from './lockfile-claim.js'
 export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'

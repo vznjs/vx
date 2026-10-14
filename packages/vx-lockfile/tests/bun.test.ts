@@ -407,7 +407,7 @@ describe('bun()', () => {
     // over, with no remedy (2026-09-20). Refusing is right — the
     // alternative to reading the lockfile is a WRONG key — so the message
     // is the whole of what the adopter gets.
-    expect(bun().fingerprint?.files).toEqual(['bun.lock'])
+    expect(bun().fingerprint?.files).toEqual(['bun.lock', 'bunfig.toml', '.npmrc'])
     let message = ''
     try {
       ;(
