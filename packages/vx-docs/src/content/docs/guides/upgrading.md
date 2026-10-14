@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## workspace: a project is a directory with a vx.config
+
+a package.json member is no project without a vx.config or a lockfile plugin (pnpm(), bun(), npm(), yarn() add the members); a project is named by its config `name`, else a plugin's, else its path (`//` for the root); two of one name are refused. Lock version 2 is refused: re-run `vx lock`. Plugin contexts drop `packageJson`, and ProjectMeta drops `packageJson` (PackageMeta keeps it for vx init).
+
 ## cache: core keys no package file
 
 core folds neither the project's package.json nor the root lockfiles and install settings into a key, so without a lockfile plugin an install re-keys nothing (declare pnpm(), bun(), npm() or yarn() from @vzn/vx-lockfile). TaskInputs drops packageJsonDigest and workspaceFingerprint. npm() reads npm-shrinkwrap.json first; bun() refuses a lone bun.lockb (run `bun install --save-text-lockfile`).

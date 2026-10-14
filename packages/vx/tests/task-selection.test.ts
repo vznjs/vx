@@ -265,6 +265,7 @@ describe('task selection', () => {
     'only pkg#task args still refuse %p as a bare task beside them does (X-39)',
     async (flags) => {
       await addProject('a', ['build'])
+      await lock(root)
       git('add', '-A')
       git('commit', '-qm', 'init')
       const resolve = async (args: string[]) => {
@@ -292,6 +293,7 @@ describe('task selection', () => {
     async () => {
       await addProject('app', ['build', 'lint'])
       await addProject('docs', ['build', 'lint'])
+      await lock(root)
       const parsed = parseRunArgs(['build', 'app#lint', '--filter', 'docs'])
       expect(parsed.error).toBeUndefined()
       const resolved = await resolveRunOptions(parsed, root, parsed.tasks)
@@ -344,6 +346,7 @@ describe('task selection', () => {
       )
       await addProject('a', ['build'])
       await addProject('b', ['build'])
+      await lock(root)
       const parsed = parseRunArgs(['build', 'root', '--filter', '!b'])
       expect(parsed.error).toBeUndefined()
       const resolved = await resolveRunOptions(parsed, root, parsed.tasks)

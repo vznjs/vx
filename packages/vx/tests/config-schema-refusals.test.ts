@@ -857,9 +857,8 @@ describe("a package turbo.json's and Nx project.json's keys (D-56)", () => {
     expect(where({ implicitDependencies: ['b'] })).toBe(
       'vx spells it a `dependsOn` entry `pkg#task`, or a package.json dependency',
     )
-    expect(where({ name: 'a' })).toBe(
-      'vx spells it the package.json `name` (a project is named by its package)',
-    )
+    // `name` is a project field of vx's own.
+    expect(where({ name: 'a' })).toBeUndefined()
     // CONTROL: a typo of `tasks` still gets the nearest spelling.
     expect(where({ taks: {} })).toBe('did you mean tasks?')
   })

@@ -27,7 +27,7 @@ export async function lock(cwd: string): Promise<void> {
     return true
   }
   try {
-    const code = await lockWorkspace(root, undefined, () => {})
+    const code = await lockWorkspace(root, () => {})
     if (code !== 0) throw new Error(said.join('').trim())
   } finally {
     process.stdout.write = out

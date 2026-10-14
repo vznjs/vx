@@ -69,7 +69,7 @@ describe('the cache directory is git-ignored by construction', () => {
   // root: every input matched nothing and a changed source replayed the
   // old output; `'packages/a'` did the same to one project (item 997).
   it('a first index in a directory holding a manifest is refused, and nothing is written', async () => {
-    for (const manifest of ['package.json', 'pnpm-workspace.yaml']) {
+    for (const manifest of ['package.json', 'pnpm-workspace.yaml', 'vx.config.ts']) {
       const dir = path.join(root, manifest.replace('.', '-'))
       await Bun.write(path.join(dir, manifest), '{}')
       expect(() => new Cache(dir)).toThrow(

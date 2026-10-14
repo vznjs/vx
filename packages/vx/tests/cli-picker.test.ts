@@ -8,7 +8,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { pickTask } from '../src/cli/select.js'
 import { lock } from './helpers/orchestrator.js'
-import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 let root: string
 
@@ -23,7 +24,7 @@ describe('vx run interactive picker', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-pick-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     for (const name of ['alpha', 'beta']) {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })
@@ -76,7 +77,7 @@ describe('vx run interactive picker', () => {
     output.on('data', () => undefined)
     expect(await pick(root, { input: new PassThrough(), output })).toBeNull()
     expect(stderr).toBe(
-      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts\n',
+      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`\n',
     )
   })
 
@@ -102,7 +103,7 @@ describe('vx run interactive picker', () => {
     // still has tasks when a plugin's `project` stage fills them.
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
-      `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+      `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${pluginSource(
         'gen',
         `{ project(config, ctx) {
         if (ctx.name === 'gamma') config.tasks.gen = { exec: { command: 'true' }, description: 'from plugin' }

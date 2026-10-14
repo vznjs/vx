@@ -6,7 +6,7 @@
 // vx-migrate itself wrote (walked the Nx path, 2026-09-20). Extracted from
 // `buildTask` in item 606; the rules are unchanged.
 
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 
 /** The vx task an Nx `project:target:configuration` reaches, or null when the target lacks it. */
 export type TaskNameFor = (project: string, target: string, configuration: string) => string | null
@@ -142,7 +142,7 @@ function expandTargetGlobs(
 
 export function mapNxDeps(
   raw: readonly unknown[],
-  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  metaByNode: ReadonlyMap<string, PackageMeta>,
   ownTarget: (name: string) => boolean,
   taskNameFor: TaskNameFor,
   hasTarget: HasTarget,

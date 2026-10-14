@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
@@ -22,7 +23,7 @@ describe('a workspace .env stays out of vx', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
     )
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     await writeFile(path.join(root, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(
       path.join(root, 'packages', 'a', 'vx.config.mjs'),

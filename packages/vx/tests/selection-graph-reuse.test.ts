@@ -10,6 +10,7 @@ import { resolveFilters } from '../src/cli/select.js'
 import { graphOfDiscovery } from '../src/orchestrator/projects.js'
 import { lock } from './helpers/orchestrator.js'
 import { gitInit } from './helpers/workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const TIMEOUT = 30_000
 
@@ -19,7 +20,7 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-selection-graph-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   for (const name of ['app', 'lib']) {
     const dir = path.join(root, 'packages', name)
     await mkdir(dir, { recursive: true })

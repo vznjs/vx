@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { listProjects, loadWorkspace } from '../src/workspace/workspace.js'
+import { discoverPackages, loadPackageWorkspace } from '../src/workspace/packages.js'
 
 let root: string | undefined
 
@@ -33,7 +33,7 @@ const members = async (globs: string[], dirs = DIRS, yaml = false) => {
       JSON.stringify({ name: d.replaceAll('/', '-') }),
     )
   }
-  const found = await listProjects(await loadWorkspace(root))
+  const found = await discoverPackages(await loadPackageWorkspace(root))
   return found.map((p) => p.dir.slice(root!.length + 1)).sort()
 }
 

@@ -29,7 +29,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { taskNameProblem } from './config-schema.js'
-import type { ProjectMeta } from './workspace.js'
+import type { PackageMeta } from './packages.js'
 import {
   foldScriptHooks,
   type GeneratedProject,
@@ -341,7 +341,7 @@ function foreground(command: string): string[] {
     .filter((segment) => segment.trim() !== '')
 }
 
-function scriptsOf(meta: ProjectMeta): Record<string, unknown> {
+function scriptsOf(meta: PackageMeta): Record<string, unknown> {
   // package.json is a boundary: `scripts` is whatever the file holds. A
   // string or an array would enumerate its indices as script names.
   const raw = (meta.packageJson as unknown as { scripts?: unknown }).scripts
@@ -660,7 +660,7 @@ function runningMembers(
  * without a word; `outsideDir` is where it sits.
  */
 export function migrateScripts(
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   outside?: Readonly<Record<string, unknown>>,
   outsideDir?: string,
 ): MigrationPlan {
@@ -688,7 +688,7 @@ export function migrateScripts(
   // A root with a config of its own is kept as written, and a run of `vx
   // init` after the one that mapped it keeps it like a member's (X-27).
   const rootKept = root !== undefined && root.configPath !== null
-  const rootMeta: ProjectMeta | undefined =
+  const rootMeta: PackageMeta | undefined =
     root !== undefined
       ? rootKept
         ? undefined
@@ -707,7 +707,7 @@ export function migrateScripts(
   // went unnamed beside the website's, and `vx run build --all` built the
   // website alone (D-85). A left-out script's `pre` / `post` hook goes with
   // it where the manager runs hooks: kept, it became a task of its own.
-  const leftOut = (meta: ProjectMeta): { runs: string[]; shared: string[]; out: Set<string> } => {
+  const leftOut = (meta: PackageMeta): { runs: string[]; shared: string[]; out: Set<string> } => {
     const scripts = scriptsOf(meta)
     const runs = runningMembers(
       scripts,
@@ -733,14 +733,14 @@ export function migrateScripts(
     )
     return { ...left, out }
   }
-  const rootScripts = (meta: ProjectMeta): Record<string, unknown> => {
+  const rootScripts = (meta: PackageMeta): Record<string, unknown> => {
     const scripts = scriptsOf(meta)
     const { out } = leftOut(meta)
     return Object.fromEntries(
       Object.entries(scripts).filter(([n, v]) => typeof v === 'string' && !out.has(n)),
     )
   }
-  const mapsOf = (meta: ProjectMeta | undefined): number =>
+  const mapsOf = (meta: PackageMeta | undefined): number =>
     meta === undefined ? 0 : Object.keys(rootScripts(meta)).filter((n) => !LIFECYCLE.test(n)).length
   const rootMapped = mapsOf(rootMeta)
   const listed = (names: readonly string[]): string =>
@@ -751,7 +751,7 @@ export function migrateScripts(
     outsideScripts !== null &&
     Object.values(outsideScripts).some((v) => typeof v === 'string' && v !== '')
   const unnamedMaps = (): string[] => {
-    const meta: ProjectMeta = {
+    const meta: PackageMeta = {
       name: 'package.json',
       dir: outsideDir!,
       packageJson: outside as never,
@@ -1034,7 +1034,7 @@ function binsOf(manifest: object, name: string): string[] {
  */
 function rootBinBuilds(
   projects: GeneratedProject[],
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   rootManifest: object | undefined,
 ): void {
   const fromRoot = depsOf(rootManifest)
@@ -1076,7 +1076,7 @@ function rootBinBuilds(
  * `^build`, on each build outside its cycle that `^build` reaches (through
  * packages with none, as core walks it), with a TODO to order the cycle.
  */
-function breakBuildCycles(projects: GeneratedProject[], metas: readonly ProjectMeta[]): void {
+function breakBuildCycles(projects: GeneratedProject[], metas: readonly PackageMeta[]): void {
   const builds = new Set(
     projects
       .filter((p) => p.tasks.some((t) => t.name === 'build' && t.task !== null))
@@ -1176,7 +1176,7 @@ function cyclesOf(edges: ReadonlyMap<string, readonly string[]>): string[][] {
 }
 
 /** The member whose directory holds every other member's, if one does. */
-function workspaceRootOf(metas: readonly ProjectMeta[]): ProjectMeta | undefined {
+function workspaceRootOf(metas: readonly PackageMeta[]): PackageMeta | undefined {
   const outer = metas.reduce((a, b) => (b.dir.length < a.dir.length ? b : a))
   const prefix = outer.dir.endsWith(path.sep) ? outer.dir : outer.dir + path.sep
   return metas.every((m) => m === outer || m.dir.startsWith(prefix)) ? outer : undefined

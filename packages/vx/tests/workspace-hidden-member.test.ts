@@ -7,7 +7,11 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { findManifestRoot, listProjects, loadWorkspace } from '../src/workspace/workspace.js'
+import {
+  findManifestRoot,
+  discoverPackages,
+  loadPackageWorkspace,
+} from '../src/workspace/packages.js'
 
 let root: string
 
@@ -30,7 +34,7 @@ afterEach(async () => {
 const rel = (dir: string) => path.relative(root, dir).split(path.sep).join('/') || '.'
 
 const listed = async () =>
-  (await listProjects(await loadWorkspace(root))).map((p) => rel(p.dir)).sort()
+  (await discoverPackages(await loadPackageWorkspace(root))).map((p) => rel(p.dir)).sort()
 
 for (const globs of [['packages/*'], ['packages/**'], ['packages/{a,.tpl}']]) {
   it(`a root listing ${JSON.stringify(globs)} claims only the members it lists`, async () => {

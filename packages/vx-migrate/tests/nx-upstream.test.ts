@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { GeneratedTask, ProjectMeta } from '@vzn/vx'
+import type { GeneratedTask, PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 
 let root: string
@@ -35,7 +35,7 @@ async function graph(opts: {
     path.join(root, 'nx.json'),
     JSON.stringify({ namedInputs: { production: ['default'] } }),
   )
-  const metas: ProjectMeta[] = []
+  const metas: PackageMeta[] = []
   for (const n of opts.discovered ?? ['app', 'lib', 'base']) {
     const dir = path.join(root, 'packages', n)
     await mkdir(dir, { recursive: true })

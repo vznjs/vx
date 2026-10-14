@@ -21,7 +21,7 @@ export function bunPatchFiles(bytes: Uint8Array): string[] // the patches a bun.
 ```
 
 `readClaimedFiles` reads through the load's `reads` (workspace.md), so a
-file discovery already read (`pnpm-workspace.yaml`) is not read again.
+root file the load already read is not read again.
 Each name costs one `open`: the read's ENOENT (or EISDIR) is the
 absence, where an `exists()` stat before it doubled the calls for every
 file present (`tests/syscall-repeats.unsafe.test.ts`). With nothing

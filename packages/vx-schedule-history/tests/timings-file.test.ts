@@ -71,7 +71,11 @@ describe('the file between machines', () => {
     const dir = path.join(root, 'packages', name)
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
-    await writeFile(path.join(dir, 'vx.config.mjs'), config)
+    // Core reads no package.json: the config names the project.
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      config.replace('export default {', `export default { name: ${JSON.stringify(name)},`),
+    )
   }
 
   it(

@@ -21,10 +21,12 @@ export {
   LOCK_INVALID,
   lockEntryBroken,
   lockfilePath,
+  lockKey,
   NO_LOCK,
   readLockfile,
   writeLockfile,
   type Lockfile,
+  type LockedProject,
 } from './lockfile.js'
 export {
   loadProjectConfig,
@@ -42,23 +44,29 @@ export {
 } from './config-schema.js'
 export { configImports } from './config-imports.js'
 export {
-  findManifestRoot,
+  checkProjectNames,
   findWorkspaceRoot,
-  discoverProjects,
-  listProjects,
+  findProjectConfigs,
   discoveredProject,
   linkDiscoveredEdges,
-  loadWorkspace,
-  unreachedHint,
-  unreachedPackages,
-  memberBaseDirs,
+  lockedProjects,
+  pathName,
   PROJECT_CONFIG_FILENAMES,
   resolveCacheDir,
   resolveStoreRoot,
+  ROOT_NAME,
+  type ConfigDir,
   type ProjectEntry,
   type ProjectMeta,
-  type Workspace,
 } from './workspace.js'
+// `vx init`'s package-manager members (its scripts mapper), never a run's.
+export {
+  discoverPackages,
+  findManifestRoot,
+  listPackages,
+  loadPackageWorkspace,
+  type PackageMeta,
+} from './packages.js'
 export type { LoadReads } from './load-reads.js'
 // The migration seam (see migration.ts) and core's own mapper, the scripts one.
 export {

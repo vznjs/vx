@@ -15,7 +15,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { planRun as planFromLock } from '../src/orchestrator/index.js'
 import { lock, prepareRun, run } from './helpers/orchestrator.js'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { workspaceWith, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
 import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 
@@ -26,7 +26,7 @@ async function additive(opts: { prefix: string }): Promise<string> {
   const root = await makeWorkspace(opts)
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    'export default { run: { rules: { exclusiveOutputs: false } } }\n',
+    workspaceWith('run: { rules: { exclusiveOutputs: false } }'),
   )
   return root
 }
@@ -138,7 +138,7 @@ describe('overlapping outputs under the default rules', () => {
         // was off still plans the pair once the rule is back on.
         await Bun.write(
           path.join(root, '.vx/workspace.mjs'),
-          'export default { run: { rules: { exclusiveOutputs: false } } }\n',
+          workspaceWith('run: { rules: { exclusiveOutputs: false } }'),
         )
         await lock(root)
         await writeLocalWorkspace(root)

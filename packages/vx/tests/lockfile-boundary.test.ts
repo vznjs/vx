@@ -65,10 +65,13 @@ async function rejection(p: Promise<unknown>): Promise<Error> {
 
 const CONFIG: ProjectConfig = { tasks: { build: { exec: { command: 'echo hi' } } } }
 
+/** A lock entry: the directory's config file and its resolved config. */
+const entry = (config: ProjectConfig) => ({ file: 'vx.config.ts' as const, config })
+
 /** One project's frozen config, as a run of one would load it. */
 async function frozenProjectConfig(
   l: Lockfile,
-  meta: { name: string; configPath: string },
+  meta: { name: string; dir: string; configPath: string },
   r: string,
 ): Promise<ProjectConfig> {
   return frozenProjectConfigs(l, [meta], r)[0]!
@@ -77,7 +80,7 @@ async function frozenProjectConfig(
 function lock(over: Partial<Lockfile> = {}): Lockfile {
   return {
     version: LOCKFILE_VERSION,
-    projects: { pkg: CONFIG },
+    projects: { pkg: entry(CONFIG) },
     ...over,
   }
 }
@@ -145,6 +148,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     ['a newer version', LOCKFILE_VERSION + 1],
     ['a string version', '2'],
     ['the version before entries were bare configs', 1],
+    ['the version that keyed projects by name', 2],
     ['null', null],
   ])('rejects %s and names both versions', async (_label, version) => {
     // A version mismatch must say what it found AND what this vx expects —
@@ -177,6 +181,9 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     ['a string', 'pkg/vx.config.ts'],
     ['a number', 42],
     ['an array', [CONFIG]],
+    ['a bare config, as version 2 wrote', CONFIG],
+    ['a file that is no vx.config', { file: 'package.json', config: {} }],
+    ['a config that is no object', { file: 'vx.config.ts', config: [] }],
   ])('rejects an entry that is %s, naming the project', async (_label, entry) => {
     // Naming the project is the point: a monorepo lock has hundreds of
     // entries, and "something is malformed" without a name is unactionable.
@@ -192,7 +199,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
     const read = await readLockfile(root)
     expect(read).not.toBeNull()
     expect(read?.version).toBe(LOCKFILE_VERSION)
-    expect(read?.projects['pkg']).toEqual(CONFIG)
+    expect(read?.projects['pkg']).toEqual(entry(CONFIG))
   })
 
   it('accepts an empty projects map', async () => {
@@ -243,7 +250,7 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     // from a previous lock would be executed by a later run.
     await writeLockfile(root, {
       version: LOCKFILE_VERSION,
-      projects: { old: CONFIG },
+      projects: { old: entry(CONFIG) },
     })
     await writeLockfile(root, lock())
     const read = await readLockfile(root)
@@ -292,10 +299,9 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
 })
 
 describe('frozenProjectConfig — the trust model', () => {
-  const meta = { name: 'pkg', configPath: '' }
-
-  function metaFor(rel: string): { name: string; configPath: string } {
-    return { ...meta, configPath: path.join(root, rel) }
+  function metaFor(rel: string): { name: string; dir: string; configPath: string } {
+    const configPath = path.join(root, rel)
+    return { name: 'pkg', dir: path.dirname(configPath), configPath }
   }
 
   it('returns the frozen config for a locked project', async () => {
@@ -310,7 +316,11 @@ describe('frozenProjectConfig — the trust model', () => {
     const err = await rejection(
       frozenProjectConfig(
         lock(),
-        { name: 'other', configPath: path.join(root, 'other/vx.config.ts') },
+        {
+          name: 'other',
+          dir: path.join(root, 'other'),
+          configPath: path.join(root, 'other/vx.config.ts'),
+        },
         root,
       ),
     )
@@ -319,15 +329,20 @@ describe('frozenProjectConfig — the trust model', () => {
     expect(err.message).toContain('vx lock')
   })
 
-  it('a project named like an Object.prototype member has no entry by inheritance (D-152)', async () => {
+  it('a directory named like an Object.prototype member has no entry by inheritance (D-152)', async () => {
     // `lock.projects.constructor` is Object's own constructor: the lock
-    // "locked" the package at undefined, and the refusal said it had moved.
+    // "locked" the project at undefined, and the refusal said it had moved.
     for (const name of ['constructor', 'toString', '__proto__']) {
+      const dir = path.join(root, name)
       const err = await rejection(
-        frozenProjectConfig(lock(), { name, configPath: path.join(root, 'x/vx.config.ts') }, root),
+        frozenProjectConfig(
+          lock(),
+          { name, dir, configPath: path.join(dir, 'vx.config.ts') },
+          root,
+        ),
       )
       expect(err.message).toBe(
-        `.vx/projects.lock.json has no entry for "${name}" (x/vx.config.ts) — run \`vx lock\``,
+        `.vx/projects.lock.json has no entry for "${name}" (${name}/vx.config.ts) — run \`vx lock\``,
       )
     }
   })
@@ -358,7 +373,7 @@ describe('frozenProjectConfig — the trust model', () => {
     // trusted, and `--check` is the audit. Anyone tightening this should
     // change `--check`, not this path.
     const tampered = lock({
-      projects: { pkg: { tasks: { build: { exec: { command: 'echo TAMPERED' } } } } },
+      projects: { pkg: entry({ tasks: { build: { exec: { command: 'echo TAMPERED' } } } }) },
     })
     const cfg = await frozenProjectConfig(tampered, metaFor('pkg/vx.config.ts'), root)
     expect(cfg.tasks?.['build']?.exec?.command).toBe('echo TAMPERED')
@@ -369,7 +384,7 @@ describe('frozenProjectConfig — the trust model', () => {
     // re-evaluates them; a run only parses the JSON shape (owner,
     // 2026-10-14). A broken entry an edit left is the audit's to catch.
     const shape = { tasks: [{ exec: { command: 'x' } }] } as unknown as ProjectConfig
-    await writeRaw(JSON.stringify(lock({ projects: { pkg: shape } })))
+    await writeRaw(JSON.stringify(lock({ projects: { pkg: entry(shape) } })))
     const read = (await readLockfile(root))!
     expect(await frozenProjectConfig(read, metaFor('pkg/vx.config.ts'), root)).toEqual(shape)
   })
@@ -378,7 +393,7 @@ describe('frozenProjectConfig — the trust model', () => {
     // A config with no `tasks` is legal (validation returns early), so the
     // frozen path must not invent a requirement the live loader does not have.
     const empty = lock({
-      projects: { pkg: {} },
+      projects: { pkg: entry({}) },
     })
     expect(await frozenProjectConfig(empty, metaFor('pkg/vx.config.ts'), root)).toEqual({})
   })

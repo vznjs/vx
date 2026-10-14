@@ -10,6 +10,7 @@ import { afterAll, expect, it } from 'bun:test'
 import { type TelemetryRecord } from '../src/index.js'
 import { run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/orchestrator/logger.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const SECRET = 'supersecretvalue123'
 let root: string | undefined
@@ -24,7 +25,7 @@ it('the command line telemetry receives is masked', async () => {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
   )
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   const dir = path.join(root, 'packages', 'a')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))

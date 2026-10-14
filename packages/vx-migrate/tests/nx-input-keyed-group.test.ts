@@ -10,7 +10,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import type { MigrationPlan, ProjectMeta } from '@vzn/vx'
+import type { MigrationPlan, PackageMeta } from '@vzn/vx'
 import { migrateNx } from '../src/migrate-nx.js'
 
 const graph = {
@@ -65,7 +65,7 @@ describe('an nx-input twin over a sibling output', () => {
       const r = Bun.spawnSync(['git', ...argv], { cwd: root })
       expect(r.exitCode).toBe(0)
     }
-    const metas: ProjectMeta[] = ['spec', 'app'].map((name) => ({
+    const metas: PackageMeta[] = ['spec', 'app'].map((name) => ({
       name,
       dir: path.join(root, 'packages', name),
       packageJson: { name },

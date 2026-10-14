@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { migrateNx } from '../src/migrate-nx.js'
 
 const node = (name: string, root: string) => ({
@@ -40,7 +40,7 @@ async function plan(opts: { pnpm?: boolean; manifest?: boolean }) {
       },
     }
     await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
-    const metas: ProjectMeta[] = [
+    const metas: PackageMeta[] = [
       {
         name: 'listed',
         dir: path.join(root, 'libs/listed'),

@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { type Logger, type ProjectMeta } from '@vzn/vx'
+import { type Logger, type PackageMeta } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { fakeNx, fakeNxCli } from './helpers/fake-nx.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
@@ -33,10 +33,10 @@ const graph = parseNxGraph(
   }),
   'g',
 )
-const meta: ProjectMeta = {
+const meta: PackageMeta = {
   name: 'a',
   dir: '/w/libs/a',
-  packageJson: { name: 'a' } as ProjectMeta['packageJson'],
+  packageJson: { name: 'a' } as PackageMeta['packageJson'],
   configPath: null,
 }
 

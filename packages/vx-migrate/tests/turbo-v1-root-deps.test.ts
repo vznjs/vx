@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 
 let dir: string
@@ -21,7 +21,7 @@ async function globals(field: 'pipeline' | 'tasks'): Promise<readonly string[]> 
   await writeFile(path.join(dir, 'turbo.json'), JSON.stringify({ [field]: { build: {} } }))
   const db = path.join(dir, 'packages', 'db')
   await mkdir(db, { recursive: true })
-  const metas: ProjectMeta[] = [
+  const metas: PackageMeta[] = [
     {
       name: 'ws',
       dir,

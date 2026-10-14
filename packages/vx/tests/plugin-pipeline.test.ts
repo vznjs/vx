@@ -177,7 +177,8 @@ describe('config stage', () => {
           (e: unknown) => (e as Error).message,
         )
       }
-      const where = ".vx/workspace (after plugin 'org/broken')"
+      // `vx lock` runs the config stage to find the `discover` plugins, so it refuses first.
+      const where = `${LOCK_REFUSED}.vx/workspace (after plugin 'org/broken')`
       expect(await refusal('ws.run.concurrency = -3')).toBe(
         `${where}: \`run.concurrency\` must be a positive integer, or a share of the cores like '50%' (got -3)`,
       )
@@ -271,7 +272,7 @@ describe('project stage', () => {
     'visits a package with NO config file, so a plugin can give it tasks; without the stage it stays invisible',
     async () => {
       // The zero-migration shape: `b` has a package.json and scripts but never
-      // wrote a vx.config — a `project` plugin maps them onto tasks.
+      // wrote a vx.config — a `project` plugin reads them and maps them onto tasks.
       await pkg('a', build)
       const bDir = path.join(root, 'packages', 'b')
       await mkdir(bDir, { recursive: true })
@@ -282,8 +283,9 @@ describe('project stage', () => {
       await workspace([
         pluginSource(
           'org/scripts',
-          `{ project(config, ctx) {
-            const scripts = ctx.packageJson.scripts ?? {}
+          `{ async project(config, ctx) {
+            const file = Bun.file(ctx.dir + '/package.json')
+            const scripts = (await file.exists()) ? ((await file.json()).scripts ?? {}) : {}
             config.tasks ??= {}
             for (const [name, command] of Object.entries(scripts)) {
               config.tasks[name] ??= { exec: { command } }

@@ -117,9 +117,10 @@ describe('a run', () => {
       // What `vx lock` would refuse, edited into the lock by hand.
       const lockFile = path.join(root, '.vx/projects.lock.json')
       const lock = (await Bun.file(lockFile).json()) as {
-        projects: { a: { tasks: Record<string, unknown> } }
+        projects: { 'packages/a': { config: { tasks: Record<string, unknown> } } }
       }
-      lock.projects.a.tasks['b'] = lock.projects.a.tasks['a']
+      const { tasks } = lock.projects['packages/a'].config
+      tasks['b'] = tasks['a']
       await writeFile(lockFile, JSON.stringify(lock))
       const r = vx(root, ['run', 'a', 'b', '--all'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })

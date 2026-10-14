@@ -10,7 +10,8 @@
       "cache": {
         "inputs": {
           "files": [
-            "src/**"
+            "src/**",
+            "package.json"
           ]
         },
         "outputs": {
@@ -30,7 +31,8 @@
       "cache": {
         "inputs": {
           "files": [
-            "tests/**"
+            "tests/**",
+            "package.json"
           ]
         },
         "outputs": {

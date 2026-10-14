@@ -60,17 +60,19 @@ export interface VxPlugin {
   config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
 
   /**
-   * Projects beyond the package manager's members, and edges between
-   * projects, as `DiscoveredProject`s (each directory absolute or relative
-   * to the workspace root): a runner's root tasks, a project no member glob
-   * lists, the dependencies a lockfile records. Runs once per discovery,
-   * before any project config loads; each plugin sees core's projects and
-   * the ones earlier plugins named, without their edges. A directory that
-   * is not a project becomes one by `name` (keeping a `package.json` of the
-   * same name, if it has one); one that is a project keeps its name, and a
-   * different `name` is refused, as is a name taken by another directory
-   * or a directory outside the root. `deps` and `reach` from every plugin
-   * union once the stage ends; a target that is then no project is refused.
+   * Projects beyond the directories holding a vx.config, their names, and
+   * edges between projects, as `DiscoveredProject`s (each directory
+   * absolute or relative to the workspace root): a lockfile's importers,
+   * their package names and the dependencies it records; a runner's root
+   * tasks. Runs once per discovery, before any project config loads; each
+   * plugin sees the locked projects and the ones earlier plugins added,
+   * without their edges. A directory that is not a project becomes one
+   * (with no config; named by `name`, else its path). A project named by
+   * its path takes `name`; one its config names keeps that name, and a
+   * different name from an earlier plugin is refused, as is a directory
+   * outside the root. Two projects of one name are refused once the stage
+   * ends. `deps` and `reach` from every plugin union then; a target that is
+   * no project is refused.
    */
   discover?(
     ctx: DiscoverContext,
@@ -80,10 +82,10 @@ export interface VxPlugin {
    * One project's validated config, right after it loaded and before the
    * graph is built. Add, remove or edit tasks. Runs for every loaded project
    * on every run — a locked config is the user's file, and the hook is
-   * applied on top of it live. A package with NO config file is
-   * loaded too, as `{ tasks: {} }`, so a plugin can give tasks to packages
-   * that never wrote one (`ctx.packageJson` carries their scripts); with no
-   * `project` plugin such a package is never visited.
+   * applied on top of it live. A project with NO config file (a
+   * `discover` plugin added it) is loaded too, as `{ tasks: {} }`, so a
+   * plugin can give it tasks; with no `project` plugin such a project is
+   * never visited.
    */
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
 
@@ -280,7 +282,7 @@ export interface WorkspaceHookContext {
 export interface DiscoverContext extends WorkspaceHookContext {
   /** Where vx's cache lives: a plugin may keep what it read to answer here. */
   readonly cacheDir: string
-  /** The projects found so far: core's, then earlier plugins'. */
+  /** The projects found so far: the lock's, then earlier plugins'. */
   readonly projects: readonly ProjectMeta[]
   /**
    * What `git status` lists in the workspace, workspace-relative: modified,
@@ -296,7 +298,11 @@ export interface DiscoverContext extends WorkspaceHookContext {
 export interface DiscoveredProject {
   /** Absolute or relative to the workspace root. */
   readonly dir: string
-  /** Required when `dir` is not a project yet; otherwise must match its name. */
+  /**
+   * Its name, when its config names none: replaces a path name, never a
+   * config's; a different name from an earlier plugin is refused. Unset on
+   * a new directory: its root-relative path.
+   */
   readonly name?: string
   /** Directories this project builds after: `^task` order, and reach for `--filter` and `--affected`. */
   readonly deps?: readonly string[]
@@ -305,18 +311,16 @@ export interface DiscoveredProject {
 }
 
 export interface ProjectHookContext extends BaseContext {
-  /** The package name (`package.json#name`). */
+  /** The project's name (`ProjectMeta.name`). */
   readonly name: string
   /** The project's directory, absolute. */
   readonly dir: string
-  /** The parsed `package.json`, read-only. */
-  readonly packageJson: Readonly<Record<string, unknown>>
   /**
-   * Every package the workspace discovered — the one being visited, the
-   * rest of the run's scope and the packages outside it, config file or
-   * not — as core read them at startup. A plugin whose mapping needs the
-   * whole workspace (a `dependsOn` is only valid against every package's
-   * scripts at once) reads it here instead of walking the workspace a
+   * Every project the workspace discovered — the one being visited, the
+   * rest of the run's scope and the projects outside it, config file or
+   * not — as the `discover` stage left them. A plugin whose mapping needs
+   * the whole workspace (a `dependsOn` is only valid against every
+   * package's scripts at once) reads it here instead of walking the workspace a
    * second time. The same array is handed to every visit of a run and a
    * new one to the next run — a plugin instance outlives a run under `vx
    * watch`, so a per-run memo keys on this array's identity, never on the
@@ -341,7 +345,7 @@ export interface FingerprintClaim {
   /** Bare names at the workspace root the plugin reads: a lockfile (`pnpm-lock.yaml`), a settings file, `turbo.json`. */
   readonly files: readonly string[]
   /**
-   * The projects (package names) a change to a claimed file affects. Called
+   * The projects (by name) a change to a claimed file affects. Called
    * by `--affected` with the file's bytes at the base ref and in the
    * working tree (`null` where it does not exist). Return `undefined` to
    * select every project — the answer a claimant gives when it cannot
@@ -361,7 +365,7 @@ export interface FingerprintChange {
 }
 
 export interface FingerprintContext extends BaseContext {
-  /** Every project in the workspace: package name and absolute directory. */
+  /** Every project in the workspace: name and absolute directory. */
   readonly projects: ReadonlyArray<{ readonly name: string; readonly dir: string }>
 }
 

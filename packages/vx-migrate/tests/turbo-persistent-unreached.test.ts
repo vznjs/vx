@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 
 it("drops a persistent task's readiness note when no edge reaches it, keeps it when one does", async () => {
@@ -30,7 +30,7 @@ it("drops a persistent task's readiness note when no edge reaches it, keeps it w
           JSON.stringify({ extends: ['//'], tasks: { dev: { persistent: true } } }),
         )
       const packageJson = { name, scripts: { dev: 'run-dev' }, dependencies: deps }
-      return { name, dir, packageJson: packageJson as never, configPath: null } as ProjectMeta
+      return { name, dir, packageJson: packageJson as never, configPath: null } as PackageMeta
     }
     const metas = [
       await pkg('apps/nextjs', '@acme/nextjs', { '@acme/ui': 'workspace:*' }, true),

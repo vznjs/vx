@@ -732,7 +732,15 @@ function refuseManifestDir(cacheDir: string, workspaceRoot: string | undefined):
   }
 }
 
-const MANIFESTS = ['package.json', 'pnpm-workspace.yaml']
+// What marks a project or workspace directory: a vx config (workspace
+// PROJECT_CONFIG_FILENAMES) or the workspace file, and a package manifest,
+// which a `discover` plugin makes a project with no config.
+const MANIFESTS = [
+  'package.json',
+  'pnpm-workspace.yaml',
+  ...['ts', 'mts', 'js', 'mjs', 'cts', 'cjs'].map((ext) => `vx.config.${ext}`),
+  ...['ts', 'mts', 'js', 'mjs', 'cts', 'cjs'].map((ext) => `.vx/workspace.${ext}`),
+]
 const OWN_DIR_HINT =
   'Point `cache.dir` in .vx/workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
 

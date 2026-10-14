@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { listProjects, loadWorkspace } from '../src/workspace/workspace.js'
+import { discoverPackages, loadPackageWorkspace } from '../src/workspace/packages.js'
 
 const load = async (name: string) => {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-name-hash-')))
@@ -13,7 +13,7 @@ const load = async (name: string) => {
     await mkdir(path.join(root, 'p'))
     await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["p"]}')
     await writeFile(path.join(root, 'p', 'package.json'), JSON.stringify({ name }))
-    return await listProjects(await loadWorkspace(root)).then(
+    return await discoverPackages(await loadPackageWorkspace(root)).then(
       (ps) => ps.map((p) => p.name),
       (err: Error) => err.message.slice(root.length + 1),
     )

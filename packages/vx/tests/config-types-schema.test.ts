@@ -60,7 +60,7 @@ const RULES = ['dependencies', 'exclusiveOutputs', 'upfrontKeys'] as const satis
 >[]
 const WATCH = ['poll'] as const satisfies readonly Keys<WatchSettings>[]
 const LOCK = ['reviewFiles'] as const satisfies readonly Keys<LockSettings>[]
-const PROJECT = ['tags', 'tasks'] as const satisfies readonly Keys<ProjectConfig>[]
+const PROJECT = ['name', 'tags', 'tasks'] as const satisfies readonly Keys<ProjectConfig>[]
 const TASK = [
   'cache',
   'dependsOn',

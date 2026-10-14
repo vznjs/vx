@@ -34,7 +34,6 @@ import {
   isCacheScope,
   type LoadReads,
   readClaimedFiles,
-  loadWorkspace,
   resolveCacheDir,
   resolveStoreRoot,
   type ProjectEntry,
@@ -64,6 +63,7 @@ import {
   isDefaultBuild,
   loadProjects,
   loadWorkspacePlugins,
+  lockOfDiscovery,
   lockReader,
   type LoadedProjects,
 } from './projects.js'
@@ -187,17 +187,19 @@ export interface PreparedRun {
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun> {
   beginRun()
   mark('startup')
-  // The root manifest is read once for the root and the globs, a claimed
-  // root file once. A watch cycle is a new run and reads them afresh.
+  // A claimed root file is read once. A watch cycle is a new run and reads
+  // them afresh.
   const reads: LoadReads = new Map()
   const workspaceRoot = await findWorkspaceRoot(options.cwd)
-  // A run with nothing staged reads the lock whatever discovery
-  // finds, so the read (1.1 MB at 1,000 projects, ~10 ms to read and
-  // parse) starts here and overlaps discovery's I/O instead of following
-  // the cache open (X-181). A missing or malformed lock still refuses at
-  // the config load, after any earlier refusal.
-  const readLock = lockReader(workspaceRoot)
-  if (options.staged === undefined) void readLock().catch(() => {})
+  // The lock is where a run's projects come from, so the read (1.1 MB at
+  // 1,000 projects, ~10 ms to read and parse) starts here and overlaps the
+  // workspace config's evaluation (X-181). A missing or malformed lock
+  // refuses at discovery, after any earlier refusal.
+  const reused = options.discovered?.root === workspaceRoot ? options.discovered : undefined
+  const readLock =
+    (reused !== undefined ? lockOfDiscovery(reused.projects) : undefined) ??
+    lockReader(workspaceRoot)
+  if (reused === undefined) void readLock().catch(() => {})
   // An UNSCOPED run (no explicit scope, at least one bare task name)
   // enumerates the whole tree whatever the configs say, so git starts
   // HERE — the walk needs only the root — and overlaps the workspace
@@ -215,12 +217,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // whole-tree enumeration a scoped run would otherwise scope later, here or
   // in the CLI's selection pass; the run reuses it instead of walking the
   // tree twice (G-75).
-  const reused = options.discovered?.root === workspaceRoot ? options.discovered : undefined
   const git =
     (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
     lazyGitEnumeration(workspaceRoot)
   if (wholeTree) void git.start()
-  const workspace = await loadWorkspace(workspaceRoot, reads)
   const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, (m) =>
     log.status(m),
   )
@@ -238,7 +238,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const projectMetas =
     reused !== undefined
       ? reused.projects
-      : await discoverProjects(workspace, plugins, cacheDir, (m) => log.status(m), git)
+      : await discoverProjects(
+          workspaceRoot,
+          readLock,
+          plugins,
+          cacheDir,
+          (m) => log.status(m),
+          git,
+        )
   mark('discover projects')
 
   // SCOPED config loading: configs are programs, and evaluating 1090
@@ -258,7 +265,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // anchors alone are the scope and nothing else needs its config
   // evaluated.
   // `vx run //#lint` is Turbo's `turbo run //#lint`: the root project's
-  // task, the root named by its package.json name here (D-39).
+  // task, under the name it has when something names it (D-39).
   const root = path.resolve(workspaceRoot)
   const rootName = projectMetas.find((m) => path.resolve(m.dir) === root)?.name
   const tasks =

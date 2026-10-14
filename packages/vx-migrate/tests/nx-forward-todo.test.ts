@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 
 let root: string
@@ -17,7 +17,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-async function meta(name: string): Promise<ProjectMeta> {
+async function meta(name: string): Promise<PackageMeta> {
   const dir = path.join(root, 'apps', name)
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))

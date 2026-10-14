@@ -23,8 +23,6 @@ import {
   type AffectedChanges,
   buildPackageGraph,
   findWorkspaceRoot,
-  type LoadReads,
-  loadWorkspace,
   type ProjectEntry,
   type ProjectMeta,
 } from '../workspace/index.js'
@@ -84,9 +82,8 @@ export function parseShowArgs(args: readonly string[]): ShowArgs {
 export async function showCmd(args: readonly string[]): Promise<number> {
   const parsed = parseShowArgs(args)
   if (parsed.error) return refuse('show', args, parsed.error, 'VX_E_USAGE')
-  const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(process.cwd())
-  const metas = await discoverCliProjects(await loadWorkspace(root, reads))
+  const metas = await discoverCliProjects(root)
   const byName = new Map(metas.map((m) => [m.name, m]))
 
   // `//#task` is Turbo's root package's task: the root project here (D-39),

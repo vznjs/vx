@@ -1,30 +1,27 @@
 // The `discover` stage: a plugin names directories that become projects
-// beyond the package manager's members (turbo()'s root for `//#task`), and
-// gives any project edges as directories: `deps` (order and reach) and
-// `reach` (reach only).
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+// beyond the locked ones (turbo()'s root for `//#task`), names a project its
+// path names, and gives any project edges as directories: `deps` (order and
+// reach) and `reach` (reach only).
+import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { discoverProjects, type VxPlugin } from '../src/orchestrator/index.js'
+import type { ProjectConfig } from '../src/config.js'
 import {
   applyFilters,
   buildPackageGraph,
+  type Lockfile,
   parseFilter,
   type ProjectMeta,
-  type Workspace,
 } from '../src/workspace/index.js'
 
 let root: string
-let workspace: Workspace
 const warn = (): void => {}
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-discover-')))
-  workspace = { root, packageGlobs: ['packages/*'] }
-  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
   await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
-  await writeFile(path.join(root, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
   await mkdir(path.join(root, 'tools', 'gen'), { recursive: true })
 })
 afterEach(() => rm(root, { recursive: true, force: true }))
@@ -32,45 +29,70 @@ afterEach(() => rm(root, { recursive: true, force: true }))
 const plugin = (name: string, discover: VxPlugin['discover']): VxPlugin =>
   ({ name, discover }) as VxPlugin
 
-const names = async (plugins: VxPlugin[]): Promise<string[]> =>
-  (await discoverProjects(workspace, plugins, root, warn)).map(
-    (p) => `${p.name}@${path.relative(root, p.dir) || '.'}`,
-  )
-
-describe('discover stage', () => {
-  it('CONTROL: without the stage, only the members', async () => {
-    expect(await names([])).toEqual(['a@packages/a'])
+/** A lock holding `packages/a` and the `extra` directories, each config `{}` unless given. */
+const lockOf =
+  (extra: Record<string, ProjectConfig> = {}) =>
+  async (): Promise<Lockfile> => ({
+    version: 3,
+    projects: Object.fromEntries(
+      Object.entries({ 'packages/a': {}, ...extra }).map(([d, config]) => [
+        d,
+        { file: 'vx.config.mjs', config },
+      ]),
+    ),
   })
 
-  it('a named root and a manifest-less directory become projects, sorted by name', async () => {
+const discover = (plugins: VxPlugin[], extra?: Record<string, ProjectConfig>) =>
+  discoverProjects(root, lockOf(extra), plugins, root, warn)
+
+const names = async (plugins: VxPlugin[], extra?: Record<string, ProjectConfig>) =>
+  (await discover(plugins, extra)).map((p) => `${p.name}@${path.relative(root, p.dir) || '.'}`)
+
+describe('discover stage', () => {
+  it('CONTROL: without the stage, the locked directories, named by path', async () => {
+    expect(await names([])).toEqual(['packages/a@packages/a'])
+  })
+
+  it('a named root and a new directory become projects, sorted by name', async () => {
     const seen: string[][] = []
     const p1 = plugin('p1', () => [{ dir: '.', name: 'ws' }])
     const p2 = plugin('p2', (ctx) => {
       seen.push(ctx.projects.map((m) => m.name))
       return [{ dir: path.join(root, 'tools', 'gen'), name: 'gen' }]
     })
-    expect(await names([p1, p2])).toEqual(['a@packages/a', 'gen@tools/gen', 'ws@.'])
-    expect(seen).toEqual([['a', 'ws']])
+    expect(await names([p1, p2])).toEqual(['gen@tools/gen', 'packages/a@packages/a', 'ws@.'])
+    expect(seen).toEqual([['packages/a', 'ws']])
   })
 
-  it("a nameless package.json takes the plugin's name; the stage sees the cache dir", async () => {
-    await writeFile(
-      path.join(root, 'tools', 'gen', 'package.json'),
-      JSON.stringify({ private: true }),
-    )
+  it('a new directory with no name is named by its path; the stage sees the cache dir', async () => {
     const dirs: string[] = []
     const p = plugin('p', (ctx) => {
       dirs.push(ctx.cacheDir)
-      return [{ dir: 'tools/gen', name: 'gen' }]
+      return [{ dir: 'tools/gen' }]
     })
-    expect(await names([p])).toEqual(['a@packages/a', 'gen@tools/gen'])
+    expect(await names([p])).toEqual(['packages/a@packages/a', 'tools/gen@tools/gen'])
     expect(dirs).toEqual([root])
   })
 
-  it('a directory already found under the same name is a no-op', async () => {
-    expect(await names([plugin('p', () => [{ dir: 'packages/a', name: 'a' }])])).toEqual([
-      'a@packages/a',
+  it("a path-named project takes the plugin's name; a config's name wins", async () => {
+    await mkdir(path.join(root, 'packages', 'c'), { recursive: true })
+    const p = plugin('p', () => [
+      { dir: 'packages/a', name: 'a' },
+      { dir: 'packages/c', name: 'plugin-c' },
     ])
+    expect(await names([p], { 'packages/c': { name: 'c' } })).toEqual([
+      'a@packages/a',
+      'c@packages/c',
+    ])
+  })
+
+  it('two projects of one name once the stage ends are refused, naming both', async () => {
+    const err = await discover([plugin('p', () => [{ dir: 'tools/gen', name: 'packages/a' }])])
+      .then(() => null)
+      .catch((e: Error) => e.message)
+    expect(err).toBe(
+      'two projects are named "packages/a": packages/a and tools/gen — give one another `name` in its vx.config',
+    )
   })
 
   const edgesOf = (projects: readonly ProjectMeta[]): Record<string, unknown> =>
@@ -82,15 +104,15 @@ describe('discover stage', () => {
 
   it('deps and reach name existing projects by directory; plugins union', async () => {
     await mkdir(path.join(root, 'packages', 'b'), { recursive: true })
-    await writeFile(path.join(root, 'packages', 'b', 'package.json'), JSON.stringify({ name: 'b' }))
     const p1 = plugin('p1', () => [
       { dir: 'packages/a', deps: ['packages/b'] },
       { dir: path.join(root, 'tools', 'gen'), name: 'gen', reach: ['packages/a'] },
     ])
     const p2 = plugin('p2', () => [
       { dir: 'packages/a', name: 'a', deps: ['tools/gen', 'packages/b'], reach: ['packages/b'] },
+      { dir: 'packages/b', name: 'b' },
     ])
-    const projects = await discoverProjects(workspace, [p1, p2], root, warn)
+    const projects = await discover([p1, p2], { 'packages/b': {} })
     expect(edgesOf(projects)).toEqual({
       a: { deps: ['b', 'gen'], reach: ['b'] },
       gen: { deps: undefined, reach: ['a'] },
@@ -98,31 +120,21 @@ describe('discover stage', () => {
   })
 
   it('CONTROL: no deps or reach leaves every project edgeless', async () => {
-    const projects = await discoverProjects(
-      workspace,
-      [plugin('p', () => [{ dir: 'packages/a', name: 'a' }])],
-      root,
-      warn,
-    )
+    const projects = await discover([plugin('p', () => [{ dir: 'packages/a', name: 'a' }])])
     expect(edgesOf(projects)).toEqual({})
   })
 
   it('deps order and reach; reach only reaches (--filter, --affected)', async () => {
     await mkdir(path.join(root, 'packages', 'lib'), { recursive: true })
-    await writeFile(
-      path.join(root, 'packages', 'lib', 'package.json'),
-      JSON.stringify({ name: 'lib' }),
-    )
-    const projects = await discoverProjects(
-      workspace,
+    const projects = await discover(
       [
         plugin('p', () => [
-          { dir: 'packages/a', reach: ['packages/lib'] },
+          { dir: 'packages/a', name: 'a', reach: ['packages/lib'] },
           { dir: 'tools/gen', name: 'gen', deps: ['packages/lib'] },
+          { dir: 'packages/lib', name: 'lib' },
         ]),
       ],
-      root,
-      warn,
+      { 'packages/lib': {} },
     )
     const graph = buildPackageGraph(projects)
     expect(graph.directDeps('gen')).toEqual(['lib'])
@@ -137,19 +149,7 @@ describe('discover stage', () => {
 
   const refusals: Array<[string, VxPlugin['discover'], string]> = [
     ['outside the root', () => [{ dir: '..', name: 'x' }], 'outside the workspace root'],
-    ['a taken name', () => [{ dir: 'tools/gen', name: 'a' }], 'the name is taken by packages/a'],
-    [
-      'a project under another name',
-      () => [{ dir: 'packages/a', name: 'b' }],
-      'already the project "a"',
-    ],
-    [
-      'a manifest of another name',
-      () => [{ dir: '.', name: 'root' }],
-      'its package.json names it "ws"',
-    ],
     ['no such directory', () => [{ dir: 'nope', name: 'n' }], 'no such directory'],
-    // No manifest in tools/gen: the plugin's name is the only one.
     [
       'a padded name',
       () => [{ dir: 'tools/gen', name: ' gen' }],
@@ -171,19 +171,14 @@ describe('discover stage', () => {
       'expected { dir: string, name?: string, deps?: string[], reach?: string[] }',
     ],
     [
-      'a nameless directory that is not a project',
-      () => [{ dir: 'tools/gen' }],
-      'project at tools/gen: not a project yet — give it a name',
-    ],
-    [
       'a dep on a directory that is no project',
       () => [{ dir: 'packages/a', deps: ['tools/gen'] }],
-      'gave project "a" an edge to tools/gen: not a project',
+      'gave project "packages/a" an edge to tools/gen: not a project',
     ],
     [
       'a reach outside the root',
       () => [{ dir: 'packages/a', reach: ['..'] }],
-      'gave project "a" an edge to ..: outside the workspace root',
+      'gave project "packages/a" an edge to ..: outside the workspace root',
     ],
     [
       'a conflicting rename of a project an earlier entry named',
@@ -191,13 +186,13 @@ describe('discover stage', () => {
         { dir: 'tools/gen', name: 'gen' },
         { dir: 'tools/gen', name: 'generator', deps: ['packages/a'] },
       ],
-      'already the project "gen"',
+      `plugin 'p' already named it "gen"`,
     ],
     ['not an array', () => ({}) as never, 'failed in discover: expected an array, got an object'],
   ]
   for (const [what, discover, message] of refusals) {
     it(`refuses ${what}, naming the plugin`, async () => {
-      const err = await discoverProjects(workspace, [plugin('p', discover)], root, warn).then(
+      const err = await discoverProjects(root, lockOf(), [plugin('p', discover)], root, warn).then(
         () => null,
         (e: unknown) => e as Error,
       )

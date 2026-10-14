@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { quoteTsLiteral, type ProjectMeta } from '@vzn/vx'
+import { quoteTsLiteral, type PackageMeta } from '@vzn/vx'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, dotenvGlobsProbe } from '../src/dotenv-probe.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 
@@ -31,7 +31,7 @@ describe('migrateTurbo: the .env probes', () => {
     const dir = path.join(root, 'packages', 'a')
     await mkdir(dir, { recursive: true })
     const scripts = { build: 'tsc', test: 'vitest' }
-    const metas: ProjectMeta[] = [
+    const metas: PackageMeta[] = [
       { name: 'a', dir, packageJson: { name: 'a', scripts } as never, configPath: null },
     ]
     const p = await migrateTurbo(root, metas)

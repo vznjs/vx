@@ -33,7 +33,7 @@ import {
   silentLogger,
   STAMP_CMD,
 } from './helpers/orchestrator-fixture.js'
-import { pluginOrigin, pluginSource, testPlugin } from './helpers/plugin.js'
+import { packagesSource, pluginOrigin, pluginSource, testPlugin } from './helpers/plugin.js'
 import {
   executions,
   initialOnly,
@@ -187,14 +187,19 @@ describe('the local workspace source', () => {
     expect(CORE_INDEX).toBe(path.resolve(import.meta.dir, '../src/index.ts'))
     expect(existsSync(CORE_INDEX)).toBe(true)
     expect(PLUGIN_IMPORT).toBe(`import { definePlugin } from ${JSON.stringify(CORE_INDEX)}\n`)
-    expect(localWorkspaceSource()).toBe(`${PLUGIN_IMPORT}\nexport default { plugins: [] }\n`)
+    // `packages()` first, unless the list declares it: fixtures are named by their manifests.
+    const pkgs = packagesSource()
+    expect(localWorkspaceSource()).toBe(`${PLUGIN_IMPORT}\nexport default { plugins: [${pkgs}] }\n`)
     expect(localWorkspaceSource(['a()', 'b()'], 'const a = 1\n')).toBe(
-      `${PLUGIN_IMPORT}const a = 1\n\nexport default { plugins: [a(), b()] }\n`,
+      `${PLUGIN_IMPORT}const a = 1\n\nexport default { plugins: [${pkgs}, a(), b()] }\n`,
+    )
+    expect(localWorkspaceSource([pkgs])).toBe(
+      `${PLUGIN_IMPORT}\nexport default { plugins: [${pkgs}] }\n`,
     )
     const dir = scratch()
     await writeLocalWorkspace(dir)
     const mod = await import(path.join(dir, '.vx/workspace.mjs'))
-    expect(mod.default).toEqual({ plugins: [] })
+    expect(mod.default.plugins.map((p: { name: string }) => p.name)).toEqual(['vx-test-packages'])
   })
 })
 

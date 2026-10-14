@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 
 let root: string
@@ -27,7 +27,7 @@ async function plan() {
       },
     }),
   )
-  const metas: ProjectMeta[] = []
+  const metas: PackageMeta[] = []
   for (const name of ['a', 'b', 'c']) {
     const dir = path.join(root, 'packages', name)
     await mkdir(dir, { recursive: true })

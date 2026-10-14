@@ -94,8 +94,8 @@ parser's docblock marks them (`src/graph/dependency-spec.ts`).
 
 | Capability                                            | Source       | vx source                        |
 | ----------------------------------------------------- | ------------ | -------------------------------- |
-| Read `pnpm-workspace.yaml`                            | pnpm + Turbo | `src/workspace/workspace.ts`     |
-| Read `package.json` `workspaces` (npm/yarn/bun)       | Turbo        | `src/workspace/workspace.ts`     |
+| Read `pnpm-workspace.yaml` (`vx init`)                | pnpm + Turbo | `src/workspace/packages.ts`      |
+| Read `package.json` `workspaces` (`vx init`)          | Turbo        | `src/workspace/packages.ts`      |
 | Build package-dep graph from workspace `dependencies` | Turbo + Nx   | `src/workspace/package-graph.ts` |
 | Lockfile fingerprint at workspace level               | Turbo + Nx   | `src/workspace/fingerprint.ts`   |
 

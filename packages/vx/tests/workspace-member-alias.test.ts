@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, spyOn } from 'bun:test'
-import { listProjects, loadWorkspace } from '../src/workspace/workspace.js'
+import { discoverPackages, loadPackageWorkspace } from '../src/workspace/packages.js'
 
 let tmp: string | undefined
 
@@ -32,7 +32,7 @@ const workspace = async (setup: (real: string) => Promise<void>) => {
   await setup(real)
   await symlink(real, path.join(tmp, 'link'))
   const root = path.join(tmp, 'link')
-  return listProjects(await loadWorkspace(root)).then(
+  return discoverPackages(await loadPackageWorkspace(root)).then(
     (ps) => ps.map((p) => `${p.name} ${path.relative(root, p.dir).split(path.sep).join('/')}`),
     (err: Error) => err.message,
   )

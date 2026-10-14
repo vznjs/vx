@@ -19,6 +19,7 @@ import { packArtifactBytes, planArtifact } from '../src/cache/archive.js'
 import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { makeWatchIgnore } from '../src/cli/watch-filter.js'
 import { run } from './helpers/orchestrator.js'
+import { workspaceWith } from './helpers/local-workspace.js'
 
 const BUILD = `export default { tasks: { build: {
   exec: { command: 'mkdir -p dist/sub && cp src/a.txt dist/a.js && echo g > dist/sub/gen.js && echo t > dist/scratch.tmp' },
@@ -49,7 +50,7 @@ const build = async (tasks = ['build']) => {
 const additive = () =>
   Bun.write(
     path.join(fx.root, '.vx/workspace.mjs'),
-    'export default { run: { rules: { exclusiveOutputs: false } } }\n',
+    workspaceWith('run: { rules: { exclusiveOutputs: false } }'),
   )
 const read = (rel: string): string => readFileSync(path.join(app, rel), 'utf8')
 /** The paths an entry recorded, as the index holds them. */

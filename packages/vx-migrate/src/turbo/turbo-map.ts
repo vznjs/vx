@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { isLiteralPattern, pruneOrphanPersistentNotes, type ProjectMeta, UserError } from '@vzn/vx'
+import { isLiteralPattern, pruneOrphanPersistentNotes, type PackageMeta, UserError } from '@vzn/vx'
 import { literalGlob, minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
@@ -526,7 +526,7 @@ function taskAt(tasks: Record<string, TurboTask>, key: string): TurboTask | unde
   return Object.hasOwn(tasks, key) ? tasks[key] : undefined
 }
 
-function declares(meta: ProjectMeta, dependency: string): boolean {
+function declares(meta: PackageMeta, dependency: string): boolean {
   const pj = meta.packageJson as unknown as Record<string, unknown>
   // Turbo counts every kind but a peer in a monorepo.
   return ['dependencies', 'devDependencies', 'optionalDependencies'].some((field) => {
@@ -842,11 +842,11 @@ function withGlobal(cfg: TurboJson): TurboJson {
  */
 function rootDependencyGlobs(
   root: string,
-  rootPkg: ProjectMeta['packageJson'],
-  metas: readonly ProjectMeta[],
+  rootPkg: PackageMeta['packageJson'],
+  metas: readonly PackageMeta[],
 ): string[] {
   const byName = new Map(metas.map((m) => [m.name, m]))
-  const depsOf = (pkg: ProjectMeta['packageJson']): string[] =>
+  const depsOf = (pkg: PackageMeta['packageJson']): string[] =>
     (['dependencies', 'devDependencies', 'optionalDependencies'] as const).flatMap((f) => {
       const d: unknown = pkg[f]
       return d !== null && typeof d === 'object' ? Object.keys(d) : []
@@ -869,11 +869,11 @@ function rootDependencyGlobs(
 }
 
 /** The root's manifest; `{}` when it is missing or no object. */
-async function rootPackageJson(root: string): Promise<ProjectMeta['packageJson']> {
+async function rootPackageJson(root: string): Promise<PackageMeta['packageJson']> {
   const pkg = (await Bun.file(path.join(root, 'package.json'))
     .json()
     .catch(() => null)) as unknown
-  return (pkg !== null && typeof pkg === 'object' ? pkg : {}) as ProjectMeta['packageJson']
+  return (pkg !== null && typeof pkg === 'object' ? pkg : {}) as PackageMeta['packageJson']
 }
 
 /**
@@ -908,7 +908,7 @@ export function microfrontendsConfigs(
 
 export async function mapTurboWorkspace(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   opts: MapTurboOptions,
 ): Promise<TurboMapping> {
   // A workspace with no Turbo config answered with a bare ENOENT and a stack
@@ -1025,7 +1025,7 @@ export async function mapTurboWorkspace(
   // plain tasks on its root package (its `non-monorepo` example). As a
   // `//#task` holder only, the root planned nothing: "no projects declare".
   const singlePackage = rootMeta !== undefined && metas.length === 1
-  const definitions = (meta: ProjectMeta) => {
+  const definitions = (meta: PackageMeta) => {
     if (meta === rootMeta && !singlePackage) {
       const defined = new Set(rootTaskNames)
       const defFor = (name: string): TurboTask | undefined =>
@@ -1227,10 +1227,10 @@ export async function mapTurboWorkspace(
   const inferredOf = new Map<string, readonly string[]>()
   // The names a package's files and its workspace dependencies' spell, once.
   const spelledMemo = new Map<string, Promise<readonly string[]>>()
-  const spelledBy = (m: ProjectMeta): Promise<readonly string[]> => {
+  const spelledBy = (m: PackageMeta): Promise<readonly string[]> => {
     let names = spelledMemo.get(m.name)
     if (names === undefined) {
-      const closure = new Set<ProjectMeta>([m])
+      const closure = new Set<PackageMeta>([m])
       for (const p of closure)
         for (const d of metas) if (!closure.has(d) && declares(p, d.name)) closure.add(d)
       names = opts.sourceNames!([...closure].map((p) => p.dir))
@@ -1476,7 +1476,7 @@ export async function mapTurboWorkspace(
       for (const sel of dep.from ?? def!.dependsOn ?? []) {
         if (envDependency(sel) !== null) continue
         const hash = sel.indexOf('#')
-        const producers: [ProjectMeta | undefined, string][] = sel.startsWith('^')
+        const producers: [PackageMeta | undefined, string][] = sel.startsWith('^')
           ? metas.filter((m) => declares(meta, m.name)).map((m) => [m, sel.slice(1)])
           : hash === -1
             ? [[meta, sel]]
@@ -1639,7 +1639,7 @@ function reanchor(glob: string, dir: string): string | null {
  */
 function pruneUnreachedPersistentNotes(
   projects: readonly TurboMappedProject[],
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   note: string,
 ): void {
   const byName = new Map(metas.map((m) => [m.name, m]))
@@ -1715,7 +1715,7 @@ function npmScriptEnv(
   task: Record<string, unknown>,
   script: string,
   unfolded: boolean,
-  meta: ProjectMeta,
+  meta: PackageMeta,
   opts: MapTurboOptions,
 ): void {
   const exec = task['exec'] as { command: string; env?: Record<string, unknown> }

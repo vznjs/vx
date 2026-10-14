@@ -14,12 +14,12 @@ const where = (key: string): string | undefined => {
 
 it("names vx's home for a workspace key another tool spells (D-98)", () => {
   const members =
-    "vx spells it `workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members"
+    'vx spells it a `vx.config` in each project directory: a project is a directory holding one'
   expect(where('packages')).toBe(members)
   expect(where('workspaces')).toBe(members)
   expect(where('projects')).toBe(members)
   expect(where('ignore')).toBe(
-    'vx spells it a `!` pattern in the workspace globs (package.json `workspaces` or pnpm-workspace.yaml)',
+    "vx spells it no field: a directory with no `vx.config` is no project, and git's ignore rules apply",
   )
   expect(where('catalog')).toBe(
     "vx spells it pnpm-workspace.yaml's or package.json's `catalog`, where the package manager reads it",

@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 
 it('a task `*` env name lists what its package spells; one nothing spells stays a todo', async () => {
@@ -39,7 +39,7 @@ it('a task `*` env name lists what its package spells; one nothing spells stays 
     Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
     Bun.spawnSync(['git', 'add', '-A'], { cwd: root })
     const scripts = { build: 'tsc', lint: 'eslint .' }
-    const metas: ProjectMeta[] = [
+    const metas: PackageMeta[] = [
       { name: 'a', dir, packageJson: { name: 'a', scripts } as never, configPath: null },
     ]
     const p = await migrateTurbo(root, metas)

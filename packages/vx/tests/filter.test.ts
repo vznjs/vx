@@ -13,7 +13,6 @@ function mkProject(name: string, dir: string, deps: string[] = []): ProjectMeta 
   return {
     name,
     dir,
-    packageJson: { name },
     configPath: null,
     deps,
   }

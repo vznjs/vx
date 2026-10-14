@@ -8,7 +8,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 
 const rc = (options: Record<string, unknown>) => ({ executor: 'nx:run-commands', options })
@@ -45,7 +45,7 @@ async function tasks(): Promise<Record<string, unknown>> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-call-'))
   try {
     await writeFile(path.join(root, 'package.json'), '{"name":"root","private":true}')
-    const metas: ProjectMeta[] = ['a', 'b'].map((n) => ({
+    const metas: PackageMeta[] = ['a', 'b'].map((n) => ({
       name: `@s/${n}`,
       dir: path.join(root, 'libs', n),
       packageJson: { name: `@s/${n}` },

@@ -1,6 +1,6 @@
 import { documentedFlags, helpText, verbHelpText } from '../src/cli/help.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { formatBytes } from '../src/cli/format.js'
 import { parseDuration, parsePruneArgs, parseSize } from '../src/cli/cache.js'
 import { parseRunArgs } from '../src/cli/run.js'
@@ -2311,7 +2311,7 @@ describe('vx cache clean command', () => {
       path.join(workspaceRoot, 'pnpm-workspace.yaml'),
       'packages:\n  - "packages/*"\n',
     )
-    await Bun.write(path.join(workspaceRoot, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(workspaceRoot, '.vx/workspace.mjs'), localWorkspaceSource())
     process.chdir(workspaceRoot)
   })
 
@@ -2674,7 +2674,7 @@ describe('the project a bare task runs in, from a nested subdirectory (e2e)', ()
         const dir = path.join(root, rel)
         await mkdir(path.join(dir, 'src'), { recursive: true })
         await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
-        await Bun.write(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
+        await Bun.write(path.join(dir, '.vx/workspace.mjs'), localWorkspaceSource())
         await writeFile(
           path.join(dir, 'vx.config.mjs'),
           `export default { tasks: { build: { exec: { command: 'true' } } } }`,

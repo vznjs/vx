@@ -131,8 +131,8 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
   if (s === '') throw new UserError(`filter "${raw}" names no project`)
 
   // `//` is Turbo's name for the root package (`--filter=//`, `//...`,
-  // `!//`, probed on 2.8.17). vx names the root project by its
-  // package.json name, so `//` is its directory, and only a project
+  // `!//`, probed on 2.8.17), and vx's for the root project unless
+  // something names it, so `//` is its directory, and only a project
   // there: read as `.`, it would select every project when the root is
   // none.
   if (s === '//') {

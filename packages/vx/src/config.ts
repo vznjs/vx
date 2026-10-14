@@ -252,6 +252,13 @@ void _pluginHooksMatch
 
 export interface ProjectConfig {
   /**
+   * The project's name, as task specs, filters and `dependsOn` address it.
+   * Unset: the name a `discover` plugin gives (a lockfile plugin's
+   * `package.json#name`), else the directory's root-relative path (`//`
+   * for the root).
+   */
+  name?: string
+  /**
    * Labels for selection: `--filter tag:<name>` picks the projects that
    * carry one. Not in any cache key: a tag changes no task's behaviour.
    */

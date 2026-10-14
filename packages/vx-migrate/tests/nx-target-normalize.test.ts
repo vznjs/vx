@@ -4,7 +4,7 @@
 // graph that skipped it wrote a failing placeholder.
 
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 
 describe('a target with neither executor nor command', () => {
@@ -25,7 +25,7 @@ describe('a target with neither executor nor command', () => {
       },
       dependencies: { a: [] },
     }
-    const meta: ProjectMeta = {
+    const meta: PackageMeta = {
       name: 'a',
       dir: '/w/libs/a',
       packageJson: { name: 'a' },

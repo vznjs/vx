@@ -25,7 +25,7 @@ import { failedLabel } from '../src/orchestrator/events.js'
 import { run } from './helpers/orchestrator.js'
 import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { waitForProducers } from './helpers/local-workspace.js'
+import { waitForProducers, workspaceWith } from './helpers/local-workspace.js'
 import { edgesSource } from './helpers/plugin.js'
 
 const TIMEOUT = 30_000
@@ -321,10 +321,7 @@ describe('cache.inputStability: what a write during the command means', () => {
     async () => {
       await fixture('formatted')
       const ws = path.join(root, '.vx/workspace.mjs')
-      await writeFile(
-        ws,
-        "export default { plugins: [], cache: { inputStability: { strategy: 'mutable' } } }\n",
-      )
+      await writeFile(ws, workspaceWith("cache: { inputStability: { strategy: 'mutable' } }"))
       await runTask('format')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       await addProject(root, 'app', formatter('formatted', { strategy: 'immutable' }))

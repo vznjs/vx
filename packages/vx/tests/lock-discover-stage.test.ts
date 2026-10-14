@@ -64,7 +64,8 @@ it('vx lock freezes the discovered project, so lock --check && run succeeds', as
   const locked = Object.keys(
     (await Bun.file(path.join(root, '.vx/projects.lock.json')).json()).projects,
   )
-  expect(locked).toEqual(['app', 'gen'])
+  // By directory: a project with a config is locked whoever names it.
+  expect(locked).toEqual(['packages/app', 'tools/gen'])
   const run = await vx(root, ['run', 'build', '--all'], REAL_BIN)
   expect(`${run.code}\n${run.err}`).toStartWith('0\n')
   expect(run.out).toContain('gen#build')

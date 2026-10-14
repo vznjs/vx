@@ -87,6 +87,7 @@ const CONFIG = (dep: boolean) => `export default {
 
 // Every field a task config may carry, so \`vx show\` prints each once.
 const KITCHEN = `export default {
+  name: 'kitchen',
   tags: ['ui'],
   tasks: {
     all: {
@@ -713,7 +714,7 @@ describe('each schema object is its source type', () => {
 
   it('show', () => {
     expect(def('show', 'project', 'properties', 'config')).toEqual(
-      keys<ProjectConfig>({ tags: true, tasks: true }),
+      keys<ProjectConfig>({ name: true, tags: true, tasks: true }),
     )
     expect(def('show', 'taskConfig')).toEqual(
       keys<TaskConfig>({ description: true, exec: true, dependsOn: true, cache: true }),

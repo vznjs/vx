@@ -42,14 +42,15 @@ describe('the Troubleshooting page quotes vx as it prints', () => {
     expect(missing).toEqual([])
   })
 
-  // J2-38: a member dir with a vx config and no package.json is skipped
-  // with a warning (#2492), and the `not inside a project` row's fix does
-  // not reach it — the page names the warning and its fix.
-  it('names the skipped config dir warning', () => {
+  // A project is a directory with a vx.config (owner, 2026-10-14): the
+  // J2-38 row (a config with no package.json, skipped) left with the
+  // warning, and the refusal a name clash prints took its place.
+  it('names the two-projects-one-name refusal and its fix', () => {
     const page = readFileSync(PAGE, 'utf8')
-    const warning = 'has a vx config but no package.json — skipped'
-    expect(readFileSync(path.join(SRC, 'workspace', 'workspace.ts'), 'utf8')).toContain(warning)
-    const row = page.split('\n').find((l) => l.includes(warning))
-    expect(row).toContain('Add a `package.json` with a `"name"`')
+    expect(readFileSync(path.join(SRC, 'workspace', 'workspace.ts'), 'utf8')).toContain(
+      'two projects are named "',
+    )
+    const row = page.split('\n').find((l) => l.includes('two projects are named'))
+    expect(row).toContain('set another `name`')
   })
 })

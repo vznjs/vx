@@ -5,7 +5,7 @@
 // name would change meaning the day a plugin declares that verb.
 
 import { isDefaultBuild, nxProjectTarget, projectNamed } from '../orchestrator/index.js'
-import { findWorkspaceRoot, loadWorkspace } from '../workspace/index.js'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { nearest } from '../util/index.js'
 import { findCwdProject } from './select.js'
 import { discoverCliProjects, loadCliProjects } from './workspace-config.js'
@@ -79,7 +79,7 @@ async function workspaceProjects(
 ): Promise<Awaited<ReturnType<typeof loadCliProjects>> | null> {
   try {
     const root = await findWorkspaceRoot(cwd)
-    return await loadCliProjects(root, await discoverCliProjects(await loadWorkspace(root)))
+    return await loadCliProjects(root, await discoverCliProjects(root))
   } catch {
     // No workspace, or a config that does not load: the caller's plain line stands.
     return null

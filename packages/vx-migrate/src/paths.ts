@@ -13,7 +13,7 @@
 // cheapest moment to collapse a duplicate is before it does.
 
 import path from 'node:path'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 
 /** `to` relative to `from`, POSIX-separated — core's `relPosix`, which is not on the façade. */
 export function relPosix(from: string, to: string): string {
@@ -30,7 +30,7 @@ export function relPosix(from: string, to: string): string {
  * mappers did not. Null-prototype, so a turbo.json task or Nx target named
  * `constructor` or `toString` finds no script rather than Object's method.
  */
-export function packageScripts(meta: ProjectMeta): Record<string, unknown> {
+export function packageScripts(meta: PackageMeta): Record<string, unknown> {
   const raw = (meta.packageJson as unknown as { scripts?: unknown }).scripts
   const scripts: Record<string, unknown> = Object.create(null)
   if (!isRecord(raw)) return scripts

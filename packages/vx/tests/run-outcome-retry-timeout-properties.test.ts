@@ -15,6 +15,7 @@ import { run } from './helpers/orchestrator.js'
 import type { ContinueMode } from '../src/graph/index.js'
 import { gitInitCommit } from './helpers/workspace.js'
 import { rng } from './helpers/rng.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const errs: string[] = []
 const log: Logger = {
@@ -46,7 +47,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
   await mkdir(path.join(p, 'src'), { recursive: true })
   await mkdir(marks)
   await writeFile(path.join(root, 'package.json'), '{"name":"fx","workspaces":["packages/*"]}')
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   await writeFile(path.join(p, 'package.json'), '{"name":"p"}')
 
   const ts = Array.from({ length: 3 + Math.floor(rnd() * 6) }, (_, i) => `t${i}`)

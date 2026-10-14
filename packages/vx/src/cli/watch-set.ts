@@ -3,11 +3,11 @@
 // directories a package glob can grow. Read at start and again whenever an
 // edit reshapes the set; the loop in watch.ts decides when.
 
-import fs from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import {
   buildPackageGraph,
+  lockKey,
   configImports,
   readLockfile,
   WORKSPACE_CONFIG_FILENAMES,
@@ -178,9 +178,10 @@ export async function sweepConfigs(
   // hand-edited entry, is out of this concern's scope.
   const lock = await readLockfile(workspaceRoot).catch(() => null)
   for (const p of projects) {
-    if (p.configPath === null || lock === null || !Object.hasOwn(lock.projects, p.name)) continue
+    const dir = lockKey(workspaceRoot, p.dir)
+    if (p.configPath === null || lock === null || !Object.hasOwn(lock.projects, dir)) continue
     try {
-      fold(p.dir, lock.projects[p.name]!)
+      fold(p.dir, lock.projects[dir]!.config)
     } catch {
       // malformed entry
     }
@@ -217,31 +218,4 @@ function reachableNames(
     }
   }
   return [...names].some((n) => n.includes('*')) ? null : names
-}
-
-/**
- * The directory entries under a package glob's directory that can be
- * members: directories (or links) whose name is not dotted and not
- * `node_modules`, the same rule discovery applies. A watcher on that
- * directory reacts only when this set changes.
- */
-export function memberEntries(base: string): ReadonlySet<string> {
-  const out = new Set<string>()
-  let entries: fs.Dirent[]
-  try {
-    entries = fs.readdirSync(base, { withFileTypes: true })
-  } catch {
-    return out
-  }
-  for (const e of entries) {
-    if (e.name.startsWith('.') || e.name === 'node_modules') continue
-    if (e.isDirectory() || e.isSymbolicLink()) out.add(e.name)
-  }
-  return out
-}
-
-export function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
-  if (a.size !== b.size) return false
-  for (const name of a) if (!b.has(name)) return false
-  return true
 }

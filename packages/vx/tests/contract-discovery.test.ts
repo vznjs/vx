@@ -1,10 +1,10 @@
 // How vx finds a workspace is a 1.0 contract surface (docs/design/
-// versioning-1.0.md): which manifests make a root and list its projects,
-// which root a run from inside a member resolves to, and which config file
-// names load, in which precedence. A repo that works today must be found
-// the same way tomorrow. Each case below builds a fixture, asks the real
-// discovery (`findManifestRoot`, `loadWorkspace`, `listProjects`,
-// `loadWorkspaceConfig`), and `tests/contract/discovery.json` records the
+// versioning-1.0.md): which directories are projects (a vx.config in them,
+// none under a nested workspace), which package-manager root `vx init`
+// starts from, and which config file names load, in which precedence. A
+// repo that works today must be found the same way tomorrow. Each case
+// below builds a fixture, asks the real discovery (`findProjectConfigs`,
+// `findManifestRoot`, `loadWorkspaceConfig`), and `tests/contract/discovery.json` records the
 // answer. A change is a reviewed diff of that file, and a changed answer is
 // a break the break law sees.
 //
@@ -17,11 +17,11 @@ import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 import {
   findManifestRoot,
-  listProjects,
+  findProjectConfigs,
   loadProjectConfig,
-  loadWorkspace,
   loadWorkspaceConfig,
 } from '../src/workspace/index.js'
+import { relPosix } from '../src/util/index.js'
 
 const RECORD = path.join(import.meta.dir, 'contract', 'discovery.json')
 // A canonical root: macOS's temp dir is a symlink, and a root compared as a path must not be one.
@@ -48,8 +48,14 @@ const MEMBERS = {
 }
 
 async function projects(root: string): Promise<string[]> {
-  const found = await listProjects(await loadWorkspace(root))
-  return found.map((p) => `${p.name} ${path.relative(root, p.dir) || '.'}`).sort()
+  const found = await findProjectConfigs(root)
+  return found.map((p) => relPosix(root, p.configPath)).sort()
+}
+
+/** The first config file `findProjectConfigs` picks in `root`, by basename. */
+async function firstConfig(root: string): Promise<string | null> {
+  const [found] = await findProjectConfigs(root)
+  return found === undefined ? null : path.basename(found.configPath)
 }
 
 const LAYOUTS: Record<string, Record<string, string>> = {
@@ -88,9 +94,23 @@ const WS_CONFIG = (v: number): string => `export default { run: { concurrency: $
 
 it('each discovery case answers as tests/contract/discovery.json records', async () => {
   const live: Record<string, unknown> = {}
+  // Outside git: every directory but a dot-directory or node_modules.
+  live['projects: a vx.config in any directory'] = await projects(
+    fixture({
+      'vx.config.ts': CONFIG(0),
+      'packages/a/vx.config.ts': CONFIG(1),
+      'packages/a/nested/vx.config.mjs': CONFIG(2),
+      'apps/c/package.json': pkg('c'),
+      'tools/gen/vx.config.js': CONFIG(3),
+      '.hidden/vx.config.ts': CONFIG(4),
+      'node_modules/dep/vx.config.ts': CONFIG(5),
+      'inner/.vx/workspace.ts': WS_CONFIG(1),
+      'inner/vx.config.ts': CONFIG(6),
+      'inner/p/vx.config.ts': CONFIG(7),
+    }),
+  )
   for (const [name, files] of Object.entries(LAYOUTS)) {
     const root = fixture(files)
-    live[`projects: ${name}`] = await projects(root)
     const found = async (from: string): Promise<string> =>
       path.relative(root, await findManifestRoot(path.join(root, from))) || '.'
     live[`root from packages/a/src: ${name}`] = await found('packages/a/src')
@@ -100,17 +120,13 @@ it('each discovery case answers as tests/contract/discovery.json records', async
   const names = ['vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
   for (const [i, file] of names.entries()) {
     const root = fixture({
-      'package.json': pkg('root', { workspaces: ['packages/*'] }),
-      'packages/a/package.json': pkg('a'),
       [`packages/a/${file}`]: CONFIG(i),
       // Every later name beside it: the one found is the precedence.
       ...Object.fromEntries(
         names.slice(i + 1).map((f, j) => [`packages/a/${f}`, CONFIG(i + j + 1)]),
       ),
     })
-    const [meta] = await listProjects(await loadWorkspace(root))
-    live[`project config: ${names.slice(i).join(' + ')}`] =
-      meta?.configPath == null ? null : path.basename(meta.configPath)
+    live[`project config: ${names.slice(i).join(' + ')}`] = await firstConfig(root)
   }
 
   const wsNames = ['.vx/workspace.ts', '.vx/workspace.mts', '.vx/workspace.js', '.vx/workspace.mjs']
@@ -135,18 +151,15 @@ it('each discovery case answers as tests/contract/discovery.json records', async
     ['vx.config.mjs', 'vx.config.cts'],
   ]) {
     const root = fixture({
-      'package.json': pkg('root', { workspaces: ['packages/*'] }),
-      'packages/a/package.json': pkg('a'),
       ...Object.fromEntries(
         files.map((f, i) => [`packages/a/${f}`, f.endsWith('.mjs') ? CONFIG(i) : CJS(i)]),
       ),
     })
-    const [meta] = await listProjects(await loadWorkspace(root))
-    const config = meta?.configPath == null ? null : await loadProjectConfig(meta.configPath)
+    const first = await firstConfig(root)
+    const config =
+      first === null ? null : await loadProjectConfig(path.join(root, 'packages/a', first))
     live[`project config: ${files.join(' + ')}`] =
-      meta?.configPath == null
-        ? null
-        : [path.basename(meta.configPath), Object.keys(config?.tasks ?? {})]
+      first === null ? null : [first, Object.keys(config?.tasks ?? {})]
   }
   for (const files of [
     ['.vx/workspace.cts', '.vx/workspace.cjs'],

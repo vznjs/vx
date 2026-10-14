@@ -457,6 +457,15 @@ export function validateProjectConfig(
   // The top level too: `task:` (singular) loaded as a project with no
   // tasks and every request against it said "no projects declare".
   assertKnownFields(config, PROJECT_FIELDS, configPath)
+  const name: unknown = config.name
+  if (name !== undefined) {
+    // A task is `<project>#<task>`, split at the first `#`.
+    if (typeof name !== 'string' || name === '' || name.trim() !== name || name.includes('#')) {
+      throw new UserError(
+        `${configPath}: \`name\` must be a non-empty string with no surrounding whitespace and no "#" (a task is <name>#<task>)`,
+      )
+    }
+  }
   const tags: unknown = config.tags
   if (
     tags !== undefined &&
@@ -935,7 +944,7 @@ export function validateProjectConfig(
 // encodes. A new field must be added here deliberately.
 // `tasks` first: `nearest` breaks a tie by order, and `taks` is one edit
 // from both.
-const PROJECT_FIELDS = new Set(['tasks', 'tags'])
+const PROJECT_FIELDS = new Set(['name', 'tasks', 'tags'])
 const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'cache'])
 const EXEC_FIELDS = new Set([
   'command',
@@ -1047,14 +1056,13 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       targets: '`tasks` (a target is a task: `exec.command`, `dependsOn`, `cache`)',
       extends: 'an imported module spread into `tasks` (a vx.config is code; nothing is inherited)',
       implicitDependencies: 'a `dependsOn` entry `pkg#task`, or a package.json dependency',
-      name: 'the package.json `name` (a project is named by its package)',
       // A package.json's, turbo.json's and project.json's keys, and a
       // task's fields one level too high (D-99).
       scripts:
         "`tasks` (a script is a task's `exec.command`; `vx init` writes them from package.json)",
       pipeline: '`tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)',
       namedInputs: 'a module the vx.config imports, spread into `cache.inputs.files`',
-      root: "no field: a project's directory is where its package.json sits",
+      root: "no field: a project's directory is where its vx.config sits",
       sourceRoot: "a task's `cache.inputs.files`",
       projectType: 'no field: vx runs every project alike',
       ...Object.fromEntries(
@@ -1092,14 +1100,11 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       // pnpm-workspace.yaml's, Lerna's and the package.json's own keys
       // pasted into .vx/workspace: refused with no word on where vx reads
       // them (D-98).
-      packages:
-        "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",
-      workspaces:
-        "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",
-      projects:
-        "`workspaces` in package.json or pnpm-workspace.yaml's `packages`, where vx reads the members",
+      packages: 'a `vx.config` in each project directory: a project is a directory holding one',
+      workspaces: 'a `vx.config` in each project directory: a project is a directory holding one',
+      projects: 'a `vx.config` in each project directory: a project is a directory holding one',
       ignore:
-        'a `!` pattern in the workspace globs (package.json `workspaces` or pnpm-workspace.yaml)',
+        "no field: a directory with no `vx.config` is no project, and git's ignore rules apply",
       catalog:
         "pnpm-workspace.yaml's or package.json's `catalog`, where the package manager reads it",
       npmClient: "no field: a task's command runs as written, with no package manager in between",

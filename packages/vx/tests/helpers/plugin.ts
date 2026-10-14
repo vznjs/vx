@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } 
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { definePlugin, type PluginHooks, type VxPlugin } from '../../src/index.js'
-import { PLUGIN_IMPORT } from './local-workspace.js'
+import { PLUGIN_IMPORT } from './core-index.js'
 
 let root: string | undefined
 const dirs = new Map<string, string>()
@@ -98,54 +98,123 @@ export { PLUGIN_IMPORT }
 export type EdgeMap = Readonly<Record<string, readonly string[]>>
 
 /**
- * The `discover` hooks of `edges()`: every project gets `deps` (none
- * unless named), so the workspace is an edge source, and a named project
- * its `reach`. Names resolve through the projects the stage sees; one that
- * is no project is skipped, so one map can serve fixtures that add
- * projects as they go.
+ * The `discover` hook of the `packages()` test plugin, as `@vzn/vx-lockfile`
+ * names projects: every member the root's `pnpm-workspace.yaml` or
+ * `package.json#workspaces` lists becomes a project named by its
+ * `package.json#name` (a name two members share names neither), and so is
+ * the root when it is already one. Core reads no manifest; a fixture
+ * written as packages declares this. With `deps`, every project gets
+ * `deps` (none unless named), so the workspace is an edge source, and a
+ * named project its `reach`. Edge names resolve through the packages and
+ * the projects the stage sees; one that is neither is skipped, so one map
+ * serves fixtures that add projects as they go. Self-contained: its source
+ * text is the fixture plugin's too.
  */
-function edgesHooks(deps: EdgeMap, reach: EdgeMap): string {
-  return `{
-  discover(ctx) {
-    const deps = ${JSON.stringify(deps)}
-    const reach = ${JSON.stringify(reach)}
-    const dir = new Map(ctx.projects.map((p) => [p.name, p.dir]))
-    const dirs = (names) => names.filter((n) => dir.has(n)).map((n) => dir.get(n))
-    return ctx.projects.map((p) => ({
-      dir: p.dir,
-      deps: dirs(deps[p.name] ?? []),
-      ...(reach[p.name] === undefined ? {} : { reach: dirs(reach[p.name]) }),
-    }))
-  },
-}`
-}
-
-/**
- * A test plugin supplying project edges as a lockfile plugin does, for
- * in-process use. Core reads no manifest edge, so a fixture whose `^task`
- * needs an upstream declares it here.
- */
-export function edges(deps: EdgeMap = {}, reach: EdgeMap = {}): VxPlugin {
-  return testPlugin('vx-test-edges', {
-    discover(ctx) {
-      const dir = new Map(ctx.projects.map((p) => [p.name, p.dir]))
-      const dirs = (names: readonly string[]): string[] =>
-        names.filter((n) => dir.has(n)).map((n) => dir.get(n)!)
-      return ctx.projects.map((p) => {
-        const near = reach[p.name]
-        return {
-          dir: p.dir,
-          deps: dirs(deps[p.name] ?? []),
-          ...(near === undefined ? {} : { reach: dirs(near) }),
-        }
-      })
-    },
+async function discoverPackages(
+  ctx: { workspaceRoot: string; projects: readonly { name: string; dir: string }[] },
+  deps: Record<string, readonly string[]> | null,
+  reach: Record<string, readonly string[]>,
+): Promise<Array<{ dir: string; name?: string; deps?: string[]; reach?: string[] }>> {
+  const root = ctx.workspaceRoot
+  const read = async (f: string): Promise<string | null> => {
+    try {
+      return await Bun.file(f).text()
+    } catch {
+      return null
+    }
+  }
+  const json = (t: string | null): Record<string, unknown> => {
+    try {
+      const v = t === null ? null : JSON.parse(t)
+      return v !== null && typeof v === 'object' && !Array.isArray(v) ? v : {}
+    } catch {
+      return {}
+    }
+  }
+  const yaml = await read(`${root}/pnpm-workspace.yaml`)
+  const rootPkg = json(await read(`${root}/package.json`))
+  let globs: unknown =
+    yaml === null ? undefined : (Bun.YAML.parse(yaml) as { packages?: unknown })?.packages
+  if (!Array.isArray(globs)) {
+    const ws = rootPkg['workspaces'] as unknown
+    globs = Array.isArray(ws) ? ws : (ws as { packages?: unknown } | undefined)?.packages
+  }
+  const list = (Array.isArray(globs) ? globs : []).filter((g): g is string => typeof g === 'string')
+  const negative = list.filter((g) => g.startsWith('!')).map((g) => g.slice(1).replace(/\/+$/, ''))
+  const named = new Map<string, string>()
+  for (const g of list) {
+    if (g.startsWith('!')) continue
+    const base = g.replace(/\/+$/, '')
+    if (base === '.' || base === '') continue
+    for await (const rel of new Bun.Glob(`${base}/package.json`).scan({ cwd: root, dot: false })) {
+      const dirRel = rel.split('\\').join('/').slice(0, -'/package.json'.length)
+      if (dirRel.split('/').includes('node_modules')) continue
+      if (
+        negative.some(
+          (n) => dirRel === n || dirRel.startsWith(`${n}/`) || new Bun.Glob(n).match(dirRel),
+        )
+      )
+        continue
+      const name = json(await read(`${root}/${rel}`))['name']
+      named.set(`${root}/${dirRel}`, typeof name === 'string' ? name : '')
+    }
+  }
+  if (ctx.projects.some((p) => p.dir === root) && typeof rootPkg['name'] === 'string')
+    named.set(root, rootPkg['name'])
+  const count = new Map<string, number>()
+  for (const name of named.values()) count.set(name, (count.get(name) ?? 0) + 1)
+  // A nameless member, or one whose name another shares, is left out.
+  for (const [dir, name] of named) if (name === '' || count.get(name)! > 1) named.delete(dir)
+  const dirOf = new Map<string, string>(ctx.projects.map((p) => [p.name, p.dir]))
+  for (const [dir, name] of named) dirOf.set(name, dir)
+  const nameOf = new Map<string, string>(ctx.projects.map((p) => [p.dir, p.name]))
+  for (const [dir, name] of named) nameOf.set(dir, name)
+  const dirs = new Set<string>([
+    ...named.keys(),
+    ...(deps === null ? [] : ctx.projects.map((p) => p.dir)),
+  ])
+  const resolve = (names: readonly string[]): string[] =>
+    names.filter((n) => dirOf.has(n)).map((n) => dirOf.get(n)!)
+  return [...dirs].map((dir) => {
+    const name = named.get(dir)
+    const own = nameOf.get(dir) ?? ''
+    return {
+      dir,
+      ...(name === undefined ? {} : { name }),
+      ...(deps === null ? {} : { deps: resolve(deps[own] ?? []) }),
+      ...(deps === null || reach[own] === undefined ? {} : { reach: resolve(reach[own]) }),
+    }
   })
 }
 
-/** `edges()` as source text for a fixture `.vx/workspace.mjs`; pair it with `PLUGIN_IMPORT`. */
+/**
+ * The `packages()` test plugin for in-process use: package-named projects
+ * as a lockfile plugin names them, and with `deps` the edges it would
+ * give. Core reads no manifest, so a fixture written as packages, or whose
+ * `^task` needs an upstream, declares this.
+ */
+export function packages(deps?: EdgeMap, reach: EdgeMap = {}): VxPlugin {
+  return testPlugin('vx-test-packages', {
+    discover: (ctx) => discoverPackages(ctx, deps ?? null, reach),
+  })
+}
+
+/** `packages()` with edges: every project a leaf unless `deps` names its upstreams. */
+export function edges(deps: EdgeMap = {}, reach: EdgeMap = {}): VxPlugin {
+  return packages(deps, reach)
+}
+
+/** `packages()` as source text for a fixture `.vx/workspace.mjs`; pair it with `PLUGIN_IMPORT`. */
+export function packagesSource(deps?: EdgeMap, reach: EdgeMap = {}): string {
+  return pluginSource(
+    'vx-test-packages',
+    `{ discover: (ctx) => (${discoverPackages.toString()})(ctx, ${JSON.stringify(deps ?? null)}, ${JSON.stringify(reach)}) }`,
+  )
+}
+
+/** `packages()` with edges, as source text. */
 export function edgesSource(deps: EdgeMap = {}, reach: EdgeMap = {}): string {
-  return pluginSource('vx-test-edges', edgesHooks(deps, reach))
+  return packagesSource(deps, reach)
 }
 
 /** Rewrites `root`'s `.vx/workspace.mjs` to declare `edges()` and nothing else. */
@@ -190,6 +259,6 @@ export async function writeLockClaim(
 ): Promise<void> {
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    `${PLUGIN_IMPORT}export default { plugins: [${lockClaimSource(files)}] }\n`,
+    `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${lockClaimSource(files)}] }\n`,
   )
 }

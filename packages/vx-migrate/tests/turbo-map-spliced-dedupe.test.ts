@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 
 let root: string
@@ -37,7 +37,7 @@ describe('turbo-map: a global name the task repeats', () => {
     )
     const dir = path.join(root, 'packages', 'a')
     await mkdir(dir, { recursive: true })
-    const metas: ProjectMeta[] = [
+    const metas: PackageMeta[] = [
       {
         name: 'a',
         dir,

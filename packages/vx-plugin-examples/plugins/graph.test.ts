@@ -29,7 +29,11 @@ async function pkg(
     path.join(dir, 'package.json'),
     JSON.stringify({ name, version: '1.0.0', ...(scripts ? { scripts } : {}) }),
   )
-  await writeFile(path.join(dir, 'vx.config.mjs'), config)
+  // Core reads no package.json: the config names the project.
+  await writeFile(
+    path.join(dir, 'vx.config.mjs'),
+    config.replace('export default {', `export default { name: ${JSON.stringify(name)},`),
+  )
   return dir
 }
 

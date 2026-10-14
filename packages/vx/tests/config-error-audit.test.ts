@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 let root: string | undefined
@@ -20,7 +21,7 @@ const run = async (config: string) => {
   root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-cfg-err-')))
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
   await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["p"]}')
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   await mkdir(path.join(root, 'p'))
   await writeFile(path.join(root, 'p', 'package.json'), '{"name":"p"}')
   await writeFile(path.join(root, 'p', 'vx.config.ts'), config)
@@ -59,7 +60,7 @@ it.each([
   [
     'an unknown top-level field',
     'export default { taskz: {} }\n',
-    framed(18, ' has unknown field "taskz" (allowed: tags, tasks) — did you mean tasks?'),
+    framed(18, ' has unknown field "taskz" (allowed: name, tags, tasks) — did you mean tasks?'),
   ],
   [
     'a command of the wrong type',

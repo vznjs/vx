@@ -12,7 +12,6 @@ function meta(name: string, deps?: string[], reach?: string[]): ProjectMeta {
   return {
     name,
     dir: `/ws/${name}`,
-    packageJson: { name },
     configPath: null,
     ...(deps === undefined ? {} : { deps }),
     ...(reach === undefined ? {} : { reach }),
@@ -45,25 +44,6 @@ describe('buildPackageGraph', () => {
     const g = buildPackageGraph([])
     expect(g.transitiveDeps('anything')).toEqual([])
     expect(g.edgeSource).toBe(false)
-  })
-
-  it('a manifest dependency adds no edge, and no edge source', () => {
-    const g = buildPackageGraph([
-      {
-        name: 'a',
-        dir: '/ws/a',
-        configPath: null,
-        packageJson: {
-          name: 'a',
-          dependencies: { b: 'workspace:*' },
-          devDependencies: { b: '*' },
-          peerDependencies: { b: '*' },
-          optionalDependencies: { b: '*' },
-        },
-      },
-      meta('b'),
-    ])
-    expect([g.directDeps('a'), g.transitiveDeps('a'), g.edgeSource]).toEqual([[], [], false])
   })
 
   it('a project carrying deps, even none, makes the graph an edge source', () => {

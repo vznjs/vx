@@ -23,7 +23,7 @@ it("names vx's home for a project key another tool spells (D-99)", () => {
     'vx spells it a module the vx.config imports, spread into `cache.inputs.files`',
   )
   expect(where('root')).toBe(
-    "vx spells it no field: a project's directory is where its package.json sits",
+    "vx spells it no field: a project's directory is where its vx.config sits",
   )
   expect(where('sourceRoot')).toBe("vx spells it a task's `cache.inputs.files`")
   expect(where('projectType')).toBe('vx spells it no field: vx runs every project alike')

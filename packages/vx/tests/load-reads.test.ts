@@ -1,7 +1,8 @@
-// A run reads each root file once (workspace/load-reads.ts). Finding the
-// root, listing its package globs and folding the workspace fingerprint
-// each read `pnpm-workspace.yaml` for themselves — three probes and three
-// reads per run (strace of a 100-package run, 2026-09-24). The count is
+// A run reads each root file once. Finding the root, listing its package
+// globs and folding the workspace fingerprint each read
+// `pnpm-workspace.yaml` for themselves — three probes and three reads per
+// run (strace of a 100-package run, 2026-09-24); core now reads no package
+// file at all, and a plugin that does reads it once per run. The count is
 // taken where vx asks: every `Bun.file` operation on a path under the
 // fixture root, by path, across one `prepareRun` over a lock written
 // before the count. What Bun's own module
@@ -15,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { type Logger, prepareRun, type RunOptions } from '../src/orchestrator/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { gitInit } from './helpers/workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const TIMEOUT = 30_000
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
@@ -32,8 +34,8 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-load-reads-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
+  // A lockfile plugin's stand-in: it reads the manifests, core does not.
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   await project('packages', 'a')
   gitInit(root)
   lock()
@@ -102,15 +104,12 @@ async function prepare(): Promise<string[]> {
 
 describe('a run reads each root file once', () => {
   it(
-    'pnpm-workspace.yaml is probed and read once across the root and the globs; no lockfile is probed',
+    'core reads the workspace file and the lock, each once, and no package file',
     async () => {
       const ops = await fileOps(async () => {
         expect(await prepare()).toEqual(['a#build'])
       })
       expect(ops).toEqual({
-        'pnpm-workspace.yaml': ['exists', 'bytes'],
-        // Core keys no package file: no plugin claims one here, so no
-        // lockfile or install setting is probed.
         // The root lookup's git bound: the fixture is the top-level.
         '.git/HEAD': ['exists'],
         // The root lookup probes by precedence (three absent names, then the
@@ -119,9 +118,14 @@ describe('a run reads each root file once', () => {
         '.vx/workspace.mts': ['exists'],
         '.vx/workspace.js': ['exists'],
         '.vx/workspace.mjs': ['exists', 'bytes'],
-        // Discovery's one read of the manifest; the config comes from the lock.
-        'packages/a/package.json': ['text'],
+        // The projects and their configs come from the lock.
         '.vx/projects.lock.json': ['exists', 'text'],
+        // A config the run reads is still there (X-144).
+        'packages/a/vx.config.mjs': ['exists'],
+        // The plugin's reads, once each: core probes no package file.
+        'pnpm-workspace.yaml': ['text'],
+        'package.json': ['text'],
+        'packages/a/package.json': ['text'],
       })
     },
     TIMEOUT,
@@ -131,7 +135,7 @@ describe('a run reads each root file once', () => {
     "a --filter run discovers the workspace once: the run takes the selection pass's projects",
     async () => {
       // Differential: with `discovered` not handed from resolveFilters to
-      // the run, discovery reads each member manifest a second time.
+      // the run, discovery (the plugin's manifest reads with it) runs twice.
       const ops = await fileOps(async () => {
         const parsed = parseRunArgs(['build', '--filter', 'a'])
         const opts = (await resolveRunOptions(parsed, root, parsed.tasks)) as RunOptions
@@ -160,19 +164,17 @@ describe('a run reads each root file once', () => {
         p.cache.close()
         expect([...p.nodes.keys()]).toEqual(['a#build'])
       })
-      // Discovery's read is the `text`; the `exists` + `bytes` pairs are the
-      // root search from `packages/a`, one per lookup of the root.
-      expect(ops['packages/a/package.json']?.filter((op) => op === 'text')).toEqual(['text'])
+      expect(ops['packages/a/package.json']).toEqual(['text'])
     },
     TIMEOUT,
   )
 
   it(
-    'a watch cycle is a new run: the next run in the process reads the edited manifest',
+    'a watch cycle is a new run: the next run in the process reads the edited lock',
     async () => {
       // `vx watch` runs every cycle in one process. What a run learns is
-      // held for that run only, so a package added by editing the globs
-      // joins the very next one (once locked, as `vx lock` in a watch is).
+      // held for that run only, so a project `vx lock` adds joins the very
+      // next one.
       expect(await prepare()).toEqual(['a#build'])
       await project('libs', 'b')
       await writeFile(

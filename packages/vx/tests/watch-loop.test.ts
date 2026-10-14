@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
-import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, gitIn, gitInit, makeWorkspace } from './helpers/workspace.js'
 import {
   BIN,
@@ -24,7 +24,7 @@ import {
   useWatchFixture,
   type Watch,
 } from './helpers/watch-loop.js'
-import { waitForProducers } from './helpers/local-workspace.js'
+import { localWorkspaceSource, waitForProducers } from './helpers/local-workspace.js'
 
 /** `vx lock` in `root`: what a run, and each watch cycle, reads its configs from. */
 function lock(root: string): void {
@@ -349,7 +349,7 @@ describe('vx watch loop (e2e)', () => {
 
     await Bun.write(
       path.join(f.root, '.vx/workspace.mjs'),
-      `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+      `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${pluginSource(
         'org/greeter',
         `{ config(_ws, ctx) { ctx.warn('WS-EDIT-SEEN') } }`,
       )}] }\n`,
@@ -570,7 +570,7 @@ describe('vx watch in a single-project repository (e2e)', () => {
     const w = { current: undefined as ReturnType<typeof startWatch> | undefined }
     try {
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'solo' }))
-      await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
       await writeFile(
         path.join(root, 'vx.config.mjs'),
         `export default {

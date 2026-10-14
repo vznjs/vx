@@ -1,7 +1,7 @@
 // .vx/projects.lock.json — frozen resolved-config lockfile.
 //
-// `vx lock` evaluates every project's vx.config.* in the CURRENT
-// environment and freezes the resolved objects, by project name, into
+// `vx lock` finds every project's vx.config.*, evaluates each in the
+// CURRENT environment and freezes the resolved objects, by directory, into
 // `.vx/projects.lock.json` at the workspace root. Every run loads configs from
 // it and never evaluates one (owner, 2026-10-14); only `vx lock` writes
 // it. See docs/design/config-lock-2026-06.md.
@@ -18,14 +18,26 @@ import type { ProjectConfig } from '../config.js'
 import { relPosix, UserError, xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { validateProjectConfig } from './config-schema.js'
+import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 
 export const LOCKFILE_NAME = '.vx/projects.lock.json'
-export const LOCKFILE_VERSION = 2
+export const LOCKFILE_VERSION = 3
+
+/** One project as the lock holds it. */
+export interface LockedProject {
+  /** The config file's name in the directory (`vx.config.ts`). */
+  file: string
+  /** Its resolved (post-evaluation) config, JSON-normalized. */
+  config: ProjectConfig
+}
 
 export interface Lockfile {
   version: number
-  /** Project name → its resolved (post-evaluation) config, JSON-normalized. */
-  projects: Record<string, ProjectConfig>
+  /**
+   * Root-relative POSIX directory (`.` for the root) → its project. Keyed
+   * by directory, so a name a plugin gives never invalidates the lock.
+   */
+  projects: Record<string, LockedProject>
   /** Written by `writeLockfile` from the bytes; never read off the object. */
   validated?: string
 }
@@ -51,9 +63,9 @@ export function lockEntryBroken(root: string): boolean {
     return false
   }
   if (typeof projects !== 'object' || projects === null) return false
-  for (const [name, entry] of Object.entries(projects)) {
+  for (const [dir, entry] of Object.entries(projects)) {
     try {
-      validateProjectConfig(entry as ProjectConfig, `${LOCKFILE_NAME}: "${name}"`, null)
+      validateProjectConfig((entry as LockedProject).config, `${LOCKFILE_NAME}: "${dir}"`, null)
     } catch {
       return true
     }
@@ -100,14 +112,23 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
   }
   // Same trap, and this one is worse than a bad message: an ARRAY of entries is
   // ACCEPTED, because `Object.entries` happily walks it — yielding a project
-  // literally named "0". A run then looks up real project names against a
-  // lock that declares none of them.
+  // at directory "0".
   if (typeof lock.projects !== 'object' || lock.projects === null || Array.isArray(lock.projects)) {
     throw new UserError(`${LOCKFILE_NAME}: \`projects\` must be an object — re-run \`vx lock\``)
   }
-  for (const [name, entry] of Object.entries(lock.projects)) {
-    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-      throw new UserError(`${LOCKFILE_NAME}: entry for "${name}" is malformed — re-run \`vx lock\``)
+  for (const [dir, entry] of Object.entries(lock.projects)) {
+    const { file, config } = (entry ?? {}) as { file?: unknown; config?: unknown }
+    if (
+      typeof entry !== 'object' ||
+      entry === null ||
+      Array.isArray(entry) ||
+      typeof file !== 'string' ||
+      !PROJECT_CONFIG_FILENAMES.includes(file) ||
+      typeof config !== 'object' ||
+      config === null ||
+      Array.isArray(config)
+    ) {
+      throw new UserError(`${LOCKFILE_NAME}: entry for "${dir}" is malformed — re-run \`vx lock\``)
     }
   }
   return parsed as Lockfile
@@ -159,18 +180,24 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
  */
 export function frozenProjectConfigs(
   lock: Lockfile,
-  metas: ReadonlyArray<{ name: string; configPath: string }>,
+  metas: ReadonlyArray<{ name: string; dir: string; configPath: string }>,
   root: string,
 ): ProjectConfig[] {
   return metas.map((meta) => {
+    const dir = lockKey(root, meta.dir)
     // Own entries only: `constructor` read Object's, "locked" at undefined (D-152).
-    const config = Object.hasOwn(lock.projects, meta.name) ? lock.projects[meta.name] : undefined
-    if (config === undefined) {
+    const entry = Object.hasOwn(lock.projects, dir) ? lock.projects[dir] : undefined
+    if (entry === undefined) {
       throw new UserError(
         `${LOCKFILE_NAME} has no entry for "${meta.name}" (${relPosix(root, meta.configPath)}) — ` +
           'run `vx lock`',
       )
     }
-    return config
+    return entry.config
   })
+}
+
+/** A project directory as the lock keys it: root-relative POSIX, `.` for the root. */
+export function lockKey(root: string, dir: string): string {
+  return relPosix(root, dir) || '.'
 }

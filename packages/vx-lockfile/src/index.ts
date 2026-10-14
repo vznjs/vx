@@ -249,11 +249,12 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       const importers = await importersOf(ctx)
       if (importers === undefined) return []
       if (importers.size === 0 && manager.noImporters !== undefined) ctx.warn(manager.noImporters())
-      return discovered(
+      const rootIsProject = ctx.projects.some((p) => importerOf(ctx.workspaceRoot, p.dir) === '.')
+      return await discovered(
         ctx.workspaceRoot,
-        ctx.projects,
         importers,
         manager.peersInManifest === true,
+        rootIsProject,
       )
     },
     async project(config, ctx) {
@@ -303,46 +304,73 @@ function importerOf(workspaceRoot: string, dir: string): string {
   return path.relative(workspaceRoot, dir).split(path.sep).join('/') || '.'
 }
 
+/** An importer's `package.json`, or null where it has none or it does not parse. */
+async function manifestOf(dir: string): Promise<Record<string, unknown> | null> {
+  try {
+    const pkg: unknown = await Bun.file(path.join(dir, 'package.json')).json()
+    return pkg !== null && typeof pkg === 'object' && !Array.isArray(pkg)
+      ? (pkg as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
 /**
- * One entry per importer that is already a project: its name, the
- * importers it installs (`deps`) and its peers on importers. A peer
- * orders a build unless it would close a cycle through the order edges,
- * then it is `reach` only — the rule core's package graph keeps for
- * manifest peers, in project-name order so the edge kept is stable.
+ * One entry per importer with a `package.json` (core reads none): a
+ * directory that is no project yet becomes one, the root aside, which is
+ * a project only by its own vx config, as it was a member only by one
+ * (D-39). Its name is the
+ * manifest's `name` when no other importer shares it (core refuses two
+ * projects of one name, so a shared one names neither); its `deps` the
+ * importers it installs, and its peers on importers. A peer orders a build
+ * unless it would close a cycle through the order edges, then it is
+ * `reach` only, in name order so the edge kept is stable.
  */
-function discovered(
+async function discovered(
   root: string,
-  projects: readonly ProjectMeta[],
   importers: ReadonlyMap<string, LockfileImporter>,
   peersInManifest: boolean,
-): DiscoveredProject[] {
-  const byImporter = new Map<string, ProjectMeta>()
-  for (const p of projects) byImporter.set(importerOf(root, p.dir), p)
+  rootIsProject: boolean,
+): Promise<DiscoveredProject[]> {
+  const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
+  const read = await Promise.all(
+    [...importers.keys()]
+      .filter((i) => i !== '.' || rootIsProject)
+      .map(async (i) => [i, await manifestOf(dirOf(i))] as const),
+  )
+  const manifests = new Map<string, Record<string, unknown>>()
+  for (const [i, pkg] of read) if (pkg !== null) manifests.set(i, pkg)
   const names = new Map<string, number>()
-  for (const p of byImporter.values()) {
-    const n = p.packageJson.name
+  for (const pkg of manifests.values()) {
+    const n = pkg['name']
     if (typeof n === 'string') names.set(n, (names.get(n) ?? 0) + 1)
   }
-  const order = new Map<ProjectMeta, Set<ProjectMeta>>()
-  const peers = new Map<ProjectMeta, Set<ProjectMeta>>()
-  for (const [dir, links] of importers) {
-    const p = byImporter.get(dir)
-    if (p === undefined) continue
-    const own = new Set<ProjectMeta>()
-    const peer = new Set<ProjectMeta>()
-    const manifestPeers = peersInManifest ? manifestPeerNames(p) : undefined
-    for (const [name, target] of Object.entries(links.deps)) {
-      const t = byImporter.get(target)
-      if (t !== undefined) (manifestPeers?.has(name) === true ? peer : own).add(t)
-    }
-    for (const target of Object.values(links.peers)) {
-      const t = byImporter.get(target)
-      if (t !== undefined) peer.add(t)
-    }
-    order.set(p, own)
-    peers.set(p, peer)
+  const nameOf = (i: string): string | undefined => {
+    const n = manifests.get(i)?.['name']
+    return typeof n === 'string' && n !== '' && names.get(n) === 1 ? n : undefined
   }
-  const reaches = (start: ProjectMeta, goal: ProjectMeta): boolean => {
+  // Ordered by the name it will carry, path where it has none.
+  const label = (i: string): string => nameOf(i) ?? i
+  const byLabel = (a: string, b: string): number => {
+    const [x, y] = [label(a), label(b)]
+    return x < y ? -1 : x > y ? 1 : 0
+  }
+  const order = new Map<string, Set<string>>()
+  const peers = new Map<string, Set<string>>()
+  for (const [i, links] of importers) {
+    if (!manifests.has(i)) continue
+    const own = new Set<string>()
+    const peer = new Set<string>()
+    const manifestPeers = peersInManifest ? manifestPeerNames(manifests.get(i)!) : undefined
+    for (const [name, target] of Object.entries(links.deps)) {
+      if (manifests.has(target)) (manifestPeers?.has(name) === true ? peer : own).add(target)
+    }
+    for (const target of Object.values(links.peers)) if (manifests.has(target)) peer.add(target)
+    order.set(i, own)
+    peers.set(i, peer)
+  }
+  const reaches = (start: string, goal: string): boolean => {
     const seen = new Set([start])
     const stack = [start]
     while (stack.length > 0) {
@@ -356,38 +384,39 @@ function discovered(
     }
     return false
   }
-  const byName = (a: ProjectMeta, b: ProjectMeta): number =>
-    a.name < b.name ? -1 : a.name > b.name ? 1 : 0
-  const sorted = [...order.keys()].sort(byName)
-  const reach = new Map<ProjectMeta, ProjectMeta[]>()
-  for (const p of sorted) {
-    const own = order.get(p)!
-    const kept: ProjectMeta[] = []
-    for (const peer of [...peers.get(p)!].sort(byName)) {
+  const sorted = [...order.keys()].sort(byLabel)
+  const reach = new Map<string, string[]>()
+  for (const i of sorted) {
+    const own = order.get(i)!
+    const kept: string[] = []
+    for (const peer of [...peers.get(i)!].sort(byLabel)) {
       if (own.has(peer)) continue
-      if (reaches(peer, p)) kept.push(peer)
+      if (reaches(peer, i)) kept.push(peer)
       else own.add(peer)
     }
-    reach.set(p, kept)
+    reach.set(i, kept)
   }
-  return sorted.map((p) => {
-    const n = p.packageJson.name
+  return sorted.map((i) => {
+    const name = nameOf(i)
     return {
-      dir: p.dir,
-      ...(typeof n === 'string' && names.get(n) === 1 ? { name: n } : {}),
-      deps: [...order.get(p)!].sort(byName).map((t) => t.dir),
-      reach: reach.get(p)!.map((t) => t.dir),
+      dir: dirOf(i),
+      ...(name === undefined ? {} : { name }),
+      deps: [...order.get(i)!].sort(byLabel).map(dirOf),
+      reach: reach.get(i)!.map(dirOf),
     }
   })
 }
 
 /** A manifest's peers it installs under no other field. */
-function manifestPeerNames(p: ProjectMeta): ReadonlySet<string> {
+function manifestPeerNames(pkg: Record<string, unknown>): ReadonlySet<string> {
   const field = (v: unknown): object => (v !== null && typeof v === 'object' ? v : {})
-  const { dependencies, devDependencies, optionalDependencies, peerDependencies } = p.packageJson
-  const installed = [dependencies, devDependencies, optionalDependencies].map(field)
+  const installed = ['dependencies', 'devDependencies', 'optionalDependencies'].map((f) =>
+    field(pkg[f]),
+  )
   return new Set(
-    Object.keys(field(peerDependencies)).filter((n) => !installed.some((f) => Object.hasOwn(f, n))),
+    Object.keys(field(pkg['peerDependencies'])).filter(
+      (n) => !installed.some((f) => Object.hasOwn(f, n)),
+    ),
   )
 }
 

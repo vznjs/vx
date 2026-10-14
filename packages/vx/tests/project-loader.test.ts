@@ -195,7 +195,7 @@ describe('loadProjectConfig', () => {
     )
     expect(err?.name).toBe('UserError')
     expect(err?.message).toBe(
-      `${file} has unknown field "task" (allowed: tags, tasks) — did you mean tasks?`,
+      `${file} has unknown field "task" (allowed: name, tags, tasks) — did you mean tasks?`,
     )
   })
 
@@ -208,7 +208,9 @@ describe('loadProjectConfig', () => {
       () => null,
       (e: unknown) => e as Error,
     )
-    expect(err?.message).toBe(`${file} has unknown field "projectName" (allowed: tags, tasks)`)
+    expect(err?.message).toBe(
+      `${file} has unknown field "projectName" (allowed: name, tags, tasks)`,
+    )
     expect(err?.message).not.toContain('undefined')
     expect(err?.message).not.toContain('did you mean')
   })

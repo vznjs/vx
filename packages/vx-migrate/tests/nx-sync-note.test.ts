@@ -6,7 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 
 const graph = {
@@ -32,7 +32,7 @@ async function notes(migration: boolean): Promise<string[]> {
       path.join(root, 'nx.json'),
       '{"sync":{"globalGenerators":["@acme/tools:sync-env"]}}',
     )
-    const metas: ProjectMeta[] = [
+    const metas: PackageMeta[] = [
       {
         name: 'a',
         dir: path.join(root, 'libs', 'a'),

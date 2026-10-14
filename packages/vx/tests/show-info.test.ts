@@ -14,7 +14,7 @@ import { stableSandboxReason } from '../src/orchestrator/doctor.js'
 import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { edgesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 // `vx lock`, then the verb: show and info read the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -62,6 +62,7 @@ const APP_CONFIG = `
 const PLUGIN_WORKSPACE = `${PLUGIN_IMPORT}
   export default {
     plugins: [
+      ${packagesSource()},
       ${pluginSource(
         'gen',
         `{ project(config, ctx) {
@@ -80,7 +81,6 @@ async function makePluginWorkspace(): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   await Bun.write(path.join(root, '.vx/workspace.mjs'), PLUGIN_WORKSPACE)
   for (const name of ['one', 'two']) {
     const dir = path.join(root, 'packages', name)
@@ -426,8 +426,8 @@ describe('vx show under a `project` plugin (e2e)', () => {
       expect(info.code).toBe(0)
       expect(info.out).toMatch(/^projects: +2 \(4 tasks\)/m)
       // The doctor names each plugin and the seams it fills, in pipeline
-      // order — the `project` stage here, nothing else.
-      expect(info.out).toMatch(/^plugins: +1 — gen \(project\)$/m)
+      // order.
+      expect(info.out).toMatch(/^plugins: +2 — vx-test-packages \(discover\); gen \(project\)$/m)
     },
     TIMEOUT,
   )
@@ -465,7 +465,7 @@ describe('vx info (e2e)', () => {
       expect(r.out).toMatch(/^workspace root: +\S/m)
       expect(r.out).toContain(path.basename(root))
       expect(r.out).toMatch(row('projects', '2 (4 tasks)'))
-      expect(r.out).toMatch(row('plugins', '1 — vx-test-edges (discover)'))
+      expect(r.out).toMatch(row('plugins', '1 — vx-test-packages (discover)'))
       // The worker count a run defaults to, with its source, and the memory
       // a packing policy budgets — the two numbers a container hides.
       expect(r.out).toMatch(/^workers: +[1-9]\d* — (the CPU count|cgroup CPU quota )/m)
@@ -584,7 +584,7 @@ describe('vx info (e2e)', () => {
       expect(path.basename(facts.workspaceRoot)).toBe(path.basename(root))
       expect(facts.projects).toBe(2)
       expect(facts.tasks).toBe(4)
-      expect(facts.plugins.map((p: { name: string }) => p.name)).toEqual(['vx-test-edges'])
+      expect(facts.plugins.map((p: { name: string }) => p.name)).toEqual(['vx-test-packages'])
       expect(facts.cacheDir).toContain('.vx')
       expect(facts.cacheVersion).toBe(CACHE_VERSION)
       expect(facts.schemaVersion).toBe(SCHEMA_VERSION)
@@ -644,7 +644,8 @@ describe('vx info — counts from the lock, for every number', () => {
       expect([whole.tasks, whole.sandbox.declared, whole.lockfile]).toEqual([5, 1, true])
 
       // `vx lock` refuses the broken config and leaves no lock: a run
-      // refuses too, so info counts nothing and names nothing.
+      // refuses too, and the projects are the lock's, so info counts
+      // nothing and names nothing.
       const broken = path.join(root, 'packages', 'broken')
       await mkdir(broken, { recursive: true })
       await writeFile(path.join(broken, 'package.json'), JSON.stringify({ name: 'broken' }))
@@ -656,14 +657,14 @@ describe('vx info — counts from the lock, for every number', () => {
       expect(r.code).toBe(0)
       const facts = JSON.parse(r.out)
       expect([facts.projects, facts.tasks, facts.sandbox.declared, facts.lockfile]).toEqual([
-        4,
+        0,
         0,
         0,
         false,
       ])
       expect(facts).not.toHaveProperty('configErrors')
       const pretty = await vx(root, ['info'])
-      expect(pretty.out).toMatch(/^projects: +4 \(0 tasks\)$/m)
+      expect(pretty.out).toMatch(/^projects: +0 \(0 tasks\)$/m)
       expect(pretty.out).not.toContain('config errors')
     },
     TIMEOUT,
@@ -1008,7 +1009,7 @@ describe('vx show reads the lock and evaluates nothing (e2e)', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-lock-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     const app = path.join(root, 'packages', 'app')
     await mkdir(app, { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
@@ -1060,7 +1061,7 @@ describe('collectInfo — the facts behind the rows', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-doctor-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     const a = path.join(root, 'packages', 'a')
     await mkdir(a, { recursive: true })
     await writeFile(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))

@@ -14,6 +14,8 @@ export {
   loadProjects,
   loadResolvedProjects,
   loadWorkspacePlugins,
+  lockOfDiscovery,
+  lockReader,
   type LoadedProjects,
   type LoadProjectsArgs,
 } from './projects.js'

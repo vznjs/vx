@@ -14,9 +14,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { waitForProducers, writeLocalWorkspace } from './helpers/local-workspace.js'
+import { lock } from './helpers/orchestrator.js'
 
 const TIMEOUT = 60_000
-const BIN = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
+// Core's bin over a lock written first: `vx lock` walks for configs, a run does not.
+const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 
 interface Fixture {
   root: string
@@ -115,6 +117,7 @@ async function stampLines(f: Fixture, name: string): Promise<number> {
 }
 
 async function warmThenWipe(f: Fixture): Promise<void> {
+  await lock(f.root)
   expect(await vx(f, false)).toBe(0)
   for (const p of ['a', 'b']) {
     await rm(path.join(f.root, 'packages', p, 'dist'), { recursive: true, force: true })

@@ -9,7 +9,7 @@ import {
   type MigrationFormat,
   type MigrationPlan,
   PERSISTENT_TODO,
-  type ProjectMeta,
+  type PackageMeta,
   quoteTsLiteral as quote,
 } from '@vzn/vx'
 import {
@@ -42,7 +42,7 @@ const PRESET_NAMES: Record<TurboGlobal, string> = {
 
 export async function migrateTurbo(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   format: MigrationFormat = 'ts',
 ): Promise<MigrationPlan> {
   const tracked = await trackedFiles(root)
@@ -127,8 +127,8 @@ export async function migrateTurbo(
  */
 async function withRootProject(
   root: string,
-  metas: readonly ProjectMeta[],
-): Promise<readonly ProjectMeta[]> {
+  metas: readonly PackageMeta[],
+): Promise<readonly PackageMeta[]> {
   const named = await rootTaskProject(root)
   // A root the globs list already is a project of this name; a package
   // that took the name leaves the root none to take.

@@ -44,7 +44,7 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 | Watch mode                 | `vx watch <task>`                                                 | `turbo watch`                                |
 | Prune for Docker           | No equivalent                                                     | `turbo prune`                                |
 | Import boundaries          | No: a lint's job                                                  | `boundaries`                                 |
-| Non-JS projects            | No                                                                | Experimental: Go, Cargo, uv                  |
+| Non-JS projects            | Yes: any directory with a `vx.config` is a project                | Experimental: Go, Cargo, uv                  |
 | Terminal output            | Streamed blocks you can scroll, copy and pipe                     | Terminal UI                                  |
 | Windows                    | WSL2                                                              | Native                                       |
 | Install                    | One binary; no Bun, Node optional                                 | npm and Node                                 |

@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { type ProjectMeta } from '@vzn/vx'
+import { type PackageMeta } from '@vzn/vx'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { trackedKinds } from '../src/tracked-outputs.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
@@ -53,7 +53,7 @@ describe('turbo-map: a wildcard-first output with a literal rest', () => {
         path.join(dir, 'turbo.json'),
         JSON.stringify({ tasks: { build: { outputs: [output] } } }),
       )
-      const meta: ProjectMeta = {
+      const meta: PackageMeta = {
         name: 'a',
         dir: path.join(dir, 'a'),
         packageJson: { name: 'a', scripts: { build: 'b' } } as never,

@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { loadProjectConfig, type ProjectMeta } from '@vzn/vx'
+import { loadProjectConfig, type PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 import { ownFileOutput, ownFileTakeBacks } from '../src/shared-outputs.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
@@ -24,7 +24,7 @@ afterEach(async () => {
 const TODO =
   'output "package.json" covers the project\'s own package.json, which vx cleans before every run — task runs uncached; declare the outputs without it in a vx.config to cache it'
 
-async function pkg(name: string, scripts: Record<string, string>): Promise<ProjectMeta> {
+async function pkg(name: string, scripts: Record<string, string>): Promise<PackageMeta> {
   const dir = path.join(root, 'packages', name)
   await mkdir(dir, { recursive: true })
   const packageJson = { name, scripts }

@@ -7,7 +7,7 @@
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { type GeneratedProject, type GeneratedTask, type ProjectMeta, UserError } from '@vzn/vx'
+import { type GeneratedProject, type GeneratedTask, type PackageMeta, UserError } from '@vzn/vx'
 import { minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
@@ -158,8 +158,8 @@ const asStrings = (v: unknown): string[] =>
  */
 export async function viteTaskProjects(
   root: string,
-  metas: readonly ProjectMeta[],
-): Promise<{ metas: ProjectMeta[]; notes: string[] }> {
+  metas: readonly PackageMeta[],
+): Promise<{ metas: PackageMeta[]; notes: string[] }> {
   if (metas.some((m) => path.resolve(m.dir) === path.resolve(root)))
     return { metas: [...metas], notes: [] }
   const file = viteConfigFile(root)
@@ -186,7 +186,7 @@ export async function viteTaskProjects(
 /** Every project's Vite Task tasks and package.json scripts as vx tasks. */
 export async function mapViteTaskWorkspace(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   opts: ViteTaskOptions = {},
 ): Promise<ViteTaskMapping> {
   const rootFile = viteConfigFile(root)
@@ -207,12 +207,12 @@ export async function mapViteTaskWorkspace(
           : await readRunConfig(file, root),
     )
   }
-  const tasksOf = (m: ProjectMeta): Record<string, unknown> => runs.get(m.name)?.tasks ?? {}
-  const defines = (m: ProjectMeta, task: string): boolean =>
+  const tasksOf = (m: PackageMeta): Record<string, unknown> => runs.get(m.name)?.tasks ?? {}
+  const defines = (m: PackageMeta, task: string): boolean =>
     Object.hasOwn(tasksOf(m), task) || typeof packageScripts(m)[task] === 'string'
   const byName = new Map(metas.map((m) => [m.name, m]))
   /** Workspace members `m` lists under each field, by name. */
-  const depsIn = (m: ProjectMeta, field: string): string[] => {
+  const depsIn = (m: PackageMeta, field: string): string[] => {
     const deps = (m.packageJson as unknown as Record<string, unknown>)[field]
     if (typeof deps !== 'object' || deps === null) return []
     return Object.keys(deps).filter((n) => byName.has(n) && n !== m.name)
@@ -225,7 +225,7 @@ export async function mapViteTaskWorkspace(
    * leading chain of them becomes `dependsOn` edges, and the task a group
    * when nothing else is left; a form with no edge spelling is a TODO.
    */
-  function inlineRuns(t: GeneratedTask, self: ProjectMeta): void {
+  function inlineRuns(t: GeneratedTask, self: PackageMeta): void {
     const exec = t.task?.['exec'] as { command?: unknown } | undefined
     if (typeof exec?.command !== 'string') return
     const parts = exec.command.split('&&').map((p) => p.trim())
@@ -252,7 +252,7 @@ export async function mapViteTaskWorkspace(
   }
 
   /** The edges one `vp run` stands for, or null when it has none. */
-  function runEdges(segment: string, self: ProjectMeta, own: string): string[] | null {
+  function runEdges(segment: string, self: PackageMeta, own: string): string[] | null {
     const words = segment.split(/\s+/)
     words.splice(0, words.indexOf(words[0] === 'vpr' ? 'vpr' : 'run') + 1)
     let recursive = false
@@ -279,7 +279,7 @@ export async function mapViteTaskWorkspace(
       const m = byName.get(spec.slice(0, hash))
       return recursive || workspace || filters.length > 0 || m === undefined ? null : [spec]
     }
-    let picked: ProjectMeta[]
+    let picked: PackageMeta[]
     if (filters.length > 0) {
       // Package names only: pnpm's directory, glob and graph selectors are not.
       if (filters.some((f) => !byName.has(f))) return null
@@ -314,7 +314,7 @@ export async function mapViteTaskWorkspace(
     })
     let spelled: readonly string[] | undefined
     if (wild && opts.sourceNames !== undefined) {
-      const closure = new Set<ProjectMeta>([meta])
+      const closure = new Set<PackageMeta>([meta])
       for (const p of closure)
         for (const field of [...DEP_FIELDS, 'optionalDependencies'])
           for (const n of depsIn(p, field)) closure.add(byName.get(n)!)
@@ -342,7 +342,7 @@ export async function mapViteTaskWorkspace(
      * defines it. `^task` is that set while no member listed under another
      * field defines it too (vx's `^` follows every field); else the edges.
      */
-    function fromDeps(m: ProjectMeta, entry: { task: string; from: unknown }): string[] {
+    function fromDeps(m: PackageMeta, entry: { task: string; from: unknown }): string[] {
       const fields = (Array.isArray(entry.from) ? entry.from : [entry.from]).filter(
         (f): f is DepField => (DEP_FIELDS as readonly unknown[]).includes(f),
       )

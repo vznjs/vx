@@ -26,10 +26,10 @@ is what a single command operates over.
 
 ## Project
 
-**One buildable unit inside the workspace**, usually a package with its
+**One buildable unit inside the workspace**, often a package with its
 own `package.json`. Projects depend on each other the way packages do.
 
-- vx: a project, one `vx.config.ts` per package
+- vx: a project, any directory holding a `vx.config.ts`, in any language
 - Turborepo: a package ([package graph](https://turborepo.com/docs/core-concepts/package-and-task-graph#package-graph))
 - Nx: a project ([glossary](https://nx.dev/docs/reference/glossary#project))
 - Bazel: a [package](https://bazel.build/reference/glossary#package), holding [targets](https://bazel.build/reference/glossary#target)
@@ -71,7 +71,7 @@ something surprising.
 ## Project graph
 
 **The projects and the dependencies between them**, read from the package
-manager's manifests. The task graph is built on top of it.
+manager's manifests (in vx, by a lockfile plugin). The task graph is built on top of it.
 
 - vx: the package graph
 - Turborepo: the Package Graph ([package and task graphs](https://turborepo.com/docs/core-concepts/package-and-task-graph#package-graph))

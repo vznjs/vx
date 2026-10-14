@@ -24,21 +24,12 @@ import {
   type RunOptions,
   shellQuote,
 } from '../orchestrator/index.js'
-import {
-  findWorkspaceRoot,
-  type LoadReads,
-  loadWorkspace,
-  LOCKFILE_NAME,
-  memberBaseDirs,
-  type ProjectMeta,
-} from '../workspace/index.js'
+import { findWorkspaceRoot, LOCKFILE_NAME, NO_LOCK, type ProjectMeta } from '../workspace/index.js'
 import { type CliLoadOptions, discoverCliProjects, loadCliWorkspace } from './workspace-config.js'
 import { resolveSetting } from '../settings.js'
 import {
-  isIgnoredWatchPath,
   isWorkspaceConfigFile,
   gitFiles,
-  shapesMembers,
   makeFence,
   makeRootEventFilter,
   makeWatchIgnore,
@@ -48,7 +39,7 @@ import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
 import { hangupIgnored, maskedLine, restartTimings } from '../util/index.js'
-import { memberEntries, sameMembers, sweepConfigs, watchedProjects } from './watch-set.js'
+import { sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
 function sayCannot(what: string, err: unknown): void {
@@ -166,13 +157,18 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // closure `--filter 'app...'` walks, computed below once the initial
   // run has staged the configs. Plus the workspace root, for lockfile
   // changes.
-  const reads: LoadReads = new Map()
   const workspaceRoot = await findWorkspaceRoot(cwd)
-  const workspace = await loadWorkspace(workspaceRoot, reads)
-  const allProjects = await discoverCliProjects(workspace)
-  // `//#check` is the root project's task, named by its package.json name
-  // as the run names it (prepare.ts, D-39): taken literally, no project
-  // was in scope and the watch exited 1 after a green run.
+  // No lock yet is no project yet: the first cycle fails saying so, and
+  // the lock `vx lock` writes is the event that arms the set.
+  let unlocked = false
+  const allProjects = await discoverCliProjects(workspaceRoot).catch((err: unknown) => {
+    if (!(err instanceof Error) || err.message !== NO_LOCK) throw err
+    unlocked = true
+    return []
+  })
+  // `//#check` is the root project's task, under the name the run gives
+  // it (prepare.ts, D-39): taken literally, no project was in scope and
+  // the watch exited 1 after a green run.
   const rootDir = path.resolve(workspaceRoot)
   const rootName = allProjects.find((p) => path.resolve(p.dir) === rootDir)?.name
   const anchored = opts.tasks
@@ -208,7 +204,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const initial: InitialCycle = {
     cycle: watchCycle(opts, stop.signal, () => {
       if (initial.onWaiting !== undefined) initial.onWaiting()
-      else if (loop === undefined && scope.length > 0 && !stop.signal.aborted)
+      else if (loop === undefined && (scope.length > 0 || unlocked) && !stop.signal.aborted)
         loop = armLoop(initial)
     }),
     held: Promise.resolve(undefined),
@@ -249,7 +245,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   if (refusedToStart) return 1
   // After the initial run, so a `pkg#task` naming no project gets the
   // run's own refusal and its "did you mean".
-  if (scope.length === 0) {
+  if (scope.length === 0 && !unlocked) {
     await held?.stop()
     process.stderr.write(`vx watch: no projects in scope\n`)
     return 1
@@ -285,16 +281,13 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       uncached: swept.uncached,
       configImports: swept.configImports,
       workspaceConfigImports: swept.workspaceConfigImports,
-      memberBases: memberBaseDirs(workspace),
-      packageDirs: new Set(allProjects.map((p) => p.dir)),
       fenceDirs: fenceDirs(allProjects),
-      // The workspace as the cycle that just ran saw it: a package added or
-      // removed since the loop armed joins or leaves the watched set. The
-      // scope is the one resolved at start; a new package joins it only as a
-      // dependency of it.
+      // The workspace as the cycle that just ran saw it: a project the lock
+      // gained or lost since the loop armed joins or leaves the watched
+      // set. The scope is the one resolved at start; a new project joins
+      // it only as a dependency of it.
       rediscover: async () => {
-        const workspace = await loadWorkspace(workspaceRoot)
-        const all = await discoverCliProjects(workspace)
+        const all = await discoverCliProjects(workspaceRoot)
         const sweep = await sweepConfigs(all, workspaceRoot, load, opts.tasks)
         const now = await watchedProjects(workspaceRoot, all, inScope(all), load, sweep.staged)
         return {
@@ -303,7 +296,6 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
           // the cycle that loaded it; read once, its edits started nothing
           // until a restart.
           claimedRootFiles: claimsOf((await loadCliWorkspace(workspaceRoot)).plugins),
-          memberBases: memberBaseDirs(workspace),
           workspaceWide: sweep.workspaceWide,
           workspaceInputs: sweep.workspaceInputs,
           outputs: sweep.outputs,
@@ -311,7 +303,6 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
           uncached: sweep.uncached,
           configImports: sweep.configImports,
           workspaceConfigImports: sweep.workspaceConfigImports,
-          packageDirs: new Set(all.map((p) => p.dir)),
           fenceDirs: fenceDirs(all),
         }
       },
@@ -368,10 +359,6 @@ interface WatchLoopArgs {
    * loaded once per process, so the set is fixed for the loop.
    */
   claimedRootFiles: ReadonlySet<string>
-  /** The directory each `<dir>/*` package glob names at start; a member coming or going there is a cycle. */
-  memberBases: readonly string[]
-  /** Every package's directory, in scope or not: a member base's other entries are packages still to come. */
-  packageDirs: ReadonlySet<string>
   /** Every project, in scope or not: a project's key leaves out what lies in one nested under it. */
   fenceDirs: readonly string[]
   /** The watched set again, after a cycle that followed an event which can change it. */
@@ -385,7 +372,6 @@ const fenceDirs = (all: readonly ProjectMeta[]): string[] => all.map((p) => p.di
 interface Rediscovered {
   projects: readonly ProjectMeta[]
   claimedRootFiles: ReadonlySet<string>
-  memberBases: readonly string[]
   workspaceWide: boolean
   workspaceInputs: readonly string[]
   outputs: ReadonlyMap<string, readonly string[]>
@@ -393,7 +379,6 @@ interface Rediscovered {
   uncached: ReadonlySet<string>
   configImports: readonly string[]
   workspaceConfigImports: readonly string[]
-  packageDirs: ReadonlySet<string>
   fenceDirs: readonly string[]
 }
 
@@ -402,8 +387,6 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // The watched set as of the last cycle: `rearm` replaces these after an
   // event that can change it, and every filter below reads the current one.
   let workspaceWide = args.workspaceWide
-  let packageDirs = args.packageDirs
-  let memberBases = args.memberBases
   let projectDirs = args.projectDirs
   let workspaceInputs = args.workspaceInputs
   let outputs = args.outputs
@@ -607,6 +590,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   let rootArm: WatchHandle = CLOSED
   let dotVxArm: WatchHandle = CLOSED
   const armProject = (proj: ProjectMeta): void => {
+    // Gone for now: its ancestor's arm (`armAncestors`) hears it return.
+    if (inodeOf(proj.dir) === undefined) return
     try {
       const handle = arm(proj.dir, true, (filename) => {
         const abs = path.join(proj.dir, filename)
@@ -627,8 +612,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       rootArm = workspaceWide
         ? // workspaceFiles inputs in play: a root-relative glob can name a
           // file anywhere, so one recursive root watcher replaces the
-          // per-project ones (it also covers claimed root files and
-          // pnpm-workspace.yaml). `matters` keeps the events a key can see —
+          // per-project ones (it also covers claimed root files).
+          // `matters` keeps the events a key can see —
           // project trees, claimed root files, the declared globs — and drops
           // the rest of the tree; the ignore filter then keeps node_modules
           // / .git / .vx and declared outputs out of what remains.
@@ -645,13 +630,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             trigger(`root ${filename}`, abs)
           })
         : // The root itself, non-recursive, beside the per-project arms, so
-          // claimed root files (a lockfile) and pnpm-workspace.yaml trigger
-          // re-runs even when no project dir saw the change.
+          // claimed root files (a lockfile) trigger re-runs even when no
+          // project dir saw the change.
           arm(workspaceRoot, false, (filename) => {
             if (
-              shapesMembers(filename) ||
               isWorkspaceConfigFile(filename) ||
-              filename === 'package.json' ||
               filename === '.gitignore' ||
               claimedRootFiles.has(filename)
             ) {
@@ -696,52 +679,6 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     rootArm = CLOSED
     dotVxArm.close()
     dotVxArm = CLOSED
-  }
-
-  /**
-   * A directory under a member base with no package in it yet. The base's
-   * own watcher is not recursive, so the `package.json` that makes it a
-   * package is an event only here; an editor or `git checkout` that makes
-   * the directory first and the manifest after left the package unwatched
-   * for good (item 891). On a rearm a new entry is armed before its
-   * manifest is checked, so one that landed after the re-read is an event
-   * or is seen by the check. At start there is no re-read to race, and a
-   * manifest already there is a directory the globs exclude.
-   */
-  const pending = new Map<string, WatchHandle>()
-  const armPending = (afterReread: boolean): void => {
-    const want = new Set<string>()
-    for (const base of memberBases)
-      for (const name of memberEntries(base)) {
-        const dir = path.join(base, name)
-        if (!packageDirs.has(dir)) want.add(dir)
-      }
-    for (const [dir, handle] of pending) {
-      if (want.has(dir) && !stale(dir)) continue
-      handle.close()
-      pending.delete(dir)
-    }
-    for (const dir of want) {
-      if (pending.has(dir)) continue
-      const manifest = path.join(dir, 'package.json')
-      const arrived = (): void => {
-        reread = true
-        trigger(path.relative(workspaceRoot, manifest), manifest)
-      }
-      try {
-        pending.set(
-          dir,
-          arm(dir, false, (filename) => {
-            if (filename === 'package.json') arrived()
-          }),
-        )
-        armedAs.set(dir, inodeOf(dir) ?? '')
-      } catch (err) {
-        sayCannot(`cannot watch ${dir}`, err)
-        continue
-      }
-      if (afterReread && fs.existsSync(manifest)) arrived()
-    }
   }
 
   /**
@@ -824,9 +761,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     claimedRootFiles = next.claimedRootFiles
     configImportFiles = next.configImports
     wsConfigImportFiles = next.workspaceConfigImports
-    packageDirs = next.packageDirs
-    memberBases = next.memberBases
-    armBases()
+    armAncestors()
     isIgnoredPath = makeWatchIgnore(cacheDir, outputs, inputs, atArm?.tracked)
     fenced = makeFence(next.fenceDirs)
     matters = makeRootEventFilter(
@@ -852,38 +787,29 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       }
       for (const proj of next.projects) if (!perProject.has(proj.dir)) armProject(proj)
     }
-    armPending(true)
     armImports()
     // A new arm proves delivery like the first ones: an edit in the new
-    // package right after this cycle is seen, not lost in the gap.
+    // project right after this cycle is seen, not lost in the gap.
     await pool.proved()
     if (say) process.stdout.write(`${watchingLine(next.projects.length)}\n`)
   }
 
   armMode(projects)
 
-  // A package added while the loop runs is a directory entry appearing
-  // under the glob's directory (`packages/` for `packages/*`); one
-  // non-recursive watcher there hears it come or go, and the cycle it
-  // triggers re-reads the workspace (`rearm`) so the new package's own
-  // edits are cycles from then on. Until 2026-09-10 the watched set was
-  // fixed when the loop armed: the next cycle ran the new package, and
-  // every edit inside it after that was silence. The bases themselves are
-  // re-read with the set: a glob added to the list watched nothing new
-  // until a restart (item 1018).
-  const baseArms = new Map<string, WatchHandle>()
-  // A base removed and made again is no event to its own watch (it holds
-  // the deleted directory) nor to the root arm, which drops every name but
-  // its own files: `watching 0 project(s)` and silence until a restart. So
-  // each base, and each directory a config imports from, is watched from
-  // its nearest directory that exists, for the next name on the way down:
-  // its parent while it is there, an ancestor when the parent went too
-  // (`apps/` removed under `apps/web/*`).
+  // A project directory, or one a config imports from, removed and made
+  // again (`rm -rf packages && git checkout packages`) is no event to its
+  // own watch (it holds the deleted directory) nor to the root arm, which
+  // drops every name but its own files: silence until a restart. So each
+  // is watched from its nearest directory that exists, for the next name
+  // on the way down: its parent while it is there, an ancestor when the
+  // parent went too (`apps/` removed under `apps/web/site`).
   const ancestorArms = new Map<string, WatchHandle>()
   let ancestorNames = new Map<string, Set<string>>()
   const armAncestors = (): void => {
     ancestorNames = new Map()
-    for (const base of [...memberBases, ...importNames.keys()]) {
+    const rootDir = path.resolve(workspaceRoot)
+    const below = projectDirs.filter((d) => path.resolve(d) !== rootDir)
+    for (const base of [...below, ...importNames.keys()]) {
       let dir = path.dirname(base)
       let name = path.basename(base)
       while (inodeOf(dir) === undefined && dir !== workspaceRoot && dir !== path.dirname(dir)) {
@@ -903,7 +829,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
         ancestorArms.set(
           dir,
           arm(dir, false, (filename) => {
-            if (!ancestorNames.get(dir)?.has(filename)) return
+            // A project's parent's `.gitignore` shapes what its keys read, as the root's does.
+            if (!ancestorNames.get(dir)?.has(filename) && filename !== '.gitignore') return
             reread = true
             const abs = path.join(dir, filename)
             trigger(path.relative(workspaceRoot, abs), abs)
@@ -915,59 +842,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       }
     }
   }
-  const armBases = (): void => {
-    armAncestors()
-    const want = new Set(memberBases)
-    for (const [base, handle] of baseArms) {
-      if (want.has(base) && !stale(base)) continue
-      handle.close()
-      baseArms.delete(base)
-    }
-    for (const base of want) {
-      if (baseArms.has(base)) continue
-      // Gone for now: its parent's arm hears it come back.
-      if (inodeOf(base) === undefined) continue
-      let members = memberEntries(base)
-      try {
-        baseArms.set(
-          base,
-          arm(base, false, (filename) => {
-            if (isIgnoredWatchPath(filename)) return
-            // Inputs are gitignore-aware: an edit here changes what the
-            // members' keys read, and `vx run` would miss on it.
-            if (filename === '.gitignore') {
-              trigger(
-                path.relative(workspaceRoot, path.join(base, filename)),
-                path.join(base, filename),
-              )
-              return
-            }
-            // Only a member coming or going. On macOS a non-recursive watcher
-            // also reports a member whose CONTENTS changed (FSEvents names the
-            // directory a write landed in), so a task writing into its own
-            // project — or the arm's own probe file — read as a member event
-            // and cost an uncached task one execution per cycle (CI,
-            // 2026-09-10).
-            const now = memberEntries(base)
-            // The same names, but a directory still without a package made
-            // again (or replaced by a rename): its pending watch holds the
-            // deleted one, and the `package.json` that lands next is heard
-            // only by a new arm.
-            const entry = path.join(base, filename)
-            if (sameMembers(members, now) && !(pending.has(entry) && stale(entry))) return
-            members = now
-            reread = true
-            trigger(`${path.relative(workspaceRoot, base)}/${filename}`, path.join(base, filename))
-          }),
-        )
-        armedAs.set(base, inodeOf(base) ?? '')
-      } catch (err) {
-        sayCannot(`cannot watch ${base}`, err)
-      }
-    }
-  }
-  armBases()
-  armPending(false)
+  armAncestors()
   armImports()
 
   // The orchestrator's own writes never kick the loop: `makeWatchIgnore`

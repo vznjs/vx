@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { type ProjectMeta } from '@vzn/vx'
+import { type PackageMeta } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, ignoredFilesProbe } from '../src/dotenv-probe.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
@@ -71,7 +71,7 @@ describe('turbo-map: gitignored inputs named by path', () => {
     const pkgDir = path.join(dir, 'packages', 'a')
     await mkdir(pkgDir, { recursive: true })
     const scripts = { build: 'b', only: 'o' }
-    const metas: ProjectMeta[] = [
+    const metas: PackageMeta[] = [
       { name: 'a', dir: pkgDir, packageJson: { name: 'a', scripts } as never, configPath: null },
     ]
     const asked: string[][] = []

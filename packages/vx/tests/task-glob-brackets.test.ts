@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { run } from './helpers/orchestrator.js'
 import { declaresInput } from '../src/cache/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { workspaceWith } from './helpers/local-workspace.js'
 
 const workspaceGlobsMatch = (globs: string[], rel: string): boolean =>
   declaresInput({ inputs: { files: [], workspaceFiles: globs }, outputs: { files: [] } }, null, rel)
@@ -149,7 +150,7 @@ for (const [spelling, glob] of spellings) {
       root = await makeWorkspace({ prefix: 'vx-brackets-' })
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        'export default { run: { rules: { exclusiveOutputs: false } } }\n',
+        workspaceWith('run: { rules: { exclusiveOutputs: false } }'),
       )
       const dir = await addProject(root, 'p', {
         config: `

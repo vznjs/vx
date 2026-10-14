@@ -8,7 +8,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { migrateNx } from '../src/migrate-nx.js'
 
 const graph = {
@@ -32,7 +32,7 @@ async function headerNotes(files: Record<string, string>): Promise<string[]> {
     await writeFile(path.join(root, 'package.json'), '{"name":"root","private":true}')
     await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
     for (const [name, text] of Object.entries(files)) await Bun.write(path.join(root, name), text)
-    const metas: ProjectMeta[] = [
+    const metas: PackageMeta[] = [
       {
         name: 'a',
         dir: path.join(root, 'libs', 'a'),
