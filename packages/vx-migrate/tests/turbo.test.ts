@@ -654,6 +654,69 @@ describe('a committed file under an output', () => {
   )
 })
 
+describe('input zero segments', () => {
+  it(
+    "a wildcard `X/**` input also keys on X, as Turbo's `**` matches zero segments",
+    async () => {
+      const app = path.join(root, 'packages', 'app')
+      await pkg('app', { build: 'mkdir -p dist && cat config.json > dist/out.json' })
+      await pkg('lib', { build: 'mkdir -p dist && echo l > dist/l.js' })
+      await writeFile(path.join(app, 'config.json'), '{"v":1}\n')
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: { build: { inputs: ['*/**', '!*.md', '!dist-*/**'], outputs: ['dist/**'] } },
+        }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const plan = await planRun({ cwd: root, tasks: ['app#build'], log: silent() })
+      const node = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      expect(node.config.cache?.inputs.files).toEqual([
+        '*/**',
+        '*',
+        '!*.md',
+        '!dist-*/**',
+        '!dist-*',
+      ])
+      const opts = { cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false }
+      const status = (r: Awaited<ReturnType<typeof run>>) =>
+        r.outcomes.find((o) => o.node.id === 'app#build')!.status
+      expect(status(await run(opts))).toBe('success')
+      expect(status(await run(opts))).toBe('cache-hit')
+      // Matched only through `*/**`'s zero segments: a hit here replays `{"v":1}`.
+      await writeFile(path.join(app, 'config.json'), '{"v":2}\n')
+      expect(status(await run(opts))).toBe('success')
+      expect(await Bun.file(path.join(app, 'dist', 'out.json')).text()).toBe('{"v":2}\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a root task takes X as a workspace glob; $TURBO_DEFAULT$ and literal inputs are unchanged',
+    async () => {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'ws', private: true, scripts: { gen: 'echo g' } }),
+      )
+      await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            '//#gen': { inputs: ['*/**'] },
+            build: { inputs: ['$TURBO_DEFAULT$', 'package.json', 'src/**'] },
+          },
+        }),
+      )
+      const plan = await planRun({ cwd: root, tasks: ['ws#gen', 'lib#build'], log: silent() })
+      const cache = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache!
+      expect(cache('ws#gen').inputs.workspaceFiles).toEqual(['*/**', '*'])
+      expect(cache('lib#build').inputs.files).toEqual(['**/*', 'package.json', 'src/**'])
+    },
+    TIMEOUT,
+  )
+})
+
 describe('output negation', () => {
   it(
     'a wildcard output carved by negations stays cached and names what the clean deletes',
