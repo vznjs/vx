@@ -22,6 +22,13 @@ vulnerability), never in a public issue.
   must already be installed: vx runs Bun with `--no-install`, so an
   import no `node_modules` provides is refused, never fetched from the
   registry (L-22).
+- **Your projects lock.** A run executes `.vx/projects.lock.json` as
+  written and never re-evaluates or re-validates it, so the lock is code
+  too. It is minified and marked generated, which collapses it in a
+  pull request's diff: a change to it alone changes what runs while every
+  config and `vx.lock.json` reads the same. Run `vx lock --check` in CI
+  before anything else; it fails on any entry that differs from what its
+  config evaluates to and on one with no config (`tests/lock.test.ts`).
 - **Your project's own vx.** A global vx hands every call to the
   workspace root's `node_modules/.bin/vx` (cli.md § Which vx runs), so even
   `vx --version` in a repo you do not trust runs that repo's code. One

@@ -295,7 +295,9 @@ async function clear(
     const store = cache.storeDir
     cache.close()
     targets.push(dir)
-    if (store !== undefined) targets.push(store)
+    // The index is a file in the checkout (committed, or restored from a CI
+    // cache): the store it names is deleted only when it is one.
+    if (store !== undefined && isStore(store)) targets.push(store)
   } else if (storeRoot !== null) targets.push(storeRoot)
   if (parsed.global === true) {
     const vxHome = path.join(process.env['HOME'] || homedir(), '.vx')
@@ -350,4 +352,14 @@ async function clear(
     )
   }
   return 0
+}
+
+/** A store's shape: `<home>/.vx/<id>/cache` holding its `store.db`. */
+function isStore(stored: string): boolean {
+  const dir = path.resolve(stored)
+  return (
+    path.basename(dir) === 'cache' &&
+    path.basename(path.dirname(path.dirname(dir))) === '.vx' &&
+    existsSync(path.join(dir, 'store.db'))
+  )
 }
