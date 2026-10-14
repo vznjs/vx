@@ -111,5 +111,5 @@ still safe: an artifact that disappears before its restore is a miss,
 and the task runs.
 
 The full reference is in the
-[CLI docs](https://vznjs.github.io/vx/cli/#vx-cache-prune) and the
+[CLI docs](https://vznjs.github.io/vx/cli/#vx-cache-clean) and the
 [workspace schema](https://vznjs.github.io/vx/schema/).
