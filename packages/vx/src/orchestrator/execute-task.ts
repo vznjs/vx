@@ -14,6 +14,7 @@ import {
   stampWorkspaceOutputs,
   FULL_CACHE_POLICY,
   type GitFilesCache,
+  racyWindowMs,
 } from '../cache/index.js'
 import {
   buildIsolatedEnv,
@@ -62,7 +63,9 @@ import {
 } from '../util/index.js'
 import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS, terminateChildren } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
+import type { CommandWindows } from './command-windows.js'
 import {
+  commandWriteReach,
   mayWriteFingerprint,
   type Placeholder,
   placeholderSweeper,
@@ -262,6 +265,8 @@ export interface ExecuteArgs {
   noDependants?: true
   /** The task holds vx's terminal (`terminalHolders`): its stdio is vx's own. */
   terminal?: true
+  /** When each command of the run ran and where it may write (command-windows.ts). */
+  commandWindows?: CommandWindows
 }
 
 /**
@@ -550,6 +555,8 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const serverSecrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   const serverOut = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStdout(node, t))
   const serverErr = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStderr(node, t))
+  // A server writes until the run stops it: its window stays open.
+  args.commandWindows?.open(node.id, node.projectDir, commandWriteReach(node, args.workspaceRoot))
   const persistentOpts: Parameters<typeof runPersistent>[0] = {
     command,
     cwd: node.projectDir,
@@ -1004,6 +1011,24 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           : {}),
       })
     : undefined
+  /** The other command that may have put a moved input back (`ownRewrite`). */
+  let rewroteBy: string | undefined
+  /**
+   * Under `'mutable'`, a write during the command that left the key's bytes
+   * is the task's own identical rewrite only if no other command that may
+   * write the file ran between the describe and that write: one that did
+   * may have changed it and put it back while this command read it.
+   */
+  const ownRewrite = (file: string, ctimeMs: number): boolean => {
+    rewroteBy = args.commandWindows?.writerDuring(
+      node.id,
+      file,
+      described!.describedAt,
+      ctimeMs + racyWindowMs(ctimeMs, 0),
+    )
+    return rewroteBy === undefined
+  }
+
   // A name only `exec.env.secret` makes secret is not one the name rule
   // sees later: its row carries the mark, so `vx why` hides its hash (M-63).
   const named = node.config.exec?.env?.secret
@@ -1141,6 +1166,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // the throw is its rejection, the value its resolution, so both reach
     // the naming catch and the cleanup in finally below.
     let running: Promise<unknown>
+    const closeWindow =
+      args.commandWindows?.open(
+        node.id,
+        node.projectDir,
+        commandWriteReach(node, args.workspaceRoot),
+      ) ?? (() => {})
     try {
       running = Promise.resolve(args.executor.execute(req))
     } catch (thrown) {
@@ -1179,6 +1210,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         throw err
       })
       .finally(() => {
+        closeWindow()
         clearTimeout(timeoutTimer)
         unlistenStop?.()
         unlistenStop = undefined
@@ -1591,7 +1623,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         described!.facts,
         cache,
         described!.describedAt,
-        stability.strategy === 'mutable',
+        stability.strategy === 'mutable' ? ownRewrite : undefined,
       )) ?? described!.added()
     )
   }
@@ -1621,24 +1653,26 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     endCheck()
     if (moved === undefined) return true
     const what =
-      moved === null ? 'its inputs' : `\`${printable(relPosix(args.workspaceRoot, moved))}\``
+      (moved === null ? 'its inputs' : `\`${printable(relPosix(args.workspaceRoot, moved))}\``) +
+      ' changed after its key was taken' +
+      (rewroteBy === undefined ? '' : ` while ${rewroteBy} ran`)
     // A task that regenerates its own input (TanStack Router's committed
     // `routeTree.gen.ts`, rewritten to the same bytes by every build) is
     // never saved (item 1015), and the line said so without the way out.
     // Not for `package.json`, which an output may not cover.
     const hint =
-      moved === null || path.basename(moved) === 'package.json'
+      moved === null || rewroteBy !== undefined || path.basename(moved) === 'package.json'
         ? ''
         : '; if the task writes it, declare it in cache.outputs'
     if (stability.severity === 'error') {
       log.status(
-        `[vx] ${node.id}: ${what} changed after its key was taken — the result is not saved, ` +
+        `[vx] ${node.id}: ${what} — the result is not saved, ` +
           `and inputStability.severity is 'error', so the task fails${hint}`,
       )
       movedFails = moved === null ? '' : printable(relPosix(args.workspaceRoot, moved))
     } else {
       log.status(
-        `[vx] ${node.id}: ${what} changed after its key was taken — the result stands, ` +
+        `[vx] ${node.id}: ${what} — the result stands, ` +
           `but is not saved under a key that no longer describes it${hint}`,
       )
     }

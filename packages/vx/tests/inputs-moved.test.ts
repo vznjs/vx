@@ -209,6 +209,102 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
+    "'mutable': another task that writes an input and puts it back during the command withholds the save",
+    async () => {
+      // The bytes match the key, but `meddle` held other bytes while `read`
+      // ran: the save filed what `read` saw under the key of what is there
+      // now (STATUS item 28). Control: the same write, finished before
+      // `read` starts (dependsOn), is saved.
+      const project = (ordered: boolean) => ({
+        config: `
+          export default {
+            tasks: {
+              read: {
+                exec: { command: 'sleep 0.8' },
+                ${ordered ? "dependsOn: ['meddle']," : ''}
+                cache: {
+                  inputs: { files: ['a.ts'] },
+                  outputs: { files: [] },
+                  inputStability: { strategy: 'mutable' },
+                },
+              },
+              meddle: {
+                exec: { command: 'sleep 0.2 && cp a.ts a.keep && printf bad > a.ts && sleep 0.2 && cat a.keep > a.ts && rm a.keep' },
+              },
+            },
+          }
+        `,
+        files: { 'a.ts': 'const x = 1\n' },
+      })
+      await addProject(root, 'app', project(false))
+      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+      commit()
+      status = []
+      const r = await run({ cwd: root, tasks: ['read', 'meddle'], log: logger })
+      expect(r.ok).toBe(true)
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#read: `packages/app/a.ts` changed after its key was taken while app#meddle ran — the result stands, but is not saved under a key that no longer describes it',
+      ])
+      await addProject(root, 'app', project(true))
+      commit()
+      status = []
+      expect((await run({ cwd: root, tasks: ['read'], log: logger })).ok).toBe(true)
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
+      expect(statusOf(await runTask('read'), 'app#read')).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "'mutable': a server held from an earlier run that writes an input and puts it back withholds the save",
+    async () => {
+      // `vx watch` hands a run's server to the next run; it runs through
+      // that run too, so its write is another task's, not `read`'s own.
+      await addProject(root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              read: {
+                exec: { command: 'touch go && sleep 0.8' },
+                cache: {
+                  inputs: { files: ['a.ts'] },
+                  outputs: { files: [] },
+                  inputStability: { strategy: 'mutable' },
+                },
+              },
+              srv: {
+                exec: {
+                  command: 'echo READY; while [ ! -f go ]; do sleep 0.02; done; sleep 0.2; cp a.ts a.keep; printf bad > a.ts; sleep 0.2; cat a.keep > a.ts; rm a.keep; exec sleep 30',
+                  persistent: { readyWhen: 'READY' },
+                },
+              },
+            },
+          }
+        `,
+        files: { 'a.ts': 'const x = 1\n' },
+      })
+      await writeFile(path.join(root, '.gitignore'), '.vx/\n')
+      commit()
+      const first = await run({ cwd: root, tasks: ['srv'], log: logger, holdPersistent: true })
+      status = []
+      const second = await run({
+        cwd: root,
+        tasks: ['srv', 'read'],
+        log: logger,
+        holdPersistent: true,
+        keep: first.persistent!,
+      })
+      await second.persistent?.stop()
+      await first.persistent!.stop()
+      expect(second.ok).toBe(true)
+      expect(status.filter((l) => MOVED.test(l))).toEqual([
+        '[vx] app#read: `packages/app/a.ts` changed after its key was taken while app#srv ran — the result stands, but is not saved under a key that no longer describes it',
+      ])
+    },
+    TIMEOUT,
+  )
+
+  it(
     "the env var wins over a task's own setting, for the run",
     async () => {
       process.env['VX_CACHE_INPUT_STABILITY_STRATEGY'] = 'mutable'

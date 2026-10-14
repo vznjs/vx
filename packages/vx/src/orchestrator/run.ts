@@ -55,7 +55,7 @@ import {
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
-import { prepareSandbox } from './sandbox-request.js'
+import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
 import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
 import { unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
@@ -125,6 +125,7 @@ import {
   type RunSummaryJson,
 } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
+import { commandWindows } from './command-windows.js'
 import { formatOutcomeTable, formatRunSummary } from './summary.js'
 import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
 import { createMissExplainer } from './miss-reason.js'
@@ -866,6 +867,13 @@ async function runOnBus(
       log.status(`[vx] cache save failed: ${err instanceof Error ? err.message : String(err)}`),
     )
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
+    const windows = commandWindows()
+    // A server held from an earlier run (`vx watch`) runs through this one
+    // too, so it may write a mutable input while it is described.
+    for (const id of heldBefore.kept.keys()) {
+      const node = nodes.get(id)!
+      windows.open(id, node.projectDir, commandWriteReach(node, workspaceRoot))
+    }
 
     // Focused flow: a requested GROUP has no output of its own, so
     // surface the same-project, non-group tasks it chains (one level)
@@ -1074,6 +1082,7 @@ async function runOnBus(
         outputDirSnapshots,
         deferSave: saveLane.defer,
         deferredSaves,
+        commandWindows: windows,
         stopSignal: stopRun.signal,
         failFast: failFast.signal,
       }

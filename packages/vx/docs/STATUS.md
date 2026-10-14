@@ -687,15 +687,7 @@ next?".
 
 27. DONE as item 1070 — `nx()` keeps an output path as written; a bare literal keeps the directory short-circuit.
 
-28. OPEN (owner, 2026-10-10) — with `cache.rewrittenInputs: 'compare'`
-    (opt-in since 2026-10-12; CI no longer implies it) a mid-run write to an
-    input is judged by bytes, and the sandbox lets a task write anywhere
-    in its own project, so another task of the same project running at
-    the same time could change an input and restore it before the check:
-    the bytes match and the entry is saved over what the command read.
-    Directions: attribute writes to the task's own process tree (Linux
-    sandbox strace), or never run two tasks at once when one may write
-    the other's inputs.
+28. DONE 2026-10-14 — under `inputStability.strategy: 'mutable'` a byte-matching write counts as the task's own only if no other command that may write the file (same project, or a workspace write grant) ran between the describe and that write (`command-windows.ts`); otherwise the save is withheld, naming that task.
 
 ## Decisions (this arc)
 

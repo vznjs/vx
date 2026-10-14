@@ -713,7 +713,10 @@ task of the same project running alongside can change an input and put
 it back. A task that rewrites its own input to identical bytes (tsdown's
 `package.json`) sets `cache.inputStability: { strategy: 'mutable' }`, and a write
 during its command is then judged by its bytes, as an earlier write is;
-different bytes still withhold the entry. `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
+different bytes still withhold the entry, and so does a write made while
+another command that may write the file ran (`command-windows.ts`: one
+in the same project, or one with a write grant elsewhere in the
+workspace), named on the line as `while <task> ran`. `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
 makes that the default (owner, 2026-10-12); `'unchecked'` skips the
 check, and `severity: 'error'` fails the task instead of warning
 (`docs/schema.md`). A file ADDED under an

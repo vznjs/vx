@@ -587,7 +587,8 @@ export interface InputStability {
    * withholds the entry, whatever the file holds after, since an edit
    * undone mid-run cannot be told from no edit. `'mutable'`: a file
    * rewritten to the bytes the key folded counts as unchanged, for a task
-   * that rewrites its own input identically (tsdown's `package.json`).
+   * that rewrites its own input identically (tsdown's `package.json`),
+   * unless another task that may write it ran meanwhile.
    * `'unchecked'`: no check.
    */
   strategy?: 'immutable' | 'mutable' | 'unchecked'

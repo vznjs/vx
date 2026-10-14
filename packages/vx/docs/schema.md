@@ -726,7 +726,12 @@ means. `strategy` says which writes count:
   be told from no edit.
 - `'mutable'`: a file rewritten to the bytes the key folded counts as
   unchanged, for a task that rewrites its own input identically
-  (tsdown's `package.json`); different bytes still count.
+  (tsdown's `package.json`); different bytes still count, and so does
+  any write while another task that may write the file was running (one
+  of the same project, or one whose sandbox grants writes elsewhere in
+  the workspace; a server `vx watch` keeps from an earlier run counts),
+  since it may have changed the file and put it back.
+  The line names that task; order the two with `dependsOn` to save.
 - `'unchecked'`: none. The entry is saved under the key taken before the
   command, whatever the command did to its inputs; `severity` is ignored.
   A key that no longer held before the command started still withholds
