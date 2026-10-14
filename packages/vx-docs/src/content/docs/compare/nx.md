@@ -48,7 +48,7 @@ a nothing-changed run of this benchmark took 87 s against 25 s off
 | Why a task missed                   | `vx why` diffs two keys: the file, env var or upstream that moved      | Shows hashes, not the diff                              |
 | Tasks on other machines             | `@vzn/vx-reapi` over Bazel's REAPI, on servers you run or rent         | Nx Agents on Nx Cloud                                   |
 | Plugins                             | Every pipeline stage, 15 hooks; core applies none                      | Inferred tasks, graph data, generators, executors       |
-| Non-JS projects                     | Yes: any directory with a `vx.config` is a project                     | Gradle, Maven and .NET                                  |
+| Non-JS projects                     | Yes: any directory with a `vx.config`; edges are declared, not read from Cargo or Go files                     | Gradle, Maven and .NET                                  |
 | One task, many modes (`build:prod`) | No: a TypeScript function per mode, two tasks                          | `configurations` and `-c`                               |
 | Terminal output                     | Streamed blocks you can scroll, copy and pipe                          | Terminal UI                                             |
 | Windows                             | WSL2                                                                   | Native                                                  |

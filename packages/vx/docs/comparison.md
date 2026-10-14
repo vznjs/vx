@@ -151,15 +151,15 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 
 ## Workspace integration
 
-| Capability                                | Turbo                                   | Nx                                      | vite-task  | vx                                             |
-| ----------------------------------------- | --------------------------------------- | --------------------------------------- | ---------- | ---------------------------------------------- |
-| pnpm / npm / yarn / bun workspaces        | yes                                     | yes                                     | yes        | yes (`@vzn/vx-lockfile`: pnpm, npm, yarn, bun) |
-| Non-JS projects (Rust, .NET, Gradle, ...) | experimental (native Go, Cargo, uv)     | yes (plugins)                           | no         | yes (any directory with a `vx.config`)         |
-| Filter DSL                                | pnpm-style + `[<since>]` (git-relative) | yes via `--projects/--exclude` (no DSL) | pnpm-style | pnpm-style + `[<since>]`                       |
-| Affected / git-relative                   | `--filter '[since...]'`, `--affected`   | full `affected` subcommand              | —          | `--affected[=<base>]` + `[<since>]`            |
-| Daemon / persistent project-graph process | not for `turbo run` since 2.8.11        | yes (on by default locally)             | —          | — **out of scope**                             |
-| Watch mode                                | `turbo watch`                           | `nx watch`                              | —          | `vx watch <task>`                              |
-| Prune workspace (Docker subset)           | `turbo prune`                           | —                                       | —          | — **gap**                                      |
+| Capability                                | Turbo                                   | Nx                                      | vite-task  | vx                                                     |
+| ----------------------------------------- | --------------------------------------- | --------------------------------------- | ---------- | ------------------------------------------------------ |
+| pnpm / npm / yarn / bun workspaces        | yes                                     | yes                                     | yes        | yes (`@vzn/vx-lockfile`: pnpm, npm, yarn, bun)         |
+| Non-JS projects (Rust, .NET, Gradle, ...) | experimental (native Go, Cargo, uv)     | yes (plugins)                           | no         | yes (any directory with a `vx.config`; edges declared) |
+| Filter DSL                                | pnpm-style + `[<since>]` (git-relative) | yes via `--projects/--exclude` (no DSL) | pnpm-style | pnpm-style + `[<since>]`                               |
+| Affected / git-relative                   | `--filter '[since...]'`, `--affected`   | full `affected` subcommand              | —          | `--affected[=<base>]` + `[<since>]`                    |
+| Daemon / persistent project-graph process | not for `turbo run` since 2.8.11        | yes (on by default locally)             | —          | — **out of scope**                                     |
+| Watch mode                                | `turbo watch`                           | `nx watch`                              | —          | `vx watch <task>`                                      |
+| Prune workspace (Docker subset)           | `turbo prune`                           | —                                       | —          | — **gap**                                              |
 
 ## Gap audit 2026-09-04 — what a developer would miss, core or plugin
 
