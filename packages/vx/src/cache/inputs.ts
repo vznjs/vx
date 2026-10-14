@@ -868,15 +868,19 @@ export async function cleanOutputs(args: {
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
   const committed = args.committed ?? committedFiles(undefined, args.projectDir)
-  const files = (args.resolved ?? (await resolveOutputs(args))).filter((f) => !committed(f))
+  const matched = args.resolved ?? (await resolveOutputs(args))
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
   // A symlink is unlinked, never followed.
-  const removed = await removeAll(files, args.projectDir)
+  const removed = await removeAll(
+    matched.filter((f) => !committed(f)),
+    args.projectDir,
+  )
   await pruneEmptiedDirs(args.projectDir, removed, pruneScope(args.projectDir, args.outputs))
-  // Project-relative posix paths of what was removed — the caller
-  // feeds these to GitFilesCache.markOutputsChanged after a restore.
-  return files.map((f) => relPosix(args.projectDir, f))
+  // Project-relative posix paths the outputs reach, for the caller's
+  // GitFilesCache.markOutputsChanged: a committed one kept here is the
+  // task's to rewrite or remove, so its index OID no longer vouches for it.
+  return matched.map((f) => relPosix(args.projectDir, f))
 }
 
 /**
@@ -1208,15 +1212,16 @@ export async function cleanWorkspaceOutputs(args: {
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
   const committed = args.committed ?? committedFiles(undefined, args.workspaceRoot)
-  const files = (args.resolved ?? (await resolveWorkspaceOutputs(args))).filter(
-    (f) => !committed(f),
-  )
+  const matched = args.resolved ?? (await resolveWorkspaceOutputs(args))
   await pruneEmptiedDirs(
     args.workspaceRoot,
-    await removeAll(files, args.workspaceRoot),
+    await removeAll(
+      matched.filter((f) => !committed(f)),
+      args.workspaceRoot,
+    ),
     pruneScope(args.workspaceRoot, args.outputs),
   )
-  return files.map((f) => relPosix(args.workspaceRoot, f))
+  return matched.map((f) => relPosix(args.workspaceRoot, f))
 }
 
 function realOrNull(p: string): string | null {

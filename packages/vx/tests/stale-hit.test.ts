@@ -449,6 +449,66 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a wiped output stops counting as a consumer input on the cache-miss path',
+    async () => {
+      // The producer removes the committed gen/b.ts (no clean deletes it,
+      // 2026-10-14). It is tracked and clean at run start, so it carries an
+      // index OID, and resolveFiles skips its existence probe for
+      // OID-carrying paths. Unless the removal is seen, a file GONE FROM
+      // DISK stays in the consumer's input set and its key never moves.
+      //
+      // `cache.inputs.tasks: []` decouples the consumer from the producer's
+      // hash — a documented pattern (docs/schema.md), and what makes the
+      // defect observable rather than masked by the upstream cascade.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             codegen: {
+               exec: { command: 'sh emit.sh' },
+               cache: { inputs: { files: ['emit.sh'] }, outputs: { files: ['gen/**'] } },
+             },
+             consume: {
+               dependsOn: ['codegen'],
+               exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               cache: {
+                 inputs: { files: ['gen/*.ts'], tasks: [] },
+                 outputs: { files: ['out/**'] },
+               },
+             },
+           },
+         }`,
+      )
+      await write(
+        path.join(root, 'emit.sh'),
+        'mkdir -p gen\nprintf a > gen/a.js\nprintf content-of-b > gen/b.ts\n',
+      )
+      await write(path.join(root, 'gen/a.js'), 'a')
+      await write(path.join(root, 'gen/b.ts'), 'content-of-b')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await waitForProducers(root)
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
+
+      // The producer stops emitting b.ts. The consumer's real input set is now
+      // empty, so its output must become empty too.
+      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\nrm -f gen/b.ts\n')
+
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a workspace output written mid-run reaches a consumer whose partition was read before it',
     async () => {
       // The ADDITION twin, on the miss path: `early` reads the workspace
