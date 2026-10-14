@@ -332,7 +332,7 @@ describe('stale cache hits', () => {
       git(root, 'config', 'user.name', 'vx test')
       // Left UNTRACKED on purpose: a tracked+clean file takes the git index
       // OID path instead, which never consults this memo.
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
 
       vx(root, 'run', 'build')
       expect(await readFile(path.join(root, 'dist/out.txt'), 'utf8')).toBe('AAA')
@@ -386,7 +386,7 @@ describe('stale cache hits', () => {
       )
       await write(path.join(root, 'gen/a.js'), 'a')
       await write(path.join(root, 'gen/b.ts'), 'content-of-b')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
@@ -425,7 +425,7 @@ describe('stale cache hits', () => {
          }`,
       )
       await write(path.join(root, 'gen/sub/x.txt'), 'pinned')
-      await write(path.join(root, '.gitignore'), '.vx/\n')
+      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
       const sub = path.join(root, 'gen/sub')
       for (const dir of [sub, root]) {
         git(dir, 'init', '-q')
@@ -487,7 +487,7 @@ describe('stale cache hits', () => {
       )
       await write(path.join(root, 'gen/a.js'), 'a')
       await write(path.join(root, 'gen/b.ts'), 'content-of-b')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
@@ -550,7 +550,7 @@ describe('stale cache hits', () => {
          }`,
       )
       await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf content-of-b > gen/b.ts\n')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
@@ -604,7 +604,7 @@ describe('stale cache hits', () => {
       )
       await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
       await write(path.join(root, 'gen/old.ts'), 'content-of-old')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
@@ -661,7 +661,7 @@ describe('stale cache hits', () => {
       )
       await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
       await write(path.join(root, 'gen/old.ts'), 'content-of-old')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
@@ -719,7 +719,7 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/\nruns.log\n')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\nruns.log\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
@@ -760,7 +760,7 @@ describe('stale cache hits', () => {
          }`,
       )
       await write(path.join(root, 'data/sponsors.json'), '["a"]')
-      await write(path.join(root, '.gitignore'), '.vx/\ndata/gen.json\n')
+      await write(path.join(root, '.gitignore'), '.vx/cache/\ndata/gen.json\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
@@ -807,7 +807,7 @@ describe('stale cache hits', () => {
       )
       await write(path.join(root, 'routes/a.tsx'), 'a')
       await write(path.join(root, 'src/routeTree.gen.ts'), 'a.tsx\n')
-      await write(path.join(root, '.gitignore'), '.vx/\n')
+      await write(path.join(root, '.gitignore'), '.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
@@ -860,7 +860,7 @@ describe('stale cache hits', () => {
       )
       await write(path.join(root, 'gen/a.js'), 'a')
       await write(path.join(root, 'gen/b.ts'), 'content-of-b')
-      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
@@ -900,7 +900,7 @@ describe('stale cache hits', () => {
       )
       await write(path.join(root, 'src/a.txt'), 'A')
       await write(path.join(root, 'src/sparse.txt'), 'SPARSE')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
       git(root, 'config', 'user.name', 'vx test')
@@ -951,7 +951,8 @@ describe('stale cache hits', () => {
          }`,
         )
         await write(path.join(root, 'src/a.txt'), 'A')
-        await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+        await write(path.join(root, '.gitignore'), 'dist/\n')
+        await write(path.join(root, '.vx/.gitignore'), '/cache\n')
         git(root, 'init', '-q')
         git(root, 'config', 'user.email', 'test@vx.local')
         git(root, 'config', 'user.name', 'vx test')
@@ -1003,7 +1004,7 @@ describe('stale cache hits', () => {
          }`,
       )
       await write(path.join(root, '.gitattributes'), '* text=auto\n')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
       await write(path.join(proj, 'src/a.txt'), 'one\r\ntwo\r\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
@@ -1054,7 +1055,7 @@ describe('stale cache hits', () => {
          }`,
       )
       await write(path.join(root, '.gitattributes'), '* text=auto\n')
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
       await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
@@ -1111,7 +1112,7 @@ describe('stale cache hits', () => {
                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
              } } }`,
           )
-          await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+          await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
           await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
           git(root, 'init', '-q')
           git(root, 'add', '-A')
@@ -1171,7 +1172,7 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
       await write(path.join(root, 'src/a.txt'), 'one\r\ntwo\r\n')
       git(root, 'init', '-q')
       git(root, 'config', 'user.email', 'test@vx.local')
@@ -1214,7 +1215,7 @@ describe('stale cache hits', () => {
              },
            }`,
         )
-        await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+        await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
         const src = path.join(root, 'src/a.txt')
         await write(src, 'AAAA')
         // An mtime well before the index is written, so git's own racy
@@ -1517,7 +1518,7 @@ describe('stale cache hits', () => {
            },
          }`,
       )
-      await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
       await write(path.join(root, 'src/a.ts'), 'same bytes\n')
       git(root, 'init', '-q')
       git(root, 'add', '-A')
@@ -1582,7 +1583,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
        } } }\n`,
     )
     await write(path.join(root, 'src', 'a'), 'v1')
-    await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+    await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
     return path.join(root, 'src')
   }
   const badIn = (dir: string): Buffer => Buffer.concat([Buffer.from(`${dir}/`), BAD])
@@ -1730,7 +1731,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     )
     await write(path.join(lib, 'src', 'x.txt'), 'L1')
     await write(path.join(app, 'src', 'a.txt'), 'a')
-    await write(path.join(root, '.gitignore'), 'dist/\n.vx/\n')
+    await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
     git(root, 'init', '-q')
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'init')
@@ -1825,7 +1826,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
            },
          } }\n`,
       )
-      await write(path.join(root, '.gitignore'), 'dist/\ngen/\n.vx/\n')
+      await write(path.join(root, '.gitignore'), 'dist/\ngen/\n.vx/cache/\n')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'prep')
       await waitForProducers(root)

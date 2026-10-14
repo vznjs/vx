@@ -46,6 +46,8 @@ async function workspace(rootOutputs: string, command = 'true'): Promise<string>
   await writeFile(path.join(r, 'own.txt'), 'own-1\n')
   await addProject(r, 'a', { files: { 'src/a.js': 'a-1\n' } })
   await addProject(r, 'b', { config: B_CONFIG, files: { 'src/b.js': 'b-1\n' } })
+  // Committed, as `vx init` writes it: the first run would add it under `**`.
+  await writeFile(path.join(r, '.vx/.gitignore'), '/cache\n')
   gitInitCommit(r)
   return r
 }

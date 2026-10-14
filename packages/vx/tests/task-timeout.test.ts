@@ -49,8 +49,8 @@ async function makeWorkspace(): Promise<Fixture> {
 
 /** Rewrite the workspace file with `fields` (object-literal body) plus the local plugins. */
 async function setWorkspace(root: string, fields: string): Promise<void> {
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `export default { run: { ${fields} }, plugins: [] }\n`,
   )
 }

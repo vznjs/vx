@@ -1,9 +1,8 @@
 // `vx why [pkg#task | task]` — answer "why did this task re-run?" from the
-// terminal. The same persisted data the MCP `whyDidThisRerun` tool reads:
-// the runs table names the
-// run-over-run hash change, and `entry_inputs` (the input-fingerprint moat)
-// names the exact cache-key components that differ. Read-only over cache.db
-// plus a stat of each moved input file — no config evaluation, no re-hash.
+// terminal. The runs table names the run-over-run hash change, and
+// `entry_inputs` (the input-fingerprint moat) names the exact cache-key
+// components that differ. Read-only over cache.db plus a stat of each
+// moved input file — no config evaluation, no re-hash.
 
 import path from 'node:path'
 import { Cache } from '../cache/index.js'

@@ -8,7 +8,6 @@ coverage
 .idea
 .vscode
 *.log
-.vx
 .nxt
 .claude/worktrees/
 .nx

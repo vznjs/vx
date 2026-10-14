@@ -40,13 +40,13 @@ describe('a bare vx', () => {
     expect(await run([])).toBe(1)
     expect({ stdout, stderr }).toEqual({
       stdout: '',
-      stderr: `vx: no vx.workspace.ts in ${process.cwd()} or a parent — run \`vx init\` to create one; \`vx help\` lists the verbs\n`,
+      stderr: `vx: no .vx/workspace.ts in ${process.cwd()} or a parent — run \`vx init\` to create one; \`vx help\` lists the verbs\n`,
     })
   })
 
   it('inside a workspace: the reference, exit 0', async () => {
     await writeFile(path.join(dir, 'package.json'), '{"name":"x"}\n')
-    await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
     expect(await run([])).toBe(0)
     expect(stdout).toStartWith('vx — task orchestration you own\n')
     expect(stderr).toBe('')

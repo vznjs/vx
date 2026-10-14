@@ -78,8 +78,8 @@ async function makePluginWorkspace(): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
-  await writeFile(path.join(root, 'vx.workspace.mjs'), PLUGIN_WORKSPACE)
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), PLUGIN_WORKSPACE)
   for (const name of ['one', 'two']) {
     const dir = path.join(root, 'packages', name)
     await mkdir(dir, { recursive: true })
@@ -95,7 +95,7 @@ async function makeWorkspace(): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   const appDir = path.join(root, 'packages', 'app')
   await mkdir(appDir, { recursive: true })
   await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))
@@ -488,7 +488,7 @@ describe('vx info (e2e)', () => {
       expect(r.out).toMatch(row('cache entries', '0 (0 B)'))
       expect(r.out).toMatch(row('task runs (24h)', '0'))
       expect(r.out).toMatch(row('flaky tasks', 'none'))
-      expect(r.out).toMatch(row('vx-lock.json', 'no'))
+      expect(r.out).toMatch(row('.vx/lock.json', 'no'))
       // Control for the orphans row below: nothing on disk the index does
       // not know, so the doctor says nothing about it.
       expect(r.out).not.toContain('orphans:')
@@ -499,7 +499,7 @@ describe('vx info (e2e)', () => {
   it(
     'reports the cache policy and scope a run takes, and where each comes from',
     async () => {
-      const ws = path.join(root, 'vx.workspace.mjs')
+      const ws = path.join(root, '.vx/workspace.mjs')
       const saved = { policy: process.env['VX_CACHE_POLICY'], scope: process.env['VX_CACHE_SCOPE'] }
       const facts = async () => {
         const f = await collectInfo(root, { warn: () => {} })
@@ -828,7 +828,7 @@ describe('vx info — the rendered rows', () => {
       },
     })
     expect(out.split('\n').filter((l) => l.startsWith('settings:'))).toEqual([
-      'settings:         run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (vx.workspace)',
+      'settings:         run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (.vx/workspace)',
     ])
   })
 
@@ -851,7 +851,7 @@ describe('vx info — the rendered rows', () => {
         'task runs (24h):  5 (2 cache hits: 1 up-to-date, 1 restored)',
         'flaky tasks:      none',
         'sandbox:          available (1 task declares exec.sandbox)',
-        'vx-lock.json:     yes',
+        '.vx/lock.json:    yes',
       ].join('\n'),
     )
   })
@@ -897,7 +897,7 @@ describe('vx info — the rendered rows', () => {
         'projects:         2 (0 tasks · 1 config did not load)',
         'config errors:    packages/a/vx.config.ts: boom',
         'plugins:          2 — p (no seams); q (executor, cache)',
-        'workers:          8 — vx.workspace.ts (4 cores, cgroup CPU quota 2)',
+        'workers:          8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
         'memory:           2.0 GB usable — cgroup limit; the machine has 8.0 GB',
         'cache dir:        /w/.vx',
         'cache store:      none: the cache dir holds the entries',
@@ -908,7 +908,7 @@ describe('vx info — the rendered rows', () => {
         'task runs (24h):  0 (0 cache hits)',
         'flaky tasks:      2 — a#test (3 of 7 runs failed on unchanged inputs); b#e2e (1 of 4 runs failed)',
         'sandbox:          unavailable — bwrap missing; 2 tasks declare exec.sandbox and will fail',
-        'vx-lock.json:     no',
+        '.vx/lock.json:    no',
       ].join('\n'),
     )
   })
@@ -1000,11 +1000,11 @@ describe('vx info — the workers and memory rows', () => {
       '2 — cgroup CPU quota 1.5 of 8 cores',
     )
     expect(describeWorkers({ count: 8, source: 'workspace', cores: 4, cpuQuota: null })).toBe(
-      '8 — vx.workspace.ts (4 cores)',
+      '8 — .vx/workspace.ts (4 cores)',
     )
     // The workspace's number wins, and a quota beside it is still named.
     expect(describeWorkers({ count: 8, source: 'workspace', cores: 4, cpuQuota: 2 })).toBe(
-      '8 — vx.workspace.ts (4 cores, cgroup CPU quota 2)',
+      '8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
     )
     // A quota that does not bind (wider than the cores) is still named.
     expect(describeWorkers({ count: 4, source: 'cores', cores: 4, cpuQuota: 6 })).toBe(
@@ -1040,7 +1040,7 @@ describe('vx show <project> loads that project only (e2e)', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-scope-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     const app = path.join(root, 'packages', 'app')
     await mkdir(app, { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
@@ -1081,14 +1081,14 @@ describe('vx show <project> loads that project only (e2e)', () => {
 
 // The rows above feed `describeWorkers` / `describeMemory` literal facts,
 // so they pin the RENDERER. These pin the facts themselves — the numbers
-// `vx info` and `vx mcp`'s getWorkspaceInfo both read out of `collectInfo`.
+// `vx info` reads out of `collectInfo`.
 describe('collectInfo — the facts behind the rows', () => {
   let root: string
   beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-doctor-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     const a = path.join(root, 'packages', 'a')
     await mkdir(a, { recursive: true })
     await writeFile(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
@@ -1104,9 +1104,9 @@ describe('collectInfo — the facts behind the rows', () => {
   it('the worker count comes from the workspace when it declares one', async () => {
     // The ladder is workspace > cgroup > cores, and only its RENDERING was
     // pinned: a fact that reported the machine's cores under a declared
-    // `concurrency` would render "N — vx.workspace.ts" with the wrong N.
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    // `concurrency` would render "N — .vx/workspace.ts" with the wrong N.
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       'export default { run: { concurrency: 3 } }\n',
     )
     const declared = await collectInfo(root, { warn() {} })
@@ -1118,7 +1118,7 @@ describe('collectInfo — the facts behind the rows', () => {
 
     // CONTROL: with nothing declared the count is the machine's, and the
     // source names which machine limit decided it.
-    await rm(path.join(root, 'vx.workspace.mjs'))
+    await rm(path.join(root, '.vx/workspace.mjs'))
     const bare = await collectInfo(root, { warn() {} })
     expect(bare.workers.source).not.toBe('workspace')
     expect(bare.workers.count).toBeLessThanOrEqual(bare.workers.cores)
@@ -1169,8 +1169,8 @@ describe('collectInfo — the facts behind the rows', () => {
     // Seams are the pipeline stages a reader asks "why did this task run
     // there" about. `teardown` is lifecycle, not a seam, and listing it
     // would answer that question with something no task ever consults.
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}
        export default { plugins: [
          ${pluginSource('org/late', `{ teardown() {} }`)},
@@ -1181,6 +1181,6 @@ describe('collectInfo — the facts behind the rows', () => {
     const seams = Object.fromEntries(facts.plugins.map((p) => [p.name, p.seams]))
     expect(seams['org/late']).toEqual([])
     expect(seams['org/keyed']).toEqual(['key'])
-    await rm(path.join(root, 'vx.workspace.mjs'))
+    await rm(path.join(root, '.vx/workspace.mjs'))
   })
 })

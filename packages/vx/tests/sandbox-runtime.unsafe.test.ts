@@ -388,8 +388,8 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
           sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
         } } } }\n`,
       })
-      await writeFile(
-        path.join(fixture.root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(fixture.root, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/thrower',

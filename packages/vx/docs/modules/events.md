@@ -5,8 +5,7 @@
 `run()` never calls a `Logger` directly: every `log.X(...)` emits a
 `RunEvent` through `busLogger` onto an in-process bus; the terminal
 renderer is just the always-on subscriber. An embedder attaches as
-another subscriber with no orchestrator change (`@vzn/vx-mcp` reads run
-history, not the bus). A bus handed in through `RunOptions.bus` keeps
+another subscriber with no orchestrator change. A bus handed in through `RunOptions.bus` keeps
 the embedder's subscribers across runs; what each run adds to it, the
 run removes on its way out (`orchestrator.md`).
 
@@ -16,7 +15,7 @@ run removes on its way out (`orchestrator.md`).
   subscribers are `RunEventSubscriber`s, `(event: RunEvent) => void`.
 - `busLogger(bus)` — `Logger`-shaped facade that emits events.
 - `notePrintedByLock(lines)` — the warnings the lock a frozen run wrote
-  first printed (`vx run` with no `vx-lock.json`); the run's logger skips
+  first printed (`vx run` with no `.vx/lock.json`); the run's logger skips
   each once, so a plugin's warning does not print twice.
 - `terminalSubscriber(sink)` — drives a concrete renderer.
 - `WireEvent` + `toWireEvent` — the SERIALIZABLE projection (task ids

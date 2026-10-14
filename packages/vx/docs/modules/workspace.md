@@ -72,10 +72,10 @@ export interface ProjectMeta {
   catalogs?: Catalogs // the workspace's, set by discovery for the package graph
 }
 
-// the directory of the nearest vx.workspace.* up to the git top-level
+// the directory of the nearest .vx/workspace.* up to the git top-level
 // (handoff.ts workspaceFile); VX_E_NO_WORKSPACE without one
 export function findWorkspaceRoot(start: string, uid?: number): Promise<string>
-// where `vx init` and @vzn/vx-migrate put vx.workspace.ts when there is
+// where `vx init` and @vzn/vx-migrate put .vx/workspace.ts when there is
 // none: the package manager's root, by the claim rule below
 export function findManifestRoot(start: string, reads?: LoadReads, uid?: number): Promise<string>
 export function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
@@ -143,7 +143,7 @@ read — most names asked about are absent, and a failed read costs
 
 ### `findWorkspaceRoot(start)`
 
-The root is the directory holding the nearest `vx.workspace.*` from
+The root is the directory holding the nearest `.vx/workspace.*` from
 `start` up to the git top-level, inclusive (a worktree's `.git` file is a
 top-level; a submodule goes on to its superproject), or up to `/` outside
 git. Nothing else decides it: not a `package.json`, `pnpm-workspace.yaml`
@@ -157,7 +157,7 @@ aside): it is code that would run as you. Without one the error is
 
 ### `findManifestRoot(start)`
 
-Where `vx init` and `@vzn/vx-migrate` write `vx.workspace.ts` when there
+Where `vx init` and `@vzn/vx-migrate` write `.vx/workspace.ts` when there
 is none yet. Walks up from `start` to the git top-level, or to the
 filesystem root outside git, where it stops above `start` at a manifest
 another user owns (root aside). A directory is a root
@@ -256,7 +256,7 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
   package matched, and a run from inside it "not inside a project".
 - A file this user may not read is refused as a read (D-132):
   `<file>: not readable by this user (EACCES)`, for a member's manifest, a
-  project config, the root's manifest and `vx.workspace.ts`. A manifest
+  project config, the root's manifest and `.vx/workspace.ts`. A manifest
   at mode 000 had dropped its project from `--all` under a green run. A
   member directory it may not search hides whether a manifest is there,
   so it is named on stderr and skipped (a service's data directory under
@@ -291,7 +291,7 @@ Returns the project list sorted by `name`.
 
 Resolves the cache directory:
 
-- `config?.cacheDir` (set via `vx.workspace.ts`) is honored, else
+- `config?.cacheDir` (set via `.vx/workspace.ts`) is honored, else
   `VX_CACHE_DIR`. Relative paths resolve against `root`, `~` and `~/`
   against the home directory; absolute paths pass through.
 - The home directory itself is refused: the cache writes a `*`
@@ -340,7 +340,7 @@ the plugin `config` stage applied).
 - yarn legacy `workspaces.packages` form.
 - bare-`package.json` single-project mode (`['.']`).
 - duplicate-name detection.
-- `findWorkspaceRoot` (the nearest `vx.workspace.*`, git-bounded) and
+- `findWorkspaceRoot` (the nearest `.vx/workspace.*`, git-bounded) and
   `findManifestRoot` ascending behavior + missing-root errors.
 - glob behavior (one project, multiple projects, nested
   `node_modules` skipped).

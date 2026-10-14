@@ -46,7 +46,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
   await mkdir(flags)
   await mkdir(gOut)
   await writeFile(path.join(root, 'package.json'), '{"name":"fx","workspaces":["packages/*"]}')
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(p, 'package.json'), '{"name":"p"}')
   await writeFile(path.join(g, 'package.json'), '{"name":"g"}')
 

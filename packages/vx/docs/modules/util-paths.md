@@ -13,6 +13,8 @@ paths, output file paths, etc.).
 ```ts
 export function toPosix(p: string): string
 export function relPosix(from: string, to: string): string
+// `.vx/.gitignore`'s text: vx's machine-local state stays out of git
+export const DOT_VX_GITIGNORE = '/cache\n'
 export function normalizeGlob(glob: string): string
 export function normalizeBunGlob(glob: string): string
 export function staticPrefix(glob: string): string

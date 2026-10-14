@@ -39,7 +39,7 @@ it('the members the guard reads are every `Bun.<name>` src/ reads, no more', () 
 async function load(source: string): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-bun-'))
   try {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), source)
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), source)
     return await loadWorkspaceConfig(root).then(
       () => 'loaded',
       (err: Error) => err.message.replace(/^.*? changed (.*?) while it was evaluated.*$/s, '$1'),

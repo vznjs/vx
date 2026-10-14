@@ -31,7 +31,7 @@ scope=${scope##*/}
 
 # A global vx hands off to the project's own (owner, 2026-10-13): the
 # workspace root's node_modules/<scope>/<name>, through its .bin entry. The
-# root is the first directory holding a vx.workspace.* from the working
+# root is the first directory holding a .vx/workspace.* from the working
 # directory up to the git top-level (handoff.ts workspaceFile, the same
 # rule). One hop (VX_HANDED_OFF, which also names this launcher), never to
 # this package itself (`-ef`: same inode, so a pnpm symlink counts as
@@ -41,7 +41,7 @@ if [ -z "${VX_HANDED_OFF-}" ]; then
   while :; do
     root=
     for ext in ts mts js mjs cts cjs; do
-      if [ -f "$d/vx.workspace.$ext" ]; then
+      if [ -f "$d/.vx/workspace.$ext" ]; then
         root=${d:-/}
         break
       fi

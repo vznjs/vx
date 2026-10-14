@@ -447,10 +447,10 @@ export function normalizeRemoteUrl(raw: string): string {
  * (telemetry schema v2). Derivation ladder:
  *   1. git remote origin URL, normalized → xxh3 (same id from any
  *      machine's checkout of the same repo);
- *   2. no remote → a salt persisted at `<root>/.vx/workspace-id` (the
- *      checkout keeps a stable identity across runs; `.vx/` is already
- *      gitignored infrastructure);
- *   3. unwritable `.vx/` → the root path itself (stable per machine).
+ *   2. no remote → a salt persisted at `<root>/.vx/cache/workspace-id`
+ *      (the checkout keeps a stable identity across runs; `.vx/cache` holds
+ *      the machine-local state, never committed);
+ *   3. unwritable `.vx/cache` → the root path itself (stable per machine).
  * The URL comes from the run's own `git var -l` when it has one, else one
  * `git` spawn behind try/catch; call sites gate on telemetry being active
  * so a plain run never pays it. Never throws.
@@ -491,7 +491,7 @@ export function captureWorkspaceIdentity(
     // git unavailable — fall through to the salt.
   }
   try {
-    const saltPath = path.join(workspaceRoot, '.vx', 'workspace-id')
+    const saltPath = path.join(workspaceRoot, '.vx', 'cache', 'workspace-id')
     let salt: string
     try {
       salt = fs.readFileSync(saltPath, 'utf8').trim()

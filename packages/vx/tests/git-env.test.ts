@@ -33,7 +33,7 @@ it('every git vx runs sees the git and locale variables, not the rest', async ()
     path.join(ws, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
   )
-  await writeFile(path.join(ws, 'vx.workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(
     path.join(ws, 'packages', 'a', 'vx.config.mjs'),

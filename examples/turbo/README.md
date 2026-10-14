@@ -1,7 +1,7 @@
 # Migrating a Turborepo repo to vx
 
 A Turbo repo (`turbo.json`, package scripts) mid-migration: one file,
-`vx.workspace.ts`, declares `turbo()` from `@vzn/vx-migrate`, a
+`.vx/workspace.ts`, declares `turbo()` from `@vzn/vx-migrate`, a
 temporary start until the repo has native config:
 
 ```sh

@@ -73,7 +73,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
       'app#test reads "**" in cache.inputs.files, which matches app#build\'s output "dist/**" — ' +
         "a task's key must not read another task's outputs (the dependency's key already " +
         'cascades through dependsOn). Exclude it: add "!dist/**" to app#test\'s ' +
-        'cache.inputs.files, or set run.rules.upfrontKeys: false in vx.workspace.ts to let ' +
+        'cache.inputs.files, or set run.rules.upfrontKeys: false in .vx/workspace.ts to let ' +
         'it wait for its producer.',
     )
   })
@@ -120,7 +120,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
       'app#build reads "**" in cache.inputs.files, which matches g#gen\'s output "app/gen/**" — ' +
         "a task's key must not read another task's outputs (the dependency's key already " +
         'cascades through dependsOn). Exclude it: add "!gen/**" to app#build\'s ' +
-        'cache.inputs.files, or set run.rules.upfrontKeys: false in vx.workspace.ts to let ' +
+        'cache.inputs.files, or set run.rules.upfrontKeys: false in .vx/workspace.ts to let ' +
         'it wait for its producer.',
     )
     expect(
@@ -211,8 +211,8 @@ describe('rules.upfrontKeys end to end', () => {
         /app#test reads "\*\*" in cache\.inputs\.files, which matches app#build's output/,
       )
       expect(await Bun.file(path.join(dir, 'out.txt')).exists()).toBe(false)
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         'export default { run: { rules: { upfrontKeys: false } } }\n',
       )
       const r = await run({ cwd: root, tasks: ['test'], log: silent })
@@ -258,8 +258,8 @@ describe('rules.upfrontKeys end to end', () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-upfront-bad-'))
     try {
       await writeFile(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         "export default { run: { rules: { upfrontKeys: 'yes' } } }\n",
       )
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent })).rejects.toThrow(

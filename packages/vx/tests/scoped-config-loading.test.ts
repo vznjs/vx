@@ -350,7 +350,7 @@ describe('scoped config loading', () => {
   it(
     'a READER sees its scope and nothing else — no closure, no config-less packages',
     async () => {
-      // `loadResolvedProjects` is what `vx show`, `vx mcp` and an embedder
+      // `loadResolvedProjects` is what `vx show` and an embedder
       // read. It passes `closure: false` deliberately: a reader asked about
       // one project is answered about that project, where a RUN pulls the
       // dependency closure in because `^task` needs it. And a package that
@@ -371,7 +371,7 @@ describe('scoped config loading', () => {
     TIMEOUT,
   )
 
-  // C-5: a reader (`vx show`, `vx mcp`'s listTasks) opened the index as a
+  // C-5: a reader (`vx show`) opened the index as a
   // run does: where there was none it made `.vx/cache/`, and an earlier
   // schema's index it reset, run history and all. It reads it as `vx last`
   // does now, and evaluates live what it cannot read there.

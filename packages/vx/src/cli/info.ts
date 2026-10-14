@@ -1,8 +1,7 @@
 // `vx info` — workspace doctor printout. One screen of environment +
 // workspace + cache facts for bug reports and quick sanity checks.
 // The facts come
-// from the orchestrator's `collectInfo` (doctor.ts), which `vx mcp` reads
-// too; this file parses the flags and renders the rows.
+// from the orchestrator's `collectInfo` (doctor.ts); this file parses the flags and renders the rows.
 
 import os from 'node:os'
 import { collectInfo, type FlakyTask, type InfoFacts } from '../orchestrator/index.js'
@@ -47,7 +46,7 @@ export function parseInfoArgs(args: readonly string[]): InfoArgs {
 export async function infoCmd(args: readonly string[]): Promise<number> {
   const parsed = parseInfoArgs(args)
   if (parsed.error) return refuse('info', args, parsed.error, 'VX_E_USAGE')
-  // `collectInfo` takes a resolved directory from `vx mcp` too, where one
+  // `collectInfo` takes a resolved directory, where one
   // not made yet is a workspace that never ran; the flag is the user's,
   // and a directory it names that is not there is a typo (item 900).
   if (parsed.cacheDir !== undefined) namedCacheDir(parsed.cacheDir)
@@ -124,7 +123,7 @@ export function renderInfo(f: InfoFacts): string {
     ],
     ['flaky tasks', describeFlakyTasks(f.flakyTasks)],
     ['sandbox', describeSandbox(f.sandbox)],
-    ['vx-lock.json', f.lockfile ? 'yes' : 'no'],
+    ['.vx/lock.json', f.lockfile ? 'yes' : 'no'],
   ]
   const labelW = Math.max(...rows.map(([label]) => label.length))
   return rows.map(([label, value]) => `${`${label}:`.padEnd(labelW + 1)} ${value}`).join('\n')
@@ -142,14 +141,14 @@ function describeEntries(f: InfoFacts): string {
 
 /**
  * The settings not at their default, with where each came from:
- * `run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (vx.workspace)`.
+ * `run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (.vx/workspace)`.
  */
 function describeSettings(settings: InfoFacts['settings']): string {
   return Object.entries(settings)
     .filter(([, s]) => s.source !== 'default')
     .map(
       ([path, s]) =>
-        `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : 'vx.workspace'})`,
+        `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : '.vx/workspace'})`,
     )
     .join(', ')
 }
@@ -185,10 +184,10 @@ function describeSandbox(s: InfoFacts['sandbox']): string {
   return `unavailable — ${s.reason}; ${declared}${s.declared > 0 ? ' and will fail' : ''}`
 }
 
-/** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 — vx.workspace.ts (4 cores)`. */
+/** `4 — the CPU count`, `2 — cgroup CPU quota 2 of 8 cores`, `8 — .vx/workspace.ts (4 cores)`. */
 export function describeWorkers(w: InfoFacts['workers']): string {
   const quota = w.cpuQuota === null ? '' : `, cgroup CPU quota ${trimCores(w.cpuQuota)}`
-  if (w.source === 'workspace') return `${w.count} — vx.workspace.ts (${w.cores} cores${quota})`
+  if (w.source === 'workspace') return `${w.count} — .vx/workspace.ts (${w.cores} cores${quota})`
   if (w.source === 'cgroup')
     return `${w.count} — cgroup CPU quota ${trimCores(w.cpuQuota ?? w.count)} of ${w.cores} cores`
   return `${w.count} — the CPU count${quota}`

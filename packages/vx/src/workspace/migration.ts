@@ -8,7 +8,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
-import { executablePath, gitEnv, relPosix, UserError } from '../util/index.js'
+import { DOT_VX_GITIGNORE, executablePath, gitEnv, relPosix, UserError } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 import { loadWorkspace, reachesManifest, unreachedHint, unreachedPackages } from './workspace.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
@@ -268,7 +268,7 @@ export interface ApplyMigrationArgs {
   json?: boolean
   /**
    * Run after the files are written (not under `dry`): `vx lock`'s step, so
-   * the migrated workspace has its vx-lock.json and its graph rules checked
+   * the migrated workspace has its .vx/lock.json and its graph rules checked
    * (owner, 2026-10-14). Prints its own line. A refusal (a graph rule, a
    * plugin not installed yet) is printed and the migration still succeeds:
    * its files are written, and `vx lock` is the step to re-run.
@@ -287,7 +287,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const init = args.init === true
   const format: MigrationFormat = args.format ?? 'ts'
   const configName = `vx.config.${format}`
-  const workspaceName = `vx.workspace.${format}`
+  const workspaceName = `.vx/workspace.${format}`
   const empty = plan.projects.length === 0
   // `vx init` never overwrites a member's config: a half-adopted workspace
   // keeps each one it has, by name, and gets the rest (M-52). It refused
@@ -348,6 +348,12 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     const abs = path.join(root, workspaceName)
     files.push({ relPath: relPosix(root, abs), abs, contents: workspaceFile(format) })
   }
+  // `.vx/.gitignore` keeps the machine-local `.vx/cache` out of git and the
+  // workspace config and lock in; one already there is the user's.
+  const dotVxIgnore = path.join(root, '.vx', '.gitignore')
+  if (!(await Bun.file(dotVxIgnore).exists())) {
+    files.push({ relPath: '.vx/.gitignore', abs: dotVxIgnore, contents: DOT_VX_GITIGNORE })
+  }
 
   if (!dry && !force) {
     const conflicts = new Set<string>()
@@ -393,7 +399,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     ? []
     : formatWritten(
         root,
-        files.map((f) => f.relPath),
+        // A formatter has no parser for `.vx/.gitignore`.
+        files.map((f) => f.relPath).filter((f) => /\.[cm]?[jt]s$/.test(f)),
       )
 
   // One reason, its tasks: on a Turbo template the same two-line cache TODO
@@ -645,7 +652,7 @@ const FILES_SHOWN = 10
 
 function fileLines(paths: readonly string[]): string[] {
   if (paths.length <= FILES_SHOWN) return paths.map((p) => `  ${p}`)
-  const root = paths.filter((p) => !p.includes('/'))
+  const root = paths.filter((p) => !p.includes('/') || p.startsWith('.vx/'))
   const more = paths.length - root.length
   return [...root.map((p) => `  ${p}`), `  and ${more} more in package directories`]
 }

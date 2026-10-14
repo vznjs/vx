@@ -74,7 +74,7 @@ async function makeRoot(prefix: string): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
-  // The scaffolded `vx.workspace.ts` imports `@vzn/vx`, and a tmp dir has
+  // The scaffolded `.vx/workspace.ts` imports `@vzn/vx`, and a tmp dir has
   // no node_modules. This used to resolve through a machine-global
   // `bun link`, so the suite passed or failed on invisible state outside
   // the repo — a `bun install` that drops the link turns every fixture
@@ -326,9 +326,9 @@ describe('vx migrate (turbo)', () => {
     TIMEOUT,
   )
 
-  it('emits vx.workspace.ts declaring the plugins the repo calls for when none exists', async () => {
-    expect(result.out).toContain('vx.workspace.ts')
-    const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()
+  it('emits .vx/workspace.ts declaring the plugins the repo calls for when none exists', async () => {
+    expect(result.out).toContain('.vx/workspace.ts')
+    const ws = await Bun.file(path.join(root, '.vx/workspace.ts')).text()
     // Type-only: the runtime `defineWorkspace` import loaded a second copy
     // of core into every run (~17 ms on a two-package workspace).
     expect(ws).toContain("import type { WorkspaceConfig } from '@vzn/vx/config'")
@@ -341,18 +341,18 @@ describe('vx migrate (turbo)', () => {
     expect(ws).toContain('} satisfies WorkspaceConfig')
   })
 
-  it('does not emit vx.workspace.ts when one already exists', async () => {
+  it('does not emit .vx/workspace.ts when one already exists', async () => {
     const other = await makeTurboWorkspace()
     try {
-      await writeFile(
-        path.join(other, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
         'export default { plugins: [] } // MARKER\n',
       )
       const r = await vx(other, [])
       expect(r.code).toBe(0)
-      expect(r.out).not.toContain('vx.workspace.ts')
-      expect(await Bun.file(path.join(other, 'vx.workspace.ts')).exists()).toBe(false)
-      expect(await Bun.file(path.join(other, 'vx.workspace.mjs')).text()).toContain('MARKER')
+      expect(r.out).not.toContain('.vx/workspace.ts')
+      expect(await Bun.file(path.join(other, '.vx/workspace.ts')).exists()).toBe(false)
+      expect(await Bun.file(path.join(other, '.vx/workspace.mjs')).text()).toContain('MARKER')
     } finally {
       await rm(other, { recursive: true, force: true })
     }
@@ -751,7 +751,7 @@ describe('vx migrate (lerna)', () => {
       })
       try {
         const r = await vx(root, ['--keep'])
-        const ws = await Bun.file(path.join(root, 'vx.workspace.ts')).text()
+        const ws = await Bun.file(path.join(root, '.vx/workspace.ts')).text()
         expect([
           r.code,
           r.err,

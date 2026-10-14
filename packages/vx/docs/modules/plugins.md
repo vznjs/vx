@@ -9,14 +9,14 @@ here and caching it on this machine (`~/.vx/<id>/cache`, or a named
 to the tail of every executor list and `resolveCache` puts the host's
 local `Cache` first in every chain, before each remote in declared order
 (`src/orchestrator/plugin-host.ts`).
-A workspace with no `vx.workspace.ts` therefore runs and caches, and a
+A workspace with no `.vx/workspace.ts` therefore runs and caches, and a
 plugin executor whose `accepts()` declines hands the task back to this
 machine.
 
 Every plugin is a package a workspace declares:
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default { plugins: [scheduleHistoryPlugin()] }
@@ -54,7 +54,6 @@ it), the `TaskExecutor` contract for an executor.
 | `@vzn/vx-reapi`            | `executor`, `cache`               | Bazel REAPI: remote execution and remote cache                                                                                              |
 | `@vzn/vx-otel`             | `telemetry`                       | OpenTelemetry export, no SDK dependency                                                                                                     |
 | `@vzn/vx-ci`               | `telemetry`                       | GitHub Actions job summary and Checks API                                                                                                   |
-| `@vzn/vx-mcp`              | `commands`                        | `vx mcp`, an MCP server for AI agents                                                                                                       |
 | `@vzn/vx-migrate`          | `project`, `fingerprint`, `cache` | `turbo()` / `nx()`: such a repo under vx with nothing written (`nx-exec` runs Nx executors); `turboCache()` / `nxCache()`: the wires        |
 | `@vzn/vx-lockfile`         | `fingerprint`, `key`              | `pnpm()` `bun()` `npm()` `yarn()`: the lockfile keyed per project — one install re-keys only the projects it reaches                        |
 

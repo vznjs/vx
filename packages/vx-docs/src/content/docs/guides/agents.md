@@ -1,6 +1,6 @@
 ---
 title: AI agents
-description: Let a coding agent run vx, read its answers as JSON, and ask the workspace about its cache and history.
+description: Let a coding agent run vx, read its answers as JSON, and ask the workspace about its cache and history through the CLI.
 ---
 
 vx is built to be run by agents as much as by people. Everything a
@@ -22,8 +22,14 @@ features) and prints the matching sections whole; `--format json` gives
 ## Install the vx skill
 
 `@vzn/vx` ships an agent skill: one `SKILL.md` that teaches an agent to
-run tasks, read failures and query the workspace as JSON. Copy it where
-your agent reads skills, for Claude Code:
+run tasks, read failures and query the workspace as JSON. Install it:
+
+```sh
+npx skills add vznjs/vx/packages/vx/skills/vx
+```
+
+Or copy the one that matches the vx you installed where your agent
+reads skills, for Claude Code:
 
 ```sh
 mkdir -p .claude/skills/vx
@@ -55,6 +61,7 @@ Schema shipped in the package (`node_modules/@vzn/vx/schemas/`).
 vx show --format json              # every project and its tasks
 vx why app#build --format json     # why app#build re-ran, down to the root cause
 vx last --failed --format json     # the last failed run, task by task
+vx last --stats --format json      # per task: p50/p99, pass and hit rate, failure mode, peak RSS
 vx run build --all --dry=json      # what a run would do, before it runs
 vx run build --all --format json   # the run's result; task output goes to stderr
 vx init --dry --format json        # what adopting vx would write, file by file
@@ -95,39 +102,3 @@ $ vx run biuld --all --format json
 `docs` links the code's section of the [CLI reference](../../cli/#error-codes),
 which says what to do; offline, `vx docs VX_E_UNKNOWN_TASK` prints the same
 section. `node_modules/@vzn/vx/schemas/error.json` describes the line.
-
-## Ask the workspace over MCP
-
-`@vzn/vx-mcp` adds `vx mcp`, an MCP server over the workspace's
-tasks, cache and run history. Claude Code, Cursor,
-Continue.dev and Copilot can call it.
-
-```sh
-npm install -D @vzn/vx-mcp
-```
-
-```ts
-// vx.workspace.ts
-import type { WorkspaceConfig } from '@vzn/vx/config'
-import { mcp } from '@vzn/vx-mcp'
-
-export default {
-  plugins: [mcp()],
-} satisfies WorkspaceConfig
-```
-
-If `vx init` or vx-migrate already wrote `vx.workspace.ts`, add `mcp()` to
-its `plugins` list (the same style as above).
-
-```sh
-claude mcp add vx -- vx mcp
-```
-
-Its tools: `listTasks`, `getCacheStats`, `getRunHistory`,
-`explainCacheKey`, `whyDidThisRerun`, `getFailures`, `getTaskLog`, `getConfig`, `checkLock`, `pruneCache`, `planInit`, `searchDocs`,
-`getWorkspaceInfo`, `runTasks` and `planTasks`. `runTasks` runs
-`vx run <tasks> --format json` and returns the exit code and the run
-summary; `planTasks` returns the `vx run <tasks> --dry=json` plan
-without running anything; `pruneCache` evicts only with `dryRun:
-false`; `planInit` returns the `vx init --dry --format json` plan; the others only read. See
-[vx mcp](../plugins/#vx-mcp) for each one.

@@ -20,7 +20,7 @@ export async function migrateNx(
   metas: readonly ProjectMeta[],
   format: MigrationFormat = 'ts',
   snapshot = path.join(root, NX_GRAPH_REL),
-  /** This run writes `vx.workspace.ts`, with nx.json's run settings as fields. */
+  /** This run writes `.vx/workspace.ts`, with nx.json's run settings as fields. */
   writesWorkspace = false,
 ): Promise<MigrationPlan> {
   const graph = parseNxGraph(await Bun.file(snapshot).text(), path.relative(root, snapshot))
@@ -121,7 +121,7 @@ async function unlistedProjects(
   }
 }
 
-/** A `vx.workspace.ts` field nx.json's run settings call for. */
+/** A `.vx/workspace.ts` field nx.json's run settings call for. */
 export interface NxWorkspaceField {
   /** The setting's path: its group, then its field. */
   readonly field: 'run.concurrency' | 'run.affectedBase' | 'cache.retention'
@@ -135,7 +135,7 @@ const quoted = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}
 
 /**
  * nx.json's run-wide settings `nx()` applies live: each a field of the
- * written `vx.workspace.ts`, or a migrated repo that ran one task at a time
+ * written `.vx/workspace.ts`, or a migrated repo that ran one task at a time
  * for a shared database ran on every core. nx.json only: the files are
  * written for every machine, so `NX_PARALLEL` and friends are not read.
  */
@@ -155,21 +155,21 @@ export function nxWorkspaceFields(json: Record<string, unknown> | undefined): Nx
     out.push({
       field: 'run.concurrency',
       source: String(parallel),
-      note: `nx.json \`parallel: ${parallel}\`: add \`run: { concurrency: ${parallel} }\` to vx.workspace.ts`,
+      note: `nx.json \`parallel: ${parallel}\`: add \`run: { concurrency: ${parallel} }\` to .vx/workspace.ts`,
     })
   const base = nx?.defaultBase ?? nx?.affected?.defaultBase
   if (typeof base === 'string' && base.trim() !== '')
     out.push({
       field: 'run.affectedBase',
       source: quoted(base.trim()),
-      note: `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`run: { affectedBase: ${JSON.stringify(base.trim())} }\` to vx.workspace.ts`,
+      note: `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`run: { affectedBase: ${JSON.stringify(base.trim())} }\` to .vx/workspace.ts`,
     })
   const size = nxSizeText(nx?.maxCacheSize)
   if (size !== undefined)
     out.push({
       field: 'cache.retention',
       source: /^\d+[KMG]?B$/.test(size) ? `{ maxSize: ${quoted(size)} }` : undefined,
-      note: `nx.json \`maxCacheSize\`: add \`cache: { retention: { maxSize: ${JSON.stringify(size)} } }\` to vx.workspace.ts`,
+      note: `nx.json \`maxCacheSize\`: add \`cache: { retention: { maxSize: ${JSON.stringify(size)} } }\` to .vx/workspace.ts`,
     })
   return out
 }

@@ -97,7 +97,8 @@ describe('applyMigration', () => {
   })
 
   it('writes a config for a project with no tasks too, and no workspace file beside a .js one', async () => {
-    writeFileSync(path.join(root, 'vx.workspace.js'), 'export default { plugins: [] }\n')
+    mkdirSync(path.join(root, '.vx'), { recursive: true })
+    writeFileSync(path.join(root, '.vx/workspace.js'), 'export default { plugins: [] }\n')
     mkdirSync(path.join(root, 'app'))
     mkdirSync(path.join(root, 'empty'))
     await apply(
@@ -111,7 +112,7 @@ describe('applyMigration', () => {
     expect(readFileSync(path.join(root, 'empty', 'vx.config.ts'), 'utf8')).toBe(
       "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default {\n  tasks: {},\n} satisfies ProjectConfig\n",
     )
-    expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(false)
+    expect(existsSync(path.join(root, '.vx/workspace.ts'))).toBe(false)
   })
 
   it('refuses beside a hand-written config of another extension, and not for a project it skips', async () => {
@@ -372,7 +373,7 @@ describe('a written config passes the repo’s own checks', () => {
     chmodSync(path.join(bin, 'prettier'), 0o755)
     expect(await apply(plan([['a', [task('build', { exec: { command: 'x' } })]]]))).toBe(0)
     expect(readFileSync(path.join(root, '.prettier-args'), 'utf8').trim()).toBe(
-      '--write a/vx.config.ts vx.workspace.ts',
+      '--write a/vx.config.ts .vx/workspace.ts',
     )
     expect(stdout).toContain('note: formatted 2 files with prettier\n')
   })

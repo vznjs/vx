@@ -893,7 +893,7 @@ export async function mapTurboWorkspace(
   const rootFile = await turboConfigFile(root)
   if (rootFile === null) {
     throw new UserError(
-      `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from vx.workspace.ts`,
+      `no turbo.json or turbo.jsonc at the workspace root (${root}): turbo() maps a Turbo repo's config — add one, or remove turbo() from .vx/workspace.ts`,
     )
   }
   const rootCfg = withGlobal(await readTurboJson(rootFile, root))

@@ -12,7 +12,7 @@
 //     package.json      `workspaces` rewritten to the subset's dirs
 //     pnpm-workspace.yaml  `packages` rewritten the same way, the rest as written
 //     <lockfile>        pruned
-//     vx.workspace.*, the root vx.config.*, install config, patch files
+//     .vx/workspace.*, the root vx.config.*, install config, patch files
 //     <project dirs>    whole, less node_modules / .git / .vx / .turbo
 //   <out>/json/       (--docker) the install layer: root install files and
 //                     each project's package.json, nothing else
@@ -53,10 +53,10 @@ const INSTALL_FILES = [
   '.node-version',
 ]
 const VX_FILES = [
-  'vx.workspace.ts',
-  'vx.workspace.mts',
-  'vx.workspace.js',
-  'vx.workspace.mjs',
+  '.vx/workspace.ts',
+  '.vx/workspace.mts',
+  '.vx/workspace.js',
+  '.vx/workspace.mjs',
   'vx.config.ts',
   'vx.config.mts',
   'vx.config.js',

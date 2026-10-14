@@ -93,7 +93,7 @@ const FORMATTER = `
 describe('a cached task that rewrites its own input', () => {
   async function fixture(config = FORMATTER): Promise<string> {
     const app = await addProject(root, 'app', { config, files: { 'a.ts': 'X' } })
-    await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+    await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
     commit()
     return app
   }
@@ -156,7 +156,7 @@ describe('a cached task that runs but does not save', () => {
         `,
         files: { 'gen.txt': 'X', 'seed.txt': 'X' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
       commit()
       await waitForProducers(root)
       await runTask('build')
@@ -191,7 +191,7 @@ describe('a cached task that runs but does not save', () => {
         `,
         files: { 'src/a.txt': 'a' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
       commit()
       await waitForProducers(root)
       await runTask('build')
@@ -240,7 +240,10 @@ describe('a task that rewrites the lockfile the workspace fingerprint folded', (
       `,
       files: { 'src/a.ts': 'a' },
     })
-    await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\npkg/\nnode_modules/\nseed.txt\n')
+    await writeFile(
+      path.join(root, '.gitignore'),
+      '.vx/cache/\ndist/\npkg/\nnode_modules/\nseed.txt\n',
+    )
     commit()
     return app
   }
@@ -347,7 +350,7 @@ describe('the contract for `inputs.runtime`: an answer about the environment, ta
         `,
         files: { 'src/a.ts': 'a', 'ver.txt': '1', 'next.txt': '2' },
       })
-      await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nspawns.log\n')
+      await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nspawns.log\n')
       commit()
       await runTask('build')
       expect(await readFile(path.join(root, 'spawns.log'), 'utf8')).toBe('x\n')
@@ -812,7 +815,7 @@ describe('a runtime probe that reads an upstream output', () => {
   async function fixture(appConfig: string): Promise<{ libDir: string; appDir: string }> {
     const libDir = await addProject(root, 'lib', { config: lib, files: { 'seed.txt': 'X' } })
     const appDir = await addProject(root, 'app', { config: appConfig })
-    await writeFile(path.join(root, '.gitignore'), '.vx/\ndist/\nout.txt\n')
+    await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\nout.txt\n')
     commit()
     return { libDir, appDir }
   }

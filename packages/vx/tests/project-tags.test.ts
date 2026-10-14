@@ -4,7 +4,7 @@
 // show` lists them; and a tag is in no cache key.
 
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { dry, PARITY_TIMEOUT, planned, vx } from './helpers/parity.js'
 import { pluginSource } from './helpers/plugin.js'
@@ -39,8 +39,8 @@ beforeAll(async () => {
   })
   await addProject(root, 'docs', { config: config('') })
   // A `project` plugin gives docs a tag its config does not carry.
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource(
         'tagger',

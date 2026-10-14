@@ -161,7 +161,7 @@ export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string
 
 /**
  * The ready-queue baseline a workspace may pick in place of the default
- * (`schedule` in vx.workspace.ts). Each ranks with no timings; a `schedule`
+ * (`schedule` in .vx/workspace.ts). Each ranks with no timings; a `schedule`
  * plugin's weights still sort above it, and it breaks their ties.
  *   - `most-work`: transitive dependents (`computeReverseDepCount`), the default.
  *   - `critical-path`: steps on the longest chain of dependents below a task.

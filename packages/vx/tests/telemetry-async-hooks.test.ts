@@ -34,7 +34,7 @@ afterEach(async () => {
 
 async function runWith(sink: string): Promise<{ ok: boolean; said: string[] }> {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([pluginSource('org/sink', `{ telemetry() { return ${sink} } }`)]),
   )
   const status: string[] = []

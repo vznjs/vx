@@ -30,7 +30,7 @@ describe('vx show and the default build of a dependency', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
     )
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     const pkg = async (name: string, json: object, config?: string): Promise<void> => {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })

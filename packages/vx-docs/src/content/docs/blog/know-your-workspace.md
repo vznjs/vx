@@ -29,7 +29,7 @@ cache entries:    41 (9.8 KB)
 task runs (24h):  71 (27 cache hits: 23 up-to-date, 4 restored)
 flaky tasks:      none
 sandbox:          available (0 tasks declare exec.sandbox)
-vx-lock.json:     no
+.vx/lock.json:     no
 ```
 
 It reads what vx already knows: the run history, the cache index, the
@@ -40,9 +40,9 @@ same facts, and `vx mcp` serves them as a tool.
 ## A cache that keeps itself in bounds
 
 A content-addressed cache only grows. Set a policy once, in
-`vx.workspace.ts`:
+`.vx/workspace.ts`:
 
-```ts title="vx.workspace.ts"
+```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({

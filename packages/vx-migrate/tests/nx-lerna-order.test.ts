@@ -93,14 +93,14 @@ it('nx() re-maps when lerna.json appears', async () => {
     }),
   )
   const index = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource(
       [`nx({ graph: 'graph.json' })`],
       `import { nx } from ${JSON.stringify(index)}\n`,
     ),
   )
-  await writeFile(path.join(root, '.gitignore'), '.vx\n')
+  await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   const bDeps = async () =>
     (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks.find(

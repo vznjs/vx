@@ -15,7 +15,7 @@ import { PLUGIN_HOOKS } from '../src/config.js'
 import { validateWorkspace } from '../src/workspace/config-schema.js'
 import { testPlugin } from './helpers/plugin.js'
 
-const WS = '/ws/vx.workspace.ts'
+const WS = '/ws/.vx/workspace.ts'
 
 function refusal(config: unknown): string | null {
   try {

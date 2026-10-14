@@ -28,7 +28,7 @@ async function workspace(tasks: string): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
   )
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   const dir = path.join(root, 'packages', 'a')
   await mkdir(path.join(dir, 'src'), { recursive: true })
   await writeFile(path.join(dir, 'src', 'x'), 'x')
@@ -65,8 +65,8 @@ describe('vx lock checks the graph rules', () => {
       expect({
         code: r.code,
         said:
-          r.err.includes('vx-lock.json not written') && r.err.includes('both declare the output'),
-        written: existsSync(path.join(root, 'vx-lock.json')),
+          r.err.includes('.vx/lock.json not written') && r.err.includes('both declare the output'),
+        written: existsSync(path.join(root, '.vx/lock.json')),
       }).toEqual({ code: 1, said: true, written: false })
     },
     TIMEOUT,
@@ -96,7 +96,7 @@ describe('run.frozen', () => {
     'is on under CI: a run with no lock writes one, and VX_RUN_FROZEN=false or --no-frozen turn it off',
     async () => {
       const root = await workspace(`{ a: ${task(['dist/**'])} }`)
-      const lockFile = path.join(root, 'vx-lock.json')
+      const lockFile = path.join(root, '.vx/lock.json')
       expect(vx(root, ['run', 'a', '--all'], { CI: '1', VX_RUN_FROZEN: 'false' }).code).toBe(0)
       expect(existsSync(lockFile)).toBe(false)
       expect(vx(root, ['run', 'a', '--all', '--no-frozen'], { CI: '1' }).code).toBe(0)
@@ -120,8 +120,8 @@ describe('run.frozen', () => {
       const r = vx(root, ['run', 'a', '--all', '--frozen'])
       expect({
         code: r.code,
-        said: r.err.includes('vx-lock.json not written'),
-        written: existsSync(path.join(root, 'vx-lock.json')),
+        said: r.err.includes('.vx/lock.json not written'),
+        written: existsSync(path.join(root, '.vx/lock.json')),
       }).toEqual({ code: 1, said: true, written: false })
     },
     TIMEOUT,

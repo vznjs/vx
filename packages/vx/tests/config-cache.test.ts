@@ -1245,7 +1245,7 @@ describe('which @vzn/vx imports a pure config may take (item 888)', () => {
       "import { defineProject, machineParallelism } from '@vzn/vx'",
       "import { defineProject, machineParallelism as cores } from '@vzn/vx'",
       "import { defineProject, machineMemoryBytes } from '@vzn/vx'",
-      "import { defineProject, collectInfo } from '@vzn/vx'",
+      "import { defineProject, loadWorkspace } from '@vzn/vx'",
       "import * as vx from '@vzn/vx'\nconst defineProject = vx.defineProject",
       "import vx, { defineProject } from '@vzn/vx'",
       "import { defineProject } from '@vzn/vx'\nexport * from '@vzn/vx'",

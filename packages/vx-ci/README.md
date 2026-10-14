@@ -11,7 +11,7 @@ npm install -D @vzn/vx @vzn/vx-ci   # or: pnpm add -D -w · yarn add -D (-W on Y
 ```
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-ci'
 
@@ -55,14 +55,14 @@ github({
 
 ## Cache scope
 
-On Actions (`GITHUB_ACTIONS=true`), when `vx.workspace.ts` sets no `cache.scope`, the plugin's
+On Actions (`GITHUB_ACTIONS=true`), when `.vx/workspace.ts` sets no `cache.scope`, the plugin's
 `config` stage sets it from the ref (`GITHUB_REF`, `GITHUB_REF_NAME`, and
 the default branch from the `GITHUB_EVENT_PATH` payload): a push to the default branch sets
 none (reads and writes the default keys), a pull request becomes
 `pr-<n>` (so is a `pull_request_target`, `issue_comment` or `workflow_run`
 run on a PR's behalf, by `GITHUB_EVENT_NAME`, though its ref is main's) and any other branch or tag `ref-<name>`, which read the
 default keys, then their own, and write only their own. A PR never writes what main
-reads. Whether a run writes at all is `cache.policy`'s call. `VX_CACHE_SCOPE` or a `cache.scope` in `vx.workspace.ts` overrides it. This is a client-side convention: the real boundary is a cache
+reads. Whether a run writes at all is `cache.policy`'s call. `VX_CACHE_SCOPE` or a `cache.scope` in `.vx/workspace.ts` overrides it. This is a client-side convention: the real boundary is a cache
 token the server limits, so give PR jobs one that cannot write the
 default keys (`docs/security.md` § Cache poisoning).
 

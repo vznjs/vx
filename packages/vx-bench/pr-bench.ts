@@ -44,14 +44,14 @@ function must(cmd: string[], cwd: string): string {
 const ws = await mkdtemp(path.join(os.tmpdir(), 'vx-prbench-'))
 try {
   const json = (p: string, v: unknown) => writeFile(path.join(ws, p), JSON.stringify(v) + '\n')
-  await writeFile(path.join(ws, '.gitignore'), 'node_modules\ndist\n.vx\n.turbo\n')
+  await writeFile(path.join(ws, '.gitignore'), 'node_modules\ndist\n.vx/cache/\n.turbo\n')
   await json('package.json', {
     name: 'bench-root',
     private: true,
     packageManager: 'bun@1.4.2',
     workspaces: ['packages/*'],
   })
-  await writeFile(path.join(ws, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+  await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
   await json('turbo.json', {
     tasks: {
       build: { dependsOn: ['^build'], inputs: ['src/**'], outputs: ['dist/**'] },
@@ -124,7 +124,10 @@ try {
     )
   // Each tool's own cache only: Turbo's cold rep must not empty vx's before vx's restore rep.
   const wipeCache = (tool: 'vx' | 'turbo') => {
-    sh(['rm', '-rf', ...(tool === 'vx' ? ['.vx'] : ['.turbo', 'node_modules/.cache/turbo'])], ws)
+    sh(
+      ['rm', '-rf', ...(tool === 'vx' ? ['.vx/cache'] : ['.turbo', 'node_modules/.cache/turbo'])],
+      ws,
+    )
   }
   const best = new Map<string, number>()
   const time = (tool: 'vx' | 'turbo', arm: Arm) => {

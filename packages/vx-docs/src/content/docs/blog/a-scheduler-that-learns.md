@@ -26,7 +26,7 @@ flowchart LR
 ## Turn it on
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 

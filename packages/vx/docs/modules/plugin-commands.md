@@ -5,7 +5,7 @@
 The `commands` seam's host. The dispatcher (`cli/index.ts`) matches
 core's verbs first; for a word it does not know it asks
 `resolvePluginCommand(verb, cwd)`, which finds the workspace around the
-cwd, loads `vx.workspace.*`, and returns the one plugin whose
+cwd, loads `.vx/workspace.*`, and returns the one plugin whose
 `commands[verb]` exists (the load refuses two declaring a verb) — with a `CommandContext`
 (`workspaceRoot`, `cache.dir`, `warn`, and `run.concurrency`, the worker
 count a `vx run` there uses without `--concurrency`: the workspace's
@@ -57,5 +57,4 @@ export async function pluginCommandHelp(cwd?: string): Promise<string[]>
 
 ## Tests
 
-`tests/plugin-commands.test.ts`; `packages/vx-mcp/tests/server.test.ts`
-drives a real plugin verb through the entry point.
+`tests/plugin-commands.test.ts`.

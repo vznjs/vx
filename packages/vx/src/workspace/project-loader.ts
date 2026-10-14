@@ -27,7 +27,7 @@ import { readOnce, unreadable } from './load-reads.js'
 export { validateProjectConfig }
 
 // The filenames live with the root lookup, which runs before anything loads.
-import { WORKSPACE_CONFIG_FILENAMES, workspaceFile } from '../handoff.js'
+import { WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
 export { WORKSPACE_CONFIG_FILENAMES }
 
 /** What a function default export is told; the playground says the same. */
@@ -288,7 +288,7 @@ const NAMED_FRAME = /\n\s+at .*[\\/]/
  *
  * `ResolveMessage` — an import that cannot be resolved. The usual cause has
  * one answer: the workspace runs the vx binary and never installed `@vzn/vx`,
- * which its own `vx.workspace.ts` imports. Bun's message also carries the
+ * which its own `.vx/workspace.ts` imports. Bun's message also carries the
  * module-cache bust query; the user gets the file they wrote.
  *
  * `BuildMessage` — a syntax or transpile error. Its message alone (`Expected
@@ -691,8 +691,7 @@ export async function loadProjectConfigs(
  * Every route to fd 1 sent to stderr while configs evaluate in this
  * process; returns the release. A verb's stdout is its output (`vx show
  * --format json`), and a config's `console.log` came out ahead of the
- * JSON. The worker does the same for a repeat load (D-64), `vx mcp` for
- * its whole serve. Taken before a round's built-in snapshot and released
+ * JSON. The worker does the same for a repeat load (D-64). Taken before a round's built-in snapshot and released
  * after its check, so the guard sees no change of vx's own.
  *
  * Counted, because rounds overlap (`--affected`'s per-file sweep loads each
@@ -705,7 +704,7 @@ let redirectHolders = 0
 let undoRedirect = (): void => {}
 /**
  * Bun's own `Console`, taken at load: the console a round finds may be a
- * constructed one (`vx mcp` serves under its own), which has no `Console`.
+ * constructed one (a plugin's verb may install its own), which has no `Console`.
  * The global's, not `node:console`'s: the playground bundles this module
  * for the browser, where that specifier is a stub.
  */
@@ -1081,10 +1080,10 @@ export async function loadProjectConfig(
 const workspaceLoadedAt = new Map<string, number>()
 
 /**
- * A repeat load in one process (`vx mcp`'s every call, `vx watch`'s every
- * cycle) busts the workspace config's own URL, but Bun answers what it
+ * A repeat load in one process (`vx watch`'s every cycle, a plugin verb's
+ * every call) busts the workspace config's own URL, but Bun answers what it
  * imports from the module registry: an edited local plugin kept its first
- * version and `listTasks` served its old tasks with no word (item 1046).
+ * version and its old tasks were served with no word (item 1046).
  * Bun cannot evaluate an imported module again, so the load is refused,
  * naming the file, as `vx watch` already says when it sees the edit. Only
  * a repeat load pays for the walk; a CLI verb loads once.
@@ -1104,16 +1103,17 @@ async function refuseStaleWorkspaceImports(configPath: string, since: number): P
     if (Math.floor(mtime) > since) {
       // The walk names real paths: a root reached through a symlink (macOS's
       // temp dir) named `../target/helper.mjs` from the link.
-      const from = path.dirname(realpathSync(configPath))
+      const real = realpathSync(configPath)
+      const root = workspaceRootOf(real)
       throw new UserError(
-        `${path.basename(configPath)} imports ${path.relative(from, file)}, which changed after this process loaded it; a running process cannot evaluate an imported module again — restart it to apply the edit`,
+        `${path.relative(root, real)} imports ${path.relative(root, file)}, which changed after this process loaded it; a running process cannot evaluate an imported module again — restart it to apply the edit`,
       )
     }
   }
 }
 
 /**
- * Find and load `vx.workspace.{ts,mts,js,mjs,cts,cjs}` from the workspace
+ * Find and load `.vx/workspace.{ts,mts,js,mjs,cts,cjs}` from the workspace
  * root. Returns `null` if no such file exists (the common case;
  * the schema is fully optional). Validates the shape and throws
  * a `UserError` on malformed input.
@@ -1123,7 +1123,7 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
   // found. A file gone since (a `vx watch` cycle after a rename) is probed for.
   const found = await workspaceFile(path.resolve(root))
   const known =
-    found !== null && path.dirname(found) === path.resolve(root)
+    found !== null && workspaceRootOf(found) === path.resolve(root)
       ? await Bun.file(found)
           .bytes()
           .then(

@@ -28,7 +28,7 @@ afterEach(async () => {
 
 it("a thrown executor message is masked in the task's stream, the error and telemetry", async () => {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource(
         'org/echoer',

@@ -12,7 +12,7 @@
 //     the importer's nearest manifest (its `type`) whatever vx hands it;
 //   - the project directory three times: discovery lists it for the
 //     config's name (Linux), and the resolver opens it twice;
-//   - `vx.workspace.mjs` three times: a probe, vx's read and Bun's. Serving
+//   - `.vx/workspace.mjs` three times: a probe, vx's read and Bun's. Serving
 //     it measured 0.3 ms slower (the parser's first use), so Bun reads it;
 //   - `pnpm-workspace.yaml` twice: a probe and one read for the root, the
 //     globs and the fingerprint (it was three of each).
@@ -85,7 +85,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
     await mkdir(path.join(dir, 'src'), { recursive: true })
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root' }))
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(path.join(dir, 'src', 'index.js'), 'export {}\n')
     await writeFile(
@@ -137,7 +137,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       expect(cold('packages/a/vx.config.mjs')).toEqual(['openat'])
       expect(cold('packages/a/package.json')).toEqual(['openat', 'openat'])
       expect(cold('packages/a')).toEqual(['openat', 'openat', 'openat'])
-      expect(cold('vx.workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
+      expect(cold('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
       expect(cold('pnpm-workspace.yaml')).toEqual(['newfstatat', 'openat'])
 
       // The evaluation is cached. The first warm run reads the config once
@@ -150,7 +150,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       expect(warm('packages/a/vx.config.mjs')).toEqual(['statx'])
       expect(warm('packages/a/package.json')).toEqual(['openat'])
       expect(warm('packages/a')).toEqual(['openat'])
-      expect(warm('vx.workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
+      expect(warm('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
       expect(warm('pnpm-workspace.yaml')).toEqual(['newfstatat', 'openat'])
     },
     TIMEOUT,
@@ -170,7 +170,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       // The selection's workspace-glob owners parsed it again only to learn
       // it exists, which the staged load had already proved (I-23); the run
       // parsed it again for configs the selection had staged (I-27).
-      expect(run('vx-lock.json').filter((c) => c === 'openat')).toEqual(['openat'])
+      expect(run('.vx/lock.json').filter((c) => c === 'openat')).toEqual(['openat'])
     },
     TIMEOUT,
   )

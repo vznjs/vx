@@ -33,11 +33,11 @@ await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "package
 // A real workspace ignores its build outputs and vx's cache dir; without
 // this, `git ls-files --others` walks 2×N untracked files that no real repo
 // has and the enumeration numbers say nothing about real repos.
-await writeFile(path.join(root, '.gitignore'), 'dist\n.vx\n')
+await writeFile(path.join(root, '.gitignore'), 'dist\n.vx/cache/\n')
 // The bench measures core on its own fallbacks: run here, cache in
 // .vx/cache. No plugin is declared, so nothing it measures is a plugin's
 // cost.
-await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
 await writeFile(
   path.join(root, 'package.json'),
   JSON.stringify({ name: 'bench-root', private: true }, null, 2),

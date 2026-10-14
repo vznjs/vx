@@ -51,7 +51,7 @@ const WAITING = 'export default { run: { rules: { upfrontKeys: false } } }\n'
 
 async function makeWorkspace(): Promise<Fixture> {
   const root = await makeWorkspaceRoot({ prefix: 'vx-sc-' })
-  await Bun.write(path.join(root, 'vx.workspace.mjs'), WAITING)
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), WAITING)
   return { root, log: [], err: [] }
 }
 
@@ -220,7 +220,7 @@ describe('local cache short-circuit', () => {
       // The default rule refuses `**/*` beside build's output; with the
       // output excluded, test's key cannot see it, so it is known before
       // build runs and both restore ahead of the schedule.
-      await Bun.write(path.join(fixture.root, 'vx.workspace.mjs'), 'export default {}\n')
+      await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), 'export default {}\n')
       await addProject(fixture.root, 'app', {
         files: { 'src/a.txt': 'a' },
         config: `
@@ -1064,7 +1064,7 @@ describe('local cache short-circuit', () => {
       // under the graph-wide rule. Both stay in probe reuse. The pair loads
       // only with `rules.exclusiveOutputs` off (X-53).
       await Bun.write(
-        path.join(fixture.root, 'vx.workspace.mjs'),
+        path.join(fixture.root, '.vx/workspace.mjs'),
         'export default { run: { rules: { exclusiveOutputs: false, upfrontKeys: false } } }\n',
       )
       await addProject(fixture.root, 'a', {

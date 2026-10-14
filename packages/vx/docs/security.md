@@ -8,10 +8,10 @@ vulnerability), never in a public issue.
 
 ## What vx trusts
 
-- **Your configs.** `vx.config.ts` and `vx.workspace.ts` are programs vx
+- **Your configs.** `vx.config.ts` and `.vx/workspace.ts` are programs vx
   runs in its own process. A config can do anything you can: vx
   validates what it returns, not what it does. The workspace root is
-  the nearest `vx.workspace.*`, and vx never looks for it above the git
+  the nearest `.vx/workspace.*`, and vx never looks for it above the git
   top-level, so a file planted in a shared directory such as `/tmp`
   cannot claim your checkout and run as you. Outside git, one another
   user owns is refused, root aside (`tests/workspace-root-file.test.ts`).
@@ -73,7 +73,7 @@ bazel-remote --dir /data --max_size 50 --grpc_address 0.0.0.0:9092 \
 ```
 
 ```ts
-// vx.workspace.ts: the header only where the secret is set
+// .vx/workspace.ts: the header only where the secret is set
 reapi({
   endpoint: 'grpcs://cache.example.com:9092',
   headers: process.env.CACHE_AUTH ? { authorization: `Basic ${process.env.CACHE_AUTH}` } : {},
@@ -152,7 +152,7 @@ A task with `exec.sandbox` runs where only what it declares exists:
   (L-41), cannot be hard-linked into an output for vx to pack, and a denied read's `fix:` hint never suggests granting one
   (`tests/sandbox-credential-stores.unsafe.test.ts`, `tests/sandbox-fix.test.ts`);
 - vx's own cache directory, wherever `cache.dir` puts it in the
-  workspace, is a wall like `.vx`: a broad grant stops at it, and a write
+  workspace, is a wall like `.vx/cache`: a broad grant stops at it, and a write
   grant that would bind it is refused (L-24);
 - a symlinked output must resolve inside its project: vx packs outputs
   outside the sandbox, and a link to another project's file would have
@@ -195,24 +195,6 @@ nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one
   `weakerWhenNested` in a container, a task that itself sandboxes on
   macOS. `vx info` says what the host supports.
 
-## Agents (`vx mcp`)
-
-An agent connected to `vx mcp` can do what `vx run` can do, nothing more.
-Every tool but `runTasks` only reads. `runTasks` runs `vx run --format json`
-as a child process: the agent names tasks and sets `all`, `force`,
-`filter` and `affected`, and nothing else. A task name that starts with
-`-` is refused, a filter goes as one `--filter=` value, and a ref reaches
-git after `--end-of-options`, so no argument becomes a flag. The commands
-that run are the ones your configs declare, from the workspace root, with
-the environment `vx mcp` started with, filtered by each task's `exec.env`
-and held by its `exec.sandbox`. `force` costs a rerun, not a wrong entry:
-the key stays the same. What reaches the agent (summaries, refusals,
-`getFailures` output) is masked as described under Secrets.
-`mcp({ run: false })` takes `runTasks` away, and `mcp({ run: ['test'] })`
-limits it to those task names. An agent that
-can edit `vx.config.ts` can run anything, as you can, because configs are
-code vx trusts.
-
 ## Secrets
 
 The value, of 6 characters or more, of a variable whose name holds
@@ -222,7 +204,7 @@ task lists in `exec.env.secret`, and the password of a URL
 (`scheme://user:<password>@`) in any variable's value, is printed as `***` wherever vx shows, stores or
 exports it: task output, the stdout a hit replays, commands, an
 executor's error, telemetry,
-`vx show` and `vx mcp`'s `listTasks` (L-26). Values in the run history are digests under a per-store
+`vx show` (L-26). Values in the run history are digests under a per-store
 salt, and what follows `--` on the command line reaches telemetry as a
 count, not a quote, a secret before it masked (L-44). A remote executor (`@vzn/vx-reapi`) receives a
 task's `exec.env.define` values and the `cache.inputs.env` values its

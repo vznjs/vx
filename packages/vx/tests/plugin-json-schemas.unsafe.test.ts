@@ -7,7 +7,7 @@
 // which a sandboxed shard may not.
 
 import { readFileSync } from 'node:fs'
-import { rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { declaredPaths, validate } from './helpers/json-schema.js'
@@ -31,8 +31,8 @@ function vx(args: string[]): { code: number; out: string; err: string } {
 beforeAll(async () => {
   root = await makeWorkspace({ prefix: 'vx-plugin-json-' })
   // A declared reservation names both axes, so a row carries each field.
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `import { scheduleHistoryPlugin } from ${JSON.stringify(path.join(PLUGIN, 'src', 'index.ts'))}
 export default {
   plugins: [scheduleHistoryPlugin({ reservations: { 'app#build': { cpus: 2, memory: 512 } } })],

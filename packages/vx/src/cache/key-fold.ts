@@ -33,7 +33,7 @@ import type { CacheKeyInput } from './layer.js'
 // live in the resolved config (frozen by `vx lock`); the OUTPUT is
 // resolved live every run, so it stays correct under --frozen. No
 // SCHEMA bump — only Cache.key derivation changed.
-// v24: vx-lock.json added to the always-ignored input set (cache/
+// v24: .vx/lock.json added to the always-ignored input set (cache/
 // inputs.ts ALWAYS_IGNORE). A task whose globs matched the root
 // lockfile (broad `**/*` on the root project) drops it from the hashed
 // file set, so those keys change; tasks that never matched it are

@@ -53,6 +53,7 @@ import path from 'node:path'
 import { createArtifactTables, createTables, inHashes, lazyStatement } from './schema.js'
 import {
   UserError,
+  DOT_VX_GITIGNORE,
   formatBytes,
   isDiskFull,
   isFsRefusal,
@@ -549,13 +550,13 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
  * first. An existing cache costs three calls; it cost six.
  */
 function openCacheDir(cacheDir: string, workspaceRoot?: string): string | null {
-  const ignore = path.join(cacheDir, '.gitignore')
+  const [ignore, ignoreText] = ignoreFileFor(cacheDir)
   try {
     accessSync(cacheDir, constants.W_OK)
   } catch (err) {
     makeCacheDir(cacheDir)
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return errorText(err)
-    writeFileSync(ignore, IGNORE_ALL)
+    writeIgnore(ignore, ignoreText)
     return null
   }
   try {
@@ -567,11 +568,7 @@ function openCacheDir(cacheDir: string, workspaceRoot?: string): string | null {
     if (code !== 'ENOENT') return errorText(err)
     refuseManifestDir(cacheDir, workspaceRoot)
   }
-  try {
-    writeFileSync(ignore, IGNORE_ALL, { flag: 'wx' })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-  }
+  writeIgnore(ignore, ignoreText)
   return null
 }
 
@@ -631,6 +628,29 @@ const utf8 = new TextEncoder()
 const IGNORE_ALL = '*\n'
 
 /**
+ * The ignore file that keeps `cacheDir` out of git, and its text. The
+ * default `.vx/cache` is named by `.vx/.gitignore` (`/cache`), committed
+ * beside the workspace config and the lock (owner, 2026-10-14); any other
+ * cache directory holds a `*` one of its own. Written only when missing:
+ * an existing file is the user's.
+ */
+function writeIgnore(file: string, text: string): void {
+  try {
+    writeFileSync(file, text, { flag: 'wx' })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
+}
+
+function ignoreFileFor(cacheDir: string): [string, string] {
+  const parent = path.dirname(cacheDir)
+  if (path.basename(cacheDir) === 'cache' && path.basename(parent) === '.vx') {
+    return [path.join(parent, '.gitignore'), DOT_VX_GITIGNORE]
+  }
+  return [path.join(cacheDir, '.gitignore'), IGNORE_ALL]
+}
+
+/**
  * A first index in a directory that holds a manifest is a cache pointed at
  * the workspace or a project (`cacheDir: ''`, `'.'`, `'packages/a'`): the
  * `*` ignore file above hid every file in it from git, so its inputs
@@ -677,7 +697,7 @@ function refuseManifestDir(cacheDir: string, workspaceRoot: string | undefined):
 
 const MANIFESTS = ['package.json', 'pnpm-workspace.yaml']
 const OWN_DIR_HINT =
-  'Point `cache.dir` in vx.workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
+  'Point `cache.dir` in .vx/workspace.ts (or --cache-dir) at a directory of its own, such as .vx/cache.'
 
 function makeCacheDir(cacheDir: string): void {
   try {
@@ -687,7 +707,7 @@ function makeCacheDir(cacheDir: string): void {
     // so this is the first thing any of them says there.
     throw new UserError(
       `cannot create cache directory ${cacheDir} (${errorText(err)}) — vx keeps its cache there; make ` +
-        `the workspace writable, set \`cache.dir\` in vx.workspace.ts, or pass --cache-dir <path>`,
+        `the workspace writable, set \`cache.dir\` in .vx/workspace.ts, or pass --cache-dir <path>`,
     )
   }
 }
@@ -1425,8 +1445,8 @@ export class Cache implements CacheLayer {
 
   /**
    * The digest a value-bearing row holds (an env value, a runtime output,
-   * args after `--`): xxh3 under a random salt this store keeps. `vx why`,
-   * its JSON and MCP's `whyDidThisRerun` print it, and an unkeyed xxh3 in
+   * args after `--`): xxh3 under a random salt this store keeps. `vx why`
+   * and its JSON print it, and an unkeyed xxh3 in
    * a public CI log let anyone confirm or brute-force a short secret
    * (L-4). Salted, a digest still says whether a value changed, and says
    * nothing without this cache's `schema_meta`. Asked for on a miss only.

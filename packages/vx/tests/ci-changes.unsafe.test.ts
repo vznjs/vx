@@ -154,7 +154,7 @@ describe('the changes job', () => {
     'packages/vx-bench/package.json',
     'bun.lock',
     'package.json',
-    'vx.workspace.ts',
+    '.vx/workspace.ts',
     '.github/workflows/ci.yml',
     'scripts/x.ts',
   ])('runs the macOS job for %s', (file) => {
@@ -214,7 +214,7 @@ describe('the changes job', () => {
     'bun.lock',
     'package.json',
     'tsconfig.json',
-    'vx.workspace.ts',
+    '.vx/workspace.ts',
     '.gitignore',
     '.github/workflows/ci.yml',
     'examples/basic/README.md',

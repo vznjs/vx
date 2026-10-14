@@ -37,12 +37,12 @@ $ vx run build --all --cache-policy=local:,remote:rw    # skip local, still uplo
 ```
 
 `VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and
-`cache.policy` in `vx.workspace.ts` sets the default; the flag beats the
+`cache.policy` in `.vx/workspace.ts` sets the default; the flag beats the
 variable, which beats the config. Whatever the spec, a lookup asks the
 local cache first, then each remote in the order the plugins declare them.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({ cache: { policy: 'local:rw,remote:r' } })
@@ -71,7 +71,7 @@ $ vx run build --all
 
 The new worktree had no `dist`. All four builds came back from the shared
 store in 22ms. To put the cache somewhere else, use `--cache-dir`,
-`VX_CACHE_DIR` or `cache.dir` in `vx.workspace.ts`.
+`VX_CACHE_DIR` or `cache.dir` in `.vx/workspace.ts`.
 
 ## Who may write the remote cache
 
@@ -98,7 +98,7 @@ $ vx run build --cache-scope pr-123
 ```
 
 `--cache-scope` beats `VX_CACHE_SCOPE`, which beats `cache.scope` in
-`vx.workspace.ts`. On GitHub Actions, the
+`.vx/workspace.ts`. On GitHub Actions, the
 [@vzn/vx-ci plugin](https://vznjs.github.io/vx/blog/results-on-github/)
 sets the scope for you: `pr-<n>` on a pull request, none on the
 default branch. The scope is a client-side rule, so a cache server that

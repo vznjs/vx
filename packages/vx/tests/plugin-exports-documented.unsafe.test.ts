@@ -27,7 +27,7 @@ describe('every plugin export is named in its README', () => {
   const records = readdirSync(RECORDS).filter((f) => f.endsWith('.txt'))
 
   it('reads every plugin record', () => {
-    expect(records.length).toBeGreaterThanOrEqual(7)
+    expect(records.length).toBeGreaterThanOrEqual(6)
   })
 
   it('reads a record line as its name, kind words skipped', () => {

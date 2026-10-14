@@ -82,7 +82,8 @@ writeFileSync(
   path.join(ws, 'package.json'),
   JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
 )
-writeFileSync(path.join(ws, 'vx.workspace.mjs'), 'export default {}\n')
+mkdirSync(path.join(ws, '.vx'), { recursive: true })
+writeFileSync(path.join(ws, '.vx/workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
   path.join(ws, 'packages', 'a', 'vx.config.mjs'),
@@ -129,7 +130,8 @@ writeFileSync(
   path.join(dotenv, 'package.json'),
   JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
 )
-writeFileSync(path.join(dotenv, 'vx.workspace.mjs'), 'export default {}\n')
+mkdirSync(path.join(dotenv, '.vx'), { recursive: true })
+writeFileSync(path.join(dotenv, '.vx/workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(dotenv, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
   path.join(dotenv, 'packages', 'a', 'vx.config.mjs'),
@@ -183,7 +185,8 @@ writeFileSync(
   path.join(resolve, 'package.json'),
   JSON.stringify({ name: 'ws', private: true, workspaces: ['packages/*'] }),
 )
-writeFileSync(path.join(resolve, 'vx.workspace.mjs'), 'export default {}\n')
+mkdirSync(path.join(resolve, '.vx'), { recursive: true })
+writeFileSync(path.join(resolve, '.vx/workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(resolve, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
   path.join(resolve, 'packages', 'a', 'vx.config.mjs'),
@@ -235,14 +238,15 @@ writeFileSync(
 export default defineProject({ tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })
 `,
 )
+mkdirSync(path.join(bare, '.vx'), { recursive: true })
 writeFileSync(
-  path.join(bare, 'vx.workspace.mjs'),
+  path.join(bare, '.vx/workspace.mjs'),
   `import { defineWorkspace } from '@vzn/vx'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin({ assume: { 'a#build': 1000 } })] })
 `,
 )
-writeFileSync(path.join(bare, '.gitignore'), 'node_modules\n.vx\n')
+writeFileSync(path.join(bare, '.gitignore'), 'node_modules\n.vx/cache/\n')
 const git = (...args: string[]): void => {
   Bun.spawnSync({
     cmd: ['git', '-c', 'user.email=ci@vx', '-c', 'user.name=ci', ...args],

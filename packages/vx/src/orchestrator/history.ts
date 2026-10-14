@@ -86,7 +86,7 @@ export class EmptyHistoryProvider implements HistoryProvider {
 export class LocalHistoryProvider implements HistoryProvider {
   constructor(
     private readonly db: Database,
-    private readonly recent: number = DEFAULT_RECENT,
+    readonly recent: number = DEFAULT_RECENT,
   ) {}
 
   /**
@@ -107,8 +107,17 @@ export class LocalHistoryProvider implements HistoryProvider {
    * read by `run_id` and stay exact.
    */
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable> {
+    if (taskIds.length === 0) return new Map()
+    return this.load(new Set(taskIds))
+  }
+
+  /** Every task the window holds, as `loadFor` answers each (`vx last --stats`). */
+  async loadAll(): Promise<HistoryTable> {
+    return this.load(null)
+  }
+
+  private load(wanted: ReadonlySet<string> | null): HistoryTable {
     const out = new Map<string, TaskHistory>()
-    if (taskIds.length === 0) return out
     const floor = this.floor()
 
     // `skipped` rows are excluded: a skip is a task the run never executed,
@@ -160,9 +169,8 @@ export class LocalHistoryProvider implements HistoryProvider {
     // Every pair in the slice is grouped (the slice is bounded, so this is
     // cheap) and the asked-for ones are picked out here — a per-row IN-list
     // probe in SQL cost more than the grouping it would have saved.
-    const wanted = new Set(taskIds)
-    const rows = (this.db.query(sql).all(floor) as Row[]).filter((r) =>
-      wanted.has(`${r.project}#${r.task}`),
+    const rows = (this.db.query(sql).all(floor) as Row[]).filter(
+      (r) => wanted === null || wanted.has(`${r.project}#${r.task}`),
     )
 
     // The flakiness signal needs per-key outcomes, which the aggregate above

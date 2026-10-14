@@ -37,7 +37,7 @@ async function fixture(plugins: string[]): Promise<string> {
     path.join(root, 'pkg-a/vx.config.mjs'),
     `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }\n`,
   )
-  await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource(plugins))
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource(plugins))
   gitInitCommit(root)
   return root
 }

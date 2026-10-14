@@ -81,7 +81,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
     // Aborted tasks are not real runs and stay out of `tasks`; without the
     // count a stopped run reads as a failure with nothing failed (item 851).
     await Bun.write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([
         pluginSource(
           'org/summary-probe',

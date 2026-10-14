@@ -1,7 +1,6 @@
 import { defineWorkspace } from '@vzn/vx'
 import { otel } from '@vzn/vx-otel'
 import { github } from '@vzn/vx-ci'
-import { mcp } from '@vzn/vx-mcp'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 import { bun } from '@vzn/vx-lockfile'
 
@@ -15,7 +14,6 @@ import { bun } from '@vzn/vx-lockfile'
 //   github() — write each run as a GitHub Actions job summary. Activates on
 //              GITHUB_STEP_SUMMARY, declines everywhere else. We dogfood our
 //              own plugins so their decline paths run on every laptop run.
-//   mcp()    — adds `vx mcp`, the MCP server AI agents talk to.
 //   bun()    — keys each package's tasks on its own dependency closure
 //              from bun.lock, so a `bun add` in one package re-keys that
 //              package and its dependants, not the whole repo.
@@ -31,16 +29,15 @@ import { bun } from '@vzn/vx-lockfile'
 //              On Linux CI the reapi and migrate suites (38 s, 27 s) wait
 //              on only their own install and started last, the tail of the
 //              gate by 22 s (I-13). `file` writes what it learned to
-//              .vx/timings.json, which CI caches beside .vx/cache, so a
+//              .vx/cache/timings.json, which CI caches with the cache, so a
 //              runner whose vx cache missed still orders by real times.
 export default defineWorkspace({
   plugins: [
     otel(),
     github(),
-    mcp(),
     bun(),
     scheduleHistoryPlugin({
-      file: '.vx/timings.json',
+      file: '.vx/cache/timings.json',
       assume: {
         '@vzn/vx-docs#build': 30_000,
         '@vzn/vx#test.bun.unsafe': 46_000,

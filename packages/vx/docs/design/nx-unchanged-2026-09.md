@@ -239,7 +239,7 @@ them. Two ways to reproduce that were open:
 
 - **Read them at map time into `exec.env.define`.** The key would see the
   values. But the values would be in the config: a `.env.local` secret in
-  `vx show`, in `vx-lock.json`, and in every `vx.config.ts` the migrator
+  `vx show`, in `.vx/lock.json`, and in every `vx.config.ts` the migrator
   writes — and the migrator could not write them, so the plugin and the
   migrator would stop producing the same task.
 - **Load them when the task runs** (chosen). The mapper lists which exist

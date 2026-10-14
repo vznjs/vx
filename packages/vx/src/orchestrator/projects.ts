@@ -61,7 +61,7 @@ export async function loadWorkspacePlugins(
   // the loader would refuse from a user (`concurrency: -3`) hung the run,
   // and `cacheDir: 42` reached `path.resolve` as a TypeError.
   await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn }, (plugin) =>
-    validateWorkspace(workspaceConfig, `vx.workspace (after plugin '${plugin.name}')`),
+    validateWorkspace(workspaceConfig, `.vx/workspace (after plugin '${plugin.name}')`),
   )
   return { workspaceConfig, plugins }
 }
@@ -397,7 +397,7 @@ function crossDepProjects(config: ProjectConfig): string[] {
 
 /**
  * The run path's view of a workspace's projects for a reader — `vx show`,
- * the MCP server, an embedder: discovery, the plugin `config` and
+ * a plugin's verb, an embedder: discovery, the plugin `config` and
  * `project` stages, and the local cache opened only to serve cached
  * evaluations, so a pure config costs a stat, not an evaluation. `scope`
  * is every project or a list of names; no closure, no lock (a reader

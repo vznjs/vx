@@ -46,10 +46,10 @@ it('every code block in the plugins guide type-checks against @vzn/vx', async ()
           // while denying every other sibling — pointing straight at
           // `packages/vx-schedule-history` type-checked here and exited 1
           // under the sandboxed gate on CI (2026-09-10).
-          // The OpenTelemetry and `vx mcp` sections (the short site) import
-          // their plugins the same way.
+          // The OpenTelemetry section (the short site) imports its plugin
+          // the same way.
           paths: Object.fromEntries(
-            ['vx-schedule-history', 'vx-otel', 'vx-mcp'].map((pkg) => [
+            ['vx-schedule-history', 'vx-otel'].map((pkg) => [
               `@vzn/${pkg}`,
               [path.join(SITE, 'node_modules', '@vzn', pkg, 'src', 'index.ts')],
             ]),

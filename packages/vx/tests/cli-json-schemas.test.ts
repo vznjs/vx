@@ -48,6 +48,7 @@ import {
   type SummaryTaskJson,
 } from '../src/orchestrator/run-artifacts.js'
 import { formatPlanJson, type PlanTaskJson } from '../src/cli/plan-format.js'
+import type { TaskStats } from '../src/cli/last.js'
 import { declaredPaths, validate } from './helpers/json-schema.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -158,8 +159,8 @@ beforeAll(async () => {
   await addProject(root, 'kitchen', { config: KITCHEN })
   await addProject(root, 'bare')
   // A plugin, so \`vx info\` lists one.
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}], cache: { retention: { olderThan: '3650d', maxSize: '10G' } } }\n`,
   )
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
@@ -180,6 +181,7 @@ beforeAll(async () => {
   json('last', ['--list'])
   json('last', ['--failed'])
   json('last', ['--log', 'app#fail'])
+  json('last', ['--stats'])
   // The flaky task passes again: the replayed failure names that run (`fixedIn`).
   await writeFile(path.join(root, 'flag'), '')
   expect(vx(['run', 'lib#flaky', '--force']).code).toBe(0)
@@ -493,6 +495,20 @@ describe('each schema object is its source type', () => {
         arch: true,
         vxVersion: true,
         tags: true,
+      }),
+    )
+    expect(def('last', 'stats')).toEqual(['stats', 'window'])
+    expect(def('last', 'taskStats')).toEqual(
+      keys<TaskStats>({
+        taskId: true,
+        runs: true,
+        p50DurationMs: true,
+        p99DurationMs: true,
+        successRate: true,
+        hitRate: true,
+        failureMode: true,
+        maxPeakRssBytes: true,
+        maxCpuParallelism: true,
       }),
     )
     expect(def('last', 'log')).toEqual(

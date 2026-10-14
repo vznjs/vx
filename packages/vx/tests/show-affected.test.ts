@@ -66,7 +66,7 @@ async function fixture(yTest: string): Promise<string> {
     await writeFile(path.join(root, rel), content)
   }
   await write('package.json', JSON.stringify({ name: 'r', private: true, workspaces: ['pkgs/*'] }))
-  await write('vx.workspace.mjs', 'export default {}\n')
+  await write('.vx/workspace.mjs', 'export default {}\n')
   await write('pkgs/x/package.json', JSON.stringify({ name: 'x' }))
   await write(
     'pkgs/x/vx.config.mjs',

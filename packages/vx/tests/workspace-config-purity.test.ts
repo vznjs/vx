@@ -1,4 +1,4 @@
-// vx.workspace.ts runs in this process like a project config's first load,
+// .vx/workspace.ts runs in this process like a project config's first load,
 // but had none of its guard: its `Object.prototype.exec` ran in a
 // project's group task (D-126). The same snapshot, put back and refusal
 // now wrap it.
@@ -11,7 +11,7 @@ import { loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 async function load(source: string): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-purity-'))
   try {
-    await Bun.write(path.join(root, 'vx.workspace.mjs'), source)
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), source)
     return await loadWorkspaceConfig(root).then(
       () => 'loaded',
       (err: Error) => err.message.replace(/^.*? changed (.*?) while it was evaluated.*$/s, '$1'),

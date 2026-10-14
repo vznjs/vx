@@ -138,7 +138,7 @@ describe('examples/turbo', () => {
   // The migrate guide's steps as written: the workspace file stays (the
   // CLI never overwrites one), then turbo() goes and the configs stand alone.
   it('migrates to written configs that hit the cache turbo() filled', () => {
-    const workspace = readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')
+    const workspace = readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')
     const migrate = Bun.spawnSync({
       cmd: [process.execPath, path.join(PACKAGES, 'vx-migrate', 'src', 'bin.ts')],
       cwd: root,
@@ -152,7 +152,7 @@ describe('examples/turbo', () => {
       '  packages/app/vx.config.ts',
       '  packages/lib/vx.config.ts',
     ])
-    expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(workspace)
+    expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(workspace)
     commit(root)
     const kept = run(root, 'test')
     expect(kept.exit).toBe(0)
@@ -160,7 +160,8 @@ describe('examples/turbo', () => {
     said.push(kept.cache)
 
     // The file stays: it marks the root.
-    writeFileSync(path.join(root, 'vx.workspace.ts'), 'export default {}\n')
+    mkdirSync(path.join(root, '.vx'), { recursive: true })
+    writeFileSync(path.join(root, '.vx/workspace.ts'), 'export default {}\n')
     commit(root)
     const alone = run(root, 'test')
     expect(alone.exit).toBe(0)
@@ -248,8 +249,8 @@ describe('examples/ci', () => {
       'utf8',
     )
     expect(guide).toContain('```yaml\n' + workflow + '```')
-    const workspace = readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')
-    expect(guide).toContain('```ts\n// vx.workspace.ts\n' + workspace + '```')
+    const workspace = readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')
+    expect(guide).toContain('```ts\n// .vx/workspace.ts\n' + workspace + '```')
   })
 
   it('main fills the default keys, a pull request reads them and writes only its scope', () => {

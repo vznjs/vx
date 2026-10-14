@@ -257,8 +257,8 @@ describe('npm() declared', () => {
       await writeFile(path.join(dir, 'vx.config.mjs'), BUILD)
     }
     await writeFile(path.join(root, 'package-lock.json'), lock())
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource(['npm()'], `import { npm } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
     )
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })

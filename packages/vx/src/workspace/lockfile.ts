@@ -1,8 +1,8 @@
-// vx-lock.json — frozen resolved-config lockfile.
+// .vx/lock.json — frozen resolved-config lockfile.
 //
 // `vx lock` evaluates every project's vx.config.* in the CURRENT
 // environment and freezes the resolved objects, by project name, into
-// `vx-lock.json` at the workspace root. A run
+// `.vx/lock.json` at the workspace root. A run
 // under `--frozen` loads configs from it instead of evaluating —
 // frozen-env semantics; a plain run always evaluates live. See
 // docs/design/config-lock-2026-06.md.
@@ -19,7 +19,7 @@ import { relPosix, UserError, xxh3 } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { CONFIG_EVAL_VERSION } from './config-cache.js'
 
-export const LOCKFILE_NAME = 'vx-lock.json'
+export const LOCKFILE_NAME = '.vx/lock.json'
 export const LOCKFILE_VERSION = 2
 
 export interface Lockfile {
@@ -36,10 +36,10 @@ export function lockfilePath(root: string): string {
 
 /** What a `--frozen` verb says when there is no lock to read. */
 export const FROZEN_WITHOUT_LOCK =
-  "--frozen requires vx-lock.json at the workspace root — run 'vx lock' and commit it"
+  "--frozen requires .vx/lock.json at the workspace root — run 'vx lock' and commit it"
 
 /**
- * Read and shape-validate `vx-lock.json`. Returns `null` when no lock
+ * Read and shape-validate `.vx/lock.json`. Returns `null` when no lock
  * exists (the common case — the feature is opt-in). The lock is a
  * user-editable file, so this is a system boundary: malformed content
  * throws a `UserError` instead of crashing deeper in the run.
@@ -112,7 +112,7 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
     // either (ENOTDIR), and that must not replace the refusal itself.
     await rm(tmp, { force: true }).catch(() => {})
     // The refusal names the file the user knows: a read-only checkout read
-    // `open '…/vx-lock.json.tmp-…'` where it had read the lock's own name.
+    // `open '…/.vx/lock.json.tmp-…'` where it had read the lock's own name.
     const e = err as NodeJS.ErrnoException
     if (typeof e.message === 'string') e.message = e.message.split(tmp).join(file)
     if (e.path === tmp) e.path = file

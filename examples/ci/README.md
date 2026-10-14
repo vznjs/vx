@@ -2,12 +2,12 @@
 
 The starter from `examples/basic`, with the CI setup the
 [CI guide](https://vznjs.github.io/vx/guides/ci/) walks through:
-`.github/workflows/ci.yml` and `vx.workspace.ts`. Copy it, then:
+`.github/workflows/ci.yml` and `.vx/workspace.ts`. Copy it, then:
 
 ```sh
 npm install
 git init && git add -A && git commit -m init
-npx @vzn/vx lock          # write vx-lock.json, then commit it
+npx @vzn/vx lock          # write .vx/lock.json, then commit it
 ```
 
 Run `vx lock` again and commit the lock whenever a config, a plugin, a

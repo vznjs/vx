@@ -97,8 +97,9 @@ describe('the workspace boundary accepts only definePlugin output', () => {
   async function load(pluginsSource: string): Promise<unknown> {
     const dir = mkdtempSync(path.join(tmpdir(), 'vx-plugin-boundary-'))
     dirs.push(dir)
+    mkdirSync(path.join(dir, '.vx'), { recursive: true })
     writeFileSync(
-      path.join(dir, 'vx.workspace.mjs'),
+      path.join(dir, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}export default { plugins: [${pluginsSource}] }\n`,
     )
     return loadWorkspaceConfig(dir)

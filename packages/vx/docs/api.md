@@ -232,46 +232,6 @@ export interface CacheInputs {
 }
 ```
 
-## `cacheKeyDiff`
-
-function · `src/orchestrator/metrics.ts`
-
-The moat: name the exact cache-key components (files / env / runtime /
-upstream …) that differ between this run of a task and its immediately-
-previous run. Resolves each run to its task hash via `runs.hash`, then
-full-outer-joins the two runs' `entry_inputs` rows (keyed by the entry
-hash) over `(kind, name)`:
-
-- present in both with a different hash → `changed`
-- only in this run → `added`
-- only in the previous run → `removed`
-- equal → counted as unchanged
-
-Pure SQL + an app-side set join (`diffKeyComponents`) — no config
-re-evaluation, no re-hash.
-Always returns a value (never throws); `found:false` when the run/task pair
-has no row, `entries:[]` for the first run of a task.
-
-```ts
-export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff
-```
-
-## `CacheKeyDiff`
-
-type · `src/orchestrator/metrics.ts`
-
-```ts
-export interface CacheKeyDiff {
-  runId: string
-  taskId: string
-  found: boolean
-  previousRunId: string | null
-  entries: InputDiffEntry[]
-  unchangedCount: number
-  note: string
-}
-```
-
 ## `CacheLayer`
 
 type · `src/cache/layer.ts`
@@ -405,38 +365,6 @@ export interface CiContext {
   pipeline?: string
   job?: string
   attempt?: number
-}
-```
-
-## `clampInt`
-
-function · `src/util/num.ts`
-
-Clamp to an INTEGER in `[min, max]`; a non-finite value collapses to `min`.
-
-The floor is load-bearing wherever the result reaches SQL: a fractional
-`LIMIT` is a `datatype mismatch` error, not a smaller page.
-
-```ts
-export function clampInt(n: number, min: number, max: number): number
-```
-
-## `collectInfo`
-
-function · `src/orchestrator/doctor.ts`
-
-```ts
-export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): Promise<InfoFacts>
-```
-
-## `CollectInfoOptions`
-
-type · `src/orchestrator/doctor.ts`
-
-```ts
-export interface CollectInfoOptions {
-  readonly cacheDir?: string
-  readonly warn?: (message: string) => void
 }
 ```
 
@@ -692,7 +620,7 @@ export function exitSignal(code: number): string | undefined
 
 function · `src/workspace/workspace.ts`
 
-Where `vx init` (and `@vzn/vx-migrate`) puts `vx.workspace.ts` when
+Where `vx init` (and `@vzn/vx-migrate`) puts `.vx/workspace.ts` when
 there is none yet: the package manager's workspace root. A directory is a root
 CANDIDATE when it contains `pnpm-workspace.yaml` or a `package.json`.
 
@@ -737,14 +665,14 @@ export async function findManifestRoot(
 function · `src/workspace/workspace.ts`
 
 The workspace root for `start`: the directory holding the first
-`vx.workspace.*` from `start` up to the git top-level, or up to `/`
+`.vx/workspace.*` from `start` up to the git top-level, or up to `/`
 outside git ({@link workspaceFile}, shared with the hand-off). Nothing
 else decides it (owner, 2026-10-13: "Workspace file is the ultimate"):
 not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
 `VX_E_NO_WORKSPACE` when there is none.
 
 Outside git, a file another user owns is refused (root aside): a
-`vx.workspace.ts` planted in a shared directory above you (`/tmp`) is
+`.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
 code that would run as you. Inside git the walk never leaves your
 checkout. The directory you run in is yours to judge, and costs no
 stat. Run as root, vx trusts every owner, as a container over a mounted
@@ -903,54 +831,6 @@ export interface HostContext {
 }
 ```
 
-## `InfoFacts`
-
-type · `src/orchestrator/doctor.ts`
-
-The doctor's facts, typed: what `--format json` prints and the pretty rows render.
-
-```ts
-export interface InfoFacts {
-  vx: string
-  vxPath: string
-  handedOffFrom: string | null
-  bun: string
-  bunSupported: boolean
-  git: string | null
-  gitStatusCache: { fsmonitor: boolean; untrackedCache: boolean } | null
-  workspaceRoot: string
-  projects: number
-  tasks: number
-  configErrors: Array<{ path: string; message: string }>
-  plugins: Array<{ name: string; seams: string[] }>
-  workers: {
-    count: number
-    source: 'env' | 'workspace' | 'cgroup' | 'cores'
-    cores: number
-    cpuQuota: number | null
-  }
-  memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
-  cacheDir: string
-  cacheStore: string | null
-  cacheVersion: string
-  schemaVersion: string
-  cacheEntries: number
-  cacheBytes: number
-  settings: Record<
-    string,
-    { value: string | number | boolean | null; source: 'env' | 'workspace' | 'default' }
-  >
-  cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
-  orphans: { artifacts: number; bytes: number }
-  runs24h: number
-  hits24h: number
-  restored24h: number
-  flakyTasks: FlakyTask[]
-  lockfile: boolean
-  sandbox: { available: boolean; reason: string; declared: number; untraced: string | null }
-}
-```
-
 ## `InputStability`
 
 type · `src/config.ts`
@@ -960,39 +840,6 @@ export interface InputStability {
   strategy?: 'immutable' | 'mutable' | 'unchecked'
   severity?: 'warn' | 'error'
 }
-```
-
-## `InputWriter`
-
-type · `src/orchestrator/metrics.ts`
-
-```ts
-export interface InputWriter {
-  taskId: string
-  file: string
-  writers: string[]
-}
-```
-
-## `inputWriters`
-
-function · `src/orchestrator/metrics.ts`
-
-For each moved input file of `taskId` and of each root cause, the
-recorded tasks that were running when the file last changed: a task
-that writes a file another key reads re-keys that task on every run.
-The file's mtime against the recorded windows, so
-a writer that runs each time is named from its latest run, and an
-edit made outside a run names none.
-
-```ts
-export function inputWriters(
-  db: Database,
-  workspaceRoot: string,
-  taskId: string,
-  entries: CacheKeyDiff['entries'],
-  roots: readonly RootCause[],
-): InputWriter[]
 ```
 
 ## `InvocationRecord`
@@ -1113,18 +960,6 @@ type · `src/orchestrator/plugin.ts`
 export interface KeyHookContext extends BaseContext {}
 ```
 
-## `latestRunId`
-
-function · `src/orchestrator/metrics.ts`
-
-The latest recorded run of a task (run_id may be NULL on very old rows).
-One query for `vx why` and `vx mcp`: the CLI defaulted to it while the
-tool demanded a run id an agent had to fetch first (2026-09-16).
-
-```ts
-export function latestRunId(db: Database, taskId: string): string | null
-```
-
 ## `listProjectMetas`
 
 function · `src/workspace/workspace.ts`
@@ -1149,7 +984,7 @@ export async function loadProjectConfig(
 function · `src/orchestrator/projects.ts`
 
 The run path's view of a workspace's projects for a reader — `vx show`,
-the MCP server, an embedder: discovery, the plugin `config` and
+a plugin's verb, an embedder: discovery, the plugin `config` and
 `project` stages, and the local cache opened only to serve cached
 evaluations, so a pure config costs a stat, not an evaluation. `scope`
 is every project or a list of names; no closure, no lock (a reader
@@ -1189,9 +1024,10 @@ Reads from the orchestrator's local SQLite cache.db.
 export class LocalHistoryProvider implements HistoryProvider {
   constructor(
     private readonly db: Database,
-    private readonly recent: number = DEFAULT_RECENT,
+    readonly recent: number
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  async loadAll(): Promise<HistoryTable>
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
   async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
@@ -1286,26 +1122,6 @@ one. The default worker count.
 
 ```ts
 export function machineParallelism(probe: CgroupProbe = {}): number
-```
-
-## `maskedCommand`
-
-function · `src/util/secret-mask.ts`
-
-A task's command as vx shows it: its secret values masked.
-
-```ts
-export function maskedCommand(command: string, env?: TaskEnvSecrets): string
-```
-
-## `maskedLine`
-
-function · `src/util/secret-mask.ts`
-
-A line vx prints for no one task (a plugin's warning): this process's secrets masked.
-
-```ts
-export function maskedLine(line: string): string
 ```
 
 ## `MigrationFormat`
@@ -1404,20 +1220,6 @@ export interface OutputContext extends BaseContext {
   readonly isTTY: boolean
   readonly ci: boolean
   readonly json: boolean
-}
-```
-
-## `OutputLocation`
-
-type · `src/orchestrator/path-links.ts`
-
-A file a task's output names; `file` absolute.
-
-```ts
-export interface OutputLocation {
-  file: string
-  line?: number
-  col?: number
 }
 ```
 
@@ -1957,46 +1759,6 @@ export interface ResolvedSandboxConfig {
 }
 ```
 
-## `resolveRunId`
-
-function · `src/orchestrator/run-id.ts`
-
-The recorded run `raw` names: itself when recorded, else the one run
-whose id starts with it. Null when none does; a prefix several runs share
-is refused with those runs, since picking one would replay the wrong run.
-
-```ts
-export function resolveRunId(db: Database, raw: string, verb: string): string | null
-```
-
-## `RootCause`
-
-type · `src/orchestrator/metrics.ts`
-
-```ts
-export interface RootCause {
-  chain: string[]
-  entries: CacheKeyDiff['entries']
-}
-```
-
-## `rootCauses`
-
-function · `src/orchestrator/metrics.ts`
-
-The tasks under `taskId`'s moved upstreams whose OWN key components
-moved in the same run, each with the chain that carried it up. A task
-visited once is not walked again (a diamond names its root once).
-
-```ts
-export function rootCauses(
-  db: Database,
-  runId: string,
-  taskId: string,
-  entries: CacheKeyDiff['entries'],
-): RootCause[]
-```
-
 ## `run`
 
 function · `src/orchestrator/run.ts`
@@ -2040,29 +1802,6 @@ export interface RunContextRecord {
   os: string
   arch: string
   tags: Readonly<Record<string, string>>
-}
-```
-
-## `runFailures`
-
-function · `src/orchestrator/run-failures.ts`
-
-The failed tasks of `runId`, or of the latest failed run when omitted;
-null when there is no such run. A failed task the file lacks (an older
-run, a write the disk refused) reads `output: ''`, `locations: []`.
-
-```ts
-export function runFailures(cacheDir: string, db: Database, runId?: string): RunFailures | null
-```
-
-## `RunFailures`
-
-type · `src/orchestrator/run-failures.ts`
-
-```ts
-export interface RunFailures {
-  runId: string
-  tasks: TaskFailure[]
 }
 ```
 
@@ -2409,25 +2148,6 @@ export interface TaskExecutor {
 }
 ```
 
-## `TaskFailure`
-
-type · `src/orchestrator/run-failures.ts`
-
-A failed task of a run and what it said.
-
-```ts
-export interface TaskFailure {
-  taskId: string
-  exitCode: number
-  timedOut?: true
-  inputMoved?: string
-  output: string
-  locations: OutputLocation[]
-  sandboxFix?: NonNullable<TaskOutcome['sandboxFix']>
-  fixedIn?: string
-}
-```
-
 ## `TaskHistory`
 
 type · `src/orchestrator/history.ts`
@@ -2444,38 +2164,6 @@ export interface TaskHistory {
   failureMode: FailureMode
   maxPeakRssBytes?: number
   maxCpuParallelism?: number
-}
-```
-
-## `taskLog`
-
-function · `src/orchestrator/run-failures.ts`
-
-`taskId`'s output in `runId`, or in the latest run that recorded the
-task when omitted; null when no such run recorded it.
-
-```ts
-export function taskLog(
-  cacheDir: string,
-  db: Database,
-  taskId: string,
-  runId?: string,
-): TaskLog | null
-```
-
-## `TaskLog`
-
-type · `src/orchestrator/run-failures.ts`
-
-One task's output in a recorded run, as `vx last --log` and getTaskLog read it.
-
-```ts
-export interface TaskLog {
-  runId: string
-  taskId: string
-  status: string
-  source: 'failure' | 'cache' | null
-  output: string
 }
 ```
 
@@ -2831,7 +2519,7 @@ A vx plugin. Contributes any subset of the run-level capabilities —
 where work runs (executor), which cache is used (cache), who
 observes the run (telemetry). It never changes WHAT a task is (the
 command string — principle #3), only where and how that command is
-executed. Registered explicitly in vx.workspace.ts via
+executed. Registered explicitly in .vx/workspace.ts via
 defineWorkspace({ plugins: [...] }). No auto-discovery.
 
 Made by `definePlugin(import.meta, hooks)` only: the loader refuses a
@@ -2885,14 +2573,6 @@ type · `src/config.ts`
 export interface WatchSettings {
   poll?: boolean
 }
-```
-
-## `whyDidThisRerunQuery`
-
-function · `src/orchestrator/metrics.ts`
-
-```ts
-export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
 ```
 
 ## `withForwardArgs`

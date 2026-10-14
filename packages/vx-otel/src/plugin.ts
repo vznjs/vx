@@ -5,7 +5,7 @@
 //
 // This replaces core's old hardcoded `attachOtelEmit` (logs-only, fired
 // unconditionally when OTEL_EXPORTER_OTLP_ENDPOINT was set). OTel is now a
-// plugin — declare it in vx.workspace.ts. The trade: the env var ALONE no
+// plugin — declare it in .vx/workspace.ts. The trade: the env var ALONE no
 // longer auto-exports; you must `defineWorkspace({ plugins: [otel()] })`.
 
 import {
@@ -392,7 +392,7 @@ const OTEL_PLUGIN_KEYS: PluginOptionKinds<OtelPluginOptions> = {
 }
 
 /**
- * The OpenTelemetry exporter plugin. Declared in vx.workspace.ts via
+ * The OpenTelemetry exporter plugin. Declared in .vx/workspace.ts via
  * `defineWorkspace({ plugins: [otel()] })`. Contributes a telemetry sink that
  * maps each run to OTLP traces (a `vx.run` root span + `vx.task` children),
  * metrics, and one log record per executed task, over OTLP/HTTP JSON.

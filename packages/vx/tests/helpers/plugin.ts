@@ -3,7 +3,7 @@
 // plugin called `org/x` gets a package called `org/x` — one directory with
 // a manifest under a per-process temp root — and defines the plugin from
 // there. `pluginSource` is the same for a plugin written into a fixture's
-// `vx.workspace.mjs` as source text.
+// `.vx/workspace.mjs` as source text.
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -84,7 +84,7 @@ export function testPlugin(name: string, hooks: PluginHooks): VxPlugin {
 }
 
 /**
- * Source text for the same plugin inside a fixture `vx.workspace.mjs`:
+ * Source text for the same plugin inside a fixture `.vx/workspace.mjs`:
  * `definePlugin({ dir }, <hooks>)`. Pair it with `PLUGIN_IMPORT` in the
  * file's prelude.
  */

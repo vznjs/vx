@@ -82,7 +82,7 @@ beforeEach(async () => {
     { lib: 'workspace:*' },
   )
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource(['turbo()'], `import { turbo } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
   )
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
@@ -1022,7 +1022,7 @@ describe('turbo(): what the sweep found unheld', () => {
       )
       await rm(path.join(root, 'turbo.json'))
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [`turbo({ root: ${JSON.stringify(path.join(root, 'cfg'))} })`],
           `import { turbo } from ${JSON.stringify(PLUGIN_INDEX)}\n`,
@@ -1214,7 +1214,7 @@ describe('turbo() under vx lock and --frozen', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx lock: locked 0 project configs → vx-lock.json (no vx.config, so never frozen: app, lib)\n',
+        out: 'vx lock: locked 0 project configs → .vx/lock.json (no vx.config, so never frozen: app, lib)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all', '--frozen')
@@ -1232,7 +1232,7 @@ describe('turbo() under vx lock and --frozen', () => {
       const stale = vx('run', 'build', '--all', '--frozen')
       expect(stale.code).toBe(1)
       expect(stale.err).toContain(
-        'vx-lock.json has no entry for "lib" (packages/lib/vx.config.mjs) — run `vx lock` to refresh',
+        '.vx/lock.json has no entry for "lib" (packages/lib/vx.config.mjs) — run `vx lock` to refresh',
       )
     },
     TIMEOUT,

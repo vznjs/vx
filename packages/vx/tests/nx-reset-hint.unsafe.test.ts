@@ -28,7 +28,7 @@ describe('the nx reset hint names a command that runs', () => {
 
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-reset-'))
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r' }))
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     const argv = named.slice(3).replace('<age>', '30d').split(' ')
     const r = Bun.spawnSync({
       cmd: [process.execPath, BIN, ...argv],
@@ -63,7 +63,7 @@ describe('the advice to drop the whole cache names the store', () => {
   it('vx info has a `cache store` line to name', async () => {
     root ??= await mkdtemp(path.join(os.tmpdir(), 'vx-nx-reset-'))
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r' }))
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     for (const git of [
       ['init', '-q'],
       ['-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '--allow-empty', '-m', 'i'],

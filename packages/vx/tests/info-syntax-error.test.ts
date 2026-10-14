@@ -22,7 +22,7 @@ async function workspace(prefix: string): Promise<string> {
   roots.push(root)
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   return root
 }
 
@@ -65,8 +65,8 @@ describe('vx info — a config with a syntax error', () => {
         },
       }`,
     )
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}export default { plugins: [${scripts}] }\n`,
     )
     const bare = path.join(root, 'packages', 'bare')

@@ -37,12 +37,12 @@ export async function loadProjectConfigs(
 
 // The names a workspace config may take, in resolution order.
 export const WORKSPACE_CONFIG_FILENAMES = [
-  'vx.workspace.ts',
-  'vx.workspace.mts',
-  'vx.workspace.js',
-  'vx.workspace.mjs',
-  'vx.workspace.cts',
-  'vx.workspace.cjs',
+  '.vx/workspace.ts',
+  '.vx/workspace.mts',
+  '.vx/workspace.js',
+  '.vx/workspace.mjs',
+  '.vx/workspace.cts',
+  '.vx/workspace.cjs',
 ]
 
 // A Bun `ResolveMessage` / `BuildMessage`, or the stackless `SyntaxError` of a
@@ -93,10 +93,9 @@ readers that reach it here.
   embedder's second `run()` derived a different key (D-61).
 - What a config prints in the Worker goes to stderr, by every route
   (`console`, `process.stdout.write`, `Bun.write(Bun.stdout)`,
-  `Bun.stdout.writer()`): the parent's stdout may be `vx mcp`'s
-  JSON-RPC stream, whose own redirect covers only the parent thread, and
-  a second tool call's config output landed between two responses
-  (D-64). The first load, in process, sends them to stderr too while
+  `Bun.stdout.writer()`): the parent's stdout may be a verb's
+  JSON, whose own redirect covers only the parent thread, and a repeat
+  load's config output landed in it (D-64). The first load, in process, sends them to stderr too while
   the round evaluates: a verb's stdout is its output, and a config's
   `console.log` came out ahead of `vx show --format json`'s JSON.
 - A config that throws something other than an Error (`throw 'no'`, a
@@ -149,7 +148,7 @@ readers that reach it here.
   `process.chdir()` left every relative path vx resolved after it reading
   from the config's choice; the working directory is put back and the load
   refused, naming `process.cwd (a chdir)` (D-120).
-- `vx.workspace.ts` gets the same guard: it runs in this process too, and
+- `.vx/workspace.ts` gets the same guard: it runs in this process too, and
   its `Object.prototype.exec` ran in a project's group task. Built-ins,
   `process.env`, the cwd and the umask are snapshotted around its load, put
   back, and the load refused naming the file, a failed load's change
@@ -346,11 +345,11 @@ the shipped standalone binary fail with `ModuleNotFound`.
 - **Imports from `node_modules` are cached by Bun on a first load.**
   Within one Bun process an `import from 'pkg'` resolves once; a repeat
   load re-resolves it in a fresh Worker registry.
-- **`loadWorkspaceConfig` has no Worker path.** `vx.workspace.ts`
+- **`loadWorkspaceConfig` has no Worker path.** `.vx/workspace.ts`
   declares `plugins`, which are objects holding **functions** — they
   cannot cross a Worker boundary at all. A repeat load busts the
-  config's own URL, so an edit to `vx.workspace.ts` itself is read, but
-  Bun answers what it imports from the registry: `vx mcp` served an
+  config's own URL, so an edit to `.vx/workspace.ts` itself is read, but
+  Bun answers what it imports from the registry: a long-lived verb served an
   edited local plugin's first version on every call (item 1046). So a
   repeat load walks the config's relative imports and refuses, naming
   the file, when one changed since the first successful load in this
@@ -368,7 +367,7 @@ the shipped standalone binary fail with `ModuleNotFound`.
 - Group-task validation (accepts task with only `dependsOn`; rejects
   task with neither `exec` nor `dependsOn`; rejects `cache` on a
   group task).
-- `loadWorkspaceConfig` returns null when no `vx.workspace.*` file
+- `loadWorkspaceConfig` returns null when no `.vx/workspace.*` file
   exists, validates `concurrency` and `cache.dir`.
 - The served first load (`a project config is evaluated from the bytes
 vx read`): a CommonJS config keeps its exports, non-UTF-8 bytes

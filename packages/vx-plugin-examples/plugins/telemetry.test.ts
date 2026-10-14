@@ -33,11 +33,11 @@ async function pkg(
   return dir
 }
 
-/** A `vx.workspace.mjs` declaring `call`, e.g. `jsonlTelemetry()`, from the plugin file beside this test. */
+/** A `.vx/workspace.mjs` declaring `call`, e.g. `jsonlTelemetry()`, from the plugin file beside this test. */
 async function workspace(call: string): Promise<void> {
   const from = JSON.stringify(path.join(import.meta.dir, 'telemetry.ts'))
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `import { jsonlTelemetry } from ${from}\nexport default { plugins: [${call}] }\n`,
   )
 }

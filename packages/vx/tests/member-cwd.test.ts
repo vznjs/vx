@@ -65,7 +65,7 @@ describe('running from inside a workspace member', () => {
       JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
     )
     await writeLocalWorkspace(root)
-    await writeFile(path.join(root, '.gitignore'), 'node_modules\n.vx\nout\nran.log\n')
+    await writeFile(path.join(root, '.gitignore'), 'node_modules\n.vx/cache/\nout\nran.log\n')
 
     await writeFile(path.join(b, 'package.json'), JSON.stringify({ name: 'b', version: '1.0.0' }))
     await writeFile(
@@ -118,8 +118,8 @@ describe('running from inside a workspace member', () => {
     // b#build is only in the graph if discovery found the declaring root: the
     // member-as-workspace reading has no sibling to resolve `^build` against.
     expect(await exists(path.join(b, 'out', 'o.txt'))).toBe(true)
-    expect(await exists(path.join(root, '.vx'))).toBe(true)
-    expect(await exists(path.join(a, '.vx'))).toBe(false)
+    expect(await exists(path.join(root, '.vx', 'cache'))).toBe(true)
+    expect(await exists(path.join(a, '.vx', 'cache'))).toBe(false)
   })
 
   it('re-runs the dependent when the upstream input changes', async () => {

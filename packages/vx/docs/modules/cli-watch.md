@@ -86,7 +86,7 @@ export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
-  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and vx-lock.json under --frozen
+  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and .vx/lock.json under --frozen
   fenced?: (ownDir: string, abs: string) => boolean,
 ): (filename: string) => boolean
 export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean // inside a configured project nested under ownDir, its own config aside
@@ -136,7 +136,7 @@ must report within the timeout); `pollWatcher` is the fallback that
 re-walks the tree when the platform's watcher never does, or when the
 OS watch limit refuses one (`ENOSPC` / `EMFILE`, E-49). On Linux a
 recursive arm is one non-recursive watch per directory that never enters
-`node_modules`, `.git` or `.vx` (whose events the loop drops anyway):
+`node_modules`, `.git` or `.vx/cache` (whose events the loop drops anyway):
 this repo's root arm went from 4,657 inotify watches to 435 and its arm
 from 75 to 43 ms (min of 6, interleaved); a directory that appears is
 watched and what it already holds reported (`watch-tree-linux.test.ts`).
@@ -188,7 +188,7 @@ are refused too: they format one run's result.
      still passes, since it may give the project tasks.
    - For the workspace root, `fs.watch(root, { recursive: false })`
      — only fingerprint files (`pnpm-lock.yaml` / `bun.lock` / …) and
-     the workspace config (`vx.workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)
+     the workspace config (`.vx/workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)
      trigger: the config is no task's input, and it shapes every cycle
      (plugins, `config` stage, concurrency); a cycle re-evaluates it
      since its import is keyed on its bytes. When any task declares
@@ -231,7 +231,7 @@ are refused too: they format one run's result.
      `package.json` written inside it, so a directory made before its
      manifest stayed unwatched for good. Until item 891 each of these
      waited for a restart (the three item-891 rows).
-   - Filter out `node_modules` / `.git` / `.vx` path segments,
+   - Filter out `node_modules` / `.git` / `.vx/cache` path segments,
      `.tsbuildinfo` / `~` suffixes (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger
      every cycle), and each project's declared outputs

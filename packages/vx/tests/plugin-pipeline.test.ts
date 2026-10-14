@@ -44,7 +44,7 @@ async function pkg(name: string, config: string): Promise<void> {
 }
 
 async function workspace(plugins: string[], prelude = ''): Promise<void> {
-  await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource(plugins, prelude))
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource(plugins, prelude))
 }
 
 function silent(): Logger & { status: string[]; started: string[]; concurrency?: number } {
@@ -136,7 +136,7 @@ describe('config stage', () => {
       // hooks had edited, and a run of `vx run` used 8 workers, not 4.
       await pkg('a', build)
       await Bun.write(
-        path.join(root, 'vx.workspace.mjs'),
+        path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/double',
@@ -173,7 +173,7 @@ describe('config stage', () => {
           (e: unknown) => (e as Error).message,
         )
       }
-      const where = "vx.workspace (after plugin 'org/broken')"
+      const where = ".vx/workspace (after plugin 'org/broken')"
       expect(await refusal('ws.run.concurrency = -3')).toBe(
         `${where}: \`run.concurrency\` must be a positive integer, or a share of the cores like '50%' (got -3)`,
       )
@@ -482,7 +482,7 @@ describe('graph stage', () => {
         pluginSource('org/unedge', `{ graph(nodes) { nodes.get('a#extra').deps = [] } }`),
       ])
       // The addition shape loads only with `exclusiveOutputs` off (X-53).
-      const file = path.join(root, 'vx.workspace.mjs')
+      const file = path.join(root, '.vx/workspace.mjs')
       await Bun.write(
         file,
         (await Bun.file(file).text()).replace(
@@ -691,7 +691,7 @@ describe('key stage', () => {
       // fixture declares ONE key plugin — with one contributor there is no
       // order to be independent of, so the sort had no witness. Without
       // it the parts arrive in plugin-declaration order, and moving two
-      // plugins around in `vx.workspace.mjs` silently re-keys every task
+      // plugins around in `.vx/workspace.mjs` silently re-keys every task
       // in the workspace: a full cold rebuild for an edit that changed no
       // input.
       await pkg(

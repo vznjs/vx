@@ -135,7 +135,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     process.stderr.write(`vx-migrate: ${parsed.error}\n`)
     return 1
   }
-  // No vx.workspace.ts yet is the usual case here: this writes it.
+  // No .vx/workspace.ts yet is the usual case here: this writes it.
   const root = await findWorkspaceRoot(process.cwd())
     .catch(() => findManifestRoot(process.cwd()))
     .catch(async (err: unknown) => {
@@ -288,7 +288,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
       ),
       extraFiles:
         existingWorkspace === undefined
-          ? [...plan.extraFiles, { relPath: `vx.workspace.${format}`, contents: workspaceText }]
+          ? [...plan.extraFiles, { relPath: `.vx/workspace.${format}`, contents: workspaceText }]
           : plan.extraFiles,
     }
   }
@@ -510,7 +510,7 @@ async function keepLerna(
   args: MigrateArgs,
 ): Promise<number> {
   const format = args.mjs ? 'mjs' : 'ts'
-  const name = `vx.workspace.${format}`
+  const name = `.vx/workspace.${format}`
   const existing = workspaceFileAt(root)
   const all = [{ pkg: '@vzn/vx-migrate', factory: 'nx' }, ...plugins]
   if (existing !== undefined && !args.force) {

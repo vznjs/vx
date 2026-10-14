@@ -80,6 +80,12 @@ it('a task no run recorded, or one outside the run named, is refused', () => {
   expect(vx('last', runIds['bad']!, '--log', 'a#build').code).toBe(1)
 })
 
+it('--log with no value reads the positional argument as the task', () => {
+  const asFlag = vx('last', '--log', 'a#bad', '--format', 'json')
+  expect(vx('last', 'a#bad', '--log', '--format', 'json')).toEqual(asFlag)
+  expect(vx('last', 'a#bad', '--log').out).toBe('boom\n')
+})
+
 it('--log takes a task id and combines only with a run id', () => {
   expect(vx('last', '--log').err).toContain('--log requires a task id')
   expect(vx('last', '--log', 'a#bad', '--list').err).toContain('combines only with a run id')

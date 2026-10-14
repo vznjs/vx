@@ -1,4 +1,4 @@
-// vx-lock.json e2e. Each step spawns the real CLI as a subprocess because
+// .vx/lock.json e2e. Each step spawns the real CLI as a subprocess because
 // the whole point is cross-invocation env drift: the lock is written
 // under one environment and checked / run under another.
 //
@@ -69,7 +69,7 @@ describe('vx lock (e2e)', () => {
       await addProject(root, 'app', ENV_CONFIG)
       // Control: every project configured — no note on either line.
       const lockAll = await vx(root, ['lock'], {})
-      expect(lockAll.out).toBe('vx lock: locked 1 project config → vx-lock.json\n')
+      expect(lockAll.out).toBe('vx lock: locked 1 project config → .vx/lock.json\n')
       expect((await vx(root, ['lock', '--check'], {})).out).toBe(
         'vx lock --check: up to date (1 project)\n',
       )
@@ -78,7 +78,7 @@ describe('vx lock (e2e)', () => {
       await addProject(root, 'bare')
       const lock = await vx(root, ['lock'], {})
       expect(lock.code).toBe(0)
-      expect(lock.out).toBe('vx lock: locked 1 project config → vx-lock.json\n')
+      expect(lock.out).toBe('vx lock: locked 1 project config → .vx/lock.json\n')
       const check = await vx(root, ['lock', '--check'], {})
       expect(check.code).toBe(0)
       expect(check.out).toBe('vx lock --check: up to date (1 project)\n')
@@ -94,7 +94,7 @@ describe('vx lock (e2e)', () => {
       // project was not in the lock.
       await addProject(root, '__proto__', ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
-      const lockJson = JSON.parse(await Bun.file(path.join(root, 'vx-lock.json')).text()) as {
+      const lockJson = JSON.parse(await Bun.file(path.join(root, '.vx/lock.json')).text()) as {
         projects: object
       }
       expect(Object.keys(lockJson.projects)).toEqual(['__proto__'])
@@ -120,7 +120,7 @@ describe('vx lock (e2e)', () => {
       // Lock under X=a — the resolved command is frozen with 'a'.
       const lock = await vx(root, ['lock'], { X: 'a' })
       expect(lock.code).toBe(0)
-      const lockJson = (await Bun.file(path.join(root, 'vx-lock.json')).json()) as {
+      const lockJson = (await Bun.file(path.join(root, '.vx/lock.json')).json()) as {
         version: number
         projects: Record<string, { tasks: { build: { exec: { command: string } } } }>
       }
@@ -236,7 +236,7 @@ describe('vx lock (e2e)', () => {
       expect(typo.err).toContain('vx lock: unknown flag: --chek')
       expect(typo.out).toBe('')
       // The audit a CI step asked for must not become a write that passes.
-      expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(false)
+      expect(await Bun.file(path.join(root, '.vx/lock.json')).exists()).toBe(false)
       // Control: the spelled flag reaches the audit.
       expect((await vx(root, ['lock', '--check'], {})).err).toContain('run `vx lock` first')
     },

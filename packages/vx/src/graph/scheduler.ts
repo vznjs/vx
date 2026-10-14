@@ -306,7 +306,7 @@ export interface ScheduleOptions {
    */
   priorities?: ReadonlyMap<string, number>
   /**
-   * The baseline ranking under `priorities` (`schedule` in vx.workspace.ts).
+   * The baseline ranking under `priorities` (`schedule` in .vx/workspace.ts).
    * Undefined or `most-work` is the reverse-deps count above.
    */
   strategy?: ScheduleStrategy

@@ -223,7 +223,7 @@ is the cheapest legibility win in the tree.
 | **A. Local + dashboard**         | `vx-cloud serve` once → `serve-info` advertised → `vx run` auto-pushes telemetry (`plugin.ts:185`)  | none — genuinely zero-config. This is the good path.                                                        |
 | **B. Local + remote cache**      | `vx-cloud connect <url> --token` once; cache rung probes `/v1/meta` artifacts (`plugin.ts:156–161`) | fine, but connecting also routes telemetry to that env — no per-capability picture of where each thing goes |
 | **C. CI reporting to the serve** | set `VX_REMOTE_CACHE_*` **and** `VX_CLOUD_INGEST_*` (§3.1)                                          | **the same server described twice**; no `connect` in CI                                                     |
-| **D. Onboard a new repo**        | `vx migrate` → add `cloud()` to `vx.workspace.ts` → `connect`                                       | no scaffold for `vx.workspace.ts`; no copy-paste CI block                                                   |
+| **D. Onboard a new repo**        | `vx migrate` → add `cloud()` to `.vx/workspace.ts` → `connect`                                      | no scaffold for `.vx/workspace.ts`; no copy-paste CI block                                                  |
 
 The headline finding: **A dev sets the connection once locally (`connect`),
 then sets it again — differently, twice over — in CI.** That is the

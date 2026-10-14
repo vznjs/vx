@@ -193,9 +193,9 @@ describe('the npm tarballs', () => {
       )
       write(`packages/${name}/src/index.js`, `export const ${name} = 1\n`)
     }
-    write('.gitignore', 'node_modules\ndist\n.vx\n')
+    write('.gitignore', 'node_modules\ndist\n.vx/cache/\n')
     write(
-      'vx.workspace.ts',
+      '.vx/workspace.ts',
       "import { defineWorkspace } from '@vzn/vx'\nimport { turbo } from '@vzn/vx-migrate'\n\nexport default defineWorkspace({ plugins: [turbo()] })\n",
     )
     gitInit(repo)

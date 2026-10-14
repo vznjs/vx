@@ -10,10 +10,12 @@ import { formatBytes } from './format.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import {
   exitSignal,
+  type FailureMode,
   getInvocation,
   getRun,
   type InvocationDetail,
   listInvocations,
+  LocalHistoryProvider,
   outcomeWord,
   type RunSummaryRow,
   resolveRunId,
@@ -21,7 +23,7 @@ import {
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
-import { formatElapsed, UserError } from '../util/index.js'
+import { formatElapsed, splitTaskId, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
@@ -33,6 +35,10 @@ interface LastArgs {
   format: 'pretty' | 'json'
   /** `--log <task>`: that task's output in the run, not the run's summary. */
   log?: string
+  /** `--stats`: per-task numbers over the history window, not a run. */
+  stats?: boolean
+  /** `--stats`' positional: a task id, or a task name in every project. */
+  task?: string
   /** `--cache-dir`: read the history a run with the same flag wrote. */
   cacheDir?: string
   error?: string
@@ -46,6 +52,8 @@ const RUN_ID_SHAPE = /^[0-9a-f]{8}(?:-|$)/i
 
 export function parseLastArgs(args: readonly string[]): LastArgs {
   const out: LastArgs = { format: 'pretty' }
+  // `vx last app#build --log`: a bare --log takes the positional as its task.
+  let bareLog = false
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
     if (a === '--list' || a.startsWith('--list=')) {
@@ -76,9 +84,22 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
       out.failed = true
       continue
     }
-    if (a === '--log' || a.startsWith('--log=')) {
-      const v = a === '--log' ? args[++i] : a.slice('--log='.length)
-      if (v === undefined || v === '' || v.startsWith('-')) {
+    if (a === '--stats') {
+      out.stats = true
+      continue
+    }
+    if (a === '--log') {
+      const v = args[i + 1]
+      if (v === undefined || v.startsWith('-')) bareLog = true
+      else {
+        out.log = v
+        i++
+      }
+      continue
+    }
+    if (a.startsWith('--log=')) {
+      const v = a.slice('--log='.length)
+      if (v === '') {
         return { ...out, error: `--log requires a task id, like app#build${seeHelp('last')}` }
       }
       out.log = v
@@ -102,6 +123,24 @@ export function parseLastArgs(args: readonly string[]): LastArgs {
     if (out.runId !== undefined)
       return { ...out, error: `unexpected argument: ${a}${seeHelp('last')}` }
     out.runId = a
+  }
+  if (bareLog) {
+    if (out.runId === undefined) {
+      return { ...out, error: `--log requires a task id, like app#build${seeHelp('last')}` }
+    }
+    out.log = out.runId
+    delete out.runId
+  }
+  if (out.stats === true) {
+    if (out.list !== undefined || out.failed === true || out.log !== undefined) {
+      return {
+        ...out,
+        error: `--stats does not combine with --list, --failed or --log${seeHelp('last')}`,
+      }
+    }
+    if (out.runId !== undefined) out.task = out.runId
+    delete out.runId
+    return out
   }
   // One run's replay or a list of runs, not both: the id was dropped.
   // Beside --list, a word no run id could be is just an extra one.
@@ -135,6 +174,86 @@ function failedInvocations(db: Database, limit: number): InvocationDetail[] {
     .query('SELECT run_id FROM invocations WHERE exit_ok = 0 ORDER BY rowid DESC LIMIT ?')
     .all(limit) as Array<{ run_id: string }>
   return ids.map((r) => getInvocation(db, r.run_id)).filter((i) => i !== null)
+}
+
+/** One task's numbers over the window, every key present (`null` where unknown). */
+export interface TaskStats {
+  taskId: string
+  runs: number
+  p50DurationMs: number | null
+  p99DurationMs: number | null
+  successRate: number
+  hitRate: number
+  failureMode: FailureMode
+  maxPeakRssBytes: number | null
+  maxCpuParallelism: number | null
+}
+
+/**
+ * `--stats`: what the scheduler and `--dry` learn from history, per task,
+ * over the same window (`LocalHistoryProvider`).
+ */
+async function printStats(
+  db: Database,
+  target: string | undefined,
+  format: 'pretty' | 'json',
+): Promise<number> {
+  const provider = new LocalHistoryProvider(db)
+  const matches = (id: string): boolean =>
+    target === undefined || (target.includes('#') ? id === target : splitTaskId(id)[1] === target)
+  const stats: TaskStats[] = [...(await provider.loadAll())]
+    .filter(([id]) => matches(id))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([taskId, h]) => ({
+      taskId,
+      runs: h.runs,
+      p50DurationMs: h.p50DurationMs ?? null,
+      p99DurationMs: h.p99DurationMs ?? null,
+      successRate: h.successRate,
+      hitRate: h.hitRate,
+      failureMode: h.failureMode,
+      maxPeakRssBytes: h.maxPeakRssBytes ?? null,
+      maxCpuParallelism: h.maxCpuParallelism ?? null,
+    }))
+  if (stats.length === 0 && target !== undefined) {
+    throw new UserError(
+      `vx last: no recorded run of ${target} in the last ${provider.recent} runs`,
+      'VX_E_NO_HISTORY',
+    )
+  }
+  if (format === 'json') {
+    process.stdout.write(`${JSON.stringify({ window: provider.recent, stats })}\n`)
+    return 0
+  }
+  if (stats.length === 0) {
+    process.stdout.write('no recorded runs\n')
+    return 0
+  }
+  const pct = (r: number): string => `${Math.round(r * 100)}%`
+  const ms = (v: number | null): string => (v === null ? '-' : fmtMs(v))
+  const rows = [
+    ['task', 'runs', 'p50', 'p99', 'pass', 'hit', 'failure mode', 'peak rss', 'cpu'],
+    ...stats.map((s) => [
+      s.taskId,
+      String(s.runs),
+      ms(s.p50DurationMs),
+      ms(s.p99DurationMs),
+      pct(s.successRate),
+      pct(s.hitRate),
+      s.failureMode,
+      s.maxPeakRssBytes === null ? '-' : formatBytes(s.maxPeakRssBytes),
+      s.maxCpuParallelism === null ? '-' : `${s.maxCpuParallelism.toFixed(1)}×`,
+    ]),
+  ]
+  const widths = rows[0]!.map((_, c) => Math.max(...rows.map((r) => r[c]!.length)))
+  const lines = rows.map((r) =>
+    r
+      .map((cell, c) => cell.padEnd(widths[c]!))
+      .join('  ')
+      .trimEnd(),
+  )
+  process.stdout.write(`${lines.join('\n')}\n`)
+  return 0
 }
 
 const fmtWhen = (ms: number): string => new Date(ms).toISOString()
@@ -311,6 +430,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
     // recorded run failed" and a run id pointed at a `--list` that lists
     // nothing, while `--list --failed` past green runs said there were none.
     const noRuns = (): boolean => listInvocations(db, { limit: 1 }).length === 0
+
+    if (parsed.stats === true) return await printStats(db, parsed.task, parsed.format)
 
     if (parsed.log !== undefined) {
       const runId =

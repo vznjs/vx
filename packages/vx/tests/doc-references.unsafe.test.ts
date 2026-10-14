@@ -7,6 +7,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { headingSlugs, proseLinks } from './helpers/markdown-anchors.js'
+import { RETIRED_POSTS } from './helpers/retired-posts.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { TELEMETRY_SCHEMA_VERSION } from '../src/orchestrator/telemetry.js'
 
@@ -108,6 +109,7 @@ describe('every relative link on the site pages resolves', () => {
     const slugs = new Map<string, Set<string>>()
     for (const file of sitePages()) {
       const rel = path.relative(CONTENT, file).split(path.sep).join('/')
+      if (RETIRED_POSTS.has(rel)) continue
       const urlDir = `/${rel.replace(/(^|\/)index\.mdx?$/, '').replace(/\.mdx?$/, '/')}`
       const text = readIfPresent(file)
       if (text === undefined) continue
@@ -370,7 +372,7 @@ describe('caching.md names the lockfile plugin by the helpers it exports', () =>
     expect(step).toContain('`bun()`')
     // The workspace file decides which one "this repo declares".
     const ws = await Bun.file(
-      path.resolve(import.meta.dir, '..', '..', '..', 'vx.workspace.ts'),
+      path.resolve(import.meta.dir, '..', '..', '..', '.vx/workspace.ts'),
     ).text()
     const declared = [...exported].filter((f) => new RegExp(`\\b${f}\\(\\)`).test(ws))
     expect(declared).toEqual(['bun'])

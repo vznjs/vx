@@ -412,13 +412,13 @@ describe('captureWorkspaceIdentity', () => {
     expect(a.id).toMatch(/^[0-9a-f]{16}$/)
   })
 
-  it('no remote → persists a salt in .vx/workspace-id and stays stable', async () => {
+  it('no remote → persists a salt in .vx/cache/workspace-id and stays stable', async () => {
     git('init', '-q')
     const a = captureWorkspaceIdentity(dir)
     const b = captureWorkspaceIdentity(dir)
     expect(a.id).toBe(b.id)
     expect(a.name).toBe(path.basename(dir))
-    const salt = await Bun.file(path.join(dir, '.vx', 'workspace-id')).text()
+    const salt = await Bun.file(path.join(dir, '.vx', 'cache', 'workspace-id')).text()
     expect(salt.trim().length).toBeGreaterThan(0)
   })
 
@@ -438,7 +438,7 @@ describe('captureWorkspaceIdentity', () => {
     expect(id).toEqual(captureWorkspaceIdentity(dir))
     expect(gitSpawnsIn(() => (id = captureWorkspaceIdentity(dir, null)))).toBe(0)
     expect(id?.name).toBe(path.basename(dir))
-    const salt = (await Bun.file(path.join(dir, '.vx', 'workspace-id')).text()).trim()
+    const salt = (await Bun.file(path.join(dir, '.vx', 'cache', 'workspace-id')).text()).trim()
     expect(id?.id).toBe(captureWorkspaceIdentity(path.join(dir), null).id)
     expect(salt.length).toBeGreaterThan(0)
   })

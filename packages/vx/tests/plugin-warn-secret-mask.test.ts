@@ -26,7 +26,7 @@ afterEach(async () => {
 
 it("a plugin's warning is masked", async () => {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
       pluginSource(
         'org/warner',

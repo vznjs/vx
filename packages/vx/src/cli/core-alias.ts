@@ -1,5 +1,5 @@
 /**
- * One core per process. A plugin package, a `vx.workspace.ts`, a
+ * One core per process. A plugin package, a `.vx/workspace.ts`, a
  * `vx.config.ts` all `import … from '@vzn/vx'`, and that specifier
  * resolves through node_modules — to a SECOND copy of core when the host
  * is the compiled binary (whose own copy lives under the bunfs root) or

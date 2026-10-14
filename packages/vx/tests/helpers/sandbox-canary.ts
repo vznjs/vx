@@ -71,7 +71,7 @@ async function fixture(): Promise<string> {
        },
      } }`,
   )
-  await writeFile(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource())
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   const git = (...a: string[]) => Bun.spawnSync({ cmd: ['git', ...a], cwd: root })
   git('init', '-q')
   git('config', 'user.email', 'c@vx')

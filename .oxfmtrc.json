@@ -13,7 +13,7 @@
     "coverage",
     "*.tsbuildinfo",
     "pnpm-lock.yaml",
-    "vx-lock.json",
+    ".vx/lock.json",
     ".mcp.json",
     ".vscode",
     ".idea",

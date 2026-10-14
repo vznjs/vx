@@ -31,7 +31,7 @@ separately for a cold arm). Each arm's output is kept as
 
 ## solidjs/solid — b25c557 (2026-09-10)
 
-pnpm 9, Turbo 2.10.10, Node 22. `vx.workspace.mjs`: `turbo()` only.
+pnpm 9, Turbo 2.10.10, Node 22. `.vx/workspace.mjs`: `turbo()` only.
 Scope: the whole workspace. `build` = 4 executed tasks, `test test-types`
 = 7. No adjustments. First harness (dist-only wipe, no `noop2`).
 
@@ -42,7 +42,7 @@ filters of the repo's own `build` script — `astro create-astro
 @astrojs/* astro-vscode @benchmark/*` (553 workspace members, 32 with a
 `build`). `build` = 32 tasks; wide set `build test` = 55.
 
-- `vx.workspace.mjs`: `turbo()` only.
+- `.vx/workspace.mjs`: `turbo()` only.
 - **turbo.json edited, for Turbo's benefit:** `!dist/**/*` and
   `!src/**/*.prebuilt*` added to the `inputs` of `build`, `build:ci`
   and `prebuild`. As shipped, `inputs: ["**/*", …]` is an explicit
@@ -69,7 +69,7 @@ pnpm 10, Turbo 2.10.4, Node 22.22. Scope: the repo's own `build:all`
 filters — `!blank !blank-tanstack !website !ecommerce` (the four
 templates). `build` = 45 tasks; wide set `build lint` = 89.
 
-- `vx.workspace.mjs`: `turbo()` only.
+- `.vx/workspace.mjs`: `turbo()` only.
 - No adjustments. Two things the repo taught the harness: 42
   `tsconfig.tsbuildinfo` files live in the package roots, and a wipe of
   `dist` alone made the next incremental tsc skip its declaration emit
@@ -87,7 +87,7 @@ Node 22.22. Scope: the whole workspace, `build build:plugin` with
 runs it. 83 tasks; wide set `build build:plugin test` = 157. 24k
 tracked files.
 
-- `vx.workspace.mjs`: `turbo()` plus a ten-line project-stage plugin
+- `.vx/workspace.mjs`: `turbo()` plus a ten-line project-stage plugin
   that sets `cache.outputs.files` of `build` and `build:plugin` to
   `dist/**` and `.medusa/**`, with `inputs.files: ['**/*']` and
   `inputs.workspaceFiles: ['turbo.json']` (the mapped inputs). The
@@ -112,7 +112,7 @@ box has 22, so a Node 24 tarball sits in the scratchpad and both tools
 run with it first on PATH). Scope: the whole workspace. `build` = 70
 tasks; wide set `build typecheck lint` = 220. 84 workspace members.
 
-- `vx.workspace.mjs`: `turbo()` only.
+- `.vx/workspace.mjs`: `turbo()` only.
 - **Install:** `neverBuiltDependencies: ['@vscode/ripgrep']` appended
   to `pnpm-workspace.yaml` — its postinstall downloads a binary from
   GitHub releases, which the container's egress policy refuses; the
@@ -150,7 +150,7 @@ and run on every arm under both tools, ~12 s together. Wide set
 - `npm config set cafile` to the container's proxy CA:
   `@calcom/embed-core#build` runs `npx shx`, a registry fetch that
   failed TLS behind the proxy under both tools.
-- `vx.workspace.mjs`: `turbo()` plus a project-stage plugin that sets
+- `.vx/workspace.mjs`: `turbo()` plus a project-stage plugin that sets
   `@calcom/web#build`'s outputs to `.next/server/**`, `.next/static/**`,
   `.next/cache/**`, `.next/types/**`, `.next/diagnostics/**`,
   `.next/build/**`, `.next/turbopack/**`, `.next/trace-build/**` and
@@ -266,7 +266,7 @@ builds (`tsup && node ../shared/generate-declarations.js`). Nx's
 ### Re-measure, 2026-09-27 (roadmap 2.5)
 
 astro and refine at the revisions above, run through `turbo()` / `nx()`
-(`vx.workspace.mjs` only, `@vzn/vx-migrate` linked into
+(`.vx/workspace.mjs` only, `@vzn/vx-migrate` linked into
 `node_modules/@vzn`). astro keeps its turbo.json edit, pnpm 11.13.1 on
 `.vx-bench-bin/`, `TURBO_TELEMETRY_DISABLED=1`. refine's scope is
 `!./examples/** !@refinedev/refine-ui !@refinedev/live-previews`, the

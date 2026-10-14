@@ -212,8 +212,8 @@ other walker: a project outside a git work tree is a `UserError`
    stripped; the rest becomes a `Bun.Glob` (a literal is a tree here
    too) and any matched path is removed.
 4. **Always-ignored** — hard-coded
-   (`**/.git/**`, `**/.vx/**`, `**/*.tsbuildinfo`,
-   `**/vx-lock.json`, `**/*.bun-build`,
+   (`**/.git/**`, `**/.vx/cache/**`, `**/*.tsbuildinfo`,
+   `**/.vx/lock.json`, `**/*.bun-build`,
    `**/.????????????????-????????.tmp/**`, `**/.vx-tmp-*`)
    — applied as a defense-in-depth even if git happens to track
    something there. The lock file is vx's own frozen-config metadata,
@@ -273,7 +273,7 @@ host's `process.env`):
 
 - Globs run against the project dir (a literal is a tree here too); a
   `!` entry takes its matches back (A-44).
-- `.git` and `.vx` excluded whatever the glob (`OUTPUT_NEVER`: no task
+- `.git` and `.vx/cache` excluded whatever the glob (`OUTPUT_NEVER`: no task
   produces them and their loss is unrecoverable), and every
   `node_modules` unless a glob names one (A-13): `**/*.js` cleaned the
   installed files, while an install task's `node_modules/**` keeps them.

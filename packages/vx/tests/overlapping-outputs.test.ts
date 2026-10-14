@@ -19,11 +19,11 @@ import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 
-/** A fixture workspace whose `vx.workspace.mjs` turns `exclusiveOutputs` off. */
+/** A fixture workspace whose `.vx/workspace.mjs` turns `exclusiveOutputs` off. */
 async function additive(opts: { prefix: string }): Promise<string> {
   const root = await makeWorkspace(opts)
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     'export default { run: { rules: { exclusiveOutputs: false } } }\n',
   )
   return root

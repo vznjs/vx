@@ -87,7 +87,7 @@ bunx @vzn/vx-migrate         # write them; never overwrites without --force
 It asks your installed `nx` for the graph (`nx graph`) rather than
 guessing at plugin-inferred targets from `nx.json`. In a terminal it
 asks native (the default) or keep (`--keep`, the `nx()` file `vx init`
-writes), then writes `vx.workspace.ts` and installs what the files
+writes), then writes `.vx/workspace.ts` and installs what the files
 import. The generated
 files freeze that snapshot as static config: review them and fill the
 TODOs.

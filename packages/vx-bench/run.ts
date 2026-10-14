@@ -66,7 +66,7 @@ const gen = Bun.spawnSync({
 if (gen.exitCode !== 0) throw new Error('generate failed')
 await vx(ws, ['lock'])
 
-const wipeCache = () => rm(path.join(ws, '.vx'), { recursive: true, force: true })
+const wipeCache = () => rm(path.join(ws, '.vx', 'cache'), { recursive: true, force: true })
 const wipeOutputs = () => deleteDist(ws)
 // A rep that left an output unwritten timed less work than its row claims.
 const vxBuilt = async (cwd: string) => {

@@ -60,8 +60,8 @@ describe.if(armed)('vx run with reapi({ execute: true }) — the install-as-acti
            },
          } }`,
       )
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [`reapi({ endpoint: ${JSON.stringify(ENDPOINT)}, execute: true })`],
           `import { reapi } from ${JSON.stringify(REAPI_INDEX)}\n`,
@@ -135,8 +135,8 @@ describe.if(armed)('vx run with reapi({ execute: true }) — the install-as-acti
            },
          } }`,
       )
-      await writeFile(
-        path.join(root, 'vx.workspace.mjs'),
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [`reapi({ endpoint: ${JSON.stringify(ENDPOINT)}, execute: true })`],
           `import { reapi } from ${JSON.stringify(REAPI_INDEX)}\n`,

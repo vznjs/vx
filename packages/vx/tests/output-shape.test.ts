@@ -452,8 +452,8 @@ describe('a restore beside a sibling writing into its directory (e2e)', () => {
           // gate's constant output (allowed by `upfrontKeys: false`) and
           // folds no key of it, so it is keyed after the gate, not restored
           // ahead of the schedule, and hits.
-          await writeFile(
-            path.join(root, 'vx.workspace.mjs'),
+          await Bun.write(
+            path.join(root, '.vx/workspace.mjs'),
             'export default { run: { rules: { upfrontKeys: false } } }\n',
           )
           const app = await addProject(root, 'app', {

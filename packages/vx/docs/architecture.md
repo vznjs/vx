@@ -21,7 +21,6 @@ the browser, not a consumer of its API, and
 | `packages/vx-otel`             | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces, metrics and logs, zero SDK deps                                                                                                                            |
 | `packages/vx-reapi`            | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                                                              |
 | `packages/vx-ci`               | `@vzn/vx-ci` — `github()` telemetry plugin: the GitHub Actions job summary and a Checks API run                                                                                                                               |
-| `packages/vx-mcp`              | `@vzn/vx-mcp` — `mcp()`: the `vx mcp` verb (`commands` seam), an MCP server for AI agents (reads, plus `runTasks` through the CLI), no SDK                                                                                    |
 | `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`                                                   |
 | `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI                                                  |
 | `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim`; `vx prune` (Docker subset, lockfile pruned) |
@@ -30,7 +29,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                                                                   |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (54 runtime symbols, a deliberate
+through two seams: the public API (42 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map
@@ -46,7 +45,7 @@ migration history live in
 | -------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                               |
 | `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                   |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`vx-lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint   |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint  |
 | `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                          |
 | `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal |
 | `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                |
@@ -58,7 +57,7 @@ Root files outside the module set: `bin.ts` (shebang entry),
 path, variable, flag, parser), `version.ts` (the `VERSION`
 constant, extracted so `index`/`cli`/`orchestrator` don't form a
 cycle through it), `handoff.ts` (the workspace root: the nearest
-`vx.workspace.*` up to the git top-level; a global vx hands off to that
+`.vx/workspace.*` up to the git top-level; a global vx hands off to that
 root's own vx, before anything else loads).
 
 ### The orchestrator's file inventory
@@ -73,7 +72,7 @@ layers:
 | Cache acceleration     | `remote-prefetch.ts`, `stable-keys.ts`, `local-shortcircuit.ts`, `download-policy.ts` + `deferred-outputs.ts` (`--cache-download`: outputs left remote, fetched when a local task needs them)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Plugin + telemetry     | `plugin.ts`, `plugin-host.ts`, `telemetry.ts`, `telemetry-host.ts`, `output-host.ts` (the plugin that draws the terminal), `task-log-buffer.ts` (the one bounded-tail capture every sink reads)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Events                 | `events.ts` — the run event bus and the serializable `WireEvent` any surface reads                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Presentation + queries | `logger.ts`, `framed-output.ts`, `status-line.ts`, `forecast.ts` (the live ETA and critical path, from history p50s), `terminal-signals.ts` (tab progress and the end-of-run notification), `path-links.ts` (a failed task's paths as terminal links), `summary.ts`, `tally.ts`, `colors.ts`, `plain-output.ts` (task output stripped of colour where vx prints plain), `metrics.ts`, `run-id.ts` (a run id whole or by unique prefix), `history.ts`, `failure-mode.ts` (the flakiness verdict), `doctor.ts` (the facts `vx info` and `vx mcp` report)                                                                                                                                                                                                                                                                                      |
+| Presentation + queries | `logger.ts`, `framed-output.ts`, `status-line.ts`, `forecast.ts` (the live ETA and critical path, from history p50s), `terminal-signals.ts` (tab progress and the end-of-run notification), `path-links.ts` (a failed task's paths as terminal links), `summary.ts`, `tally.ts`, `colors.ts`, `plain-output.ts` (task output stripped of colour where vx prints plain), `metrics.ts`, `run-id.ts` (a run id whole or by unique prefix), `history.ts`, `failure-mode.ts` (the flakiness verdict), `doctor.ts` (the facts `vx info` reports)                                                                                                                                                                                                                                                                                                  |
 
 ```mermaid
 graph TD
@@ -155,7 +154,7 @@ guard holds the relation, not the value.
 ## The plugin capability seam
 
 Core is extended in-process, per run, through `VxPlugin`
-(`orchestrator/plugin.ts`) — declared in `vx.workspace.ts` via
+(`orchestrator/plugin.ts`) — declared in `.vx/workspace.ts` via
 `defineWorkspace({ plugins: [...] })`. No auto-discovery. An `executor`
 changes WHERE a task's command runs, never the command — the command
 string is the task (principle #3). Which tasks exist is the `project`
@@ -166,7 +165,7 @@ the result. The capabilities:
 | ------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `config`      | pipeline stage | edits the workspace config in place, before anything is derived from it; core re-validates after EACH plugin (the refusal names it), and a hook that returns anything but nothing or the object it was handed is refused (the stage reads no return)                                                                                                                                                                                                                                                                                                                 |
 | `discover`    | pipeline stage | names directories to add as projects beyond the package manager's members (turbo()'s root for `//#task`), once per discovery, before any config loads; a taken name or directory, one outside the root, a name with surrounding whitespace or `#`, or a `package.json` of another name is refused naming the plugin                                                                                                                                                                                                                                                  |
-| `project`     | pipeline stage | edits one loaded project's tasks in place (add / remove / edit) — a package with no config file is visited as `{ tasks: {} }`; core re-validates after EACH plugin (the refusal names it), refuses a returned value as `config` does, and the key hashes the result. Every reader goes through the same staged load (`loadProjects`): `vx show`, `vx info`, the watch sweep, `--affected`, the picker, the MCP catalog                                                                                                                                               |
+| `project`     | pipeline stage | edits one loaded project's tasks in place (add / remove / edit) — a package with no config file is visited as `{ tasks: {} }`; core re-validates after EACH plugin (the refusal names it), refuses a returned value as `config` does, and the key hashes the result. Every reader goes through the same staged load (`loadProjects`): `vx show`, `vx info`, the watch sweep, `--affected`, the picker                                                                                                                                                                |
 | `graph`       | pipeline stage | edits the task graph in place (`deps`, `requested`); a dangling dep, a cycle, or a returned value (as `config`) is refused naming the plugin                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `key`         | pipeline stage | per task: `{ name: value }` material folded into the cache key (only when non-empty, so keys without it are unchanged) and named in `vx why` as `plugin` components                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `fingerprint` | claim          | `{ files, affected }`: the workspace-fingerprint files this plugin keys on its own. Core leaves them out of the digest every task key folds (the config-evaluation cache still folds them), and `--affected` asks `affected(change, ctx)` which projects a change touches instead of selecting every project. A root file core does not fold (`turbo.json`) is claimed the same way: nothing is taken out, and `--affected` asks the claimant. A claim is a bare name at the workspace root; one claimant per file. `@vzn/vx-lockfile`'s plugins claim the lockfiles |
@@ -189,13 +188,13 @@ here (the local `Cache`) are its FLOOR, not plugins: the tail of every
 executor list, and the first layer every cache lookup asks, before each
 remote in declared order (see `docs/modules/plugins.md`);
 a workspace that declares none runs and caches, and every plugin is a
-package (`packages/vx-*`) declared in `vx.workspace.ts`. The hard
+package (`packages/vx-*`) declared in `.vx/workspace.ts`. The hard
 invariant for observe-only plugins: **a workspace whose telemetry plugins
 all decline is byte-identical to one with none declared.** `subscribeTelemetry` returns `undefined` when zero
 sinks are contributed, so no bus subscriber is added and no summary
 records are built.
 
-The repo's own `vx.workspace.ts` declares `otel()`, `github()`, `mcp()`,
+The repo's own `.vx/workspace.ts` declares `otel()`, `github()`,
 `bun()` and `scheduleHistoryPlugin()`; the floor needs no declaring, and
 `otel()` and `github()` decline without their env, so a plain run stays
 zero-overhead.
@@ -338,7 +337,7 @@ never branches on layering.
 2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
    `cache`, `lock`, `init`, `upgrade`, `show`, `info`, `why`, `last`,
    `docs`, `completions`, `help`, `version`; any other
-   verb is asked of the workspace's plugins (`commands` seam — `vx mcp`
+   verb is asked of the workspace's plugins (`commands` seam — `vx prune`
    is one).
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
    object (including the 4-axis cache policy from `--cache-policy` /
@@ -367,7 +366,7 @@ never branches on layering.
       workspace fingerprints → **scoped** config loading via
       `loadProjects`, the `project` stage included (only in-scope
       projects + their transitive dep closure evaluate; `--frozen`
-      loads from `vx-lock.json` instead of evaluating, with no
+      loads from `.vx/lock.json` instead of evaluating, with no
       staleness check of its own — `vx lock --check` is the audit) →
       cache layer resolved (an injected `RunOptions.remoteCache`, else
       each plugin's remote, layered over the local cache, else the
@@ -485,7 +484,7 @@ rules enforced: `exec.persistent` rejects malformed shapes; a
 persistent task with a `cache` block is rejected (no exit to cache);
 group tasks (no `exec`) must declare `dependsOn` or a `cache` with no outputs; `cache.inputs.files`
 and `cache.outputs.files` are required when `cache` is set;
-`vx.workspace.ts`'s `plugins` array is shape-checked too.
+`.vx/workspace.ts`'s `plugins` array is shape-checked too.
 
 ### Config-time imports & the bootstrap problem
 
@@ -666,9 +665,8 @@ https://ui.perfetto.dev). See
 [`cli.md` § Run artifacts](./cli.md#run-artifacts---summarize---profile).
 
 CI scripts that want live numbers can `sqlite3 cache.db` directly, or
-use the query layer (`orchestrator/metrics.ts`; `@vzn/vx` exports
-`cacheKeyDiff`, `latestRunId`, `resolveRunId`, `inputWriters`, `rootCauses`, `runFailures`, `taskLog` and `whyDidThisRerunQuery`). In **core** there is no HTTP layer and no UI — the cache
-file is the API. Anything that wants a dashboard or an HTTP surface
+read `vx last` / `vx why --format json`. In **core** there is no HTTP
+layer and no UI — the cache file is the API. Anything that wants a dashboard or an HTTP surface
 builds it on the `telemetry` capability, out of process; core never
 grows a server.
 

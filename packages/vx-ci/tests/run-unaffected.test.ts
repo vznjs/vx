@@ -65,8 +65,8 @@ async function runWith(
     else process.env[k] = env[k]
   }
   const summary = path.join(root, 'summary.md')
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `import { github } from ${JSON.stringify(GITHUB_INDEX)}\n` +
       `export default { plugins: [github({ summaryFile: ${JSON.stringify(summary)}, checks: true })] }\n`,
   )

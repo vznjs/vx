@@ -18,7 +18,7 @@ are not plugins. They are the **floor**.
 ## Two lists, one floor
 
 When vx places a task, it walks the executor list from
-`vx.workspace.ts` in declaration order and asks each one whether it
+`.vx/workspace.ts` in declaration order and asks each one whether it
 will take the task; this machine is the implicit last element. When vx
 looks a key up, it asks the local cache first, then each remote in the
 order the workspace declares them, and a save reaches every remote:
@@ -29,7 +29,7 @@ cache:     [ local cache, turboCache, … ]
 ```
 
 You never write the local element and you cannot remove it. A
-`vx.workspace.ts` that declares no plugins is the empty list plus the
+`.vx/workspace.ts` that declares no plugins is the empty list plus the
 floor, which is why `vx run build` works in a fresh repository with
 `export default {}` in it and one `vx.config.ts`.
 

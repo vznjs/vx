@@ -19,7 +19,7 @@ that binary.
    `bun add -d @vzn/vx`).
 2. Run `npx @vzn/vx init` (Bun: `bunx @vzn/vx init`; npm refuses a repo
    whose `devEngines` names Bun). It writes a `vx.config.ts` per package from its
-   scripts, and a `vx.workspace.ts`. A root script that checks the whole
+   scripts, and a `.vx/workspace.ts`. A root script that checks the whole
    repo (`format: prettier --check .`) becomes a task in a root
    `vx.config.ts`; one that runs the members (`pnpm -r build`) does not,
    nor one named like a package's own task (a root `lint` beside a
@@ -28,7 +28,7 @@ that binary.
    repo with `turbo.json` or `nx.json` starts at
    [Coming from Turbo, Nx or Vite Task](#coming-from-turbo-nx-or-vite-task) instead.
 3. Or write one by hand, beside a package's `package.json`, and a
-   `vx.workspace.ts` at the root (`export default {}` will do): the
+   `.vx/workspace.ts` at the root (`export default {}` will do): the
    nearest one up from where you run marks the workspace.
 
 ## Config
@@ -92,12 +92,12 @@ of a small package (first run, again, again after `rm -rf dist`):
 
 ## When to run vx lock
 
-`vx init` also writes `vx-lock.json`: every project's config as it
+`vx init` also writes `.vx/lock.json`: every project's config as it
 evaluated. Commit it. Every run reads its configs from the lock and
 evaluates none, so after you change one the runs keep the old tasks
 until you run `vx lock`. Run it, and commit the lock, after you:
 
-- edit any `vx.config.ts` or `vx.workspace.ts`,
+- edit any `vx.config.ts` or `.vx/workspace.ts`,
 - update dependencies or plugins,
 - change a file a config imports (a shared preset, a helper).
 
@@ -109,7 +109,7 @@ config again and fails on any difference, naming the project.
 
 Start with one package and leave the rest of your tooling as it is.
 
-1. Add a `vx.workspace.ts` at the repo root (`export default {}` will do)
+1. Add a `.vx/workspace.ts` at the repo root (`export default {}` will do)
    and give one package a `vx.config.ts` with the command its `build` script runs.
 2. Run `vx run build` twice in it. The second run is a cache hit. If it
    ran again, `vx why <package>#build` names what changed in its key.
@@ -123,7 +123,7 @@ Start with one package and leave the rest of your tooling as it is.
 writes the native `vx.config.ts` files from `turbo.json` or the Nx graph
 (`bunx @vzn/vx-migrate` does the same from each `vite.config`'s `run.tasks`);
 from there everything above applies. `vx init --keep` writes only a
-`vx.workspace.ts` declaring `turbo()` or `nx()`: a temporary start, dropped
+`.vx/workspace.ts` declaring `turbo()` or `nx()`: a temporary start, dropped
 once the configs exist.
 [Migrate](../guides/migrate/) has the steps.
 
@@ -133,7 +133,7 @@ once the configs exist.
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
 - **A task ran again with nothing changed.** `vx why <package>#<task>` names what moved in its key: a file, an env var, or an upstream task (often one that rewrites a file this task reads).
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
-- **`no vx.workspace.ts in …`.** The file marks the workspace root. Run `vx init`, or add `vx.workspace.ts` at the root by hand.
+- **`no .vx/workspace.ts in …`.** The file marks the workspace root. Run `vx init`, or add `.vx/workspace.ts` at the root by hand.
 - **`vx requires git`.** Run `git init` at the workspace root.
 - **A package has no `vx.config.ts`.** It gets a default `build`: a group behind `^build`, keyed on all its files, so editing it re-runs the packages that depend on it.
 - **`tsc -b` ran, but `dist/` came back empty.** With `rootDir: "src"`, tsc writes `tsconfig.tsbuildinfo` beside `tsconfig.json`, outside `dist/`. vx empties `dist/` before a miss, tsc sees the buildinfo, thinks it is current and writes nothing. Add `tsconfig.tsbuildinfo` to `outputs.files`, or point `tsBuildInfoFile` into `dist/`.

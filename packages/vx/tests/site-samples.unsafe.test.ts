@@ -26,6 +26,7 @@ import { IGNORED_SEGMENTS } from '../src/cli/watch-fs.js'
 import { WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
 import { createTelemetrySource } from '../src/orchestrator/telemetry.js'
 import type { RunSummaryRecord, TelemetrySink } from '../src/orchestrator/telemetry.js'
+import { RETIRED_POSTS } from './helpers/retired-posts.js'
 
 const GUIDES = path.resolve(
   import.meta.dir,
@@ -298,7 +299,7 @@ describe('the quickstart shows what a run prints and what its flags do', () => {
 })
 
 // The add-to-existing-repo page folded into the quickstart, and its
-// vx.workspace.ts block into the configure page's workspace section.
+// .vx/workspace.ts block into the configure page's workspace section.
 describe('the configure guide states the concurrency default `vx help` states', () => {
   it("its `concurrency` comment is the help line's default clause", () => {
     const help = /--concurrency <n>\s+Max parallel tasks \(default: ([^)]+)\)/.exec(HELP)
@@ -488,7 +489,7 @@ describe('the strict-output-ownership post names what the wipe never touches', (
     )
     const arr = /const OUTPUT_NEVER = \[([^\]]*)\]/.exec(src)
     expect(arr).not.toBeNull()
-    const names = [...arr![1]!.matchAll(/'\*\*\/([^/']+)\/\*\*'/g)].map((m) => m[1]!)
+    const names = [...arr![1]!.matchAll(/'\*\*\/([^']+)\/\*\*'/g)].map((m) => m[1]!)
     expect(names.length).toBe(2)
     for (const name of names) expect(section![1]!).toContain('`' + name + '`')
     expect(section![1]!).toContain('`node_modules/**` is a legitimate output')
@@ -566,20 +567,6 @@ describe('the watch-mode post states what watch.ts does', () => {
     expect(sentence).not.toBeNull()
     const named = new Set([...sentence![1]!.matchAll(/--[\w-]+/g)].map((m) => m[0]))
     expect([...named].sort()).toEqual([...refused].sort())
-  })
-})
-
-describe('the agents-and-mcp post tabulates every tool the server offers', () => {
-  it('each `name:` in tools.ts is a row of its table', () => {
-    const src = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'src', 'tools.ts'),
-      'utf8',
-    )
-    const names = [...src.matchAll(/^    name: '(\w+)',$/gm)].map((m) => m[1]!)
-    expect(names.length).toBe(15)
-    const page = readFileSync(path.join(DOCS, 'blog', 'agents-and-mcp.md'), 'utf8')
-    const rows = [...page.matchAll(/^\| `(\w+)` +\|/gm)].map((m) => m[1]!)
-    expect(rows.sort()).toEqual([...names].sort())
   })
 })
 
@@ -944,7 +931,7 @@ describe('every page tabulating the pipeline stages names all of them', () => {
 
 // BOTH copies. The post was pinned and the GUIDE, which lists the same nine
 // grants, the same three verbs and the same three Linux binaries, was not —
-// the same one-copy-of-two the MCP line count had been in for three passes
+// the same one-copy-of-two a line count had been in for three passes
 // (item 377, 2026-09-19).
 describe.each([
   ['the sandbox post', path.join(DOCS, 'blog', 'the-sandbox.md')],
@@ -1093,51 +1080,6 @@ describe('the config-in-typescript post shows what vx init writes', () => {
   })
 })
 
-// The MCP guide is the plugins page's `vx mcp` section (the short site),
-// and the section is what these read: the page's other tables have
-// one-word backticked rows of their own (the OTel options).
-describe('the MCP guide and post state the server size the source has', () => {
-  const mcpSection = (): string =>
-    section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'vx mcp')
-  const server = readFileSync(
-    path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'src', 'server.ts'),
-    'utf8',
-  )
-  const lines = server.split('\n').length
-  for (const [label, file] of [
-    ['the guide', 'plugins.md § vx mcp'],
-    ['the agents-and-mcp post', path.join(DOCS, 'blog', 'agents-and-mcp.md')],
-    // Item 345 fixed the two site pages; the package README said it too
-    // (item 351, 2026-09-19).
-    ['the package README', path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'README.md')],
-    // The fourth copy, and the one three passes missed: it spelled the claim
-    // `~100 lines`, and this pin's regex asked for `about N lines` (item 377,
-    // 2026-09-19). The regex takes both spellings now — a negative grep is a
-    // claim about every spelling, and this one had been made three times.
-    ['the package header', path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'src', 'index.ts')],
-  ] as const) {
-    it(`${label}'s "about N lines" is within a rounding of server.ts`, () => {
-      // Both said "about a hundred lines" of a 144-line file; item 339 fixed
-      // the post's body and left its heading (item 345, 2026-09-19). A round
-      // number is fine, a 30% one is not.
-      const page = file === 'plugins.md § vx mcp' ? mcpSection() : readFileSync(file, 'utf8')
-      const m = /(?:about|~) ?(\d+) lines/.exec(page)
-      expect(m).not.toBeNull()
-      expect(Math.abs(Number(m![1]) - lines) / lines).toBeLessThan(0.15)
-    })
-  }
-  it('the guide tabulates every tool the server offers', () => {
-    const tools = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-mcp', 'src', 'tools.ts'),
-      'utf8',
-    )
-    const names = [...tools.matchAll(/^    name: '(\w+)',$/gm)].map((m) => m[1]!)
-    const page = mcpSection()
-    const rows = [...page.matchAll(/^\| `(\w+)` *\|/gm)].map((m) => m[1]!)
-    expect(rows.sort()).toEqual([...names].sort())
-  })
-})
-
 // The otel guide is the plugins page's OpenTelemetry section (the short
 // site); both pins read that section, so another section's rows and code
 // spans cannot stand in for it.
@@ -1160,7 +1102,7 @@ describe('the otel guide names attributes the exporter actually emits', () => {
     // shapes (`vx.tag.<k>`, `vx.log.*`) or the workspace file's name.
     const named = [...page.matchAll(/`(vx\.[a-z_.]+)`/g)]
       .map((m) => m[1]!)
-      .filter((n) => n !== 'vx.workspace.ts' && !n.endsWith('.'))
+      .filter((n) => n !== '.vx/workspace.ts' && !n.endsWith('.'))
     expect(named.length).toBeGreaterThan(15)
     for (const attr of named) expect(emitted).toContain(attr)
   })
@@ -1870,7 +1812,11 @@ describe("a post's link into a guide section names the section", () => {
     let checked = 0
     // A post's pointer to its guide; the glossary's and compare page's
     // inline links are prose ("remote caching"), not section names.
-    const posts = handAuthoredSitePages().filter((p) => p.includes(`${path.sep}blog${path.sep}`))
+    const posts = handAuthoredSitePages().filter(
+      (p) =>
+        p.includes(`${path.sep}blog${path.sep}`) &&
+        !RETIRED_POSTS.has(path.relative(DOCS, p).split(path.sep).join('/')),
+    )
     for (const page of posts) {
       const text = readFileSync(page, 'utf8')
       for (const m of text.matchAll(
@@ -2209,7 +2155,7 @@ describe('every page naming what vx-otel exports names each signal', () => {
         path.join(repo, 'packages', d, 'README.md'),
       ),
       path.join(repo, 'README.md'),
-      path.join(repo, 'vx.workspace.ts'),
+      path.join(repo, '.vx/workspace.ts'),
     ].filter((f) => existsSync(f))
     const wrong: string[] = []
     let seen = 0

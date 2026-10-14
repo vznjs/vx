@@ -100,7 +100,6 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
       items: [
         { label: '@vzn/vx-ci', link: '/plugins/vx-ci/' },
         { label: '@vzn/vx-lockfile', link: '/plugins/vx-lockfile/' },
-        { label: '@vzn/vx-mcp', link: '/plugins/vx-mcp/' },
         { label: '@vzn/vx-migrate', link: '/plugins/vx-migrate/' },
         { label: '@vzn/vx-otel', link: '/plugins/vx-otel/' },
         { label: '@vzn/vx-reapi', link: '/plugins/vx-reapi/' },

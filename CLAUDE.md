@@ -19,7 +19,7 @@ CLI verbs exist. Core applies NO plugin by default. Running here and
 caching here are core's FLOOR, not plugins: the local executor sits at
 the tail of every executor list and the local cache heads every cache
 chain (asked first, then each remote in declared order), so a
-`vx.workspace.ts` declaring no plugin runs and caches, and a plugin that
+`.vx/workspace.ts` declaring no plugin runs and caches, and a plugin that
 declines a task hands it back to this machine. That file is required:
 the nearest one up from the cwd, never above the git top-level, marks
 the workspace root (2026-10-13).
@@ -58,8 +58,7 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         continue-taint), execute-task (+ miss-save,
                         sandbox-request), task-hash,
                         projects.ts (the staged config load every reader shares), plugin
-                        stages + seams, events, logger, doctor.ts (the facts `vx info` and
-                        `vx mcp`'s getWorkspaceInfo both report)
+                        stages + seams, events, logger, doctor.ts (the facts `vx info` reports)
   src/workspace/        discovery, config eval (+ config-cache.ts), config-schema.ts (what a config
                         may say), package graph, --filter/--affected, lockfile, migration.ts (the
                         plan → files seam `vx init` and @vzn/vx-migrate share)
@@ -72,7 +71,6 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
 packages/vx-ci      GitHub Actions job summary + Checks API plugin
-packages/vx-mcp         `vx mcp` — MCP server for AI agents (commands seam, no SDK)
 packages/vx-migrate     adoption, one package (2026-09-11): `turbo()` runs a Turbo repo unchanged (turbo.json +
                         scripts → tasks via the `project` stage; owns the mapper the CLI renders from),
                         `nx()` runs an Nx repo unchanged (2026-09-22: the resolved graph → tasks; executor
@@ -195,7 +193,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
 6. **Project boundaries are hard.** Globs never cross into another project.
 7. **No defaults.** Core names no plugin; only the local floor is
    implicit. A capability a plugin must supply (a remote, a wire) is
-   declared in `vx.workspace.ts` or it does not exist.
+   declared in `.vx/workspace.ts` or it does not exist.
 8. **Seam over special case.** When core grows a branch for one consumer,
    the seam is too narrow.
 9. **Once per run.** A run treats the files it reads as fixed except

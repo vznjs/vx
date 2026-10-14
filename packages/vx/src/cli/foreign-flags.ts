@@ -257,7 +257,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     value: true,
     shown: '`--experimental-otel-*`',
     outcome: 'refuse',
-    vx: 'telemetry is a plugin: `otel()` from @vzn/vx-otel in vx.workspace.ts',
+    vx: 'telemetry is a plugin: `otel()` from @vzn/vx-otel in .vx/workspace.ts',
   },
   {
     runner: 'nx',
@@ -397,7 +397,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['--token', '--team', '--api'],
     value: true,
     outcome: 'refuse',
-    vx: 'a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in vx.workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API',
+    vx: 'a remote cache is a plugin: `turboCache()` from @vzn/vx-migrate in .vx/workspace.ts reads TURBO_TOKEN / TURBO_TEAM / TURBO_API',
   },
   {
     runner: 'turbo',
@@ -576,7 +576,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['--runner'],
     value: true,
     outcome: 'refuse',
-    vx: 'a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in vx.workspace.ts',
+    vx: 'a remote cache is a plugin: `nxCache()` from @vzn/vx-migrate in .vx/workspace.ts',
   },
   {
     runner: 'nx',
@@ -657,7 +657,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
 
 /** Nx's verbs, as its users type them: `vx run` takes their flags. */
 const TURBO_LOGIN =
-  'vx has no login: a remote cache is a plugin, `turboCache()` from @vzn/vx-migrate in vx.workspace.ts, which reads TURBO_TOKEN / TURBO_TEAM / TURBO_API'
+  'vx has no login: a remote cache is a plugin, `turboCache()` from @vzn/vx-migrate in .vx/workspace.ts, which reads TURBO_TOKEN / TURBO_TEAM / TURBO_API'
 
 export const FOREIGN_VERBS: Readonly<Record<string, string>> = {
   'run-many':

@@ -9,6 +9,14 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## move the workspace config and lock into .vx
+
+vx.workspace.* and vx-lock.json are no longer read. Move the workspace config to .vx/workspace.ts (its relative imports gain a ../) and re-run vx lock.
+
+## retire @vzn/vx-mcp for the agent skill and vx last --stats
+
+@vzn/vx-mcp and `vx mcp` are gone; install the agent skill (`npx skills add vznjs/vx/packages/vx/skills/vx`) and read the CLI's `--format json` (`vx last --stats` for run history). `@vzn/vx` no longer exports clampInt, collectInfo, maskedCommand, maskedLine or the run-history queries (cacheKeyDiff, latestRunId, resolveRunId, inputWriters, rootCauses, runFailures, taskLog, whyDidThisRerunQuery).
+
 ## drop rename shims, flag aliases and lock path fields
 
 an old config key or flag fails the unknown field or flag check, and an old VX_* variable is ignored; `vx migrate`, `vx prune` and `vx stats` are unknown verbs unless a plugin declares them; `--cache` is only `--cache-policy` and `--download` only `--cache-download`; vx-lock.json is version 2, project name to resolved config, so re-run `vx lock`; `vx lock --check` reports one drift message per project.

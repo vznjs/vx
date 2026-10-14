@@ -83,7 +83,7 @@ export interface ReapiPluginOptions extends Partial<
 }
 
 /**
- * Declare in `vx.workspace.ts`; the local store is the floor beneath it and is
+ * Declare in `.vx/workspace.ts`; the local store is the floor beneath it and is
  * read first, so the remote is asked only on a local miss:
  *
  * ```ts

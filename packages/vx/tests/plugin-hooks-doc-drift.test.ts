@@ -106,7 +106,7 @@ describe('the plugin hook tables follow PLUGIN_HOOKS', () => {
 // Rule 5 said a workspace with no `executor` or `cache` "fails before any task
 // runs", which is the shape that was REJECTED: `plugin-host.ts` pushes
 // `localExecutor()` as the tail of every list, so a workspace with no
-// `vx.workspace.ts` runs and caches (CLAUDE.md principle #7, the local FLOOR).
+// `.vx/workspace.ts` runs and caches (CLAUDE.md principle #7, the local FLOOR).
 // The rule is marked superseded now, and this holds the two together: while
 // the floor is in the source, the design page may not state the rule it
 // replaced as live (item 371, 2026-09-19).

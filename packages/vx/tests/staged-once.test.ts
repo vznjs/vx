@@ -49,8 +49,8 @@ describe('the project stage runs once per project per run', () => {
     root = await makeWorkspace({ prefix: 'vx-staged-once-' })
     outside = await mkdtemp(path.join(os.tmpdir(), 'vx-staged-count-'))
     counter = path.join(outside, 'stage.log')
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}import { appendFileSync } from 'node:fs'
 export default { plugins: [${pluginSource(
         'counter',

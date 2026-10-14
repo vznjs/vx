@@ -86,7 +86,7 @@ async function safe<T>(plugin: VxPlugin, hook: string, fn: () => T | Promise<T>)
     return await fn()
   } catch (err) {
     // Masked here, not by whoever prints it: an embedder of `run()` and
-    // `vx mcp` print it as they get it, and the throw quotes what the
+    // a plugin's verb print it as they get it, and the throw quotes what the
     // plugin was told (a remote's reply, a header) (L-11).
     throw new UserError(
       maskedLine(

@@ -34,7 +34,7 @@ const ok = `async () => ({ exitCode: 0, durationMs: 1, stdout: '', stderr: '', v
 
 async function runWith(executor: string): Promise<{ ok: boolean; status: string[] }> {
   await Bun.write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([pluginSource('org/ex', `{ executor() { return ${executor} } }`)]),
   )
   const status: string[] = []

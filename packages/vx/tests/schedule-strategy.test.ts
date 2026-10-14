@@ -1,8 +1,8 @@
-// `schedule` in vx.workspace.ts picks the ready-queue baseline. One graph
+// `schedule` in .vx/workspace.ts picks the ready-queue baseline. One graph
 // where each strategy starts a different root first, one worker: the
 // first dispatch names the strategy. A `schedule` plugin's weights still
 // come first under every strategy.
-import { rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
@@ -90,21 +90,21 @@ describe('schedule strategy', () => {
 
   it('the workspace names one of the four, or is refused', () => {
     for (const s of ['most-work', 'critical-path', 'direct-dependents', 'ready-order'] as const) {
-      expect(() => validateWorkspace({ run: { schedule: s } }, 'vx.workspace.ts')).not.toThrow()
+      expect(() => validateWorkspace({ run: { schedule: s } }, '.vx/workspace.ts')).not.toThrow()
     }
     let message = ''
     try {
-      validateWorkspace({ run: { schedule: 'fastest' } } as never, 'vx.workspace.ts')
+      validateWorkspace({ run: { schedule: 'fastest' } } as never, '.vx/workspace.ts')
     } catch (e) {
       message = (e as Error).message
     }
     expect(message).toBe(
-      "vx.workspace.ts: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"fastest\")",
+      ".vx/workspace.ts: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got \"fastest\")",
     )
   })
 })
 
-describe('schedule in vx.workspace.mjs reaches the run', () => {
+describe('schedule in .vx/workspace.mjs reaches the run', () => {
   const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
   const config = `const t = (n, deps = []) => ({ dependsOn: deps, exec: { command: 'echo ' + n + ' >> ../../order.txt' } })
 export default { tasks: { solo: t('solo'), deep: t('deep'), d1: t('d1', ['deep']), d2: t('d2', ['d1']), all: { dependsOn: ['solo', 'd2'] } } }
@@ -112,7 +112,7 @@ export default { tasks: { solo: t('solo'), deep: t('deep'), d1: t('d1', ['deep']
   async function firstRun(workspace: string): Promise<string> {
     const root = await makeWorkspace({ prefix: 'vx-schedule-', workspaceFile: false })
     try {
-      await writeFile(path.join(root, 'vx.workspace.mjs'), workspace)
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), workspace)
       await addProject(root, 'p', { config })
       const proc = Bun.spawn([process.execPath, BIN, 'run', 'all', '--all', '--concurrency', '1'], {
         cwd: root,

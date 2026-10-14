@@ -615,6 +615,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const stale = (dir: string): boolean => armedAs.get(dir) !== inodeOf(dir)
   /** The root arm: recursive when workspace-wide, else the root's own files only. */
   let rootArm: WatchHandle = CLOSED
+  let dotVxArm: WatchHandle = CLOSED
   const armProject = (proj: ProjectMeta): void => {
     try {
       const handle = arm(proj.dir, true, (filename) => {
@@ -670,6 +671,19 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     } catch (err) {
       sayCannot(`cannot watch workspace root`, err)
     }
+    // The workspace config and the lock sit in `.vx/`, which the root's
+    // non-recursive arm does not see into.
+    if (workspaceWide) return
+    try {
+      dotVxArm = arm(path.join(workspaceRoot, '.vx'), false, (filename) => {
+        const rel = `.vx/${filename}`
+        if (!isWorkspaceConfigFile(rel) && !claimedRootFiles.has(rel)) return
+        reread = true
+        trigger(`root ${rel}`, path.join(workspaceRoot, rel))
+      })
+    } catch (err) {
+      sayCannot(`cannot watch ${path.join(workspaceRoot, '.vx')}`, err)
+    }
   }
   // One recursive watcher per project, unless workspace-wide: each project
   // owns its own subtree; the root is never watched recursively for them
@@ -683,6 +697,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     perProject.clear()
     rootArm.close()
     rootArm = CLOSED
+    dotVxArm.close()
+    dotVxArm = CLOSED
   }
 
   /**

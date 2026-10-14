@@ -4,7 +4,7 @@ description: Tasks and dependencies, caching, environment variables, dev servers
 ---
 
 Tell vx what each package runs, what it reads and what it may see: a
-`vx.config.ts` per package, and one [`vx.workspace.ts`](#workspace-config)
+`vx.config.ts` per package, and one [`.vx/workspace.ts`](#workspace-config)
 at the root that marks the workspace. Every field:
 [the config reference](../../schema/).
 
@@ -111,7 +111,7 @@ export default defineProject({
 | The key                | Holds                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the package's `package.json`, the lockfile, the keys of the tasks it depends on, the task's config, arguments after `--` |
-| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
+| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `*.tsbuildinfo`, `.vx/lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
 | In, when you say so    | a tool's version: `cache.inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
@@ -225,12 +225,12 @@ block. A sandboxed server on Linux lists its port in
 
 ## Workspace config
 
-`vx.workspace.ts` is required: the nearest one up from where you run,
+`.vx/workspace.ts` is required: the nearest one up from where you run,
 within your git checkout, marks the workspace root (`vx init` writes
 it). With no plugins in it, vx runs and caches on this machine.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
@@ -280,7 +280,7 @@ re-runs everything. With `@vzn/vx-lockfile` (`bun add -d @vzn/vx-lockfile`),
 each package is keyed on its own dependencies, and `--affected` follows.
 
 ```ts
-// vx.workspace.ts
+// .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
 import { pnpm } from '@vzn/vx-lockfile' // or bun, npm, yarn
 

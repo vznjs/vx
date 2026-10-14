@@ -1,4 +1,4 @@
-// `vx lock` writes each config as evaluated into vx-lock.json, which is
+// `vx lock` writes each config as evaluated into .vx/lock.json, which is
 // committed. A config that interpolated a secret from the environment
 // (`--token ${process.env.API_TOKEN}`) wrote the value there, and
 // masking it would freeze a `***` that `--frozen` then runs. The lock is
@@ -24,7 +24,7 @@ async function lock(config: string, env: Record<string, string>) {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
   )
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   const dir = path.join(root, 'packages', 'a')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
@@ -39,7 +39,7 @@ async function lock(config: string, env: Record<string, string>) {
   return {
     code: r.exitCode,
     err: r.stderr.toString(),
-    written: existsSync(path.join(root, 'vx-lock.json')),
+    written: existsSync(path.join(root, '.vx/lock.json')),
   }
 }
 
@@ -57,7 +57,7 @@ describe('vx lock and a secret in an evaluated config', () => {
     expect(r).toEqual({
       code: 1,
       err:
-        'vx lock: vx-lock.json is committed, and these configs evaluated to a secret value:\n' +
+        'vx lock: .vx/lock.json is committed, and these configs evaluated to a secret value:\n' +
         '  a: tasks.deploy.exec.command holds $API_TOKEN\n' +
         '  a: tasks.deploy.exec.env.define.NPM_AUTH holds $GH_PAT\n' +
         'let the shell expand it ($API_TOKEN in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n',
@@ -68,7 +68,7 @@ describe('vx lock and a secret in an evaluated config', () => {
   it('the hint names the variable that leaked, not a fixed one', async () => {
     const r = await lock(INTERPOLATED, { API_TOKEN: '', GH_PAT: 'ghp_patvalue456' })
     expect(r.err).toBe(
-      'vx lock: vx-lock.json is committed, and these configs evaluated to a secret value:\n' +
+      'vx lock: .vx/lock.json is committed, and these configs evaluated to a secret value:\n' +
         '  a: tasks.deploy.exec.env.define.NPM_AUTH holds $GH_PAT\n' +
         'let the shell expand it ($GH_PAT in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n',
     )

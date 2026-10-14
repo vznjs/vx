@@ -3,7 +3,7 @@
 // config goes red here. The sources are found, not listed: each ```ts
 // fence that calls `defineProject(` or `defineWorkspace(` in
 // packages/vx/docs (history and design aside: a record of the past) and in
-// the site's hand-authored pages, and every vx.config / vx.workspace
+// the site's hand-authored pages, and every vx.config / .vx/workspace
 // under examples/. `vx-migrate`'s writers are held the same way by their
 // own suites (each written config goes through `loadProjectConfig`).
 //
@@ -25,6 +25,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/index.js'
 import type { ProjectConfig, WorkspaceConfig } from '../src/config.js'
+import { RETIRED_POSTS } from './helpers/retired-posts.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
 const PACKAGES = path.dirname(CORE)
@@ -81,6 +82,9 @@ const SKETCHES = new Map([
     'packages/vx-docs/src/content/docs/blog/resolved-config-hashing.md#1',
     'a config importing a preset the post describes but does not show',
   ],
+  ...[...RETIRED_POSTS].map(
+    ([post, why]) => [`packages/vx-docs/src/content/docs/${post}#1`, why] as [string, string],
+  ),
 ])
 
 function corpus(): Sample[] {
@@ -92,12 +96,12 @@ function corpus(): Sample[] {
     ...walk(site, md).filter((p) => !/\/docs\/(design|modules)\//.test(p)),
   ]
   const examples = walk(path.join(REPO, 'examples'), (p) =>
-    /\/vx\.(config|workspace)\.[mc]?[jt]s$/.test(p),
+    /\/(?:vx\.config|\.vx\/workspace)\.[mc]?[jt]s$/.test(p),
   ).map((p) => ({
     where: path.relative(REPO, p),
     page: path.relative(REPO, p),
     source: readFileSync(p, 'utf8'),
-    workspace: /\/vx\.workspace\./.test(p),
+    workspace: /\/\.vx\/workspace\./.test(p),
     named: undefined,
   }))
   return [...pages.flatMap(fences), ...examples]
@@ -132,7 +136,7 @@ describe('the documented configs load under the current schema', () => {
       'packages/vx/docs/schema.md',
       'packages/vx-docs/src/content/docs/guides/configure.md',
       'examples/basic/packages/app/vx.config.ts',
-      'examples/turbo/vx.workspace.ts',
+      'examples/turbo/.vx/workspace.ts',
     ]) {
       expect(where).toContain(file)
     }
@@ -151,7 +155,7 @@ describe('the documented configs load under the current schema', () => {
   const written = samples.map((s, i) => {
     let d = pageDir.get(s.page)
     if (d === undefined) pageDir.set(s.page, (d = path.join(dir, String(pageDir.size))))
-    const rel = s.named ?? `${i}.${s.workspace ? 'vx.workspace' : 'vx.config'}.ts`
+    const rel = s.named ?? `${i}.${s.workspace ? '.vx/workspace' : 'vx.config'}.ts`
     const file = path.join(d, rel)
     mkdirSync(path.dirname(file), { recursive: true })
     writeFileSync(file, s.source)

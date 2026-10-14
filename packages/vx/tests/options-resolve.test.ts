@@ -27,7 +27,7 @@
 // wire boundaries.
 
 import { readFileSync } from 'node:fs'
-import { rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
@@ -67,8 +67,8 @@ async function makeWorkspace(): Promise<Fixture> {
 
 /** Rewrite the workspace file with `fields` (object-literal body) plus the local plugins. */
 async function setWorkspace(root: string, fields: string): Promise<void> {
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `export default { ${fields}, plugins: [] }\n`,
   )
 }
@@ -311,7 +311,7 @@ describe('concurrency ladder — options > workspace > hardwareConcurrency', () 
   it(
     'the workspace rung is honored, and RunOptions.concurrency overrides it',
     async () => {
-      // Nothing else in the suite asserts that `run: { concurrency }` in vx.workspace
+      // Nothing else in the suite asserts that `run: { concurrency }` in .vx/workspace
       // reaches the scheduler at all — project-loader.test.ts only proves it
       // LOADS, and the CLI tests only prove `--concurrency` parses. Two runs
       // over one fixture: the workspace value alone must serialize two

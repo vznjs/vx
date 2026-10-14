@@ -76,10 +76,10 @@ export const WATCHED_BUILTIN_NAMES = [
 
 const WORKER_SRC = `
 const nonJsonPaths = ${nonJsonPaths.toString()}
-// The parent's stdout is a verb's JSON or vx mcp's JSON-RPC stream, and a
-// config printing on a repeat load wrote into it: the server's own redirect
-// covers the parent thread only (D-64). This worker only evaluates configs,
-// so every route to fd 1 is stderr's, Bun's own included (item 1069).
+// The parent's stdout is a verb's JSON, and a config printing on a repeat
+// load wrote into it: the parent's own redirect covers the parent thread
+// only (D-64). This worker only evaluates configs, so every route to fd 1
+// is stderr's, Bun's own included (item 1069).
 // Synchronous, before any message: an awaited import of the Console left
 // the first evaluation racing its own redirect (D-73).
 {

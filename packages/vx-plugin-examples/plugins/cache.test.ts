@@ -33,11 +33,11 @@ async function pkg(
   return dir
 }
 
-/** A `vx.workspace.mjs` declaring `call`, e.g. `dirCache()`, from the plugin file beside this test. */
+/** A `.vx/workspace.mjs` declaring `call`, e.g. `dirCache()`, from the plugin file beside this test. */
 async function workspace(call: string): Promise<void> {
   const from = JSON.stringify(path.join(import.meta.dir, 'cache.ts'))
-  await writeFile(
-    path.join(root, 'vx.workspace.mjs'),
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
     `import { dirCache } from ${from}\nexport default { plugins: [${call}] }\n`,
   )
 }
@@ -67,7 +67,7 @@ it('a run on an empty local cache restores from the directory', async () => {
   await workspace(`dirCache(${JSON.stringify(path.join(root, 'remote'))})`)
   const first = await run({ cwd: root, tasks: ['build'], log: log(), handleSignals: false })
   expect(first.outcomes.map((o) => o.status)).toEqual(['success'])
-  await rm(path.join(root, '.vx'), { recursive: true, force: true })
+  await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
   await rm(path.join(dir, 'dist'), { recursive: true, force: true })
   const second = await run({ cwd: root, tasks: ['build'], log: log(), handleSignals: false })
   expect(second.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])

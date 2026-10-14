@@ -85,11 +85,11 @@ npx @vzn/vx run build --all    # restored from the cache, not rebuilt
 
 ### When to run `vx lock`
 
-`init` also writes `vx-lock.json`, every project's config as it evaluated.
+`init` also writes `.vx/lock.json`, every project's config as it evaluated.
 Commit it. Every run reads its configs from the lock, so run
 `npx @vzn/vx lock` and commit the lock again after you:
 
-- edit any `vx.config.ts` or `vx.workspace.ts`,
+- edit any `vx.config.ts` or `.vx/workspace.ts`,
 - update dependencies or plugins,
 - change a file a config imports.
 
@@ -119,7 +119,7 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 
 ## Plugins
 
-What vx can do, not what it is limited to. Declared in `vx.workspace.ts`; without any, vx runs and caches locally.
+What vx can do, not what it is limited to. Declared in `.vx/workspace.ts`; without any, vx runs and caches locally.
 
 | Package                                                    | What it adds                                                                  |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -128,7 +128,6 @@ What vx can do, not what it is limited to. Declared in `vx.workspace.ts`; withou
 | [`@vzn/vx-lockfile`](packages/vx-lockfile)                 | Key each project on its own lockfile slice: pnpm, bun, npm, yarn              |
 | [`@vzn/vx-otel`](packages/vx-otel)                         | OpenTelemetry traces, metrics and logs, no SDK                                |
 | [`@vzn/vx-ci`](packages/vx-ci)                             | GitHub Actions job summary and Checks API                                     |
-| [`@vzn/vx-mcp`](packages/vx-mcp)                           | `vx mcp`: an MCP server for AI coding agents that also runs tasks             |
 | [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                          |
 
 Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
@@ -139,7 +138,7 @@ Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 Beside `turbo.json` or `nx.json`, `npx @vzn/vx init` runs `@vzn/vx-migrate`:
 it writes a `vx.config.ts` per package from `turbo.json` or the Nx graph,
 and you keep those and delete the old config. `vx init --keep` writes only
-a `vx.workspace.ts` that maps the old config instead: a temporary start,
+a `.vx/workspace.ts` that maps the old config instead: a temporary start,
 not a way to run the repo. The benchmark below uses native vx config.
 [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 

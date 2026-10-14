@@ -119,9 +119,10 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 export class LocalHistoryProvider implements HistoryProvider {
   constructor(
     private readonly db: Database,
-    private readonly recent: number = DEFAULT_RECENT,
+    readonly recent: number
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
+  async loadAll(): Promise<HistoryTable>
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
   async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
@@ -176,12 +177,6 @@ export function buildPackageGraph(
   projects: ProjectMeta[],
   taskEdges?: ReadonlyMap<string, readonly string[]>,
 ): PackageGraph
-== function cacheKeyDiff (src/orchestrator/metrics.ts)
-export function cacheKeyDiff(db: Database, runId: string, taskId: string): CacheKeyDiff
-== function clampInt (src/util/num.ts)
-export function clampInt(n: number, min: number, max: number): number
-== function collectInfo (src/orchestrator/doctor.ts)
-export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): Promise<InfoFacts>
 == function definePlugin (src/orchestrator/plugin.ts)
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
 == function defineProject (src/config.ts)
@@ -238,14 +233,6 @@ export function foldScriptHooks(
   body: string,
   post: string | undefined,
 ): string
-== function inputWriters (src/orchestrator/metrics.ts)
-export function inputWriters(
-  db: Database,
-  workspaceRoot: string,
-  taskId: string,
-  entries: CacheKeyDiff['entries'],
-  roots: readonly RootCause[],
-): InputWriter[]
 == function isCacheHit (src/orchestrator/telemetry.ts)
 export function isCacheHit(status: string): boolean
 == function isLiteralPattern (src/util/paths.ts)
@@ -254,8 +241,6 @@ export function isLiteralPattern(glob: string): boolean
 export function isPassStatus(status: string): boolean
 == function isUserError (src/util/errors.ts)
 export function isUserError(err: unknown): err is UserError
-== function latestRunId (src/orchestrator/metrics.ts)
-export function latestRunId(db: Database, taskId: string): string | null
 == function listProjects (src/workspace/workspace.ts)
 export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
 == function loadProjectConfig (src/workspace/project-loader.ts)
@@ -276,10 +261,6 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 export function machineMemoryBytes(probe: CgroupProbe = {}): number
 == function machineParallelism (src/util/cgroup.ts)
 export function machineParallelism(probe: CgroupProbe = {}): number
-== function maskedCommand (src/util/secret-mask.ts)
-export function maskedCommand(command: string, env?: TaskEnvSecrets): string
-== function maskedLine (src/util/secret-mask.ts)
-export function maskedLine(line: string): string
 == function normalizeGlob (src/util/paths.ts)
 export function normalizeGlob(glob: string): string
 == function outputsOverlap (src/graph/task-graph.ts)
@@ -309,30 +290,10 @@ export function refuseUnknownOptions<T>(
   options: unknown,
   kinds: PluginOptionKinds<T>,
 ): void
-== function resolveRunId (src/orchestrator/run-id.ts)
-export function resolveRunId(db: Database, raw: string, verb: string): string | null
-== function rootCauses (src/orchestrator/metrics.ts)
-export function rootCauses(
-  db: Database,
-  runId: string,
-  taskId: string,
-  entries: CacheKeyDiff['entries'],
-): RootCause[]
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
-== function runFailures (src/orchestrator/run-failures.ts)
-export function runFailures(cacheDir: string, db: Database, runId?: string): RunFailures | null
 == function splitTaskId (src/util/task-id.ts)
 export function splitTaskId(id: string): [project: string, task: string]
-== function taskLog (src/orchestrator/run-failures.ts)
-export function taskLog(
-  cacheDir: string,
-  db: Database,
-  taskId: string,
-  runId?: string,
-): TaskLog | null
-== function whyDidThisRerun (src/orchestrator/metrics.ts)
-export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun
 == function withForwardArgs (src/exec/runner.ts)
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 == type AdmitContext (src/orchestrator/plugin.ts)
@@ -426,16 +387,6 @@ export interface CacheInputs {
   tasks?: readonly string[]
   runtime?: readonly string[]
   workspaceRuntime?: readonly string[]
-}
-== type CacheKeyDiff (src/orchestrator/metrics.ts)
-export interface CacheKeyDiff {
-  runId: string
-  taskId: string
-  found: boolean
-  previousRunId: string | null
-  entries: InputDiffEntry[]
-  unchangedCount: number
-  note: string
 }
 == type CacheKeyInput (src/cache/layer.ts)
 export interface CacheKeyInput {
@@ -571,11 +522,6 @@ export interface CiContext {
   pipeline?: string
   job?: string
   attempt?: number
-}
-== type CollectInfoOptions (src/orchestrator/doctor.ts)
-export interface CollectInfoOptions {
-  readonly cacheDir?: string
-  readonly warn?: (message: string) => void
 }
 == type CommandContext (src/orchestrator/plugin.ts)
 export interface CommandContext extends BaseContext {
@@ -716,15 +662,6 @@ export interface FingerprintClaim {
 export interface FingerprintContext extends BaseContext {
   readonly projects: ReadonlyArray<{ readonly name: string; readonly dir: string }>
 }
-== type FlakyTask (src/orchestrator/failure-mode.ts)
-export interface FlakyTask {
-  taskId: string
-  project: string
-  task: string
-  keys: number
-  passes: number
-  failures: number
-}
 == type GeneratedProject (src/workspace/migration.ts)
 export interface GeneratedProject {
   name: string
@@ -784,46 +721,6 @@ export interface HostContext {
   os: string
   arch: string
 }
-== type InfoFacts (src/orchestrator/doctor.ts)
-export interface InfoFacts {
-  vx: string
-  vxPath: string
-  handedOffFrom: string | null
-  bun: string
-  bunSupported: boolean
-  git: string | null
-  gitStatusCache: { fsmonitor: boolean; untrackedCache: boolean } | null
-  workspaceRoot: string
-  projects: number
-  tasks: number
-  configErrors: Array<{ path: string; message: string }>
-  plugins: Array<{ name: string; seams: string[] }>
-  workers: {
-    count: number
-    source: 'env' | 'workspace' | 'cgroup' | 'cores'
-    cores: number
-    cpuQuota: number | null
-  }
-  memory: { usableBytes: number; totalBytes: number; cgroupLimitBytes: number | null }
-  cacheDir: string
-  cacheStore: string | null
-  cacheVersion: string
-  schemaVersion: string
-  cacheEntries: number
-  cacheBytes: number
-  settings: Record<
-    string,
-    { value: string | number | boolean | null; source: 'env' | 'workspace' | 'default' }
-  >
-  cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
-  orphans: { artifacts: number; bytes: number }
-  runs24h: number
-  hits24h: number
-  restored24h: number
-  flakyTasks: FlakyTask[]
-  lockfile: boolean
-  sandbox: { available: boolean; reason: string; declared: number; untraced: string | null }
-}
 == type IngestMeta (src/cache/layer.ts)
 export interface IngestMeta {
   taskId: string
@@ -837,14 +734,6 @@ export interface InputChanges {
   count: number
   first: readonly { kind: string; name: string; change: 'changed' | 'added' | 'removed' }[]
 }
-== type InputDiffEntry (src/orchestrator/metrics.ts)
-export interface InputDiffEntry {
-  kind: string
-  name: string
-  change: 'added' | 'removed' | 'changed'
-  before: string | null
-  after: string | null
-}
 == type InputFile (src/exec/executor.ts)
 export interface InputFile {
   readonly path: string
@@ -854,12 +743,6 @@ export interface InputFile {
 export interface InputStability {
   strategy?: 'immutable' | 'mutable' | 'unchecked'
   severity?: 'warn' | 'error'
-}
-== type InputWriter (src/orchestrator/metrics.ts)
-export interface InputWriter {
-  taskId: string
-  file: string
-  writers: string[]
 }
 == type InvocationRecord (src/cache/layer.ts)
 export interface InvocationRecord {
@@ -1027,12 +910,6 @@ export interface OutputFileRow {
   mtimeMs: number
   ino?: number
   ctimeMs?: number
-}
-== type OutputLocation (src/orchestrator/path-links.ts)
-export interface OutputLocation {
-  file: string
-  line?: number
-  col?: number
 }
 == type OutputView (src/orchestrator/logger.ts)
 export interface OutputView {
@@ -1248,11 +1125,6 @@ export interface ResolvedSandboxConfig {
     network?: readonly string[]
   }
 }
-== type RootCause (src/orchestrator/metrics.ts)
-export interface RootCause {
-  chain: string[]
-  entries: CacheKeyDiff['entries']
-}
 == type RunContext (src/orchestrator/summary.ts)
 export interface RunContext {
   version: string
@@ -1301,11 +1173,6 @@ export type RunEvent =
   | { kind: 'run:end' }
 == type RunEventSubscriber (src/orchestrator/events.ts)
 export type RunEventSubscriber = (event: RunEvent) => void
-== type RunFailures (src/orchestrator/run-failures.ts)
-export interface RunFailures {
-  runId: string
-  tasks: TaskFailure[]
-}
 == type RunOptions (src/orchestrator/options.ts)
 export interface RunOptions {
   cwd: string
@@ -1573,11 +1440,6 @@ export interface TaskConfig {
   dependsOn?: readonly string[]
   cache?: CacheConfig
 }
-== type TaskEnvSecrets (src/util/secret-mask.ts)
-export interface TaskEnvSecrets {
-  readonly define?: Readonly<Record<string, string>>
-  readonly secret?: readonly string[]
-}
 == type TaskExecutor (src/exec/executor.ts)
 export interface TaskExecutor {
   readonly name: string
@@ -1586,17 +1448,6 @@ export interface TaskExecutor {
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
   execute(req: ExecuteRequest): Promise<ExecuteResult>
-}
-== type TaskFailure (src/orchestrator/run-failures.ts)
-export interface TaskFailure {
-  taskId: string
-  exitCode: number
-  timedOut?: true
-  inputMoved?: string
-  output: string
-  locations: OutputLocation[]
-  sandboxFix?: NonNullable<TaskOutcome['sandboxFix']>
-  fixedIn?: string
 }
 == type TaskHistory (src/orchestrator/history.ts)
 export interface TaskHistory {
@@ -1630,14 +1481,6 @@ export interface TaskInputs {
   readonly packageJsonDigest: string
   readonly configDigest: string
   readonly workspaceFingerprint: string
-}
-== type TaskLog (src/orchestrator/run-failures.ts)
-export interface TaskLog {
-  runId: string
-  taskId: string
-  status: string
-  source: 'failure' | 'cache' | null
-  output: string
 }
 == type TaskLogBundle (src/orchestrator/task-log-buffer.ts)
 export interface TaskLogBundle {
@@ -1884,29 +1727,6 @@ export interface VxPlugin {
 == type WatchSettings (src/config.ts)
 export interface WatchSettings {
   poll?: boolean
-}
-== type WhyDidThisRerun (src/orchestrator/metrics.ts)
-export interface WhyDidThisRerun {
-  runId: string
-  taskId: string
-  found: boolean
-  thisRun?: {
-    hash: string
-    status: string
-    cacheHit: boolean | null
-    restored: boolean | null
-    cached: boolean | null
-    startedAt: number
-  }
-  previousRun?: {
-    hash: string
-    status: string
-    cacheHit: boolean | null
-    restored: boolean | null
-    startedAt: number
-  } | null
-  hashChanged?: boolean | null
-  note: string
 }
 == type Workspace (src/workspace/workspace.ts)
 export interface Workspace {

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The schema validators for `vx.config.*` and `vx.workspace.*`: every
+The schema validators for `vx.config.*` and `.vx/workspace.*`: every
 object level, every field's shape, every rule a value must satisfy, and
 the message that names the level, the accepted list and the nearest
 spelling when a key is unknown. Split from `project-loader.ts` on
@@ -35,10 +35,10 @@ export function nonJsonMessage(configPath: string, found: NonJsonValue): string
 
 `validateProjectConfig` is the one boundary three readers cross with the
 same object shape: the loader after evaluation, `lockfile.ts` on a frozen
-entry read back from `vx-lock.json` (a hand-editable file — the same
+entry read back from `.vx/lock.json` (a hand-editable file — the same
 boundary), and `orchestrator/projects.ts` after each plugin's `project`
 edit (a broken edit is refused naming the plugin). `validateWorkspace`
-runs once per `vx.workspace.*` load: fields, plugin shapes, and the verb
+runs once per `.vx/workspace.*` load: fields, plugin shapes, and the verb
 rules (a plugin may not shadow a core verb; a verb has one owner, a package).
 
 ## Rules

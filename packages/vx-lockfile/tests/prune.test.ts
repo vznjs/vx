@@ -149,7 +149,7 @@ onlyBuiltDependencies: []
   if (devTool) await project('tool', {})
   await write(path.join(root, 'packages', 'app', 'vx.config.mjs'), 'export default { tasks: {} }\n')
   await write(
-    path.join(root, 'vx.workspace.mjs'),
+    path.join(root, '.vx/workspace.mjs'),
     `import { ${pm} } from ${JSON.stringify(PLUGIN_INDEX)}
 export default { plugins: [${pm}()] }
 `,
@@ -204,7 +204,7 @@ describe.each(['bun', 'pnpm', 'npm', 'yarn'] as const)('vx prune with %s()', (pm
           'packages/app/vx.config.mjs',
           'packages/lib/src/index.js',
           'packages/lib/vendor/dep-lib/package.json',
-          'vx.workspace.mjs',
+          '.vx/workspace.mjs',
         ].sort(),
       )
       const full = path.join(root, 'out', 'full')
@@ -309,7 +309,7 @@ describe('vx prune without an install', () => {
     )
     await write(path.join(root, 'packages', 'a', 'package.json'), '{ "name": "a" }\n')
     await write(
-      path.join(root, 'vx.workspace.mjs'),
+      path.join(root, '.vx/workspace.mjs'),
       // Two of the four: one package, one `prune` (core refused two
       // plugins on one verb before a verb's owner was its package).
       `import { bun, npm } from ${JSON.stringify(PLUGIN_INDEX)}
@@ -347,9 +347,9 @@ export default { plugins: [bun(), npm()] }
     await mkdir(path.join(root, 'empty'))
     expect(vx(root, 'prune', 'a', '--out-dir', 'empty').code).toBe(0)
     expect(await files(path.join(root, 'empty'))).toEqual([
+      '.vx/workspace.mjs',
       'package.json',
       'packages/a/package.json',
-      'vx.workspace.mjs',
     ])
   })
 
@@ -361,13 +361,13 @@ export default { plugins: [bun(), npm()] }
       stderr:
         'vx prune: --out-dir needs a path, got the flag --docker\nusage: vx prune <project...> [--out-dir <dir>] [--docker] [--production]\n',
     })
-    expect((await readdir(root)).sort()).toEqual(['package.json', 'packages', 'vx.workspace.mjs'])
+    expect((await readdir(root)).sort()).toEqual(['.vx', 'package.json', 'packages'])
     // CONTROL: the `=` form names a path that starts with '-'.
     expect(vx(root, 'prune', 'a', '--out-dir=-x').code).toBe(0)
     expect(await files(path.join(root, '-x'))).toEqual([
+      '.vx/workspace.mjs',
       'package.json',
       'packages/a/package.json',
-      'vx.workspace.mjs',
     ])
   })
 

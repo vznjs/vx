@@ -53,10 +53,10 @@ describe('a signing cache plugin needs no core change', () => {
         const store = path.join(fx.root, '.bucket')
         await writeFile(path.join(fx.root, 'signed-cache.ts'), example())
         await writeFile(path.join(fx.root, 'dir-remote.mjs'), DIR_REMOTE)
-        await writeFile(
-          path.join(fx.root, 'vx.workspace.ts'),
-          `import { signedCache } from './signed-cache.ts'
-import dirRemote from './dir-remote.mjs'
+        await Bun.write(
+          path.join(fx.root, '.vx/workspace.ts'),
+          `import { signedCache } from '../signed-cache.ts'
+import dirRemote from '../dir-remote.mjs'
 export default { plugins: [signedCache(dirRemote(${JSON.stringify(store)}), ${JSON.stringify(pub)})] }
 `,
         )
@@ -64,7 +64,7 @@ export default { plugins: [signedCache(dirRemote(${JSON.stringify(store)}), ${JS
         const go = async (key: string | undefined): Promise<string> => {
           if (key === undefined) delete process.env['CACHE_SIGNING_KEY']
           else process.env['CACHE_SIGNING_KEY'] = key
-          await rm(path.join(fx.root, '.vx'), { recursive: true, force: true })
+          await rm(path.join(fx.root, '.vx', 'cache'), { recursive: true, force: true })
           await rm(out, { force: true })
           const r = await run({ cwd: fx.root, tasks: ['build'], log: silentLogger(fx) })
           return r.outcomes[0]!.status

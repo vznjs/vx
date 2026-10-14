@@ -1,5 +1,5 @@
 // `nx()` applies nx.json's `parallel`, `defaultBase` and `maxCacheSize`
-// live; a migration writes them into the `vx.workspace.ts` it writes, and
+// live; a migration writes them into the `.vx/workspace.ts` it writes, and
 // names each field to add to one already there. Silent, nx-examples'
 // `parallel: 1` ran on every core once migrated; nartc/mapper's migration
 // wrote the file and still told the user to add `affectedBase` to it.
@@ -29,9 +29,9 @@ const notes = async (nxJson: unknown): Promise<string[]> => {
 
 it('names each nx.json run setting the written workspace file needs', async () => {
   expect(await notes({ parallel: 1, defaultBase: 'master', maxCacheSize: '10GB' })).toEqual([
-    'nx.json `parallel: 1`: add `run: { concurrency: 1 }` to vx.workspace.ts',
-    'nx.json `defaultBase` "master": add `run: { affectedBase: "master" }` to vx.workspace.ts',
-    'nx.json `maxCacheSize`: add `cache: { retention: { maxSize: "10GB" } }` to vx.workspace.ts',
+    'nx.json `parallel: 1`: add `run: { concurrency: 1 }` to .vx/workspace.ts',
+    'nx.json `defaultBase` "master": add `run: { affectedBase: "master" }` to .vx/workspace.ts',
+    'nx.json `maxCacheSize`: add `cache: { retention: { maxSize: "10GB" } }` to .vx/workspace.ts',
   ])
   // The legacy spellings Nx still reads.
   expect(
@@ -40,8 +40,8 @@ it('names each nx.json run setting the written workspace file needs', async () =
       affected: { defaultBase: 'develop' },
     }),
   ).toEqual([
-    'nx.json `parallel: 3`: add `run: { concurrency: 3 }` to vx.workspace.ts',
-    'nx.json `defaultBase` "develop": add `run: { affectedBase: "develop" }` to vx.workspace.ts',
+    'nx.json `parallel: 3`: add `run: { concurrency: 3 }` to .vx/workspace.ts',
+    'nx.json `defaultBase` "develop": add `run: { affectedBase: "develop" }` to .vx/workspace.ts',
   ])
   // CONTROL: none set, `0` is no cap, and the environment is not read.
   process.env['NX_PARALLEL'] = '2'
@@ -52,7 +52,7 @@ it('names each nx.json run setting the written workspace file needs', async () =
   }
 })
 
-it('writes them into the vx.workspace.ts it writes; one it cannot read stays a note', async () => {
+it('writes them into the .vx/workspace.ts it writes; one it cannot read stays a note', async () => {
   await writeFile(
     path.join(root, 'nx.json'),
     JSON.stringify({ parallel: 2, defaultBase: 'main', maxCacheSize: '10GB' }),
@@ -79,8 +79,10 @@ it('writes them into the vx.workspace.ts it writes; one it cannot read stays a n
   })
   const out = await new Response(proc.stdout).text()
   expect(await proc.exited).toBe(0)
-  const ws = await readFile(path.join(root, 'vx.workspace.ts'), 'utf8')
-  expect([ws.match(/^ {2}\w+: .*,$/gm), out.includes('to vx.workspace.ts')]).toEqual([
+  const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
+  // Beside it, the ignore that keeps only the machine-local cache out of git.
+  expect(await readFile(path.join(root, '.vx/.gitignore'), 'utf8')).toBe('/cache\n')
+  expect([ws.match(/^ {2}\w+: .*,$/gm), out.includes('to .vx/workspace.ts')]).toEqual([
     [
       "  run: { concurrency: 2, affectedBase: 'main' },",
       "  cache: { retention: { maxSize: '10GB' } },",
@@ -92,7 +94,7 @@ it('writes them into the vx.workspace.ts it writes; one it cannot read stays a n
   expect(
     (await migrateNx(root, [], 'ts', undefined, true)).notes.filter((n) => n.startsWith('nx.json')),
   ).toEqual([
-    'nx.json `maxCacheSize`: add `cache: { retention: { maxSize: "1.5 TB" } }` to vx.workspace.ts',
+    'nx.json `maxCacheSize`: add `cache: { retention: { maxSize: "1.5 TB" } }` to .vx/workspace.ts',
   ])
 })
 
@@ -112,7 +114,7 @@ it('names them where the workspace file is already there', async () => {
       dependencies: {},
     }),
   )
-  await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default { plugins: [] }\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
   const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
   const proc = Bun.spawn([process.execPath, '--no-install', bin, '--no-install'], {
     cwd: root,
@@ -122,12 +124,12 @@ it('names them where the workspace file is already there', async () => {
   })
   const out = await new Response(proc.stdout).text()
   expect(await proc.exited).toBe(0)
-  expect(out).toContain('nx.json `parallel: 1`: add `run: { concurrency: 1 }` to vx.workspace.ts')
+  expect(out).toContain('nx.json `parallel: 1`: add `run: { concurrency: 1 }` to .vx/workspace.ts')
   expect(out).toContain(
-    'nx.json `defaultBase` "master": add `run: { affectedBase: "master" }` to vx.workspace.ts',
+    'nx.json `defaultBase` "master": add `run: { affectedBase: "master" }` to .vx/workspace.ts',
   )
-  expect(await readFile(path.join(root, 'vx.workspace.mjs'), 'utf8')).toBe(
+  expect(await readFile(path.join(root, '.vx/workspace.mjs'), 'utf8')).toBe(
     'export default { plugins: [] }\n',
   )
-  expect(await Bun.file(path.join(root, 'vx.workspace.ts')).exists()).toBe(false)
+  expect(await Bun.file(path.join(root, '.vx/workspace.ts')).exists()).toBe(false)
 })

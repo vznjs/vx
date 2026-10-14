@@ -1,7 +1,7 @@
 // The run-level plugin capabilities (cache / executor / telemetry), the
 // seams a plugin fills where core once hardcoded its own hooks
 // (docs/design/pipeline-2026-09.md). Each test declares a VxPlugin
-// in vx.workspace.mjs and asserts the seam is consulted. Nothing is applied
+// in .vx/workspace.mjs and asserts the seam is consulted. Nothing is applied
 // by default: every e2e fixture declares the local executor + cache plugins
 // AFTER its own, and the NO DEFAULTS pin below is what a bare workspace sees.
 
@@ -337,7 +337,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
   })
 })
 
-// --- end-to-end through run() / cli via vx.workspace.mjs ---------------
+// --- end-to-end through run() / cli via .vx/workspace.mjs ---------------
 
 describe('plugin capabilities — end-to-end', () => {
   it('a cache plugin is consulted during a real run()', async () => {
@@ -345,7 +345,7 @@ describe('plugin capabilities — end-to-end', () => {
     try {
       // The plugin records that it was consulted, then declines.
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
@@ -382,7 +382,7 @@ describe('plugin capabilities — end-to-end', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/bad-cache',
@@ -414,7 +414,7 @@ describe('executor capability — config validation', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/exec', `{ executor() { return undefined } }`)}] }`,
       )
       const cfg = await loadWorkspaceConfig(workspaceRoot)
@@ -428,7 +428,7 @@ describe('executor capability — config validation', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/exec', `{ executor: 42 }`)}] }`,
       )
       await expect(loadWorkspaceConfig(workspaceRoot)).rejects.toThrow(
@@ -455,7 +455,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
@@ -491,7 +491,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
@@ -528,7 +528,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/down',
@@ -579,7 +579,7 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: { a: { exec: { command: 'echo a' } }, b: { exec: { command: 'echo b' } } } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/down',
@@ -626,7 +626,7 @@ describe('executor capability — end-to-end via run()', () => {
          } } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource(
           [
             pluginSource(
@@ -693,7 +693,7 @@ describe('executor capability — end-to-end via run()', () => {
            }) }`,
         )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([remote('first'), remote('second')]),
       )
       await gitInit(workspaceRoot)
@@ -746,7 +746,7 @@ describe('executor capability — end-to-end via run()', () => {
          } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/inputs-spy',
@@ -799,7 +799,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/inputs-spy',
@@ -837,7 +837,7 @@ describe('executor capability — end-to-end via run()', () => {
          } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/remote',
@@ -885,7 +885,7 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: { ${tasks} } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/pool',
@@ -954,7 +954,7 @@ describe('executor capability — end-to-end via run()', () => {
              },
            }`
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource('org/pool-low', pool(true)),
           pluginSource('org/pool-high', pool(false)),
@@ -995,7 +995,7 @@ describe('executor capability — end-to-end via run()', () => {
          } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/demand',
@@ -1046,7 +1046,7 @@ describe('executor capability — end-to-end via run()', () => {
          } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/remote',
@@ -1088,7 +1088,7 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource('org/broken-exec', `{ executor() { throw new Error('exec boom') } }`),
         ]),
@@ -1132,7 +1132,7 @@ describe('executor capability — end-to-end via run()', () => {
          } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/remote',
@@ -1180,7 +1180,7 @@ describe('executor capability — end-to-end via run()', () => {
          } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/remote',
@@ -1237,7 +1237,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/ctx',
@@ -1458,7 +1458,7 @@ describe('executor capability — end-to-end via run()', () => {
          } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/remote',
@@ -1507,7 +1507,7 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
-  // vx.workspace.* marks the root (owner, 2026-10-13): without one there is
+  // .vx/workspace.* marks the root (owner, 2026-10-13): without one there is
   // no workspace to run.
   it('NO WORKSPACE FILE: the run is refused, naming `vx init`', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
@@ -1544,7 +1544,7 @@ describe('TaskOutcome.where — executor placement attribution', () => {
          } }`,
       )
       await Bun.write(
-        path.join(workspaceRoot, 'vx.workspace.mjs'),
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
         localWorkspaceSource([
           pluginSource(
             'org/worker',

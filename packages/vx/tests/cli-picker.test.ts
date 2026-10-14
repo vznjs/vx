@@ -16,7 +16,7 @@ describe('vx run interactive picker', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-pick-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     for (const name of ['alpha', 'beta']) {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })
@@ -93,8 +93,8 @@ describe('vx run interactive picker', () => {
   it('lists a task a `project` plugin gave a config-less package', async () => {
     // The menu is what a run would run: a package with no config file
     // still has tasks when a plugin's `project` stage fills them.
-    await writeFile(
-      path.join(root, 'vx.workspace.mjs'),
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
       `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
         'gen',
         `{ project(config, ctx) {

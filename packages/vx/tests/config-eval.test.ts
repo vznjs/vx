@@ -387,9 +387,9 @@ describe('a first load that never settles (D-66)', () => {
 
 describe('evaluateConfigFresh: what a config prints (D-64)', () => {
   it("goes to stderr on every route, never the parent's stdout", async () => {
-    // A repeat load evaluates here, and `vx mcp`'s redirect covers only the
-    // parent thread: the second tool call's config output landed between two
-    // JSON-RPC responses. A child process, so its fd 1 is readable.
+    // A repeat load evaluates here, and the parent's redirect covers only
+    // the parent thread: a config's output on a repeat load landed in the
+    // verb's JSON. A child process, so its fd 1 is readable.
     const config = await write(
       "console.log('from console.log')\nconsole.info('from console.info')\n" +
         "process.stdout.write('from stdout.write\\n')\n" +
@@ -435,7 +435,7 @@ describe('a first load in process: what a config prints', () => {
     )
     const ws = path.join(root, 'ws')
     await mkdir(ws)
-    await writeFile(path.join(ws, 'vx.workspace.mjs'), prints + 'export default {}\n')
+    await Bun.write(path.join(ws, '.vx/workspace.mjs'), prints + 'export default {}\n')
     const driver = path.join(root, 'first-load.ts')
     await writeFile(
       driver,
@@ -683,9 +683,9 @@ describe('validation stays in the parent process', () => {
   it('refuses a workspace Promise default of no object, as a project one is (D-6)', async () => {
     // Checked only before the await: `null` crashed the validator with a
     // TypeError stack, `42` loaded as a workspace with no config.
-    const file = path.join(root, 'vx.workspace.mjs')
+    const file = path.join(root, '.vx/workspace.mjs')
     for (const value of ['null', '42']) {
-      await writeFile(file, `export default Promise.resolve(${value})\n`)
+      await Bun.write(file, `export default Promise.resolve(${value})\n`)
       const err = await loadWorkspaceConfig(root).then(
         () => new Error('NO THROW'),
         (e: unknown) => e as Error,

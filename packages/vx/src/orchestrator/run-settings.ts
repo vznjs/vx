@@ -1,5 +1,5 @@
 // A run's run-level settings, resolved once before any task: the flag
-// (a RunOptions field) beats its variable, which beats `vx.workspace`
+// (a RunOptions field) beats its variable, which beats `.vx/workspace`
 // (src/settings.ts). A task's own `exec.timeout` / `exec.retries` is
 // applied where the task runs, above all three.
 

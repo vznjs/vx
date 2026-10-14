@@ -1,6 +1,6 @@
 // A failed task's output and the files it names, kept in the run's history
 // (`run_output`) so an agent reads why a task failed without the terminal:
-// `vx last --format json` and `@vzn/vx-mcp`'s getFailures read it.
+// `vx last --format json` reads it.
 
 import { chmod, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'

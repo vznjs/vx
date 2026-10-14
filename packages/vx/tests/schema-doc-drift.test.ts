@@ -510,10 +510,10 @@ const DISCOVERY_CASES: Array<[string, () => Promise<string | null>]> = [
   ],
 ]
 
-/** A `vx.workspace.ts` exporting `body`, loaded through the real loader. */
+/** A `.vx/workspace.ts` exporting `body`, loaded through the real loader. */
 function workspaceConfig(body: string): () => Promise<string | null> {
   return () =>
-    failure({ 'vx.workspace.ts': `${PLUGIN_IMPORT}export default ${body}\n` }, loadWorkspaceConfig)
+    failure({ '.vx/workspace.ts': `${PLUGIN_IMPORT}export default ${body}\n` }, loadWorkspaceConfig)
 }
 
 /** A plugin entry as fixture source: `definePlugin` over a package named `name`. */

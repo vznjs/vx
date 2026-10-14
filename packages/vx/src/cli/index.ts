@@ -176,7 +176,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       }
       const loadNote =
         resolved !== null && 'loadError' in resolved
-          ? `\n  (plugin verbs could not be looked up: vx.workspace failed to load: ${resolved.loadError})`
+          ? `\n  (plugin verbs could not be looked up: .vx/workspace failed to load: ${resolved.loadError})`
           : ''
       // Another tool's verb: the pointer, but only after the plugins had
       // their chance — a workspace that declares a plugin verb of that name keeps it.
@@ -202,7 +202,7 @@ export async function run(argv: readonly string[]): Promise<number> {
       if (command === 'serve' || command === 'dev') {
         // vx core is only a task runner — it has no service layer of its
         // own. A dashboard, remote cache, distributed execution, etc. are
-        // provided by PLUGINS (declared in vx.workspace.ts), never by core.
+        // provided by PLUGINS (declared in .vx/workspace.ts), never by core.
         // We keep this neutral hint for the common muscle-memory verbs, but
         // core names no specific plugin package: any package can provide
         // these.
@@ -217,8 +217,8 @@ export async function run(argv: readonly string[]): Promise<number> {
       // help after a typo was a hundred lines past the hint that mattered.
       // The verbs this workspace's plugins declare are verbs HERE, so they
       // join the "did you mean" set, and when nothing is close the second
-      // line says where a verb can come from: `vx mpc` in a workspace
-      // declaring `mcp` read as a plain unknown command, and `vx mcp`
+      // line says where a verb can come from: `vx prnue` in a workspace
+      // declaring `prune` read as a plain unknown command, and `vx prune`
       // before the plugin was declared said nothing about the file that
       // would declare it (2026-09-20).
       // A word that opens with a dash is a flag, and vx itself takes only
@@ -272,5 +272,5 @@ function verbSourceNote(resolved: unknown, declaredVerbs: readonly string[]): st
     return `  This workspace's plugins declare: ${[...declaredVerbs].sort().join(', ')}.\n`
   }
   const here = resolved === null ? 'there is no workspace here' : 'this workspace declares none'
-  return `  A plugin declared in vx.workspace.ts can add verbs; ${here}.\n`
+  return `  A plugin declared in .vx/workspace.ts can add verbs; ${here}.\n`
 }

@@ -7,7 +7,7 @@ import { parseDuration } from './size.js'
 /** Default upper bound on one end-of-run flush/teardown await. */
 const DEFAULT_TIMEOUT_MS = 3000
 
-/** A bound the run resolved from its flag or `vx.workspace`. */
+/** A bound the run resolved from its flag or `.vx/workspace`. */
 export interface SettleBound {
   readonly ms: number
   readonly from: 'flag' | 'workspace'

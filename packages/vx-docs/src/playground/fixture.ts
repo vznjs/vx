@@ -98,7 +98,7 @@ const pkg = (name: string, deps: Record<string, string> = {}): string =>
 
 /** Root-relative path → contents: the tracked tree of the fixture repository. */
 export const FILES: Record<string, string> = {
-  '.gitignore': '.vx/\nnode_modules/\ndist/\n',
+  '.gitignore': '.vx/cache/\nnode_modules/\ndist/\n',
   'package.json': `${JSON.stringify({ name: 'pg-root', private: true, workspaces: ['packages/*'] }, null, 2)}\n`,
   'bun.lock': '{\n  "lockfileVersion": 1,\n  "workspaces": {}\n}\n',
   'tsconfig.base.json': '{ "compilerOptions": { "strict": true } }\n',

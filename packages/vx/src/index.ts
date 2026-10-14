@@ -9,19 +9,11 @@
 export { VERSION } from './version.js'
 
 // Clean error type — user-input failures print a message without a stack.
-// `clampInt` rides along for the same reason the status predicates do:
-// without it on the façade an integration package writes its own, and that
-// had already happened. A bounds helper whose floor is load-bearing (a
-// fractional SQL LIMIT is a datatype mismatch, not a smaller page) should
-// have one implementation.
-export { clampInt, UserError, isUserError } from './util/index.js'
+export { UserError, isUserError } from './util/index.js'
 // Every hook a plugin may fill, in pipeline order — the one list the
 // loader, the host and `vx info` read; exported so a doc pin outside core
 // (the site's guides) holds its tables to the same list.
 export { PLUGIN_HOOKS, type PluginHook } from './config.js'
-// The workspace doctor's facts (`vx info`), for a host that answers the
-// same question over another surface — `@vzn/vx-mcp`'s `getWorkspaceInfo`.
-export { collectInfo, type CollectInfoOptions, type InfoFacts } from './orchestrator/index.js'
 // The machine as this process may use it — cores and memory capped by the
 // cgroup a container runs under. Core's default worker count reads the
 // first; a policy that budgets memory (`@vzn/vx-schedule-history`) reads
@@ -31,12 +23,6 @@ export { machineMemoryBytes, machineParallelism } from './util/index.js'
 // wildcards (`[` `]` are not; item 667) — for a plugin that turns declared
 // outputs into something else (`@vzn/vx-reapi`'s literal `output_paths`).
 export { isLiteralPattern, normalizeGlob } from './util/index.js'
-// A task's command as vx prints it: values of its `exec.env.secret` names
-// masked. `vx show` and telemetry show this; a plugin that hands a command
-// to someone else (`@vzn/vx-mcp`'s `listTasks`, an AI agent) does too (L-26).
-// `maskedLine` is the same for a line no one task owns: the error `vx mcp`
-// hands an agent (L-11).
-export { maskedCommand, maskedLine } from './util/index.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {
@@ -121,8 +107,8 @@ export type { ProjectMeta } from './workspace/index.js'
 // that needs a project's transitive closure the way `vx run` computes it.
 export { buildPackageGraph } from './workspace/index.js'
 // The run path's RESOLVED view — plugin `config` and `project` stages
-// applied, cached evaluations served — for a reader outside the CLI (the
-// MCP server's `listTasks`, an embedder's task catalog). What `vx show`
+// applied, cached evaluations served — for a reader outside the CLI
+// (`@vzn/vx-schedule-history`, an embedder's task catalog). What `vx show`
 // prints.
 export { loadResolvedProjects } from './orchestrator/index.js'
 export type { ProjectEntry } from './workspace/index.js'
@@ -148,7 +134,7 @@ export type {
 // Plugin API — the run-level extension points. Behavior capabilities
 // (executor / cache) change WHAT/HOW work runs; the observe-only `telemetry`
 // capability is the canonical data-export path and cannot change behavior.
-// A plugin is declared in vx.workspace.ts via defineWorkspace({ plugins }).
+// A plugin is declared in .vx/workspace.ts via defineWorkspace({ plugins }).
 // See docs/design/observability-architecture-2026-06.md.
 // The claimant's shell for a lockfile plugin (`@vzn/vx-lockfile`):
 // the claim, the per-project key, the memo and the `--affected` diff around
@@ -250,28 +236,3 @@ export type {
 
 // The serializable run result and its per-task views (what `run()` returns).
 export type { RunResult, TaskView, OutcomeView } from './orchestrator/index.js'
-
-// The run-history queries a reader outside the CLI takes today: `vx why`'s
-// answer, a run's failures and a task's log, which `@vzn/vx-mcp` serves. The event bus /
-// wire form and the other history readers (`listRuns`, `getRun`, …) left the
-// façade 2026-09-10 with no consumer; the telemetry seam above is the
-// canonical export path.
-export {
-  cacheKeyDiff,
-  latestRunId,
-  resolveRunId,
-  inputWriters,
-  rootCauses,
-  runFailures,
-  taskLog,
-  whyDidThisRerunQuery,
-} from './orchestrator/index.js'
-export type {
-  CacheKeyDiff,
-  OutputLocation,
-  InputWriter,
-  RootCause,
-  RunFailures,
-  TaskFailure,
-  TaskLog,
-} from './orchestrator/index.js'

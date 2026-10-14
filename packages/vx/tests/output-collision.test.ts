@@ -118,7 +118,7 @@ describe('rules.exclusiveOutputs refuses an overlap WITH an edge (X-53)', () => 
         "cache.outputs.files — vx cleans a task's declared outputs before it runs and before a " +
         "cache-hit restore, so whichever of these runs second DELETES the other's output. Give " +
         'each task its own output path, or set run.rules.exclusiveOutputs: false in ' +
-        "vx.workspace.ts to let a dependant add to its upstream's outputs.",
+        ".vx/workspace.ts to let a dependant add to its upstream's outputs.",
     )
     expect(() => graph(twenty, {})).toThrow(/run\.rules\.exclusiveOutputs: false/)
     expect(() => graph(twenty, { exclusiveOutputs: true })).toThrow(/exclusiveOutputs: false/)

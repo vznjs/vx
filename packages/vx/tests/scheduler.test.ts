@@ -1984,7 +1984,7 @@ describe('runGraph reports a foreign-copy UserError plainly', () => {
 })
 
 // An observer is someone else's code — a reporter, an embedder's
-// progress bar, the MCP server. The scheduler holds the worker slot
+// progress bar, a plugin. The scheduler holds the worker slot
 // across the hook, so a throw that escaped would strand the tick with
 // the slot held and the run would never finish. The catch keeps the run
 // alive; the notice is the only thing that says the observer is broken,

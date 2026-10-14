@@ -37,9 +37,9 @@ Durations take `s`, `m`, `h` and `d` (`30d`, `24h`). Sizes take `K`,
 
 ## Set it once, forget it
 
-The same policy can run by itself. Declare it in `vx.workspace.ts`:
+The same policy can run by itself. Declare it in `.vx/workspace.ts`:
 
-```ts title="vx.workspace.ts"
+```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({

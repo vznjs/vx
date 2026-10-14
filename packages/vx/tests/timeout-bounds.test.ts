@@ -104,9 +104,9 @@ describe('declared timeouts are REFUSED past the bound', () => {
       // The workspace rung feeds every task that declares no timeout of its
       // own, so an unbounded value here kills the WHOLE run instantly rather
       // than one task — a strictly worse blast radius than `exec.timeout`.
-      const write = async (v: number): Promise<void> =>
-        await writeFile(
-          path.join(root, 'vx.workspace.mjs'),
+      const write = async (v: number): Promise<number> =>
+        await Bun.write(
+          path.join(root, '.vx/workspace.mjs'),
           `export default { run: { timeout: '${v}ms' } }`,
         )
 
@@ -203,7 +203,7 @@ describe('the refusal reaches a real run', () => {
     const dir = path.join(root, 'packages/a')
     await mkdir(path.join(dir, 'src'), { recursive: true })
     await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["packages/*"]}')
-    await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
     await writeFile(path.join(dir, 'package.json'), '{"name":"a","version":"1.0.0"}')
     await writeFile(path.join(dir, 'src', 'a.ts'), 'x')
     await writeFile(
