@@ -819,8 +819,10 @@ Declared `cache.outputs.files` are wiped in two distinct places:
   list instead of walking again: nothing is awaited between them (X-161).
 
 Both branches use the same `cleanOutputs` helper (`src/cache/inputs.ts`)
-with the same boundary rules, and two directories stay off the wipe
-whatever the glob: `.git` and `.vx/cache` (`OUTPUT_NEVER`). `node_modules` is
+with the same boundary rules, and vx's own paths stay off the wipe
+whatever the glob: `.git`, `.vx` and each `vx.lock.json` (`OUTPUT_NEVER`;
+`.vx` holds the workspace config and the lock, which a clean deleted and a
+hit restored stale while `.vx/cache` alone was listed). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
 legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
