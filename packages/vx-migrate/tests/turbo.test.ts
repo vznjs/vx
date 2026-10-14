@@ -658,12 +658,12 @@ describe('a committed file under an output', () => {
 
 describe('output negation', () => {
   it(
-    'a negation that carves the package root out of a wildcard output runs the task uncached',
+    'a wildcard output carved by negations stays cached and names what the clean deletes',
     async () => {
       // medusa: `outputs: ["!node_modules/**", "!src/**", "*/**", ".medusa/**"]`.
-      // `*/**` reaches every source dir the negations do not name, and the
-      // clean before exec would delete them. Uncached, and the sources
-      // survive a real run.
+      // `*/**` reaches every dir the negations do not name; committed files
+      // there are taken back, untracked ones are cleaned (EA, 2026-10-14:
+      // nx()'s rule), and the sources under `src` survive a real run.
       await writeFile(
         path.join(root, 'turbo.json'),
         JSON.stringify({
@@ -679,9 +679,14 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
-      expect(app.config.cache).toBeUndefined()
+      expect(app.config.cache?.outputs.files).toEqual([
+        '!node_modules/**',
+        '!src/**',
+        '*/**',
+        '.medusa/**',
+      ])
       expect(log.lines.join('\n')).toContain(
-        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): output "*/**": a wildcard first segment reaches the sources, which vx cleans before every run — task runs uncached; declare the exact outputs in a vx.config to cache it',
+        '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
       )
       const result = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       expect(result.ok).toBe(true)
@@ -713,11 +718,8 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
       expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist/**'])
-      // CONTROL: lib tracks a file under a `dist`, which the clean would reach.
-      expect(cacheOf('lib#build')).toBeUndefined()
-      expect(log.lines.join('\n')).toContain(
-        '[@vzn/vx-migrate] lib#build: output "**/dist/**": a wildcard first segment reaches the sources',
-      )
+      // CONTROL: lib commits a file the glob reaches; it is taken back and kept.
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist/**', '!src/dist/keep.js'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const nested = path.join(root, 'packages', 'app', 'rsc', 'dist', 'r.js')
       expect((await build()).ok).toBe(true)
@@ -746,11 +748,8 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['test'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
       expect(cacheOf('app#test')?.outputs.files).toEqual(['coverage/**', '*.xml'])
-      // CONTROL: lib tracks an `.xml`, which the clean would reach.
-      expect(cacheOf('lib#test')).toBeUndefined()
-      expect(log.lines.join('\n')).toContain(
-        '[@vzn/vx-migrate] lib#test: output "*.xml": a wildcard first segment reaches the sources',
-      )
+      // CONTROL: lib commits a file the glob reaches; it is taken back and kept.
+      expect(cacheOf('lib#test')?.outputs.files).toEqual(['coverage/**', '*.xml', '!pom.xml'])
       const test = () => run({ cwd: root, tasks: ['test'], log: silent(), handleSignals: false })
       const report = path.join(root, 'packages', 'app', 'junit.xml')
       expect((await test()).ok).toBe(true)
@@ -781,11 +780,8 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
       expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*/**'])
-      // CONTROL: lib tracks a file under a `dist-*` directory, which the clean would reach.
-      expect(cacheOf('lib#build')).toBeUndefined()
-      expect(log.lines.join('\n')).toContain(
-        '[@vzn/vx-migrate] lib#build: output "dist-*/**": a wildcard first segment reaches the sources',
-      )
+      // CONTROL: lib commits a file the glob reaches; it is taken back and kept.
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*/**', '!dist-types/keep.d.ts'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const out = path.join(root, 'packages', 'app', 'dist-esm', 'a.js')
       expect((await build()).ok).toBe(true)

@@ -739,9 +739,10 @@ describe('turbo-map: Turbo’s glob grammar', () => {
 })
 
 describe('turbo-map: a wildcard-first output of an untracked kind', () => {
-  // n8n's tests output `*.xml` (junit), 143 tasks uncached by the
-  // wildcard-first rule; one segment and a literal extension the package
-  // tracks none of reaches no source.
+  // n8n's tests output `*.xml` (junit); one segment and a literal
+  // extension the package tracks none of reaches no source, so it is not
+  // named as reaching untracked files the clean deletes. Either way the
+  // task stays cached once git's file list is known (2026-10-14).
   it.each([
     ['*.xml', true],
     ['./junit-*.xml', true],
@@ -766,7 +767,7 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
     ['*/**', false],
     ['package*/**', false],
     ['[x]*/**', false],
-  ])('%s cached: %p', async (glob, cached) => {
+  ])('%s quiet: %p', async (glob, quiet) => {
     await writeFile(
       path.join(root, 'turbo.json'),
       JSON.stringify({ tasks: { test: { outputs: [glob] } } }),
@@ -796,7 +797,11 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
             : { exts: new Set(), dirs: new Set(), tops: new Set(), files: [] },
       },
     )
-    expect(mapped.projects[0]!.tasks[0]!.task!['cache'] !== undefined).toBe(cached)
+    const t = mapped.projects[0]!.tasks[0]!
+    expect({
+      cached: t.task!['cache'] !== undefined,
+      quiet: !t.todos.some((todo) => todo.includes('untracked file this glob reaches')),
+    }).toEqual({ cached: true, quiet })
   })
 
   it('without the tracked set every wildcard-first output runs uncached', async () => {

@@ -74,6 +74,7 @@ describe('turbo-map: a wildcard-first output with a literal rest', () => {
   const stubs = (n: number) =>
     Array.from({ length: n }, (_, i) => `s${String(i).padStart(2, '0')}/package.json`)
 
+  // Past the runtime's limit, `spareTrackedOutputs` (the later pass) makes it uncached.
   it('takes back each committed match, up to the runtime limit', async () => {
     expect({
       none: await map('*/package.json', ['package.json', 'src/index.ts', 'src/a/package.json']),
@@ -85,8 +86,8 @@ describe('turbo-map: a wildcard-first output with a literal rest', () => {
       none: ['*/package.json'],
       two: ['*/package.json', '!node/package.json', '!web/package.json'],
       limit: 17,
-      over: null,
-      wildRest: null,
+      over: ['*/package.json'],
+      wildRest: ['*/*.json'],
     })
   })
 })
