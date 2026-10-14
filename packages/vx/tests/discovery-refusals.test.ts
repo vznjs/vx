@@ -44,13 +44,13 @@ const refusal = (named: unknown): Promise<string> =>
 
 describe('a plugin-named project discovery cannot hold is refused, whole', () => {
   it('a shape that is not { dir, name?, deps?, reach? }', async () => {
-    const expected = 'expected { dir: string, name?: string, deps?: string[], reach?: string[] }'
-    expect(await refusal({ dir: 1 })).toBe(`plugin 'p' named project {"dir":1}: ${expected}`)
+    const expected = ': expected { dir: string, name?: string, deps?: string[], reach?: string[] }'
+    expect(await refusal({ dir: 1 })).toBe(`plugin 'p' named project {"dir":1}${expected}`)
     expect(await refusal({ dir: 'x', name: '' })).toBe(
-      `plugin 'p' named project {"dir":"x","name":""}: ${expected}`,
+      `plugin 'p' named project {"dir":"x","name":""}${expected}`,
     )
     expect(await refusal({ dir: 'packages/a', reach: [1] })).toBe(
-      `plugin 'p' named project {"dir":"packages/a","reach":[1]}: ${expected}`,
+      `plugin 'p' named project {"dir":"packages/a","reach":[1]}${expected}`,
     )
   })
 
