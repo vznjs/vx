@@ -11,7 +11,7 @@
 //
 // Bun.YAML is the parser: no dependency, and the file is plain YAML.
 
-import { reachDigests } from '@vzn/vx'
+import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { record } from './json.js'
 
 export interface Lockfile {
@@ -273,6 +273,26 @@ function buildGraph(lock: Lockfile): Graph {
     for (const [name, version] of deps) link(from, '.', name, version)
   }
   return { index, material, edges }
+}
+
+/**
+ * Each importer's `link:` dependencies on other importers. pnpm records
+ * an auto-installed peer (`autoInstallPeers`, the default) under
+ * `dependencies` like any other, so `peers` is empty here: the plugin
+ * asks the importer's manifest which of these are peers.
+ */
+export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImporter> {
+  const out = new Map<string, LockfileImporter>()
+  for (const [dir, deps] of lock.importers) {
+    const links: Record<string, string> = {}
+    for (const [name, version] of deps) {
+      if (!version.startsWith('link:')) continue
+      const target = joinPosix(dir, version.slice('link:'.length))
+      if (target !== dir && lock.importers.has(target)) links[name] = target
+    }
+    out.set(dir, { deps: links, peers: {} })
+  }
+  return out
 }
 
 /** `packages/a` + `../b` → `packages/b`; `.` + `packages/a` → `packages/a`. POSIX, as the lockfile writes paths. */

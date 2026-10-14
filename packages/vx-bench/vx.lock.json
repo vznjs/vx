@@ -141,7 +141,8 @@
         "inputs": {
           "files": [
             "update-site.ts",
-            "results.json"
+            "results.json",
+            "package.json"
           ],
           "workspaceFiles": [
             "packages/vx-docs/src/pages/index.astro",
@@ -227,7 +228,8 @@
       "cache": {
         "inputs": {
           "files": [
-            "**/*"
+            "**/*",
+            "package.json"
           ]
         },
         "outputs": {

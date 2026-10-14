@@ -20,6 +20,12 @@ export function depsOf(
   return out
 }
 
+/** The `peerDependencies` names an entry installs under no other field. */
+export function peerOnly(e: Json): ReadonlySet<string> {
+  const installed = depsOf(e, DEP_FIELDS.slice(0, 3))
+  return new Set(Object.keys(record(e['peerDependencies']) ?? {}).filter((n) => !installed.has(n)))
+}
+
 export function record(v: unknown): Json | undefined {
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : undefined
 }

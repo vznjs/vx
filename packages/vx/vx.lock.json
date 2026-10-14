@@ -39,7 +39,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -89,7 +90,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -139,7 +141,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -189,7 +192,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -239,7 +243,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -289,7 +294,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -339,7 +345,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -389,7 +396,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -439,7 +447,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -489,7 +498,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -539,7 +549,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -589,7 +600,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "README.md"
@@ -976,7 +988,8 @@
           "files": [
             "src/**",
             "index.ts",
-            "tsconfig.json"
+            "tsconfig.json",
+            "package.json"
           ]
         },
         "outputs": {
@@ -1087,7 +1100,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "workspaceFiles": [
             "packages/*/**",
@@ -1153,7 +1167,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ]
         },
         "outputs": {
@@ -1183,7 +1198,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ]
         },
         "outputs": {
@@ -1254,7 +1270,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "runtime": [
             "bun --version"
@@ -1302,7 +1319,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "runtime": [
             "bun --version"
@@ -1350,7 +1368,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "runtime": [
             "bun --version"
@@ -1398,7 +1417,8 @@
         "inputs": {
           "files": [
             "**/*",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ],
           "runtime": [
             "bun --version"

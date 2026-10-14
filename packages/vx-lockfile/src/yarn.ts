@@ -11,9 +11,13 @@
 // lockfile's root descriptors only, so a workspace's digest is the root's
 // reach through the descriptors the file resolves.
 
-import { reachDigests } from '@vzn/vx'
+import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { stable } from './pnpm.js'
 import { depsOf, record } from './json.js'
+
+/** What yarn() warns of a classic lockfile, after its name: the static part a test holds. */
+export const CLASSIC_EDGES =
+  ': yarn classic (v1) records no workspaces, so yarn() gives vx no project edges — upgrade to Yarn 2+ (`yarn set version stable`)'
 
 export interface Lockfile {
   readonly generation: 'berry' | 'classic'
@@ -37,6 +41,8 @@ export interface Lockfile {
 
 export interface Entry {
   readonly deps: ReadonlyMap<string, string>
+  /** `dependencies` alone, which a workspace entry merges its devDependencies into (berry only) */
+  readonly installed: ReadonlyMap<string, string>
   /** resolution + checksum / version + resolved + integrity */
   readonly resolution: string
 }
@@ -78,6 +84,7 @@ function parseBerry(text: string): Lockfile {
     )
     entries.set(resolution, {
       deps: depsOf(e, ['dependencies', 'peerDependencies']),
+      installed: depsOf(e, ['dependencies']),
       resolution: `${resolution}\0${stable(material)}`,
     })
     // Yarn joins a key's descriptors with ', '; a range's own trailing
@@ -135,6 +142,7 @@ function parseClassic(text: string): Lockfile {
     // to carry that edge, so each entry carries its own descriptors.
     entries.set(id, {
       deps,
+      installed: deps,
       resolution: `${fields['version'] ?? ''}\0${fields['resolved'] ?? ''}\0${fields['integrity'] ?? ''}\0${[...keys].sort().join(',')}`,
     })
     for (const k of keys) descriptors.set(k, id)
@@ -238,6 +246,99 @@ function resolveDescriptor(
   // (item 903). Every entry of the name, as for a catalog: a bump of any
   // of them moves the workspace, never a bump of none.
   return lock.names.get(name) ?? []
+}
+
+/**
+ * Each berry workspace's dependencies whose descriptor the file resolves
+ * to a workspace entry (a `workspace:` range, or a range Yarn's
+ * transparent workspaces satisfied with one), and its peers on a
+ * workspace of that name, which Yarn hoists whatever the range. Only a
+ * descriptor the file keys counts: the name fallbacks the digest takes
+ * (a catalog, an override) name no link. Classic records no workspaces,
+ * so it has none.
+ */
+export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImporter> {
+  const out = new Map<string, LockfileImporter>()
+  const dirOf = new Map<string, string>()
+  const byName = new Map<string, string>()
+  for (const [dir, id] of lock.workspaces) {
+    dirOf.set(id, dir)
+    byName.set(id.slice(0, id.indexOf('@workspace:')), dir)
+  }
+  for (const [dir, id] of lock.workspaces) {
+    const entry = lock.entries.get(id)!
+    const links = { deps: {} as Record<string, string>, peers: {} as Record<string, string> }
+    const add = (kind: 'deps' | 'peers', name: string, target: string | undefined): void => {
+      if (target !== undefined && target !== dir) links[kind][name] = target
+    }
+    for (const [name, range] of entry.installed) {
+      const keyed = keyedDescriptor(lock, id, name, range)
+      add(
+        'deps',
+        name,
+        keyed === undefined
+          ? range.startsWith('workspace:')
+            ? byName.get(name)
+            : undefined
+          : (dirOf.get(keyed) ?? linkedDir(lock, dirOf, keyed)),
+      )
+    }
+    for (const name of entry.deps.keys()) {
+      if (!entry.installed.has(name)) add('peers', name, byName.get(name))
+    }
+    out.set(dir, links)
+  }
+  return out
+}
+
+/**
+ * The workspace a `link:` or `portal:` entry symlinks, from its resolution
+ * (`b@link:../b::locator=a%40workspace%3Apackages%2Fa`): the path, from the
+ * locating workspace's dir. A `file:` entry is a copy packed at install,
+ * no link to the workspace's build.
+ */
+function linkedDir(
+  lock: Lockfile,
+  dirOf: ReadonlyMap<string, string>,
+  id: string,
+): string | undefined {
+  const m = /^(?:@[^@/]+\/)?[^@]+@(?:link|portal):([^:]*)::locator=([^&]+)/.exec(id)
+  if (m === null) return undefined
+  let locator: string
+  try {
+    locator = decodeURIComponent(m[2]!)
+  } catch {
+    return undefined
+  }
+  const from = dirOf.get(locator)
+  if (from === undefined) return undefined
+  const target = joinPosix(from, m[1]!)
+  return lock.workspaces.has(target) ? target : undefined
+}
+
+/** `packages/a` + `../b` → `packages/b`. POSIX, as the lockfile writes paths. */
+function joinPosix(base: string, rel: string): string {
+  const parts: string[] = []
+  for (const seg of `${base}/${rel}`.split('/')) {
+    if (seg === '' || seg === '.') continue
+    if (seg === '..') parts.pop()
+    else parts.push(seg)
+  }
+  return parts.length === 0 ? '.' : parts.join('/')
+}
+
+/** The entry a descriptor the file keys resolves to: as written, bound to `from`, or with berry's `npm:` prefix. */
+function keyedDescriptor(
+  lock: Lockfile,
+  from: string,
+  name: string,
+  range: string,
+): string | undefined {
+  return (
+    lock.descriptors.get(`${name}@${range}`) ??
+    lock.descriptors.get(`${name}@${range}::locator=${encodeURIComponent(from)}`) ??
+    (range.includes(':') ? undefined : lock.descriptors.get(`${name}@npm:${range}`))
+  )
 }
 
 /**

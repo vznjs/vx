@@ -25,7 +25,8 @@
       "cache": {
         "inputs": {
           "files": [
-            "src/**"
+            "src/**",
+            "package.json"
           ]
         },
         "outputs": {
@@ -99,7 +100,8 @@
       "cache": {
         "inputs": {
           "files": [
-            "**/*"
+            "**/*",
+            "package.json"
           ]
         },
         "outputs": {

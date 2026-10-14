@@ -100,7 +100,8 @@
             "!src/content/docs/design/**",
             "!src/content/docs/plugins/**",
             "!public/playground/planner.js",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ]
         },
         "outputs": {
@@ -135,7 +136,8 @@
       "cache": {
         "inputs": {
           "files": [
-            "scripts/import-docs.ts"
+            "scripts/import-docs.ts",
+            "package.json"
           ],
           "workspaceFiles": [
             "packages/vx/docs/**",
@@ -363,7 +365,8 @@
             "!src/content/docs/design/**",
             "!src/content/docs/plugins/**",
             "!public/playground/planner.js",
-            "!dist/**"
+            "!dist/**",
+            "package.json"
           ]
         },
         "outputs": {

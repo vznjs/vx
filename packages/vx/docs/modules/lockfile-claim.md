@@ -24,10 +24,21 @@ export interface LockfileClaimOptions {
   readonly version: number // the memo's identity; bump when `digest` folds differently
   readonly scope?: 'project' | 'workspace'
   readonly part?: string // the key part's name as `vx why` shows it under the plugin; default 'deps'
+  // importer dir → its links to other importers, memoised beside the digests
+  readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
+}
+export interface LockfileImporter {
+  readonly deps: Readonly<Record<string, string>> // installed name → importer dir
+  readonly peers: Readonly<Record<string, string>> // peer-only name → importer dir
 }
 export interface LockfileClaimHooks {
   readonly fingerprint: FingerprintClaim
   key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
+  // the file's importers now, through the memo; undefined without the file
+  importers(ctx: {
+    workspaceRoot: string
+    cacheDir: string
+  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
 }
 export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 
@@ -38,15 +49,18 @@ export interface ReachGraph {
 export function reachDigests(g: ReachGraph): string[]
 ```
 
-A plugin spreads the hooks into `definePlugin(import.meta, lockfileClaim({…}))`.
-Both are on the `@vzn/vx` façade.
+A plugin spreads `fingerprint` and `key` into `definePlugin(import.meta, …)`;
+`importers` is no hook, but what its own `discover` and `project` read.
+All are on the `@vzn/vx` façade.
 
 ## Construction rules
 
-- **Once per content.** The digests are memoised under the cache dir
+- **Once per content.** The digests, and `importers`' answer beside
+  them, are memoised under the cache dir
   (`lockfile-claims/<file>.json`) by `version`, the claimant (its
-  `part` and its functions' source: another claimant of the file at the
-  same `version` does not read it) and the file's xxh3, so a
+  `part`, its `scope` and its functions' source: another claimant of the
+  file at the same `version` does not read it, nor a workspace-scope memo
+  a project-scope one) and the file's xxh3, so a
   warm run pays one read, one hash and one small JSON read — never a
   parse. Written to a temp name and renamed, so a reader never sees a
   half memo and two concurrent runs each land a whole one; a memo that
@@ -80,7 +94,8 @@ Both are on the `@vzn/vx` façade.
   moved; a side that is absent (the file appeared or went) answers
   `undefined`, and so does `scope: 'workspace'`.
 - **`scope: 'workspace'`** folds the file's hash into every task and
-  never parses: the coarse key core would fold, through the plugin.
+  never digests: the coarse key core would fold, through the plugin. With
+  `importers` it still parses once per content, for the edges.
 
 `reachDigests` is the digest the parsers share: one hash per node over
 everything the node reaches, Merkle-style, with the strongly connected
@@ -110,11 +125,17 @@ project owns): the key does.
 - Know any lockfile format. The parser is the plugin's; the shell hands
   it text and stores what it returns.
 - Fold a project's own `package.json`: core hashes that per project
-  already (`projectPackageJsonHash`).
+  already (`projectPackageJsonHash`), and `@vzn/vx-lockfile` adds it to
+  each importer's cached tasks as an input.
+- Decide edges. `importers` records what the lockfile links; turning that
+  into `discover` entries (which peers order, which are reach) is the
+  plugin's.
 
 ## Tests
 
-`tests/lockfile-claim.test.ts` — the memo (served across instances, a
+`tests/lockfile-claim.test.ts` — `importers` (served from the memo in a
+new process, kept under `scope: 'workspace'` and not read by a
+project-scope claimant), the memo (served across instances, a
 planted memo keys the task, a changed file or version ignores it), the
 per-run gate (one parse for two tasks), the root folded into every
 project and the root fallback, `scope: 'workspace'`, the `affected` diff

@@ -55,14 +55,18 @@ over (in order):
    install-resolved change (a `bun install` that bumps `bun.lock`) or
    any workspace-shape change invalidates _every_ cache entry. This is
    the single global "the world changed" lever — and a plugin can take
-   one file off it: `VxPlugin.fingerprint` claims a lockfile, core
+   files off it: `VxPlugin.fingerprint` claims a lockfile, core
    leaves it out of this digest, and the plugin's `key` hook folds what
    the file means for each project instead (`@vzn/vx-lockfile`'s `pnpm()`
    folds the project's own resolved dependency closure and the root
    package's, so `pnpm update foo` re-keys only the projects that depend
    on `foo` — every project when the root does, since the root's tools
    run from the root `node_modules/.bin` on every task's PATH; its `bun()` is the same
-   for `bun.lock`, and this repo declares that one).
+   for `bun.lock`, and this repo declares that one). Each of those
+   plugins also claims its manager's install settings (`pnpm()`:
+   `pnpm-workspace.yaml`, `.npmrc`; `bun()`: `bunfig.toml`, `.npmrc`;
+   `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`) and folds each whole into
+   every task, so they leave this digest too.
 
    The fingerprint is read once per run, before any task. A task in the
    root project may rewrite one of these files — `pnpm install` without

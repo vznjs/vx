@@ -7,8 +7,8 @@
 // at path `p` is `p/node_modules/d` when that key exists, else the nearest
 // ancestor directory's, else `node_modules/d` — Node's own walk.
 
-import { reachDigests } from '@vzn/vx'
-import { depsOf, record } from './json.js'
+import { reachDigests, type LockfileImporter } from '@vzn/vx'
+import { depsOf, peerOnly, record } from './json.js'
 
 export interface Lockfile {
   readonly version: number
@@ -25,6 +25,8 @@ export interface Entry {
   /** the path a `link: true` entry points at */
   readonly link: string | undefined
   readonly isWorkspace: boolean
+  /** the peers it installs no entry for */
+  readonly peers: ReadonlySet<string>
 }
 
 export function parseLockfile(text: string): Lockfile {
@@ -58,6 +60,7 @@ export function parseLockfile(text: string): Lockfile {
           : '',
       link,
       isWorkspace: p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/'),
+      peers: peerOnly(e),
     })
   }
   // Root `overrides` are not folded: what an override forced is the entry a
@@ -134,6 +137,31 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
         .toString(16)
         .padStart(16, '0'),
     )
+  }
+  return out
+}
+
+/**
+ * The root's and each workspace's dependencies that resolve, by Node's
+ * walk, to a `link: true` entry pointing at the root or a workspace: an
+ * installed entry is a dep, a peer with none of the same name a peer.
+ */
+export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImporter> {
+  const out = new Map<string, LockfileImporter>()
+  for (const [p, e] of lock.packages) {
+    if (p !== '' && !e.isWorkspace) continue
+    const dir = p === '' ? '.' : p
+    const links = { deps: {} as Record<string, string>, peers: {} as Record<string, string> }
+    for (const name of e.deps.keys()) {
+      const key = resolve(lock, p, name)
+      const link = key === undefined ? undefined : lock.packages.get(key)!.link
+      if (link === undefined) continue
+      const target = lock.packages.get(link)
+      if (target === undefined || (link !== '' && !target.isWorkspace)) continue
+      const targetDir = link === '' ? '.' : link
+      if (targetDir !== dir) links[e.peers.has(name) ? 'peers' : 'deps'][name] = targetDir
+    }
+    out.set(dir, links)
   }
   return out
 }

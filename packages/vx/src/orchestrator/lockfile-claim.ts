@@ -55,18 +55,46 @@ export interface LockfileClaimOptions {
    * (`@vzn/vx-lockfile/pnpm`). Default `'deps'`.
    */
   readonly part?: string
+  /**
+   * Each importer's links to other importers, from the same text, kept in
+   * the memo beside the digests so a `discover` hook reads them without a
+   * parse. Called once per distinct content, under either scope.
+   */
+  readonly importers?: (text: string) => ReadonlyMap<string, LockfileImporter>
 }
 
-/** The two hooks a lockfile plugin spreads into `definePlugin`. */
+/**
+ * What a lockfile records of one importer's links to the workspace's other
+ * importers: dependency name → importer directory (root-relative POSIX,
+ * `.` for the root).
+ */
+export interface LockfileImporter {
+  /** The entries it installs that resolve to an importer. */
+  readonly deps: Readonly<Record<string, string>>
+  /** Its peers that resolve to an importer, each with no installed entry of the same name. */
+  readonly peers: Readonly<Record<string, string>>
+}
+
+/** What a lockfile plugin spreads into `definePlugin` (`fingerprint`, `key`), and `importers` for its own stages. */
 export interface LockfileClaimHooks {
   readonly fingerprint: FingerprintClaim
   key(task: TaskNode, ctx: KeyHookContext): Promise<Readonly<Record<string, string>> | undefined>
+  /**
+   * `importers`' answer for the file as it is now, through the same memo
+   * and gates as `key`; undefined when the file is absent. Not a hook: a
+   * plugin calls it from its own `discover` or `project`.
+   */
+  importers(ctx: {
+    readonly workspaceRoot: string
+    readonly cacheDir: string
+  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined>
 }
 
 interface Digests {
   /** xxh3 of the lockfile bytes; '' when the file is absent. */
   readonly lock: string
   readonly importers: ReadonlyMap<string, string>
+  readonly edges: ReadonlyMap<string, LockfileImporter>
 }
 
 interface Memo {
@@ -76,6 +104,7 @@ interface Memo {
   /** `extraFiles` → content hash when the digests were computed. */
   extras?: Record<string, string>
   importers: Record<string, string>
+  edges?: Record<string, LockfileImporter>
 }
 
 /** A root-relative extra file's content hash, '' when absent; a path leaving the root is never read. */
@@ -125,7 +154,16 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
   // at the same number read this one's memo: one that named no extra file
   // left the other's patch edits out of its key (X-130). The functions'
   // source stands for the claimant; a rebuild that changes it is a miss.
-  const claimant = xxh3hex([part, String(digest), String(options.extraFiles ?? '')].join('\0'))
+  // The scope too: a workspace-scope memo holds no digests.
+  const claimant = xxh3hex(
+    [
+      part,
+      scope,
+      String(digest),
+      String(options.extraFiles ?? ''),
+      String(options.importers ?? ''),
+    ].join('\0'),
+  )
   if (scope !== 'project' && scope !== 'workspace') {
     throw new Error(`scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`)
   }
@@ -149,7 +187,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     try {
       identity = identityOf(await stat(full))
     } catch {
-      const digests: Digests = { lock: '', importers: new Map() }
+      const digests: Digests = { lock: '', importers: new Map(), edges: new Map() }
       seen.set(workspaceRoot, { identity: 'gone', extras: [], extraStats: {}, digests })
       return digests
     }
@@ -169,12 +207,14 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
     let extras: Record<string, string> = {}
     let extraStats: Record<string, string> = {}
     let importers: ReadonlyMap<string, string> | undefined
+    let edges: ReadonlyMap<string, LockfileImporter> = new Map()
     if (memo !== undefined) {
       const now = await hashExtras(workspaceRoot, Object.keys(memo.extras))
       if (Object.entries(memo.extras).every(([rel, h]) => now.hashes[rel] === h)) {
         extras = memo.extras
         extraStats = now.stats
         importers = memo.importers
+        edges = memo.edges
       }
     }
     if (importers === undefined) {
@@ -186,19 +226,19 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       importers =
         scope === 'workspace'
           ? new Map<string, string>()
-          : await computeAndMemo(
-              memoFile,
-              { version, claimant, lock: lockHash },
-              extras,
-              digest(text, new Map(Object.entries(extras))),
-            )
+          : digest(text, new Map(Object.entries(extras)))
+      edges = options.importers?.(text) ?? new Map()
+      // Workspace scope with no edges to keep has nothing a memo saves.
+      if (scope === 'project' || options.importers !== undefined) {
+        await writeMemo(memoFile, { version, claimant, lock: lockHash }, extras, importers, edges)
+      }
     }
     const rels = Object.keys(extras)
     const lock =
       rels.length === 0
         ? lockHash
         : xxh3hex([lockHash, ...rels.map((r) => `${r}\0${extras[r]}`)].join('\0'))
-    const digests: Digests = { lock, importers }
+    const digests: Digests = { lock, importers, edges }
     seen.set(workspaceRoot, { identity, extras: rels, extraStats, digests })
     return digests
   }
@@ -248,6 +288,10 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         [part]: digestFor(digests.importers, importerOf(ctx.workspaceRoot, task.projectDir)),
       }
     },
+    async importers(ctx) {
+      const digests = await load(ctx.workspaceRoot, ctx.cacheDir)
+      return digests.lock === '' ? undefined : digests.edges
+    },
   }
 }
 
@@ -280,25 +324,42 @@ async function readMemo(
   version: number,
   claimant: string,
   lock: string,
-): Promise<{ extras: Record<string, string>; importers: Map<string, string> } | undefined> {
+): Promise<
+  | {
+      extras: Record<string, string>
+      importers: Map<string, string>
+      edges: Map<string, LockfileImporter>
+    }
+  | undefined
+> {
   try {
     const memo = (await Bun.file(memoFile).json()) as Memo
     if (memo.version !== version || memo.claimant !== claimant || memo.lock !== lock) {
       return undefined
     }
-    return { extras: memo.extras ?? {}, importers: new Map(Object.entries(memo.importers)) }
+    return {
+      extras: memo.extras ?? {},
+      importers: new Map(Object.entries(memo.importers)),
+      edges: new Map(Object.entries(memo.edges ?? {})),
+    }
   } catch {
     return undefined
   }
 }
 
-async function computeAndMemo(
+async function writeMemo(
   memoFile: string,
   identity: Pick<Memo, 'version' | 'claimant' | 'lock'>,
   extras: Record<string, string>,
   importers: ReadonlyMap<string, string>,
-): Promise<ReadonlyMap<string, string>> {
-  const memo: Memo = { ...identity, extras, importers: Object.fromEntries(importers) }
+  edges: ReadonlyMap<string, LockfileImporter>,
+): Promise<void> {
+  const memo: Memo = {
+    ...identity,
+    extras,
+    importers: Object.fromEntries(importers),
+    ...(edges.size > 0 ? { edges: Object.fromEntries(edges) } : {}),
+  }
   // Write-then-rename: a reader never sees a half-written memo, and two
   // concurrent runs each land a whole one.
   const tmp = `${memoFile}.tmp-${process.pid}-${Date.now()}`
@@ -309,7 +370,6 @@ async function computeAndMemo(
     // The memo is a speed-up, never a requirement: the digests are
     // computed either way, and the next run computes them again.
   }
-  return importers
 }
 
 function decode(bytes: Uint8Array): string {
