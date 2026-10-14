@@ -442,13 +442,6 @@ export function excludeWorkspaceOutputs(
   }[],
   /** The globs an opaque entry stands for (`vx-migrate`'s `...globalInputs` spread). */
   expand: (entry: unknown) => readonly string[] = () => [],
-  /** Each reader whose inputs cover another task's output, taken back or already taken. */
-  readsOf: (
-    reader: GeneratedTask,
-    project: string,
-    writer: string,
-    output: string,
-  ) => void = () => {},
 ): void {
   const positive = (v: unknown): string[] =>
     Array.isArray(v)
@@ -491,10 +484,9 @@ export function excludeWorkspaceOutputs(
         const w = writers[i]!
         if (w.task === t) continue
         for (const out of w.globs) {
+          if (files.includes(`!${out}`)) continue
           const read = reads.filter((g) => outputsOverlap(g, out))
           if (read.length === 0) continue
-          readsOf(t, p.name, w.id, out)
-          if (files.includes(`!${out}`)) continue
           const literal = read.find((g) => isLiteralPattern(g))
           if (literal !== undefined) {
             delete t.task!['cache']
@@ -524,10 +516,9 @@ export function excludeWorkspaceOutputs(
         if (w.task === t) continue
         for (const out of w.ws) {
           const back = `!${out.slice(at.length)}`
+          if (out.startsWith(at) && files.includes(back)) continue
           const read = reads.filter((g) => outputsOverlap(g, out))
           if (read.length === 0) continue
-          readsOf(t, p.name, w.id, out)
-          if (out.startsWith(at) && files.includes(back)) continue
           // An output that reaches in from above (`**/gen/**`) has no
           // project-relative `!` that takes it back.
           const literal = out.startsWith(at) ? read.find((g) => isLiteralPattern(g)) : read[0]
