@@ -62,6 +62,13 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'The git ref a bare `--affected` compares with.',
   },
   {
+    path: 'run.branch',
+    kind: { type: 'string' },
+    default: "git's branch, then the CI provider's",
+    doc: 'The branch a run records in its history and forecasts from.',
+    flag: { verb: 'run', name: '--branch' },
+  },
+  {
     path: 'run.timeout',
     kind: { type: 'duration', timer: true },
     default: 'none',

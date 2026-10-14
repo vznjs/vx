@@ -357,10 +357,17 @@ export interface CommandContext extends BaseContext {
 
 function · `src/orchestrator/run-context.ts`
 
-The branch a duration forecast reads first (`LocalHistoryProvider`): HEAD's, or CI's for a detached checkout.
+The run's branch: `run.branch` (the flag given, else `VX_RUN_BRANCH`,
+else the workspace's), else HEAD's, else the CI provider's for a
+detached checkout. What run history records and a forecast reads first.
 
 ```ts
-export function currentBranch(workspaceRoot: string): string | null
+export function currentBranch(
+  workspaceRoot: string,
+  workspace?: unknown,
+  flag?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null
 ```
 
 ## `definePlugin`
@@ -1532,7 +1539,7 @@ export interface PreparedRun {
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
   priorities: () => Promise<ReadonlyMap<string, number>>
-  historyBranch: () => string | null
+  branch: () => string | null
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]
@@ -1852,6 +1859,7 @@ export interface RunOptions {
   retries?: number
   timeout?: number
   continueMode?: ContinueMode
+  branch?: string
   schedule?: NonNullable<RunSettings['schedule']>
   killGrace?: number
   teardownTimeout?: number
@@ -1952,6 +1960,7 @@ export interface RunSettings {
   concurrency?: number | `${number}%`
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   affectedBase?: string
+  branch?: string
   timeout?: Duration
   retries?: number
   continue?: 'never' | 'deps-ok' | 'always'

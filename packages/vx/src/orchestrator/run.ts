@@ -768,7 +768,11 @@ async function runOnBus(
     // fails a run). `dirty` reuses the `git status --porcelain` the
     // GitFilesCache populate already ran for input enumeration — no
     // second status spawn.
-    const gitContext = captureGitContext(workspaceRoot, gitFilesCache.worktreeDirty)
+    // `run.branch` names the branch over git's (`prepared.branch`).
+    const gitContext = {
+      ...captureGitContext(workspaceRoot, gitFilesCache.worktreeDirty),
+      branch: prepared.branch(),
+    }
     const ciContext = detectCi(process.env)
     const hostContext = captureHostContext()
 
@@ -945,7 +949,7 @@ async function runOnBus(
       const p50s = await new LocalHistoryProvider(
         prepared.localCache.dbHandle(),
         undefined,
-        prepared.historyBranch(),
+        prepared.branch(),
       ).p50sFor(ids)
       return createForecast(nodes, p50s, concurrency)
     })
@@ -1793,7 +1797,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       history: new LocalHistoryProvider(
         prepared.localCache.dbHandle(),
         undefined,
-        prepared.historyBranch(),
+        prepared.branch(),
       ),
       // Placement, by the same rules the run applies. Only worth showing
       // when there is a choice to show — with one declared executor every

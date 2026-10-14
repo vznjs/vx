@@ -110,8 +110,12 @@ export interface PreparedRun {
    * nothing-changed run never dispatches. Runs the stage once.
    */
   priorities: () => Promise<ReadonlyMap<string, number>>
-  /** The run's branch, the timings a forecast reads first; learned on first ask, once per run. */
-  historyBranch: () => string | null
+  /**
+   * The run's branch (`run.branch`, else git's, else the CI provider's):
+   * what its history records and the timings a forecast reads first.
+   * Learned on first ask, once per run.
+   */
+  branch: () => string | null
   nodes: Map<string, TaskNode>
   /**
    * The tasks `--exclude-dependencies` took out of the schedule: keyed as a
@@ -228,6 +232,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     log.status(m),
   )
   mark('workspace config')
+  let learnedBranch: string | null | undefined
+  const branch = (): string | null =>
+    learnedBranch === undefined
+      ? (learnedBranch = currentBranch(workspaceRoot, workspaceConfig, options.branch))
+      : learnedBranch
   // `--cache-dir <path>` (RunOptions.cacheDir) overrides the workspace
   // `cache.dir` + the `.vx/cache` default; resolved relative to cwd.
   // A cache dir named anywhere holds everything; the default shares its
@@ -494,7 +503,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       hasRemoteLayer,
       cachePolicy: policy,
       priorities: () => Promise.resolve(new Map()),
-      historyBranch: () => currentBranch(workspaceRoot),
+      branch,
       nodes: new Map(),
       keyOnly: new Map(),
       unresolvedTasks,
@@ -693,9 +702,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       }
     }
     let scheduled: Promise<ReadonlyMap<string, number>> | undefined
-    let branch: string | null | undefined
-    const historyBranch = (): string | null =>
-      branch === undefined ? (branch = currentBranch(workspaceRoot)) : branch
     const priorities = (): Promise<ReadonlyMap<string, number>> =>
       (scheduled ??= hasHook(plugins, 'schedule')
         ? applyScheduleHooks(plugins, nodes, {
@@ -703,7 +709,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
             cacheDir,
             warn: (m) => log.status(m),
             localCache,
-            branch: historyBranch(),
+            branch: branch(),
           })
         : Promise.resolve(new Map()))
 
@@ -717,7 +723,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       hasRemoteLayer,
       cachePolicy: policy,
       priorities,
-      historyBranch,
+      branch,
       nodes,
       keyOnly,
       unresolvedTasks,

@@ -66,7 +66,8 @@ success appended in the run's history transaction and tagged
 and a new one forecasts on its first run; `vx last` and the runs stay
 per worktree. A read is a point lookup per task on `(project, task,
 source, id)`, exact however old the rows. A run learns its branch once
-(`PreparedRun.historyBranch`, the schedule hook's `ctx.branch`;
+(`run.branch` if set, else git's, else the CI provider's;
+`PreparedRun.branch`, the schedule hook's `ctx.branch`;
 `currentBranch` in `run-context.ts` for any other reader).
 `p99DurationMs`, the rates and the resource maxima stay over the
 window. `tests/history-forecast-branch.test.ts`.

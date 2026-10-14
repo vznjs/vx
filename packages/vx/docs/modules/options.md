@@ -33,6 +33,7 @@ export interface RunOptions {
   retries?: number // run.retries; a task's exec.retries beats it
   timeout?: number // run.timeout in ms; a task's exec.timeout beats it
   continueMode?: ContinueMode
+  branch?: string // run.branch; unset, VX_RUN_BRANCH, the workspace's, then git's
   schedule?: NonNullable<RunSettings['schedule']> // run.schedule
   killGrace?: number // run.killGrace in ms
   teardownTimeout?: number // run.teardownTimeout in ms

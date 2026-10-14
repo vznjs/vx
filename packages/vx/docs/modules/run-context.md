@@ -42,8 +42,13 @@ export function captureGitContext(
   env?: NodeJS.ProcessEnv,
 ): GitContext
 export function captureDefaultBranch(env: NodeJS.ProcessEnv, workspaceRoot: string): string | null
-/** The branch a forecast reads first: HEAD's, or CI's for a detached checkout. */
-export function currentBranch(workspaceRoot: string): string | null
+/** The run's branch: `run.branch` if set, else HEAD's, else CI's for a detached checkout. */
+export function currentBranch(
+  workspaceRoot: string,
+  workspace?: unknown,
+  flag?: string,
+  env?: NodeJS.ProcessEnv,
+): string | null
 export function detectCi(env: NodeJS.ProcessEnv): CiContext
 export function captureHostContext(): HostContext
 export function normalizeRemoteUrl(raw: string): string

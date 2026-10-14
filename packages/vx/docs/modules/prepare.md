@@ -20,7 +20,7 @@ export interface PreparedRun {
   hasRemoteLayer: boolean // `cache` is more than the local handle — the remote policy axes mean something
   cachePolicy: CachePolicy // `--cache-policy`, `VX_CACHE_POLICY` or the workspace's `cache.policy`, with its `cache.scope` applied
   priorities: ReadonlyMap<string, number> // the `schedule` stage's weights; empty without one
-  historyBranch: () => string | null // the timings a forecast reads first, learned once on first ask
+  branch: () => string | null // the run's branch: history records it, a forecast reads it first; learned once on first ask
   nodes: Map<string, TaskNode> // empty if `empty !== null`
   keyOnly: ReadonlyMap<string, TaskNode> // what --exclude-dependencies keyed but did not schedule
   /**

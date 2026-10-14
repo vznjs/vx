@@ -50,6 +50,13 @@ export interface RunSettings {
    */
   affectedBase?: string
   /**
+   * The branch a run records in its history and reads its forecast's
+   * timings from. Omitted → git's branch, then the CI provider's
+   * (`GITHUB_HEAD_REF`, `GITHUB_REF_NAME`, `CI_COMMIT_REF_NAME`) for a
+   * detached checkout.
+   */
+  branch?: string
+  /**
    * A task's time limit, for tasks without their own `exec.timeout` (which
    * beats every run-level source). A runaway-process guard: a timed-out
    * task fails and is never cached. Omitted → no limit.

@@ -126,6 +126,7 @@ function settingFlagOf(a: string): { s: Setting; name: string } | undefined {
 const SETTING_OPTIONS = [
   ['run.concurrency', 'concurrency'],
   ['run.schedule', 'schedule'],
+  ['run.branch', 'branch'],
   ['run.timeout', 'timeout'],
   ['run.retries', 'retries'],
   ['run.outputLogs', 'outputLogs'],

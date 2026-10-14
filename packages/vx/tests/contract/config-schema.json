@@ -4,6 +4,7 @@
       "": ["cache", "lock", "plugins", "run", "watch"],
       "run": [
         "affectedBase",
+        "branch",
         "concurrency",
         "continue",
         "killGrace",
@@ -25,7 +26,7 @@
     "fields": {
       "run": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `run` must be an object (fields: concurrency, schedule, affectedBase, timeout, retries, continue, killGrace, teardownTimeout, readyNotice, rules)": [
+        "$CONFIG: `run` must be an object (fields: concurrency, schedule, affectedBase, branch, timeout, retries, continue, killGrace, teardownTimeout, readyNotice, rules)": [
           "null",
           "true",
           "false",
@@ -56,7 +57,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `run` has unknown field \"x\" (allowed: affectedBase, concurrency, continue, killGrace, readyNotice, retries, rules, schedule, teardownTimeout, timeout)": [
+        "$CONFIG: `run` has unknown field \"x\" (allowed: affectedBase, branch, concurrency, continue, killGrace, readyNotice, retries, rules, schedule, teardownTimeout, timeout)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -275,6 +276,37 @@
         "$CONFIG: `run.affectedBase` must be a non-blank string (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
+      },
+      "run.branch": {
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"main\""],
+        "$CONFIG: `run.branch` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `run.branch` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `run.branch` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `run.branch` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `run.branch` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `run.branch` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `run.branch` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `run.branch` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `run.branch` must be a non-blank string (got 2147483648)": ["2147483648"],
+        "$CONFIG: `run.branch` must be a non-blank string (got \"\")": ["\"\""],
+        "$CONFIG: `run.branch` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `run.branch` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `run.branch` must be a non-blank string (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "run.timeout": {
         "ok": ["<absent>", "\"1s\""],
