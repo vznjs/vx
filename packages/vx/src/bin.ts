@@ -102,7 +102,7 @@ async function main(): Promise<void> {
  * config can leave a timer behind (a top-level `setInterval`, an await that
  * hit its evaluation budget), and the loop it holds never drained: vx
  * printed its verdict and hung for good. Only after `main` has settled, so
- * `vx watch`, `vx mcp` and a run's kept-alive tasks end when their verb
+ * `vx watch`, a plugin's long-lived verb and a run's kept-alive tasks end when their verb
  * does. `end(cb)` delivers a large write whole on Bun 1.4.2 (4 MiB under a
  * slow reader; `write('', cb)` delivered 450 KB), the floor `engines.bun`
  * holds. A stream whose end never calls back leaves the loop to drain. A

@@ -1,5 +1,5 @@
 // The `exec.sandbox.allow` entries that would have granted what a failed
-// task was denied, so the report names the line to add (CLI, JSON, MCP)
+// task was denied, so the report names the line to add (CLI, JSON)
 // rather than leaving the user to turn absolute paths into grants. Built on
 // the failure path only: a passing run never calls it.
 

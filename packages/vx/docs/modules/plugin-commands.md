@@ -57,5 +57,4 @@ export async function pluginCommandHelp(cwd?: string): Promise<string[]>
 
 ## Tests
 
-`tests/plugin-commands.test.ts`; `packages/vx-mcp/tests/server.test.ts`
-drives a real plugin verb through the entry point.
+`tests/plugin-commands.test.ts`.

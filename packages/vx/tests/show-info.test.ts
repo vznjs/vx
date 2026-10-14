@@ -1081,7 +1081,7 @@ describe('vx show <project> loads that project only (e2e)', () => {
 
 // The rows above feed `describeWorkers` / `describeMemory` literal facts,
 // so they pin the RENDERER. These pin the facts themselves — the numbers
-// `vx info` and `vx mcp`'s getWorkspaceInfo both read out of `collectInfo`.
+// `vx info` reads out of `collectInfo`.
 describe('collectInfo — the facts behind the rows', () => {
   let root: string
   beforeAll(async () => {

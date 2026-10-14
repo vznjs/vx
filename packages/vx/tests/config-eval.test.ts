@@ -387,9 +387,9 @@ describe('a first load that never settles (D-66)', () => {
 
 describe('evaluateConfigFresh: what a config prints (D-64)', () => {
   it("goes to stderr on every route, never the parent's stdout", async () => {
-    // A repeat load evaluates here, and `vx mcp`'s redirect covers only the
-    // parent thread: the second tool call's config output landed between two
-    // JSON-RPC responses. A child process, so its fd 1 is readable.
+    // A repeat load evaluates here, and the parent's redirect covers only
+    // the parent thread: a config's output on a repeat load landed in the
+    // verb's JSON. A child process, so its fd 1 is readable.
     const config = await write(
       "console.log('from console.log')\nconsole.info('from console.info')\n" +
         "process.stdout.write('from stdout.write\\n')\n" +

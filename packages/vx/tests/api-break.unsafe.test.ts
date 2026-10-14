@@ -1,11 +1,9 @@
 // The break law: a change since the last release that breaks any contract
 // record — tests/contract/ (the vendored upstream schemas aside), the
-// `--format json` schemas in schemas/, vx-mcp's tools record, vx-otel's
-// OTLP wire, vx-migrate's command lines and vx-ci's check run, each
-// read as `contractBreaks` reads it — fails
-// here unless
-// a commit since that tag says so (`type!:` or a `BREAKING CHANGE:`
-// footer), which is also what puts it at the top of the release notes
+// `--format json` schemas in schemas/, vx-otel's OTLP wire, vx-migrate's
+// command lines and vx-ci's check run, each read as `contractBreaks`
+// reads it — fails here unless a commit since that tag says so (`type!:`
+// or a `BREAKING CHANGE:` footer), which is also what puts it at the top of the release notes
 // (scripts/release-notes.ts). Every green main commit is released, so the
 // last tag is main's last green commit and the law judges this change.
 //
@@ -31,7 +29,6 @@ const lastTag = tags[0] ?? ''
 const CONTRACT_DIR = 'tests/contract/'
 const RECORD_DIRS = [CONTRACT_DIR, 'schemas/']
 const EXTRA_RECORDS = [
-  '../vx-mcp/tests/contract/tools.json',
   '../vx-otel/tests/contract/otlp.txt',
   '../vx-migrate/tests/contract/cli.txt',
   '../vx-ci/tests/contract/checks.txt',

@@ -608,7 +608,7 @@ function didYouMeanProject(
   projects: Iterable<{ name: string }>,
 ): string {
   const names = [...projects].map((p) => p.name)
-  // A scoped name typed without its scope (`vx-mcp` for `@vzn/vx-mcp`) is
+  // A scoped name typed without its scope (`vx-otel` for `@vzn/vx-otel`) is
   // many edits from the whole name and none from the part after the `/`.
   const byBare = new Map<string, string[]>()
   for (const n of names) {

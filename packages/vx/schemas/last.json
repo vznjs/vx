@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "vx last --format json",
-  "description": "`vx last [RUNID] [--failed]` prints a run; `--list` prints an array of invocations, newest first; `--log <task>` prints that task's output.",
+  "description": "`vx last [RUNID] [--failed]` prints a run; `--list` prints an array of invocations, newest first; `--log <task>` prints that task's output; `--stats` prints per-task history numbers.",
   "oneOf": [
     {
       "type": "object",
@@ -13,9 +13,51 @@
       }
     },
     { "type": "array", "items": { "$ref": "#/$defs/invocation" } },
-    { "$ref": "#/$defs/log" }
+    { "$ref": "#/$defs/log" },
+    { "$ref": "#/$defs/stats" }
   ],
   "$defs": {
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window", "stats"],
+      "properties": {
+        "window": { "type": "integer", "description": "the newest runs the numbers cover" },
+        "stats": { "type": "array", "items": { "$ref": "#/$defs/taskStats" } }
+      }
+    },
+    "taskStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "runs",
+        "p50DurationMs",
+        "p99DurationMs",
+        "successRate",
+        "hitRate",
+        "failureMode",
+        "maxPeakRssBytes",
+        "maxCpuParallelism"
+      ],
+      "properties": {
+        "taskId": { "type": "string" },
+        "runs": { "type": "integer", "description": "executed runs in the window, skips aside" },
+        "p50DurationMs": {
+          "type": ["number", "null"],
+          "description": "over executed successes; null when none"
+        },
+        "p99DurationMs": { "type": ["number", "null"] },
+        "successRate": { "type": "number", "description": "0 to 1" },
+        "hitRate": { "type": "number", "description": "0 to 1" },
+        "failureMode": { "enum": ["stable", "flaky-recoverable", "flaky-fatal"] },
+        "maxPeakRssBytes": { "type": ["integer", "null"] },
+        "maxCpuParallelism": {
+          "type": ["number", "null"],
+          "description": "cpu time over wall time; 2.0 is two cores busy"
+        }
+      }
+    },
     "log": {
       "type": "object",
       "additionalProperties": false,

@@ -1,8 +1,7 @@
 // `vx info` — workspace doctor printout. One screen of environment +
 // workspace + cache facts for bug reports and quick sanity checks.
 // The facts come
-// from the orchestrator's `collectInfo` (doctor.ts), which `vx mcp` reads
-// too; this file parses the flags and renders the rows.
+// from the orchestrator's `collectInfo` (doctor.ts); this file parses the flags and renders the rows.
 
 import os from 'node:os'
 import { collectInfo, type FlakyTask, type InfoFacts } from '../orchestrator/index.js'
@@ -47,7 +46,7 @@ export function parseInfoArgs(args: readonly string[]): InfoArgs {
 export async function infoCmd(args: readonly string[]): Promise<number> {
   const parsed = parseInfoArgs(args)
   if (parsed.error) return refuse('info', args, parsed.error, 'VX_E_USAGE')
-  // `collectInfo` takes a resolved directory from `vx mcp` too, where one
+  // `collectInfo` takes a resolved directory, where one
   // not made yet is a workspace that never ran; the flag is the user's,
   // and a directory it names that is not there is a typo (item 900).
   if (parsed.cacheDir !== undefined) namedCacheDir(parsed.cacheDir)

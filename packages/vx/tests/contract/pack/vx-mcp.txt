@@ -1,7 +1,0 @@
-LICENSE
-README.md
-index.ts
-package.json
-src/index.ts
-src/server.ts
-src/tools.ts

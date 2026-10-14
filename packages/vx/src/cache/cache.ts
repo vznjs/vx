@@ -1425,8 +1425,8 @@ export class Cache implements CacheLayer {
 
   /**
    * The digest a value-bearing row holds (an env value, a runtime output,
-   * args after `--`): xxh3 under a random salt this store keeps. `vx why`,
-   * its JSON and MCP's `whyDidThisRerun` print it, and an unkeyed xxh3 in
+   * args after `--`): xxh3 under a random salt this store keeps. `vx why`
+   * and its JSON print it, and an unkeyed xxh3 in
    * a public CI log let anyone confirm or brute-force a short secret
    * (L-4). Salted, a digest still says whether a value changed, and says
    * nothing without this cache's `schema_meta`. Asked for on a miss only.

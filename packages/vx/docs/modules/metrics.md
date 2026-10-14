@@ -4,9 +4,8 @@
 
 Pure functions over the run-history tables (`runs`, `invocations`,
 `entries`, `entry_inputs`) — one canonical home for every aggregate,
-so `vx last`, `vx why`, and any out-of-process reader (`@vzn/vx-mcp`'s
-`explainCacheKey` / `whyDidThisRerun` tools) ask the same questions
-the same way. The schema itself is owned by `src/cache/schema.ts`; this
+so `vx last`, `vx why` and any other reader ask the same questions the
+same way. The schema itself is owned by `src/cache/schema.ts`; this
 module only reads it.
 
 ## Public surface
@@ -69,20 +68,20 @@ export interface TaskLog {
 `taskLog` reads one task's output: a failed task's from the file, any
 other from the cache entry its key names (the log a hit replays, masked
 as it was), and nothing for an uncached pass or a skip. `vx last --log`
-and `@vzn/vx-mcp`'s `getTaskLog` answer from it.
+answers from it.
 
 `runFailures` lists the run's failed `runs` rows and fills each from the
-file; `vx last --format json` and `@vzn/vx-mcp`'s `getFailures` both
-answer from it.
+file; `vx last --format json` answers from it.
 
-The module index re-exports `explainCacheKey` as `explainCacheKeyQuery`.
+The module index re-exports `explainCacheKey` as `explainCacheKeyQuery`
+and `whyDidThisRerun` as `whyDidThisRerunQuery`.
 
 `run-id.ts` beside it resolves the run id a caller types:
 `resolveRunId(db, raw, verb)` answers the whole id, or the one run it is
 a prefix of (null for none; a prefix several runs share is refused,
 naming them), and `shortRunId(db, id)` is the shortest unique prefix, at
-least 13 characters, `vx last --list` prints. `vx why`, `vx last` and
-`@vzn/vx-mcp`'s `whyDidThisRerun` all take ids through it.
+least 13 characters, `vx last --list` prints. `vx why` and `vx last`
+take ids through it.
 
 Every function but `diffKeyComponents` takes an open `bun:sqlite`
 `Database` (the caller owns the `Cache` lifecycle — `cache.dbHandle()`),
@@ -153,4 +152,4 @@ rows whose fingerprints were pruned);
 
 A reader over another store implements the same eleven signatures (the
 join, `diffKeyComponents`, needs no store and is reused as it is); the
-CLI verbs and the MCP tools format, they do not query.
+CLI verbs format, they do not query.

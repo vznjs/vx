@@ -1,5 +1,5 @@
-// The workspace doctor's facts — what `vx info` prints and `vx mcp`'s
-// `getWorkspaceInfo` returns: versions, the git status cache, the
+// The workspace doctor's facts — what `vx info` prints and its JSON
+// returns: versions, the git status cache, the
 // workspace's shape, the plugins and the seams each fills, what a run
 // will use (workers, memory) and where those come from, the cache's
 // versions and state, the flaky tasks, the lock. One collector, so the

@@ -593,7 +593,7 @@ shows it: the task's output and the line vx adds under a shell's 127 or
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, the hashes `vx why` gives for such a variable in
-`cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error, a plugin's warning or failure (a remote's reply; the failure masked in the error `run()` rejects with), any error `vx mcp` answers an agent with, a failed `cache.inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
+`cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error, a plugin's warning or failure (a remote's reply; the failure masked in the error `run()` rejects with), a failed `cache.inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
 secret passed after `--`) and its `--tag`s. So are every string of a
 task `vx show` prints (a runtime probe, `readyWhen`, the description),
 the description `--dry` and the task picker print, a runtime probe's
@@ -741,7 +741,7 @@ A write that counts withholds the entry, and `severity` says what else
 happens: `'warn'` (the default) keeps the result, says why on the status
 line, and the run goes on; `'error'` fails the task, so the run fails,
 and its label names the file: `failed (src/a.ts changed during the run, exit 1)`
-(`inputMoved` in `vx last --format json` and MCP `getFailures`).
+(`inputMoved` in `vx last --format json`).
 Either way, every task that ran over the task's outputs, down the graph,
 withholds its save too, and a task of any project that declares the
 moved file as an input withholds its own.
@@ -1917,7 +1917,7 @@ false in vx.workspace.ts to let it wait for its producer.` Such a key
   around the run, and CLI `commands` (`{ verb: { description, run } }`,
   consulted for a verb core does not know). First-party plugins:
   `@vzn/vx-otel`, `@vzn/vx-ci`, `@vzn/vx-reapi`, `@vzn/vx-lockfile`,
-  `@vzn/vx-schedule-history`, `@vzn/vx-mcp`, `@vzn/vx-migrate`. A
+  `@vzn/vx-schedule-history`, `@vzn/vx-migrate`. A
   plugin that declines every capability (`otel()` with no OTLP endpoint
   configured) costs nothing — a run with no active plugin is
   byte-identical to one with none declared. Plugins observe, route and

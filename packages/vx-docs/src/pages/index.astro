@@ -119,7 +119,6 @@ const plugins = [
   { pkg: 'vx-migrate', title: 'Keep the cache you have', line: 'Keep Turbo’s or Nx’s remote cache while you move to native config.' },
   { pkg: 'vx-otel', title: 'Observability', line: 'Every run and task in any OpenTelemetry backend.' },
   { pkg: 'vx-ci', title: 'CI results on the PR', line: 'GitHub job summary and Checks.' },
-  { pkg: 'vx-mcp', title: 'Agents', line: 'vx mcp for any MCP client.' },
   { pkg: 'vx-schedule-history', title: 'Smarter scheduling', line: 'Order by the critical path learned from your run history.' },
   { pkg: 'vx-lockfile', title: 'Precise lockfile keys', line: 'Each task keyed on its own dependency closure: pnpm, bun, npm, yarn.' },
 ]
@@ -170,7 +169,7 @@ const reasons = [
 ]
 
 // The feature strip: eight of the feature pages, the rest one click away.
-const STRIP = ['sandbox', 'vx-why', 'strict-outputs', 'affected', 'dev-servers', 'watch', 'remote-execution', 'mcp']
+const STRIP = ['sandbox', 'vx-why', 'strict-outputs', 'affected', 'dev-servers', 'watch', 'remote-execution', 'agent-skill']
 const strip = STRIP.map((slug) => FEATURES.find((f) => f.slug === slug)!)
 
 // Start: four commands, native config from the first one.
@@ -179,16 +178,7 @@ const releases = (await posts('releases')).slice(0, 4)
 const essays = (await posts('blog')).slice(0, 3)
 const latest = releases[0]!
 const firstSentence = (t: string): string => t.split(/(?<=[.!?])\s/)[0]!
-const MCP_TOOLS = [
-  'listTasks',
-  'planTasks',
-  'runTasks',
-  'getFailures',
-  'getTaskLog',
-  'whyDidThisRerun',
-  'getConfig',
-  'getWorkspaceInfo',
-]
+const SKILL_COMMANDS = ['vx run', 'vx last --failed', 'vx last --stats', 'vx why', 'vx docs']
 const whyRun = `$ vx why @demo/web#build
   verdict    cache key changed: upstream @demo/ui#build
   root cause:
@@ -272,9 +262,9 @@ npx @vzn/vx run build --all      # again: the cached tasks are up-to-date`
           </div>
           <div class="agents-grid">
             <article class="agent-card">
-              <h3><code>vx mcp</code></h3>
-              <p>Any MCP client plans and runs the tasks you allow, and reads failures, history and cache.</p>
-              <ul class="tool-chips">{MCP_TOOLS.map((t) => <li><code>{t}</code></li>)}</ul>
+              <h3><code>npx skills add vznjs/vx/packages/vx/skills/vx</code></h3>
+              <p>One skill teaches any coding agent the CLI: run tasks, read failures and history, ask why.</p>
+              <ul class="tool-chips">{SKILL_COMMANDS.map((t) => <li><code>{t}</code></li>)}</ul>
               <a class="section-link" href={href('concepts/ai-first/')}>Built for agents →</a>
             </article>
             <article class="agent-card">

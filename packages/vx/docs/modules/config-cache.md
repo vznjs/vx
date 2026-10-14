@@ -94,7 +94,7 @@ closure is provably pure:
   taking only the values in `PURE_CORE_EXPORTS` (`defineProject` / `defineWorkspace`, identity
   functions, and a few pure helpers and constants) or types. Core also
   exports what reads the machine (`machineParallelism`,
-  `machineMemoryBytes`, `collectInfo`): a config calling one was replayed
+  `machineMemoryBytes`): a config calling one was replayed
   from the store with another box's answer (item 888). Any other name, a
   namespace or default import, or an `export *` of the package evaluates
   live;

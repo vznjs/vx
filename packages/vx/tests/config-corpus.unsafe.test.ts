@@ -25,6 +25,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/index.js'
 import type { ProjectConfig, WorkspaceConfig } from '../src/config.js'
+import { RETIRED_POSTS } from './helpers/retired-posts.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
 const PACKAGES = path.dirname(CORE)
@@ -81,6 +82,9 @@ const SKETCHES = new Map([
     'packages/vx-docs/src/content/docs/blog/resolved-config-hashing.md#1',
     'a config importing a preset the post describes but does not show',
   ],
+  ...[...RETIRED_POSTS].map(
+    ([post, why]) => [`packages/vx-docs/src/content/docs/${post}#1`, why] as [string, string],
+  ),
 ])
 
 function corpus(): Sample[] {

@@ -224,8 +224,7 @@ remote cache and remote execution), `@vzn/vx-otel` (OpenTelemetry
 traces, metrics and logs), `@vzn/vx-ci` (job summary and Checks API),
 `@vzn/vx-lockfile` (per-project keys from the package manager's
 lockfile), `@vzn/vx-schedule-history` (order by the critical path
-learned from run history), `@vzn/vx-mcp` (`vx mcp`, a server for AI
-agents) and `@vzn/vx-migrate` (migration from Turbo or Nx:
+learned from run history) and `@vzn/vx-migrate` (migration from Turbo or Nx:
 `vx.config.ts` written from either, `turbo()` / `nx()` as the temporary
 start, their remote cache kept), each
 importing core only through the public `@vzn/vx` specifier — a

@@ -1,7 +1,7 @@
 // Run-history queries — pure functions over a `bun:sqlite` Database.
 //
 // `vx why` and `vx last` read through them, and so can any out-of-process
-// surface (an MCP server plugin, a dashboard). One canonical home for every
+// surface. One canonical home for every
 // aggregate over the runs / entries tables. The schema itself is owned by
 // src/cache/cache.ts.
 //
@@ -482,8 +482,7 @@ function unchangedKeyNote(
 
 /**
  * The latest recorded run of a task (run_id may be NULL on very old rows).
- * One query for `vx why` and `vx mcp`: the CLI defaulted to it while the
- * tool demanded a run id an agent had to fetch first (2026-09-16).
+ * `vx why`'s default when no run id is given.
  */
 export function latestRunId(db: Database, taskId: string): string | null {
   const [project, task] = splitTaskId(taskId)

@@ -397,7 +397,7 @@ function crossDepProjects(config: ProjectConfig): string[] {
 
 /**
  * The run path's view of a workspace's projects for a reader — `vx show`,
- * the MCP server, an embedder: discovery, the plugin `config` and
+ * a plugin's verb, an embedder: discovery, the plugin `config` and
  * `project` stages, and the local cache opened only to serve cached
  * evaluations, so a pure config costs a stat, not an evaluation. `scope`
  * is every project or a list of names; no closure, no lock (a reader

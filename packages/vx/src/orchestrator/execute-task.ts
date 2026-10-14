@@ -674,7 +674,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
     const message = err instanceof Error ? err.message : String(err)
     // The task's OWN stream, not the process's: the frame is where a
     // reader looks for why a task failed, and a run with a custom logger
-    // (an embedder, the MCP server) never saw a bare stderr write at all.
+    // (an embedder) never saw a bare stderr write at all.
     log.taskStderr(node, `\n[vx] ${node.id}: persistent task failed to become ready: ${message}\n`)
     // A server is never traced, so the sandbox's refusals reach no report:
     // a dev server that died on a file outside its grants read only as the

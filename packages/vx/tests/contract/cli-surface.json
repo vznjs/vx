@@ -40,7 +40,8 @@
       "--format",
       "--help",
       "--list",
-      "--log"
+      "--log",
+      "--stats"
     ],
     "lock": [
       "--check",

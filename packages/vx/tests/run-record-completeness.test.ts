@@ -6,7 +6,7 @@
 // probing the cache, and a persistent task is never cacheable. So a persistent
 // task that failed to become ready recorded `taskCount: 0, failedCount: 0,
 // exitOk: false` — a red run reporting zero tasks and zero failures to
-// `vx info`, `vx mcp` and every metrics surface — and a failed task with a
+// `vx info` and every metrics surface — and a failed task with a
 // skipped dependent recorded 1 of 2.
 //
 // The first half drives the real CLI over both shapes. The second half seeds
