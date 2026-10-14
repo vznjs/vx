@@ -1,5 +1,6 @@
 ---
 title: 'vx on real repos: wall times'
+draft: true
 date: 2026-10-14T22:00:00Z
 authors:
   - vzn
@@ -12,7 +13,8 @@ excerpt: 'Open-source monorepos that already run on Turborepo or Nx, timed under
 The [synthetic benchmark](../honest-benchmarks/) runs one generated
 graph. This post times repos someone else wrote: open-source monorepos
 that already use Turborepo or Nx, each moved to native vx config with
-`vx init`, then run under both tools on the same machine.
+`bunx @vzn/vx-migrate --native`, then run under both tools on the same
+machine.
 
 Both tools build the same outputs; that is the assumption behind every
 row.
@@ -33,7 +35,8 @@ row.
 - One cloud container: 4 vCPU (Intel Xeon @ 2.10GHz), 15 GB RAM, Linux
   6.18, nothing else running.
 - vx built from `main` (d81d9b4) with `bun build --compile` on Bun 1.4.2,
-  configs from `vx init`, then `vx lock`. Node 22.22.0.
+  configs written by `vx-migrate --native` from the same commit, then
+  `vx lock`. Node 22.22.0.
 - Concurrency 10 for every tool: Turborepo `--concurrency=10`, Nx
   `--parallel=10`, vx `--concurrency 10`.
 - Local cache only: no remote cache, no daemon, no telemetry. Nx's
