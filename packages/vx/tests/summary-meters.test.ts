@@ -212,12 +212,14 @@ describe('the cache meter obeys the same rules', () => {
     // Not what it looks like at first: the cache row is not "tasks that
     // reached a cache decision", it is every task classified by where its
     // result came from, and a skip is its own bucket. So a skipped-only run
-    // still draws a full bar, legended `3 skipped`. If it drew only the
+    // still draws a full bar (its count is the tasks legend's). If it drew only the
     // cache-decided tasks, the two meters would disagree about the size of
     // the same run.
     const s = stats({ skipped: 3, total: 3 })
     expect(bar(render(s), 'cache')).toHaveLength(BAR_WIDTH)
-    expect(legend(render(s), 'cache')).toContain('3 skipped')
+    // The count is the tasks legend's alone: the footer never says a fact
+    // twice (M, 2026-10-14).
+    expect(legend(render(s), 'cache')).not.toContain('skipped')
   })
 
   it('is omitted entirely for a run with no tasks at all', () => {

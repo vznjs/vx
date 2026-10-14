@@ -76,8 +76,11 @@ function sink(): { chunks: string[]; write(c: string): boolean; text(): string }
       chunks.push(c)
       return true
     },
+    // The log after its opening blank line, which tests/status-line.test.ts
+    // pins ("the task log opens with one blank line").
     text() {
-      return chunks.join('')
+      const t = chunks.join('')
+      return t.startsWith('\n') ? t.slice(1) : t
     },
   }
 }

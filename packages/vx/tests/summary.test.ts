@@ -35,7 +35,7 @@ describe('formatRunSummary', () => {
       '  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰',
       '            2 no-cache',
       '',
-      '  time      1.23s · max 100ms · avg 100ms · min 100ms',
+      '  time      1.23s',
     ])
   })
 
@@ -50,7 +50,7 @@ describe('formatRunSummary', () => {
     )
     expect(lines[3]).toBe('            3 success · 3 total')
     expect(lines[5]).toBe('            1 no-cache · 2 up-to-date')
-    expect(lines.at(-1)).toBe('  time      420ms' + ' · max 100ms · avg 100ms · min 100ms')
+    expect(lines.at(-1)).toBe('  time      420ms')
   })
 
   it('reports failures separately from total', () => {
@@ -102,9 +102,9 @@ describe('formatRunSummary', () => {
     expect(lines.at(-1)).toBe('  time      42ms')
   })
 
-  it('partial-cache run: plain time row', () => {
+  it('partial-cache run: one executed task has no spread to show', () => {
     const lines = formatRunSummary([outcome('a#x', 'cache-hit'), outcome('b#x', 'success')], 42)
-    expect(lines.at(-1)).toBe('  time      42ms · max 100ms · avg 100ms · min 100ms')
+    expect(lines.at(-1)).toBe('  time      42ms')
   })
 
   it('empty run: 0 tasks row, no cache row', () => {
@@ -204,46 +204,28 @@ describe('formatRunSummary', () => {
     expect(lines.find((l) => l.startsWith('  result'))).toBeUndefined()
   })
 
-  it('ends with the run in one line: tasks, cached; all cached only when every task hit; failures first', () => {
+  it('ends on the time row, which carries what the cache saved; no result row repeats the rest', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
-    const result = (outcomes: TaskOutcome[], ms: number): string | undefined =>
+    const last = (outcomes: TaskOutcome[], ms: number): string | undefined =>
       formatRunSummary(outcomes, ms, { enabled: false }, ctx).at(-1)
-    // A miss is an executed task that has a cache; `outcome()` has none.
-    const miss = (id: string, status: TaskOutcome['status'] = 'success'): TaskOutcome => {
-      const o = outcome(id, status, status === 'failed' ? 1 : 0)
-      return { ...o, node: { ...o.node, config: { ...o.node.config, cache: {} } } as TaskNode }
-    }
-    expect(
-      result([outcome('a#x', 'cache-hit'), outcome('b#x', 'cache-hit-remote'), miss('c#x')], 3200),
-    ).toBe('  result    3 tasks · 2 cached (66%)')
-    expect(result([outcome('a#x', 'cache-hit')], 23)).toBe('  result    1 task · all cached')
-    expect(result([miss('a#x', 'failed'), miss('b#x')], 40)).toBe(
-      '  result    2 tasks · 1 failed · 0 cached (0%)',
-    )
-    // A task with no cache never could hit: counted apart, never a miss.
-    expect(result([outcome('a#dev', 'success')], 37)).toBe('  result    1 task · 1 no-cache')
-    expect(
-      result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'success'), miss('c#x')], 50),
-    ).toBe('  result    3 tasks · 1 cached (50%) · 1 no-cache')
-    expect(result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'failed', 1)], 50)).toBe(
-      '  result    2 tasks · 1 failed · 1 cached (100%) · 1 no-cache',
-    )
     // A hit says what it saved: its STORED exec time, not the restore.
     const hit = (id: string, storedDurationMs: number): TaskOutcome => ({
       ...outcome(id, 'cache-hit'),
       durationMs: 2,
       storedDurationMs,
     })
-    expect(result([hit('a#x', 2010), hit('b#x', 300), miss('c#x')], 90)).toBe(
-      '  result    3 tasks · 2 cached (66%) · 2.31s saved',
+    expect(last([hit('a#x', 2010), hit('b#x', 300), outcome('c#x', 'success')], 90)).toBe(
+      '  time      90ms · 2.31s saved',
     )
-    // The wall time is said once, on `time`: the result line repeated the
-    // same number (M, 2026-10-14).
+    // Nothing saved under a millisecond is said.
+    expect(last([outcome('a#x', 'success')], 37)).toBe('  time      37ms')
+    // The wall time is said once (M, 2026-10-14).
     const footer = formatRunSummary([outcome('a#x', 'cache-hit')], 4321, { enabled: false }, ctx)
     expect(footer.filter((l) => l.includes('4.32s'))).toEqual(['  time      4.32s'])
-    expect(formatRunSummary([], 5, { enabled: false }, ctx).find((l) => l.includes('result'))).toBe(
-      undefined,
-    )
+    for (const run of [[], [outcome('a#x', 'failed', 1)]])
+      expect(
+        formatRunSummary(run, 5, { enabled: false }, ctx).some((l) => l.includes('result')),
+      ).toBe(false)
   })
 })
 
@@ -294,7 +276,7 @@ describe('aborted and not-run tasks', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
     const lines = formatRunSummary(run, 10, { enabled: false }, ctx)
     expect(lines[3]).toBe('            1 success · 1 total · not counted: 1 aborted, 2 not run')
-    expect(lines.at(-1)).toBe('  result    1 task · 1 no-cache')
+    expect(lines.at(-1)).toBe('  time      10ms')
   })
 
   it('a stop before any task finished still names them under `0 tasks`', () => {
@@ -404,5 +386,72 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
     // The leading blank line stands the footer apart from the last frame;
     // the page's block starts at the rule.
     expect(block![1]).toBe(lines.join('\n').replace(/^\n/, '') + '\n')
+  })
+})
+
+// M, 2026-10-14: the footer never says a fact twice. `result` only
+// repeated the tasks, cache and time rows (its one new fact, saved, moved
+// to `time`), skipped was counted on both legends, and one executed task
+// read as its own max, avg and min.
+describe('the footer never repeats a value or a count', () => {
+  const ctx = {
+    version: '0.0.0',
+    packageCount: 3,
+    workspaceProjectCount: 9,
+    concurrency: 4,
+    remoteCacheEnabled: false,
+  }
+  const cached = (id: string, status: TaskOutcome['status'], ms: number): TaskOutcome => {
+    const o = outcome(id, status, status === 'failed' ? 1 : 0)
+    return {
+      ...o,
+      durationMs: ms,
+      ...(status.startsWith('cache-hit') ? { storedDurationMs: 21_290 } : {}),
+      node: { ...o.node, config: { ...o.node.config, cache: {} } } as TaskNode,
+    }
+  }
+  const facts = (lines: readonly string[]): string[] =>
+    lines
+      .flatMap((l) => l.replace(/[▰▱]/g, '').split(/·|,|:/))
+      .map((p) => p.trim().replace(/^(projects|tasks|cache|info|time|result)\s+/, ''))
+      .filter((p) => /^[~<]?\d/.test(p))
+  const footers: Record<string, string[]> = {
+    'all hits': formatRunSummary(
+      ['a', 'b', 'c', 'd'].map((p) => cached(`${p}#x`, 'cache-hit', 3)),
+      10,
+      { enabled: false },
+      ctx,
+    ),
+    'one executed task': formatRunSummary(
+      [cached('a#x', 'success', 5200)],
+      5340,
+      { enabled: false },
+      ctx,
+    ),
+    'a red run': formatRunSummary(
+      [
+        cached('a#x', 'failed', 700),
+        cached('b#x', 'success', 1300),
+        cached('c#x', 'success', 2100),
+        cached('d#x', 'cache-hit', 4),
+        outcome('e#x', 'skipped'),
+        outcome('f#x', 'skipped'),
+      ],
+      2500,
+      { enabled: false },
+      ctx,
+    ),
+  }
+  for (const [name, lines] of Object.entries(footers)) {
+    it(`${name}: each fact once`, () => {
+      const seen = facts(lines)
+      expect(seen.length).toBeGreaterThan(2)
+      expect(seen.filter((f, i) => seen.indexOf(f) !== i)).toEqual([])
+      expect(lines.some((l) => l.startsWith('  result'))).toBe(false)
+    })
+  }
+
+  it('saved rides the time row', () => {
+    expect(footers['all hits']!.at(-1)).toBe('  time      10ms · 85.16s saved')
   })
 })

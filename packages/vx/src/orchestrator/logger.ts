@@ -384,16 +384,16 @@ export function defaultLogger(
       if (text.length < KEPT_LINE_CAP) held.rest = text
       else {
         held.rest = ''
-        writer.write(fenced(formatKeptLines(node, text, colors)))
+        taskWrite(fenced(formatKeptLines(node, text, colors)))
       }
       return
     }
     held.rest = text.slice(cut + 1)
-    writer.write(fenced(formatKeptLines(node, text.slice(0, cut), colors)))
+    taskWrite(fenced(formatKeptLines(node, text.slice(0, cut), colors)))
   }
   const flushKept = (): void => {
     for (const held of keptLines.values()) {
-      if (held.rest.length > 0) writer.write(fenced(formatKeptLines(held.node, held.rest, colors)))
+      if (held.rest.length > 0) taskWrite(fenced(formatKeptLines(held.node, held.rest, colors)))
       held.rest = ''
     }
   }
@@ -489,8 +489,20 @@ export function defaultLogger(
     writer.clearStatus()
   }
 
+  // The task log opens with one blank line before its first row, on a
+  // terminal and off one (M, 2026-10-14). A note vx prints before it is
+  // no task row (`status`).
+  let logOpened = false
+  const taskWrite = (chunk: string): void => {
+    if (!logOpened && chunk.length > 0) {
+      logOpened = true
+      writer.write(`\n${chunk}`)
+      return
+    }
+    writer.write(chunk)
+  }
   const emitLine = (line: string): void => {
-    writer.write(`${line}\n`)
+    taskWrite(`${line}\n`)
     lineEmitted = true
   }
   // formatTaskBlock returns '' for group tasks (no exec) — skip the
@@ -498,14 +510,14 @@ export function defaultLogger(
   const emitBlock = (block: string): void => {
     if (block.length === 0) return
     const lead = lineEmitted || streamedSinceBlock ? '\n' : ''
-    writer.write(`${lead}${block}\n`)
+    taskWrite(`${lead}${block}\n`)
     lineEmitted = false
     streamedSinceBlock = false
   }
   // Live-frame close lines end a frame the same way emitBlock does:
   // with a trailing blank line, resetting the separator state.
   const emitFrameClose = (line: string): void => {
-    writer.write(`${line}\n\n`)
+    taskWrite(`${line}\n\n`)
     lineEmitted = false
     streamedSinceBlock = false
   }
@@ -689,7 +701,7 @@ export function defaultLogger(
       if (streamsLive(node)) {
         streamedSinceBlock = true
         if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
-        writer.write(chunk)
+        taskWrite(chunk)
         return
       }
       const tail = persistentTails.get(node.id)
@@ -705,7 +717,7 @@ export function defaultLogger(
       if (streamsLive(node)) {
         streamedSinceBlock = true
         if (chunk.length > 0) streamMidLine = !chunk.endsWith('\n')
-        writer.write(chunk)
+        taskWrite(chunk)
         return
       }
       const tail = persistentTails.get(node.id)
@@ -761,7 +773,7 @@ export function defaultLogger(
             (framesTerminal && holdsTerminal(node)))
         if (framed && streamsLive(node)) {
           if (streamMidLine) {
-            writer.write('\n')
+            taskWrite('\n')
             streamMidLine = false
           }
           emitFrameClose(formatFrameClose(node, outcome, colors))
@@ -844,7 +856,7 @@ export function defaultLogger(
       if (isGroupTask(node)) return
       if (holdsTerminal(node) && streamsLive(node) && outcome.status !== 'skipped') {
         if (streamMidLine) {
-          writer.write('\n')
+          taskWrite('\n')
           streamMidLine = false
         }
         emitFrameClose(formatFrameClose(node, outcome, colors))
@@ -922,7 +934,7 @@ export function defaultLogger(
               // and up-to-date included (owner: "always full frame
               // for a single task").
               if (streamMidLine) {
-                writer.write('\n')
+                taskWrite('\n')
                 streamMidLine = false
               }
               emitFrameClose(formatFrameClose(node, outcome, colors))

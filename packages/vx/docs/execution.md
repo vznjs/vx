@@ -566,7 +566,7 @@ The colors / framing modules:
 - `orchestrator/logger.ts` — composes them; resolves the output view
   and applies the per-flow visibility policy.
 - `orchestrator/summary.ts` — the closing footer (wordmark rule,
-  projects/tasks/cache meters, info, time and result rows).
+  projects/tasks/cache meters, info and time rows).
 
 ## Concurrency
 

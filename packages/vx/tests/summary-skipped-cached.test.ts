@@ -1,6 +1,6 @@
-// The result line's hit rate is over tasks that consulted a cache. A task
-// skipped behind a failure never did, and counted as a miss it printed
-// "0 cached (0%)" on a run in which no task has a cache block.
+// A task skipped behind a failure never consulted a cache, and counted as
+// a miss it printed "0 cached (0%)" on a run in which no task has a cache
+// block.
 import { describe, expect, it } from 'bun:test'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
@@ -15,7 +15,7 @@ function outcome(id: string, status: TaskOutcome['status'], cache?: object): Tas
   }
 }
 
-const result = (outcomes: TaskOutcome[]): string | undefined =>
+const footer = (outcomes: TaskOutcome[]): string[] =>
   formatRunSummary(
     outcomes,
     40,
@@ -25,22 +25,26 @@ const result = (outcomes: TaskOutcome[]): string | undefined =>
       packageCount: 1,
       remoteCacheEnabled: false,
     },
-  ).at(-1)
+  )
 
-describe('the result line — a skipped task is no cache miss', () => {
-  it('no task with a cache: no hit rate', () => {
-    expect(
-      result([outcome('a#x', 'failed'), outcome('c#x', 'success'), outcome('b#x', 'skipped')]),
-    ).toBe('  result    3 tasks · 1 failed · 2 no-cache')
+// The result row is gone (M, 2026-10-14: it only repeated other rows); the
+// cache legend is where a skipped task must still not read as a miss.
+describe('a skipped task is no cache miss', () => {
+  it('no task with a cache: no miss', () => {
+    const lines = footer([
+      outcome('a#x', 'failed'),
+      outcome('c#x', 'success'),
+      outcome('b#x', 'skipped'),
+    ])
+    expect(lines.find((l) => l.includes('no-cache'))).toBe('            2 no-cache')
   })
 
-  it('a skipped cached task is left out of the rate', () => {
-    expect(
-      result([
-        outcome('a#x', 'cache-hit', {}),
-        outcome('b#x', 'failed', {}),
-        outcome('c#x', 'skipped', {}),
-      ]),
-    ).toBe('  result    3 tasks · 1 failed · 1 cached (50%)')
+  it('a skipped cached task is no miss', () => {
+    const lines = footer([
+      outcome('a#x', 'cache-hit', {}),
+      outcome('b#x', 'failed', {}),
+      outcome('c#x', 'skipped', {}),
+    ])
+    expect(lines.find((l) => l.includes('miss'))).toBe('            1 miss · 1 up-to-date')
   })
 })

@@ -3349,7 +3349,9 @@ marked with a cyan `▸` after `┌─`/`└─`, and its close reads `running`
 died on its own before the run stopped it.
 
 There is **no top-of-run banner** — the run context lives in the
-footer. A broad run looks like:
+footer. The task log opens with one blank line before its first row,
+on a terminal or not; a note vx prints before it is not part of it.
+A broad run looks like:
 
 ```
  ⇢     4ms success local    @vzn/vx#format-check
@@ -3364,24 +3366,22 @@ footer. A broad run looks like:
             1 miss · 1 local
 
   info      8 workers · local cache
-  time      5.34s · max 5.20s · avg 5.20s · min 5.20s
-  result    2 tasks · 1 cached (50%) · 900ms saved
+  time      5.34s · 900ms saved
 ```
 
 The three bars are meters: `projects` is what the run covered against
 the workspace, `tasks` is failed / success / skipped, `cache` is miss /
 no-cache / up-to-date / local / remote (a skipped task rides it too, so
-the two legends sum alike). The `time` spread counts executed tasks
-only — a hit's restore time never enters it — which is why one executed
-task reads as its own max, avg and min. The `result` row is the run in
-one line, last: tasks, cached (every hit, local or remote, over every
-task with a cache that ran or hit; a skipped task asked no cache) and
-what the cache saved, the wall time being `time`'s alone — `3 tasks · all cached`
-when every task hit, with `N failed` after the count on a
-red run. A task with no `cache` block, or any task of a run whose
-`--cache-policy` reads and writes nothing (`--no-cache`), could never hit, so it
-is counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`), as
-`--dry` labels it. A test renders this run and
+the two bars fill alike; its count is on the tasks legend only). The
+`time` row is the wall time, then what the cache saved (the hits' stored
+exec times, never the restore), then the spread over executed tasks
+only — a hit's restore time never enters it. The footer never says a
+fact twice: a spread value already on the row is left out, so one
+executed task shows no spread, and there is no closing `result` row
+repeating the tasks, cache and time rows. A task with no `cache` block,
+or any task of a run whose `--cache-policy` reads and writes nothing
+(`--no-cache`), could never hit, so it is counted apart (`1 no-cache`
+for `vx run dev`), as `--dry` labels it. A test renders this run and
 checks it against this page, byte for byte.
 
 Group tasks emit no framed block by design (they aren't real tasks);

@@ -975,3 +975,39 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
     expect(s.chunks.at(-1)).toBe('\r\x1b[2A\x1b[Jn1')
   })
 })
+
+// M, 2026-10-14: the task log always opens with one empty line before its
+// first row, on a terminal and off one, whatever the view.
+describe('the task log opens with one blank line', () => {
+  const firstRow = (chunks: readonly string[], id: string): string | undefined =>
+    chunks.find((c) => c.includes(id) && !c.startsWith('\x1b') && !c.startsWith('\r'))
+  for (const mode of ['broad', 'full', 'focused', 'errors-only'] as const) {
+    for (const [name, mk] of [
+      ['a pipe', pipe],
+      ['a TTY', tty],
+    ] as const) {
+      it(`${mode}, ${name}`, () => {
+        const s = mk()
+        const log = defaultLogger(NO_COLORS, { mode }, s, { forceFloorMs: 0 })
+        // Focused shows the requested tasks.
+        log.runStart?.({ total: 2, requestedCount: 2 })
+        const a = mkNode('one#a', { requested: true })
+        const b = mkNode('one#b', { requested: true })
+        // A note vx prints before any task row is no task row.
+        log.status('[vx] a note')
+        log.taskStart?.(a)
+        log.taskStdout(a, 'out\n')
+        log.taskComplete(a, mkOutcome(a, mode === 'errors-only' ? 'failed' : 'success'))
+        log.taskStart?.(b)
+        log.taskComplete(b, mkOutcome(b, 'success'))
+        log.runEnd?.()
+        const first = firstRow(s.chunks, 'one#a')
+        expect(first).toBeDefined()
+        expect(first!.startsWith('\n')).toBe(true)
+        expect(first!.startsWith('\n\n')).toBe(false)
+        // Once: the second row has no blank of its own.
+        if (mode === 'broad') expect(firstRow(s.chunks, 'one#b')!.startsWith('\n')).toBe(false)
+      })
+    }
+  }
+})

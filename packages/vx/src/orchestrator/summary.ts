@@ -256,27 +256,48 @@ export function formatSummarySection(
       cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local`, colors))
     if (stats.restoredRemote > 0)
       cacheParts.push(paint(REMOTE, `${stats.restoredRemote} remote`, colors))
-    // Skipped tasks have no cache provenance, but omitting them made
-    // the cache legend sum below the tasks legend (owner-reported
-    // confusion) — on the bar and in the legend, yellow like the
-    // tasks meter.
-    if (stats.skipped > 0) cacheParts.push(paint(WARN, `${stats.skipped} skipped`, colors))
+    // Skipped tasks ride the bar, yellow like the tasks meter, so the two
+    // bars fill alike; their count is the tasks legend's alone (the footer
+    // never says a fact twice, M, 2026-10-14).
     lines.push(row('cache', cacheBar))
     if (cacheParts.length > 0) lines.push(legend(cacheParts))
   }
 
   // Cache-miss duration spread (owner: hits' restore times polluted
   // it — only tasks that actually executed count). Dim: context.
-  let spread = ''
-  if (stats.spread !== null && stats.spread.count > 0) {
+  // A value already on the row is not said again: one executed task read
+  // as its own max, avg and min (M, 2026-10-14). Tasks that all took the
+  // same time have no spread to show.
+  const total = formatElapsed(totalMs)
+  const said = new Set([total])
+  const spreadParts: string[] = []
+  if (
+    stats.spread !== null &&
+    formatElapsed(stats.spread.maxMs) !== formatElapsed(stats.spread.minMs)
+  ) {
     const { maxMs, minMs, sumMs, count } = stats.spread
-    spread = ` ${dim(`\u00b7 max ${formatElapsed(maxMs)} \u00b7 avg ${formatElapsed(sumMs / count)} \u00b7 min ${formatElapsed(minMs)}`)}`
+    for (const [label, ms] of [
+      ['max', maxMs],
+      ['avg', sumMs / count],
+      ['min', minMs],
+    ] as const) {
+      const v = formatElapsed(ms)
+      if (said.has(v)) continue
+      said.add(v)
+      spreadParts.push(`${label} ${v}`)
+    }
   }
+  const timeParts = [total]
+  // What the cache paid back, beside what the run cost: the stored exec
+  // time of every hit, never the restore this run spent on it.
+  if ((stats.savedMs ?? 0) >= 1)
+    timeParts.push(paint(SUCCESS, `${formatElapsed(stats.savedMs!)} saved`, colors))
   // The live run's forecast leads the spread: the one number on the row
   // that is about the future.
-  if (stats.etaMs !== undefined) {
-    spread = ` ${dim('\u00b7')} ${paint(ACCENT, `${formatEta(stats.etaMs)} left`, colors)}${spread}`
-  }
+  if (stats.etaMs !== undefined)
+    timeParts.push(paint(ACCENT, `${formatEta(stats.etaMs)} left`, colors))
+  for (const p of spreadParts) timeParts.push(dim(p))
+  const timeRow = row('time', join(timeParts))
   // Run-shape footer (final summary only): worker pool + cache mode,
   // grouped with time under a blank line below the meters.
   if (context !== undefined) {
@@ -294,13 +315,9 @@ export function formatSummarySection(
         `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'}, ${formatElapsed(stats.held.sumMs)} in all`,
       )
     }
-    lines.push('', row('info', join(info)), row('time', `${formatElapsed(totalMs)}${spread}`))
-    // The run in one line, last, where the eye lands: what a Turbo user
-    // reads first in its own summary, in vx's words. The wall time is
-    // `time`'s alone: the line repeated it (M, 2026-10-14).
-    if (stats.total > 0) lines.push(row('result', resultLine(stats, hits, colors)))
+    lines.push('', row('info', join(info)), timeRow)
   } else {
-    lines.push('', row('time', `${formatElapsed(totalMs)}${spread}`))
+    lines.push('', timeRow)
   }
   return lines
 }
@@ -314,37 +331,6 @@ function formatEta(ms: number): string {
   const s = Math.ceil(ms / 1000)
   if (s < 60) return `~${s}s`
   return `~${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
-}
-
-/**
- * `42 tasks · 38 cached (90%)`, `2 tasks · all cached` (every task hit),
- * with the failures first when there are any. Cached is every hit (up to
- * date, restored locally or remotely) over every task that consulted a
- * cache: a skipped or not-yet-run task never did.
- */
-function resultLine(stats: SummaryStats, hits: number, colors: ColorSupport): string {
-  const parts = [`${stats.total} task${stats.total === 1 ? '' : 's'}`]
-  if (stats.failed > 0) parts.push(paint(ERROR, `${stats.failed} failed`, colors, { bold: true }))
-  // A task with no `cache` block could never hit: it is counted apart, not
-  // as a miss, or `vx run dev` would read "0 cached (0%)". A skipped task
-  // never asked either, and counted as a miss it put "0 cached (0%)" on a
-  // run in which no task has a cache.
-  const noCache = stats.noCache ?? 0
-  const cacheable = stats.total - noCache - stats.skipped - (stats.left ?? 0)
-  if (cacheable > 0)
-    parts.push(
-      // "all cached" beside a failure or a no-cache count read as a run
-      // that did nothing; it is said only when every task hit.
-      hits === stats.total
-        ? paint(SUCCESS, 'all cached', colors, { bold: true })
-        : `${hits} cached (${Math.floor((hits / cacheable) * 100)}%)`,
-    )
-  if (noCache > 0) parts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
-  // What the cache paid back, beside what the run cost: the stored exec
-  // time of every hit, never the restore this run spent on it.
-  if ((stats.savedMs ?? 0) >= 1)
-    parts.push(paint(SUCCESS, `${formatElapsed(stats.savedMs!)} saved`, colors))
-  return parts.join(` ${paint('', '\u00b7', colors, { dim: true })} `)
 }
 
 /**

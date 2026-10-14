@@ -59,8 +59,7 @@ own frame, in the order tasks finish.
             8 up-to-date
 
   info      4 workers · local cache
-  time      23ms
-  result    8 tasks · all cached · 2.12s saved
+  time      23ms · 2.12s saved
 ```
 
 That is the same eight tasks a second time, all cached: 23 ms, and the
