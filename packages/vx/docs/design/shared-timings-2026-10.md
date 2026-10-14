@@ -34,7 +34,8 @@ declares. No new wire, no mutable entry.
   (`VX_DEBUG` names why). A slow remote never holds a run longer than the deadline.
 - **Forecast order** (M 2026-10-14 20:54), per task: this machine's
   current-branch runs (median of the last 5), then the remote file, then
-  `assume`. On CI the history is empty, so the remote file comes first.
+  its runs on any branch (median of the last 5), then `assume`. On CI the
+  history is empty, so the remote file comes first.
 
 ## Core seam
 
