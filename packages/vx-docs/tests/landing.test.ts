@@ -396,9 +396,8 @@ describe('the landing page', () => {
     expect(/npx @vzn\/vx init +# ([^\n]*)/.exec(start)![1]).toContain('add the cache block')
     const subs = [...start.matchAll(/<p class="sub">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
     expect(subs).toEqual([
-      // `vx init` is the temporary start; the migrator writes the native
-      // config, and npm has no copy of it yet (J2-28).
-      'Coming from Turbo or Nx: vx init gives a temporary start, and bunx @vzn/vx-migrate writes the native vx config.',
+      // `vx init` is the one way to start, Turbo and Nx included (M, 2026-10-14).
+      'Coming from Turbo or Nx: the same vx init writes the native vx config from it.',
     ])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)
   })
