@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## orchestrator: forecast from shared per-branch task timings
+
+No migration note.
+
 ## cache: core keys no package file
 
 core folds neither the project's package.json nor the root lockfiles and install settings into a key, so without a lockfile plugin an install re-keys nothing (declare pnpm(), bun(), npm() or yarn() from @vzn/vx-lockfile). TaskInputs drops packageJsonDigest and workspaceFingerprint. npm() reads npm-shrinkwrap.json first; bun() refuses a lone bun.lockb (run `bun install --save-text-lockfile`).

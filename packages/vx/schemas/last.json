@@ -20,9 +20,13 @@
     "stats": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["window", "stats"],
+      "required": ["window", "branch", "stats"],
       "properties": {
         "window": { "type": "integer", "description": "the newest runs the numbers cover" },
+        "branch": {
+          "type": ["string", "null"],
+          "description": "the branch p50 forecasts from: --branch, VX_RUN_BRANCH, git's, then CI's"
+        },
         "stats": { "type": "array", "items": { "$ref": "#/$defs/taskStats" } }
       }
     },
@@ -45,7 +49,7 @@
         "runs": { "type": "integer", "description": "executed runs in the window, skips aside" },
         "p50DurationMs": {
           "type": ["number", "null"],
-          "description": "over executed successes; null when none"
+          "description": "the forecast a run shows: median of the last 5 timings on branch, else on any branch; null when none"
         },
         "p99DurationMs": { "type": ["number", "null"] },
         "successRate": { "type": "number", "description": "0 to 1" },

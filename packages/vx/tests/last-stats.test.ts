@@ -57,7 +57,13 @@ const unhosted = ({ maxPeakRssBytes, maxCpuParallelism, ...s }: Record<string, u
 it('--stats --format json lists every task in the window, sorted by id', () => {
   const r = vx('last', '--stats', '--format', 'json')
   expect(r.code).toBe(0)
-  const out = JSON.parse(r.out) as { window: number; stats: Record<string, unknown>[] }
+  const { branch, ...out } = JSON.parse(r.out) as {
+    window: number
+    branch: string | null
+    stats: Record<string, unknown>[]
+  }
+  // The checkout's branch: none here, the CI provider's on CI.
+  expect(branch === null || typeof branch === 'string').toBe(true)
   expect({ ...out, stats: out.stats.map(unhosted) }).toEqual({
     window: 50,
     stats: [
