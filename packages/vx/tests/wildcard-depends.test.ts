@@ -5,6 +5,7 @@
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
+import { writeEdges } from './helpers/plugin.js'
 import {
   addProject as addProjectTo,
   gitIn,
@@ -19,13 +20,17 @@ function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-wildcard-e2e-', rootName: 'root' })
 }
 
+let edges: Record<string, string[]> = {}
+
 async function addProject(
   root: string,
   name: string,
   config: string,
-  deps: Record<string, string> = {},
+  deps: readonly string[] = [],
 ): Promise<void> {
-  await addProjectTo(root, name, { config, deps })
+  await addProjectTo(root, name, { config })
+  edges[name] = [...deps]
+  await writeEdges(root, edges)
 }
 
 async function vx(root: string, args: string[]) {
@@ -45,6 +50,7 @@ async function vx(root: string, args: string[]) {
 
 let root: string
 beforeEach(async () => {
+  edges = {}
   root = await makeWorkspace()
 })
 afterEach(async () => {
@@ -99,7 +105,7 @@ describe('dependsOn patterns e2e', () => {
         },
       }
       `,
-      { lib: 'workspace:*' },
+      ['lib'],
     )
     const r = await vx(root, ['run', 'app#test'])
     expect(r.code).toBe(0)
@@ -180,7 +186,7 @@ describe('dependsOn patterns e2e', () => {
         },
       }
       `,
-      { 'acme-core': 'workspace:*' },
+      ['acme-core'],
     )
     const core = path.join(root, 'packages', 'acme-core')
     const app = path.join(root, 'packages', 'app')

@@ -337,7 +337,6 @@ export async function resolveFilters(
         workspaceGlobOwners: (changed: readonly string[], nested: readonly string[]) =>
           workspaceGlobOwners(root, projects, changed, load, stagedOnce, nested),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
-        taskEdges: async () => edges ?? taskEdgesFrom(await stagedOnce()),
         ...(git !== undefined ? { untracked: async () => (await git.start()).untracked } : {}),
       }
       let names: Set<string>

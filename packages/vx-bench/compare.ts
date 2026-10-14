@@ -139,11 +139,14 @@ async function generate(dir: string): Promise<void> {
   // the experience"): the history plugin orders by the critical path a
   // timings file from an earlier run recorded. The file sits outside .vx,
   // so a cache wipe keeps it, as CI caches it between runners.
+  // edges.ts stands in for the lockfile plugin: the workspace is never installed.
   const history = path.join(vxRoot, 'packages', 'vx-schedule-history', 'src', 'index.ts')
+  const edges = path.join(vxRoot, 'packages', 'vx-bench', 'edges.ts')
   await Bun.write(
     path.join(dir, '.vx/workspace.mjs'),
     `import { scheduleHistoryPlugin } from ${JSON.stringify(history)}\n` +
-      `export default { plugins: [scheduleHistoryPlugin({ file: 'vx-timings.json' })] }\n`,
+      `import { benchEdges } from ${JSON.stringify(edges)}\n` +
+      `export default { plugins: [scheduleHistoryPlugin({ file: 'vx-timings.json' }), benchEdges()] }\n`,
   )
   const turboTask = (t: TaskName) => ({
     dependsOn: [...DEPENDS_ON[t]],

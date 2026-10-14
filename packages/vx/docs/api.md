@@ -25,7 +25,7 @@ What `--affected` seeds its tasks from (owner, 2026-10-04): the changed
 projects, each one's changed paths relative to it, and the projects a
 change reaches as a whole — every task in one is affected whatever its
 inputs say, because the reason was no path of its own (a lockfile claim,
-a manifest edge at the base, a config import, a nested repository, a
+a config import, a nested repository, a
 workspace-wide file).
 
 ```ts
@@ -70,25 +70,6 @@ export interface ApplyMigrationArgs {
   lock?: (root: string) => Promise<number>
   plugins?: readonly WorkspacePlugin[]
 }
-```
-
-## `buildPackageGraph`
-
-function · `src/workspace/package-graph.ts`
-
-`taskEdges`: project → the projects its tasks name in a cross-project
-`dependsOn` (`e2e` → `app` from `dependsOn: ['app#build']`). A dependent
-the manifest does not know but the task graph does; without it
-`--filter '...app'` never selected `e2e`, and a CI that runs "what
-changed and everything depending on it" silently left it out
-(2026-09-10). The `^task` walk still reads `directDeps`, which carries
-both — a task edge IS a dependency.
-
-```ts
-export function buildPackageGraph(
-  projects: ProjectMeta[],
-  taskEdges?: ReadonlyMap<string, readonly string[]>,
-): PackageGraph
 ```
 
 ## `Cache`
@@ -1622,7 +1603,6 @@ export interface ProjectMeta {
   dir: string
   packageJson: PackageJson
   configPath: string | null
-  catalogs?: Catalogs
   deps?: readonly string[]
   reach?: readonly string[]
 }

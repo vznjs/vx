@@ -49,7 +49,7 @@ terminal and a task succeeding or failing. Read it alongside
  │    4. listProjects — globs every workspace member's package.json,
  │       finds sibling vx.config.* files, detects duplicate package
  │       names (hard error with both paths).
- │    5. buildPackageGraph — workspace dep edges from package.json.
+ │    5. buildPackageGraph — project edges the `discover` plugins gave.
  │    6. Local cache open: new Cache(cacheDir, { read, write }, root)
  │       with the policy's local slice. Then
  │       computeWorkspaceFingerprints: one read of every supported

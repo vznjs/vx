@@ -61,7 +61,6 @@ export interface PackageJson {
 export interface Workspace {
   root: string
   packageGlobs: string[] // patterns relative to root
-  catalogs?: Catalogs // catalog name ('default' for `catalog:`) → key → spec
 }
 
 export interface ProjectMeta {
@@ -69,8 +68,7 @@ export interface ProjectMeta {
   dir: string // absolute project directory
   packageJson: PackageJson
   configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs,cts,cjs}
-  catalogs?: Catalogs // the workspace's, set by discovery for the package graph
-  deps?: readonly string[] // project names a `discover` plugin orders this one after
+  deps?: readonly string[] // project names a `discover` plugin orders this one after ([] when an entry carried none)
   reach?: readonly string[] // project names a `discover` plugin reaches it through, no order
 }
 
@@ -94,15 +92,16 @@ export function discoveredProject(
   by: string,
 ): Promise<{ meta: ProjectMeta; added: boolean }>
 // After the stage: each edge dir to the project there, as ProjectMeta
-// `deps` / `reach` (sorted names); a target outside the root or no project
-// is refused naming the plugin
+// `deps` / `reach` (sorted names; `deps: []` for an entry that carried an
+// empty list, so the graph sees an edge source); a target outside the root
+// or no project is refused naming the plugin
 export function linkDiscoveredEdges(
   root: string,
   projects: readonly ProjectMeta[],
   edges: readonly {
     by: string
     meta: ProjectMeta
-    deps: readonly string[]
+    deps: readonly string[] | undefined
     reach: readonly string[]
   }[],
 ): void
@@ -249,13 +248,6 @@ one (the list commented out), defers to `package.json`, as pnpm does.
 A yarn `workspaces: { packages: null }` is the single project too, as
 yarn 1 and 4 read it.
 
-From the same parsed manifests it takes the catalogs a `catalog:` spec
-resolves through: `pnpm-workspace.yaml`'s `catalog` and `catalogs`, or,
-without that file, the root `package.json`'s, at the top level or under
-`workspaces` (bun). Discovery hands them to every `ProjectMeta`, so each
-package graph built from the metas resolves `catalog:` alike
-(`package-graph.md`).
-
 ### `listProjects(workspace)`
 
 Globs every `package.json` matching the patterns (`Bun.Glob`,
@@ -291,8 +283,8 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
   only for a name several manifests share.
 - Find the first existing `vx.config.{ts,mts,js,mjs,cts,cjs}` sibling; that
   becomes `configPath`. Projects without a config keep
-  `configPath: null` — they're still in the workspace graph (so
-  cross-package deps work) but contribute no tasks.
+  `configPath: null` — they're still projects (a plugin's edges may
+  reach them) but contribute no tasks.
 - `node_modules` paths are explicitly skipped even when a
   pathological `**` glob would match them.
 - The root package is a project too when it holds a

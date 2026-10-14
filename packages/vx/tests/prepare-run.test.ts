@@ -14,13 +14,13 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
 import type { ProjectConfig } from '../src/config.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun as prepareFromLock } from '../src/orchestrator/index.js'
 import { lock, prepareRun } from './helpers/orchestrator.js'
-import { pluginSource } from './helpers/plugin.js'
+import { pluginSource, writeEdges } from './helpers/plugin.js'
 import { UserError } from '../src/util/index.js'
 
 const TIMEOUT = 30_000
@@ -42,7 +42,8 @@ beforeEach(async () => {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
   )
-  await writeLocalWorkspace(root)
+  for (const k of Object.keys(edgeMap)) delete edgeMap[k]
+  await writeEdges(root)
   // Input enumeration is git-backed, so discovery needs a real repo.
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
 })
@@ -55,22 +56,20 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** A package with a vx.config.mjs; `deps` become real package.json deps. */
+/** The workspace's project edges so far, by name. */
+const edgeMap: Record<string, string[]> = {}
+
+/** A package with a vx.config.mjs; `deps` become its edges in the workspace file. */
 async function pkg(name: string, config: string, deps: readonly string[] = []): Promise<void> {
   const dir = path.join(root, 'packages', name)
   await mkdir(path.join(dir, 'src'), { recursive: true })
   await writeFile(path.join(dir, 'src', 'a.ts'), `// ${name}\n`)
-  await writeFile(
-    path.join(dir, 'package.json'),
-    JSON.stringify({
-      name,
-      version: '1.0.0',
-      ...(deps.length > 0
-        ? { dependencies: Object.fromEntries(deps.map((d) => [d, '1.0.0'])) }
-        : {}),
-    }),
-  )
+  await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
   await writeFile(path.join(dir, 'vx.config.mjs'), config)
+  if (deps.length > 0) {
+    edgeMap[name] = [...deps]
+    await writeEdges(root, edgeMap)
+  }
 }
 
 /** A task whose dependsOn is exactly `deps`. */

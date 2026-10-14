@@ -261,6 +261,13 @@ async function solidShaped(): Promise<{ root: string; env: Record<string, string
 /** What the fake pnpm would have installed: the native run ends with
  *  `vx lock`, which loads the plugins the workspace declares. Stand-ins, as
  *  the sandbox lets this suite read no other package but core. */
+// The lockfile stand-ins are an edge source with no edges, as a real one
+// is: the mapped `^build` is refused without one.
+const HOOKS = {
+  'vx-lockfile': '{ discover: (ctx) => ctx.projects.map((p) => ({ dir: p.dir, deps: [] })) }',
+  'vx-schedule-history': '{ setup() {} }',
+}
+
 async function installPlugins(root: string): Promise<void> {
   const scope = path.join(root, 'node_modules', '@vzn')
   await mkdir(scope, { recursive: true })
@@ -278,7 +285,7 @@ async function installPlugins(root: string): Promise<void> {
       path.join(scope, pkg, 'index.js'),
       "import { definePlugin } from '@vzn/vx'\n" +
         factories
-          .map((f) => `export const ${f} = () => definePlugin(import.meta, { setup() {} })\n`)
+          .map((f) => `export const ${f} = () => definePlugin(import.meta, ${HOOKS[pkg]})\n`)
           .join(''),
     )
   }

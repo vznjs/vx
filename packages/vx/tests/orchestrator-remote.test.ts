@@ -28,7 +28,7 @@ import {
   type TelemetryRecord,
 } from '../src/orchestrator/index.js'
 import { planRun, run } from './helpers/orchestrator.js'
-import { pluginSource } from './helpers/plugin.js'
+import { pluginSource, writeEdges } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
 
 /**
@@ -611,9 +611,9 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           files: { 'src/in.txt': 'a' },
           config: BUILD_CONFIG,
         })
+        await writeEdges(fixture.root, { b: ['a'] })
         await addProject(fixture.root, 'b', {
           files: { 'src/in.txt': 'b' },
-          deps: { a: '*' },
           config: `
             export default {
               tasks: {

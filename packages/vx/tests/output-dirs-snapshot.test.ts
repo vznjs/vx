@@ -21,7 +21,7 @@ import {
 
 let fixture: Fixture
 beforeEach(async () => {
-  fixture = await makeWorkspace('vx-dir-snapshot-')
+  fixture = await makeWorkspace('vx-dir-snapshot-', { b: ['a'] })
 })
 afterEach(async () => {
   await rm(fixture.root, { recursive: true, force: true })
@@ -43,7 +43,6 @@ it(
     // reproduces it).
     await addProject(fixture.root, 'b', {
       files: {},
-      deps: { a: '*' },
       config: `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'sleep 0.15' } } } }\n`,
     })
     const r = await run({

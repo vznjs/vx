@@ -14,7 +14,7 @@ import { runLockPath } from '../src/orchestrator/run-lock.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { pluginSource } from './helpers/plugin.js'
+import { pluginSource, writeEdges } from './helpers/plugin.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
@@ -361,7 +361,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       exec: { command: 'echo $$ > pid.txt; echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } },
     } } }`
     const api = await addProject(root, 'api', server([]))
-    const app = await addProject(root, 'app', { config: server(['^dev']), deps: { api: '0.0.0' } })
+    const app = await addProject(root, 'app', server(['^dev']))
+    await writeEdges(root, { app: ['api'] })
     const proc = track(
       Bun.spawn([process.execPath, BIN, 'run', 'dev', '--filter', 'app'], {
         cwd: root,

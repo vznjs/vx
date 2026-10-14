@@ -118,7 +118,7 @@ here, itself or in a brace group.
 | [`project-loader.md`](./project-loader.md) | `src/workspace/project-loader.ts` — `vx.config.*` / `.vx/workspace.*` evaluation.                                                               |
 | [`config-schema.md`](./config-schema.md)   | `src/workspace/config-schema.ts` — what a config may say: the validators, every level.                                                          |
 |                                            | `src/workspace/json-data.ts` — a config is JSON data: the one rule the loader, the config worker and the playground run (see config-schema.md). |
-| [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — workspace dep graph from package.json.                                                                       |
+| [`package-graph.md`](./package-graph.md)   | `src/workspace/package-graph.ts` — project graph from plugin edges.                                                                             |
 |                                            | `src/workspace/dependency-rules.ts` — `run.rules.dependencies` held to the graph's direct deps (see package-graph.md).                          |
 | [`filter.md`](./filter.md)                 | `src/workspace/filter.ts` — pnpm-style `--filter` DSL parser + applier.                                                                         |
 | [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                                                                                   |

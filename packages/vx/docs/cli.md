@@ -209,19 +209,15 @@ selected: !app excluded every project the other filters matched`).
 | `!<pattern>`      | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                                                                                                                                               |
 | `[<git-ref>]`     | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                                                                                                                                                   |
 
-An edge is a `package.json` workspace dependency (`dependencies`,
-`devDependencies`, `peerDependencies`, `optionalDependencies`; a peer
-that would close a cycle counts for selection only, see
-`modules/package-graph.md`) — an entry the package manager links to a
-workspace package, not one whose key merely names it:
-`"shared": "^1.0.0"` beside a local `shared@2.0.0` is a registry
-dependency and no edge, and `"luigi": "workspace:../waluigi"` is an
-edge to `waluigi` (the rule: `modules/package-graph.md` § Which entries
-are edges) — OR a
-cross-project `dependsOn` entry (`e2e`'s `test: { dependsOn:
-['app#build'] }` makes `e2e` a dependent of `app`). The task graph knows
-both, so selection follows both: `vx run test --filter '...app'` runs
-`e2e#test` even though `e2e` has no manifest dependency on `app`. There
+An edge is one a plugin supplies — a `discover` entry's `deps` (order
+and selection) or `reach` (selection only); the lockfile plugins
+(`pnpm()`, `bun()`, `npm()`, `yarn()` from `@vzn/vx-lockfile`) supply
+what the package manager installed, and core reads no edge from a
+`package.json` — OR a cross-project `dependsOn` entry (`e2e`'s `test: {
+dependsOn: ['app#build'] }` makes `e2e` a dependent of `app`). The task
+graph knows both, so selection follows both: `vx run test --filter
+'...app'` runs `e2e#test` even though no plugin gives `e2e` an edge to
+`app`. There
 is no `implicitDependencies` field — declare the edge where the task
 needs it.
 
@@ -307,7 +303,8 @@ change seeds tasks in the projects it touches:
   (vx cannot prove that path re-keys nothing), or that holds a changed
   submodule or embedded repository (git reports it as one path, and no
   task's globs can say whether they reach inside), or that a lockfile
-  claim, a manifest edge at the base or a config import names;
+  claim or a config import names (a dependency an install added or
+  removed reaches here as the lockfile's change);
 - an uncached task when a changed path lies in its project or the
   project is reached whole; a root file another task of its declares
   (`workspaceFiles`) is no change there. A group seeds nothing.
@@ -994,7 +991,7 @@ $ vx run build lint --affected=main --dry
 `kind` is `input` (a changed `file` is a declared input), `project` (its
 project changed and the task reads it whole: an uncached task, or a changed
 `file` no cached task of the project declares, often an output git does not
-ignore; no `file` for a lockfile claim, a manifest edge or a config import),
+ignore; no `file` for a lockfile claim or a config import),
 `package` (a `^` edge passes a changed `project` with no such task),
 `named` (`pkg#task` beside a bare task) or `selected` (another filter
 selected its project). `via` is the `dependsOn` chain, nearest first, to
@@ -2604,6 +2601,14 @@ a form vx does not take (a bare wildcard, a negation, a pattern in
 `pkg#task`). The message names the task and the entry: declare the
 target, fix its spelling, or drop the entry.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
+
+A `^task` with no edge source is refused too: ``<id>: ^build needs
+project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns
+`deps` ``. Core reads no edge from a manifest, so with no plugin
+returning `deps` every `^` would resolve to nothing and fold no
+upstream into the key. Declare the lockfile plugin in
+`.vx/workspace.ts` (or a plugin of your own that returns `deps`); a run
+refuses it as well when the plugin left the workspace after the lock.
 
 #### `VX_E_OUTPUT_OVERLAP`
 

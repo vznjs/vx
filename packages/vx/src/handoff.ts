@@ -76,6 +76,11 @@ export function workspaceFile(dir: string): Promise<string | null> {
   return file
 }
 
+/** vx wrote a workspace config (`vx init`): what was learned before it is stale. */
+export function workspaceFileWritten(): void {
+  files.clear()
+}
+
 async function findWorkspaceFile(start: string): Promise<string | null> {
   const top = await gitTop(start)
   const passed: string[] = []

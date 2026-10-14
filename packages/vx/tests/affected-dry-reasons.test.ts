@@ -19,11 +19,10 @@ const cached = (extra = '') => `export default {
 let root = ''
 
 beforeAll(async () => {
-  root = await makeWorkspace({ prefix: 'vx-affected-why-', git: false })
+  root = await makeWorkspace({ prefix: 'vx-affected-why-', git: false, edges: { app: ['lib'] } })
   await addProject(root, 'lib', { config: cached(), files: { 'src/a.js': 'export {}\n' } })
   await addProject(root, 'app', {
     config: cached(`\n      dependsOn: ['^build'],`),
-    deps: { lib: 'workspace:*' },
     files: { 'src/a.js': 'export {}\n' },
   })
   await addProject(root, 'other', { config: cached(), files: { 'src/a.js': 'export {}\n' } })

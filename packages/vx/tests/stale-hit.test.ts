@@ -25,6 +25,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { waitForProducers, writeLocalWorkspace } from './helpers/local-workspace.js'
+import { edgesSource, writeEdges } from './helpers/plugin.js'
 import {
   GitFilesCache,
   attributeFilesOutsideTree,
@@ -1747,14 +1748,11 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
   async function libApp(): Promise<{ lib: string; app: string }> {
     await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
     await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-    await writeLocalWorkspace(root)
+    await writeEdges(root, { app: ['lib'] })
     const lib = path.join(root, 'packages', 'lib')
     const app = path.join(root, 'packages', 'app')
     await write(path.join(lib, 'package.json'), '{"name":"lib","version":"1.0.0"}')
-    await write(
-      path.join(app, 'package.json'),
-      '{"name":"app","version":"1.0.0","dependencies":{"lib":"workspace:*"}}',
-    )
+    await write(path.join(app, 'package.json'), '{"name":"app","version":"1.0.0"}')
     await write(
       path.join(lib, 'vx.config.mjs'),
       `export default { tasks: { build: {
@@ -1792,10 +1790,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
        } } }\n`,
     )
     await write(path.join(base, 'src', 'b.txt'), 'b')
-    await write(
-      path.join(lib, 'package.json'),
-      '{"name":"lib","version":"1.0.0","dependencies":{"base":"workspace:*"}}',
-    )
+    await writeEdges(root, { app: ['lib'], lib: ['base'] })
     await write(
       path.join(lib, 'vx.config.mjs'),
       `export default { tasks: { build: {
@@ -1870,7 +1865,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await write(path.join(root, '.gitignore'), 'dist/\ngen/\n.vx/cache/\n')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'prep')
-      await waitForProducers(root)
+      await waitForProducers(root, [edgesSource({ app: ['lib'] })])
       vx(root, 'run', 'build', '--all')
       const out = vx(root, 'run', 'app#build', '--exclude-dependencies=build', '--output-logs=none')
       // `prep` and `app#build` both current: the run's key is the full one.
@@ -2107,8 +2102,8 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
   it(
     'every skipped dependency of every dependant is keyed, as the full run does',
     async () => {
-      const { lib } = await baseLibApp()
-      await write(path.join(lib, 'package.json'), '{"name":"lib","version":"1.0.0"}')
+      await baseLibApp()
+      await writeEdges(root, { app: ['lib', 'base'], top: ['tool'] })
       const tool = path.join(root, 'packages', 'tool')
       const top = path.join(root, 'packages', 'top')
       await write(path.join(tool, 'package.json'), '{"name":"tool","version":"1.0.0"}')
@@ -2120,10 +2115,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          } } }\n`,
       )
       await write(path.join(tool, 'src', 't.txt'), 't')
-      await write(
-        path.join(top, 'package.json'),
-        '{"name":"top","version":"1.0.0","dependencies":{"tool":"workspace:*"}}',
-      )
+      await write(path.join(top, 'package.json'), '{"name":"top","version":"1.0.0"}')
       await write(
         path.join(top, 'vx.config.mjs'),
         `export default { tasks: { build: {
@@ -2133,10 +2125,6 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          } } }\n`,
       )
       await write(path.join(top, 'src', 't.txt'), 't')
-      await write(
-        path.join(root, 'packages', 'app', 'package.json'),
-        '{"name":"app","version":"1.0.0","dependencies":{"lib":"workspace:*","base":"workspace:*"}}',
-      )
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'two dependants')
       const hashes = (...flags: string[]): string[] => {

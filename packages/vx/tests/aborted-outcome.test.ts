@@ -23,6 +23,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
+import { writeEdges } from './helpers/plugin.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -85,7 +86,7 @@ describe('a task killed by a shutdown signal', () => {
       // IDENTICAL across both runs. Whatever b caches in run 1 is keyed
       // exactly as a healthy run would key it.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
-      await writeLocalWorkspace(root)
+      await writeEdges(root, { b: ['a'] })
       await write(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\nkill.flag\n')
 
@@ -106,10 +107,7 @@ describe('a task killed by a shutdown signal', () => {
          }`,
       )
 
-      await write(
-        path.join(root, 'packages/b/package.json'),
-        '{"name":"b","version":"0.0.0","dependencies":{"a":"workspace:*"}}',
-      )
+      await write(path.join(root, 'packages/b/package.json'), '{"name":"b","version":"0.0.0"}')
       await write(path.join(root, 'packages/b/src/in.txt'), 'b-source')
       await write(
         path.join(root, 'packages/b/vx.config.mjs'),

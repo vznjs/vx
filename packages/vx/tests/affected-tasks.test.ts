@@ -35,7 +35,7 @@ const changes: AffectedChanges = {
 const projects = new Map([
   ['app', { name: 'app', dir: '/w/app', config: { tasks: { zero: cached('zero.txt') } } }],
 ]) as unknown as ReadonlyMap<string, ProjectEntry>
-const packageGraph = { directDeps: () => [] } as unknown as PackageGraph
+const packageGraph = { edgeSource: true, directDeps: () => [] } as unknown as PackageGraph
 
 describe('affectedRoots', () => {
   it('a 50,000-deep chain seeded at its bottom reaches its top', () => {

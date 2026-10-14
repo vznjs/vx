@@ -13,6 +13,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { type Logger, listProjectMetas, loadProjectConfig, loadWorkspace } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const CORE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx')
@@ -115,10 +116,10 @@ async function migrate(shape: string): Promise<{
     // Every written task plans: a config that loads can still be refused
     // when core builds the graph (a cycle, P2-22; a dropped key, P2-23).
     // The written workspace file imports plugins this fixture never
-    // installs (--no-install); the configs are the subject here. A bare one
-    // still marks the root.
+    // installs (--no-install); the configs are the subject here. One with
+    // the edge source alone still marks the root.
     await rm(path.join(root, '.vx/workspace.ts'), { force: true })
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     await writeFile(path.join(root, '.gitignore'), 'node_modules\n')
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
     Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })

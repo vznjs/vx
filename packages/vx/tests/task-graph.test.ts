@@ -38,6 +38,7 @@ function packageGraph(direct: Record<string, string[]>): PackageGraph {
   }
 
   return {
+    edgeSource: true,
     directDeps: (n) => directDeps.get(n) ?? [],
     transitiveDeps: (n) => transitive(n),
     transitiveDependents: () => [],

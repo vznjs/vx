@@ -16,6 +16,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { benchEnv } from './bench-env.js'
+import { BENCH_WORKSPACE } from './edges.js'
 
 const PROJECTS = 100
 const REPS = 7
@@ -51,7 +52,7 @@ try {
     packageManager: 'bun@1.4.2',
     workspaces: ['packages/*'],
   })
-  await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
+  await Bun.write(path.join(ws, '.vx/workspace.mjs'), BENCH_WORKSPACE)
   await json('turbo.json', {
     tasks: {
       build: { dependsOn: ['^build'], inputs: ['src/**'], outputs: ['dist/**'] },

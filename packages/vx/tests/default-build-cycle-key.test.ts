@@ -27,9 +27,8 @@ async function vx(cwd: string, args: string[]): Promise<{ code: number; text: st
 describe('default builds on a package cycle', () => {
   let root: string
   beforeEach(async () => {
-    root = await makeWorkspace({ prefix: 'vx-cycle-key-' })
+    root = await makeWorkspace({ prefix: 'vx-cycle-key-', edges: { a: ['b'], b: ['a'] } })
     await addProject(root, 'a', {
-      deps: { b: 'workspace:*' },
       config: `export default { tasks: { test: {
         dependsOn: ['build'],
         exec: { command: 'cat ../b/src/index.js' },
@@ -38,7 +37,6 @@ describe('default builds on a package cycle', () => {
       files: { 'src/index.js': 'a-1\n' },
     })
     await addProject(root, 'b', {
-      deps: { a: 'workspace:*' },
       files: { 'src/index.js': 'b-1\n' },
     })
   })

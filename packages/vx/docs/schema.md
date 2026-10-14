@@ -122,7 +122,8 @@ bare `vx run build` does not select it: run where no selected project
 declares `build`, it is refused as any undeclared name is, while
 `lib#build` names it and a dependant's `^build` reaches it. `vx show`
 and `vx info` count it; `vx show build` and the `vx build` hint, which
-name declared tasks, do not.
+name declared tasks, do not. Its `^build` needs an edge source as any
+`^` does: with no plugin returning `deps`, running it is refused.
 
 ### `description` (optional)
 
@@ -633,13 +634,13 @@ Turbo/Nx-style micro-syntax — a flat array of strings:
 dependsOn?: readonly string[]
 ```
 
-| Form         | Meaning                                                            |
-| ------------ | ------------------------------------------------------------------ |
-| `'name'`     | Same-project task `name`.                                          |
-| `'^name'`    | The `name` task in the nearest workspace deps that declare it.     |
-| `'pkg#name'` | The `name` task in a specific other package (cross-project edge).  |
-| `'name.*'`   | Every OTHER same-project task matching the pattern (`*` = any).    |
-| `'^name.*'`  | All matching tasks of the nearest deps that declare any (pattern). |
+| Form         | Meaning                                                                         |
+| ------------ | ------------------------------------------------------------------------------- |
+| `'name'`     | Same-project task `name`.                                                       |
+| `'^name'`    | The `name` task in the nearest project deps (a plugin's edges) that declare it. |
+| `'pkg#name'` | The `name` task in a specific other package (cross-project edge).               |
+| `'name.*'`   | Every OTHER same-project task matching the pattern (`*` = any).                 |
+| `'^name.*'`  | All matching tasks of the nearest deps that declare any (pattern).              |
 
 Examples:
 
@@ -660,14 +661,16 @@ Semantics:
   **type-checked against this config's task keys** — a typo is a
   compile error (`'^name'` / `'pkg#name'` reference other projects
   and stay free strings).
-- **`'^name'`** — nearest-holder frontier. Walk the package dep graph
-  from this project's direct deps (`dependencies`, `devDependencies`,
-  `optionalDependencies`, and a `peerDependencies` entry on a
-  workspace sibling unless that edge would close a cycle — then the
-  consumer provides it and it orders nothing; an entry is a dep when
-  the package manager links it to the workspace package, so a range the
-  local version does not satisfy is a registry dependency, see
-  `modules/package-graph.md` § Which entries are edges); each path stops at the first dep
+- **`'^name'`** — nearest-holder frontier. Walk the project graph
+  from this project's direct deps: the edges a plugin's `discover`
+  returns as `deps` (the lockfile plugins `pnpm()` / `bun()` / `npm()` /
+  `yarn()` return what the package manager installed; core reads no
+  edge from a `package.json`) and the cross-project `pkg#task` edges.
+  With no plugin returning `deps` the workspace has no edge source and
+  a `'^name'` is refused (`VX_E_DEPENDS_ON`: "`^build` needs project
+  edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns
+  `deps`"): it would resolve to nothing and fold no upstream into the
+  key. With one, a project with no deps is a leaf; each path stops at the first dep
   that declares the task and an edge is added to it (Turbo/Nx
   direct-deps parity). The holder's own `dependsOn` is responsible
   for anything deeper — chain `'^name'` in the holder to keep the

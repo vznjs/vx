@@ -268,10 +268,22 @@ const scratch = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-pg-')))
 const ws = path.join(scratch, 'ws')
 const cacheDir = path.join(scratch, 'cache')
 
+// The page's edge source (src/playground/edges.ts) as the CLI's `discover`
+// plugin: core reads no manifest edge, so both planners take this one.
+const edgesPlugin = path.join(scratch, 'pg-edges')
+mkdirSync(edgesPlugin)
+writeFileSync(path.join(edgesPlugin, 'package.json'), '{ "name": "pg-edges" }\n')
+const WORKSPACE_FILE = `import { definePlugin } from ${JSON.stringify(path.resolve(import.meta.dir, '../src/index.ts'))}
+import { manifestEdges } from ${JSON.stringify(path.join(DOCS, 'src/playground/edges.ts'))}
+export default {
+  plugins: [definePlugin({ dir: ${JSON.stringify(edgesPlugin)} }, { discover: (ctx) => manifestEdges(ctx.projects) })],
+}
+`
+
 /** The CLI's root marker (the playground is handed its root), and the `@vzn/vx` configs import. */
 function markRoot(dir: string): void {
   mkdirSync(path.join(dir, '.vx'), { recursive: true })
-  writeFileSync(path.join(dir, '.vx/workspace.mjs'), 'export default {}\n')
+  writeFileSync(path.join(dir, '.vx/workspace.mjs'), WORKSPACE_FILE)
   // `vx lock` evaluates each config, whose `@vzn/vx` import must resolve.
   const link = path.join(dir, 'node_modules', '@vzn', 'vx')
   if (fs.lstatSync(link, { throwIfNoEntry: false }) !== undefined) return

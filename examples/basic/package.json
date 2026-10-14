@@ -5,6 +5,7 @@
     "packages/*"
   ],
   "devDependencies": {
-    "@vzn/vx": "latest"
+    "@vzn/vx": "latest",
+    "@vzn/vx-lockfile": "latest"
   }
 }

@@ -44,7 +44,7 @@ export default defineProject({
 | `dependsOn`   | Runs first                                                        |
 | ------------- | ----------------------------------------------------------------- |
 | `'build'`     | `build` in this package                                           |
-| `'^build'`    | `build` in each package this one depends on (from `package.json`) |
+| `'^build'`    | `build` in each package this one depends on ([a lockfile plugin's edges](#lockfiles)) |
 | `'api#build'` | `build` in the `api` package                                      |
 | `'build.*'`   | every task in this package whose name matches                     |
 
@@ -277,8 +277,11 @@ cache key. There is no `globalInputs`: import a shared array instead.
 ## Lockfiles
 
 Without a plugin, the lockfile is in every task's key, so one install
-re-runs everything. With `@vzn/vx-lockfile` (`bun add -d @vzn/vx-lockfile`),
-each package is keyed on its own dependencies, and `--affected` follows.
+re-runs everything, and `^build` has no package edges: vx reads none
+from a `package.json`, so it refuses a `^` and names the plugin to add.
+With `@vzn/vx-lockfile` (`bun add -d @vzn/vx-lockfile`), each package is
+keyed on its own dependencies, `^build` follows what the manager
+installed, and `--affected` follows both.
 
 ```ts
 // .vx/workspace.ts

@@ -13,7 +13,8 @@ import { collectInfo, type InfoFacts } from '../src/orchestrator/index.js'
 import { stableSandboxReason } from '../src/orchestrator/doctor.js'
 import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
-import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { edgesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 // `vx lock`, then the verb: show and info read the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -89,6 +90,9 @@ async function makePluginWorkspace(): Promise<string> {
   return root
 }
 
+// An edge source where every project is a leaf: `app#build` writes `^build`.
+const WORKSPACE_FILE = localWorkspaceSource([edgesSource()])
+
 async function makeWorkspace(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
@@ -96,7 +100,7 @@ async function makeWorkspace(): Promise<string> {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture-root', private: true }),
   )
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), WORKSPACE_FILE)
   const appDir = path.join(root, 'packages', 'app')
   await mkdir(appDir, { recursive: true })
   await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))
@@ -461,7 +465,7 @@ describe('vx info (e2e)', () => {
       expect(r.out).toMatch(/^workspace root: +\S/m)
       expect(r.out).toContain(path.basename(root))
       expect(r.out).toMatch(row('projects', '2 (4 tasks)'))
-      expect(r.out).toMatch(row('plugins', 'none'))
+      expect(r.out).toMatch(row('plugins', '1 — vx-test-edges (discover)'))
       // The worker count a run defaults to, with its source, and the memory
       // a packing policy budgets — the two numbers a container hides.
       expect(r.out).toMatch(/^workers: +[1-9]\d* — (the CPU count|cgroup CPU quota )/m)
@@ -528,7 +532,7 @@ describe('vx info (e2e)', () => {
           if (v === undefined) delete process.env[k]
           else process.env[k] = v
         }
-        await writeFile(ws, 'export default {}\n')
+        await writeFile(ws, WORKSPACE_FILE)
       }
     },
     TIMEOUT,
@@ -580,7 +584,7 @@ describe('vx info (e2e)', () => {
       expect(path.basename(facts.workspaceRoot)).toBe(path.basename(root))
       expect(facts.projects).toBe(2)
       expect(facts.tasks).toBe(4)
-      expect(facts.plugins).toEqual([])
+      expect(facts.plugins.map((p: { name: string }) => p.name)).toEqual(['vx-test-edges'])
       expect(facts.cacheDir).toContain('.vx')
       expect(facts.cacheVersion).toBe(CACHE_VERSION)
       expect(facts.schemaVersion).toBe(SCHEMA_VERSION)

@@ -143,7 +143,9 @@ export default {
 Where the repo has a lockfile and `.vx/workspace.ts` declares no
 `@vzn/vx-lockfile` plugin, the report names the one for it (`npm()` above,
 `pnpm()` for `pnpm-lock.yaml`): Turbo keys each package on its own lockfile entries,
-and vx keys every task on the whole file until a plugin claims it.
+and vx keys every task on the whole file until a plugin claims it. The
+plugin is also where `^build` gets its package edges: vx reads none from
+a `package.json`, and refuses a `^` with no plugin that supplies them.
 
 ### Try it in five minutes
 
@@ -161,7 +163,7 @@ npx @vzn/vx run test --all      # 3 up-to-date
 bunx @vzn/vx-migrate       # 3 tasks migrated clean, 0 TODOs
 git add -A && git commit -m migrate
 npx @vzn/vx run test --all      # 3 up-to-date: the written configs derive the same keys
-echo 'export default {}' > .vx/workspace.ts   # drop turbo(); the configs stand alone
+echo "import { npm } from '@vzn/vx-lockfile'; export default { plugins: [npm()] }" > .vx/workspace.ts   # drop turbo(); npm() keeps the edges
 git add -A && git commit -m done
 npx @vzn/vx run test --all      # 3 up-to-date
 ```

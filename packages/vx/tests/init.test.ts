@@ -159,6 +159,7 @@ describe('vx init source detection', () => {
     'a root outside the members maps its repo-wide scripts, and runs them',
     async () => {
       const root = await makeRoot('vx-init-root-')
+      await withLockfile(root)
       const note =
         'fixture-root (the workspace root): its scripts that check the whole repo are its tasks; left out as running the members (`pnpm -r`, `--filter`, a runner): build'
       try {
@@ -193,6 +194,7 @@ describe('vx init source detection', () => {
     'a second vx init keeps the root it mapped, with no note on it (X-27)',
     async () => {
       const root = await makeRoot('vx-init-root-again-')
+      await withLockfile(root)
       try {
         await writeFile(
           path.join(root, 'package.json'),
@@ -1272,6 +1274,44 @@ describe('migrateScripts', () => {
   })
 })
 
+/**
+ * A stand-in `@vzn/vx-lockfile` (the sandbox lets this suite read only
+ * core): `pnpm()` supplies the edges the real one reads from the lockfile,
+ * here from the manifests the fixture wrote.
+ */
+async function standIn(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true })
+  await writeFile(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ name: '@vzn/vx-lockfile', type: 'module', exports: './index.js' }),
+  )
+  await writeFile(
+    path.join(dir, 'index.js'),
+    `import { definePlugin } from '@vzn/vx'
+export const pnpm = () => definePlugin(import.meta, {
+  discover(ctx) {
+    const dir = new Map(ctx.projects.map((p) => [p.name, p.dir]))
+    return ctx.projects.map((p) => ({
+      dir: p.dir,
+      deps: Object.keys({ ...p.packageJson.dependencies, ...p.packageJson.devDependencies })
+        .filter((n) => n !== p.name && dir.has(n))
+        .map((n) => dir.get(n)),
+    }))
+  },
+})
+`,
+  )
+}
+
+/**
+ * A pnpm lockfile and the stand-in plugin init declares for it: core reads
+ * no manifest edge, so the configs init writes need this edge source.
+ */
+async function withLockfile(root: string): Promise<void> {
+  await writeFile(path.join(root, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\n")
+  await standIn(path.join(root, 'node_modules', '@vzn', 'vx-lockfile'))
+}
+
 async function makeScriptsWorkspace(): Promise<string> {
   const root = await makeRoot('vx-migrate-scripts-')
   await addPackage(root, 'app', {
@@ -1317,6 +1357,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
   it('ends with the lock: .vx/projects.lock.json written and named, none under --dry', async () => {
     // owner, 2026-10-14: "vx migrate should generate lock as well".
     const root = await makeScriptsWorkspace()
+    await withLockfile(root)
     try {
       const dry = await vx(root, ['init', '--dry'])
       expect(dry.code).toBe(0)
@@ -1338,6 +1379,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
 
   it('a graph rule the lock refuses is printed, and the configs stay written', async () => {
     const root = await makeScriptsWorkspace()
+    await withLockfile(root)
     // A member's own config with a dependsOn cycle: the lock's graph check refuses it.
     await writeFile(
       path.join(root, 'packages', 'silent', 'vx.config.mjs'),
@@ -1922,6 +1964,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
 
   it('a deleted dist is rebuilt on the next run', async () => {
     const root = await makeRoot('vx-init-rebuild-')
+    await withLockfile(root)
     await addPackage(root, 'w', { build: 'mkdir -p dist && cp src/a.txt dist/a.txt' })
     await mkdir(path.join(root, 'packages', 'w', 'src'), { recursive: true })
     await writeFile(path.join(root, 'packages', 'w', 'src', 'a.txt'), 'a\n')
@@ -2140,6 +2183,7 @@ describe('vx init (package.json scripts)', () => {
   let root: string
   beforeAll(async () => {
     root = await makeScriptsWorkspace()
+    await withLockfile(root)
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   })
   afterAll(async () => {
@@ -2246,6 +2290,7 @@ describe('vx init (package.json scripts)', () => {
         pack: 'echo pack',
         prepack: 'echo lifecycle, not a hook of a task',
       })
+      await withLockfile(hooked)
       const r = await vx(hooked, ['init'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
       const cfg = await loadProjectConfig(path.join(hooked, 'packages', 'app', 'vx.config.ts'))
@@ -2259,7 +2304,7 @@ describe('vx init (package.json scripts)', () => {
       expect(tasks['pack']!.exec?.command).toBe('echo pack')
       const text = await Bun.file(path.join(hooked, 'packages', 'app', 'vx.config.ts')).text()
       expect(text).toContain(
-        'TODO(vx-migrate): npm ran `prebuild` and `postbuild` around this script',
+        'TODO(vx-migrate): pnpm ran `prebuild` and `postbuild` around this script',
       )
     } finally {
       await rm(hooked, { recursive: true, force: true })
@@ -2286,6 +2331,7 @@ describe('vx init (package.json scripts)', () => {
           prerelease: 'echo pre-release',
           publishit: 'npm run release',
         })
+        await withLockfile(del)
         const r = await vx(del, ['init'])
         expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
         const tasks = (await loadProjectConfig(path.join(del, 'packages', 'app', 'vx.config.ts')))
@@ -2502,18 +2548,6 @@ describe('vx init --plugin <seam>', () => {
 describe('vx init declares the lockfile plugin', () => {
   // Package edges (`^build`, --affected) come from @vzn/vx-lockfile alone,
   // so a workspace file without it has none.
-  // A stand-in: the sandbox lets this suite read only core, not packages/vx-lockfile.
-  const standIn = async (dir: string) => {
-    await mkdir(dir, { recursive: true })
-    await writeFile(
-      path.join(dir, 'package.json'),
-      JSON.stringify({ name: '@vzn/vx-lockfile', type: 'module', exports: './index.js' }),
-    )
-    await writeFile(
-      path.join(dir, 'index.js'),
-      "import { definePlugin } from '@vzn/vx'\nexport const pnpm = () => definePlugin(import.meta, { setup() {} })\n",
-    )
-  }
   const linkLockfile = (root: string) =>
     standIn(path.join(root, 'node_modules', '@vzn', 'vx-lockfile'))
   const lockfileWorkspace = async () => {

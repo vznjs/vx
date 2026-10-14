@@ -29,7 +29,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { taskNameProblem } from './config-schema.js'
-import { buildPackageGraph } from './package-graph.js'
 import type { ProjectMeta } from './workspace.js'
 import {
   foldScriptHooks,
@@ -1084,18 +1083,36 @@ function breakBuildCycles(projects: GeneratedProject[], metas: readonly ProjectM
       .map((p) => p.name),
   )
   if (builds.size < 2) return
-  const graph = buildPackageGraph([...metas])
+  // The edges the lockfile plugin init declares will give `^build`: the
+  // manager installs what a manifest names, so a key naming a workspace
+  // package is one. Core's graph reads no manifest; this mapper reads
+  // package.json throughout.
+  const names = new Set(metas.map((m) => m.name))
+  const direct = new Map<string, string[]>()
+  for (const m of metas) {
+    const own = new Set<string>()
+    for (const field of [
+      m.packageJson.dependencies,
+      m.packageJson.devDependencies,
+      m.packageJson.optionalDependencies,
+    ]) {
+      if (field === null || typeof field !== 'object') continue
+      for (const key of Object.keys(field)) if (key !== m.name && names.has(key)) own.add(key)
+    }
+    direct.set(m.name, [...own])
+  }
+  const directDeps = (name: string): readonly string[] => direct.get(name) ?? []
   const holders = new Map<string, string[]>()
   for (const name of builds) {
     const found = new Set<string>()
     const visited = new Set([name])
-    const frontier = [...graph.directDeps(name)]
+    const frontier = [...directDeps(name)]
     while (frontier.length > 0) {
       const at = frontier.pop()!
       if (visited.has(at)) continue
       visited.add(at)
       if (builds.has(at)) found.add(at)
-      else frontier.push(...graph.directDeps(at))
+      else frontier.push(...directDeps(at))
     }
     holders.set(name, [...found].sort())
   }

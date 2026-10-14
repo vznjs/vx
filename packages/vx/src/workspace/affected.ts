@@ -22,7 +22,6 @@ import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles, WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
-import { buildPackageGraph } from './package-graph.js'
 import type { PackageJson, ProjectMeta } from './workspace.js'
 
 /**
@@ -102,13 +101,6 @@ export interface AffectedArgs {
    */
   fingerprintClaims?: () => Promise<FingerprintClaims>
   /**
-   * The cross-project `dependsOn` edges, project → the projects its tasks
-   * name. Asked only when a package's name moved or it was removed: a
-   * config naming `dependsOn: ['lib#build']` breaks on it, which the
-   * package graph cannot see (item 1085).
-   */
-  taskEdges?: () => Promise<ReadonlyMap<string, readonly string[]>>
-  /**
    * The untracked files, workspace-relative, from a walk the caller shares
    * with the run (`GitEnumeration.untracked`); null or absent spawns `git
    * ls-files --others` here. The selection's own walk was a second one the
@@ -141,7 +133,7 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
  * projects, each one's changed paths relative to it, and the projects a
  * change reaches as a whole — every task in one is affected whatever its
  * inputs say, because the reason was no path of its own (a lockfile claim,
- * a manifest edge at the base, a config import, a nested repository, a
+ * a config import, a nested repository, a
  * workspace-wide file).
  */
 export interface AffectedChanges {
@@ -348,27 +340,11 @@ export async function affectedChanges(
   )
   for (const name of claimedOwned) owned.add(name)
 
-  // A manifest edit can drop an edge today's graph no longer shows: a
-  // package the change REMOVED is no project now (a `git rm -r pkgs/lib`,
-  // or `lib` dropped from `workspaces`, item 959), and one whose `version`
-  // or `name` moved no longer satisfies what a dependent declares. Either
-  // re-keys the dependent through its upstream, while containment maps the
-  // change to the package alone and the dependents walk sees only today's
-  // graph, so `--affected` left `app#build` out (D-3).
+  // A `package.json` that makes an existing directory a project took files
+  // from the project above it.
   const manifests = changed.filter((rel) => path.posix.basename(rel) === 'package.json')
   if (manifests.length > 0) {
     const atBase = await gitBlobsAt(args.workspaceRoot, base, manifests)
-    const dependents = await dependentsAtBase(
-      args.workspaceRoot,
-      atBase,
-      args.projects,
-      args.taskEdges,
-    )
-    if (dependents === undefined) return everything()
-    for (const name of dependents) {
-      owned.add(name)
-      whole.add(name)
-    }
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, args.projects)) {
       owned.add(name)
       whole.add(name)
@@ -404,94 +380,6 @@ export async function affectedChanges(
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
   for (const name of await args.workspaceGlobOwners(changed, nestedDirs)) owned.add(name)
   return done()
-}
-
-/**
- * The projects whose workspace dependencies at the base differ from
- * today's: the package graph is built again over the changed manifests as
- * the base had them, and every project whose `directDeps` (the edges its
- * key folds) moved is selected. `undefined` (every project) when the root
- * manifest's `workspaces` moved: which packages left is a discovery at the
- * base, and selection cannot tell cheaply. `atBase` holds each changed
- * manifest as the base had it, read in one `git cat-file --batch`.
- */
-async function dependentsAtBase(
-  workspaceRoot: string,
-  atBase: ReadonlyMap<string, Uint8Array | null>,
-  projects: readonly ProjectMeta[],
-  taskEdges: AffectedArgs['taskEdges'],
-): Promise<Set<string> | undefined> {
-  const byDir = new Map<string, ProjectMeta>()
-  for (const p of projects) byDir.set(p.dir, p)
-  const nameNow = new Map(projects.map((p) => [p.dir, p.name]))
-  // Base names no project holds today: a removed or renamed package.
-  const gone = new Set<string>()
-  const changedDirs = new Set<string>()
-  for (const rel of atBase.keys()) {
-    if (rel === 'package.json') {
-      const workspacesOf = (bytes: Uint8Array | null): string => {
-        if (bytes === null) return ''
-        try {
-          return JSON.stringify(
-            (JSON.parse(new TextDecoder().decode(bytes)) as PackageJson).workspaces ?? null,
-          )
-        } catch {
-          return 'unreadable'
-        }
-      }
-      const before = workspacesOf(atBase.get(rel) ?? null)
-      const after = workspacesOf(await bytesOrNull(path.join(workspaceRoot, rel)))
-      if (before !== after) return undefined
-    }
-    const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
-    changedDirs.add(dir)
-    byDir.delete(dir)
-    const bytes = atBase.get(rel)
-    if (bytes === undefined || bytes === null) continue
-    let pkg: PackageJson
-    try {
-      pkg = JSON.parse(new TextDecoder().decode(bytes)) as PackageJson
-    } catch {
-      // A manifest that did not parse at the base named no package.
-      continue
-    }
-    if (
-      pkg === null ||
-      typeof pkg !== 'object' ||
-      typeof pkg.name !== 'string' ||
-      pkg.name === ''
-    ) {
-      continue
-    }
-    // Today's catalogs, or both graphs would differ on every `catalog:`
-    // entry. A catalog edit is a `pnpm-workspace.yaml` or root manifest
-    // edit, which the fingerprint widening and the root's own change answer.
-    const catalogs = projects[0]?.catalogs
-    byDir.set(dir, {
-      name: pkg.name,
-      dir,
-      packageJson: pkg,
-      configPath: null,
-      ...(catalogs === undefined ? {} : { catalogs }),
-    })
-    if (nameNow.get(dir) !== pkg.name) gone.add(pkg.name)
-  }
-  const now = buildPackageGraph([...projects])
-  const then = buildPackageGraph([...byDir.values()])
-  const out = new Set<string>()
-  for (const p of projects) {
-    // A project whose own manifest changed is owned by containment.
-    if (changedDirs.has(p.dir)) continue
-    const a = now.directDeps(p.name)
-    const b = then.directDeps(p.name)
-    if (a.length !== b.length || a.some((d, i) => d !== b[i])) out.add(p.name)
-  }
-  if (gone.size > 0 && taskEdges !== undefined) {
-    for (const [project, targets] of await taskEdges()) {
-      if (targets.some((t) => gone.has(t))) out.add(project)
-    }
-  }
-  return out
 }
 
 /**

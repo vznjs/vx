@@ -42,19 +42,21 @@ function projectConfig(name: string, extra = ''): string {
 }
 
 export async function makeParityWorkspace(prefix: string): Promise<string> {
-  const root = await makeWorkspace({ prefix, git: 'init' })
+  const root = await makeWorkspace({
+    prefix,
+    git: 'init',
+    edges: { ui: ['lib'], app: ['ui', 'lib'] },
+  })
   await addProject(root, 'lib', {
     config: projectConfig('lib'),
     files: { 'src/in.txt': 'lib-v1\n' },
   })
   await addProject(root, 'ui', {
     config: projectConfig('ui'),
-    deps: { lib: 'workspace:*' },
     files: { 'src/in.txt': 'ui-v1\n' },
   })
   await addProject(root, 'app', {
     config: projectConfig('app'),
-    deps: { ui: 'workspace:*', lib: 'workspace:*' },
     files: { 'src/in.txt': 'app-v1\n' },
   })
   await addProject(root, 'docs', {

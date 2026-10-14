@@ -44,9 +44,9 @@ async function vx(root: string, args: string[]): Promise<{ code: number; out: st
 }
 
 async function fixture(ignoreOutput: boolean): Promise<string> {
-  const root = await makeWorkspace({ prefix: 'vx-uncached-upstream-' })
+  const root = await makeWorkspace({ prefix: 'vx-uncached-upstream-', edges: { web: ['lib'] } })
   await addProject(root, 'lib', LIB)
-  await addProject(root, 'web', { config: WEB, deps: { lib: 'workspace:*' } })
+  await addProject(root, 'web', WEB)
   if (ignoreOutput) await writeFile(path.join(root, '.gitignore'), 'packages/lib/dist.txt\n')
   const git = gitIn(root)
   git('add', '-A')

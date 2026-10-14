@@ -12,6 +12,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { BENCH_WORKSPACE } from './edges.js'
 
 const dir = process.argv[2]
 // The count is the SECOND argument. A number here would create a directory
@@ -35,9 +36,9 @@ await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "package
 // has and the enumeration numbers say nothing about real repos.
 await writeFile(path.join(root, '.gitignore'), 'dist\n.vx/cache/\n')
 // The bench measures core on its own fallbacks: run here, cache in
-// .vx/cache. No plugin is declared, so nothing it measures is a plugin's
-// cost.
-await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
+// .vx/cache. The one plugin is the edge source (edges.ts), which a real
+// repo has as its lockfile plugin.
+await Bun.write(path.join(root, '.vx/workspace.mjs'), BENCH_WORKSPACE)
 await writeFile(
   path.join(root, 'package.json'),
   JSON.stringify({ name: 'bench-root', private: true }, null, 2),

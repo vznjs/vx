@@ -63,7 +63,7 @@ function vanishOnRestore(): { restored: string[]; restore: () => void } {
 describe('a cache artifact that vanishes before its restore', () => {
   let root: string
   beforeEach(async () => {
-    root = await makeWorkspace({ prefix: 'vx-vanished-' })
+    root = await makeWorkspace({ prefix: 'vx-vanished-', edges: { app: ['lib'] } })
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
@@ -91,7 +91,6 @@ describe('a cache artifact that vanishes before its restore', () => {
         })
         // app reads lib's output: run before lib, the `cat` fails.
         const appDir = await addProject(root, 'app', {
-          deps: { lib: 'workspace:*' },
           files: { 'src/b.txt': 'b', '.gitignore': 'dist/\n' },
           config: `
           export default {

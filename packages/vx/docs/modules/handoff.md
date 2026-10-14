@@ -35,6 +35,8 @@ export function gitTop(dir: string): Promise<string | null>
 // the nearest .vx/workspace.* from `dir` up to the git top-level (or `/`
 // outside git), null when none; once per directory walked
 export function workspaceFile(dir: string): Promise<string | null>
+// vx wrote a workspace config (`vx init`): forget what the walks learned
+export function workspaceFileWritten(): void
 // the six paths from the root, in lookup order (ts mts js mjs cts cjs)
 export const WORKSPACE_CONFIG_FILENAMES: string[]
 // the root a found `.vx/workspace.*` marks: the directory holding its `.vx`
@@ -55,7 +57,9 @@ export function vxPath(): string // the compiled binary, else the source entry
 - The hand-off and `findWorkspaceRoot` find the same root:
   `workspaceFile` learns it once per run for both, and the workspace
   config loader reads the file it found with no second probe
-  (principle 9; `tests/load-reads.test.ts`).
+  (principle 9; `tests/load-reads.test.ts`). The one write vx makes to
+  it, `vx init`'s, clears what was learned, so the lock init runs next
+  loads the plugins just written (`tests/init.test.ts`, "ends with the lock").
 - The walk is a stat per name per level, no read but a `.git` file's
   first line, no import beyond `node:fs`: `tests/handoff.test.ts` holds
   the shapes (a local install, none, the global itself, a pnpm symlink,

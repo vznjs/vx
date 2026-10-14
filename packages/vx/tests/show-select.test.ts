@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { writeEdges } from './helpers/plugin.js'
 
 // `vx lock`, then `vx show`: show reads the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -59,10 +60,10 @@ const LINT = `export default { tasks: { lint: { exec: { command: 'true' } } } }\
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-select-'))
   await write('package.json', JSON.stringify({ name: 'r', private: true, workspaces: ['pkgs/*'] }))
-  await write('.vx/workspace.mjs', 'export default {}\n')
+  await writeEdges(root, { app: ['lib'] })
   await write('pkgs/lib/package.json', JSON.stringify({ name: 'lib' }))
   await write('pkgs/lib/vx.config.mjs', LINT)
-  await write('pkgs/app/package.json', JSON.stringify({ name: 'app', dependencies: { lib: '*' } }))
+  await write('pkgs/app/package.json', JSON.stringify({ name: 'app' }))
   await write('pkgs/tool/package.json', JSON.stringify({ name: 'tool' }))
   await write('pkgs/tool/vx.config.mjs', LINT)
   git('init', '-q')

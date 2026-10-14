@@ -8,8 +8,7 @@ import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { writeLocalWorkspace } from './helpers/local-workspace.js'
-import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { edgesSource, PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
@@ -49,7 +48,7 @@ beforeEach(async () => {
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
   )
-  await writeLocalWorkspace(root)
+  await writeEdges(root)
   await mkdir(path.join(root, 'pkgs/app/src'), { recursive: true })
   await writeFile(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
   await writeFile(
@@ -111,15 +110,15 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     }
     const workspace = (body: string) =>
       Bun.write(path.join(root, '.vx/workspace.mjs'), `${PLUGIN_IMPORT}export default ${body}\n`)
-    await workspace(`{ plugins: [] }`)
+    await workspace(`{ plugins: [${edgesSource()}] }`)
     expect(vx(root, 'run', 'build', '--affected').out).toContain(
       'nothing affected since origin/feat',
     )
-    await workspace(`{ run: { affectedBase: 'develop' }, plugins: [] }`)
+    await workspace(`{ run: { affectedBase: 'develop' }, plugins: [${edgesSource()}] }`)
     expect(plan('--affected')).toEqual(['app#build'])
     expect(vx(root, 'run', 'build', '--affected=HEAD').out).toContain('nothing affected since HEAD')
     await workspace(
-      `{ plugins: [${pluginSource('base', `{ config(ws) { ws.run = { ...ws.run, affectedBase: 'develop' } } }`)}] }`,
+      `{ plugins: [${edgesSource()}, ${pluginSource('base', `{ config(ws) { ws.run = { ...ws.run, affectedBase: 'develop' } } }`)}] }`,
     )
     expect(plan('--affected')).toEqual(['app#build'])
   })
@@ -186,10 +185,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     )
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l1\n')
-    await writeFile(
-      path.join(root, 'pkgs/app/package.json'),
-      JSON.stringify({ name: 'app', dependencies: { lib: 'workspace:*' } }),
-    )
+    await writeEdges(root, { app: ['lib'] })
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'two')
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l2\n')
@@ -236,10 +232,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     )
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l1\n')
-    await writeFile(
-      path.join(root, 'pkgs/app/package.json'),
-      JSON.stringify({ name: 'app', dependencies: { lib: 'workspace:*' } }),
-    )
+    await writeEdges(root, { app: ['lib'] })
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'two')
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l2\n')
@@ -308,10 +301,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     )
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l1\n')
-    await writeFile(
-      path.join(root, 'pkgs/app/package.json'),
-      JSON.stringify({ name: 'app', dependencies: { lib: 'workspace:*' } }),
-    )
+    await writeEdges(root, { app: ['lib'] })
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'two')
     const note = (...args: string[]) => {

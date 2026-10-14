@@ -22,9 +22,6 @@ export interface AffectedArgs {
   /** The fingerprint files a plugin claims and its answer for a change to
    *  one; resolved lazily, only when a diff touches a root file. */
   fingerprintClaims?: () => Promise<FingerprintClaims>
-  /** Cross-project `dependsOn` edges, project → projects its tasks name;
-   *  asked only when a package was renamed or removed (item 1085). */
-  taskEdges?: () => Promise<ReadonlyMap<string, readonly string[]>>
   /** The untracked files, from a walk shared with the run; null or absent
    *  spawns `git ls-files --others` here (I-26). */
   untracked?: () => Promise<readonly string[] | null>
@@ -37,7 +34,7 @@ export interface AffectedChanges {
   projects: Set<string> // what affectedProjects returns
   changed: readonly string[] // workspace-relative changed paths
   paths: ReadonlyMap<string, readonly string[]> // project → its changed paths, project-relative
-  whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, base manifest edge, config import, nested repo
+  whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, config import, nested repo
   nested?: readonly string[] // changed nested repositories, workspace-relative: each stands for its files
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
@@ -100,7 +97,7 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
    (`@vzn/vx-lockfile`) selects the projects whose dependency closure
    moved instead — [`lockfile-claim.md`](./lockfile-claim.md); one that
    appeared or went still selects everything.
-5. Otherwise each changed path reaches a project through **four
+5. Otherwise each changed path reaches a project through **three
    channels**, and the union is returned:
    - **Containment.** Walk the path's ancestor dirs bottom-up until one
      is a project dir; the first hit is the DEEPEST containing project,
@@ -129,13 +126,12 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
      ran the owner alone (item 954). The `--affected` sugar has staged
      every config for its graph walk already; a bare `[ref]` filter pays
      that one load when something changed.
-   - **The base graph.** When a manifest changed, the package graph is
-     built again over the changed manifests as the base had them (one
-     `git cat-file --batch`), and every project whose `directDeps`
-     differ from today's is selected: a deleted package (item 959) or a
-     `version` / `name` that no longer satisfies a dependent's range
-     drops an edge its key folded, and today's graph has no dependent to
-     walk to (D-3). A root `workspaces` edit selects every project.
+
+   A changed manifest is no channel of its own: core reads no edge from
+   it. A dependency added, removed or no longer satisfied moves the
+   lockfile, and the lockfile plugin's claim (step 4) names the
+   projects whose edges or closure moved; the dependents walk then
+   follows today's edges.
 
 Selection is never hashed, so widening it changes no cache key: every
 channel here may over-select safely — but it may not UNDER-select, and

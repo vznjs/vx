@@ -1,11 +1,14 @@
 import { defineWorkspace } from '@vzn/vx/config'
 import { github } from '@vzn/vx-ci'
+import { npm } from '@vzn/vx-lockfile'
 import { reapi } from '@vzn/vx-reapi'
 
 const token = process.env.VX_CACHE_TOKEN
 
 export default defineWorkspace({
   plugins: [
+    // The package edges `^build` follows, from package-lock.json.
+    npm(),
     // On Actions: the job summary, the PR check, and the cache scope
     // (a push to main writes the default keys, pull request 7 writes pr-7).
     github(),

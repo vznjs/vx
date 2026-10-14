@@ -12,16 +12,16 @@ import {
   type ProjectMeta,
 } from '../src/workspace/index.js'
 import { validateWorkspace } from '../src/workspace/config-schema.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { TIMEOUT } from './helpers/orchestrator-fixture.js'
+import { edgesSource } from './helpers/plugin.js'
 
 const meta = (name: string, deps: string[] = []): ProjectMeta => ({
   name,
   dir: `/ws/${name}`,
   configPath: null,
-  packageJson: {
-    name,
-    dependencies: Object.fromEntries(deps.map((d) => [d, 'workspace:*'])),
-  },
+  packageJson: { name },
+  deps,
 })
 
 // app → lib, app → ui, lib → util, tool → app; util carries no tag.
@@ -131,18 +131,19 @@ describe('vx lock', () => {
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `export default { run: { rules: { dependencies: [{ from: 'tag:lib', deny: ['tag:app'] }] } } }\n`,
+        localWorkspaceSource(
+          [edgesSource({ lib: ['app'] })],
+          '',
+          `{ dependencies: [{ from: 'tag:lib', deny: ['tag:app'] }] }`,
+        ),
       )
-      for (const [name, tag, deps] of [
-        ['app', 'app', {}],
-        ['lib', 'lib', { app: 'workspace:*' }],
+      for (const [name, tag] of [
+        ['app', 'app'],
+        ['lib', 'lib'],
       ] as const) {
         const dir = path.join(root, 'packages', name)
         await mkdir(dir, { recursive: true })
-        await writeFile(
-          path.join(dir, 'package.json'),
-          JSON.stringify({ name, dependencies: deps }),
-        )
+        await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
         await writeFile(
           path.join(dir, 'vx.config.mjs'),
           `export default { tags: ['${tag}'], tasks: { t: { exec: { command: 'true' } } } }\n`,

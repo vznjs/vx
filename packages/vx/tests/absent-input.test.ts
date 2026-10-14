@@ -21,7 +21,7 @@ import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js
 
 let fx: Fixture
 beforeEach(async () => {
-  fx = await makeWorkspace('vx-absent-in-')
+  fx = await makeWorkspace('vx-absent-in-', { b: ['a'] })
 })
 afterEach(async () => {
   await rm(fx.root, { recursive: true, force: true })
@@ -39,7 +39,6 @@ describe('an input an upstream deletes before its dependant is keyed', () => {
         } } }`,
       })
       const b = await addProject(fx.root, 'b', {
-        deps: { a: '*' },
         files: { 'src/keep': 'k' },
         config: `export default { tasks: { build: {
           dependsOn: ['^build'],

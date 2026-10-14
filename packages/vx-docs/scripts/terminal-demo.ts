@@ -119,12 +119,30 @@ function normalize(svg: string): string {
     .replace(/ +/g, ' ')
 }
 
+const BASIC_LOCK = {
+  lockfileVersion: 3,
+  requires: true,
+  packages: {
+    '': { name: 'vx-example-basic', workspaces: ['packages/*'] },
+    'node_modules/app': { resolved: 'packages/app', link: true },
+    'node_modules/lib': { resolved: 'packages/lib', link: true },
+    'packages/app': { version: '0.0.0', dependencies: { lib: '*' } },
+    'packages/lib': { version: '0.0.0' },
+  },
+}
+
 function run(): string {
   const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-demo-')))
   try {
     cpSync(path.join(ROOT, 'examples/basic'), root, { recursive: true })
     mkdirSync(path.join(root, 'node_modules/@vzn'), { recursive: true })
     symlinkSync(path.join(ROOT, 'packages/vx'), path.join(root, 'node_modules/@vzn/vx'))
+    symlinkSync(
+      path.join(ROOT, 'packages/vx-lockfile'),
+      path.join(root, 'node_modules/@vzn/vx-lockfile'),
+    )
+    // The workspace links `npm install` records, which npm() reads its edges from.
+    writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify(BASIC_LOCK))
     for (const args of [
       ['init', '-q'],
       ['add', '-A'],

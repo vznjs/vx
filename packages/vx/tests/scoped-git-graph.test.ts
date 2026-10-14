@@ -9,6 +9,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun } from './helpers/orchestrator.js'
+import { writeEdges } from './helpers/plugin.js'
 import { gitInit } from './helpers/workspace.js'
 
 const TIMEOUT = 30_000
@@ -21,11 +22,11 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-scoped-git-'))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
-  const pkg = async (name: string, deps: Record<string, string>, config: string) => {
+  await writeEdges(root, { app: ['lib'] })
+  const pkg = async (name: string, config: string) => {
     const dir = path.join(root, 'packages', name)
     await mkdir(path.join(dir, 'src'), { recursive: true })
-    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, dependencies: deps }))
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
     await writeFile(path.join(dir, 'src', 'index.js'), `export const name = '${name}'\n`)
     await writeFile(path.join(dir, 'vx.config.mjs'), config)
   }
@@ -34,10 +35,9 @@ beforeEach(async () => {
       exec: { command: 'true' },
       cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
     },`
-  await pkg('lib', {}, `export default { tasks: { ${build} } }\n`)
+  await pkg('lib', `export default { tasks: { ${build} } }\n`)
   await pkg(
     'app',
-    { lib: 'workspace:*' },
     `export default {
   tasks: {
     ${build}

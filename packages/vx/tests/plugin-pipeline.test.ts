@@ -11,7 +11,7 @@ import { type Logger } from '../src/index.js'
 import { lock, planRun, run } from './helpers/orchestrator.js'
 import { planRun as corePlanRun } from '../src/orchestrator/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
-import { pluginSource, testPlugin } from './helpers/plugin.js'
+import { edgesSource, pluginSource, testPlugin } from './helpers/plugin.js'
 import {
   applyConfigHooks,
   applyGraphHooks,
@@ -87,13 +87,13 @@ describe('an explicit empty group', () => {
       await mkdir(dir, { recursive: true })
       await writeFile(
         path.join(dir, 'package.json'),
-        JSON.stringify({ name: 'app', version: '1.0.0', dependencies: { core: 'workspace:*' } }),
+        JSON.stringify({ name: 'app', version: '1.0.0' }),
       )
       await writeFile(
         path.join(dir, 'vx.config.mjs'),
         "export default { tasks: { install: { dependsOn: ['^build'] }, test: { dependsOn: ['install'], exec: { command: 'echo t' } } } }\n",
       )
-      await workspace([])
+      await workspace([edgesSource({ app: ['core'] })])
       const plan = await planRun({ cwd: root, tasks: ['test'], log: silent() })
       expect(plan.tasks.map((t) => t.node.id).sort()).toEqual([
         'app#install',
@@ -208,9 +208,9 @@ describe('discover stage', () => {
         (await planRun({ cwd: root, tasks: ['app#build'], log: silent() })).tasks
           .map((t) => `${t.node.id} <- ${t.deps.join(',')}`)
           .sort()
-      // CONTROL: no manifest dependency, no plugin edge, no order.
+      // CONTROL: with no plugin edge there is no edge source, and `^build` is refused.
       await workspace([])
-      expect(await plan()).toEqual(['app#build <- '])
+      await expect(plan()).rejects.toThrow('app#build: ^build needs project edges')
       await workspace([
         pluginSource(
           'org/edges',

@@ -852,8 +852,8 @@ describe('malformed workspace manifests', () => {
   })
 
   it('a `workspaces` object with no `packages` is the root alone, as bun and yarn read it (D-151)', async () => {
-    // bun 1.4 installs `workspaces: { catalog }` as one package and resolves
-    // its catalog; yarn 1.22 and 4.5 run `{ nohoist }` as the root alone.
+    // bun 1.4 installs `workspaces: { catalog }` as one package; yarn 1.22
+    // and 4.5 run `{ nohoist }` as the root alone.
     // vx refused both: "`workspaces` must be an array of glob strings".
     await mkdir(path.join(dir, 'packages/a'), { recursive: true })
     await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
@@ -865,9 +865,6 @@ describe('malformed workspace manifests', () => {
         workspaces,
         projects: [['app', dir]],
       })
-      if ('catalog' in workspaces) {
-        expect(ws.catalogs?.get('default')).toEqual({ 'is-number': '7.0.0' })
-      }
     }
   })
 

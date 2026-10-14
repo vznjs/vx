@@ -2,6 +2,8 @@ import { readFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { edgesSource } from './helpers/plugin.js'
 import {
   Cache,
   FULL_CACHE_POLICY,
@@ -48,7 +50,19 @@ const silentLogger = (fixture: Fixture): Logger => {
 
 // The gate this file pins decides only for a key that MAY read another
 // task's outputs, which `rules.upfrontKeys` refuses by default (X-54).
-const WAITING = 'export default { run: { rules: { upfrontKeys: false } } }\n'
+// Every row's edges, whichever of the projects a row adds.
+const EDGES = edgesSource({
+  app: ['lib'],
+  pkgb: ['pkga'],
+  wapp: ['wlib'],
+  dep: ['solo'],
+  mid: ['solo'],
+  top: ['mid'],
+  b: ['a'],
+  'dp-app': ['dp-lib'],
+  fapp: ['fprep'],
+})
+const WAITING = localWorkspaceSource([EDGES], '', '{ upfrontKeys: false }')
 
 async function makeWorkspace(): Promise<Fixture> {
   const root = await makeWorkspaceRoot({ prefix: 'vx-sc-' })
@@ -131,7 +145,6 @@ describe('local cache short-circuit', () => {
         `,
       })
       const appDir = await addProject(fixture.root, 'app', {
-        deps: { lib: 'workspace:*' },
         files: { 'src/b.txt': 'b', '.gitignore': 'dist/\n' },
         config: `
           export default {
@@ -221,7 +234,7 @@ describe('local cache short-circuit', () => {
       // The default rule refuses `**/*` beside build's output; with the
       // output excluded, test's key cannot see it, so it is known before
       // build runs and both restore ahead of the schedule.
-      await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), 'export default {}\n')
+      await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), localWorkspaceSource([EDGES]))
       await addProject(fixture.root, 'app', {
         files: { 'src/a.txt': 'a' },
         config: `
@@ -276,7 +289,6 @@ describe('local cache short-circuit', () => {
         `,
       })
       await addProject(fixture.root, 'pkgb', {
-        deps: { pkga: 'workspace:*' },
         files: { 'src/b.txt': 'b' },
         config: `
           export default {
@@ -340,7 +352,6 @@ describe('local cache short-circuit', () => {
         `,
       })
       await addProject(fixture.root, 'wapp', {
-        deps: { wlib: 'workspace:*' },
         files: { 'src/b.txt': 'b' },
         config: `
           export default {
@@ -933,7 +944,6 @@ describe('local cache short-circuit', () => {
       await soloAndWriter(`{ files: [], workspaceFiles: ['packages/solo/gen/g.txt'] }`)
       await addProject(fixture.root, 'dep', {
         files: { 'src/c.txt': 'c' },
-        deps: { solo: '*' },
         config: `
           export default {
             tasks: {
@@ -1022,13 +1032,10 @@ describe('local cache short-circuit', () => {
     'the exclusion follows the edges down past the first dependant',
     async () => {
       await soloAndWriter(`{ files: [], workspaceFiles: ['packages/solo/gen/g.txt'] }`)
-      for (const [name, dep] of [
-        ['mid', 'solo'],
-        ['top', 'mid'],
-      ] as const) {
+      // mid builds after solo, top after mid (EDGES).
+      for (const name of ['mid', 'top']) {
         await addProject(fixture.root, name, {
           files: { 'src/c.txt': name },
-          deps: { [dep]: '*' },
           config: `
             export default {
               tasks: {
@@ -1066,7 +1073,7 @@ describe('local cache short-circuit', () => {
       // only with `rules.exclusiveOutputs` off (X-53).
       await Bun.write(
         path.join(fixture.root, '.vx/workspace.mjs'),
-        'export default { run: { rules: { exclusiveOutputs: false, upfrontKeys: false } } }\n',
+        localWorkspaceSource([EDGES], '', '{ exclusiveOutputs: false, upfrontKeys: false }'),
       )
       await addProject(fixture.root, 'a', {
         files: { 'src/a.txt': 'a' },
@@ -1083,7 +1090,6 @@ describe('local cache short-circuit', () => {
       })
       await addProject(fixture.root, 'b', {
         files: { 'src/b.txt': 'b' },
-        deps: { a: '*' },
         config: `
           export default {
             tasks: {
@@ -1165,7 +1171,6 @@ describe('local cache short-circuit', () => {
         `,
       })
       await addProject(fixture.root, 'dp-app', {
-        deps: { 'dp-lib': 'workspace:*' },
         files: { 'src/b.txt': 'b', '.gitignore': 'dist/\n' },
         config: `
           export default {
@@ -1228,7 +1233,6 @@ describe('local cache short-circuit', () => {
         `,
       })
       const downDir = await addProject(fixture.root, 'fapp', {
-        deps: { fprep: 'workspace:*' },
         files: { 'src/b.txt': 'b', '.gitignore': 'dist/\n' },
         config: `
           export default {

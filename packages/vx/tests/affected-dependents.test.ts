@@ -10,8 +10,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
-import { pluginSource } from './helpers/plugin.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { edgesSource, pluginSource } from './helpers/plugin.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -67,20 +67,18 @@ const CONFIG = `export default {
 `
 
 let root: string
+const EDGES = edgesSource({ app: ['lib'] })
 
-/** `app` depends on `lib` through its manifest; `tool` depends on nothing. */
+/** `app` depends on `lib` through a plugin's edge; `tool` depends on nothing. */
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-deps-'))
   await write(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
   )
-  await writeLocalWorkspace(root)
+  await write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([EDGES]))
   await write(path.join(root, 'pkgs/lib/package.json'), JSON.stringify({ name: 'lib' }))
-  await write(
-    path.join(root, 'pkgs/app/package.json'),
-    JSON.stringify({ name: 'app', dependencies: { lib: 'workspace:*' } }),
-  )
+  await write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
   await write(path.join(root, 'pkgs/tool/package.json'), JSON.stringify({ name: 'tool' }))
   for (const p of ['lib', 'app', 'tool']) {
     await write(path.join(root, `pkgs/${p}/src/index.ts`), 'export const x = 1')
@@ -300,14 +298,14 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
   async function graphPlugin(body: string): Promise<void> {
     await write(
       path.join(root, '.vx/workspace.mjs'),
-      localWorkspaceSource([pluginSource('org/edge', `{ graph(nodes) { ${body} } }`)]),
+      localWorkspaceSource([EDGES, pluginSource('org/edge', `{ graph(nodes) { ${body} } }`)]),
     )
     git(root, 'add', '-A')
     git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'plugin')
   }
 
   it(
-    'an edge a plugin adds reaches a task no manifest ties to the change',
+    'an edge a plugin adds reaches a task no project edge ties to the change',
     async () => {
       await graphPlugin(
         `const t = nodes.get('tool#build'); if (t && nodes.has('lib#build')) t.deps.push('lib#build')`,

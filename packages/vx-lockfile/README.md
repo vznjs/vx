@@ -67,7 +67,7 @@ Every cached task of a project the lockfile lists gets its literal `package.json
 - Only projects vx already knows get entries; an importer that is no project, and an edge to one, is skipped. A name is given only when no other importer's `package.json` shares it.
 - A yarn classic (v1) lockfile records no workspaces: `yarn()` gives no edges and warns `yarn.lock: yarn classic (v1) records no workspaces, so yarn() gives vx no project edges — upgrade to Yarn 2+`.
 
-These edges are what was installed, so they differ from a guess over manifest ranges where the manager decided otherwise: pnpm installs a plain range (`^2.0.0`, `*`, `catalog:`) from the registry unless it is `workspace:`, yarn packs a `file:` directory as a copy, bun installs `dependencies` over a devDependency of the same key. For now core unions them with the edges it derives from manifests.
+These edges are what was installed, so they differ from a guess over manifest ranges where the manager decided otherwise: pnpm installs a plain range (`^2.0.0`, `*`, `catalog:`) from the registry unless it is `workspace:`, yarn packs a `file:` directory as a copy, bun installs `dependencies` over a devDependency of the same key. They are the only package edges vx has: core reads none from a `package.json`, so a workspace whose tasks use `^build` declares one of these plugins (or another that returns `deps`), and without one vx refuses the `^` naming the fix. A dependency an install adds or removes reaches `--affected` as this lockfile's change.
 
 ## Cost
 
@@ -79,4 +79,4 @@ The claim, the per-project key, the memo and the `--affected` diff are core's `l
 
 ## Testing
 
-`bun test` covers each parser's digests (transitive bumps, nested versions, workspace links, peer suffixes, patches, install-wide knobs, cycles, key order, aliases, refusals), `discover`'s edges per manager (`discover.test.ts`) and their parity with core's package graph over real installs (`discover-parity.test.ts`), the settings claims, and `vx run` / `vx why` / `--affected` end to end. vx's own repository declares `bun()`.
+`bun test` covers each parser's digests (transitive bumps, nested versions, workspace links, peer suffixes, patches, install-wide knobs, cycles, key order, aliases, refusals), `discover`'s edges per manager (`discover.test.ts`) and the edges core's manifest graph read over the same real installs, recorded when core stopped reading them (`discover-parity.test.ts`), the settings claims, and `vx run` / `vx why` / `--affected` end to end. vx's own repository declares `bun()`.

@@ -6,6 +6,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
 import { addProject } from './helpers/workspace.js'
 import {
   BIN,
@@ -16,6 +17,20 @@ import {
   until,
   useWatchFixture,
 } from './helpers/watch-loop.js'
+
+/** Edges from each project's `dependencies` keys that name a project. */
+const MANIFEST_EDGES = pluginSource(
+  'vx-test-manifest-edges',
+  `{
+  discover(ctx) {
+    const dir = new Map(ctx.projects.map((p) => [p.name, p.dir]))
+    return ctx.projects.map((p) => ({
+      dir: p.dir,
+      deps: Object.keys(p.packageJson.dependencies ?? {}).filter((n) => dir.has(n)).map((n) => dir.get(n)),
+    }))
+  },
+}`,
+)
 
 describe('vx watch loop (e2e): the watched set', () => {
   const f = useWatchFixture()
@@ -157,12 +172,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         },
       }\n`,
     )
-    const pkg = JSON.parse(await readFile(path.join(f.dir, 'package.json'), 'utf8')) as Record<
-      string,
-      unknown
-    >
-    pkg['dependencies'] = { lib: '0.0.0' }
-    await writeFile(path.join(f.dir, 'package.json'), JSON.stringify(pkg, null, 2))
+    await writeEdges(f.root, { app: ['lib'] })
 
     f.watch = startWatch(f.root, ['--filter', 'app'])
     const w = f.watch
@@ -271,9 +281,14 @@ describe('vx watch loop (e2e): the watched set', () => {
 
   it('a dependency added under --filter joins the watched closure', async () => {
     // The closure was computed at start: `app` alone. A `package.json` edit
-    // that makes `lib` its dependency runs `lib` in the cycle it triggers,
-    // and the re-read arms it. Differential: without the re-read on a
-    // manifest edit, the `lib` edit below is silence.
+    // that makes `lib` its dependency, which the edge plugin reads as a
+    // lockfile plugin reads what the manager installed, runs `lib` in the
+    // cycle it triggers, and the re-read arms it. Differential: without the
+    // re-read on a manifest edit, the `lib` edit below is silence.
+    await Bun.write(
+      path.join(f.root, '.vx/workspace.mjs'),
+      `${PLUGIN_IMPORT}export default { plugins: [${MANIFEST_EDGES}] }\n`,
+    )
     const lib = await addProject(f.root, 'lib', {
       config: buildLogging('lib'),
       files: { 'src/l.txt': 'l1\n' },

@@ -175,7 +175,7 @@ export async function applyDiscoverHooks(
       const { meta, added } = await add(entry, plugin)
       if (added) projects.push(meta)
       if (entry.deps !== undefined || entry.reach !== undefined) {
-        edges.push({ by: plugin.name, meta, deps: entry.deps ?? [], reach: entry.reach ?? [] })
+        edges.push({ by: plugin.name, meta, deps: entry.deps, reach: entry.reach ?? [] })
       }
     }
   }
@@ -185,7 +185,8 @@ export async function applyDiscoverHooks(
 export interface DiscoveredEdges {
   readonly by: string
   readonly meta: ProjectMeta
-  readonly deps: readonly string[]
+  /** Absent when the entry carried none; `[]` still makes the workspace an edge source. */
+  readonly deps: readonly string[] | undefined
   readonly reach: readonly string[]
 }
 

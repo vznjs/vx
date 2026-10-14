@@ -59,7 +59,7 @@ const silentLogger = (f: Fixture): Logger => ({
 })
 
 async function makeWorkspace(): Promise<Fixture> {
-  const root = await makeWorkspaceRoot({ prefix: 'vx-record-' })
+  const root = await makeWorkspaceRoot({ prefix: 'vx-record-', edges: { a: ['b'] } })
   return { root, log: [] }
 }
 
@@ -176,7 +176,6 @@ describe('every recorded outcome earns a row (real CLI)', () => {
           tasks: { build: { exec: { command: 'echo ok' }, dependsOn: ['^build'] } },
         }
         `,
-        deps: { b: 'workspace:*' },
       })
 
       // `a` is requested; `b#build` is pulled in by the `^build` edge, fails,

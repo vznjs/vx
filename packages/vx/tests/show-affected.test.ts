@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { writeEdges } from './helpers/plugin.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const roots: string[] = []
@@ -57,7 +58,7 @@ function planned(root: string, task: string): string[] {
     .sort()
 }
 
-// y depends on x in package.json; each declares `test`; x changes.
+// y depends on x (an `edges()` plugin); each declares `test`; x changes.
 async function fixture(yTest: string): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-affected-'))
   roots.push(root)
@@ -66,13 +67,13 @@ async function fixture(yTest: string): Promise<string> {
     await writeFile(path.join(root, rel), content)
   }
   await write('package.json', JSON.stringify({ name: 'r', private: true, workspaces: ['pkgs/*'] }))
-  await write('.vx/workspace.mjs', 'export default {}\n')
+  await writeEdges(root, { y: ['x'] })
   await write('pkgs/x/package.json', JSON.stringify({ name: 'x' }))
   await write(
     'pkgs/x/vx.config.mjs',
     `export default { tasks: { test: { exec: { command: 'echo t' } } } }\n`,
   )
-  await write('pkgs/y/package.json', JSON.stringify({ name: 'y', dependencies: { x: '*' } }))
+  await write('pkgs/y/package.json', JSON.stringify({ name: 'y' }))
   await write('pkgs/y/vx.config.mjs', `export default { tasks: { test: ${yTest} } }\n`)
   git(root, 'init', '-q')
   git(root, 'add', '-A')

@@ -265,7 +265,10 @@ describe('K(T) is what moves the key (R4)', () => {
   const PROJECTS = ['@x/ui', '@x/mid', '@x/other']
 
   beforeAll(async () => {
-    fixture = await makeWorkspace('vx-keyed-')
+    fixture = await makeWorkspace('vx-keyed-', {
+      '@x/mid': ['@x/ui'],
+      '@x/app': ['@x/ui', '@x/mid'],
+    })
     dirs.set(
       '@x/ui',
       await addProject(fixture.root, '@x/ui', {
@@ -290,7 +293,6 @@ describe('K(T) is what moves the key (R4)', () => {
     dirs.set(
       '@x/mid',
       await addProject(fixture.root, '@x/mid', {
-        deps: { '@x/ui': 'workspace:*' },
         files: { 'src/index.js': 'export const mid = 1\n' },
         config: `
           export default {
@@ -415,7 +417,6 @@ describe('K(T) is what moves the key (R4)', () => {
       async () => {
         await rm(path.join(fixture.root, 'packages', 'x-app'), { recursive: true, force: true })
         await addProject(fixture.root, '@x/app', {
-          deps: { '@x/ui': 'workspace:*', '@x/mid': 'workspace:*' },
           files: { 'src/index.js': 'export const app = 1\n' },
           config: appConfig(s),
         })
@@ -443,7 +444,7 @@ describe('K(T) under --exclude-dependencies', () => {
   async function keyedOfTest(
     genTasks: string,
   ): Promise<{ keyed: string[]; ui: string; app: string }> {
-    const fixture = await makeWorkspace('vx-keyed-exclude-')
+    const fixture = await makeWorkspace('vx-keyed-exclude-', { '@x/app': ['@x/ui'] })
     try {
       const ui = await addProject(fixture.root, '@x/ui', {
         files: { 'src/index.js': 'export const ui = 1\n' },
@@ -453,7 +454,6 @@ describe('K(T) under --exclude-dependencies', () => {
         } } }`,
       })
       const app = await addProject(fixture.root, '@x/app', {
-        deps: { '@x/ui': 'workspace:*' },
         files: { 'src/index.js': 'export const app = 1\n' },
         config: `export default { tasks: {
           gen: {

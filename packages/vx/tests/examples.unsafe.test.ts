@@ -17,6 +17,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
+import { npmWorkspaceLock } from './helpers/npm-checkout.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
 const PACKAGES = path.dirname(CORE)
@@ -27,15 +28,24 @@ afterAll(() => {
   for (const r of roots) rmSync(r, { recursive: true, force: true })
 })
 
-/** A fresh git repo holding `examples/<name>`, with `links` (package dirs) as its @vzn deps. */
+/**
+ * A fresh git repo holding `examples/<name>`, with `links` (package dirs)
+ * and `vx-lockfile` as its @vzn deps and the workspace's links in the
+ * `package-lock.json` the README's `npm install` writes, which `npm()`
+ * reads its edges from.
+ */
 function fixture(name: string, links: string[]): string {
   const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), `vx-example-${name}-`)))
   roots.push(root)
   cpSync(path.join(EXAMPLES, name), root, { recursive: true })
   mkdirSync(path.join(root, 'node_modules', '@vzn'), { recursive: true })
-  for (const dir of links) {
+  for (const dir of [...links, 'vx-lockfile']) {
     symlinkSync(path.join(PACKAGES, dir), path.join(root, 'node_modules', '@vzn', dir))
   }
+  writeFileSync(
+    path.join(root, 'package-lock.json'),
+    JSON.stringify(npmWorkspaceLock(root), null, 2),
+  )
   commit(root)
   return root
 }
@@ -159,9 +169,12 @@ describe('examples/turbo', () => {
     expect(kept.status).toEqual(all('cache-hit'))
     said.push(kept.cache)
 
-    // The file stays: it marks the root.
+    // The file stays: it marks the root, and npm() keeps the edges.
     mkdirSync(path.join(root, '.vx'), { recursive: true })
-    writeFileSync(path.join(root, '.vx/workspace.ts'), 'export default {}\n')
+    writeFileSync(
+      path.join(root, '.vx/workspace.ts'),
+      "import { npm } from '@vzn/vx-lockfile'\n\nexport default { plugins: [npm()] }\n",
+    )
     commit(root)
     const alone = run(root, 'test')
     expect(alone.exit).toBe(0)
