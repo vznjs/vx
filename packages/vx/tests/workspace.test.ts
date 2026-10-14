@@ -280,7 +280,7 @@ describe('listProjects', () => {
     await mkdir(path.join(dir, 'packages/ghost'), { recursive: true })
     await writeFile(path.join(dir, 'packages/ghost/package.json'), '{}')
     await writeFile(
-      path.join(dir, 'packages/ghost/vx.config.mjs'),
+      path.join(dir, 'packages/ghost/vx.project.mjs'),
       'export default { tasks: {} }\n',
     )
     await mkdir(path.join(dir, 'packages/quiet'), { recursive: true })
@@ -317,7 +317,7 @@ describe('listProjects', () => {
     await mkdir(path.join(dir, 'packages/blank'), { recursive: true })
     await writeFile(path.join(dir, 'packages/blank/package.json'), '{"name": ""}')
     await writeFile(
-      path.join(dir, 'packages/blank/vx.config.mjs'),
+      path.join(dir, 'packages/blank/vx.project.mjs'),
       'export default { tasks: {} }\n',
     )
 
@@ -344,7 +344,7 @@ describe('listProjects', () => {
   it('a nameless root with a vx config is named as the workspace root', async () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(dir, 'package.json'), '{"private": true}')
-    await writeFile(path.join(dir, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+    await writeFile(path.join(dir, 'vx.project.mjs'), 'export default { tasks: {} }\n')
     const written: string[] = []
     const real = process.stderr.write.bind(process.stderr)
     process.stderr.write = ((chunk: unknown): boolean => {
@@ -398,7 +398,7 @@ describe('listProjects', () => {
         'vx: left out, as no project can be addressed by a name several manifests share (none has a vx config): dup (packages/a, packages/b); pair (packages/f, packages/g); and 1 more\n',
       ],
     })
-    await writeFile(path.join(dir, 'packages/e/vx.config.mjs'), 'export default { tasks: {} }\n')
+    await writeFile(path.join(dir, 'packages/e/vx.project.mjs'), 'export default { tasks: {} }\n')
     const err = await list().then(
       () => null,
       (e: unknown) => e,
@@ -695,7 +695,10 @@ describe('listProjects', () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await mkdir(path.join(dir, 'packages/noname'), { recursive: true })
     await writeFile(path.join(dir, 'packages/noname/package.json'), '{"version":"0.0.0"}')
-    await writeFile(path.join(dir, 'packages/noname/vx.config.mjs'), 'export default { tasks: {} }')
+    await writeFile(
+      path.join(dir, 'packages/noname/vx.project.mjs'),
+      'export default { tasks: {} }',
+    )
     await mkdir(path.join(dir, 'packages/quiet'), { recursive: true })
     await writeFile(path.join(dir, 'packages/quiet/package.json'), '{}')
 
@@ -722,24 +725,24 @@ describe('listProjects', () => {
     // ts wins over mjs when both exist.
     await mkdir(path.join(dir, 'packages/both'), { recursive: true })
     await writeFile(path.join(dir, 'packages/both/package.json'), '{"name":"both"}')
-    await writeFile(path.join(dir, 'packages/both/vx.config.ts'), 'export default {}')
-    await writeFile(path.join(dir, 'packages/both/vx.config.mjs'), 'export default {}')
+    await writeFile(path.join(dir, 'packages/both/vx.project.ts'), 'export default {}')
+    await writeFile(path.join(dir, 'packages/both/vx.project.mjs'), 'export default {}')
     // A DIRECTORY under the first name is not a config; the next name is.
-    await mkdir(path.join(dir, 'packages/dirnamed/vx.config.ts'), { recursive: true })
+    await mkdir(path.join(dir, 'packages/dirnamed/vx.project.ts'), { recursive: true })
     await writeFile(path.join(dir, 'packages/dirnamed/package.json'), '{"name":"dirnamed"}')
-    await writeFile(path.join(dir, 'packages/dirnamed/vx.config.mjs'), 'export default {}')
+    await writeFile(path.join(dir, 'packages/dirnamed/vx.project.mjs'), 'export default {}')
     // A symlink to a file counts; a dangling one does not.
     await mkdir(path.join(dir, 'packages/linked'), { recursive: true })
     await writeFile(path.join(dir, 'packages/linked/package.json'), '{"name":"linked"}')
     await writeFile(path.join(dir, 'shared.config.ts'), 'export default {}')
     await symlink(
       path.join(dir, 'shared.config.ts'),
-      path.join(dir, 'packages/linked/vx.config.ts'),
+      path.join(dir, 'packages/linked/vx.project.ts'),
     )
     await mkdir(path.join(dir, 'packages/dangling'), { recursive: true })
     await writeFile(path.join(dir, 'packages/dangling/package.json'), '{"name":"dangling"}')
-    await symlink(path.join(dir, 'missing.ts'), path.join(dir, 'packages/dangling/vx.config.ts'))
-    await writeFile(path.join(dir, 'packages/dangling/vx.config.js'), 'export default {}')
+    await symlink(path.join(dir, 'missing.ts'), path.join(dir, 'packages/dangling/vx.project.ts'))
+    await writeFile(path.join(dir, 'packages/dangling/vx.project.js'), 'export default {}')
     // No config at all.
     await mkdir(path.join(dir, 'packages/none'), { recursive: true })
     await writeFile(path.join(dir, 'packages/none/package.json'), '{"name":"none"}')
@@ -749,10 +752,10 @@ describe('listProjects', () => {
     const byName = new Map(
       projects.map((p) => [p.name, p.configPath && path.relative(dir, p.configPath)]),
     )
-    expect(byName.get('both')).toBe('packages/both/vx.config.ts')
-    expect(byName.get('dirnamed')).toBe('packages/dirnamed/vx.config.mjs')
-    expect(byName.get('linked')).toBe('packages/linked/vx.config.ts')
-    expect(byName.get('dangling')).toBe('packages/dangling/vx.config.js')
+    expect(byName.get('both')).toBe('packages/both/vx.project.ts')
+    expect(byName.get('dirnamed')).toBe('packages/dirnamed/vx.project.mjs')
+    expect(byName.get('linked')).toBe('packages/linked/vx.project.ts')
+    expect(byName.get('dangling')).toBe('packages/dangling/vx.project.js')
     expect(byName.get('none')).toBeNull()
   })
 
@@ -1114,7 +1117,7 @@ describe('discovery out of file descriptors (D-60)', () => {
     [
       'the config lookup',
       (p: string) =>
-        p.endsWith(path.join('packages', 'a')) || path.basename(p).startsWith('vx.config.'),
+        p.endsWith(path.join('packages', 'a')) || path.basename(p).startsWith('vx.project.'),
     ],
   ])('fails %s, never lists an empty workspace', async (_site, hit) => {
     expect(await listed()).toBe('a')

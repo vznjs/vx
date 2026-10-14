@@ -97,7 +97,7 @@ imports and no free `Bun` or `process` reference: 42 `__vxBun` and 17
 | (d) platform            | `process.platform` (`listProjects` picks readdir by it)        | `'linux'`                                                                                        |
 | (d) warnings            | `process.stderr.write` (discovery, the scheduler)              | `console.warn`                                                                                   |
 | (d) git enumeration     | `git ls-files -s` + `git status` in `prepareRun`               | every VFS file tracked and clean, its OID a git blob SHA-1 from Web Crypto                       |
-| (d) config evaluation   | `import()` of `vx.config.*` in the loader                      | plain objects, validated by core's `validateProjectConfig`, handed to `loadProjects` as `staged` |
+| (d) config evaluation   | `import()` of `vx.project.*` in the loader                     | plain objects, validated by core's `validateProjectConfig`, handed to `loadProjects` as `staged` |
 | (d) the cache store     | SQLite                                                         | a set of keys; `key()` is core's fold, borrowed from `Cache.prototype`                           |
 
 The entry (`entry.ts`) is the plan half of `prepareRun`, rebuilt from
@@ -330,7 +330,7 @@ rows for the shapes above. It needs no repository, so it runs in
 
   The second is the real thing, and it needs a parity row of its own over
   TS configs. Choose at the start of W9. Decided below (a
-  `vx.config.mjs`, so no type stripping); SHIPPED as item 699
+  `vx.project.mjs`, so no type stripping); SHIPPED as item 699
   ([Shipped](#shipped-item-699)).
 
 ## W9 decisions (2026-09-24)
@@ -347,7 +347,7 @@ work that follows.
   with the CLI. The unsafe task's inputs already cover the packages its
   laws read, so a playground edit re-keys it. The repo keeps exactly two
   tasks without `exec.sandbox`.
-- **The reader edits `vx.config.mjs`, not `vx.config.ts`.** Core loads
+- **The reader edits `vx.project.mjs`, not `vx.project.ts`.** Core loads
   both, and a JavaScript config needs no type stripping, so the page adds
   no dependency. The page rewrites the one import it allows
   (`@vzn/vx`) to a module whose `defineProject` is the identity, and
@@ -445,7 +445,7 @@ dispatch order and no page error.
 
 ## Shipped (item 699)
 
-Config editing: the page evaluates a `vx.config.mjs` text the way the
+Config editing: the page evaluates a `vx.project.mjs` text the way the
 CLI evaluates the file. No page loads the bundle yet.
 
 - **The rewrite.** `rewriteConfigImports(text, vxUrl)` in
@@ -471,7 +471,7 @@ CLI evaluates the file. No page loads the bundle yet.
   imports the rewritten text from a Blob URL, and replies as core's
   worker does: `JSON.stringify` of an object default export, or null.
   For a null the page returns the CLI's message with its own file name:
-  "Project config at vx.config.mjs did not export a default object". A
+  "Project config at vx.project.mjs did not export a default object". A
   throw becomes `name: message`. At the deadline the Worker is terminated
   and the error says so. A browser Worker has no `process`, so a config
   that reads `process.env` while it evaluates fails with "ReferenceError:
@@ -479,7 +479,7 @@ CLI evaluates the file. No page loads the bundle yet.
   planner's `env` input is what tasks read. Bun's Worker has `process`,
   so no Bun row can pin that; the Chromium probe below did.
 - **The fixture is text.** `fixture.ts` exports `CONFIG_TEXTS`, each
-  project's `vx.config.mjs` source importing `defineProject` from
+  project's `vx.project.mjs` source importing `defineProject` from
   `@vzn/vx`, and `FILES` holds the same text. `CONFIGS`, the evaluated
   objects, is gone. The parity rows and vx-bench's `bench.ts` evaluate
   the texts through the bundle.
@@ -513,7 +513,7 @@ JSON cannot carry (a function, a symbol, a bigint, `NaN` / `±Infinity`,
 `vx run`'s first load runs it on the live object before the schema, and
 core's worker and the page's worker run the same function, embedded by
 its source text, before their `JSON.stringify`. All three refuse with
-one message: "vx.config.mjs: tasks.build.description is a function — a
+one message: "vx.project.mjs: tasks.build.description is a function — a
 config must be JSON data, because the cache key folds its JSON" (the
 page uses its own file name, as it does for a non-object export). An
 `undefined` property is still allowed on every path. The row below that

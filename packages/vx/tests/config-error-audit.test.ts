@@ -15,7 +15,7 @@ afterEach(async () => {
   if (root !== undefined) await rm(root, { recursive: true, force: true })
 })
 
-/** `vx run build --all --dry` over one member `p` with `config` as its vx.config.ts. */
+/** `vx run build --all --dry` over one member `p` with `config` as its vx.project.ts. */
 const run = async (config: string) => {
   root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-cfg-err-')))
   Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
@@ -23,7 +23,7 @@ const run = async (config: string) => {
   await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
   await mkdir(path.join(root, 'p'))
   await writeFile(path.join(root, 'p', 'package.json'), '{"name":"p"}')
-  await writeFile(path.join(root, 'p', 'vx.config.ts'), config)
+  await writeFile(path.join(root, 'p', 'vx.project.ts'), config)
   const proc = Bun.spawn(['bun', BIN, 'run', 'build', '--all', '--dry'], {
     cwd: root,
     env: { ...process.env, NO_COLOR: '1' },
@@ -38,7 +38,7 @@ const run = async (config: string) => {
 const framed =
   (col: number, said: string) =>
   (config: string): string =>
-    `vx: p/vx.config.ts:1:${col}${said}\n\n> 1 | ${config.trim()}\n    | ${' '.repeat(col - 1)}^`
+    `vx: p/vx.project.ts:1:${col}${said}\n\n> 1 | ${config.trim()}\n    | ${' '.repeat(col - 1)}^`
 
 const task = (fields: string) => `export default { tasks: { build: { ${fields} } } }\n`
 const CACHE_IN = "inputs: { files: ['src/**'] }"
@@ -47,12 +47,12 @@ it.each([
   [
     'a syntax error, by line and column',
     'export default { tasks: {}\n',
-    'vx: Project config <root>/p/vx.config.ts:1:27: Expected "}" but found end of file',
+    'vx: Project config <root>/p/vx.project.ts:1:27: Expected "}" but found end of file',
   ],
   [
     'named exports and no default',
     'export const config = { tasks: {} }\n',
-    'vx: Project config at <root>/p/vx.config.ts did not export a default object',
+    'vx: Project config at <root>/p/vx.project.ts did not export a default object',
   ],
   [
     'an unknown top-level field',
@@ -77,7 +77,7 @@ it.each([
   [
     'a missing `cache.outputs`',
     task(`exec: { command: 'x' }, cache: { ${CACHE_IN} }`),
-    'vx: <root>/p/vx.config.ts: tasks.build.cache.outputs is required when `cache` is set',
+    'vx: <root>/p/vx.project.ts: tasks.build.cache.outputs is required when `cache` is set',
   ],
   [
     'a string `dependsOn`',

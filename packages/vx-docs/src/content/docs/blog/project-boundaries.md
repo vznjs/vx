@@ -37,7 +37,7 @@ Once per run, vx computes, for each project, the directories of the
 projects nested under it (`workspace/nested-dirs.ts`). Every glob pass
 drops a path under one of them, for inputs and for the output clean
 alike. A workspace package counts as a project whether or not it has a
-`vx.config.ts`, because `--affected` hands it its own files and its
+`vx.project.ts`, because `--affected` hands it its own files and its
 default `build` keys them.
 
 The nesting check is a sort and one scan, with a trap worth naming.

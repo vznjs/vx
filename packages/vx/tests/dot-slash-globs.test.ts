@@ -108,7 +108,7 @@ describe('./-prefixed globs', () => {
   ] as const) {
     it(`${field}.files ${entry} names the directory itself and is refused at load`, async () => {
       const dir = await addProject(root, 'app')
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       const cache =
         field === 'inputs'
           ? `{ inputs: { files: [${entry}] }, outputs: { files: ['dist/**'] } }`

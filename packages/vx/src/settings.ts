@@ -117,7 +117,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'run.frozen',
     kind: { type: 'bool' },
     default: 'on when CI is set',
-    doc: 'Load configs from `vx-lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.',
+    doc: 'Load configs from `vx.lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.',
     flag: { verb: 'run', name: '--frozen' },
   },
   {

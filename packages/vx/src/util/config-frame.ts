@@ -1,4 +1,4 @@
-// A config refusal pointed at its line: `vx.config.ts:7:9` (which a
+// A config refusal pointed at its line: `vx.project.ts:7:9` (which a
 // terminal opens on click) and the source around it. Read from the
 // message the schema already writes (`<file>: tasks.<name>.<path> …`),
 // so it works for a refusal made in the config worker as for one made
@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 // `<file>: tasks.<path>[:] …`, or a top-level `<file> has unknown field …`.
-const HEAD = /^(\/[^\n]*?\/vx\.config\.[cm]?[jt]s)(?:: (tasks\.[^\s:]+)(:?))? /
+const HEAD = /^(\/[^\n]*?\/vx\.project\.[cm]?[jt]s)(?:: (tasks\.[^\s:]+)(:?))? /
 
 /**
  * The message with its file named at `line:col`, relative to `cwd`, and a

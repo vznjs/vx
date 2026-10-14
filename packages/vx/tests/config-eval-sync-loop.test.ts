@@ -19,7 +19,7 @@ afterEach(async () => {
 
 const settle = async (body: string) => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-sync-loop-'))
-  const file = path.join(dir, 'vx.config.mjs')
+  const file = path.join(dir, 'vx.project.mjs')
   await writeFile(file, body)
   process.env[BUDGET] = '300ms'
   return evaluateConfigFresh(file).then(

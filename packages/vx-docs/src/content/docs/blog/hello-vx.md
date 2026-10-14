@@ -14,7 +14,7 @@ on Bun, with nothing hidden behind a paid cloud.
 
 ```mermaid
 flowchart LR
-  D[discover projects] --> C[evaluate vx.config.ts]
+  D[discover projects] --> C[evaluate vx.project.ts]
   C --> G[one task graph]
   G --> K[a key per task]
   K --> S[schedule]

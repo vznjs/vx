@@ -29,7 +29,7 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
     // fix is to declare the output. Nothing after the initial run: its
     // write landed before the watchers were armed.
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' } } } }\n`,
     )
     f.watch = startWatch(f.root)
@@ -75,7 +75,7 @@ describe('vx watch loop (e2e): undeclared outputs', () => {
       // last saw. Differential: with the gate passing directories
       // through, executions climb past 3 within the settle window.
       await writeFile(
-        path.join(f.dir, 'vx.config.mjs'),
+        path.join(f.dir, 'vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: 'rm -rf dist; ${gap}mkdir -p dist; cat src/*.txt > dist/out.txt; echo run >> ${f.log}' } } } }\n`,
       )
       f.watch = startWatch(f.root)

@@ -40,7 +40,7 @@ async function pkg(name: string, config: string): Promise<void> {
   const dir = path.join(root, 'packages', name)
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
-  await writeFile(path.join(dir, 'vx.config.mjs'), config)
+  await writeFile(path.join(dir, 'vx.project.mjs'), config)
 }
 
 async function workspace(plugins: string[], prelude = ''): Promise<void> {
@@ -86,7 +86,7 @@ describe('an explicit empty group', () => {
         JSON.stringify({ name: 'app', version: '1.0.0', dependencies: { core: 'workspace:*' } }),
       )
       await writeFile(
-        path.join(dir, 'vx.config.mjs'),
+        path.join(dir, 'vx.project.mjs'),
         "export default { tasks: { install: { dependsOn: ['^build'] }, test: { dependsOn: ['install'], exec: { command: 'echo t' } } } }\n",
       )
       await workspace([])
@@ -238,7 +238,7 @@ describe('project stage', () => {
     'visits a package with NO config file, so a plugin can give it tasks; without the stage it stays invisible',
     async () => {
       // The zero-migration shape: `b` has a package.json and scripts but never
-      // wrote a vx.config — a `project` plugin maps them onto tasks.
+      // wrote a vx.project — a `project` plugin maps them onto tasks.
       await pkg('a', build)
       const bDir = path.join(root, 'packages', 'b')
       await mkdir(bDir, { recursive: true })
@@ -335,7 +335,7 @@ describe('project stage', () => {
         pluginSource('org/broken', `{ project(config) { config.tasks.build.exec = 5 } }`),
       ])
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
-        /vx\.config\.mjs \(after plugin 'org\/broken'\): tasks\.build\.exec must be an object/,
+        /vx\.project\.mjs \(after plugin 'org\/broken'\): tasks\.build\.exec must be an object/,
       )
     },
     TIMEOUT,
@@ -360,8 +360,8 @@ describe('project stage', () => {
       // From the project's own path on: the root is macOS's symlinked temp
       // dir there, and which spelling discovery reports is not this row's.
       const message = err?.message ?? ''
-      expect(message.slice(message.indexOf('/packages/a/vx.config.mjs'))).toBe(
-        `/packages/a/vx.config.mjs (after plugin 'org/map'): tasks.build.exec.sandbox is an instance of Map — a config must be JSON data, because the cache key folds its JSON`,
+      expect(message.slice(message.indexOf('/packages/a/vx.project.mjs'))).toBe(
+        `/packages/a/vx.project.mjs (after plugin 'org/map'): tasks.build.exec.sandbox is an instance of Map — a config must be JSON data, because the cache key folds its JSON`,
       )
     },
     TIMEOUT,
@@ -532,7 +532,7 @@ describe('graph stage', () => {
         (e: Error) => e.message,
       )
       expect(said).toBe(
-        `${path.join(root, 'packages/a/vx.config.mjs')} (after plugin 'org/typo'): ` +
+        `${path.join(root, 'packages/a/vx.project.mjs')} (after plugin 'org/typo'): ` +
           'tasks.build.exec has unknown field "comand" (allowed: command, env, interactive, ' +
           'persistent, remote, retries, sandbox, timeout) — did you mean command?',
       )

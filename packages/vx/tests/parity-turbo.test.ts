@@ -54,9 +54,9 @@ describe('Turbo parity — task graph (turbo.json `dependsOn`)', () => {
   it(
     '`"dependsOn": ["pkg#task"]` — an explicit edge to another package\'s task',
     async () => {
-      const cfg = await readFile(path.join(root, 'packages', 'docs', 'vx.config.mjs'), 'utf8')
+      const cfg = await readFile(path.join(root, 'packages', 'docs', 'vx.project.mjs'), 'utf8')
       await writeFile(
-        path.join(root, 'packages', 'docs', 'vx.config.mjs'),
+        path.join(root, 'packages', 'docs', 'vx.project.mjs'),
         cfg.replace(
           'lint: {',
           "publish: { exec: { command: 'echo publish' }, dependsOn: ['app#build'] },\n      lint: {",
@@ -222,9 +222,9 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
   let root: string
   beforeAll(async () => {
     root = await makeParityWorkspace('vx-parity-turbo-cache-')
-    const cfg = await readFile(path.join(root, 'packages', 'lib', 'vx.config.mjs'), 'utf8')
+    const cfg = await readFile(path.join(root, 'packages', 'lib', 'vx.project.mjs'), 'utf8')
     await writeFile(
-      path.join(root, 'packages', 'lib', 'vx.config.mjs'),
+      path.join(root, 'packages', 'lib', 'vx.project.mjs'),
       cfg.replace(
         'lint: {',
         `env: {
@@ -329,7 +329,7 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
     async () => {
       const own = await makeParityWorkspace('vx-parity-turbo-uncache-')
       try {
-        const config = path.join(own, 'packages', 'lib', 'vx.config.mjs')
+        const config = path.join(own, 'packages', 'lib', 'vx.project.mjs')
         await vx(own, ['run', 'lib#lint'])
         const [cached] = await dry(own, ['lib#lint'])
         expect(cached?.cacheStatus).toBe('hit-local')
@@ -361,7 +361,7 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
     async () => {
       const own = await makeParityWorkspace('vx-parity-turbo-deploy-')
       try {
-        const config = path.join(own, 'packages', 'app', 'vx.config.mjs')
+        const config = path.join(own, 'packages', 'app', 'vx.project.mjs')
         const cfg = await readFile(config, 'utf8')
         await writeFile(
           config,
@@ -454,9 +454,9 @@ describe('Turbo parity — failures, output and reports', () => {
   let root: string
   beforeAll(async () => {
     root = await makeParityWorkspace('vx-parity-turbo-run-')
-    const cfg = await readFile(path.join(root, 'packages', 'lib', 'vx.config.mjs'), 'utf8')
+    const cfg = await readFile(path.join(root, 'packages', 'lib', 'vx.project.mjs'), 'utf8')
     await writeFile(
-      path.join(root, 'packages', 'lib', 'vx.config.mjs'),
+      path.join(root, 'packages', 'lib', 'vx.project.mjs'),
       cfg.replace(
         'lint: {',
         `fail: { exec: { command: 'echo boom >&2; exit 3' } },

@@ -1,11 +1,11 @@
 ---
 title: Migrate
-description: Move a Turborepo, Nx or Vite Task repo to native vx config. `vx init` writes the vx.config.ts files that are the goal; `vx init --keep` gives a temporary start.
+description: Move a Turborepo, Nx or Vite Task repo to native vx config. `vx init` writes the vx.project.ts files that are the goal; `vx init --keep` gives a temporary start.
 ---
 
 Move a Turborepo, Nx or Vite Task repo to native vx config. The `vx.workspace.ts`
 that `vx init --keep` writes is a temporary start, not a way to run the repo;
-`vx init` writes the `vx.config.ts` files you keep, and
+`vx init` writes the `vx.project.ts` files you keep, and
 vx's benchmarks measure only that native config. Any other repo starts at the
 [quickstart](../../quickstart/): there `vx init` writes the configs from
 your `package.json` scripts.
@@ -18,7 +18,7 @@ your `package.json` scripts.
 `npx @vzn/vx init` is the whole adoption in a Turbo or Nx repo: beside
 `turbo.json` or `nx.json` it runs `@vzn/vx-migrate` (the installed one, else
 vx's own version), which `npx @vzn/vx-migrate` (`pnpx`, `bunx`, `yarn dlx`)
-also runs directly, and a [Vite Task](#vite-task) repo needs. It asks whether to migrate natively (a `vx.config.ts` per
+also runs directly, and a [Vite Task](#vite-task) repo needs. It asks whether to migrate natively (a `vx.project.ts` per
 package, the default) or keep `turbo.json` / `nx.json` as the source
 (`turbo()` / `nx()`, step 2 below); `--native` or `--keep` answer it, and
 without a terminal, or from Vite Task, it is native. It installs vx with the repo's own package
@@ -44,7 +44,7 @@ error names the same fix.
    manager, then builds once through `turbo()`: a check that the mapping
    holds before you write configs, not a way to keep running the repo.
 4. Preview the configs with `bunx @vzn/vx-migrate --dry`, then write them
-   with `bunx @vzn/vx-migrate`: one `vx.config.ts` per package, plus a
+   with `bunx @vzn/vx-migrate`: one `vx.project.ts` per package, plus a
    `vx-preset.ts` when turbo.json has global fields or a task `env` several
    packages share. It never overwrites a
    file without `--force`. It takes `turbo()` out of `vx.workspace.ts`
@@ -91,17 +91,17 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 $ bunx @vzn/vx-migrate
 vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
 vx-migrate: npm uninstall @vzn/vx-migrate
-vx-migrate: turbo.json → vx.config.ts
+vx-migrate: turbo.json → vx.project.ts
 note: dropped turbo() from vx.workspace.ts
 note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
 note: removed @vzn/vx-migrate (npm uninstall @vzn/vx-migrate)
 
 3 tasks migrated clean, 0 TODOs
 files written:
-  packages/app/vx.config.ts
-  packages/lib/vx.config.ts
+  packages/app/vx.project.ts
+  packages/lib/vx.project.ts
 
-vx lock: locked 2 project configs → vx-lock.json
+vx lock: locked 2 project configs → vx.lock.json
 
 next: bunx @vzn/vx run build --all
 ```
@@ -111,7 +111,7 @@ declared, and the install, change each key (`vx why <task>` names both).
 The run after that hits. The example below keeps its own
 `vx.workspace.ts` and installs nothing, so it hits at once.
 
-`packages/lib/vx.config.ts`, as written:
+`packages/lib/vx.project.ts`, as written:
 
 ```ts
 import type { ProjectConfig } from '@vzn/vx/config'
@@ -161,7 +161,7 @@ git add -A && git commit -m done
 npx @vzn/vx run test --all      # 3 up-to-date
 ```
 
-| Turborepo (`turbo.json`)                                    | vx (`vx.config.ts`)                                                      |
+| Turborepo (`turbo.json`)                                    | vx (`vx.project.ts`)                                                      |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
 | `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
@@ -245,22 +245,22 @@ next: npm install -D @vzn/vx-migrate && npx @vzn/vx run build --all
 ```text
 $ bunx @vzn/vx-migrate
 vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
-vx-migrate: nx graph → vx.config.ts
+vx-migrate: nx graph → vx.project.ts
 note: dropped nx() from vx.workspace.ts
 note: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
 note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 
 2 tasks migrated clean, 0 TODOs
 files written:
-  packages/app/vx.config.ts
-  packages/lib/vx.config.ts
+  packages/app/vx.project.ts
+  packages/lib/vx.project.ts
 
-vx lock: locked 2 project configs → vx-lock.json
+vx lock: locked 2 project configs → vx.lock.json
 
 next: bunx @vzn/vx run build --all
 ```
 
-`packages/lib/vx.config.ts`, as written (the `define` names are the
+`packages/lib/vx.project.ts`, as written (the `define` names are the
 ones Nx sets for a task):
 
 ```ts
@@ -328,7 +328,7 @@ keep Nx for those.
 ## Vite Task
 
 `npx @vzn/vx-migrate` in a repo whose root `package.json` lists
-`vite-plus` writes a `vx.config.ts` per package from each `vite.config`
+`vite-plus` writes a `vx.project.ts` per package from each `vite.config`
 `run.tasks` and its `package.json` scripts (`--from vite-task` when
 turbo.json or Nx is there too). Vite Task traces the files a task reads
 and writes; vx declares them, so a task without explicit `cache.input`

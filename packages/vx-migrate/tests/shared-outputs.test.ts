@@ -221,7 +221,7 @@ describe('excludeSiblingOutputs — no key reads a sibling output (X-54)', () =>
       undefined,
       [
         'reads "dist/index.js", which "build" writes — vx keys a task only on files no other ' +
-          'task writes, so it runs uncached; read the source instead in a vx.config to cache it',
+          'task writes, so it runs uncached; read the source instead in a vx.project to cache it',
       ],
       ['src/**'],
     ])
@@ -311,7 +311,7 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
       undefined,
       [
         'reads "gen/a.ts", which app#gen writes — vx keys a task only on files no other task ' +
-          'writes, so it runs uncached; read the source instead in a vx.config to cache it',
+          'writes, so it runs uncached; read the source instead in a vx.project to cache it',
       ],
     ])
   })

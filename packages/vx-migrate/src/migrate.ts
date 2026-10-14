@@ -1,5 +1,5 @@
 // `vx-migrate [--from turbo|nx|vite-task] [--native|--keep] [--no-install] [--dry]
-// [--force] [--mjs]` — one vx.config.ts per workspace package from an
+// [--force] [--mjs]` — one vx.project.ts per workspace package from an
 // existing Turbo or Nx setup (`--keep`: the workspace file that reads it
 // live instead, as `vx init` writes it), and vx installed with the repo's
 // manager.
@@ -56,7 +56,7 @@ import {
 export interface MigrateArgs {
   dry: boolean
   force: boolean
-  /** `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts`. */
+  /** `vx.project.mjs` (and `vx-preset.mjs`) instead of `.ts`. */
   mjs: boolean
   from?: 'turbo' | 'nx' | 'vite-task'
   /** `--native` / `--keep`; unset asks a terminal and is native elsewhere. */
@@ -189,7 +189,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   }
   if (runner === 'vite-task' && parsed.mode === 'keep') {
     throw new UserError(
-      '--keep: no plugin runs a Vite Task config live; drop --keep to write vx.config files',
+      '--keep: no plugin runs a Vite Task config live; drop --keep to write vx.project files',
     )
   }
   const mode =
@@ -256,7 +256,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   }
   // Before the write, so the report's `next:` line runs the installed vx;
   // not when the write will be refused for a config already there.
-  const configName = `vx.config.${format}`
+  const configName = `vx.project.${format}`
   const refused =
     !parsed.force &&
     (plan.projects.some(

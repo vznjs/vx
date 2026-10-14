@@ -36,14 +36,14 @@ describe('vx why — a config change', () => {
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(path.join(dir, 'src', 'x.ts'), 'x\n')
     expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)
-    await writeFile(path.join(dir, 'vx.config.mjs'), config('true'))
+    await writeFile(path.join(dir, 'vx.project.mjs'), config('true'))
     expect(vx(root, 'run', 'build', '--all').code).toBe(0)
-    await writeFile(path.join(dir, 'vx.config.mjs'), config('true && true'))
+    await writeFile(path.join(dir, 'vx.project.mjs'), config('true && true'))
     expect(vx(root, 'run', 'build', '--all').code).toBe(0)
     const r = vx(root, 'why', 'app#build')
     expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
     expect(r.out.split('\n').filter((l) => l.startsWith('    config  '))).toEqual([
-      "    config  the task's evaluated config changed (its vx.config or a file it imports); `vx show app#build` prints it as it is now",
+      "    config  the task's evaluated config changed (its vx.project or a file it imports); `vx show app#build` prints it as it is now",
     ])
   })
 })

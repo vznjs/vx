@@ -51,7 +51,7 @@ export interface ProjectMeta {
   /** Absolute path to the project directory. */
   dir: string
   packageJson: PackageJson
-  /** Absolute path to vx.config.{ts,mts,js,mjs,cts,cjs} or null. */
+  /** Absolute path to vx.project.{ts,mts,js,mjs,cts,cjs} or null. */
   configPath: string | null
   /** The workspace's catalogs, which the package graph resolves `catalog:` specs through. */
   catalogs?: Catalogs
@@ -65,14 +65,14 @@ export interface ProjectEntry {
 }
 
 export const PROJECT_CONFIG_FILENAMES = [
-  'vx.config.ts',
-  'vx.config.mts',
-  'vx.config.js',
-  'vx.config.mjs',
+  'vx.project.ts',
+  'vx.project.mts',
+  'vx.project.js',
+  'vx.project.mjs',
   // A CommonJS config (`module.exports = …`), as Vite and TS name theirs: it
   // was ignored without a word (D-86).
-  'vx.config.cts',
-  'vx.config.cjs',
+  'vx.project.cts',
+  'vx.project.cjs',
 ]
 
 const decoder = new TextDecoder()
@@ -748,7 +748,7 @@ async function memberDirs(root: string, pattern: string): Promise<string[]> {
  *     (2026-09-03), and a `.ts` config — the first name — pays one stat.
  *   - Linux lists the directory once: a readdir each is 12 ms against
  *     43 ms of stats at the last name and ties the one-stat case
- *     (2026-09-09, a `vx.config.mjs` workspace; stats there cost a
+ *     (2026-09-09, a `vx.project.mjs` workspace; stats there cost a
  *     thread-pool round trip apiece).
  * Both answer identically: a directory or dangling link under a config
  * name is skipped for the next name, a symlink to a file counts.

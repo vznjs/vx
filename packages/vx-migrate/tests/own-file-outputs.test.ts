@@ -21,7 +21,7 @@ afterEach(async () => {
 })
 
 const TODO =
-  'output "package.json" covers the project\'s own package.json, which vx cleans before every run — task runs uncached; declare the outputs without it in a vx.config to cache it'
+  'output "package.json" covers the project\'s own package.json, which vx cleans before every run — task runs uncached; declare the outputs without it in a vx.project to cache it'
 
 async function pkg(name: string, scripts: Record<string, string>): Promise<ProjectMeta> {
   const dir = path.join(root, 'packages', name)
@@ -43,7 +43,7 @@ describe('an output that covers the project’s own package.json', () => {
       '*',
       '**',
       '**/*',
-      'vx.config.mjs',
+      'vx.project.mjs',
       '*.mjs',
       '{package,other}.json',
       'dist/**',
@@ -54,7 +54,7 @@ describe('an output that covers the project’s own package.json', () => {
     const loader: Record<string, boolean> = {}
     const copy: Record<string, boolean> = {}
     for (const g of globs) {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default {
@@ -77,20 +77,23 @@ describe('an output that covers the project’s own package.json', () => {
     expect(Object.values(loader).filter(Boolean).length).toBe(9)
   })
 
-  it('also flags a vx.config name the project does not have yet', () => {
+  it('also flags a vx.project name the project does not have yet', () => {
     // Core checks the config file the project has; a mapped task lands in
     // one a user may add later, so the copy names every spelling.
-    expect(ownFileOutput(['vx.config.ts'])).toEqual({
-      glob: 'vx.config.ts',
-      file: 'vx.config.ts',
+    expect(ownFileOutput(['vx.project.ts'])).toEqual({
+      glob: 'vx.project.ts',
+      file: 'vx.project.ts',
     })
     expect(ownFileOutput(['!package.json', 'dist/**'])).toBeUndefined()
   })
 
   it('with the config file named, only it and package.json are the project’s own', () => {
     expect(ownFileOutput(['*.js'], null)).toBeUndefined()
-    expect(ownFileOutput(['*.js'], 'vx.config.ts')).toBeUndefined()
-    expect(ownFileOutput(['*.js'], 'vx.config.js')).toEqual({ glob: '*.js', file: 'vx.config.js' })
+    expect(ownFileOutput(['*.js'], 'vx.project.ts')).toBeUndefined()
+    expect(ownFileOutput(['*.js'], 'vx.project.js')).toEqual({
+      glob: '*.js',
+      file: 'vx.project.js',
+    })
     expect(ownFileOutput(['*.json'], null)).toEqual({ glob: '*.json', file: 'package.json' })
   })
 
@@ -150,7 +153,7 @@ describe('an output that covers the project’s own package.json', () => {
     expect(cache.outputs.files).toEqual(['package.json', 'dist', '!package.json'])
     expect(t.todos).not.toContain(TODO)
     // The loader takes it.
-    const file = path.join(a.dir, 'vx.config.mjs')
+    const file = path.join(a.dir, 'vx.project.mjs')
     await writeFile(file, `export default { tasks: { build: ${JSON.stringify(t.task)} } }\n`)
     expect((await loadProjectConfig(file)).tasks?.['build']?.cache?.outputs.files).toEqual(
       cache.outputs.files,

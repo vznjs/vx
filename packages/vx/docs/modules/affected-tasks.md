@@ -13,7 +13,7 @@
 - a cached task seeds when a changed path is one of its declared inputs
   (`declaresInput`, inputs.md), or its `workspaceFiles` may reach into a
   changed nested repository (`changes.nested`, `workspaceFilesReachInto`), or when its project is reached whole: the
-  diff named it whole, a changed path is `package.json` or a `vx.config.*`,
+  diff named it whole, a changed path is `package.json` or a `vx.project.*`,
   or no cached task of the project declares a changed path.
 
 A requested bare task runs when its `dependsOn` closure holds a seeded

@@ -28,7 +28,7 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
   ],
   reference: [
     { label: 'Commands', href: 'cli/', line: 'Every verb and flag.' },
-    { label: 'vx.config.ts', href: 'schema/', line: 'Every config key.' },
+    { label: 'vx.project.ts', href: 'schema/', line: 'Every config key.' },
     { label: 'Caching in depth', href: 'caching/', line: 'How a key is made.' },
     { label: 'Benchmarks', href: 'benchmarks/', line: 'vx against Turborepo and Nx.' },
     { label: 'Compare', href: 'compare/', line: 'vx, Turborepo, Nx, Bazel.' },

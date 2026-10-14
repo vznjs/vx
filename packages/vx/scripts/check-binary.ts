@@ -85,7 +85,7 @@ writeFileSync(
 writeFileSync(path.join(ws, 'vx.workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
-  path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+  path.join(ws, 'packages', 'a', 'vx.project.mjs'),
   `export default {
   tasks: { build: { exec: { command: 'true' }, description: () => 'x' } },
 }
@@ -104,7 +104,7 @@ const errors = JSON.stringify(
 )
 const wantErrors = JSON.stringify([
   {
-    path: 'packages/a/vx.config.mjs',
+    path: 'packages/a/vx.project.mjs',
     message:
       'tasks.build.description is a function — a config must be JSON data, because the cache key folds its JSON',
   },
@@ -132,7 +132,7 @@ writeFileSync(
 writeFileSync(path.join(dotenv, 'vx.workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(dotenv, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
-  path.join(dotenv, 'packages', 'a', 'vx.config.mjs'),
+  path.join(dotenv, 'packages', 'a', 'vx.project.mjs'),
   `export default { tasks: { probe: { exec: { command: 'echo "probe=\${VX_DOTENV_PROBE-unset}"', env: { passThrough: ['VX_DOTENV_PROBE'] } } } } }\n`,
 )
 writeFileSync(path.join(dotenv, '.env'), 'VX_DOTENV_PROBE=from-dotenv\n')
@@ -186,7 +186,7 @@ writeFileSync(
 writeFileSync(path.join(resolve, 'vx.workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(resolve, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
-  path.join(resolve, 'packages', 'a', 'vx.config.mjs'),
+  path.join(resolve, 'packages', 'a', 'vx.project.mjs'),
   `import { m } from '@fixture/main'
 import { e } from '@fixture/exports'
 export default { tasks: { probe: { exec: { command: \`echo "resolved=\${m},\${e}"\` } } } }
@@ -230,7 +230,7 @@ writeFileSync(path.join(bare, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/
 writeFileSync(path.join(bare, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(path.join(bare, 'packages', 'a', 'src', 'x.js'), 'x\n')
 writeFileSync(
-  path.join(bare, 'packages', 'a', 'vx.config.mjs'),
+  path.join(bare, 'packages', 'a', 'vx.project.mjs'),
   `import { defineProject } from '@vzn/vx'
 export default defineProject({ tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })
 `,

@@ -56,7 +56,7 @@ minimal image's sandboxed task once said only "EACCES … mkdtemp"
 Throw `UserError` whenever the cause is user input or environment
 state the user can fix without code changes:
 
-- Malformed `vx.config.ts` (validated in `project-loader.ts`).
+- Malformed `vx.project.ts` (validated in `project-loader.ts`).
 - Missing workspace root (`findWorkspaceRoot`).
 - Bad git ref for `--affected` (`workspace/affected.ts`).
 - Cycle in the task graph (`graph/task-graph.ts`).

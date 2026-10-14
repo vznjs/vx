@@ -189,7 +189,7 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
         // 4. Without nx() the native config alone builds; the executor is its nx-exec line.
         await writeFile(path.join(root, 'vx.workspace.ts'), 'export default {}\n')
         const lib = outputs[0].split('/').slice(1, 3).join('/')
-        expect(await readFile(path.join(root, lib, 'vx.config.ts'), 'utf8')).toContain(
+        expect(await readFile(path.join(root, lib, 'vx.project.ts'), 'utf8')).toContain(
           'nx-exec @nx/js:tsc',
         )
         expect(await run(['bun', VX, 'run', 'build', '--all'])).toEqual({ code: 0, tail: '' })

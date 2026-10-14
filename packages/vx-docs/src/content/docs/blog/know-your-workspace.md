@@ -29,7 +29,7 @@ cache entries:    41 (9.8 KB)
 task runs (24h):  71 (27 cache hits: 23 up-to-date, 4 restored)
 flaky tasks:      none
 sandbox:          available (0 tasks declare exec.sandbox)
-vx-lock.json:     no
+vx.lock.json:     no
 ```
 
 It reads what vx already knows: the run history, the cache index, the

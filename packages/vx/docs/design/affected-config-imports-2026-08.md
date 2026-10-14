@@ -6,13 +6,13 @@
 
 ## What we're solving
 
-A `vx.config.*` may import any file it likes. The cache key sees the
+A `vx.project.*` may import any file it likes. The cache key sees the
 **resolved** config (architecture principle #4), so a change to an imported
 file re-keys every task whose fields it feeds. `--affected` maps changed
 paths to projects by **directory containment** only, so an imported file
 that lives outside the importing project's dir selects nothing.
 
-Executed repro (`packages/app/vx.config.mjs` doing
+Executed repro (`packages/app/vx.project.mjs` doing
 `import { FLAG } from '../../shared/flag.mjs'`, `command: 'echo ' + FLAG`):
 
 - `loadProjectConfig` before the edit → `{"command":"echo one"}`,
@@ -34,7 +34,7 @@ defect class in its own right.
 1. **Orphan target** — the imported file belongs to no project
    (`shared/flag.mjs`). Selects nothing. This is the repro.
 2. **Cross-project target** — the imported file belongs to _another_
-   project. This repo does it: `apps/docs/vx.config.ts:1` is
+   project. This repo does it: `apps/docs/vx.project.ts:1` is
    `import { defineProject } from '../../src/index.ts'`. A change to
    `src/index.ts` selects `@vzn/vx` (containment) and never `@vzn/vx-docs`.
    `--filter '...[base]'` does **not** rescue this one either:
@@ -106,12 +106,12 @@ sub-variants were weighed:
 - **E2, record every local import target, descend only through orphans.**
   Recommended. Detailed below.
 - **E3, full transitive descent through every target.** Rejected: descending
-  through `apps/docs/vx.config.ts → ../../src/index.ts` pulls in
+  through `apps/docs/vx.project.ts → ../../src/index.ts` pulls in
   substantially all of core `src/`, so every core edit would select
   `@vzn/vx-docs`. Bounded by nothing in particular, and it dissolves
   project boundaries (architecture principle #6).
 
-**F. Record the import closure in `vx-lock.json` at `vx lock` time.**
+**F. Record the import closure in `vx.lock.json` at `vx lock` time.**
 Rejected for now: it is a versioned on-disk format change that helps only
 frozen CI, and E is cheap enough that it buys nothing. Noted so it is not
 re-proposed without a measurement that says E is too slow.
@@ -149,7 +149,7 @@ of any config.
 ### Why this is affordable
 
 Measured on this box (Bun 1.4.0, warm page cache), on 1090 synthetic
-`vx.config.ts` files of ~400 bytes with two import specifiers each:
+`vx.project.ts` files of ~400 bytes with two import specifiers each:
 
 | step                                                   | cost         |
 | ------------------------------------------------------ | ------------ |
@@ -164,7 +164,7 @@ two `git` processes. The implementer must re-measure on the `bench/`
 synthetic workspace and record the number; the claim above is one box, warm.
 
 Note the existing orphan path already costs far more than this: when there
-are orphans and no `vx-lock.json`, `workspaceGlobOwners`
+are orphans and no `vx.lock.json`, `workspaceGlobOwners`
 (`src/cli/run.ts:648-680`) **evaluates every project config in the
 workspace**. This proposal adds no cost to that path and does not touch it.
 
@@ -291,11 +291,11 @@ does not move.
 
 Pins:
 
-1. **The repro.** `packages/app/vx.config.mjs` imports `../../shared/flag.mjs`;
+1. **The repro.** `packages/app/vx.project.mjs` imports `../../shared/flag.mjs`;
    editing `shared/flag.mjs` selects `app`.
 2. **Transitive through orphans.** `shared/flag.mjs` imports `./deep.mjs`;
    editing `shared/deep.mjs` selects `app`.
-3. **Cross-project target, one hop.** `apps/x/vx.config.mjs` imports
+3. **Cross-project target, one hop.** `apps/x/vx.project.mjs` imports
    `../../packages/lib/preset.mjs`; editing that file selects **both**
    `lib` (containment) and `x` (import channel).
 
@@ -372,10 +372,10 @@ blindness`prune.ts:40-41` documents; say so, do not sell completeness.
    would need both modes. Recommendation: **not in this wave** — land the
    scanner, then migrate prune in a follow-up if the shared helper stays
    honest. Two scanners is a drift risk that must be recorded either way.
-2. Should the scan be skipped under `--frozen`? `vx-lock.json` holds resolved
+2. Should the scan be skipped under `--frozen`? `vx.lock.json` holds resolved
    configs but not import closures, so no — there is nothing cheaper to
    consult. Revisit only with option F.
-3. `apps/docs/vx.config.ts` importing `../../src/index.ts` will, after this
+3. `apps/docs/vx.project.ts` importing `../../src/index.ts` will, after this
    lands, make every core `src/index.ts` edit select `@vzn/vx-docs` (an Astro
    build). That is a **true** edge and a **false** positive: `defineProject`
    is identity, so the resolved config does not move, and vx cannot know

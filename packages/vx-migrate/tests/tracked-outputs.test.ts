@@ -54,7 +54,7 @@ describe('spareTrackedOutputs — a reader whose `!` hides a committed file (X-5
         [
           'a#test',
           "reads the committed data/sponsors.json, which its inputs take back with a#build's " +
-            'outputs — task runs uncached; declare its inputs in a vx.config to cache it',
+            'outputs — task runs uncached; declare its inputs in a vx.project to cache it',
         ],
       ],
     ])

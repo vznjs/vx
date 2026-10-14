@@ -91,7 +91,7 @@ was never read and `.git/config` stayed read-only to every task.
 ## User-facing config
 
 The task declares its sandbox policy under `exec.sandbox` in
-`vx.config.ts` (the `SandboxConfig` type, exported from `src/config.ts`).
+`vx.project.ts` (the `SandboxConfig` type, exported from `src/config.ts`).
 It is capability-shaped, not a mirror of SRT's own config: one vocabulary
 says what a task may do, and this module translates it per platform.
 

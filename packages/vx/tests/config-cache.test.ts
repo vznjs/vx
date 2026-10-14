@@ -112,7 +112,7 @@ describe('configEvalKey', () => {
   it('keys a pure config on its bytes, its relative import closure and the fingerprint', async () => {
     const preset = await write('shared/preset.mjs', "export const cmd = 'echo one'\n")
     const cfg = await write(
-      'packages/a/vx.config.mjs',
+      'packages/a/vx.project.mjs',
       "import { cmd } from '../../shared/preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     const k1 = await keyOf(cfg)
@@ -134,13 +134,13 @@ describe('configEvalKey', () => {
 
   it('allows the @vzn/vx import, and nothing else that is not relative', async () => {
     const pure = await write(
-      'packages/p/vx.config.mjs',
+      'packages/p/vx.project.mjs',
       "import { defineProject } from '@vzn/vx'\nexport default defineProject({ tasks: { build: { exec: { command: 'x' } } } })\n",
     )
     expect(await keyOf(pure)).not.toBeNull()
     for (const spec of ['node:os', 'bun:sqlite', 'some-preset-package', '/abs/file.mjs']) {
       const cfg = await write(
-        'packages/q/vx.config.mjs',
+        'packages/q/vx.project.mjs',
         `import x from '${spec}'\nexport default { tasks: {} }\n`,
       )
       expect({ spec, key: await keyOf(cfg) }).toEqual({ spec, key: null })
@@ -158,14 +158,14 @@ describe('configEvalKey', () => {
     await symlink(path.join(root, 'shared/linked'), path.join(root, 'node_modules/linked'))
     for (const spec of [await realpath(preset), 'linked']) {
       const cfg = await write(
-        'packages/q2/vx.config.mjs',
+        'packages/q2/vx.project.mjs',
         `import { cmd } from '${spec}'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n`,
       )
       expect({ spec, key: await keyOf(cfg) }).toEqual({ spec, key: null })
     }
     // Control: the same file imported relatively is keyed.
     const rel = await write(
-      'packages/q3/vx.config.mjs',
+      'packages/q3/vx.project.mjs',
       "import { cmd } from '../../shared/linked/index.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
     )
     expect(await keyOf(rel)).not.toBeNull()
@@ -176,7 +176,7 @@ describe('configEvalKey', () => {
     const a = await write('shared/d/a.mjs', "import { c } from './c.mjs'\nexport const a = c\n")
     const b = await write('shared/d/b.mjs', "import { c } from './c.mjs'\nexport const b = c\n")
     const cfg = await write(
-      'packages/dia/vx.config.mjs',
+      'packages/dia/vx.project.mjs',
       "import { a } from '../../shared/d/a.mjs'\nimport { b } from '../../shared/d/b.mjs'\nexport default { tasks: { t: { exec: { command: a + b } } } }\n",
     )
     expect((await keyedOf(cfg))?.closure).toEqual([
@@ -192,7 +192,7 @@ describe('configEvalKey', () => {
     // relative spelling does not make a package file part of the config.
     await write('node_modules/nm-preset/x.mjs', "export const cmd = 'x'\n")
     const cfg = await write(
-      'packages/nm/vx.config.mjs',
+      'packages/nm/vx.project.mjs',
       "import { cmd } from '../../node_modules/nm-preset/x.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
     )
     expect(await keyOf(cfg)).toBeNull()
@@ -205,7 +205,7 @@ describe('configEvalKey', () => {
         const next = i < files ? `import './c${i + 1}.mjs'\n` : ''
         await write(`${dir}/c${i}.mjs`, `${next}export const v = ${i}\n`)
       }
-      return write(`${dir}/vx.config.mjs`, "import './c1.mjs'\nexport default { tasks: {} }\n")
+      return write(`${dir}/vx.project.mjs`, "import './c1.mjs'\nexport default { tasks: {} }\n")
     }
     expect(await keyOf(await chain('packages/at-cap', 31))).not.toBeNull()
     expect(await keyOf(await chain('packages/past-cap', 32))).toBeNull()
@@ -219,7 +219,7 @@ describe('configEvalKey', () => {
       const locked = await write('shared/locked.mjs', "export const cmd = 'x'\n")
       await chmod(locked, 0o000)
       const cfg = await write(
-        'packages/lk/vx.config.mjs',
+        'packages/lk/vx.project.mjs',
         "import { cmd } from '../../shared/locked.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
       )
       expect(await keyOf(cfg)).toBeNull()
@@ -232,7 +232,7 @@ describe('configEvalKey', () => {
     // warm load paying the read and scan the index exists to skip.
     const preset = await write('shared/same.mjs', "export const cmd = 'x'\n")
     const cfg = await write(
-      'packages/same/vx.config.mjs',
+      'packages/same/vx.project.mjs',
       "import { cmd } from '../../shared/same.mjs'\nexport default { tasks: { t: { exec: { command: cmd } } } }\n",
     )
     const slow = await keyedOf(cfg)
@@ -250,7 +250,7 @@ describe('configEvalKey', () => {
     // outlive the vx or the Bun that validated it. Neither can change inside
     // one process, so the seed is pinned by re-deriving the key here from
     // the sources of truth (package.json, the runtime), not by varying them.
-    const cfg = await write('packages/seed/vx.config.mjs', 'export default { tasks: {} }\n')
+    const cfg = await write('packages/seed/vx.project.mjs', 'export default { tasks: {} }\n')
     const bytes = await Bun.file(cfg).bytes()
     const vxVersion = (
       JSON.parse(readFileSync(path.join(import.meta.dir, '..', 'package.json'), 'utf8')) as {
@@ -307,7 +307,7 @@ describe('configEvalKey', () => {
     "new Worker('./w.mjs')",
   ])('refuses to cache a config that mentions %s', async (expr) => {
     const cfg = await write(
-      'packages/r/vx.config.mjs',
+      'packages/r/vx.project.mjs',
       `const v = String(${expr})\nexport default { tasks: { t: { exec: { command: 'echo ' + v } } } }\n`,
     )
     expect(await keyOf(cfg)).toBeNull()
@@ -321,7 +321,7 @@ describe('configEvalKey', () => {
       // the old bytes after the file changed. CONTROL: `module.require`
       // names the word, and was refused before.
       const cfg = await write(
-        'packages/c/vx.config.js',
+        'packages/c/vx.project.js',
         `module.exports = { tasks: { t: { exec: { command: 'echo ' + ${req}.readFileSync('/etc/hostname', 'utf8') } } } }\n`,
       )
       expect(await keyOf(cfg)).toBeNull()
@@ -331,7 +331,7 @@ describe('configEvalKey', () => {
   it('refuses when the impurity sits in an imported file, not the config', async () => {
     await write('shared/env.mjs', 'export const mode = process.env.MODE ?? "dev"\n')
     const cfg = await write(
-      'packages/s/vx.config.mjs',
+      'packages/s/vx.project.mjs',
       "import { mode } from '../../shared/env.mjs'\nexport default { tasks: { t: { exec: { command: 'echo ' + mode } } } }\n",
     )
     expect(await keyOf(cfg)).toBeNull()
@@ -340,7 +340,7 @@ describe('configEvalKey', () => {
   it('an import after a comment on its own line is in the closure (item 952)', async () => {
     const preset = await write('packages/a/preset.mjs', "export const cmd = 'echo one'\n")
     const cfg = await write(
-      'packages/a/vx.config.mjs',
+      'packages/a/vx.project.mjs',
       "/* shared command */ import { cmd } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     expect((await keyedOf(cfg))?.closure).toEqual([cfg, await realpath(preset)])
@@ -353,7 +353,7 @@ describe('configEvalKey', () => {
     await write('packages/p/tasks.mjs', 'export const tasks = {}\n')
     const side = await write('packages/p/side.mjs', 'export const x = 1\n')
     const cfg = await write(
-      'packages/p/vx.config.mjs',
+      'packages/p/vx.project.mjs',
       "import { tasks } from './tasks.mjs'\nfunction noop() {} export * from './side.mjs'\nexport default { tasks }\n",
     )
     // Imports resolve to real paths (macOS's temp dir is a link).
@@ -370,7 +370,7 @@ describe('configEvalKey', () => {
       "const c = 'echo one'\nexport { c as 'a-b' }\n",
     )
     const cfg = await write(
-      'packages/a/vx.config.mjs',
+      'packages/a/vx.project.mjs',
       "import { 'a-b' as cmd } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     expect((await keyedOf(cfg))?.closure).toEqual([cfg, await realpath(preset)])
@@ -380,7 +380,7 @@ describe('configEvalKey', () => {
     // A member named `import` is no import, but the scan cannot tell it from
     // one it failed to parse, so it fails closed.
     const cfg = await write(
-      'packages/a/vx.config.mjs',
+      'packages/a/vx.project.mjs',
       "const o = { x: 1 }\nexport default { x: o.import, tasks: { build: { exec: { command: 'echo hi' } } } }\n",
     )
     expect(await keyedOf(cfg)).toBeNull()
@@ -388,12 +388,12 @@ describe('configEvalKey', () => {
     // colon after the word. The vx-docs config declares one and evaluated
     // live on every run.
     const key = await write(
-      'packages/k/vx.config.mjs',
+      'packages/k/vx.project.mjs',
       "export default { tasks: { import : { exec: { command: 'echo hi' } } } }\n",
     )
     expect((await keyedOf(key))?.closure).toEqual([key])
     const plain = await write(
-      'packages/b/vx.config.mjs',
+      'packages/b/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'echo hi' } } } }\n",
     )
     expect(await keyedOf(plain)).not.toBeNull()
@@ -401,7 +401,7 @@ describe('configEvalKey', () => {
 
   it('refuses an unresolvable relative import rather than keying on a partial closure', async () => {
     const cfg = await write(
-      'packages/u/vx.config.mjs',
+      'packages/u/vx.project.mjs',
       "import { x } from './missing.mjs'\nexport default { tasks: {} }\n",
     )
     expect(await keyOf(cfg)).toBeNull()
@@ -464,12 +464,12 @@ describe('stripLiterals', () => {
 describe('configEvalKey ignores impure-looking text inside literals', () => {
   it('caches a config whose COMMAND mentions process, and refuses one whose CODE does', async () => {
     const inString = await write(
-      'packages/x/vx.config.mjs',
+      'packages/x/vx.project.mjs',
       'export default { tasks: { t: { exec: { command: \'node -e "process.exit(0)"\' } } } } // Date\n',
     )
     expect(await keyOf(inString)).not.toBeNull()
     const inTemplate = await write(
-      'packages/y/vx.config.mjs',
+      'packages/y/vx.project.mjs',
       'export default { tasks: { t: { exec: { command: `echo ${process.env.X}` } } } }\n',
     )
     expect(await keyOf(inTemplate)).toBeNull()
@@ -517,14 +517,14 @@ describe('the purity deny-list is the whole list', () => {
     let i = 0
     for (const [label, body] of CASES) {
       const file = await write(
-        `packages/deny-${String(i++)}/vx.config.mjs`,
+        `packages/deny-${String(i++)}/vx.project.mjs`,
         `${body}\nexport default { name: 'p' }\n`,
       )
       expect([label, await keyOf(file)]).toEqual([label, null])
     }
     // CONTROL: the refusals above are the LIST's doing, not a config shape
     // this function rejects wholesale.
-    const pure = await write('packages/deny-pure/vx.config.mjs', "export default { name: 'p' }\n")
+    const pure = await write('packages/deny-pure/vx.project.mjs', "export default { name: 'p' }\n")
     expect(await keyOf(pure)).not.toBeNull()
   })
 
@@ -534,12 +534,12 @@ describe('the purity deny-list is the whole list', () => {
     // string. The deny-list never sees that source, so the null is the only
     // thing standing between it and a cached evaluation.
     const withRegex = await write(
-      'packages/strip-regex/vx.config.mjs',
+      'packages/strip-regex/vx.project.mjs',
       "export default { name: 'ab'.replace(/a/, 'b') }\n",
     )
     expect(await keyOf(withRegex)).toBeNull()
     const unterminated = await write(
-      'packages/strip-open/vx.config.mjs',
+      'packages/strip-open/vx.project.mjs',
       "const s = 'oops\nexport default { name: 'p' }\n",
     )
     expect(await keyOf(unterminated)).toBeNull()
@@ -549,7 +549,7 @@ describe('the purity deny-list is the whole list', () => {
 describe('loadProjectConfig with an eval cache', () => {
   it('stores a validated evaluation and serves the next load from it without evaluating', async () => {
     const cfg = await write(
-      'packages/a/vx.config.mjs',
+      'packages/a/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'echo hi' } } } }\n",
     )
     const store = new MemoryStore()
@@ -570,11 +570,11 @@ describe('loadProjectConfig with an eval cache', () => {
   // round's keys, misses evaluated in order. Same contract as one by one.
   it('loadProjectConfigs serves hits from ONE batched lookup and evaluates only the misses', async () => {
     const a = await write(
-      'packages/a/vx.config.mjs',
+      'packages/a/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'a' } } } }\n",
     )
     const b = await write(
-      'packages/b/vx.config.mjs',
+      'packages/b/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'b' } } } }\n",
     )
     const store = new MemoryStore()
@@ -599,7 +599,7 @@ describe('loadProjectConfig with an eval cache', () => {
   // was wiped. It is a miss: evaluated again, the row replaced.
   it('a stored evaluation that is not a JSON object is a miss, evaluated and replaced', async () => {
     const a = await write(
-      'packages/a/vx.config.mjs',
+      'packages/a/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'a' } } } }\n",
     )
     const store = new MemoryStore()
@@ -624,7 +624,7 @@ describe('loadProjectConfig with an eval cache', () => {
     for (const name of ['b1', 'b2', 'b3']) {
       cfgs.push(
         await write(
-          `packages/${name}/vx.config.mjs`,
+          `packages/${name}/vx.project.mjs`,
           "import { cmd } from '../../shared/batch-preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
         ),
       )
@@ -659,7 +659,7 @@ describe('loadProjectConfig with an eval cache', () => {
     await loadProjectConfigs(cfgs, { evalCache: { store: plain, workspaceFingerprint: 'fp' } })
     expect({ puts: plain.puts, closures: plain.closures.size }).toEqual({ puts: 3, closures: 3 })
     // A failed round still keeps what it learned before the failure.
-    const bad = await write('packages/b-bad/vx.config.mjs', 'export default { tasks: 42 }\n')
+    const bad = await write('packages/b-bad/vx.project.mjs', 'export default { tasks: 42 }\n')
     const partial = new BatchedStore()
     await expect(
       loadProjectConfigs([cfgs[0]!, bad], {
@@ -675,11 +675,11 @@ describe('loadProjectConfig with an eval cache', () => {
 
   it('a round with two broken configs names the FIRST in the given order, as one-by-one did', async () => {
     const ok = await write(
-      'packages/ok/vx.config.mjs',
+      'packages/ok/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'x' } } } }\n",
     )
-    const bad1 = await write('packages/bad1/vx.config.mjs', 'export default { tasks: 42 }\n')
-    const bad2 = await write('packages/bad2/vx.config.mjs', 'export default { tasks: 43 }\n')
+    const bad1 = await write('packages/bad1/vx.project.mjs', 'export default { tasks: 42 }\n')
+    const bad2 = await write('packages/bad2/vx.project.mjs', 'export default { tasks: 43 }\n')
     const evalCache = { store: new MemoryStore(), workspaceFingerprint: 'fp' }
     await expect(loadProjectConfigs([ok, bad1, bad2], { evalCache })).rejects.toThrow(/bad1/)
     await expect(loadProjectConfigs([ok, bad2, bad1], { evalCache })).rejects.toThrow(/bad2/)
@@ -692,7 +692,7 @@ describe('loadProjectConfig with an eval cache', () => {
   it('keys a warm load from the indexed closure, and a preset edit still misses', async () => {
     const preset = await write('shared/preset.mjs', "export const cmd = 'echo one'\n")
     const cfg = await write(
-      'packages/a/vx.config.mjs',
+      'packages/a/vx.project.mjs',
       "import { cmd } from '../../shared/preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     const store = new MemoryStore()
@@ -719,7 +719,7 @@ describe('loadProjectConfig with an eval cache', () => {
   it('a deleted closure file cannot be served from the index: the fast key misses and the live load fails', async () => {
     const preset = await write('shared/gone.mjs', "export const cmd = 'echo here'\n")
     const cfg = await write(
-      'packages/c/vx.config.mjs',
+      'packages/c/vx.project.mjs',
       "import { cmd } from '../../shared/gone.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     const store = new MemoryStore()
@@ -736,7 +736,7 @@ describe('loadProjectConfig with an eval cache', () => {
   it('an extensionless relative import is never indexed (a new file could change its resolution)', async () => {
     await write('shared/loose.mjs', "export const cmd = 'echo loose'\n")
     const cfg = await write(
-      'packages/b/vx.config.mjs',
+      'packages/b/vx.project.mjs',
       "import { cmd } from '../../shared/loose'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     const store = new MemoryStore()
@@ -756,7 +756,7 @@ describe('loadProjectConfig with an eval cache', () => {
     await write('shared/b/preset.mjs', "export const cmd = 'echo from-b'\n")
     await symlink('a', path.join(root, 'shared/cur'))
     const cfg = await write(
-      'packages/p/vx.config.mjs',
+      'packages/p/vx.project.mjs',
       "import { cmd } from '../../shared/cur/preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     const store = new MemoryStore()
@@ -772,7 +772,7 @@ describe('loadProjectConfig with an eval cache', () => {
   it('a `.js` specifier Bun answers with a `.ts` file is never indexed: a new `.js` would take over (item 950)', async () => {
     await write('packages/p/preset.ts', "export const cmd: string = 'echo from-ts'\n")
     const cfg = await write(
-      'packages/p/vx.config.ts',
+      'packages/p/vx.project.ts',
       "import { cmd } from './preset.js'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     const store = new MemoryStore()
@@ -790,7 +790,7 @@ describe('loadProjectConfig with an eval cache', () => {
     await mkdir(path.join(root, 'real'))
     await symlink(path.join(root, 'real'), link)
     await writeFile(path.join(link, 'preset.mjs'), "export const cmd = 'echo named'\n")
-    const cfg = path.join(link, 'vx.config.mjs')
+    const cfg = path.join(link, 'vx.project.mjs')
     await writeFile(
       cfg,
       "import { cmd } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
@@ -810,13 +810,13 @@ describe('loadProjectConfig with an eval cache', () => {
     const config =
       "import { preset } from './preset.mjs'\nexport default { tasks: { build: { exec: { command: preset } } } }\n"
     for (const v of ['a', 'b']) {
-      await write(`variants/${v}/vx.config.mjs`, config)
+      await write(`variants/${v}/vx.project.mjs`, config)
       await write(`variants/${v}/preset.mjs`, `export const preset = 'echo variant-${v}'\n`)
     }
     await mkdir(path.join(root, 'packages'))
     const member = path.join(root, 'packages/app')
     await symlink('../variants/a', member)
-    const cfg = path.join(member, 'vx.config.mjs')
+    const cfg = path.join(member, 'vx.project.mjs')
     const store = new MemoryStore()
     const evalCache = { store, workspaceRoot: root, workspaceFingerprint: 'fp' }
     const [first] = await loadProjectConfigs([cfg], { evalCache })
@@ -832,7 +832,7 @@ describe('loadProjectConfig with an eval cache', () => {
     expect(store.rows.size).toBe(2)
     expect(store.puts).toBe(2)
     // CONTROL: the same config beside its preset, no link, IS indexed.
-    const plain = await write('packages/plain/vx.config.mjs', config)
+    const plain = await write('packages/plain/vx.project.mjs', config)
     await write('packages/plain/preset.mjs', "export const preset = 'echo plain'\n")
     await loadProjectConfigs([plain], { evalCache })
     expect(store.closures.get(plain)).toEqual([
@@ -847,7 +847,7 @@ describe('loadProjectConfig with an eval cache', () => {
     const preset = await write('packages/w/preset.mjs', "export const cmd = 'echo w'\n")
     await write('packages/w/node_modules/p/i.mjs', 'export const x = 1\n')
     const cfg = await write(
-      'packages/w/vx.config.mjs',
+      'packages/w/vx.project.mjs',
       "import { cmd } from './preset.mjs'\nimport { x } from './node_modules/p/i.mjs'\nconst n = 4 / 2\nexport default { tasks: { build: { exec: { command: cmd + n + x } } } }\n",
     )
     expect(await configImports(cfg)).toEqual([await realpath(preset)])
@@ -857,7 +857,7 @@ describe('loadProjectConfig with an eval cache', () => {
     // `vx watch` re-reads the list after a cycle that failed on the missing
     // preset; without it, the preset's return was no event.
     const cfg = await write(
-      'packages/m/vx.config.mjs',
+      'packages/m/vx.project.mjs',
       "import { a } from '../../shared/a.mjs'\nimport { b } from './b'\nexport default { tasks: { build: { exec: { command: a + b } } } }\n",
     )
     const dir = path.join(await realpath(root), 'packages/m')
@@ -877,7 +877,7 @@ describe('loadProjectConfig with an eval cache', () => {
     )
     // A decoy beside the link: the key must not fold it.
     await write('packages/p/preset.mjs', "export const cmd = 'echo decoy'\n")
-    const cfg = path.join(root, 'packages/p/vx.config.mjs')
+    const cfg = path.join(root, 'packages/p/vx.project.mjs')
     await symlink('../../shared/cfg.mjs', cfg)
     expect(await configImports(cfg)).toEqual([await realpath(shared)])
     const store = new MemoryStore()
@@ -891,14 +891,14 @@ describe('loadProjectConfig with an eval cache', () => {
 
   it('never stores an impure config, and `fresh` bypasses the cache entirely', async () => {
     const impure = await write(
-      'packages/b/vx.config.mjs',
+      'packages/b/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'echo ' + (process.env.X ?? '') } } } }\n",
     )
     const store = new MemoryStore()
     await loadProjectConfig(impure, { evalCache: { store, workspaceFingerprint: 'fp' } })
     expect(store.puts).toBe(0)
     const pure = await write(
-      'packages/c/vx.config.mjs',
+      'packages/c/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'echo hi' } } } }\n",
     )
     await loadProjectConfig(pure, { fresh: true, evalCache: { store, workspaceFingerprint: 'fp' } })
@@ -907,7 +907,7 @@ describe('loadProjectConfig with an eval cache', () => {
 
   it('a malformed config is refused before anything is stored', async () => {
     const bad = await write(
-      'packages/d/vx.config.mjs',
+      'packages/d/vx.project.mjs',
       'export default { tasks: { t: { exec: 5 } } }\n',
     )
     const store = new MemoryStore()
@@ -935,12 +935,12 @@ describe('Cache as a ConfigEvalStore', () => {
     noWrite.close()
     const noRead = new Cache(path.join(root, 'nr'), { read: false, write: true })
     noRead.putConfigEval('k', '{}')
-    noRead.putConfigClosure('/p/vx.config.mjs', ['/p/vx.config.mjs'])
+    noRead.putConfigClosure('/p/vx.project.mjs', ['/p/vx.project.mjs'])
     // The write landed; neither read serves it — the batched one is the one
     // a run's config load uses.
     expect(noRead.getConfigEval('k')).toBeNull()
     expect(noRead.getConfigEvals(['k']).size).toBe(0)
-    expect(noRead.getConfigClosures(['/p/vx.config.mjs']).size).toBe(0)
+    expect(noRead.getConfigClosures(['/p/vx.project.mjs']).size).toBe(0)
     noRead.close()
     const readBack = new Cache(path.join(root, 'nr'))
     expect(readBack.getConfigEvals(['k']).get('k')).toBe('{}')
@@ -952,7 +952,7 @@ describe('Cache as a ConfigEvalStore', () => {
     // never met a stored one and every load read, scanned and re-keyed it.
     const preset = await write('shared/x-preset.mjs', "export const cmd = 'echo x'\n")
     const cfg = await write(
-      'packages/x/vx.config.mjs',
+      'packages/x/vx.project.mjs',
       "import { cmd } from '../../shared/x-preset.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n",
     )
     await chmod(cfg, 0o755)
@@ -979,7 +979,7 @@ describe('Cache as a ConfigEvalStore', () => {
       'shared/linked.mjs',
       "export default { tasks: { build: { exec: { command: 'l' } } } }\n",
     )
-    const cfg = path.join(root, 'packages/l/vx.config.mjs')
+    const cfg = path.join(root, 'packages/l/vx.project.mjs')
     await mkdir(path.dirname(cfg), { recursive: true })
     await symlink('../../shared/linked.mjs', cfg)
     const cache = new Cache(path.join(root, 'link-cache'))
@@ -1004,10 +1004,10 @@ describe('Cache as a ConfigEvalStore', () => {
     try {
       const wo = new Cache(dir, { read: true, write: false })
       wo.putConfigEvals([['k1', '{}']])
-      wo.putConfigClosures([['/p/vx.config.mjs', ['/p/vx.config.mjs']]])
+      wo.putConfigClosures([['/p/vx.project.mjs', ['/p/vx.project.mjs']]])
       expect({
         evals: wo.getConfigEvals(['k1']).size,
-        closures: wo.getConfigClosures(['/p/vx.config.mjs']).size,
+        closures: wo.getConfigClosures(['/p/vx.project.mjs']).size,
       }).toEqual({ evals: 0, closures: 0 })
       wo.close()
       const rw = new Cache(dir)
@@ -1016,8 +1016,8 @@ describe('Cache as a ConfigEvalStore', () => {
         ['k2', '{"tasks":{"a":{}}}'],
       ])
       rw.putConfigClosures([
-        ['/p/vx.config.mjs', ['/p/vx.config.mjs', '/p/preset.mjs']],
-        ['/q/vx.config.mjs', ['/q/vx.config.mjs']],
+        ['/p/vx.project.mjs', ['/p/vx.project.mjs', '/p/preset.mjs']],
+        ['/q/vx.project.mjs', ['/q/vx.project.mjs']],
       ])
       expect(
         [...rw.getConfigEvals(['k1', 'k2']).entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)),
@@ -1026,8 +1026,8 @@ describe('Cache as a ConfigEvalStore', () => {
         ['k2', '{"tasks":{"a":{}}}'],
       ])
       expect(
-        rw.getConfigClosures(['/p/vx.config.mjs', '/q/vx.config.mjs']).get('/p/vx.config.mjs'),
-      ).toEqual(['/p/vx.config.mjs', '/p/preset.mjs'])
+        rw.getConfigClosures(['/p/vx.project.mjs', '/q/vx.project.mjs']).get('/p/vx.project.mjs'),
+      ).toEqual(['/p/vx.project.mjs', '/p/preset.mjs'])
       expect(rw.getConfigEval('k2')).toBe('{"tasks":{"a":{}}}') // the single read sees the batched write
       rw.close()
     } finally {
@@ -1038,18 +1038,18 @@ describe('Cache as a ConfigEvalStore', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-reclose-'))
     try {
       const first = new Cache(dir)
-      first.putConfigClosure('/p/vx.config.mjs', ['/p/vx.config.mjs'])
+      first.putConfigClosure('/p/vx.project.mjs', ['/p/vx.project.mjs'])
       first.close()
       // Age the row past retention, as a config indexed long ago would be.
       const db = new Database(path.join(dir, 'cache.db'))
       db.run('UPDATE config_closures SET created_at = 0')
       db.close()
       const again = new Cache(dir)
-      again.putConfigClosures([['/p/vx.config.mjs', ['/p/vx.config.mjs', '/p/preset.mjs']]])
+      again.putConfigClosures([['/p/vx.project.mjs', ['/p/vx.project.mjs', '/p/preset.mjs']]])
       again.close() // retention prunes on close
       const reopened = new Cache(dir)
-      expect(reopened.getConfigClosures(['/p/vx.config.mjs']).get('/p/vx.config.mjs')).toEqual([
-        '/p/vx.config.mjs',
+      expect(reopened.getConfigClosures(['/p/vx.project.mjs']).get('/p/vx.project.mjs')).toEqual([
+        '/p/vx.project.mjs',
         '/p/preset.mjs',
       ])
       reopened.close()
@@ -1062,7 +1062,7 @@ describe('Cache as a ConfigEvalStore', () => {
     try {
       const cache = new Cache(dir)
       const keys = Array.from({ length: 1801 }, (_, i) => `k${i}`)
-      const configs = keys.map((k) => `/w/${k}/vx.config.mjs`)
+      const configs = keys.map((k) => `/w/${k}/vx.project.mjs`)
       cache.putConfigEvals(keys.map((k) => [k, `"${k}"`] as const))
       cache.putConfigClosures(configs.map((c) => [c, [c]] as const))
       expect(cache.getConfigEvals(keys).size).toBe(1801)
@@ -1076,18 +1076,18 @@ describe('Cache as a ConfigEvalStore', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-cc-axes-'))
     try {
       const wo = new Cache(dir, { read: true, write: false })
-      wo.putConfigClosure('/p/vx.config.mjs', ['/p/vx.config.mjs'])
-      expect(wo.getConfigClosures(['/p/vx.config.mjs']).size).toBe(0) // nothing written
+      wo.putConfigClosure('/p/vx.project.mjs', ['/p/vx.project.mjs'])
+      expect(wo.getConfigClosures(['/p/vx.project.mjs']).size).toBe(0) // nothing written
       wo.close()
       const rw = new Cache(dir)
-      rw.putConfigClosure('/p/vx.config.mjs', ['/p/vx.config.mjs', '/p/preset.mjs'])
-      expect(rw.getConfigClosures(['/p/vx.config.mjs']).get('/p/vx.config.mjs')).toEqual([
-        '/p/vx.config.mjs',
+      rw.putConfigClosure('/p/vx.project.mjs', ['/p/vx.project.mjs', '/p/preset.mjs'])
+      expect(rw.getConfigClosures(['/p/vx.project.mjs']).get('/p/vx.project.mjs')).toEqual([
+        '/p/vx.project.mjs',
         '/p/preset.mjs',
       ])
       rw.close()
       const ro = new Cache(dir, { read: false, write: true })
-      expect(ro.getConfigClosures(['/p/vx.config.mjs']).size).toBe(0) // read gate
+      expect(ro.getConfigClosures(['/p/vx.project.mjs']).size).toBe(0) // read gate
       ro.close()
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -1121,7 +1121,7 @@ describe('the eval-cache loader keeps its round to one call per question (item 6
 
   async function indexed(name: string) {
     const cfg = await write(
-      `packages/${name}/vx.config.mjs`,
+      `packages/${name}/vx.project.mjs`,
       "export default { tasks: { build: { exec: { command: 'live' } } } }\n",
     )
     const store = new CountingStore()
@@ -1168,7 +1168,7 @@ describe('the eval-cache loader keeps its round to one call per question (item 6
     const p2 = await realpath(await write('shared/p2.mjs', "export const cmd = 'two'\n"))
     const via = (p: string) =>
       `import { cmd } from '../../shared/${p}.mjs'\nexport default { tasks: { build: { exec: { command: cmd } } } }\n`
-    const cfg = await write('packages/w4/vx.config.mjs', via('p1'))
+    const cfg = await write('packages/w4/vx.project.mjs', via('p1'))
     const store = new CountingStore()
     const evalCache = { store, workspaceFingerprint: 'fp' }
     await loadProjectConfigs([cfg], { evalCache })
@@ -1188,7 +1188,7 @@ describe('the eval-cache loader keeps its round to one call per question (item 6
   it('a round with no cacheable config asks the store nothing', async () => {
     // Every config impure: no key, so no lookup — not an empty `IN ()` query.
     const cfg = await write(
-      'packages/w5/vx.config.mjs',
+      'packages/w5/vx.project.mjs',
       'export default { tasks: { build: { exec: { command: String(process.pid) } } } }\n',
     )
     const store = new CountingStore()
@@ -1204,7 +1204,7 @@ describe('the eval-cache loader keeps its round to one call per question (item 6
     // Only `hits` can serve here: with no index there is no fast key, so no
     // indexed slow path re-asking the store one key at a time.
     const cfg = await write(
-      'packages/w3/vx.config.mjs',
+      'packages/w3/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'live' } } } }\n",
     )
     const rows = new Map<string, string>()
@@ -1227,7 +1227,7 @@ describe('which @vzn/vx imports a pure config may take (item 888)', () => {
   // `machineParallelism()` was replayed from the store with the first
   // box's answer, and its tasks kept that box's key.
   const cfg = (imp: string) =>
-    write('packages/a/vx.config.mjs', `${imp}\nexport default defineProject({ tasks: {} })\n`)
+    write('packages/a/vx.project.mjs', `${imp}\nexport default defineProject({ tasks: {} })\n`)
 
   it('keys a config that takes only the pure helpers, types included', async () => {
     for (const imp of [
@@ -1282,7 +1282,7 @@ describe('a round where every config hits', () => {
     // Reading every descriptor of `Bun` makes Bun build its lazy members
     // (`bun:sql`, `node:stream`): ~7 ms of a warm run that evaluates nothing.
     const cfg = await write(
-      'packages/a/vx.config.mjs',
+      'packages/a/vx.project.mjs',
       "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
     )
     const store = new BatchedStore()

@@ -35,7 +35,7 @@ async function makeWorkspace(): Promise<string> {
   const appDir = path.join(root, 'packages', 'app')
   await mkdir(path.join(appDir, 'src'), { recursive: true })
   await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))
-  await writeFile(path.join(appDir, 'vx.config.mjs'), APP_CONFIG)
+  await writeFile(path.join(appDir, 'vx.project.mjs'), APP_CONFIG)
   await writeFile(path.join(appDir, 'src', 'input.txt'), 'v1\n')
   const git = gitIn(root)
   git('init', '-q')
@@ -207,7 +207,7 @@ describe('vx why (e2e) — every component kind names its row', () => {
         path.join(dir, 'package.json'),
         JSON.stringify({ name, version: '0.0.0', dependencies: deps }),
       )
-      await writeFile(path.join(dir, 'vx.config.mjs'), config)
+      await writeFile(path.join(dir, 'vx.project.mjs'), config)
       await writeFile(path.join(dir, 'src', 'index.js'), 'export {}\n')
     }
     await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
@@ -258,7 +258,7 @@ describe('vx why (e2e) — every component kind names its row', () => {
       // The upstream row is only the carrier: the walk names lib's own move.
       expect(lock).toContain('  root cause:\n    app#build ← lib#build ← workspace fingerprint\n')
 
-      const appConfig = path.join(root, 'packages', 'app', 'vx.config.mjs')
+      const appConfig = path.join(root, 'packages', 'app', 'vx.project.mjs')
       await writeFile(appConfig, APP.replace('echo hi', 'echo hey'))
       await vx(root, ['run', 'build', '--all'], { APP_MODE: 'prod' })
       expect(await why({ APP_MODE: 'prod' })).toMatch(/changed\s+config\s+config\s+\w+ → \w+/)
@@ -297,7 +297,7 @@ describe('parseWhyArgs', () => {
         // `**/*` input set, so the second run's key differs from the first —
         // the shape that used to headline "cache key changed (inputs differ)".
         await writeFile(
-          path.join(libDir, 'vx.config.mjs'),
+          path.join(libDir, 'vx.project.mjs'),
           `export default { tasks: { build: { exec: { command: 'echo built > out.txt' } } } }`,
         )
         gitIn(root)('add', '-A')
@@ -413,7 +413,7 @@ describe('vx why (e2e) — answers from the database alone', () => {
   it(
     'a project config that throws changes nothing it prints',
     async () => {
-      const cfg = path.join(root, 'packages', 'app', 'vx.config.mjs')
+      const cfg = path.join(root, 'packages', 'app', 'vx.project.mjs')
       await writeFile(cfg, "throw new Error('PROJECT CONFIG EVALUATED')\n")
       const r = await vx(root, ['why', 'app#build'])
       expect(r.err).not.toContain('PROJECT CONFIG EVALUATED')
@@ -483,7 +483,7 @@ describe('vx why (e2e) — the exact lines', () => {
       const dir = path.join(root, 'packages', name)
       await mkdir(path.join(dir, 'src'), { recursive: true })
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
-      await writeFile(path.join(dir, 'vx.config.mjs'), config)
+      await writeFile(path.join(dir, 'vx.project.mjs'), config)
     }
     const app = path.join(root, 'packages', 'app')
     await writeFile(path.join(app, 'src', 'input.txt'), 'v1\n')
@@ -820,7 +820,7 @@ describe('vx why — a secret-named env input', () => {
         await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))
         await writeFile(path.join(appDir, 'src', 'input.txt'), 'v1\n')
         await writeFile(
-          path.join(appDir, 'vx.config.mjs'),
+          path.join(appDir, 'vx.project.mjs'),
           `export default { tasks: { build: { exec: { command: 'cat src/input.txt > out.txt' },
             cache: { inputs: { files: ['src/**'], env: ['API_TOKEN', 'REGION'] }, outputs: { files: ['out.txt'] } } } } }\n`,
         )
@@ -862,7 +862,7 @@ describe('vx why — a secret-named env input', () => {
         await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))
         await writeFile(path.join(appDir, 'src', 'input.txt'), 'v1\n')
         await writeFile(
-          path.join(appDir, 'vx.config.mjs'),
+          path.join(appDir, 'vx.project.mjs'),
           `export default { tasks: { build: { exec: { command: 'cat src/input.txt > out.txt', env: { secret: ['GH_PAT'] } },
             cache: { inputs: { files: ['src/**'], env: ['GH_PAT', 'REGION'] }, outputs: { files: ['out.txt'] } } } } }\n`,
         )
@@ -909,13 +909,13 @@ describe('vx why — an input another task rewrites', () => {
         await writeFile(path.join(libDir, 'package.json'), JSON.stringify({ name: 'lib' }))
         await writeFile(path.join(libDir, 'src', 'gen.txt'), '0\n')
         await writeFile(
-          path.join(libDir, 'vx.config.mjs'),
+          path.join(libDir, 'vx.project.mjs'),
           `export default {
             tasks: { check: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } },
           }`,
         )
         await writeFile(
-          path.join(appDir, 'vx.config.mjs'),
+          path.join(appDir, 'vx.project.mjs'),
           `export default {
             tasks: {
               build: {

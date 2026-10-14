@@ -25,7 +25,7 @@ import {
 import { listProjects, loadWorkspace } from '../src/workspace/workspace.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
-const CONFIG_PATH = '/ws/pkg/vx.config.ts'
+const CONFIG_PATH = '/ws/pkg/vx.project.ts'
 
 /** Run the real validator and return the message, or null if it accepted. */
 function validated(config: unknown): string | null {
@@ -68,7 +68,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     // export is not an object never reaches validation at all.
     async () => {
       const dir = scratchDir()
-      const file = path.join(dir, 'vx.config.ts')
+      const file = path.join(dir, 'vx.project.ts')
       await Bun.write(file, 'export default 42\n')
       try {
         await loadProjectConfig(file)
@@ -85,7 +85,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     // otherwise auto-install from the registry.
     async () => {
       const dir = scratchDir()
-      const file = path.join(dir, 'vx.config.ts')
+      const file = path.join(dir, 'vx.project.ts')
       await Bun.write(
         file,
         "import { preset } from 'nope-pkg'\nexport default { tasks: {}, ...preset }\n",
@@ -105,7 +105,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     async () => {
       const dir = scratchDir()
       await Bun.write(path.join(dir, '.pnp.cjs'), '')
-      const file = path.join(dir, 'vx.config.ts')
+      const file = path.join(dir, 'vx.project.ts')
       await Bun.write(
         file,
         "import { preset } from 'nope-pkg'\nexport default { tasks: {}, ...preset }\n",
@@ -556,7 +556,7 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   ],
   ['<group> must be an object (fields: <fields>)', workspaceConfig('{ run: true }')],
   [
-    "cache must be an object like { dir, policy, scope }; a task caches through its own cache in its project's vx.config",
+    "cache must be an object like { dir, policy, scope }; a task caches through its own cache in its project's vx.project",
     workspaceConfig('{ cache: "remote:" }'),
   ],
   [

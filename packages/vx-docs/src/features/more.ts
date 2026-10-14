@@ -40,7 +40,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    test: { exec: { command: 'vitest run', timeout: '2m' } },\n  },\n})",
+      code: "// packages/api/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    test: { exec: { command: 'vitest run', timeout: '2m' } },\n  },\n})",
     },
     image: 'timeouts.png',
     imageAlt: 'A task killed after its timeout and reported as timed out.',
@@ -88,7 +88,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/web/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    lint: { exec: { command: 'oxlint' } },\n    test: { exec: { command: 'vitest run' } },\n    check: { dependsOn: ['lint', 'test'] },\n  },\n})",
+      code: "// packages/web/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    lint: { exec: { command: 'oxlint' } },\n    test: { exec: { command: 'vitest run' } },\n    check: { dependsOn: ['lint', 'test'] },\n  },\n})",
     },
     image: 'group-tasks.png',
     imageAlt: 'A check task that runs lint and test.',
@@ -136,7 +136,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/web/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: { exec: { command: 'vite build' }, dependsOn: ['^build'] },\n    test: { exec: { command: 'vitest run' }, dependsOn: ['build'] },\n    e2e: { exec: { command: 'playwright test' }, dependsOn: ['@demo/api#build'] },\n  },\n})",
+      code: "// packages/web/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: { exec: { command: 'vite build' }, dependsOn: ['^build'] },\n    test: { exec: { command: 'vitest run' }, dependsOn: ['build'] },\n    e2e: { exec: { command: 'playwright test' }, dependsOn: ['@demo/api#build'] },\n  },\n})",
     },
     image: 'depends-on-syntax.png',
     imageAlt: 'dependsOn edges: upstream, local, cross-project.',
@@ -832,7 +832,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      cache: { inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: ['dist/**'] } },\n    },\n  },\n})",
+      code: "// packages/api/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      cache: { inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: ['dist/**'] } },\n    },\n  },\n})",
     },
     image: 'explicit-inputs.png',
     imageAlt: 'A task’s cache block naming its inputs and outputs.',
@@ -856,7 +856,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    bundle: {\n      exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },\n      cache: {\n        inputs: {\n          files: ['src/**'],\n          env: ['NODE_ENV'],\n          runtime: ['bun --version'],\n          workspaceFiles: ['tsconfig.base.json'],\n        },\n        outputs: { files: ['dist/**'] },\n      },\n    },\n  },\n})",
+      code: "// packages/api/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    bundle: {\n      exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },\n      cache: {\n        inputs: {\n          files: ['src/**'],\n          env: ['NODE_ENV'],\n          runtime: ['bun --version'],\n          workspaceFiles: ['tsconfig.base.json'],\n        },\n        outputs: { files: ['dist/**'] },\n      },\n    },\n  },\n})",
     },
     image: 'key-inputs.png',
     imageAlt: 'Env, runtime and workspace files declared as key inputs.',
@@ -880,7 +880,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'vite build' },\n      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', 'stats.json'] } },\n    },\n  },\n})",
+      code: "// packages/api/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'vite build' },\n      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', 'stats.json'] } },\n    },\n  },\n})",
     },
     image: 'cache-outputs.png',
     imageAlt: 'Declared outputs restored on a cache hit.',
@@ -1168,7 +1168,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: 'first run    vx.config.ts evaluated, result kept\nnext run     read back as data\nfile edited  evaluated again',
+      code: 'first run    vx.project.ts evaluated, result kept\nnext run     read back as data\nfile edited  evaluated again',
     },
     image: 'config-cache.png',
     imageAlt: 'Pure configs read from cache on the next run.',
@@ -1265,7 +1265,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    deploy: {\n      exec: {\n        command: './deploy.sh',\n        env: {\n          passThrough: ['DEPLOY_TOKEN'],\n          define: { NODE_ENV: 'production' },\n          secret: ['DEPLOY_TOKEN'],\n        },\n      },\n    },\n  },\n})",
+      code: "// packages/api/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    deploy: {\n      exec: {\n        command: './deploy.sh',\n        env: {\n          passThrough: ['DEPLOY_TOKEN'],\n          define: { NODE_ENV: 'production' },\n          secret: ['DEPLOY_TOKEN'],\n        },\n      },\n    },\n  },\n})",
     },
     image: 'env-isolation.png',
     imageAlt: 'A task with an isolated env and a masked secret.',
@@ -1409,7 +1409,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    console: { exec: { command: 'bun repl', interactive: true } },\n  },\n})",
+      code: "// packages/api/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    console: { exec: { command: 'bun repl', interactive: true } },\n  },\n})",
     },
     image: 'interactive-tasks.png',
     imageAlt: 'An interactive task owning the terminal.',
@@ -1505,7 +1505,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      dependsOn: ['^build'],\n      description: 'Type-check and emit',\n      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },\n    },\n  },\n})",
+      code: "// packages/api/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      dependsOn: ['^build'],\n      description: 'Type-check and emit',\n      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },\n    },\n  },\n})",
     },
     image: 'one-command-tasks.png',
     imageAlt: 'A task: a command, its edges and its cache block.',
@@ -1601,10 +1601,10 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/app/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: { exec: { command: 'tsc -b' } },\n    test: { exec: { command: 'vitest run' }, dependsOn: ['build'] },\n  },\n})",
+      code: "// packages/app/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: { exec: { command: 'tsc -b' } },\n    test: { exec: { command: 'vitest run' }, dependsOn: ['build'] },\n  },\n})",
     },
     image: 'typed-helpers.png',
-    imageAlt: 'A typed vx.config.ts with completion.',
+    imageAlt: 'A typed vx.project.ts with completion.',
     docs: {
       label: 'Configure',
       href: 'guides/configure/',
@@ -1625,7 +1625,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/ui/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nconst lib = (entry: string) => ({\n  build: {\n    exec: { command: `tsup ${entry}` },\n    cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },\n  },\n})\n\nexport default defineProject({ tasks: { ...lib('src/index.ts') } })",
+      code: "// packages/ui/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nconst lib = (entry: string) => ({\n  build: {\n    exec: { command: `tsup ${entry}` },\n    cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },\n  },\n})\n\nexport default defineProject({ tasks: { ...lib('src/index.ts') } })",
     },
     image: 'presets.png',
     imageAlt: 'A preset function shared across configs.',
@@ -1649,7 +1649,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: "vx: packages/api/vx.config.ts:8:42: tasks.hang.exec.timeout must be a positive integer (milliseconds)\n> 8 |     hang: { exec: { command: 'sleep 30', timeout: '1s' } },\n    |                                          ^",
+      code: "vx: packages/api/vx.project.ts:8:42: tasks.hang.exec.timeout must be a positive integer (milliseconds)\n> 8 |     hang: { exec: { command: 'sleep 30', timeout: '1s' } },\n    |                                          ^",
     },
     image: 'config-errors.png',
     imageAlt: 'A config error pointing at the line and key.',
@@ -1745,7 +1745,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: 'package.json   prebuild: rimraf dist · build: tsc · postbuild: node scripts/copy.js\nvx.config.ts   build: one command that runs prebuild, build, then postbuild',
+      code: 'package.json   prebuild: rimraf dist · build: tsc · postbuild: node scripts/copy.js\nvx.project.ts   build: one command that runs prebuild, build, then postbuild',
     },
     image: 'npm-hooks.png',
     imageAlt: 'npm pre and post scripts folded into one task.',
@@ -1764,7 +1764,7 @@ export const MORE: readonly Feature[] = [
     category: 'adoption',
     hook: 'vx-migrate writes configs from vite-plus `run.tasks`, as it does from Turbo and Nx.',
     body: [
-      'If your tasks live in vite-plus’s `run.tasks`, you do not have to retype them. `@vzn/vx-migrate --from vite-task` writes a `vx.config.ts` per package from them.',
+      'If your tasks live in vite-plus’s `run.tasks`, you do not have to retype them. `@vzn/vx-migrate --from vite-task` writes a `vx.project.ts` per package from them.',
       'Preview first with `--dry`; it never overwrites without `--force`.',
     ],
     example: {
@@ -1793,7 +1793,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: 'project.json   build: { executor: "@nx/js:tsc", options: { … } }\nvx.config.ts   build: { exec: { command: "nx-exec @nx/js:tsc --project ui --target build …" } }',
+      code: 'project.json   build: { executor: "@nx/js:tsc", options: { … } }\nvx.project.ts   build: { exec: { command: "nx-exec @nx/js:tsc --project ui --target build …" } }',
     },
     image: 'nx-exec.png',
     imageAlt: 'An Nx executor target run as one vx task.',
@@ -2010,7 +2010,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    install: {\n      exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },\n      cache: {\n        inputs: { files: ['package.json', 'pnpm-lock.yaml'] },\n        outputs: { files: ['node_modules/**'] },\n      },\n    },\n  },\n})",
+      code: "// packages/api/vx.project.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    install: {\n      exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },\n      cache: {\n        inputs: { files: ['package.json', 'pnpm-lock.yaml'] },\n        outputs: { files: ['node_modules/**'] },\n      },\n    },\n  },\n})",
     },
     image: 'remote-install.png',
     imageAlt: 'An install task run as a remote action.',

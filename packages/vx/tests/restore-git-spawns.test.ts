@@ -71,7 +71,7 @@ async function addProject(root: string, name: string, testInputs: string): Promi
   )
   await writeFile(path.join(dir, 'src', 'in.txt'), 'v1')
   await writeFile(
-    path.join(dir, 'vx.config.mjs'),
+    path.join(dir, 'vx.project.mjs'),
     `export default {
       tasks: {
         build: {

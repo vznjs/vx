@@ -279,7 +279,7 @@ export interface StaticProject {
   name: string
   /** The workspace packages its package.json depends on, in its order. */
   uses: string[]
-  /** Its evaluated `vx.config.mjs`. */
+  /** Its evaluated `vx.project.mjs`. */
   config: unknown
 }
 
@@ -345,13 +345,13 @@ export function orderLine(dispatchOrder: readonly string[]): string {
   return `Start order on 2 workers: ${dispatchOrder.join(', ')}.`
 }
 
-/** Each package's `vx.config.mjs` text, under the name its
+/** Each package's `vx.project.mjs` text, under the name its
  *  `packages/<dir>/package.json` gives it, for the static render to
  *  evaluate before any planner has loaded. */
 export function configTextsOf(files: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(files).flatMap(([f, text]) => {
-      const dir = /^(packages\/[^/]+)\/vx\.config\.mjs$/.exec(f)?.[1]
+      const dir = /^(packages\/[^/]+)\/vx\.project\.mjs$/.exec(f)?.[1]
       const manifest = dir === undefined ? undefined : files[`${dir}/package.json`]
       return manifest === undefined ? [] : [[(JSON.parse(manifest) as { name: string }).name, text]]
     }),

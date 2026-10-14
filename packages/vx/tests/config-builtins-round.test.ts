@@ -31,7 +31,7 @@ afterEach(async () => {
 async function load(sources: string[], store: Store): Promise<string> {
   const files = await Promise.all(
     sources.map(async (src, i) => {
-      const file = path.join(dir, `p${i}`, 'vx.config.mjs')
+      const file = path.join(dir, `p${i}`, 'vx.project.mjs')
       await Bun.write(file, src)
       return file
     }),
@@ -57,7 +57,7 @@ it('a built-in checked at the round end is refused, named, put back, and nothing
       ],
       store,
     ),
-  ).toBe('<dir>/p1/vx.config.mjs changed String.prototype.trim')
+  ).toBe('<dir>/p1/vx.project.mjs changed String.prototype.trim')
   expect(String.prototype.trim).toBe(trim)
   expect(store.rows.size).toBe(0)
 })

@@ -33,7 +33,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       await mkdir(app, { recursive: true })
       await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
       await writeFile(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         `export default { tasks: {
   filePart: ${task('mkdir -p gen/x && echo x > gen/x/a.ts', 'gen/**/*.ts')},
   dirSlash: ${task('mkdir -p gen/x && echo x > gen/x/a.ts', 'gen/')},

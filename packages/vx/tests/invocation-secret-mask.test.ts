@@ -38,7 +38,7 @@ async function lastLine(secret: string): Promise<{ line: string[]; holding: stri
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(
-    path.join(dir, 'vx.config.mjs'),
+    path.join(dir, 'vx.project.mjs'),
     `export default { tasks: { deploy: { exec: { command: 'echo deploying' } } } }\n`,
   )
   expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)

@@ -35,7 +35,7 @@ The function's own docstring asserts the opposite:
 
 ### Repro (executed)
 
-Fixture `packages/c/vx.config.mjs`:
+Fixture `packages/c/vx.project.mjs`:
 
 ```js
 export default {
@@ -424,7 +424,7 @@ GitHub requires `%0A` / `%0D` / `%25` encoding inside annotation properties, and
 
 ### Repro A (executed) — newline in a task name
 
-`packages/g/vx.config.mjs`: `{ "bad\nname::x": { exec: { command: "echo hi && exit 2" } } }`
+`packages/g/vx.project.mjs`: `{ "bad\nname::x": { exec: { command: "echo hi && exit 2" } } }`
 
 ```
 $ CI=1 GITHUB_ACTIONS=1 bun …/bin.ts run $'bad\nname::x' --all

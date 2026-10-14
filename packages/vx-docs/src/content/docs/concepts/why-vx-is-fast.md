@@ -45,7 +45,7 @@ and faster:
    packages that don't declare the task to the nearest one that does, so
    sparse task coverage doesn't need no-op filler tasks, and the graph
    carries no placeholder nodes for the packages walked through.
-2. **Resolved-config hashing.** vx hashes the evaluated `vx.config.ts`
+2. **Resolved-config hashing.** vx hashes the evaluated `vx.project.ts`
    object, so imports, presets, and computed values participate in the
    key. Static-JSON config can't see them.
 3. **Strict output ownership.** Declared outputs are wiped before exec

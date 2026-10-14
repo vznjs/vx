@@ -19,7 +19,7 @@ const graph = {
 }
 const NX =
   'vx.workspace.ts still declares nx(), which reads nx.json every run and fills any task a ' +
-  'vx.config does not declare; the configs written here declare them all. Once `vx run` does ' +
+  'vx.project does not declare; the configs written here declare them all. Once `vx run` does ' +
   'what nx did, remove nx() (and its import), then nx.json'
 const LOCK =
   'Nx keys each project on the npm packages it depends on in pnpm-lock.yaml; vx keys every ' +

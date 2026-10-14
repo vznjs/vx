@@ -23,7 +23,7 @@ beforeEach(async () => {
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       "export default { tasks: { build: { exec: { command: 'sleep 0.3' } } } }\n",
     )
   }

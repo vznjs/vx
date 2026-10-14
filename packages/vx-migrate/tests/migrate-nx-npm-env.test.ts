@@ -1,4 +1,4 @@
-// A migrated `vx.config.ts` reads a script's `$npm_package_*` from the
+// A migrated `vx.project.ts` reads a script's `$npm_package_*` from the
 // manifest it imports, as `turbo()`'s migration does: written as the
 // value, a version bump left the config printing the old one.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'

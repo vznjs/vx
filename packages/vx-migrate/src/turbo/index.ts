@@ -5,7 +5,7 @@
 // mapper `vx migrate --from turbo` renders files from — so what runs here is
 // what a migration would have written, minus the file. Turbo's global fields
 // are inlined into each task instead of imported from a generated preset.
-// A task the package's own vx.config already declares wins; the plugin never
+// A task the package's own vx.project already declares wins; the plugin never
 // overwrites a user's hand.
 
 import { readFileSync } from 'node:fs'
@@ -30,7 +30,7 @@ import {
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
   'persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; ' +
-  'add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output'
+  'add `exec.persistent.readyWhen` in a vx.project to gate dependents on their output'
 
 export interface TurboPluginOptions {
   /**
@@ -79,7 +79,7 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
           workspace.run = { ...workspace.run, affectedBase: base }
       },
       // `//#task` keys run on the root, as Turbo runs them: named here, the
-      // root is a project with no vx.config written (a create-turbo repo's
+      // root is a project with no vx.project written (a create-turbo repo's
       // `//#format`). A package that holds the root's name keeps it, and
       // the mapping's note says so.
       async discover(ctx) {

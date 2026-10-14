@@ -3,7 +3,7 @@
 // scripts, and emits one TaskConfig-shaped object per (package, task) — a
 // task exists for a package only when the package declares the script,
 // turbo's own rule. Two consumers, one mapper, so they cannot drift:
-//   - `@vzn/vx-migrate` renders these to vx.config.ts files, splicing
+//   - `@vzn/vx-migrate` renders these to vx.project.ts files, splicing
 //     turbo's global fields in as imports of a generated preset;
 //   - `@vzn/vx-migrate` hands them to the `project` stage live, with the
 //     global values inlined, so a Turbo repo runs under vx with no file
@@ -977,7 +977,7 @@ export async function mapTurboWorkspace(
     pass: envNames('globalPassThroughEnv', rootCfg.globalPassThroughEnv ?? []),
   }
 
-  // The workspace root as a project (a `vx.config` there, D-39) holds
+  // The workspace root as a project (a `vx.project` there, D-39) holds
   // Turbo's `//#task`s (`rootMeta`, above); Turbo runs no plain task in the root package.
   const files = new Map<string, TurboJson>([[ROOT, rootCfg]])
   for (const meta of metas) {
@@ -1481,7 +1481,7 @@ export async function mapTurboWorkspace(
         delete t.task!['cache']
         t.todos.push(
           `inputs read ${rels.map((r) => JSON.stringify(r)).join(', ')} from an uncached ` +
-            'dependency, a glob vx cannot key by a probe — task runs uncached; key it in a vx.config to cache it',
+            'dependency, a glob vx cannot key by a probe — task runs uncached; key it in a vx.project to cache it',
         )
         continue
       }
@@ -2054,7 +2054,7 @@ function buildTask(
       if (cut >= 0 && rest === null) {
         todos.push(
           `output ${JSON.stringify(raw)}: glob syntax vx cannot take — task runs uncached; ` +
-            'declare the exact outputs in a vx.config to cache it',
+            'declare the exact outputs in a vx.project to cache it',
         )
         return { name, todos, task, uses }
       }

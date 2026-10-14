@@ -24,7 +24,7 @@ beforeAll(async () => {
   await writeFile(path.join(root, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(path.join(root, 'packages', 'a', 'src', 'x.js'), 'x')
   await writeFile(
-    path.join(root, 'packages', 'a', 'vx.config.mjs'),
+    path.join(root, 'packages', 'a', 'vx.project.mjs'),
     "export default { tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
   )
   await writeFile(
@@ -340,7 +340,7 @@ describe('vx mcp over stdio (the real entry point)', () => {
       await mkdir(path.join(ws, 'packages', 'a'), { recursive: true })
       await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
       await writeFile(
-        path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+        path.join(ws, 'packages', 'a', 'vx.project.mjs'),
         "console.log('from console.log')\nprocess.stdout.write('from stdout.write\\n')\n" +
           "await Bun.write(Bun.stdout, 'from Bun.write\\n')\n" +
           "const w = Bun.stdout.writer(); w.write('from a writer\\n'); await w.flush()\n" +

@@ -77,7 +77,7 @@ async function fixture(root: string): Promise<{ a: string; b: string; c: string 
   }
   for (const [name, dir] of Object.entries(dirs)) {
     await write(path.join(dir, 'package.json'), JSON.stringify({ name }))
-    await write(path.join(dir, 'vx.config.mjs'), CONFIG)
+    await write(path.join(dir, 'vx.project.mjs'), CONFIG)
     await write(path.join(dir, 'src/x.txt'), 'one')
   }
   for (const sub of ['vendor/sub', 'vendor/nested']) {
@@ -175,7 +175,7 @@ async function vendoredFixture(root: string): Promise<string> {
   const a = path.join(root, 'packages/a')
   await write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
   await write(
-    path.join(a, 'vx.config.mjs'),
+    path.join(a, 'vx.project.mjs'),
     `export default {
       tasks: {
         build: {
@@ -197,7 +197,7 @@ async function vendoredFixture(root: string): Promise<string> {
     git(path.join(a, sub), 'commit', '-qm', 'init')
   }
   git(root, 'add', '.gitignore', 'package.json', 'packages/a/package.json')
-  git(root, 'add', 'packages/a/vx.config.mjs', 'packages/a/vendor/lib', 'packages/a/vendor/empty')
+  git(root, 'add', 'packages/a/vx.project.mjs', 'packages/a/vendor/lib', 'packages/a/vendor/empty')
   git(root, 'commit', '-qm', 'init')
   await rm(path.join(a, 'vendor/empty'), { recursive: true, force: true })
   await mkdir(path.join(a, 'vendor/empty'))
@@ -216,7 +216,7 @@ describe('a nested repository inside a project', () => {
           'package.json',
           'vendor/lib/x.txt',
           'vendor/loose/y.txt',
-          'vx.config.mjs',
+          'vx.project.mjs',
         ])
         const oids = memo.oidsFor(a)
         expect(oids?.has(path.join(a, 'package.json'))).toBe(true)

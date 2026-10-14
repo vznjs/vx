@@ -1,4 +1,4 @@
-// `vx lock` — freeze every resolved vx.config.* into vx-lock.json.
+// `vx lock` — freeze every resolved vx.project.* into vx.lock.json.
 // `vx lock --check` — audit the lock against a fresh evaluation in the
 // current environment. Design: docs/design/config-lock-2026-06.md.
 
@@ -76,7 +76,7 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
   return await lockWorkspace(root, reads)
 }
 
-/** Every project a run discovers, and those with a vx.config. */
+/** Every project a run discovers, and those with a vx.project. */
 async function configuredProjects(
   root: string,
   reads: LoadReads = new Map(),
@@ -94,7 +94,7 @@ async function configuredProjects(
 }
 
 /**
- * Projects with tasks and no vx.config: a plugin's tasks, which load live
+ * Projects with tasks and no vx.project: a plugin's tasks, which load live
  * under --frozen too, so both verbs name them — `locked 0 project configs`
  * on a turbo() repo read like an audit of something (2026-09-16). One with
  * no task is left out: solidjs/solid's solid-ssr, which has no script Turbo
@@ -209,7 +209,7 @@ function bareNames(bare: readonly string[]): string {
 }
 
 function bareNote(bare: readonly string[]): string {
-  return bare.length === 0 ? '' : ` (no vx.config, so never frozen: ${bareNames(bare)})`
+  return bare.length === 0 ? '' : ` (no vx.project, so never frozen: ${bareNames(bare)})`
 }
 
 async function writeLock(
@@ -336,7 +336,7 @@ async function checkLock(
   }
   const n = metas.length
   const audited = `${n} project${n === 1 ? '' : 's'}`
-  const skipped = bare.length === 0 ? '' : `; not audited, no vx.config: ${bareNames(bare)}`
+  const skipped = bare.length === 0 ? '' : `; not audited, no vx.project: ${bareNames(bare)}`
   process.stdout.write(`vx lock --check: up to date (${audited}${skipped})\n`)
   return 0
 }

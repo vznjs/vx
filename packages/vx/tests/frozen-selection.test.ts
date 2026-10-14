@@ -1,5 +1,5 @@
 // `--frozen` reaches selection: the `--affected` owners a frozen run selects
-// from are read from `vx-lock.json`, as the run's own configs are. Before,
+// from are read from `vx.lock.json`, as the run's own configs are. Before,
 // they were evaluated live, so a `workspaceFiles` glob that depends on the
 // environment could select in one environment what the run then keyed by
 // the lock's other one.
@@ -101,13 +101,13 @@ describe('--frozen selection reads the lock', () => {
   it(
     'a frozen run with no lock writes one first, then selects from it',
     async () => {
-      await Bun.$`rm ${path.join(root, 'vx-lock.json')}`.quiet()
+      await Bun.$`rm ${path.join(root, 'vx.lock.json')}`.quiet()
       const r = await vx(root, ['run', 'build', '--frozen', '--affected=HEAD~1'])
       expect({ code: r.code, locked: r.out.includes('vx lock: locked') }).toEqual({
         code: 0,
         locked: true,
       })
-      expect(await Bun.file(path.join(root, 'vx-lock.json')).exists()).toBe(true)
+      expect(await Bun.file(path.join(root, 'vx.lock.json')).exists()).toBe(true)
     },
     TIMEOUT,
   )
@@ -124,7 +124,7 @@ describe('--frozen selection reads the lock', () => {
   it(
     'the programmatic run refuses too — prepare is the only layer an embedder meets',
     async () => {
-      await Bun.$`rm ${path.join(root, 'vx-lock.json')}`.quiet()
+      await Bun.$`rm ${path.join(root, 'vx.lock.json')}`.quiet()
       const { run } = await import('../src/orchestrator/index.js')
       // Control: the same call without `frozen` gets past this point, so
       // the rejection below is the flag and not a broken fixture.
@@ -132,7 +132,7 @@ describe('--frozen selection reads the lock', () => {
       expect(ok.ok).toBe(true)
       await expect(
         run({ cwd: root, tasks: ['build'], frozen: true, handleSignals: false }),
-      ).rejects.toThrow(/--frozen requires vx-lock.json/)
+      ).rejects.toThrow(/--frozen requires vx.lock.json/)
     },
     TIMEOUT,
   )
@@ -143,7 +143,7 @@ describe('--frozen selection reads the lock', () => {
   it(
     'a workspace config refusal still comes before the missing lock',
     async () => {
-      await Bun.$`rm ${path.join(root, 'vx-lock.json')}`.quiet()
+      await Bun.$`rm ${path.join(root, 'vx.lock.json')}`.quiet()
       await Bun.write(path.join(root, 'vx.workspace.mjs'), "throw new Error('ws-boom')\n")
       const { run } = await import('../src/orchestrator/index.js')
       const err = await run({

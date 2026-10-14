@@ -46,7 +46,7 @@ async function project(base: string, name: string): Promise<void> {
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
   await writeFile(
-    path.join(dir, 'vx.config.mjs'),
+    path.join(dir, 'vx.project.mjs'),
     `export default {
   tasks: { build: { exec: { command: 'echo ${name}' } } },
 }
@@ -117,7 +117,7 @@ describe('a run reads each root file once', () => {
         'vx.workspace.mjs': ['exists', 'bytes'],
         // Discovery's one read of the manifest, the loader's of the config.
         'packages/a/package.json': ['text'],
-        'packages/a/vx.config.mjs': ['bytes'],
+        'packages/a/vx.project.mjs': ['bytes'],
       })
     },
     TIMEOUT,

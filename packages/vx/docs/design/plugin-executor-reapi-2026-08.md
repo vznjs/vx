@@ -298,7 +298,7 @@ REAPI has no per-worker setup hook by design (workers are stateless). The
 install step is an **explicit vx task** (decision: explicit over magical):
 
 ```ts
-// root vx.config.ts
+// root vx.project.ts
 install: {
   exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },   // see below
   cache: { inputs: { files: ['package.json', 'pnpm-lock.yaml', 'packages/*/package.json'] },

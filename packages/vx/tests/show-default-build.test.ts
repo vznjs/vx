@@ -35,7 +35,7 @@ describe('vx show and the default build of a dependency', () => {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, ...json }))
-      if (config !== undefined) await writeFile(path.join(dir, 'vx.config.mjs'), config)
+      if (config !== undefined) await writeFile(path.join(dir, 'vx.project.mjs'), config)
     }
     await pkg(
       'app',

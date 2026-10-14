@@ -70,7 +70,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       read('.aws/credentials'),
     ].join('; ')
     await writeFile(
-      path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+      path.join(ws, 'packages', 'a', 'vx.project.mjs'),
       `export default { tasks: {
   peek: { exec: { command: ${JSON.stringify(cmd)}, sandbox: { allow: { read: ['.'] } } } },
   granted: { exec: { command: ${JSON.stringify(read('.npmrc'))}, sandbox: { allow: { read: ['.', '~/.npmrc'] } } } },
@@ -117,11 +117,11 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     // `dist/`, vx (outside the sandbox) would pack the key into the cache.
     const ws = path.join(root!, 'ws')
     await writeFile(
-      path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+      path.join(ws, 'packages', 'a', 'vx.project.mjs'),
       `export default { tasks: {
   link: {
     exec: { command: 'mkdir -p dist && ln "$HOME/.ssh/id_ed25519" dist/k || true', sandbox: { allow: { read: ['.'], write: ['dist/'] } } },
-    cache: { inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['dist/**'] } },
+    cache: { inputs: { files: ['vx.project.mjs'] }, outputs: { files: ['dist/**'] } },
   },
   open: { exec: { command: 'mkdir -p dist && ln "$HOME/.ssh/id_ed25519" dist/k' } },
 } }

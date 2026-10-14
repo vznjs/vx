@@ -196,7 +196,7 @@ describe('workspace inside a linked git worktree', () => {
     await mkdir(path.join(main, 'shared'), { recursive: true })
     await writeFile(path.join(main, 'shared', 'base.json'), '{}')
     await writeFile(
-      path.join(main, 'packages', 'app', 'vx.config.mjs'),
+      path.join(main, 'packages', 'app', 'vx.project.mjs'),
       `
         export default {
           tasks: {

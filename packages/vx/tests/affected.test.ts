@@ -726,23 +726,23 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual([])
   })
 
-  it('a vx-lock.json change never marks a project affected, even the root project', async () => {
+  it('a vx.lock.json change never marks a project affected, even the root project', async () => {
     // The root is a project here, so a root-level file edit WOULD map to
     // it — proving the exclusion is the lock filter, not "root isn't a
-    // project". A README edit at root still marks it; vx-lock.json never.
+    // project". A README edit at root still marks it; vx.lock.json never.
     const withRoot: ProjectMeta[] = [
       ...projects,
       { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
     ]
     // Commit both root files so `git diff` (tracked changes only) can see
     // edits to them.
-    await writeFile(path.join(root, 'vx-lock.json'), '{"v":1}')
+    await writeFile(path.join(root, 'vx.lock.json'), '{"v":1}')
     await writeFile(path.join(root, 'README.md'), 'v1')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'add lock + readme')
 
     // Editing only the lock → nothing affected.
-    await writeFile(path.join(root, 'vx-lock.json'), '{"v":2}')
+    await writeFile(path.join(root, 'vx.lock.json'), '{"v":2}')
     expect([
       ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withRoot })),
     ]).toEqual([])
@@ -1325,17 +1325,17 @@ describe('affectedProjects', () => {
       expect([...out]).toEqual([])
     })
 
-    it('vx-lock.json still never widens, even though it sits at the root', async () => {
+    it('vx.lock.json still never widens, even though it sits at the root', async () => {
       // vx's OWN lockfile is deliberately excluded from cache inputs, so
       // re-running `vx lock` must not rebuild the workspace.
       //
       // The root is a project here ON PURPOSE. Without it the assertion is
-      // VACUOUS — vx-lock.json maps to no project directory anyway, so `[]`
+      // VACUOUS — vx.lock.json maps to no project directory anyway, so `[]`
       // comes back whether or not any guard exists (mutation-verified: with
       // only a/b in scope, deleting the exclusion filter still passed). With
       // root in scope, deleting the filter yields ['root'] and this fails.
       //
-      // What the filter, and ONLY the filter, enforces: adding 'vx-lock.json'
+      // What the filter, and ONLY the filter, enforces: adding 'vx.lock.json'
       // to the widening set is inert, because the filter has already removed
       // it from `changed`. That mutation survives and no test can kill it —
       // recorded rather than papered over, so nobody adds a second guard here
@@ -1344,11 +1344,11 @@ describe('affectedProjects', () => {
         ...projects,
         { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
       ]
-      await writeFile(path.join(root, 'vx-lock.json'), '{"v":1}')
+      await writeFile(path.join(root, 'vx.lock.json'), '{"v":1}')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'add vx lock')
 
-      await writeFile(path.join(root, 'vx-lock.json'), '{"v":2}')
+      await writeFile(path.join(root, 'vx.lock.json'), '{"v":2}')
       const out = await affectedProjects({
         workspaceRoot: root,
         since: 'HEAD',
@@ -1785,7 +1785,7 @@ describe('affectedProjects workspaceFiles gate', () => {
   })
 })
 
-// The THIRD selection channel: a project whose `vx.config.*` imports a changed
+// The THIRD selection channel: a project whose `vx.project.*` imports a changed
 // file. Resolved-config hashing folds those values into the cache key, so
 // `affected.ts`'s own rule applies — "input hashing sees it, so `--affected`
 // must too". The controls matter more than the pins here: widening selection
@@ -1813,23 +1813,23 @@ describe('affectedProjects: config import closures', () => {
 
     await w('packages/app/package.json', JSON.stringify({ name: 'app' }))
     await w(
-      'packages/app/vx.config.mjs',
+      'packages/app/vx.project.mjs',
       `import 'pkgx'\nimport { FLAG } from '../../shared/flag.mjs'\nimport { A } from '../../shared/a.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + FLAG + A } } } }\n`,
     )
     await w('packages/lib/package.json', JSON.stringify({ name: 'lib' }))
-    await w('packages/lib/vx.config.mjs', `export default { tasks: {} }\n`)
+    await w('packages/lib/vx.project.mjs', `export default { tasks: {} }\n`)
     await w('packages/lib/preset.mjs', `import './internal.mjs'\nexport const P = 1\n`)
     await w('packages/lib/internal.mjs', `export const I = 1\n`)
     await w('apps/x/package.json', JSON.stringify({ name: 'x' }))
     await w(
-      'apps/x/vx.config.mjs',
+      'apps/x/vx.project.mjs',
       `import { P } from '../../packages/lib/preset.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + P } } } }\n`,
     )
 
     const meta = (name: string, dir: string): ProjectMeta => ({
       name,
       dir: path.join(root, dir),
-      configPath: path.join(root, dir, 'vx.config.mjs'),
+      configPath: path.join(root, dir, 'vx.project.mjs'),
       packageJson: { name },
     })
     projects = [meta('app', 'packages/app'), meta('lib', 'packages/lib'), meta('x', 'apps/x')]
@@ -1875,7 +1875,7 @@ describe('affectedProjects: config import closures', () => {
     // file. The walk stopped at `tasks.mjs` as owned, and an edit to the
     // shared file left lib out while its resolved config moved.
     await writeFile(
-      path.join(root, 'packages/lib/vx.config.mjs'),
+      path.join(root, 'packages/lib/vx.project.mjs'),
       `import { T } from './tasks.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + T } } } }\n`,
     )
     await writeFile(
@@ -1926,7 +1926,7 @@ describe('affectedProjects: config import closures', () => {
     // The scan decodes `\x2e` to `.`; the textual pass before it must not
     // drop a config whose relative import holds no literal `./`.
     await writeFile(
-      path.join(root, 'packages/lib/vx.config.mjs'),
+      path.join(root, 'packages/lib/vx.project.mjs'),
       "import { B } from '\\x2e\\x2e/\\x2e\\x2e/shared/b.mjs'\nexport default { tasks: {} }\n",
     )
     await git(root, 'add', '-A')
@@ -1936,7 +1936,7 @@ describe('affectedProjects: config import closures', () => {
 
   it('PIN: an extensionless import whose target is deleted reaches its importer too (item 958)', async () => {
     await writeFile(
-      path.join(root, 'packages/lib/vx.config.mjs'),
+      path.join(root, 'packages/lib/vx.project.mjs'),
       `import { B } from '../../shared/b'\nexport default { tasks: {} }\n`,
     )
     await git(root, 'add', '-A')
@@ -1950,7 +1950,7 @@ describe('affectedProjects: config import closures', () => {
     await mkdir(path.join(root, 'shared/c'), { recursive: true })
     await writeFile(path.join(root, 'shared/c/index.mjs'), `export const C = 1\n`)
     await writeFile(
-      path.join(root, 'packages/lib/vx.config.mjs'),
+      path.join(root, 'packages/lib/vx.project.mjs'),
       `import { C } from '../../shared/c'\nexport default { tasks: {} }\n`,
     )
     await git(root, 'add', '-A')
@@ -1969,7 +1969,7 @@ describe('affectedProjects: config import closures', () => {
       '{ "compilerOptions": { "paths": { "@shared/*": ["./shared/*"] } } }',
     )
     await writeFile(
-      path.join(root, 'packages/lib/vx.config.mjs'),
+      path.join(root, 'packages/lib/vx.project.mjs'),
       `import { FLAG } from '@shared/flag.mjs'\nexport default { tasks: {} }\n`,
     )
     await git(root, 'add', '-A')
@@ -1995,7 +1995,7 @@ describe('affectedProjects: config import closures', () => {
       '{ "compilerOptions": { "paths": { "@l/*": ["./linked/*"] } } }',
     )
     await writeFile(
-      path.join(root, 'packages/lib/vx.config.mjs'),
+      path.join(root, 'packages/lib/vx.project.mjs'),
       `import { B } from '@l/b.mjs'\nexport default { tasks: {} }\n`,
     )
     await git(root, 'add', '-A')
@@ -2005,7 +2005,7 @@ describe('affectedProjects: config import closures', () => {
 })
 
 // The root `"."` member is a supported (and, in this repo, load-bearing)
-// shape, and since D-39 any root with a `vx.config` is one. Its directory is
+// shape, and since D-39 any root with a `vx.project` is one. Its directory is
 // the WHOLE workspace, so every shared file is "owned" by it; the walk
 // descends through the root's own files as through unowned ones, since they
 // are the same shared tooling (D-41). It stopped after one hop before, and
@@ -2025,23 +2025,23 @@ describe('affectedProjects: a workspace whose ROOT is itself a project', () => {
     await w('shared/flag.mjs', `import './deep.mjs'\nexport const FLAG = 'one'\n`)
     await w('shared/deep.mjs', `export const DEEP = 1\n`)
     await w('package.json', JSON.stringify({ name: 'root-pkg' }))
-    await w('vx.config.mjs', `export default { tasks: {} }\n`)
+    await w('vx.project.mjs', `export default { tasks: {} }\n`)
     await w('packages/app/package.json', JSON.stringify({ name: 'app' }))
     await w(
-      'packages/app/vx.config.mjs',
+      'packages/app/vx.project.mjs',
       `import { FLAG } from '../../shared/flag.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + FLAG } } } }\n`,
     )
     projects = [
       {
         name: 'root-pkg',
         dir: root,
-        configPath: path.join(root, 'vx.config.mjs'),
+        configPath: path.join(root, 'vx.project.mjs'),
         packageJson: { name: 'root-pkg' },
       },
       {
         name: 'app',
         dir: path.join(root, 'packages/app'),
-        configPath: path.join(root, 'packages/app/vx.config.mjs'),
+        configPath: path.join(root, 'packages/app/vx.project.mjs'),
         packageJson: { name: 'app' },
       },
     ]
@@ -2132,7 +2132,7 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
-      if (config !== null) await writeFile(path.join(dir, 'vx.config.mjs'), config)
+      if (config !== null) await writeFile(path.join(dir, 'vx.project.mjs'), config)
     }
   })
   afterEach(async () => {

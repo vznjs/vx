@@ -39,7 +39,7 @@ describe('a bare name does not select a default build', () => {
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-bare-default-' })
     await writeFile(
-      path.join(root, 'vx.config.mjs'),
+      path.join(root, 'vx.project.mjs'),
       `export default { tasks: { ci: { exec: { command: 'true' } } } }\n`,
     )
     await addProject(

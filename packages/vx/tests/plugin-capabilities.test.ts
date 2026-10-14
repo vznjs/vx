@@ -31,7 +31,7 @@ async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => v
   )
   await Bun.write(path.join(workspaceRoot, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
   await Bun.write(
-    path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+    path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
     `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
   )
   return { workspaceRoot, cleanup: () => rmSync(workspaceRoot, { recursive: true, force: true }) }
@@ -575,7 +575,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { a: { exec: { command: 'echo a' } }, b: { exec: { command: 'echo b' } } } }`,
       )
       await Bun.write(
@@ -619,7 +619,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { hello: {
            exec: { command: 'echo hi > out.txt' },
            cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
@@ -677,7 +677,7 @@ describe('executor capability — end-to-end via run()', () => {
     g.__vxPuts = []
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { hello: {
            exec: { command: 'echo hi > out.txt' },
            cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
@@ -729,7 +729,7 @@ describe('executor capability — end-to-end via run()', () => {
     try {
       await Bun.write(path.join(workspaceRoot, 'pkg-a/src.txt'), 'source\n')
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            codegen: {
              exec: { command: 'echo gen > gen.txt' },
@@ -828,7 +828,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            serve: { exec: { command: 'sleep 30', persistent: {} } },
            e2e: { exec: { command: 'echo e2e' }, dependsOn: ['serve'] },
@@ -881,7 +881,7 @@ describe('executor capability — end-to-end via run()', () => {
         (_, i) => `t${i}: { exec: { command: 'echo ${i}' } }`,
       ).join(',')
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { ${tasks} } }`,
       )
       await Bun.write(
@@ -934,7 +934,7 @@ describe('executor capability — end-to-end via run()', () => {
         (_, i) => `t${i}: { exec: { command: 'echo ${i}' } }`,
       ).join(',')
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { ${tasks} } }`,
       )
       const pool = (low: boolean): string => `{ executor() {
@@ -987,7 +987,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            a: { exec: { command: 'echo a' } },
            b: { exec: { command: 'echo b' } },
@@ -1039,7 +1039,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            hello: { exec: { command: 'echo hi' } },
            docker: { exec: { command: 'echo docker', remote: false } },
@@ -1084,7 +1084,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
       )
       await Bun.write(
@@ -1119,7 +1119,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            install: {
              exec: { command: 'echo i', remote: 'only' },
@@ -1171,7 +1171,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            install: {
              exec: { command: 'echo i', remote: 'only' },
@@ -1214,7 +1214,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
       )
       await writeLocalWorkspace(workspaceRoot)
@@ -1276,7 +1276,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            install: {
              exec: { command: 'echo i', remote: 'only' },
@@ -1311,7 +1311,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            install: {
              exec: { command: 'echo ran > tombstone.txt && exit 1', remote: 'only' },
@@ -1363,7 +1363,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            install: {
              exec: { command: 'exit 1', remote: 'only' },
@@ -1408,7 +1408,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            install: {
              exec: { command: 'echo ran > tombstone.txt', remote: 'only' },
@@ -1449,7 +1449,7 @@ describe('executor capability — end-to-end via run()', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            install: {
              exec: { command: 'echo remote-made > deps/lib.txt', remote: 'only' },
@@ -1538,7 +1538,7 @@ describe('TaskOutcome.where — executor placement attribution', () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: {
            hello: { exec: { command: 'echo hi' } },
          } }`,

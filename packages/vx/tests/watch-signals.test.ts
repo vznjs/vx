@@ -190,7 +190,7 @@ describe('vx watch under a signal (e2e)', () => {
       for await (const chunk of proc.stdout) out += new TextDecoder().decode(chunk)
     })()
     await waitForText(async () => out, 'watching', 10_000)
-    await Bun.write(path.join(dir, 'vx.config.mjs'), config('0.06'))
+    await Bun.write(path.join(dir, 'vx.project.mjs'), config('0.06'))
     const got = path.join(dir, 'got.txt')
     await waitForText(async () => ((await Bun.file(got).exists()) ? 'yes' : ''), 'yes', 10_000)
     proc.kill('SIGINT')
@@ -226,7 +226,7 @@ describe('vx watch under a signal (e2e)', () => {
     await waitForText(async () => err, 'vx watch: cycle failed:', 10_000)
     await waitForText(async () => out, 'watching', 10_000)
     await Bun.write(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default { tasks: { quick: { exec: { command: 'echo fixed > fixed.txt' } } } }`,
     )
     await waitForText(

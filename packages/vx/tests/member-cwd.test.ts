@@ -69,7 +69,7 @@ describe('running from inside a workspace member', () => {
 
     await writeFile(path.join(b, 'package.json'), JSON.stringify({ name: 'b', version: '1.0.0' }))
     await writeFile(
-      path.join(b, 'vx.config.mjs'),
+      path.join(b, 'vx.project.mjs'),
       `export default {
         tasks: {
           build: {
@@ -87,7 +87,7 @@ describe('running from inside a workspace member', () => {
       JSON.stringify({ name: 'a', version: '1.0.0', dependencies: { b: '1.0.0' } }),
     )
     await writeFile(
-      path.join(a, 'vx.config.mjs'),
+      path.join(a, 'vx.project.mjs'),
       `export default {
         tasks: {
           build: {

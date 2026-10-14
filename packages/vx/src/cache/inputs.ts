@@ -58,7 +58,7 @@ export {
   type GitEnumeration,
 } from './git-inputs.js'
 
-// vx-lock.json is committed (so git enumerates it) but it's vx's own
+// vx.lock.json is committed (so git enumerates it) but it's vx's own
 // frozen-config metadata — never a task input. Excluded globally so a
 // re-lock can't bust every cache key the way a tracked source file
 // would. (Literal pattern, not the workspace `LOCKFILE_NAME` constant:
@@ -81,7 +81,7 @@ const ALWAYS_IGNORE = [
   '**/.git/**',
   '**/.vx/**',
   '**/*.tsbuildinfo',
-  '**/vx-lock.json',
+  '**/vx.lock.json',
   // `bun build --compile` writes a transient `.<hash>-<n>.bun-build` intermediate
   // in the cwd. It never rests on disk, so it can't be a real input — but a
   // broad `inputs.files: ['**/*']` on a compile task would try to hash the temp

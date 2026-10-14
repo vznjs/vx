@@ -41,7 +41,7 @@ export default defineProject({
 })
 `
 
-/** Project name → the source of its `vx.config.mjs`. */
+/** Project name → the source of its `vx.project.mjs`. */
 export const CONFIG_TEXTS: Record<string, string> = {
   utils: configText('tsc -b'),
   ui: configText('vite build'),
@@ -78,27 +78,27 @@ export const FILES: Record<string, string> = {
   'bun.lock': '{\n  "lockfileVersion": 1,\n  "workspaces": {}\n}\n',
 
   'packages/utils/package.json': pkg('utils'),
-  'packages/utils/vx.config.mjs': CONFIG_TEXTS['utils']!,
+  'packages/utils/vx.project.mjs': CONFIG_TEXTS['utils']!,
   'packages/utils/src/index.ts': 'export const shout = (s: string) => s.toUpperCase()\n',
   'packages/utils/test/index.test.ts':
     "import { expect, test } from 'bun:test'\nimport { shout } from '../src'\n\ntest('shout', () => expect(shout('hi')).toBe('HI'))\n",
 
   'packages/ui/package.json': pkg('ui', ['utils']),
-  'packages/ui/vx.config.mjs': CONFIG_TEXTS['ui']!,
+  'packages/ui/vx.project.mjs': CONFIG_TEXTS['ui']!,
   'packages/ui/src/button.tsx':
     "import { shout } from 'utils'\n\nexport const Button = ({ label }: { label: string }) => <button>{shout(label)}</button>\n",
   'packages/ui/test/button.test.tsx':
     "import { expect, test } from 'bun:test'\nimport { Button } from '../src/button'\n\ntest('Button', () => expect(Button({ label: 'ok' })).toBeDefined())\n",
 
   'packages/api/package.json': pkg('api', ['utils']),
-  'packages/api/vx.config.mjs': CONFIG_TEXTS['api']!,
+  'packages/api/vx.project.mjs': CONFIG_TEXTS['api']!,
   'packages/api/src/server.ts':
     "import { shout } from 'utils'\n\nexport const greet = (name: string) => shout(`hello, ${name}`)\n",
   'packages/api/test/server.test.ts':
     "import { expect, test } from 'bun:test'\nimport { greet } from '../src/server'\n\ntest('greet', () => expect(greet('you')).toBe('HELLO, YOU'))\n",
 
   'packages/app/package.json': pkg('app', ['ui', 'api']),
-  'packages/app/vx.config.mjs': CONFIG_TEXTS['app']!,
+  'packages/app/vx.project.mjs': CONFIG_TEXTS['app']!,
   'packages/app/src/main.tsx':
     "import { greet } from 'api'\nimport { Button } from 'ui'\n\nexport const App = () => <Button label={greet('reader')} />\n",
   'packages/app/test/main.test.tsx':

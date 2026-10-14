@@ -7,7 +7,7 @@
 //   task's dependencies need, and the workspace-root deny anchor. Writes
 //   are the task's `allow.write` alone — nothing is derived from `cache`.
 //   This module adds nothing implicit on top — no /tmp, no project dir —
-//   so what a task may touch is its vx.config.ts plus those baselines.
+//   so what a task may touch is its vx.project.ts plus those baselines.
 //
 // Network is a domain list, and the run's: SRT's one proxy filters every
 // sandboxed task against the union of the lists the run's tasks declare.

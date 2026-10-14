@@ -147,7 +147,10 @@ onlyBuiltDependencies: []
   await project('lib', {}, devTool ? { tool: link } : undefined)
   await project('other', {})
   if (devTool) await project('tool', {})
-  await write(path.join(root, 'packages', 'app', 'vx.config.mjs'), 'export default { tasks: {} }\n')
+  await write(
+    path.join(root, 'packages', 'app', 'vx.project.mjs'),
+    'export default { tasks: {} }\n',
+  )
   await write(
     path.join(root, 'vx.workspace.mjs'),
     `import { ${pm} } from ${JSON.stringify(PLUGIN_INDEX)}
@@ -201,7 +204,7 @@ describe.each(['bun', 'pnpm', 'npm', 'yarn'] as const)('vx prune with %s()', (pm
           ...installLayer,
           'packages/app/src/index.js',
           'packages/app/vendor/dep-app/package.json',
-          'packages/app/vx.config.mjs',
+          'packages/app/vx.project.mjs',
           'packages/lib/src/index.js',
           'packages/lib/vendor/dep-lib/package.json',
           'vx.workspace.mjs',
@@ -376,7 +379,7 @@ export default { plugins: [bun(), npm()] }
     // in the image cannot start. The import is never evaluated here.
     const root = await bare()
     await write(
-      path.join(root, 'packages', 'a', 'vx.config.mjs'),
+      path.join(root, 'packages', 'a', 'vx.project.mjs'),
       `export default { tasks: {} }
 export const later = () => import('tool/plugin.mjs')
 `,

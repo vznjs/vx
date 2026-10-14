@@ -2,7 +2,7 @@
 // and memos in its own `.vx/cache`, and the entries and artifacts live in
 // its repository's store under `~/.vx/<id>/cache`, so one checkout hits what
 // another saved and another repository does not. The
-// suite runs with VX_CACHE_DIR set (vx.config.ts); every row here unsets
+// suite runs with VX_CACHE_DIR set (vx.project.ts); every row here unsets
 // it and points HOME at a temp directory of its own.
 
 import { Database } from 'bun:sqlite'

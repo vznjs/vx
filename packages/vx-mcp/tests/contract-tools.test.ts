@@ -71,7 +71,7 @@ beforeAll(async () => {
     JSON.stringify({ name: 'b', scripts: { lint: 'true' } }),
   )
   await writeFile(
-    path.join(root, 'packages', 'a', 'vx.config.mjs'),
+    path.join(root, 'packages', 'a', 'vx.project.mjs'),
     "export default { tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } }, fail: { exec: { command: 'echo src/x.js:1:2; exit 1' } } } }\n",
   )
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })

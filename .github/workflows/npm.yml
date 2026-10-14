@@ -15,7 +15,7 @@ name: npm publish
 # vx-reapi, vx-schedule-history), linking this repo + this workflow.
 #
 # Every step past the setup is a `release.*` vx task (packages/vx/
-# vx.config.ts, scripts/release.ts): CI runs vx tasks, not commands of its
+# vx.project.ts, scripts/release.ts): CI runs vx tasks, not commands of its
 # own (owner, 2026-10-03). The version reaches them as VX_RELEASE_VERSION,
 # never pasted into a script, and each refuses one that is not a version
 # (L-28).

@@ -34,7 +34,7 @@ async function fixture(plugins: string[]): Promise<string> {
   )
   await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
   await Bun.write(
-    path.join(root, 'pkg-a/vx.config.mjs'),
+    path.join(root, 'pkg-a/vx.project.mjs'),
     `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }\n`,
   )
   await Bun.write(path.join(root, 'vx.workspace.mjs'), localWorkspaceSource(plugins))

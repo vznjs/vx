@@ -33,7 +33,7 @@ it('each name that makes Bun run a config as CommonJS keeps it CommonJS', async 
     'assignts.ts': `const config = { tasks: ${TASKS} }\nexport = config\n`,
   }
   for (const [name, source] of Object.entries(forms)) {
-    const file = path.join(dir, name.replace('.', '/vx.config.'))
+    const file = path.join(dir, name.replace('.', '/vx.project.'))
     await mkdir(path.dirname(file))
     await writeFile(file, source)
     expect([name, (await loadProjectConfig(file)).tasks?.build?.exec?.command]).toEqual([
@@ -46,25 +46,25 @@ it('each name that makes Bun run a config as CommonJS keeps it CommonJS', async 
 it('a syntax error in a served config names the file and line, never the query', async () => {
   const real = path.join(dir, 'real')
   await mkdir(real)
-  await writeFile(path.join(real, 'vx.config.mjs'), 'const x = {\n')
+  await writeFile(path.join(real, 'vx.project.mjs'), 'const x = {\n')
   await symlink(real, path.join(dir, 'link'))
   const message = (file: string) =>
     loadProjectConfig(file).then(
       () => 'loaded',
       (err: Error) => err.message,
     )
-  const direct = path.join(real, 'vx.config.mjs')
+  const direct = path.join(real, 'vx.project.mjs')
   expect(await message(direct)).toBe(
     `Project config ${direct}:1:12: Expected identifier but found end of file`,
   )
-  const linked = path.join(dir, 'link', 'vx.config.mjs')
+  const linked = path.join(dir, 'link', 'vx.project.mjs')
   expect(await message(linked)).toBe(
     `Project config ${linked} (in ${direct}:1:12): Expected identifier but found end of file`,
   )
 })
 
 it('CONTROL: an ESM config loads', async () => {
-  const file = path.join(dir, 'vx.config.mjs')
+  const file = path.join(dir, 'vx.project.mjs')
   await writeFile(file, `export default { tasks: ${TASKS} }\n`)
   expect((await loadProjectConfig(file)).tasks?.build?.exec?.command).toBe('tsc')
 })

@@ -30,7 +30,7 @@ afterEach(async () => {
 })
 
 async function show(config: string, env: Record<string, string> = {}) {
-  const file = path.join(root, 'packages', 'a', 'vx.config.mjs')
+  const file = path.join(root, 'packages', 'a', 'vx.project.mjs')
   await writeFile(file, config)
   const proc = Bun.spawn([process.execPath, BIN, 'show', 'a'], {
     cwd: root,

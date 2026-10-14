@@ -16,7 +16,7 @@ export async function migrateViteTask(
   const tracked = await trackedFiles(root)
   const mapped = await mapViteTaskWorkspace(root, withRoot.metas, {
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
-    ownConfig: () => `vx.config.${format}`,
+    ownConfig: () => `vx.project.${format}`,
     sourceNames: (dirs) => spelledNames(root, dirs, tracked),
   })
   // A reader whose `!` hides a committed file under another task's output

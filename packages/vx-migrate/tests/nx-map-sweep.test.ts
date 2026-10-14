@@ -823,7 +823,7 @@ describe('nx-map: a wildcard-first output', () => {
       undefined,
       [
         'output "**/*.shot": a wildcard first segment reaches the sources, which vx cleans ' +
-          'before every run — task runs uncached; declare the exact outputs in a vx.config to cache it',
+          'before every run — task runs uncached; declare the exact outputs in a vx.project to cache it',
       ],
       true,
     ])

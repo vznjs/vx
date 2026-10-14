@@ -398,24 +398,24 @@ describe("the page's Run, over the planner the site ships", () => {
 
   it('names the project and file of a config that does not evaluate', async () => {
     const broken = CONFIG_TEXTS['api']!.replace(/\}\)\n$/, ')\n')
-    const r = await run({ ...FILES, 'packages/api/vx.config.mjs': broken }, new Set())
+    const r = await run({ ...FILES, 'packages/api/vx.project.mjs': broken }, new Set())
     expect(r.ok).toBe(false)
     const errors = r.ok ? [] : r.errors
     expect(errors).toHaveLength(1)
     // The rest is the engine's: Bun says AggregateError, Chromium SyntaxError.
-    expect(errors[0]).toMatch(/^api \(packages\/api\/vx\.config\.mjs\): \w+Error: \S/)
+    expect(errors[0]).toMatch(/^api \(packages\/api\/vx\.project\.mjs\): \w+Error: \S/)
   })
 
   it("shows core's refusal of a config unchanged", async () => {
     const text = CONFIG_TEXTS['app']!.replace("command: 'astro build --root docs'", 'command: 42')
-    const r = await run({ ...FILES, 'packages/app/vx.config.mjs': text }, new Set())
+    const r = await run({ ...FILES, 'packages/app/vx.project.mjs': text }, new Set())
     const evaluated = await planner.evaluateConfig(text, 10_000)
     if (!evaluated.ok) throw new Error(evaluated.error)
     const core = (() => {
       try {
         validateProjectConfig(
           evaluated.config as ProjectConfig,
-          `${PLAYGROUND_ROOT}/packages/app/vx.config.mjs`,
+          `${PLAYGROUND_ROOT}/packages/app/vx.project.mjs`,
         )
       } catch (e) {
         return (e as Error).message
@@ -443,7 +443,7 @@ describe("the page's Run, around the planner", () => {
     const planner: Planner = {
       listPlaygroundProjects: async () => [
         { name: 'bare', configFile: null },
-        { name: 'b', configFile: 'b/vx.config.mjs' },
+        { name: 'b', configFile: 'b/vx.project.mjs' },
       ],
       evaluateConfig: async (text) => {
         evaluated.push(text)
@@ -464,7 +464,7 @@ describe("the page's Run, around the planner", () => {
     return { planner, evaluated }
   }
   const input = {
-    files: { 'b/vx.config.mjs': 'the text' },
+    files: { 'b/vx.project.mjs': 'the text' },
     env: {},
     tasks: ['build'],
     cached: new Set(['old']),
@@ -526,9 +526,9 @@ describe('the static table and its inputs, at the edges', () => {
         name: '@x/a',
         dependencies: { '@x/b': '*', react: '*' },
       }),
-      'packages/a/vx.config.mjs': 'a',
+      'packages/a/vx.project.mjs': 'a',
       'packages/b/package.json': JSON.stringify({ name: '@x/b' }),
-      'packages/c/vx.config.mjs': 'c',
+      'packages/c/vx.project.mjs': 'c',
     }
     expect(configTextsOf(files)).toEqual({ '@x/a': 'a' })
     expect(staticProjects(files, { '@x/a': {} })).toEqual([

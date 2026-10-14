@@ -70,7 +70,7 @@ describe('prepareRun perf surface', () => {
     }
   })
 
-  it('handles a package without vx.config.* (no parallel-Promise.all crash)', async () => {
+  it('handles a package without vx.project.* (no parallel-Promise.all crash)', async () => {
     // Regression: the parallel-load path filters out projects that
     // have no configPath; we still successfully prepare with the
     // remaining configured projects.
@@ -81,11 +81,11 @@ describe('prepareRun perf surface', () => {
       path.join(bareDir, 'package.json'),
       JSON.stringify({ name: 'bare', version: '0.0.0' }),
     )
-    // Intentionally no vx.config.* in 'bare'.
+    // Intentionally no vx.project.* in 'bare'.
 
     const prepared = await prepareRun({ cwd: root, tasks: ['build'] }, log)
     try {
-      // Configured project has a node; bare project has no vx.config
+      // Configured project has a node; bare project has no vx.project
       // so it never enters the graph.
       expect(prepared.nodes.has('configured#build')).toBe(true)
       expect(prepared.nodes.has('bare#build')).toBe(false)

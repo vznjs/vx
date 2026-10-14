@@ -13,7 +13,7 @@ const root = base.replace(/\/?$/, '/')
 
 export default defineConfig({
   // Both caches under `.astro/`, not node_modules: see the `build` task's
-  // sandbox grants in vx.config.ts for why a write under node_modules breaks
+  // sandbox grants in vx.project.ts for why a write under node_modules breaks
   // module resolution inside the Linux sandbox.
   cacheDir: './.astro/cache',
   vite: {

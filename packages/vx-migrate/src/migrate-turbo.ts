@@ -52,7 +52,7 @@ export async function migrateTurbo(
     manifestField: (key) => ({ raw: `pkg.${key}` }),
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.
-    ownConfig: () => `vx.config.${format}`,
+    ownConfig: () => `vx.project.${format}`,
     sourceNames: (dirs) => spelledNames(root, dirs, tracked),
     ignored: (rels) => gitIgnored(root, rels),
   })
@@ -81,7 +81,7 @@ export async function migrateTurbo(
     const readsManifest = p.tasks.some((t) => JSON.stringify(t.task ?? {}).includes('"pkg.'))
     const sealed =
       used.size > 0 &&
-      sealsConfig(root, path.join(path.resolve(root, p.dir), `vx.config.${format}`))
+      sealsConfig(root, path.join(path.resolve(root, p.dir), `vx.project.${format}`))
     if (used.size > 0 && !sealed) imported = true
     if (sealed) anySealed = true
     return {
@@ -120,7 +120,7 @@ export async function migrateTurbo(
 
 /**
  * The workspace root as a project when turbo.json declares `//#` tasks and
- * no glob lists the root: the `vx.config.ts` written there is what makes
+ * no glob lists the root: the `vx.project.ts` written there is what makes
  * core read it as one (D-39), as `turbo()`'s `discover` hook does live.
  * Five of eleven real Turbo repos had root
  * tasks, and 36 edges to them were dropped (G-49).

@@ -7,7 +7,7 @@
 // written, minus the file. Executor targets run through `nx-exec` (one
 // executor, one process, Nx's own `runExecutor`) unless the workspace
 // translates the executor (`executors`); run-commands targets
-// run as the shell they are. A task the package's own vx.config already
+// run as the shell they are. A task the package's own vx.project already
 // declares wins; the plugin never overwrites a user's hand.
 //
 // The graph: Nx resolves plugin-inferred targets, `targetDefaults`,

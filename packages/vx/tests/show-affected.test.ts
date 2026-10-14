@@ -69,11 +69,11 @@ async function fixture(yTest: string): Promise<string> {
   await write('vx.workspace.mjs', 'export default {}\n')
   await write('pkgs/x/package.json', JSON.stringify({ name: 'x' }))
   await write(
-    'pkgs/x/vx.config.mjs',
+    'pkgs/x/vx.project.mjs',
     `export default { tasks: { test: { exec: { command: 'echo t' } } } }\n`,
   )
   await write('pkgs/y/package.json', JSON.stringify({ name: 'y', dependencies: { x: '*' } }))
-  await write('pkgs/y/vx.config.mjs', `export default { tasks: { test: ${yTest} } }\n`)
+  await write('pkgs/y/vx.project.mjs', `export default { tasks: { test: ${yTest} } }\n`)
   git(root, 'init', '-q')
   git(root, 'add', '-A')
   git(root, 'commit', '-qm', 'init')

@@ -8,7 +8,7 @@ vulnerability), never in a public issue.
 
 ## What vx trusts
 
-- **Your configs.** `vx.config.ts` and `vx.workspace.ts` are programs vx
+- **Your configs.** `vx.project.ts` and `vx.workspace.ts` are programs vx
   runs in its own process. A config can do anything you can: vx
   validates what it returns, not what it does. The workspace root is
   the nearest `vx.workspace.*`, and vx never looks for it above the git
@@ -210,7 +210,7 @@ the key stays the same. What reaches the agent (summaries, refusals,
 `getFailures` output) is masked as described under Secrets.
 `mcp({ run: false })` takes `runTasks` away, and `mcp({ run: ['test'] })`
 limits it to those task names. An agent that
-can edit `vx.config.ts` can run anything, as you can, because configs are
+can edit `vx.project.ts` can run anything, as you can, because configs are
 code vx trusts.
 
 ## Secrets

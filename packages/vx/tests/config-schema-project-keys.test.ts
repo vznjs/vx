@@ -1,11 +1,11 @@
-// Keys pasted into a project's vx.config from package.json, turbo.json and
+// Keys pasted into a project's vx.project from package.json, turbo.json and
 // project.json, or a task's field one level too high, name vx's home (D-99).
 import { expect, it } from 'bun:test'
 import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
 const where = (key: string): string | undefined => {
   try {
-    validateProjectConfig({ [key]: {} } as never, 'vx.config.ts')
+    validateProjectConfig({ [key]: {} } as never, 'vx.project.ts')
   } catch (err) {
     return (err as Error).message.split(' — ')[1]
   }
@@ -20,7 +20,7 @@ it("names vx's home for a project key another tool spells (D-99)", () => {
     'vx spells it `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)',
   )
   expect(where('namedInputs')).toBe(
-    'vx spells it a module the vx.config imports, spread into `cache.inputs.files`',
+    'vx spells it a module the vx.project imports, spread into `cache.inputs.files`',
   )
   expect(where('root')).toBe(
     "vx spells it no field: a project's directory is where its package.json sits",

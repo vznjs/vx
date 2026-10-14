@@ -20,12 +20,12 @@ const judgeIn = (root: string) =>
 
 it('a temporary file renamed away does not name the cycle', async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-label-'))
-  const config = path.join(dir, 'vx.config.mjs')
+  const config = path.join(dir, 'vx.project.mjs')
   await writeFile(config, 'export default {}\n')
   const judge = judgeIn(dir)
   judge.pending.set(path.join(dir, 'sedzCKbWc'), 'app sedzCKbWc')
-  judge.pending.set(config, 'app vx.config.mjs')
-  expect(judge.judge()).toBe('app vx.config.mjs')
+  judge.pending.set(config, 'app vx.project.mjs')
+  expect(judge.judge()).toBe('app vx.project.mjs')
 })
 
 // Control: a deletion alone still names the cycle.

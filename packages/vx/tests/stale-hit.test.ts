@@ -114,7 +114,7 @@ describe('stale cache hits', () => {
       await write(path.join(pkg, 'src', 't.txt'), 'real')
       await symlink('t.txt', path.join(pkg, 'src', 'l.txt'))
       await write(
-        path.join(pkg, 'vx.config.mjs'),
+        path.join(pkg, 'vx.project.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o && cat src/l.txt >> dist/o' },
            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
@@ -163,7 +163,7 @@ describe('stale cache hits', () => {
         await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
         await write(path.join(pkg, 'src', 'run.sh'), 'echo hi\n')
         await write(
-          path.join(pkg, 'vx.config.mjs'),
+          path.join(pkg, 'vx.project.mjs'),
           `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o' },
            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
@@ -208,7 +208,7 @@ describe('stale cache hits', () => {
       const pkg = path.join(root, 'packages', 'p')
       await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
       await write(
-        path.join(pkg, 'vx.config.mjs'),
+        path.join(pkg, 'vx.project.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cp src/v.txt dist/v.txt && touch -t 200109090146.40 dist/v.txt' },
            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
@@ -243,7 +243,7 @@ describe('stale cache hits', () => {
       await write(path.join(pkg, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
       await write(path.join(pkg, 'src', 'in.txt'), 's')
       await write(
-        path.join(pkg, 'vx.config.mjs'),
+        path.join(pkg, 'vx.project.mjs'),
         `export default { tasks: { gen: {
            exec: { command: 'mkdir -p ../../shared && printf g > ../../shared/g.txt' },
            cache: {
@@ -282,7 +282,7 @@ describe('stale cache hits', () => {
       await writeLocalWorkspace(root)
       await write(path.join(root, 'src', 'in.txt'), 's')
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && printf a > dist/a.txt && printf b > dist/b.txt' },
            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
@@ -316,7 +316,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -362,7 +362,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              codegen: {
@@ -414,7 +414,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              codegen: {
@@ -463,7 +463,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              codegen: {
@@ -523,7 +523,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              early: {
@@ -579,7 +579,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              early: {
@@ -633,7 +633,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              early: {
@@ -693,7 +693,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              early: {
@@ -749,7 +749,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -791,7 +791,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -833,7 +833,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              codegen: {
@@ -888,7 +888,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -940,7 +940,7 @@ describe('stale cache hits', () => {
         await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
         await writeLocalWorkspace(root)
         await write(
-          path.join(root, 'vx.config.mjs'),
+          path.join(root, 'vx.project.mjs'),
           `export default {
            tasks: {
              build: {
@@ -992,7 +992,7 @@ describe('stale cache hits', () => {
       const proj = path.join(root, 'packages', 'app')
       await write(path.join(proj, 'package.json'), '{"name":"app","version":"1.0.0"}')
       await write(
-        path.join(proj, 'vx.config.mjs'),
+        path.join(proj, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -1043,7 +1043,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -1105,7 +1105,7 @@ describe('stale cache hits', () => {
           await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
           await writeLocalWorkspace(root)
           await write(
-            path.join(root, 'vx.config.mjs'),
+            path.join(root, 'vx.project.mjs'),
             `export default { tasks: { build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
@@ -1161,7 +1161,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -1204,7 +1204,7 @@ describe('stale cache hits', () => {
         await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
         await writeLocalWorkspace(root)
         await write(
-          path.join(root, 'vx.config.mjs'),
+          path.join(root, 'vx.project.mjs'),
           `export default {
              tasks: {
                build: {
@@ -1385,7 +1385,7 @@ describe('stale cache hits', () => {
         JSON.stringify({ name: 'app', dependencies: { gen: '*' } }),
       )
       await write(
-        path.join(root, 'pkgs/gen/vx.config.mjs'),
+        path.join(root, 'pkgs/gen/vx.project.mjs'),
         [
           'export default { tasks: { codegen: {',
           '  exec: { command: "mkdir -p ../app/gen out && cat src/version.txt > ../app/gen/out.txt && cp src/version.txt out/marker.txt" },',
@@ -1398,7 +1398,7 @@ describe('stale cache hits', () => {
         ].join('\n'),
       )
       await write(
-        path.join(root, 'pkgs/app/vx.config.mjs'),
+        path.join(root, 'pkgs/app/vx.project.mjs'),
         [
           'export default { tasks: { build: {',
           '  dependsOn: ["gen#codegen"],',
@@ -1459,7 +1459,7 @@ describe('stale cache hits', () => {
         await write(path.join(ws, 'package.json'), '{"name":"r","private":true}')
         await writeLocalWorkspace(ws)
         await write(
-          path.join(ws, 'vx.config.mjs'),
+          path.join(ws, 'vx.project.mjs'),
           `export default {
              tasks: {
                build: {
@@ -1507,7 +1507,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -1575,7 +1575,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
     await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
     await writeLocalWorkspace(root)
     await write(
-      path.join(root, 'vx.config.mjs'),
+      path.join(root, 'vx.project.mjs'),
       `export default { tasks: { build: {
          exec: { command: ${JSON.stringify(command)} },
          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
@@ -1637,7 +1637,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       // The workspace half keeps its own copy of the refusal (A-31).
       await project('mkdir -p dist && cat shared/* > dist/all')
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cat shared/* > dist/all' },
            cache: { inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: ['dist/**'] } },
@@ -1714,14 +1714,14 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       '{"name":"app","version":"1.0.0","dependencies":{"lib":"workspace:*"}}',
     )
     await write(
-      path.join(lib, 'vx.config.mjs'),
+      path.join(lib, 'vx.project.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
        } } }\n`,
     )
     await write(
-      path.join(app, 'vx.config.mjs'),
+      path.join(app, 'vx.project.mjs'),
       `export default { tasks: { build: {
          dependsOn: ['^build'],
          exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
@@ -1743,7 +1743,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     const base = path.join(root, 'packages', 'base')
     await write(path.join(base, 'package.json'), '{"name":"base","version":"1.0.0"}')
     await write(
-      path.join(base, 'vx.config.mjs'),
+      path.join(base, 'vx.project.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && cat src/b.txt > dist/b.txt' },
          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
@@ -1755,7 +1755,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       '{"name":"lib","version":"1.0.0","dependencies":{"base":"workspace:*"}}',
     )
     await write(
-      path.join(lib, 'vx.config.mjs'),
+      path.join(lib, 'vx.project.mjs'),
       `export default { tasks: { build: {
          dependsOn: ['^build'],
          exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
@@ -1812,7 +1812,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     async () => {
       const { app } = await libApp()
       await write(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         `export default { tasks: {
            prep: {
              exec: { command: 'mkdir -p gen && cat src/a.txt > gen/a.txt' },
@@ -1879,7 +1879,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         ['lib', "'^build'"],
       ] as const) {
         await write(
-          path.join(root, 'packages', dir, 'vx.config.mjs'),
+          path.join(root, 'packages', dir, 'vx.project.mjs'),
           `export default { tasks: {
              gen: { dependsOn: [${dep}], exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
              build: {
@@ -1910,7 +1910,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
   // the one the live path gives it, whatever its shape.
   const withLibConfig = async (config: string): Promise<void> => {
     await libApp()
-    await write(path.join(root, 'packages', 'lib', 'vx.config.mjs'), config)
+    await write(path.join(root, 'packages', 'lib', 'vx.project.mjs'), config)
     git(root, 'add', '-A')
     git(root, 'commit', '-q', '-m', 'lib shape')
   }
@@ -1957,7 +1957,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          } } }\n`,
       )
       await write(
-        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        path.join(root, 'packages', 'app', 'vx.project.mjs'),
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
@@ -1991,7 +1991,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          } } }\n`,
       )
       await write(
-        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        path.join(root, 'packages', 'app', 'vx.project.mjs'),
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
@@ -2021,7 +2021,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await write(path.join(inner, 'package.json'), '{"name":"inner","version":"1.0.0"}')
       // Config-bearing: a package with no config and no \`project\` plugin
       // is only a directory of its parent (prepare.ts), fenced by nothing.
-      await write(path.join(inner, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      await write(path.join(inner, 'vx.project.mjs'), 'export default { tasks: {} }\n')
       await write(path.join(inner, 'src', 'i.txt'), 'i')
       await write(
         path.join(root, 'pnpm-workspace.yaml'),
@@ -2071,7 +2071,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       const top = path.join(root, 'packages', 'top')
       await write(path.join(tool, 'package.json'), '{"name":"tool","version":"1.0.0"}')
       await write(
-        path.join(tool, 'vx.config.mjs'),
+        path.join(tool, 'vx.project.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'true' },
            cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
@@ -2083,7 +2083,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         '{"name":"top","version":"1.0.0","dependencies":{"tool":"workspace:*"}}',
       )
       await write(
-        path.join(top, 'vx.config.mjs'),
+        path.join(top, 'vx.project.mjs'),
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'true' },
@@ -2116,7 +2116,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     async () => {
       const { app } = await libApp()
       await write(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
@@ -2175,7 +2175,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     async () => {
       const { app } = await libApp()
       await write(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         `export default { tasks: {
          build: {
            dependsOn: ['^build'],
@@ -2206,7 +2206,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     async () => {
       const { lib, app } = await libApp()
       await write(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         `export default { tasks: {
          deps: { dependsOn: ['^build'] },
          build: {

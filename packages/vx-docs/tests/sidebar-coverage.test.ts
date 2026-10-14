@@ -18,7 +18,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { SIDEBAR } from '../src/nav/sections.js'
-import config from '../vx.config.ts'
+import config from '../vx.project.ts'
 import { collectionPages } from './collection.js'
 
 const SITE = path.resolve(import.meta.dir, '..')

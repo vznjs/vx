@@ -88,7 +88,7 @@ it('each stateful and signalled outcome exits as tests/contract/exit-codes-state
   expect(vx('lock')).toBe(0)
   // The control: the drift below, not the fixture, is what fails the check.
   expect(vx('lock', '--check')).toBe(0)
-  await Bun.write(path.join(root, 'packages', 'a', 'vx.config.mjs'), config('echo drift'))
+  await Bun.write(path.join(root, 'packages', 'a', 'vx.project.mjs'), config('echo drift'))
   live['lock --check: a config drifted: vx lock --check'] = vx('lock', '--check')
   live['show: an unknown target: vx show nope'] = vx('show', 'nope')
   expect(vx('run', 'build', '--all')).toBe(0)

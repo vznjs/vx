@@ -41,6 +41,6 @@ it('reads a vite.config under a directory whose name holds a backslash', async (
   })
   const err = await new Response(proc.stderr).text()
   expect({ code: await proc.exited, err }).toEqual({ code: 0, err: '' })
-  const tasks = (await loadProjectConfig(path.join(dir, 'vx.config.ts'))).tasks!
+  const tasks = (await loadProjectConfig(path.join(dir, 'vx.project.ts'))).tasks!
   expect(tasks['build']!.exec!.command).toBe('tsc')
 })

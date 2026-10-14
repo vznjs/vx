@@ -12,7 +12,7 @@
 //
 // Out of scope: `index.ts` façades (the public API, pinned by the boundary
 // tests), `bin.ts` entrypoints, and the files a framework reads by name
-// (`content.config.ts`, `vx.config.ts`, `astro.config.mjs`, the site's
+// (`content.config.ts`, `vx.project.ts`, `astro.config.mjs`, the site's
 // Starlight route middleware, whose `onRequest` Starlight imports, and a
 // site page's `getStaticPaths`, which Astro reads by name).
 import { readFileSync } from 'node:fs'
@@ -23,7 +23,7 @@ const repo = path.resolve(import.meta.dir, '..', '..', '..')
 
 const CODE = /\.(?:ts|mts|cts|js|mjs|cjs|astro)$/
 const SKIP =
-  /(?:^|\/)(?:index\.ts|bin\.ts|content\.config\.ts|vx\.config\.ts|vx\.workspace\.ts|astro\.config\.mjs)$|^packages\/vx-docs\/src\/nav\/route-data\.ts$/
+  /(?:^|\/)(?:index\.ts|bin\.ts|content\.config\.ts|vx\.project\.ts|vx\.workspace\.ts|astro\.config\.mjs)$|^packages\/vx-docs\/src\/nav\/route-data\.ts$/
 const FRAMEWORK_READ = (file: string, name: string): boolean =>
   name === 'getStaticPaths' && /^packages\/vx-docs\/src\/pages\/.*\.(?:astro|ts)$/.test(file)
 const DECLARATION =

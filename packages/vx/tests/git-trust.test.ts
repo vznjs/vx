@@ -211,7 +211,7 @@ describe('a .gitattributes the index does not hold as clean', () => {
     git(
       'add',
       path.join(dir, 'src.txt'),
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       path.join(dir, 'package.json'),
     )
     git('commit', '-q', '-m', 'fixture')

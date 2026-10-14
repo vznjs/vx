@@ -85,7 +85,7 @@ describe('every test file is launched by a task', () => {
     const orphans: string[] = []
     for (const name of packages) {
       const dir = path.join(packagesDir, name)
-      const config = (await import(path.join(dir, 'vx.config.ts'))) as { default: ConfigLike }
+      const config = (await import(path.join(dir, 'vx.project.ts'))) as { default: ConfigLike }
       const commands = Object.entries(config.default.tasks ?? {})
         .filter(([task]) => task === 'test' || task.startsWith('test.'))
         .map(([, task]) => task.exec?.command)
@@ -107,7 +107,7 @@ describe('every test file is launched by a task', () => {
     const launchers: string[] = []
     const verbose: string[] = []
     for (const name of packages) {
-      const config = (await import(path.join(packagesDir, name, 'vx.config.ts'))) as {
+      const config = (await import(path.join(packagesDir, name, 'vx.project.ts'))) as {
         default: ConfigLike
       }
       for (const [task, t] of Object.entries(config.default.tasks ?? {})) {

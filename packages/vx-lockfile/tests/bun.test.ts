@@ -444,7 +444,7 @@ describe('vx run with bun() declared', () => {
       await mkdir(path.join(dir, 'src'), { recursive: true })
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
       await writeFile(path.join(dir, 'src', 'index.js'), `// ${name}\n`)
-      await writeFile(path.join(dir, 'vx.config.mjs'), BUILD)
+      await writeFile(path.join(dir, 'vx.project.mjs'), BUILD)
     }
     await writeFile(path.join(root, 'bun.lock'), lock())
     await writeFile(

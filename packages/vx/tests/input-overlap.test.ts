@@ -44,7 +44,7 @@ function refusal(
     entries.set(name, {
       name,
       dir: `/w/${name}`,
-      configPath: `/w/${name}/vx.config.ts`,
+      configPath: `/w/${name}/vx.project.ts`,
       config: { tasks } as ProjectConfig,
     } as ProjectEntry)
   }

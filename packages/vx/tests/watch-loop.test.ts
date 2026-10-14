@@ -103,7 +103,7 @@ describe('vx watch loop (e2e)', () => {
 
     // The config's command changes; the lock still holds the old one, so
     // the cycle this edit starts is a hit and executes nothing.
-    const config = path.join(f.dir, 'vx.config.mjs')
+    const config = path.join(f.dir, 'vx.project.mjs')
     const before = await readFile(config, 'utf8')
     await writeFile(config, before.replace('cat src/*.txt', 'cat src/*.txt src/*.txt'))
     await until(() => w.cycles() === 1, 'the cycle the config edit starts')
@@ -121,7 +121,7 @@ describe('vx watch loop (e2e)', () => {
     // ignore folded every task's outputs, so `build`'s `src` edits were
     // ignored and no cycle ran, while `vx run build` would have run it.
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `export default { tasks: {
         build: {
           exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
@@ -149,7 +149,7 @@ describe('vx watch loop (e2e)', () => {
     await writeFile(path.join(f.dir, '.gitignore'), '.env.local\nshown.txt\n')
     await writeFile(path.join(f.dir, '.env.local'), 'A=1\n')
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `export default { tasks: {
         show: { exec: { command: 'cat .env.local > shown.txt && echo run >> ${f.log}' } },
       } }\n`,
@@ -184,7 +184,7 @@ describe('vx watch loop (e2e)', () => {
     await mkdir(path.join(f.root, 'shared'), { recursive: true })
     await writeFile(path.join(f.root, 'shared', 'preset.mjs'), "export const word = 'ONE'\n")
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `import { word } from '../../shared/preset.mjs'
       export default { tasks: {
         build: { exec: { command: 'echo ' + word + ' > said.txt && echo run >> ${f.log}' } },
@@ -493,7 +493,7 @@ describe('vx watch with a persistent task (e2e)', () => {
     expect(isAlive(first!)).toBe(true)
 
     // Its own config changed: the old one goes before the new one starts.
-    const cfg = path.join(dir, 'vx.config.mjs')
+    const cfg = path.join(dir, 'vx.project.mjs')
     await writeFile(cfg, (await readFile(cfg, 'utf8')).replace('echo READY', 'echo READY again'))
     await until(() => runsEnded(w) === 3, 'the end of the cycle after a config edit')
     const all = await readPids()
@@ -514,7 +514,7 @@ describe('vx watch with a persistent task (e2e)', () => {
     // the 0.3 s to arm, so no cycle ever started (CI, 2026-10-06).
     const armed = path.join(outside, 'armed')
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default { tasks: { dev: { exec: {
         command: 'echo $$ >> ${pids}; echo READY; until [ -e ${armed} ]; do sleep 0.05; done; while :; do sleep 0.3; date +%s%N > server.log; done',
         persistent: { readyWhen: 'READY' },
@@ -553,7 +553,7 @@ describe('vx watch in a single-project repository (e2e)', () => {
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'solo' }))
       await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
       await writeFile(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
           tasks: {
             build: {

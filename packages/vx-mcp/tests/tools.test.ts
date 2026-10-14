@@ -1592,7 +1592,7 @@ describe('listTasks masks a declared secret in a command', () => {
       const dir = path.join(root, 'packages', 'a')
       await Bun.write(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
       await Bun.write(
-        path.join(dir, 'vx.config.mjs'),
+        path.join(dir, 'vx.project.mjs'),
         `export default { tasks: {
   deploy: { exec: { command: \`deploy --token \${process.env.VX_L26_TOKEN}\`, env: { secret: ['VX_L26_TOKEN'] } } },
   plain: { exec: { command: \`echo \${process.env.VX_L26_PLAIN}\` } },

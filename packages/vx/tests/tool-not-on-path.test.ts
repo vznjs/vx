@@ -98,7 +98,7 @@ describe('a tool that is not on the PATH vx built', () => {
     await writeFile(script, '#!/nonexistent/interp\necho hi\n')
     await chmod(script, 0o755)
     await writeFile(
-      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      path.join(root, 'packages', 'app', 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: './run.sh' } } } }\n`,
     )
     const r = vx(root, bin, ['run', 'build', '--all'])
@@ -115,7 +115,7 @@ describe('a tool that is not on the PATH vx built', () => {
     const script = path.join(root, 'packages', 'app', 'run.sh')
     await writeFile(script, '#!/bin/sh\necho hi\n')
     await writeFile(
-      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      path.join(root, 'packages', 'app', 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: './run.sh' } } } }\n`,
     )
     const r = vx(root, bin, ['run', 'build', '--all'])

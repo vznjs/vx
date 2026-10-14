@@ -47,7 +47,7 @@ describe.if(armed)('vx run with reapi({ execute: true }) — the install-as-acti
       await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
       await writeFile(path.join(root, 'pkg', 'src', 'app.js'), 'console.log("app")\n')
       await writeFile(
-        path.join(root, 'pkg', 'vx.config.mjs'),
+        path.join(root, 'pkg', 'vx.project.mjs'),
         `export default { tasks: {
            install: {
              exec: { command: 'mkdir -p node_modules/liba && echo from-worker > node_modules/liba/index.js', remote: 'only' },
@@ -127,7 +127,7 @@ describe.if(armed)('vx run with reapi({ execute: true }) — the install-as-acti
       await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
       await writeFile(path.join(root, 'pkg', 'src', 'app.js'), `console.log(${Date.now()})\n`)
       await writeFile(
-        path.join(root, 'pkg', 'vx.config.mjs'),
+        path.join(root, 'pkg', 'vx.project.mjs'),
         `export default { tasks: {
            build: {
              exec: { command: 'cat src/app.js > out.txt && echo built' },

@@ -28,7 +28,7 @@ async function makeWorkspace(opts?: { withDep?: boolean }): Promise<string> {
   await writeLocalWorkspace(root)
   await writeFile(path.join(root, 'input.txt'), 'in')
   await writeFile(
-    path.join(root, 'vx.config.mjs'),
+    path.join(root, 'vx.project.mjs'),
     [
       'export default {',
       '  tasks: {',
@@ -112,7 +112,7 @@ async function makeCrossProject(): Promise<string> {
       }),
     )
     await writeFile(path.join(dir, 'src.txt'), name)
-    await writeFile(path.join(dir, 'vx.config.mjs'), body.join('\n'))
+    await writeFile(path.join(dir, 'vx.project.mjs'), body.join('\n'))
   }
   gitInitCommit(root)
   return root
@@ -209,7 +209,7 @@ describe('in-flight dedup', () => {
       const root = await makeWorkspace()
       try {
         await writeFile(
-          path.join(root, 'vx.config.mjs'),
+          path.join(root, 'vx.project.mjs'),
           `export default {
   tasks: {
     meet: {

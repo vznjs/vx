@@ -37,7 +37,7 @@ seam a plugin can fill:
 
 1. **Discover** the projects in the workspace (the package manager's
    workspace globs, one `package.json` each).
-2. **Evaluate** each `vx.config.ts`. Configs are TypeScript programs,
+2. **Evaluate** each `vx.project.ts`. Configs are TypeScript programs,
    not JSON; the pipeline sees the object they evaluate to.
 3. **Build** one task graph across the whole workspace from `dependsOn`
    and the package dependency graph.

@@ -55,7 +55,7 @@ async function addProject(name: string, tasks: string[]): Promise<void> {
       }`,
     )
     .join(',\n')
-  await writeFile(path.join(dir, 'vx.config.mjs'), `export default { tasks: { ${body} } }`)
+  await writeFile(path.join(dir, 'vx.project.mjs'), `export default { tasks: { ${body} } }`)
 }
 
 describe('task selection', () => {
@@ -316,7 +316,7 @@ describe('task selection', () => {
         const dir = path.join(root, 'packages', name!)
         await mkdir(dir, { recursive: true })
         await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
-        await writeFile(path.join(dir, 'vx.config.mjs'), `export default { tasks: { ${tasks} } }`)
+        await writeFile(path.join(dir, 'vx.project.mjs'), `export default { tasks: { ${tasks} } }`)
       }
       const parsed = parseRunArgs(['verify', '--all'])
       const resolved = await resolveRunOptions(parsed, root, parsed.tasks)
@@ -337,7 +337,7 @@ describe('task selection', () => {
         'packages:\n  - "."\n  - "packages/*"\n',
       )
       await writeFile(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default { tasks: { root: { exec: { command: 'true' } } } }`,
       )
       await addProject('a', ['build'])

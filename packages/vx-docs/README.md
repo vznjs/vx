@@ -263,7 +263,7 @@ exempts that one directory by name.
 The page that loads it is `playground/` (item 700; design:
 `packages/vx/docs/design/playground-ui-2026-09.md`). Its workspace is
 `src/playground/workspace.ts`, the landing's four packages as files and
-`vx.config.mjs` texts; what the page computes is
+`vx.project.mjs` texts; what the page computes is
 `src/components/demos/model/playground-view.ts` (`runPlayground` asks the
 bundle's `listPlaygroundProjects` which config file core loads for each
 project, evaluates each text, and plans); `Playground.astro` renders the

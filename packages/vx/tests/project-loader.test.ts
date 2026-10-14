@@ -22,7 +22,7 @@ describe('loadProjectConfig', () => {
   })
 
   it('loads a default-exported object from .mjs', async () => {
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, "export default { tasks: { build: { exec: { command: 'tsc' } } } }")
     const cfg = await loadProjectConfig(file)
     expect(cfg.tasks?.build?.exec?.command).toBe('tsc')
@@ -31,7 +31,7 @@ describe('loadProjectConfig', () => {
   it('an import the config cannot resolve is a user error naming the file, with the install hint for @vzn/vx', async () => {
     // The usual cause: the workspace runs the vx binary and never
     // installed `@vzn/vx`, which the config imports at runtime.
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(
       file,
       "import { defineProject } from '@vzn/vx'\nexport default defineProject({ tasks: {} })\n",
@@ -60,7 +60,7 @@ describe('loadProjectConfig', () => {
     // Bun's `BuildMessage` says `Expected "}" but found end of file` and
     // nothing else — the file is only in its `position`, which `vx` printed
     // as nothing. Wrapping it is what makes the message actionable.
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, "export default { tasks: { build: { exec: { command: 'tsc' } }\n")
     const err = await loadProjectConfig(file).then(
       () => null,
@@ -74,7 +74,7 @@ describe('loadProjectConfig', () => {
   it('a malformed JSON import names the config, first load and repeat', async () => {
     // Bun's JSON loader throws a SyntaxError naming no file.
     await writeFile(path.join(dir, 'data.json'), '{bad\n')
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, "import d from './data.json'\nexport default { tasks: d }\n")
     for (let i = 0; i < 2; i++) {
       const err = await loadProjectConfig(file).then(
@@ -87,8 +87,8 @@ describe('loadProjectConfig', () => {
       ])
     }
     // A config's own JSON.parse keeps its stack and is not reworded.
-    await writeFile(path.join(dir, 'vx.config.ts'), "export default JSON.parse('{')\n")
-    const own = await loadProjectConfig(path.join(dir, 'vx.config.ts')).then(
+    await writeFile(path.join(dir, 'vx.project.ts'), "export default JSON.parse('{')\n")
+    const own = await loadProjectConfig(path.join(dir, 'vx.project.ts')).then(
       () => null,
       (e: unknown) => e as Error,
     )
@@ -105,7 +105,7 @@ describe('loadProjectConfig', () => {
       ['{ code: 1 }', '{ code: 1 }'],
     ]
     for (const [i, [thrown, shown]] of rows.entries()) {
-      const file = path.join(dir, `t${i}`, 'vx.config.mjs')
+      const file = path.join(dir, `t${i}`, 'vx.project.mjs')
       await mkdir(path.dirname(file))
       await writeFile(file, `throw ${thrown}\nexport default {}\n`)
       const got: unknown[] = []
@@ -120,7 +120,7 @@ describe('loadProjectConfig', () => {
       expect(got).toEqual([want, want])
     }
     // An Error keeps its own stack: not reworded.
-    const own = path.join(dir, 'own', 'vx.config.mjs')
+    const own = path.join(dir, 'own', 'vx.project.mjs')
     await mkdir(path.dirname(own))
     await writeFile(own, "throw new Error('boom')\nexport default {}\n")
     const err = await loadProjectConfig(own).then(
@@ -133,7 +133,7 @@ describe('loadProjectConfig', () => {
   it('two syntax errors name the first one, not a stack', async () => {
     // Bun throws an AggregateError of BuildMessages when a file has more
     // than one, and it reached the user as a stack with no position (X-6).
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, 'export default {{\n')
     const err = await loadProjectConfig(file).then(
       () => null,
@@ -149,7 +149,7 @@ describe('loadProjectConfig', () => {
     // The config itself is fine; the file that fails to parse is the one the
     // user has to open, and the config is the entry point they can find it from.
     const preset = path.join(dir, 'preset.mjs')
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(preset, "export const build = { exec: { command: 'tsc' }\n")
     await writeFile(
       file,
@@ -175,7 +175,7 @@ describe('loadProjectConfig', () => {
   it("a config's own runtime throw passes through with its stack (control)", async () => {
     // Only Bun's loader errors are rewrapped: a throw in user code already
     // names its file in the stack, and wrapping it would lose that.
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, "throw new RangeError('preset out of range')\n")
     const err = await loadProjectConfig(file).then(
       () => null,
@@ -187,7 +187,7 @@ describe('loadProjectConfig', () => {
   })
 
   it('a typo at the top level is refused with the spelling meant, not loaded as an empty project', async () => {
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, "export default { task: { build: { exec: { command: 'tsc' } } } }\n")
     const err = await loadProjectConfig(file).then(
       () => null,
@@ -202,7 +202,7 @@ describe('loadProjectConfig', () => {
   it('a field with no near spelling gets the list and no guess', async () => {
     // `nearest` answers undefined past two edits; the message once printed
     // that verbatim (`did you mean undefined?`), which reads as a stub.
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, "export default { tasks: {}, projectName: 'x' }\n")
     const err = await loadProjectConfig(file).then(
       () => null,
@@ -214,20 +214,20 @@ describe('loadProjectConfig', () => {
   })
 
   it('throws clearly when the config did not export a default object', async () => {
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, 'export const notDefault = 1')
     await expect(loadProjectConfig(file)).rejects.toThrow(/did not export a default object/)
   })
 
   it('throws when the default export is not an object', async () => {
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, 'export default 42')
     await expect(loadProjectConfig(file)).rejects.toThrow(/did not export a default object/)
   })
 
   describe('group tasks (no exec)', () => {
     it('accepts a task that has only dependsOn', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, `export default { tasks: { install: { dependsOn: ['^build'] } } }`)
       const cfg = await loadProjectConfig(file)
       expect(cfg.tasks?.install?.exec).toBeUndefined()
@@ -238,14 +238,14 @@ describe('loadProjectConfig', () => {
       // A package consumed as source declares `build: { dependsOn: [] }` so
       // a dependant's `^build` finds it and waits on nothing; only the
       // OMITTED field is the typo guard below.
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, `export default { tasks: { build: { dependsOn: [] } } }`)
       const cfg = await loadProjectConfig(file)
       expect(cfg.tasks?.build?.dependsOn).toEqual([])
     })
 
     it('rejects a task with no exec, no dependsOn and no cache', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, `export default { tasks: { empty: {} } }`)
       const err = await loadProjectConfig(file).then(
         () => null,
@@ -257,7 +257,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('accepts a string description on a task', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { lint: { description: 'lint with oxlint', exec: { command: 'oxlint' } } } }`,
@@ -267,7 +267,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects a non-string description', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { lint: { description: 42, exec: { command: 'oxlint' } } } }`,
@@ -276,7 +276,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('accepts a persistent exec', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { dev: { exec: { command: 'vite', persistent: { readyWhen: 'Local:' } } } } }`,
@@ -286,7 +286,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('accepts empty persistent (ready immediately)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { dev: { exec: { command: 'vite', persistent: {} } } } }`,
@@ -296,7 +296,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects cache + persistent (persistent tasks have no exit to cache)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { dev: { exec: { command: 'vite', persistent: {} }, cache: { inputs: { files: [] }, outputs: { files: [] } } } } }`,
@@ -307,7 +307,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects non-string readyWhen', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { dev: { exec: { command: 'vite', persistent: { readyWhen: 42 } } } } }`,
@@ -316,7 +316,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects non-object persistent', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { dev: { exec: { command: 'vite', persistent: true } } } }`,
@@ -325,7 +325,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('accepts a keyed group: cache with no exec, no dependsOn, no outputs', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { g: {
@@ -341,7 +341,7 @@ describe('loadProjectConfig', () => {
         `export default { tasks: { g: {
           cache: { inputs: { files: ['**'] }, outputs: ${outputs} },
         } } }`
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       for (const outputs of [
         `{ files: ['dist/**'] }`,
         `{ files: [], workspaceFiles: ['out/**'] }`,
@@ -364,7 +364,7 @@ describe('loadProjectConfig', () => {
       // pointer to the workaround (list names individually).
       // An env name is no path, so the bracket that became a literal in a
       // task glob (item 667) is still refused here.
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       for (const name of ['VERCEL_*', 'A?', 'A[0]', 'A{B}']) {
         await writeFile(
           file,
@@ -378,7 +378,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects non-string env entries in cache.inputs.env', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -392,7 +392,7 @@ describe('loadProjectConfig', () => {
     // The key folds an unset name as its bare name and a set one as
     // `name\0value`; a name holding a NUL would let the two meet.
     it('rejects a NUL in a cache.inputs.env name', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -406,7 +406,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects empty-string entries in cache.outputs.files', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -418,7 +418,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects absolute paths in cache.outputs.files (must be project-relative)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -437,7 +437,7 @@ describe('loadProjectConfig', () => {
       // `dist/../../etc/**` walked straight out of the project. The scan is
       // over every segment, and the `!` comes off before it.
       const refuses = async (where: 'inputs' | 'outputs', glob: string): Promise<void> => {
-        const file = path.join(dir, 'vx.config.mjs')
+        const file = path.join(dir, 'vx.project.mjs')
         const inputs = where === 'inputs' ? [glob] : ['src/**']
         const outputs = where === 'outputs' ? [glob] : ['dist/**']
         await writeFile(
@@ -467,7 +467,7 @@ describe('loadProjectConfig', () => {
       // the key without a word. The arms are segments, and an absolute arm
       // is an absolute glob.
       const load = async (where: 'inputs' | 'outputs', glob: string) => {
-        const file = path.join(dir, 'vx.config.mjs')
+        const file = path.join(dir, 'vx.project.mjs')
         const inputs = where === 'inputs' ? [glob] : ['src/**']
         const outputs = where === 'outputs' ? [glob] : ['dist/**']
         await writeFile(
@@ -496,7 +496,7 @@ describe('loadProjectConfig', () => {
       // The control: the refusal compares whole segments, and widening it
       // to a prefix test would reject an ordinary directory. `..foo` is a
       // legal name.
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -512,7 +512,7 @@ describe('loadProjectConfig', () => {
       // `.` selects nothing and says so nowhere, which is why it is refused.
       // A negated `!.` is the same mistake wearing a marker, and only
       // stripping it before the comparison catches that.
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -538,7 +538,7 @@ describe('loadProjectConfig', () => {
       // the task folds ZERO file inputs and its key stops moving with its
       // source. Every gitignore-trained reader parses this as "everything
       // except specs". Turbo makes it a hard config error for the same reason.
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -557,7 +557,7 @@ describe('loadProjectConfig', () => {
       // degenerate all-negations list selects nothing. Without this the
       // refusal above could have been implemented as "reject any negation"
       // and still passed.
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -575,7 +575,7 @@ describe('loadProjectConfig', () => {
       // Empty is a different statement from all-negations: it declares no file
       // inputs at all, which is legitimate for a task keyed only on env or
       // upstream hashes. Refusing it would break working configs.
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -587,7 +587,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('takes a negation in cache.outputs.files back from the outputs, and refuses a list of only negations (A-44)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -645,7 +645,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects non-string entries in cache.outputs.files', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -660,7 +660,7 @@ describe('loadProjectConfig', () => {
     // output paths before every run, so an accepted `../victim/**` would delete
     // files OUTSIDE the project. Reject at load (the boundary is hard).
     it('rejects `..` path segments in cache.outputs.files (data-loss vector)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -672,7 +672,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects `..` path segments in cache.inputs.files', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -687,7 +687,7 @@ describe('loadProjectConfig', () => {
     // WITHIN the workspace — but `..` escapes ABOVE the root (deletes outside
     // the repo). Reject it while still allowing cross-project workspace globs.
     it('rejects `..` in cache.outputs.workspaceFiles (escapes the workspace root)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -700,7 +700,7 @@ describe('loadProjectConfig', () => {
 
     it('accepts a filename with dots (foo..bar is not a `..` segment)', async () => {
       // `foo..bar` is a valid filename (the `..` is not a path SEGMENT).
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -715,7 +715,7 @@ describe('loadProjectConfig', () => {
     // buildIsolatedEnv's `for (const name of passThrough)` — a number throws
     // "not iterable" mid-run, a string silently char-iterates. Fail loud at load.
     it('rejects a non-array exec.env.passThrough', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -726,7 +726,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects a string exec.env.passThrough (would silently char-iterate)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -737,7 +737,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects a non-object exec.env.define', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -748,7 +748,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('accepts a well-formed exec.env', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -759,7 +759,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects absolute paths in cache.inputs.files (must be project-relative)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -771,7 +771,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects empty-string entries in cache.inputs.files', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -783,7 +783,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('accepts cache.inputs.runtime and workspaceRuntime as string arrays', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -800,7 +800,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects non-string runtime entries', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -814,7 +814,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects empty-string workspaceRuntime entries', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         `export default { tasks: { build: {
@@ -833,7 +833,7 @@ describe('loadProjectConfig', () => {
   // must fail loudly: an unknown field that was silently dropped would
   // hash as if never written.
   it('rejects the retired exec.resources field', async () => {
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(
       file,
       `export default { tasks: { build: { exec: { command: 'tsc', resources: { cpus: 2 } } } } }`,
@@ -851,7 +851,7 @@ describe('loadProjectConfig', () => {
     const cfg = (task: string): string => `export default { tasks: { build: ${task} } }`
 
     it('rejects a typo in a cache-key input field', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         cfg(`{
@@ -868,19 +868,19 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects unknown keys at the task level', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, cfg(`{ exec: { command: 'true' }, dependOn: ['lint'] }`))
       await expect(loadProjectConfig(file)).rejects.toThrow(/unknown field "dependOn"/)
     })
 
     it('rejects unknown keys at the exec level', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, cfg(`{ exec: { command: 'true', timeoutMs: 500 } }`))
       await expect(loadProjectConfig(file)).rejects.toThrow(/exec has unknown field "timeoutMs"/)
     })
 
     it('rejects a misspelled persistent', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, cfg(`{ exec: { command: 'true', persistant: {} } }`))
       await expect(loadProjectConfig(file)).rejects.toThrow(/exec has unknown field "persistant"/)
     })
@@ -921,7 +921,7 @@ describe('loadProjectConfig', () => {
       // the task reports ready the moment it spawns rather than when its
       // server listens, and the dependents that start too early fail in a
       // way that points at the user's code instead of their config.
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, cfg(`{ exec: { command: 'true', persistent: { readWhen: 'up' } } }`))
       await expect(loadProjectConfig(file)).rejects.toThrow(
         /exec\.persistent has unknown field "readWhen"/,
@@ -931,7 +931,7 @@ describe('loadProjectConfig', () => {
     it('CONTROL: valid persistent shapes still load', async () => {
       // A refusal that breaks a working config is worse than the typo it
       // catches, so both legal shapes are pinned alongside it.
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, cfg(`{ exec: { command: 'true', persistent: { readyWhen: 'up' } } }`))
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
       await writeFile(file, cfg(`{ exec: { command: 'true', persistent: {} } }`))
@@ -939,7 +939,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects unknown keys at the cache level', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         cfg(`{
@@ -951,7 +951,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects unknown keys at the cache.outputs level', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         cfg(`{
@@ -965,7 +965,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects a tasks ARRAY (Object.entries would name the task "0")', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, `export default { tasks: [{ exec: { command: 'true' } }] }`)
       await expect(loadProjectConfig(file)).rejects.toThrow(
         /`tasks` must be an object keyed by task name/,
@@ -973,7 +973,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('still accepts every declared field', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         cfg(`{
@@ -1012,7 +1012,7 @@ describe('loadProjectConfig', () => {
         inputs: { files: [], tasks: ${literal} }, outputs: { files: [] } } } } }`
 
     it('rejects a bare string instead of a list', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, withTasks(`'^build'`))
       await expect(loadProjectConfig(file)).rejects.toThrow(
         /cache\.inputs\.tasks must be an array of non-empty strings/,
@@ -1020,7 +1020,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('rejects null', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, withTasks(`null`))
       await expect(loadProjectConfig(file)).rejects.toThrow(
         /cache\.inputs\.tasks must be an array of non-empty strings/,
@@ -1029,7 +1029,7 @@ describe('loadProjectConfig', () => {
 
     it('rejects non-string / empty entries', async () => {
       for (const literal of [`[42]`, `['']`, `['build', null]`]) {
-        const file = path.join(dir, 'vx.config.mjs')
+        const file = path.join(dir, 'vx.project.mjs')
         await writeFile(file, withTasks(literal))
         await expect(loadProjectConfig(file)).rejects.toThrow(
           /cache\.inputs\.tasks must be an array of non-empty strings/,
@@ -1042,7 +1042,7 @@ describe('loadProjectConfig', () => {
         inputs: { files: [], tasks: ${literal} }, outputs: { files: [] } } } } }`
 
     it('accepts the documented filter forms', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(
         file,
         withDeps(
@@ -1057,7 +1057,7 @@ describe('loadProjectConfig', () => {
     // folds no upstream hash: the task decouples silently — a stale hit
     // waiting for the next upstream change. The typo is the shape.
     it('rejects an exact name that no dependsOn entry names (the typo that decouples)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, withDeps(`['build', '^build']`, `['buidl']`))
       await expect(loadProjectConfig(file)).rejects.toThrow(
         /cache\.inputs\.tasks: "buidl" names no task in .*dependsOn \('build', '\^build'\)/,
@@ -1079,7 +1079,7 @@ describe('loadProjectConfig', () => {
     // (item 994). A `pkg#` entry may be this project or a dependency, so it
     // pairs with either; two `pkg#` entries must agree on the project.
     it('rejects a filter whose form no dependsOn entry of that form names', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       for (const [deps, filter] of [
         [`['^build']`, `build`],
         [`['build']`, `^build`],
@@ -1107,7 +1107,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('a dependsOn pattern names every exact entry it matches', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, withDeps(`['build.*']`, `['build.bun', 'other#build.linux']`))
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
       await writeFile(file, withDeps(`['build.*']`, `['buildx']`))
@@ -1115,7 +1115,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('patterns, wildcards, negations and [] stay silent (CONTROL)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, withTasks(`['*', '^*', 'build.*', '^lint.*', '!codegen', '!^noisy']`))
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
       await writeFile(file, withTasks(`[]`))
@@ -1123,7 +1123,7 @@ describe('loadProjectConfig', () => {
     })
 
     it('accepts an empty list (fully decoupled)', async () => {
-      const file = path.join(dir, 'vx.config.mjs')
+      const file = path.join(dir, 'vx.project.mjs')
       await writeFile(file, withTasks(`[]`))
       await expect(loadProjectConfig(file)).resolves.toBeDefined()
     })
@@ -1147,7 +1147,7 @@ describe('a project config is evaluated from the bytes vx read', () => {
 
   it('a CommonJS config keeps its module.exports (no ESM export, so Bun reads it)', async () => {
     // Served as ESM, `module` is undefined and the object never arrives.
-    const file = path.join(dir, 'vx.config.js')
+    const file = path.join(dir, 'vx.project.js')
     await writeFile(
       file,
       `module.exports = {
@@ -1162,7 +1162,7 @@ describe('a project config is evaluated from the bytes vx read', () => {
   it('bytes that are not UTF-8 evaluate as Bun reads them, not as a decoder repairs them', async () => {
     // Bun's loader takes 0xff 0xfe as U+00FF U+00FE; a lenient decode would
     // hand it two U+FFFD — a different description, so a different key.
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     const enc = new TextEncoder()
     await writeFile(
       file,
@@ -1178,7 +1178,7 @@ describe('a project config is evaluated from the bytes vx read', () => {
   })
 
   it("a served config's runtime throw names the file the user wrote, not vx's query", async () => {
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(
       file,
       `function preset() {
@@ -1201,7 +1201,7 @@ export default { tasks: {} }
     // Bun 1.4 says `Cannot find module … imported from <specifier>`, which
     // the loader rewrites to the specifier alone; the query-strip arm for
     // other shapes is held by the configLoadError rows below.
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(
       file,
       `import { preset } from './missing-preset.mjs'
@@ -1223,16 +1223,16 @@ export default { tasks: preset }
     await mkdir(real)
     await symlink(real, path.join(dir, 'link'))
     await writeFile(
-      path.join(real, 'vx.config.mjs'),
+      path.join(real, 'vx.project.mjs'),
       "export default { tasks: { build: { exec: { command: 'linked' } } } }",
     )
-    const cfg = await loadProjectConfig(path.join(dir, 'link', 'vx.config.mjs'))
+    const cfg = await loadProjectConfig(path.join(dir, 'link', 'vx.project.mjs'))
     expect(cfg.tasks?.build?.exec?.command).toBe('linked')
   })
 
   it('two configs with the same bytes load together, each from its own path', async () => {
     const text = "export default { tasks: { build: { exec: { command: 'same' } } } }"
-    const files = ['a', 'b', 'c'].map((n) => path.join(dir, n, 'vx.config.mjs'))
+    const files = ['a', 'b', 'c'].map((n) => path.join(dir, n, 'vx.project.mjs'))
     for (const f of files) {
       await mkdir(path.dirname(f))
       await writeFile(f, text)
@@ -1356,18 +1356,18 @@ describe('configLoadError classifies by shape, not by instanceof', () => {
     const err = { name: 'BuildMessage', message: 'Expected "}" but found end of file' }
     Object.assign(err, { position: { file: '/w/p/preset.ts', line: 7, column: 3 } })
     expect(Object.getPrototypeOf(err)).toBe(Object.prototype)
-    const user = configLoadError(err, '/w/p/vx.config.ts', 'project')
+    const user = configLoadError(err, '/w/p/vx.project.ts', 'project')
     expect(user?.name).toBe('UserError')
     expect(user?.message).toBe(
-      'project config /w/p/vx.config.ts (in /w/p/preset.ts:7:3): Expected "}" but found end of file',
+      'project config /w/p/vx.project.ts (in /w/p/preset.ts:7:3): Expected "}" but found end of file',
     )
   })
 
   it('a ResolveMessage that is NOT an Error still carries the install hint', () => {
     const err = { name: 'ResolveMessage', message: "Cannot find package '@vzn/vx' from '/w/p'" }
-    const user = configLoadError(err, '/w/p/vx.config.ts', 'project')
+    const user = configLoadError(err, '/w/p/vx.project.ts', 'project')
     expect(user?.message).toBe(
-      "project config /w/p/vx.config.ts: cannot find '@vzn/vx'; install it in the workspace: bun add -d @vzn/vx",
+      "project config /w/p/vx.project.ts: cannot find '@vzn/vx'; install it in the workspace: bun add -d @vzn/vx",
     )
   })
 
@@ -1375,17 +1375,17 @@ describe('configLoadError classifies by shape, not by instanceof', () => {
     const hint = (spec: string) =>
       configLoadError(
         { name: 'ResolveMessage', message: `Cannot find package '${spec}' from '/w/p'` },
-        '/w/p/vx.config.ts',
+        '/w/p/vx.project.ts',
         'project',
       )?.message
     expect(hint('@vzn/vx-otel')).toBe(
-      "project config /w/p/vx.config.ts: cannot find '@vzn/vx-otel'; install it in the workspace: bun add -d @vzn/vx-otel",
+      "project config /w/p/vx.project.ts: cannot find '@vzn/vx-otel'; install it in the workspace: bun add -d @vzn/vx-otel",
     )
     expect(hint('@vzn/vx-migrate/turbo')).toBe(
-      "project config /w/p/vx.config.ts: cannot find '@vzn/vx-migrate/turbo'; install it in the workspace: bun add -d @vzn/vx-migrate",
+      "project config /w/p/vx.project.ts: cannot find '@vzn/vx-migrate/turbo'; install it in the workspace: bun add -d @vzn/vx-migrate",
     )
     // CONTROL: another scope gets no hint.
-    expect(hint('@other/pkg')).toBe("project config /w/p/vx.config.ts: cannot find '@other/pkg'")
+    expect(hint('@other/pkg')).toBe("project config /w/p/vx.project.ts: cannot find '@other/pkg'")
   })
 
   it('a ResolveMessage vx cannot parse still reaches the user WITHOUT the bust query', () => {
@@ -1398,16 +1398,16 @@ describe('configLoadError classifies by shape, not by instanceof', () => {
     // cannot act on.
     const err = {
       name: 'ResolveMessage',
-      message: "Could not resolve: './missing.js' from '/w/p/vx.config.ts?vx-bust=9f1c2a'",
+      message: "Could not resolve: './missing.js' from '/w/p/vx.project.ts?vx-bust=9f1c2a'",
     }
-    const user = configLoadError(err, '/w/p/vx.config.ts', 'project')
+    const user = configLoadError(err, '/w/p/vx.project.ts', 'project')
     expect(user?.message).toBe(
-      "project config /w/p/vx.config.ts: Could not resolve: './missing.js' from '/w/p/vx.config.ts'",
+      "project config /w/p/vx.project.ts: Could not resolve: './missing.js' from '/w/p/vx.project.ts'",
     )
     // The served path's query (`vx-held`, the bytes vx read) is vx's too.
     const held = configLoadError(
       { ...err, message: err.message.replace('vx-bust', 'vx-held') },
-      '/w/p/vx.config.ts',
+      '/w/p/vx.project.ts',
       'project',
     )
     expect(held?.message).toBe(user?.message)
@@ -1421,13 +1421,13 @@ describe('configLoadError classifies by shape, not by instanceof', () => {
     // path had nothing holding it.
     const err = { name: 'BuildMessage', message: 'Unexpected token' }
     Object.assign(err, { position: { file: '', line: 7, column: 3 } })
-    const user = configLoadError(err, '/w/p/vx.config.ts', 'project')
-    expect(user?.message).toBe('project config /w/p/vx.config.ts:7:3: Unexpected token')
+    const user = configLoadError(err, '/w/p/vx.project.ts', 'project')
+    expect(user?.message).toBe('project config /w/p/vx.project.ts:7:3: Unexpected token')
   })
 
   it("everything else passes through: the config's own throw is not ours to reword", () => {
     // Narrower than the old guard, not wider — only Bun's two names match.
-    expect(configLoadError(new Error('boom'), '/w/p/vx.config.ts', 'project')).toBeNull()
+    expect(configLoadError(new Error('boom'), '/w/p/vx.project.ts', 'project')).toBeNull()
     expect(configLoadError({ name: 'TypeError', message: 'x' }, '/w/p/c.ts', 'project')).toBeNull()
     expect(configLoadError('a string', '/w/p/c.ts', 'project')).toBeNull()
     expect(configLoadError(null, '/w/p/c.ts', 'project')).toBeNull()
@@ -1448,7 +1448,7 @@ describe('first loads run together (D-68)', () => {
     await rm(dir, { recursive: true, force: true })
   })
   const config = async (name: string, body: string): Promise<string> => {
-    const file = path.join(dir, name, 'vx.config.mjs')
+    const file = path.join(dir, name, 'vx.project.mjs')
     await mkdir(path.dirname(file), { recursive: true })
     await writeFile(file, body)
     return file
@@ -1508,7 +1508,7 @@ describe('a config that changes the built-ins (D-74)', () => {
   const drive = async (configs: string[], after: string): Promise<unknown> => {
     const files: string[] = []
     for (const [i, body] of configs.entries()) {
-      const file = path.join(dir, `p${i}`, 'vx.config.mjs')
+      const file = path.join(dir, `p${i}`, 'vx.project.mjs')
       await mkdir(path.dirname(file), { recursive: true })
       await writeFile(file, body)
       files.push(file)
@@ -1528,7 +1528,7 @@ describe('a config that changes the built-ins (D-74)', () => {
     return { ...rest, first: files[0] }
   }
   const task = "export default { tasks: { t: { exec: { command: 'true' } } } }\n"
-  const firstFile = () => path.join(dir, 'p0', 'vx.config.mjs')
+  const firstFile = () => path.join(dir, 'p0', 'vx.project.mjs')
 
   it('refuses an added property, names it, and takes it back', async () => {
     expect(
@@ -1625,7 +1625,7 @@ describe('a config under a directory whose name holds a backslash', () => {
   })
 
   it('loads a project config, and its repeat load in a worker', async () => {
-    const file = path.join(dir, 'vx.config.ts')
+    const file = path.join(dir, 'vx.project.ts')
     await writeFile(
       file,
       `
@@ -1644,7 +1644,7 @@ describe('a config under a directory whose name holds a backslash', () => {
   })
 
   it('refuses a CommonJS config, saying why', async () => {
-    const file = path.join(dir, 'vx.config.cjs')
+    const file = path.join(dir, 'vx.project.cjs')
     await writeFile(file, 'module.exports = { tasks: {} }')
     const err = await loadProjectConfig(file).then(
       () => null,

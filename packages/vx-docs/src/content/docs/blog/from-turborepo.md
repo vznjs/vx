@@ -38,7 +38,7 @@ export default { plugins: [turbo()] } satisfies WorkspaceConfig
 
 Whatever the mapping cannot express becomes a warning on every run,
 which is the same list `bunx @vzn/vx-migrate --dry` prints once. A
-package that writes its own `vx.config.ts` keeps it; the plugin fills
+package that writes its own `vx.project.ts` keeps it; the plugin fills
 and never overwrites. So you can migrate one package at a time, until
 every package has its own config and `vx.workspace.ts` drops `turbo()`.
 
@@ -55,7 +55,7 @@ asks native (the default) or keep (`--keep`, the `turbo()` file
 `vx init` writes), writes `vx.workspace.ts` with the plugins the repo
 calls for, and installs what the files import. It reads the root pipeline and any per-package `extends`,
 inlines the matching `package.json` script as the task's command, and
-emits one `vx.config.ts` per package. A task goes where the script
+emits one `vx.project.ts` per package. A task goes where the script
 exists, and to a package without it that another package's `^` task
 reaches: a cached `true` with no outputs, Turbo's no-op node, so an edit
 there still re-keys its dependants. Anything it cannot infer becomes a `TODO(vx-migrate)`
@@ -65,7 +65,7 @@ already doing.
 
 ## What maps, and what is better
 
-| `turbo.json`                                   | `vx.config.ts`                                          |
+| `turbo.json`                                   | `vx.project.ts`                                          |
 | ---------------------------------------------- | ------------------------------------------------------- |
 | `tasks` / `pipeline`                           | `tasks`                                                 |
 | `dependsOn`                                    | `dependsOn`, identical syntax                           |

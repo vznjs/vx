@@ -207,7 +207,7 @@ describe('the refusal reaches a real run', () => {
     await writeFile(path.join(dir, 'package.json'), '{"name":"a","version":"1.0.0"}')
     await writeFile(path.join(dir, 'src', 'a.ts'), 'x')
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       'export default { tasks: { build: { exec: { command: "sleep 2 && echo BUILT > out.txt", ' +
         'timeout: "9999999999999ms" }, cache: { inputs: { files: ["src/**"] }, ' +
         'outputs: { files: ["out.txt"] } } } } }',

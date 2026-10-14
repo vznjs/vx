@@ -25,7 +25,7 @@ export const GET: APIRoute = async ({ site }) => {
   })
   const body = `# vx
 
-> vx is a Bun-native task runner and content-addressed cache for JavaScript monorepos. Tasks live in TypeScript configs (\`vx.config.ts\`), a run is \`vx run <task>\`, and plugins decide where tasks run and where the cache lives.
+> vx is a Bun-native task runner and content-addressed cache for JavaScript monorepos. Tasks live in TypeScript configs (\`vx.project.ts\`), a run is \`vx run <task>\`, and plugins decide where tasks run and where the cache lives.
 
 Every page below is plain markdown. Every Docs and Reference page in one file: ${base}llms-full.txt. An agent in a vx workspace can also ask the workspace itself: \`vx mcp\`, and \`--format json\` on \`vx show\`, \`vx info\`, \`vx why\` and \`vx last\` (${base}guides/agents.md).
 

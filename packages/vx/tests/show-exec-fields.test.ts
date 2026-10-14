@@ -25,7 +25,7 @@ describe('vx show prints exec.interactive and exec.env.secret', () => {
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `
 export default {
   tasks: {

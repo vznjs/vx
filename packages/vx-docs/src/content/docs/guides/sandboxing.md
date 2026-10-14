@@ -16,7 +16,7 @@ Prove a task reads only what it declares.
 ## Config
 
 ```ts
-// packages/app/vx.config.ts
+// packages/app/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({

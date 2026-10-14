@@ -106,7 +106,7 @@ export async function cliCacheDir(
 export interface CliLoadOptions {
   /** `--cache-dir`: where the cached evaluations live. */
   cacheDir?: string
-  /** `--frozen`: configs come from `vx-lock.json`, not evaluation. */
+  /** `--frozen`: configs come from `vx.lock.json`, not evaluation. */
   frozen?: boolean
   /**
    * A reading verb (`vx show`) makes nothing on disk (item 900): with no

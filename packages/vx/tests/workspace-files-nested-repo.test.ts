@@ -38,7 +38,7 @@ describe('a workspaceFiles glob over a nested repository', () => {
     await mkdir(app, { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(
-      path.join(app, 'vx.config.mjs'),
+      path.join(app, 'vx.project.mjs'),
       `export default {
   tasks: {
     w: {

@@ -199,9 +199,9 @@ describe('a VX_ var a workflow sets reaches the task that reads it', () => {
   }
 
   const forwarded = new Set<string>()
-  const configs = [path.join(repo, 'vx.config.ts')]
+  const configs = [path.join(repo, 'vx.project.ts')]
   for (const pkg of readdirSync(path.join(repo, 'packages'))) {
-    configs.push(path.join(repo, 'packages', pkg, 'vx.config.ts'))
+    configs.push(path.join(repo, 'packages', pkg, 'vx.project.ts'))
   }
   for (const file of configs.filter((f) => existsSync(f))) {
     for (const m of readFileSync(file, 'utf8').matchAll(/'(VX_\w+)'/g)) {

@@ -146,7 +146,7 @@ it('a later run keeps an unchanged held server, rebuilds its deps, and replaces 
     while (!heard[1]!.includes('go-SEEN') && Date.now() < deadline) await Bun.sleep(20)
     expect([heard[0]!.includes('go-SEEN'), heard[1]!.includes('go-SEEN')]).toEqual([false, true])
 
-    writeFileSync(path.join(app, 'vx.config.mjs'), srv('again'))
+    writeFileSync(path.join(app, 'vx.project.mjs'), srv('again'))
     const r3 = (await cycle(2, r2)).persistent!
     try {
       expect(r3.servers.get('app#dev')!.child === child).toBe(false)

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Answer one question for `--affected`: **which projects' `vx.config.*`
+Answer one question for `--affected`: **which projects' `vx.project.*`
 transitively import this changed file?**
 
 vx hashes the RESOLVED config (architecture principle #4), so a value a

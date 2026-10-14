@@ -3,7 +3,7 @@
 // Directory containment answers "which project owns this file", and
 // `cache.inputs.workspaceFiles` answers "which project declared it". Neither
 // can see the one remaining way a file reaches a task: a project's
-// `vx.config.*` IMPORTS it. Resolved-config hashing folds the imported values
+// `vx.project.*` IMPORTS it. Resolved-config hashing folds the imported values
 // into the cache key (architecture principle #4), so editing such a file
 // re-keys the task — and `affected.ts` states the rule this exists to keep:
 // "input hashing sees it, so `--affected` must too."
@@ -22,7 +22,7 @@
 //     from disk (D-27).
 //   - One reversed BFS from every config at once, each file read once
 //     however many configs reach it. It descends through every file in
-//     the workspace, another project's included: a site's `vx.config.ts`
+//     the workspace, another project's included: a site's `vx.project.ts`
 //     importing `../core/src/index.ts` evaluates what that file imports
 //     too, so an edit there moves the site's key. The walk stopped at the
 //     first file of another project, and containment selected core alone

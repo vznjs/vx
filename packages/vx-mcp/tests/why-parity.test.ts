@@ -28,7 +28,7 @@ beforeAll(async () => {
   await writeFile(path.join(pkg, 'src', 'x.js'), 'x')
   await writeFile(path.join(pkg, 'main.js'), 'm')
   await writeFile(
-    path.join(pkg, 'vx.config.mjs'),
+    path.join(pkg, 'vx.project.mjs'),
     `const cache = (files) => ({ inputs: { files }, outputs: { files: [] } })
 export default { tasks: {
   gen: { exec: { command: 'true' }, cache: cache(['src/**']) },

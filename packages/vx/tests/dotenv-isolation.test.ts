@@ -25,7 +25,7 @@ describe('a workspace .env stays out of vx', () => {
     await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     await writeFile(path.join(root, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(
-      path.join(root, 'packages', 'a', 'vx.config.mjs'),
+      path.join(root, 'packages', 'a', 'vx.project.mjs'),
       `export default { tasks: { probe: { exec: { command: 'echo "probe=\${VX_DOTENV_PROBE-unset}"', env: { passThrough: ['VX_DOTENV_PROBE'] } } } } }\n`,
     )
     await writeFile(path.join(root, '.env'), 'VX_DOTENV_PROBE=from-dotenv\n')

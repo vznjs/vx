@@ -72,7 +72,7 @@ try {
       scripts: { build: 'mkdir -p dist && cp src/index.js dist/out.js', test: 'true' },
     })
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default { tasks: {
   build: { dependsOn: ['^build'], exec: { command: 'mkdir -p dist && cp src/index.js dist/out.js' },
     cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } },

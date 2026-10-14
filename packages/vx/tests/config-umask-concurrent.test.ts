@@ -23,7 +23,7 @@ it('a round mixing first and repeat loads keeps the umask and refuses nobody', a
     for (let round = 0; round < 8; round++) {
       const files = await Promise.all(
         Array.from({ length: 48 }, async (_, i) => {
-          const file = path.join(dir, `r${round}`, `p${i}`, 'vx.config.mjs')
+          const file = path.join(dir, `r${round}`, `p${i}`, 'vx.project.mjs')
           await Bun.write(file, innocent)
           return file
         }),
@@ -67,7 +67,7 @@ export default { tasks: {} }
   try {
     const files = await Promise.all(
       Array.from({ length: 6 }, async (_, i) => {
-        const file = path.join(dir, `p${i}`, 'vx.config.mjs')
+        const file = path.join(dir, `p${i}`, 'vx.project.mjs')
         await Bun.write(file, i % 2 === 0 ? spy : innocent)
         return file
       }),
@@ -109,7 +109,7 @@ export default { tasks: {} }
   try {
     const files = await Promise.all(
       [innocent, hangs, innocent].map(async (src, i) => {
-        const file = path.join(dir, `p${i}`, 'vx.config.mjs')
+        const file = path.join(dir, `p${i}`, 'vx.project.mjs')
         await Bun.write(file, src)
         return file
       }),

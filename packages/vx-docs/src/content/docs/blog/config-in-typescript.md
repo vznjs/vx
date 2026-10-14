@@ -6,7 +6,7 @@ authors:
 tags:
   - config
   - dx
-excerpt: "A vx.config.ts is a module: it can import a preset, spread it, compute a command. That one choice removes Turborepo's globalDependencies and Nx's namedInputs from the schema, because a language that composes does not need a schema that does."
+excerpt: "A vx.project.ts is a module: it can import a preset, spread it, compute a command. That one choice removes Turborepo's globalDependencies and Nx's namedInputs from the schema, because a language that composes does not need a schema that does."
 ---
 
 Turborepo and Nx both grew the same features for the same reason.
@@ -19,7 +19,7 @@ it is already complete.
 ## The shape
 
 ```ts
-// packages/app/vx.config.ts
+// packages/app/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -61,7 +61,7 @@ export const lib = (entry: string) => ({
 ```
 
 ```ts
-// packages/ui/vx.config.ts
+// packages/ui/vx.project.ts
 import type { ProjectConfig } from '@vzn/vx/config'
 import { lib } from '../../vx-preset.ts'
 export default { tasks: { ...lib('src/index.ts') } } satisfies ProjectConfig
@@ -98,7 +98,7 @@ allowed:
 
 When "evaluated live" is exactly what a CI pipeline must not do,
 [`vx lock`](../lock-and-frozen/) evaluates every config once and writes
-the resolved objects to `vx-lock.json`; `vx run --frozen` consumes the
+the resolved objects to `vx.lock.json`; `vx run --frozen` consumes the
 lock with no evaluation at all, and `--check` catches drift a byte hash
 cannot see.
 

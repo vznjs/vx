@@ -146,7 +146,7 @@ the realpath'd base before writing.
   can't set an `Authorization` header, so the query token is required for the
   live dashboard. It can leak via logs/Referer; the header form stays canonical
   everywhere else. Mitigated by loopback-default + the Origin gate.
-- **Config eval runs `vx.config.ts` as code** on load: running a task runner in
+- **Config eval runs `vx.project.ts` as code** on load: running a task runner in
   an untrusted checkout already implies trusting its config, same as Turbo/Nx.
   Out of scope for sandboxing here.
 - **`untrusted → untrusted` blast radius:** two fork PRs share the `untrusted`

@@ -338,6 +338,6 @@ describe('a config built from readonly lists type-checks and loads', () => {
     },
   })
   it('loads', () => {
-    expect(() => validateProjectConfig(config, '/ws/a/vx.config.ts')).not.toThrow()
+    expect(() => validateProjectConfig(config, '/ws/a/vx.project.ts')).not.toThrow()
   })
 })

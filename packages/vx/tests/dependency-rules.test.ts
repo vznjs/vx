@@ -144,7 +144,7 @@ describe('vx lock', () => {
           JSON.stringify({ name, dependencies: deps }),
         )
         await writeFile(
-          path.join(dir, 'vx.config.mjs'),
+          path.join(dir, 'vx.project.mjs'),
           `export default { tags: ['${tag}'], tasks: { t: { exec: { command: 'true' } } } }\n`,
         )
       }
@@ -158,11 +158,11 @@ describe('vx lock', () => {
       expect({
         code: r.exitCode,
         err: r.stderr.toString().split('\n').slice(0, 2),
-        written: existsSync(path.join(root, 'vx-lock.json')),
+        written: existsSync(path.join(root, 'vx.lock.json')),
       }).toEqual({
         code: 1,
         err: [
-          'vx lock: vx-lock.json not written: 1 dependency breaks run.rules.dependencies:',
+          'vx lock: vx.lock.json not written: 1 dependency breaks run.rules.dependencies:',
           "  lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies",
         ],
         written: false,

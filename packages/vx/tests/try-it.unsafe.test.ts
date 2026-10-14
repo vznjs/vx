@@ -276,7 +276,7 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
     expect(migrate(root)).toEqual([0, migrateOut])
-    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
+    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.project.ts'), 'utf8')).toBe(
       libConfig!,
     )
     expect(endState(root, 'turbo', 'turbo.json')).toEqual(BUILT)
@@ -297,7 +297,7 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
     expect(migrate(root)).toEqual([0, migrateOut])
-    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.config.ts'), 'utf8')).toBe(
+    expect(readFileSync(path.join(root, 'packages', 'lib', 'vx.project.ts'), 'utf8')).toBe(
       libConfig!,
     )
     expect(endState(root, 'nx', 'nx.json')).toEqual(BUILT)

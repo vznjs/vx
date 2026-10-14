@@ -35,7 +35,7 @@ beforeEach(async () => {
   // input, so removing it changes no key: run 2 derives the same keys as
   // run 1, which is what makes a saved `b`/`c` entry a stale hit.
   await writeFile(
-    path.join(dir, 'vx.config.mjs'),
+    path.join(dir, 'vx.project.mjs'),
     `export default {
   tasks: {
     a: {
@@ -127,7 +127,7 @@ describe('--continue=always carries the taint through a restore-tier hit', () =>
     await mkdir(genDir)
     await writeFile(path.join(genDir, 'package.json'), '{"name":"g"}')
     await writeFile(
-      path.join(genDir, 'vx.config.mjs'),
+      path.join(genDir, 'vx.project.mjs'),
       `export default {
   tasks: {
     // Slow to fail: the hit below restores while gen is still running.
@@ -139,7 +139,7 @@ describe('--continue=always carries the taint through a restore-tier hit', () =>
     await writeFile(path.join(dir, 'src', 'p.txt'), 'p\n')
     await writeFile(path.join(dir, 'src', 's.txt'), 's1\n')
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default {
   tasks: {
     pack: {
@@ -204,7 +204,7 @@ describe('--continue=always taints through an order-only edge', () => {
   it('a task ordered after a failure by --exclude-dependencies is not saved', async () => {
     const dir = path.join(root, 'packages', 'p')
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default {
   tasks: {
     a: {

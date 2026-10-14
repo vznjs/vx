@@ -33,7 +33,7 @@ beforeAll(async () => {
     await mkdir(pkg, { recursive: true })
     await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name }))
     await writeFile(
-      path.join(pkg, 'vx.config.mjs'),
+      path.join(pkg, 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     )
   }

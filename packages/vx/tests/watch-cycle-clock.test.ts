@@ -31,7 +31,7 @@ describe('vx watch cycle window (e2e)', () => {
     await writeFile(path.join(f.dir, '.gitignore'), '.env.local\nshown.txt\n')
     await writeFile(path.join(f.dir, '.env.local'), 'A=1\n')
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `export default { tasks: {
         show: { exec: { command: 'cat .env.local > shown.txt && echo run >> ${f.log}' } },
       } }\n`,

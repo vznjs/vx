@@ -29,7 +29,7 @@ export async function migrateNx(
     cacheable: new Set(),
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     // The file this writes is each task's config.
-    ownConfig: () => `vx.config.${format}`,
+    ownConfig: () => `vx.project.${format}`,
     manifestField: (key) => ({ raw: `pkg.${key}` }),
     migration: true,
   })

@@ -98,9 +98,9 @@ describe('applyMigration', () => {
         ['empty', []],
       ]),
     )
-    expect(existsSync(path.join(root, 'app', 'vx.config.ts'))).toBe(true)
+    expect(existsSync(path.join(root, 'app', 'vx.project.ts'))).toBe(true)
     // owner, 2026-10-14: "no skips. every project gets a config".
-    expect(readFileSync(path.join(root, 'empty', 'vx.config.ts'), 'utf8')).toBe(
+    expect(readFileSync(path.join(root, 'empty', 'vx.project.ts'), 'utf8')).toBe(
       "import type { ProjectConfig } from '@vzn/vx/config'\n\nexport default {\n  tasks: {},\n} satisfies ProjectConfig\n",
     )
     expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(false)
@@ -109,13 +109,13 @@ describe('applyMigration', () => {
   it('refuses beside a hand-written config of another extension, and not for a project it skips', async () => {
     for (const name of ['app', 'empty']) {
       mkdirSync(path.join(root, name))
-      writeFileSync(path.join(root, name, 'vx.config.mjs'), 'export default {}\n')
+      writeFileSync(path.join(root, name, 'vx.project.mjs'), 'export default {}\n')
     }
     const metas = ['app', 'empty'].map((name) => ({
       name,
       dir: path.join(root, name),
       packageJson: { name },
-      configPath: path.join(root, name, 'vx.config.mjs'),
+      configPath: path.join(root, name, 'vx.project.mjs'),
     }))
     expect(
       await refusal(() =>
@@ -127,7 +127,9 @@ describe('applyMigration', () => {
           { metas },
         ),
       ),
-    ).toBe('refusing to overwrite existing files (pass --force to overwrite):\n  app/vx.config.mjs')
+    ).toBe(
+      'refusing to overwrite existing files (pass --force to overwrite):\n  app/vx.project.mjs',
+    )
   })
 
   it('a TODO holding a line break stays a comment in the written config (D-21)', async () => {
@@ -146,7 +148,7 @@ describe('applyMigration', () => {
       ]),
       { format: 'mjs' },
     )
-    const file = path.join(root, 'app', 'vx.config.mjs')
+    const file = path.join(root, 'app', 'vx.project.mjs')
     const mod = (await import(file)) as Record<string, unknown>
     expect(Object.keys(mod)).toEqual(['default'])
     expect(readFileSync(file, 'utf8')).toContain('    //   export const leaked = 1" is not set')
@@ -220,7 +222,7 @@ describe('applyMigration', () => {
         ],
       ]),
     )
-    const lines = readFileSync(path.join(root, 'app', 'vx.config.ts'), 'utf8').split('\n')
+    const lines = readFileSync(path.join(root, 'app', 'vx.project.ts'), 'utf8').split('\n')
     const suggested = lines.filter((l) => l.startsWith('      // cache: '))
     expect(suggested).toEqual([
       "      // cache: { inputs: { files: ['src/**'] }, outputs: { files: ['.next/**', '!.next/cache/**'] } },",
@@ -238,7 +240,7 @@ describe('applyMigration', () => {
     mkdirSync(path.join(root, 'app'))
     await apply(plan([['app', [task('build', exec('tsc'))]]]), { dry: true })
     expect(stdout.split('\n')).toContain('files (dry run, nothing written):')
-    expect(existsSync(path.join(root, 'app', 'vx.config.ts'))).toBe(false)
+    expect(existsSync(path.join(root, 'app', 'vx.project.ts'))).toBe(false)
   })
 
   it('next names build wherever it sits, else the first task', async () => {
@@ -262,7 +264,7 @@ describe('applyMigration', () => {
     const p = plan([['app', [task('build', { exec: { command: { raw: 'cmd()' } } })]]])
     p.projects[0]!.importLines = ["import { cmd } from './cmd.mjs'"]
     await apply(p, { format: 'mjs' })
-    const file = readFileSync(path.join(root, 'app', 'vx.config.mjs'), 'utf8')
+    const file = readFileSync(path.join(root, 'app', 'vx.project.mjs'), 'utf8')
     expect(file.startsWith("import { cmd } from './cmd.mjs'\n")).toBe(true)
     expect(file).toContain('\n        command: cmd(),\n')
   })
@@ -271,7 +273,7 @@ describe('applyMigration', () => {
     // Only a config of another extension is replaced; unlinked after the
     // write, the same name would leave the project with no config at all.
     mkdirSync(path.join(root, 'app'))
-    const existing = path.join(root, 'app', 'vx.config.ts')
+    const existing = path.join(root, 'app', 'vx.project.ts')
     writeFileSync(existing, 'export default {}\n')
     const metas = [
       {
@@ -302,7 +304,7 @@ describe('applyMigration', () => {
         ],
       ]),
     )
-    const file = readFileSync(path.join(root, 'app', 'vx.config.ts'), 'utf8')
+    const file = readFileSync(path.join(root, 'app', 'vx.project.ts'), 'utf8')
     expect(file).toContain(
       [
         '    build: {',

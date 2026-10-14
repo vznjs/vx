@@ -13,4 +13,4 @@ body:
     id: proposal
     attributes:
       label: What you propose
-      description: How it would look in a `vx.config.ts`, on the CLI, or as a plugin hook. How Turbo or Nx does it helps.
+      description: How it would look in a `vx.project.ts`, on the CLI, or as a plugin hook. How Turbo or Nx does it helps.

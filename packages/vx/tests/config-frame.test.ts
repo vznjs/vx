@@ -26,7 +26,7 @@ describe('configErrorFrame', () => {
   let file: string
   beforeAll(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-frame-'))
-    file = path.join(dir, 'vx.config.ts')
+    file = path.join(dir, 'vx.project.ts')
     await writeFile(file, CONFIG)
   })
   afterAll(async () => {
@@ -35,7 +35,7 @@ describe('configErrorFrame', () => {
 
   it('names the field at line:col and frames the lines above it', () => {
     expect(configErrorFrame(`${file}: tasks.lint.fix.exec has unknown field "comand"`, dir)).toBe(
-      'vx.config.ts:7:15: tasks.lint.fix.exec has unknown field "comand"\n\n' +
+      'vx.project.ts:7:15: tasks.lint.fix.exec has unknown field "comand"\n\n' +
         '  5 |     },\n' +
         "  6 |     'lint.fix': {\n" +
         "> 7 |       exec: { comand: 'x', timeout: -1 },\n" +
@@ -50,16 +50,16 @@ describe('configErrorFrame', () => {
         `${file}: tasks.lint.fix.exec.timeout must be a positive integer`,
         dir,
       )?.split('\n')[0],
-    ).toBe('vx.config.ts:7:28: tasks.lint.fix.exec.timeout must be a positive integer')
+    ).toBe('vx.project.ts:7:28: tasks.lint.fix.exec.timeout must be a positive integer')
     expect(configErrorFrame(`${file}: tasks.build: \`exec\` is odd`, dir)?.split('\n')[0]).toBe(
-      'vx.config.ts:4:7: tasks.build: `exec` is odd',
+      'vx.project.ts:4:7: tasks.build: `exec` is odd',
     )
   })
 
   it('leaves a message it cannot place as it was', () => {
     expect(configErrorFrame(`${file}: tasks.nope.exec has unknown field "x"`, dir)).toBeUndefined()
     expect(configErrorFrame(`${file}: \`tags\` must be an array`, dir)).toBeUndefined()
-    expect(configErrorFrame(`${dir}/missing/vx.config.ts: tasks.build x`, dir)).toBeUndefined()
+    expect(configErrorFrame(`${dir}/missing/vx.project.ts: tasks.build x`, dir)).toBeUndefined()
     expect(configErrorFrame('no projects declare task(s): biuld', dir)).toBeUndefined()
     // Standing outside the file's tree, the path stays absolute.
     expect(
@@ -81,7 +81,7 @@ describe('vx prints a config refusal with its frame', () => {
         path.join(pkg, 'package.json'),
         JSON.stringify({ name: 'b', version: '0.0.0' }),
       )
-      await writeFile(path.join(pkg, 'vx.config.mjs'), CONFIG.replace("'lint.fix'", 'lint'))
+      await writeFile(path.join(pkg, 'vx.project.mjs'), CONFIG.replace("'lint.fix'", 'lint'))
       const r = Bun.spawnSync(['bun', BIN, 'run', 'build', '--all'], {
         cwd: root,
         env: { ...process.env, NO_COLOR: '1' },
@@ -91,7 +91,7 @@ describe('vx prints a config refusal with its frame', () => {
       expect(r.exitCode).toBe(1)
       const err = r.stderr.toString()
       expect(err.split('\n')[0]).toStartWith(
-        'vx: packages/b/vx.config.mjs:7:15: tasks.lint.exec has unknown field "comand"',
+        'vx: packages/b/vx.project.mjs:7:15: tasks.lint.exec has unknown field "comand"',
       )
       expect(err).toContain(
         "> 7 |       exec: { comand: 'x', timeout: -1 },\n    |               ^\n",

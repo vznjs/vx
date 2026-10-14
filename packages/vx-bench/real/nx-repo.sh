@@ -1,5 +1,5 @@
 #!/bin/bash
-# vx (compiled binary, on the vx.config.ts files `bunx @vzn/vx-migrate
+# vx (compiled binary, on the vx.project.ts files `bunx @vzn/vx-migrate
 # --from nx` wrote from the repo's own Nx graph) against the repo's own Nx,
 # on a real Nx monorepo. The four arms of turbo-repo.sh, per tool, vx first:
 #   cold     caches AND outputs wiped — every task executes
@@ -13,7 +13,7 @@
 # (2026-09-27). Otherwise the repo must be installed, its graph exported
 # (`nx graph --file=.nx/workspace-data/project-graph.json`) and migrated
 # (`bun packages/vx-migrate/src/bin.ts --from nx` from the repo root),
-# so the vx.config.ts files sit beside the package.json files; they are
+# so the vx.project.ts files sit beside the package.json files; they are
 # untracked, not ignored, and survive the clean. Rows print as
 # `<tool> <arm> <ms> exit=<code>`; each arm's log is kept beside the repo
 # as .vx-bench-<tool>-<arm>.log.

@@ -18,7 +18,7 @@ describe('vx show — a refusal names the verb', () => {
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     )
   })

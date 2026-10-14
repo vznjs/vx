@@ -155,7 +155,7 @@ describe('telemetry flush is time-bounded', () => {
     await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
-      path.join(root, 'pkg-a/vx.config.mjs'),
+      path.join(root, 'pkg-a/vx.project.mjs'),
       `export default { tasks: { boom: { exec: { command: 'exit 3' } } } }`,
     )
     await Bun.write(
@@ -192,7 +192,7 @@ describe('a hook that never settles', () => {
     await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
-      path.join(root, 'pkg-a/vx.config.mjs'),
+      path.join(root, 'pkg-a/vx.project.mjs'),
       `export default { tasks: { boom: { exec: { command: 'exit 3' } } } }`,
     )
     await Bun.write(
@@ -264,7 +264,7 @@ describe('the telemetry task set matches what the terminal reports', () => {
     await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
-      path.join(root, 'pkg-a/vx.config.mjs'),
+      path.join(root, 'pkg-a/vx.project.mjs'),
       `export default { tasks: {
          base: { exec: { command: 'exit 5' } },
          dependent: { exec: { command: 'echo never' }, dependsOn: ['base'] },
@@ -301,7 +301,7 @@ describe('the telemetry task set matches what the terminal reports', () => {
     await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
-      path.join(root, 'pkg-a/vx.config.mjs'),
+      path.join(root, 'pkg-a/vx.project.mjs'),
       `export default { tasks: {
          hi: { exec: { command: 'true' } },
          grp: { dependsOn: ['hi'] },
@@ -423,7 +423,7 @@ describe('a malformed telemetry() return is rejected at the boundary', () => {
     await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
-      path.join(root, 'pkg-a/vx.config.mjs'),
+      path.join(root, 'pkg-a/vx.project.mjs'),
       `export default { tasks: { hi: { exec: { command: 'true' } } } }`,
     )
     await Bun.write(
@@ -452,7 +452,7 @@ describe('the zero-cost gate keys on the telemetry capability', () => {
     await writeLocalWorkspace(root)
     await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
     await Bun.write(
-      path.join(root, 'pkg-a/vx.config.mjs'),
+      path.join(root, 'pkg-a/vx.project.mjs'),
       `export default { tasks: { hi: { exec: { command: 'true' } } } }`,
     )
     if (pluginSource !== null) {

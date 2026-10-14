@@ -846,7 +846,7 @@ describe('telemetry — end-to-end through run()', () => {
         JSON.stringify({ name: 'pkg-a' }),
       )
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
       )
       await Bun.write(
@@ -909,7 +909,7 @@ describe('telemetry — end-to-end through run()', () => {
         JSON.stringify({ name: 'pkg-a' }),
       )
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
       )
       // Deliberately no telemetry plugin — only the local executor + cache;
@@ -958,7 +958,7 @@ describe('telemetry — end-to-end through run()', () => {
         JSON.stringify({ name: 'pkg-a' }),
       )
       await Bun.write(
-        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
         `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
       )
       await writeLocalWorkspace(workspaceRoot)

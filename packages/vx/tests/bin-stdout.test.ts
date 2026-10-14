@@ -23,7 +23,7 @@ beforeAll(async () => {
   await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
   // One task whose description alone is past every pipe buffer.
   await writeFile(
-    path.join(app, 'vx.config.mjs'),
+    path.join(app, 'vx.project.mjs'),
     `export default { tasks: { build: { description: ${JSON.stringify('d'.repeat(BIG))}, exec: { command: 'true' } } } }\n`,
   )
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })

@@ -217,7 +217,7 @@ describe('a task that rewrites the lockfile the workspace fingerprint folded', (
       'packages:\n  - "."\n  - "packages/*"\n',
     )
     await writeFile(
-      path.join(root, 'vx.config.mjs'),
+      path.join(root, 'vx.project.mjs'),
       `export default { tasks: { install: ${install} } }`,
     )
     await writeFile(path.join(root, 'pnpm-lock.yaml'), 'X')
@@ -591,7 +591,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
       'packages:\n  - "."\n  - "packages/*"\n',
     )
     await writeFile(
-      path.join(root, 'vx.config.mjs'),
+      path.join(root, 'vx.project.mjs'),
       `export default { tasks: { install: ${install} } }`,
     )
     await addProject(root, 'app', {
@@ -633,7 +633,7 @@ describe('the stability gate: which readers are keyed before a rewriter ran', ()
       )
       await writeFile(path.join(root, 'pnpm-lock.yaml'), 'X')
       await writeFile(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `
           export default {
             tasks: {

@@ -78,7 +78,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     // filter removed from the arm, the `build.log` write below is a cycle.
     await writeFile(path.join(f.root, 'tsconfig.base.json'), '{"a":1}\n')
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `export default {
         tasks: {
           build: {
@@ -134,7 +134,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       files: { 'src/l.txt': 'l1\n' },
     })
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `export default {
         tasks: {
           build: {
@@ -234,7 +234,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     const bDir = path.join(f.root, 'packages', 'b')
     await mkdir(path.join(bDir, 'src'), { recursive: true })
     await writeFile(path.join(bDir, 'src', 'b.txt'), 'b1\n')
-    await writeFile(path.join(bDir, 'vx.config.mjs'), buildLogging('run'))
+    await writeFile(path.join(bDir, 'vx.project.mjs'), buildLogging('run'))
     await until(
       () => occurrences(w.out(), 'vx watch: watching 1 project(s)\n') === 1,
       'the re-read after the directory appeared',
@@ -266,7 +266,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       files: { 'src/l.txt': 'l1\n' },
     })
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       buildLogging('run', "dependsOn: ['^build'],"),
     )
     f.watch = startWatch(f.root, ['--filter', 'app'])
@@ -304,7 +304,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     await initialOnly(w, f.log)
 
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `export default {
         tasks: {
           build: {
@@ -334,7 +334,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       `export const inputs = { files: ['src/**']${extra} }\n`
     await writeFile(path.join(f.dir, 'inputs.mjs'), inputs(''))
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `import { inputs } from './inputs.mjs'
       export default {
         tasks: {
@@ -372,7 +372,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     const app = (name: string) => path.join(f.root, 'apps', name)
     await mkdir(path.join(app('c'), 'src'), { recursive: true })
     await writeFile(path.join(app('c'), 'package.json'), '{"name":"c","version":"0.0.0"}')
-    await writeFile(path.join(app('c'), 'vx.config.mjs'), buildLogging('c'))
+    await writeFile(path.join(app('c'), 'vx.project.mjs'), buildLogging('c'))
     await writeFile(path.join(app('c'), 'src', 'c.txt'), 'c1\n')
     f.watch = startWatch(f.root)
     const w = f.watch
@@ -392,7 +392,7 @@ describe('vx watch loop (e2e): the watched set', () => {
 
     // `apps/` is a member base now: a package arriving there is a cycle.
     await mkdir(path.join(app('d'), 'src'), { recursive: true })
-    await writeFile(path.join(app('d'), 'vx.config.mjs'), buildLogging('d'))
+    await writeFile(path.join(app('d'), 'vx.project.mjs'), buildLogging('d'))
     await writeFile(path.join(app('d'), 'src', 'd.txt'), 'd1\n')
     await writeFile(path.join(app('d'), 'package.json'), '{"name":"d","version":"0.0.0"}')
     await until(() => w.out().includes('vx watch: watching 3 project(s)'), 'd joins the set')
@@ -437,7 +437,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     await mkdir(path.join(bDir, 'src'), { recursive: true })
     await writeFile(path.join(bDir, 'src', 'b.txt'), 'b1\n')
     await writeFile(
-      path.join(bDir, 'vx.config.mjs'),
+      path.join(bDir, 'vx.project.mjs'),
       `export default {
         tasks: {
           build: {

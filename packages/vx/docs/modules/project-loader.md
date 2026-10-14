@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Evaluate a `vx.config.{ts,mts,js,mjs,cts,cjs}` file and return the resolved
+Evaluate a `vx.project.{ts,mts,js,mjs,cts,cjs}` file and return the resolved
 `ProjectConfig` object. Bun runs TypeScript natively, so the loader is
 a thin wrapper around `await import()`.
 

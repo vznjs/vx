@@ -28,7 +28,7 @@ beforeAll(async () => {
   await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
   await writeFile(path.join(root, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(
-    path.join(root, 'packages', 'a', 'vx.config.mjs'),
+    path.join(root, 'packages', 'a', 'vx.project.mjs'),
     `export default { tasks: {
       plain: { exec: { command: 'echo pat=$GH_PAT >&2; exit 3', env: { define: { GH_PAT: '${SECRET}' }, secret: ['GH_PAT'] } } },
       cached: {

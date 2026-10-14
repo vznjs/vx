@@ -99,7 +99,7 @@ async function makeWorkspace(): Promise<string> {
   const appDir = path.join(root, 'packages', 'app')
   await mkdir(appDir, { recursive: true })
   await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))
-  await writeFile(path.join(appDir, 'vx.config.mjs'), APP_CONFIG)
+  await writeFile(path.join(appDir, 'vx.project.mjs'), APP_CONFIG)
   const bareDir = path.join(root, 'packages', 'bare')
   await mkdir(bareDir, { recursive: true })
   await writeFile(path.join(bareDir, 'package.json'), JSON.stringify({ name: 'bare' }))
@@ -488,7 +488,7 @@ describe('vx info (e2e)', () => {
       expect(r.out).toMatch(row('cache entries', '0 (0 B)'))
       expect(r.out).toMatch(row('task runs (24h)', '0'))
       expect(r.out).toMatch(row('flaky tasks', 'none'))
-      expect(r.out).toMatch(row('vx-lock.json', 'no'))
+      expect(r.out).toMatch(row('vx.lock.json', 'no'))
       // Control for the orphans row below: nothing on disk the index does
       // not know, so the doctor says nothing about it.
       expect(r.out).not.toContain('orphans:')
@@ -627,7 +627,7 @@ describe('vx info — a config that will not load counts as zero, for every numb
     await mkdir(sandboxed, { recursive: true })
     await writeFile(path.join(sandboxed, 'package.json'), JSON.stringify({ name: 'sandboxed' }))
     await writeFile(
-      path.join(sandboxed, 'vx.config.mjs'),
+      path.join(sandboxed, 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'echo build', sandbox: {} } } } }`,
     )
   })
@@ -648,7 +648,7 @@ describe('vx info — a config that will not load counts as zero, for every numb
       await mkdir(broken, { recursive: true })
       await writeFile(path.join(broken, 'package.json'), JSON.stringify({ name: 'broken' }))
       await writeFile(
-        path.join(broken, 'vx.config.mjs'),
+        path.join(broken, 'vx.project.mjs'),
         `export default { tasks: { build: { command: 'echo build' } } }`,
       )
       const r = await vx(root, ['info', '--format', 'json'])
@@ -661,7 +661,7 @@ describe('vx info — a config that will not load counts as zero, for every numb
       // message and no absolute path in front of it.
       expect(facts.configErrors).toEqual([
         {
-          path: 'packages/broken/vx.config.mjs',
+          path: 'packages/broken/vx.project.mjs',
           message: expect.stringMatching(/^tasks\.build has unknown field "command"/),
         },
       ])
@@ -669,7 +669,7 @@ describe('vx info — a config that will not load counts as zero, for every numb
       expect(pretty.code).toBe(0)
       expect(pretty.out).toMatch(/^projects: +4 \(5 tasks · 1 config did not load\)$/m)
       expect(pretty.out).toMatch(
-        /^config errors: +packages\/broken\/vx\.config\.mjs: tasks\.build has unknown field "command"/m,
+        /^config errors: +packages\/broken\/vx\.project\.mjs: tasks\.build has unknown field "command"/m,
       )
 
       // An import that fails is the loader's other message shape, which
@@ -683,23 +683,23 @@ describe('vx info — a config that will not load counts as zero, for every numb
       await mkdir(path.join(root, 'node_modules'), { recursive: true })
       await writeFile(path.join(badimport, 'package.json'), JSON.stringify({ name: 'badimport' }))
       await writeFile(
-        path.join(badimport, 'vx.config.mjs'),
+        path.join(badimport, 'vx.project.mjs'),
         `import { preset } from 'nope-pkg'\nexport default { tasks: { build: { exec: { command: 'true' }, ...preset } } }\n`,
       )
       const two = JSON.parse((await vx(root, ['info', '--format', 'json'])).out)
       expect(two.configErrors).toEqual([
         {
-          path: 'packages/badimport/vx.config.mjs',
+          path: 'packages/badimport/vx.project.mjs',
           message: expect.stringMatching(/^cannot find 'nope-pkg' — no node_modules above/),
         },
         {
-          path: 'packages/broken/vx.config.mjs',
+          path: 'packages/broken/vx.project.mjs',
           message: expect.stringMatching(/^tasks\.build has unknown field "command"/),
         },
       ])
       // One row, the errors joined by `; ` in path order.
       expect((await vx(root, ['info'])).out).toMatch(
-        /^config errors: +packages\/badimport\/vx\.config\.mjs: cannot find 'nope-pkg' — no node_modules above .*; packages\/broken\//m,
+        /^config errors: +packages\/badimport\/vx\.project\.mjs: cannot find 'nope-pkg' — no node_modules above .*; packages\/broken\//m,
       )
     },
     TIMEOUT,
@@ -851,7 +851,7 @@ describe('vx info — the rendered rows', () => {
         'task runs (24h):  5 (2 cache hits: 1 up-to-date, 1 restored)',
         'flaky tasks:      none',
         'sandbox:          available (1 task declares exec.sandbox)',
-        'vx-lock.json:     yes',
+        'vx.lock.json:     yes',
       ].join('\n'),
     )
   })
@@ -865,7 +865,7 @@ describe('vx info — the rendered rows', () => {
       gitStatusCache: null,
       projects: 2,
       tasks: 0,
-      configErrors: [{ path: 'packages/a/vx.config.ts', message: 'boom' }],
+      configErrors: [{ path: 'packages/a/vx.project.ts', message: 'boom' }],
       plugins: [
         { name: 'p', seams: [] },
         { name: 'q', seams: ['executor', 'cache'] },
@@ -895,7 +895,7 @@ describe('vx info — the rendered rows', () => {
         'git status cache: (unknown)',
         'workspace root:   /w',
         'projects:         2 (0 tasks · 1 config did not load)',
-        'config errors:    packages/a/vx.config.ts: boom',
+        'config errors:    packages/a/vx.project.ts: boom',
         'plugins:          2 — p (no seams); q (executor, cache)',
         'workers:          8 — vx.workspace.ts (4 cores, cgroup CPU quota 2)',
         'memory:           2.0 GB usable — cgroup limit; the machine has 8.0 GB',
@@ -908,7 +908,7 @@ describe('vx info — the rendered rows', () => {
         'task runs (24h):  0 (0 cache hits)',
         'flaky tasks:      2 — a#test (3 of 7 runs failed on unchanged inputs); b#e2e (1 of 4 runs failed)',
         'sandbox:          unavailable — bwrap missing; 2 tasks declare exec.sandbox and will fail',
-        'vx-lock.json:     no',
+        'vx.lock.json:     no',
       ].join('\n'),
     )
   })
@@ -1045,13 +1045,13 @@ describe('vx show <project> loads that project only (e2e)', () => {
     await mkdir(app, { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(
-      path.join(app, 'vx.config.mjs'),
+      path.join(app, 'vx.project.mjs'),
       "export default { tasks: { build: { exec: { command: 'echo b' } } } }\n",
     )
     const broken = path.join(root, 'packages', 'broken')
     await mkdir(broken, { recursive: true })
     await writeFile(path.join(broken, 'package.json'), JSON.stringify({ name: 'broken' }))
-    await writeFile(path.join(broken, 'vx.config.mjs'), "throw new Error('never evaluated')\n")
+    await writeFile(path.join(broken, 'vx.project.mjs'), "throw new Error('never evaluated')\n")
   })
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })
@@ -1093,7 +1093,7 @@ describe('collectInfo — the facts behind the rows', () => {
     await mkdir(a, { recursive: true })
     await writeFile(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(
-      path.join(a, 'vx.config.mjs'),
+      path.join(a, 'vx.project.mjs'),
       "export default { tasks: { build: { exec: { command: 'echo b' } } } }\n",
     )
   })
@@ -1153,13 +1153,13 @@ describe('collectInfo — the facts behind the rows', () => {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
-      await writeFile(path.join(dir, 'vx.config.mjs'), `throw new Error('broken ${name}')\n`)
+      await writeFile(path.join(dir, 'vx.project.mjs'), `throw new Error('broken ${name}')\n`)
     }
     const facts = await collectInfo(root, { warn() {} })
     const paths = facts.configErrors.map((e) => e.path)
     expect(paths).toEqual([...paths].sort())
-    expect(paths).toContain('packages/alpha/vx.config.mjs')
-    expect(paths).toContain('packages/zeta/vx.config.mjs')
+    expect(paths).toContain('packages/alpha/vx.project.mjs')
+    expect(paths).toContain('packages/zeta/vx.project.mjs')
     for (const name of ['zeta', 'alpha']) {
       await rm(path.join(root, 'packages', name), { recursive: true, force: true })
     }

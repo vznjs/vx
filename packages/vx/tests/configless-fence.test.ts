@@ -36,7 +36,7 @@ async function workspace(rootOutputs: string, command = 'true'): Promise<string>
     git: false,
   }))
   await writeFile(
-    path.join(r, 'vx.config.mjs'),
+    path.join(r, 'vx.project.mjs'),
     `export default { tasks: { build: {
       exec: { command: ${JSON.stringify(command)} },
       cache: { inputs: { files: ['**'] }, outputs: { files: ${rootOutputs} } },

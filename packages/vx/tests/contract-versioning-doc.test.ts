@@ -60,7 +60,7 @@ describe('versioning-1.0.md lists what the code freezes', () => {
 
   it('every config level and its fields, as the validator accepts them', () => {
     expect(levelTable(config, 'vx.workspace.ts')).toEqual(RECORD.workspace.levels)
-    expect(levelTable(config, 'vx.config.ts')).toEqual(RECORD.project.levels)
+    expect(levelTable(config, 'vx.project.ts')).toEqual(RECORD.project.levels)
   })
 
   it('every level keyed by an author-chosen name', () => {

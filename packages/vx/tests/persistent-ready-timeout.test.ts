@@ -400,7 +400,7 @@ describe('exec.timeout — loader validation', () => {
   })
 
   const load = async (exec: string) => {
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, `export default { tasks: { dev: { exec: ${exec} } } }`)
     return loadProjectConfig(file)
   }

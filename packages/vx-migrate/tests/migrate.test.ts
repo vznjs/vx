@@ -164,7 +164,7 @@ describe("vx migrate (turbo): a package without a ^ task's script", () => {
         await addPackage(root, 'ui', {})
         await addPackage(root, 'web', { build: 'tsc -b', types: 'tsc' }, { ui: 'workspace:*' })
         expect((await vx(root, [])).code).toBe(0)
-        const ui = await loadProjectConfig(path.join(root, 'packages', 'ui', 'vx.config.ts'))
+        const ui = await loadProjectConfig(path.join(root, 'packages', 'ui', 'vx.project.ts'))
         const tasks = ui.tasks as Record<string, TaskConfig>
         // Core gives a project with no `build` this node itself (projects.ts).
         expect(Object.keys(tasks)).toEqual(['types'])
@@ -181,7 +181,7 @@ describe("vx migrate (turbo): a package without a ^ task's script", () => {
   )
 })
 
-// Turbo's `//#` root tasks: the CLI writes the root's vx.config.ts, which
+// Turbo's `//#` root tasks: the CLI writes the root's vx.project.ts, which
 // is what makes core read the root as a project (D-39); the live plugin can
 // only say so. Five of eleven real Turbo repos had root tasks, and 36 edges
 // to them were dropped (G-49).
@@ -219,9 +219,9 @@ describe('vx migrate (turbo): root tasks', () => {
   })
 
   it('writes the root config with its //# task, and the edge to it holds', async () => {
-    const rootConfig = await loadProjectConfig(path.join(root, 'vx.config.ts'))
+    const rootConfig = await loadProjectConfig(path.join(root, 'vx.project.ts'))
     expect(Object.keys(rootConfig.tasks ?? {})).toEqual(['gen'])
-    const app = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
+    const app = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.project.ts'))
     expect((app.tasks as Record<string, TaskConfig>).build!.dependsOn).toEqual(['fixture-root#gen'])
   })
 })
@@ -239,15 +239,15 @@ describe('vx migrate (turbo)', () => {
 
   it('exits 0 and reports written files', () => {
     expect(result.code).toBe(0)
-    expect(result.out).toContain('packages/app/vx.config.ts')
-    expect(result.out).toContain('packages/lib/vx.config.ts')
+    expect(result.out).toContain('packages/app/vx.project.ts')
+    expect(result.out).toContain('packages/lib/vx.project.ts')
     expect(result.out).toContain('vx-preset.ts')
   })
 
   it(
     'generated app config round-trips through loadProjectConfig with every mapping row',
     async () => {
-      const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
+      const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.project.ts'))
       const tasks = config.tasks!
 
       // dependsOn verbatim; $TURBO_ROOT$ entry dropped (TODO).
@@ -313,7 +313,7 @@ describe('vx migrate (turbo)', () => {
   it(
     'per-package turbo.json extends-merges over the root task',
     async () => {
-      const config = await loadProjectConfig(path.join(root, 'packages', 'lib', 'vx.config.ts'))
+      const config = await loadProjectConfig(path.join(root, 'packages', 'lib', 'vx.project.ts'))
       const build = config.tasks!.build!
       expect(build.exec?.command).toBe('tsc')
       expect(build.cache?.outputs.files).toEqual(['lib/**'])
@@ -369,24 +369,24 @@ describe('vx migrate (turbo)', () => {
   })
 
   it(
-    '--mjs writes vx.config.mjs files that import a vx-preset.mjs, and they load',
+    '--mjs writes vx.project.mjs files that import a vx-preset.mjs, and they load',
     async () => {
       const r = await vx(root, ['--mjs', '--force'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('turbo.json → vx.config.mjs')
+      expect(r.out).toContain('turbo.json → vx.project.mjs')
       expect(r.out).toContain('vx-preset.mjs')
       const preset = await Bun.file(path.join(root, 'vx-preset.mjs')).text()
       expect(preset).toContain('export const globalInputs')
-      const generated = await Bun.file(path.join(root, 'packages', 'app', 'vx.config.mjs')).text()
+      const generated = await Bun.file(path.join(root, 'packages', 'app', 'vx.project.mjs')).text()
       expect(generated).not.toContain('@vzn/vx')
       expect(generated).not.toContain('satisfies')
       expect(generated).toContain("from '../../vx-preset.mjs'")
-      const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.mjs'))
+      const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.project.mjs'))
       expect(config.tasks?.build).toBeDefined()
       // Back to the .ts form for the tests that follow.
       await rm(path.join(root, 'vx-preset.mjs'))
-      await rm(path.join(root, 'packages', 'app', 'vx.config.mjs'))
-      await rm(path.join(root, 'packages', 'lib', 'vx.config.mjs'), { force: true })
+      await rm(path.join(root, 'packages', 'app', 'vx.project.mjs'))
+      await rm(path.join(root, 'packages', 'lib', 'vx.project.mjs'), { force: true })
       const back = await vx(root, ['--force'])
       expect(back.code).toBe(0)
     },
@@ -411,17 +411,17 @@ describe('vx migrate (turbo)', () => {
   })
 
   it('TODO comments are comments in the generated file', async () => {
-    const text = await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).text()
+    const text = await Bun.file(path.join(root, 'packages', 'app', 'vx.project.ts')).text()
     expect(text).toContain('// TODO(vx-migrate):')
   })
 
   it(
-    'refuses to overwrite existing vx.config.* without --force',
+    'refuses to overwrite existing vx.project.* without --force',
     async () => {
       const again = await vx(root, [])
       expect(again.code).toBe(1)
       expect(again.err).toContain('--force')
-      expect(again.err).toContain('packages/app/vx.config.ts')
+      expect(again.err).toContain('packages/app/vx.project.ts')
     },
     TIMEOUT,
   )
@@ -431,7 +431,7 @@ describe('vx migrate (turbo)', () => {
     async () => {
       const forced = await vx(root, ['--force'])
       expect(forced.code).toBe(0)
-      expect(forced.out).toContain('packages/app/vx.config.ts')
+      expect(forced.out).toContain('packages/app/vx.project.ts')
     },
     TIMEOUT,
   )
@@ -445,10 +445,10 @@ describe('vx migrate --dry (turbo)', () => {
       try {
         const r = await vx(root, ['--dry'])
         expect(r.code).toBe(0)
-        expect(r.out).toContain('packages/app/vx.config.ts')
+        expect(r.out).toContain('packages/app/vx.project.ts')
         expect(r.out).toContain('export default')
         expect(r.out).toContain('vx-preset.ts')
-        expect(await Bun.file(path.join(root, 'packages', 'app', 'vx.config.ts')).exists()).toBe(
+        expect(await Bun.file(path.join(root, 'packages', 'app', 'vx.project.ts')).exists()).toBe(
           false,
         )
         expect(await Bun.file(path.join(root, 'vx-preset.ts')).exists()).toBe(false)
@@ -604,8 +604,8 @@ describe('vx migrate (nx) with no exported graph', () => {
         await fakeNxCli(root)
         const r = await vx(root, ['--dry'])
         expect([r.code, r.err]).toEqual([0, ''])
-        expect(r.out).toContain('vx-migrate: nx graph → vx.config.ts')
-        expect(r.out).toContain('packages/pkg-a/vx.config.ts')
+        expect(r.out).toContain('vx-migrate: nx graph → vx.project.ts')
+        expect(r.out).toContain('packages/pkg-a/vx.project.ts')
         expect(await nxCalls(root)).toBe(1)
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -698,7 +698,7 @@ describe('vx migrate (lerna)', () => {
               ? [
                   r.code,
                   r.err,
-                  r.out.includes('vx-migrate: nx graph → vx.config.ts'),
+                  r.out.includes('vx-migrate: nx graph → vx.project.ts'),
                   await nxCalls(root),
                 ]
               : [r.code, r.err, false, 0],
@@ -730,7 +730,7 @@ describe('vx migrate (lerna)', () => {
       })
       try {
         const r = await vx(root, ['--dry'])
-        expect([r.code, r.err, r.out.includes('vx-migrate: turbo.json → vx.config.ts')]).toEqual([
+        expect([r.code, r.err, r.out.includes('vx-migrate: turbo.json → vx.project.ts')]).toEqual([
           0,
           '',
           true,
@@ -757,7 +757,7 @@ describe('vx migrate (lerna)', () => {
           r.err,
           ws.includes("import { nx } from '@vzn/vx-migrate'"),
           [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
-          await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).exists(),
+          await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.project.ts')).exists(),
         ]).toEqual([0, '', true, ['nx', 'scheduleHistoryPlugin'], false])
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -790,7 +790,7 @@ describe('vx migrate (nx)', () => {
   it(
     'pkg-a covers run-commands, run-script, foreign executor, namedInputs, env, dependsOn objects',
     async () => {
-      const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-a', 'vx.config.ts'))
+      const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-a', 'vx.project.ts'))
       const tasks = config.tasks!
 
       const build = tasks.build!
@@ -870,14 +870,14 @@ describe('vx migrate (nx)', () => {
       // placeholder with a todo, not `command: ''` — a config that refuses
       // to load.
       expect(tasks.empty!.exec?.command).toBe(PLACEHOLDER)
-      const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+      const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.project.ts')).text()
       expect(text).toContain('package.json script "empty" is empty')
     },
     TIMEOUT,
   )
 
   it('foreign-executor TODO carries the executor and its options JSON', async () => {
-    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.project.ts')).text()
     expect(text).toContain('@nx/webpack:dev-server')
     expect(text).toContain('{"port":4200}')
   })
@@ -885,14 +885,14 @@ describe('vx migrate (nx)', () => {
   it('a `^` input is no todo: it resolves to the dependency’s files (item 910)', async () => {
     // It was dropped as "vx already folds each dependency's key through
     // dependsOn", which holds only along a `^` edge Nx does not require.
-    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.project.ts')).text()
     expect(text).not.toContain('deps-input')
   })
 
   it(
     'pkg-b covers cwd, projectRoot strip, dir heuristic, implied cache',
     async () => {
-      const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-b', 'vx.config.ts'))
+      const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-b', 'vx.project.ts'))
       const tasks = config.tasks!
       const build = tasks.build!
       // A declared cwd under the project: a cd relative to the project dir, no todo.
@@ -906,7 +906,7 @@ describe('vx migrate (nx)', () => {
       const types = tasks['build:types']!
       expect(types.exec?.command).toBe('cd ../.. && tsc --emitDeclarationOnly')
       expect(types.cache).toBeUndefined()
-      const text = await Bun.file(path.join(root, 'packages', 'pkg-b', 'vx.config.ts')).text()
+      const text = await Bun.file(path.join(root, 'packages', 'pkg-b', 'vx.project.ts')).text()
       expect(text).toContain('"out" that "build" also declares')
       // cache absent but outputs present → cache block emitted.
       // Outputs without `cache: true` is an uncached target in Nx; the
@@ -972,7 +972,7 @@ describe('vx migrate (nx) — noop and root', () => {
   })
 
   it('nx:noop with dependsOn becomes a group task (no exec, no cache)', async () => {
-    const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-a', 'vx.config.ts'))
+    const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-a', 'vx.project.ts'))
     const umbrella = config.tasks!.umbrella!
     expect(umbrella.exec).toBeUndefined()
     expect(umbrella.cache).toBeUndefined()
@@ -980,13 +980,13 @@ describe('vx migrate (nx) — noop and root', () => {
   })
 
   it('nx:noop without dependsOn is skipped with a report line', async () => {
-    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.project.ts')).text()
     expect(text).not.toContain('dead-noop:')
     expect(text).toContain('nx:noop target with no dependsOn')
   })
 
-  it('the root project node migrates to a root vx.config.ts', async () => {
-    const config = await loadProjectConfig(path.join(root, 'vx.config.ts'))
+  it('the root project node migrates to a root vx.project.ts', async () => {
+    const config = await loadProjectConfig(path.join(root, 'vx.project.ts'))
     expect(config.tasks!['ci-all']!.exec?.command).toBe('echo root ci')
   })
 })
@@ -1051,7 +1051,7 @@ describe('vx migrate (nx) — a project:target string dependency', () => {
     await addPackage(root, 'pkg-a', {})
     await addPackage(root, 'pkg-b', {})
     await vx(root, [])
-    const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-a', 'vx.config.ts'))
+    const config = await loadProjectConfig(path.join(root, 'packages', 'pkg-a', 'vx.project.ts'))
     tasks = config.tasks as Record<string, TaskConfig>
   })
   afterAll(async () => {
@@ -1067,7 +1067,7 @@ describe('vx migrate (nx) — a project:target string dependency', () => {
   })
 
   it('drops an edge to a project the graph does not have, and says so', async () => {
-    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).text()
+    const text = await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.project.ts')).text()
     expect(text).toContain('"ghost:build" names "ghost", which is not a workspace package')
   })
 })
@@ -1080,7 +1080,7 @@ describe('vx migrate (nx) — root clobber guard', () => {
     // but the root is not a DISCOVERED project (packages/*), so the old
     // meta-only conflict check missed it and clobbered it.
     await writeFile(
-      path.join(root, 'vx.config.ts'),
+      path.join(root, 'vx.project.ts'),
       'export default { /* PRECIOUS HAND-WRITTEN */ }',
     )
   })
@@ -1088,11 +1088,11 @@ describe('vx migrate (nx) — root clobber guard', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('refuses to overwrite an existing root vx.config.ts without --force', async () => {
+  it('refuses to overwrite an existing root vx.project.ts without --force', async () => {
     const r = await vx(root, [])
     expect(r.code).toBe(1)
     expect(r.err).toContain('refusing to overwrite')
-    const text = await Bun.file(path.join(root, 'vx.config.ts')).text()
+    const text = await Bun.file(path.join(root, 'vx.project.ts')).text()
     expect(text).toContain('PRECIOUS HAND-WRITTEN') // untouched
   })
 })
@@ -1113,7 +1113,7 @@ describe('vx migrate (turbo) — commands with newlines round-trip', () => {
     expect(r.code).toBe(0)
     // The generated single-quoted TS literal must escape the newline, else it
     // is an unterminated string that fails to load.
-    const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
+    const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.project.ts'))
     expect(config.tasks!.build!.exec?.command).toBe('echo one\necho two')
   })
 })
@@ -1186,7 +1186,7 @@ describe('vx migrate (turbo) — unusable package.json scripts', () => {
           expect(r.out).not.toContain('0 TODOs')
 
           // The good sibling still migrates, and the file must LOAD.
-          const config = await loadProjectConfig(path.join(dir, 'vx.config.ts'))
+          const config = await loadProjectConfig(path.join(dir, 'vx.project.ts'))
           expect(config.tasks!.lint!.exec?.command).toBe('oxlint')
           expect(config.tasks!.build).toBeUndefined()
         } finally {
@@ -1215,7 +1215,7 @@ describe('vx migrate (turbo) — unusable package.json scripts', () => {
 
         const r = await vx(root, [])
         expect(r.code).toBe(0)
-        const config = await loadProjectConfig(path.join(dir, 'vx.config.ts'))
+        const config = await loadProjectConfig(path.join(dir, 'vx.project.ts'))
         expect(config.tasks!.test!.dependsOn ?? []).toEqual([])
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -1235,9 +1235,9 @@ describe('vx migrate source detection', () => {
         await addPackage(root, 'app', { build: 'tsc' })
         const r = await vx(root, [])
         expect(r.code).toBe(0)
-        const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
+        const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.project.ts'))
         expect(config.tasks!.build!.exec?.command).toBe('tsc')
-        expect(`${r.out}${r.err}`).toContain('vx-migrate: turbo.jsonc → vx.config.ts')
+        expect(`${r.out}${r.err}`).toContain('vx-migrate: turbo.jsonc → vx.project.ts')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -1386,7 +1386,7 @@ describe('vx migrate (nx) — executors', () => {
       )
       const r = await vx(root, ['--from', 'nx'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
-      const tasks = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts')))
+      const tasks = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.project.ts')))
         .tasks!
       expect(Object.keys(tasks).sort()).toEqual(['build', 'build:ci', 'dev', 'odd', 'pack', 'test'])
       expect(tasks['pack']!.cache?.outputs).toEqual({
@@ -1480,7 +1480,7 @@ describe('vx migrate (nx) — a server target is persistent', () => {
       )
       const r = await vx(root, ['--from', 'nx'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
-      const tasks = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts')))
+      const tasks = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.project.ts')))
         .tasks!
       const persistent = Object.keys(tasks)
         .filter((t) => tasks[t]!.exec?.persistent !== undefined)
@@ -1698,7 +1698,7 @@ describe('vx migrate — a repo core finds no workspace root in', () => {
 })
 
 describe('an output beside the config vx-migrate writes', () => {
-  it('is held to that file: `*.mjs` beside vx.config.mjs takes that file back', async () => {
+  it('is held to that file: `*.mjs` beside vx.project.mjs takes that file back', async () => {
     const root = await makeRoot('vx-migrate-own-config-')
     try {
       await writeFile(
@@ -1719,7 +1719,7 @@ describe('an output beside the config vx-migrate writes', () => {
         ).outputs.files
       expect([await outputs('ts'), await outputs('mjs')]).toEqual([
         ['*.mjs'],
-        ['*.mjs', '!vx.config.mjs'],
+        ['*.mjs', '!vx.project.mjs'],
       ])
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -1728,7 +1728,7 @@ describe('an output beside the config vx-migrate writes', () => {
 })
 
 describe('migrateNx: an output beside the config it writes', () => {
-  it('`*.mjs` caches beside vx.config.ts, and beside vx.config.mjs takes it back', async () => {
+  it('`*.mjs` caches beside vx.project.ts, and beside vx.project.mjs takes it back', async () => {
     const root = await makeRoot('vx-migrate-nx-own-config-')
     try {
       const dir = await addPackage(root, 'a', {})
@@ -1769,7 +1769,7 @@ describe('migrateNx: an output beside the config it writes', () => {
       // Beside the config it covers, the config is taken back.
       expect([await outputs('ts'), await outputs('mjs')]).toEqual([
         ['*.mjs'],
-        ['*.mjs', '!vx.config.mjs'],
+        ['*.mjs', '!vx.project.mjs'],
       ])
       // A committed match stays: core never cleans it.
       await writeFile(path.join(dir, 'keep.mjs'), 'export {}\n')

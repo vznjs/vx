@@ -66,7 +66,7 @@ writeFileSync(at('packages/a/package.json'), '{"name":"a"}')
 writeFileSync(at('packages/a/gen.sh'), LIST)
 writeFileSync(at('packages/a/seed'), 's1')
 writeFileSync(
-  at('packages/a/vx.config.mjs'),
+  at('packages/a/vx.project.mjs'),
   `import { SUFFIX } from '../../conf.mjs'
 export default {
   tasks: {
@@ -86,7 +86,7 @@ export default {
 writeFileSync(at('packages/b/package.json'), '{"name":"b","dependencies":{"a":"workspace:*"}}')
 writeFileSync(at('packages/b/gen.sh'), `${LIST}; cat ../a/dist/out.txt >> dist/out.txt; ${SHARED}`)
 writeFileSync(
-  at('packages/b/vx.config.mjs'),
+  at('packages/b/vx.project.mjs'),
   `export default {
   tasks: {
     build: {

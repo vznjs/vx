@@ -26,7 +26,7 @@ async function fixture(remote: 'only' | undefined): Promise<void> {
   await Bun.write(path.join(root, 'a', 'package.json'), JSON.stringify({ name: 'a' }))
   await Bun.write(path.join(root, 'a', 'src', 'x.txt'), 'x\n')
   await Bun.write(
-    path.join(root, 'a', 'vx.config.mjs'),
+    path.join(root, 'a', 'vx.project.mjs'),
     `export default { tasks: { gen: {
        exec: { command: 'echo here > out.txt'${remote === 'only' ? ", remote: 'only'" : ''} },
        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },

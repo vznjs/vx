@@ -573,7 +573,7 @@ describe('a path filter over members found through a ./-prefixed glob (e2e)', ()
         await mkdir(dir, { recursive: true })
         await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
         await writeFile(
-          path.join(dir, 'vx.config.mjs'),
+          path.join(dir, 'vx.project.mjs'),
           `export default { tasks: { build: { exec: { command: 'true' } } } }`,
         )
       }

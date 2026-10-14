@@ -184,7 +184,7 @@ it('a run hands each spawned task to the sampler, keyed by its id', async () => 
   await writeLocalWorkspace(root)
   await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
   await Bun.write(
-    path.join(root, 'pkg-a/vx.config.mjs'),
+    path.join(root, 'pkg-a/vx.project.mjs'),
     `export default { tasks: { burn: { exec: { command: 'sleep 1.6' } } } }`,
   )
   gitInitCommit(root)

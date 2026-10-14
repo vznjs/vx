@@ -134,7 +134,7 @@ export interface PreparedRun {
   /** What a typo is measured against: `projects`, or every project when a `pkg#task` named none loaded. */
   hintProjects: ReadonlyMap<string, ProjectEntry>
   /**
-   * True iff at least one package in the workspace has a `vx.config.*` at
+   * True iff at least one package in the workspace has a `vx.project.*` at
    * all — regardless of scope, so a `--filter` that matched nothing is not
    * mistaken for a workspace vx was never set up in.
    */
@@ -329,7 +329,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const workspaceFingerprint = fingerprints.unclaimed
   mark('open cache')
 
-  // Frozen mode (--frozen, CI): configs load FROM vx-lock.json with no
+  // Frozen mode (--frozen, CI): configs load FROM vx.lock.json with no
   // evaluation and no check of the configs (`vx lock --check`
   // re-evaluates them; a run does not); env-dependent configs keep
   // their locked values. Default (local) runs ALWAYS evaluate live:

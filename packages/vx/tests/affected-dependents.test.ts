@@ -85,7 +85,7 @@ beforeEach(async () => {
   for (const p of ['lib', 'app', 'tool']) {
     await write(path.join(root, `pkgs/${p}/src/index.ts`), 'export const x = 1')
     await write(path.join(root, `pkgs/${p}/src/index.test.ts`), 'test')
-    await write(path.join(root, `pkgs/${p}/vx.config.mjs`), CONFIG)
+    await write(path.join(root, `pkgs/${p}/vx.project.mjs`), CONFIG)
   }
   git(root, 'init', '-q')
   git(root, 'add', '-A')
@@ -208,7 +208,7 @@ describe('--affected follows task edges (owner, 2026-10-04)', () => {
       // Only tool declares toString; lib's edit reaches lib and app, which
       // inherit `toString` from Object and must not read as declaring it.
       await write(
-        path.join(root, 'pkgs/tool/vx.config.mjs'),
+        path.join(root, 'pkgs/tool/vx.project.mjs'),
         `export default { tasks: { toString: { exec: { command: 'true' } } } }\n`,
       )
       git(root, 'add', '-A')
@@ -241,7 +241,7 @@ describe('--affected follows task edges (owner, 2026-10-04)', () => {
     'a dependent with no task edge to the change is not affected',
     async () => {
       await write(
-        path.join(root, 'pkgs/app/vx.config.mjs'),
+        path.join(root, 'pkgs/app/vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
       )
       git(root, 'add', '-A')
@@ -258,7 +258,7 @@ describe('--affected follows task edges (owner, 2026-10-04)', () => {
       // lib declares no build, so it gets the default: a group behind ^build
       // keyed on every file of lib (owner, 2026-10-04).
       await write(
-        path.join(root, 'pkgs/lib/vx.config.mjs'),
+        path.join(root, 'pkgs/lib/vx.project.mjs'),
         `export default { tasks: { test: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n`,
       )
       git(root, 'add', '-A')
@@ -374,9 +374,9 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
       // `!x` leaves x unloaded, so `^nope` is judged against the rest of
       // the workspace only for the tasks that stay in the run.
       await write(path.join(root, 'pkgs/x/package.json'), JSON.stringify({ name: 'x' }))
-      await write(path.join(root, 'pkgs/x/vx.config.mjs'), CONFIG)
+      await write(path.join(root, 'pkgs/x/vx.project.mjs'), CONFIG)
       await write(
-        path.join(root, 'pkgs/tool/vx.config.mjs'),
+        path.join(root, 'pkgs/tool/vx.project.mjs'),
         CONFIG.replace("dependsOn: ['^build']", "dependsOn: ['^build', '^nope']"),
       )
       await graphPlugin('')

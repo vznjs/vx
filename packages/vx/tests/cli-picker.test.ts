@@ -22,7 +22,7 @@ describe('vx run interactive picker', () => {
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
       await writeFile(
-        path.join(dir, 'vx.config.mjs'),
+        path.join(dir, 'vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: 'true' }, description: '${name} build' } } }`,
       )
     }
@@ -56,7 +56,7 @@ describe('vx run interactive picker', () => {
   it('says when no project declares a task, instead of an empty menu', async () => {
     for (const name of ['alpha', 'beta']) {
       await writeFile(
-        path.join(root, 'packages', name, 'vx.config.mjs'),
+        path.join(root, 'packages', name, 'vx.project.mjs'),
         'export default { tasks: {} }\n',
       )
     }
@@ -69,7 +69,7 @@ describe('vx run interactive picker', () => {
     output.on('data', () => undefined)
     expect(await pickTask(root, { input: new PassThrough(), output })).toBeNull()
     expect(stderr).toBe(
-      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts\n',
+      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.project, or run `vx init` to write them from package.json scripts\n',
     )
   })
 
@@ -147,7 +147,7 @@ describe('vx run interactive picker', () => {
   // dropped the sort with the suite green).
   it("lists a project's tasks sorted by name, whatever order the config declares", async () => {
     await writeFile(
-      path.join(root, 'packages', 'alpha', 'vx.config.mjs'),
+      path.join(root, 'packages', 'alpha', 'vx.project.mjs'),
       `export default { tasks: { zed: { exec: { command: 'true' } }, build: { exec: { command: 'true' } } } }`,
     )
     const input = new PassThrough()
@@ -179,7 +179,7 @@ describe('vx run interactive picker', () => {
     ])
 
     await writeFile(
-      path.join(root, 'packages', 'beta', 'vx.config.mjs'),
+      path.join(root, 'packages', 'beta', 'vx.project.mjs'),
       'export default { tasks: {} }\n',
     )
     let stderr = ''

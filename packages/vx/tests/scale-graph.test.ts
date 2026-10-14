@@ -80,7 +80,7 @@ async function generateWorkspace(root: string, count: number): Promise<void> {
             }),
           )
           await writeFile(path.join(pdir, 'src', 'index.js'), `export const v = ${i}\n`)
-          await writeFile(path.join(pdir, 'vx.config.mjs'), CONFIG)
+          await writeFile(path.join(pdir, 'vx.project.mjs'), CONFIG)
         })(),
       )
     }

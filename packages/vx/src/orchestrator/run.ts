@@ -1853,7 +1853,7 @@ function elsewhereHint(names: readonly string[]): string {
 
 /**
  * The first-run case, told apart from a typo: no package in the workspace
- * has a `vx.config.*` at all, so no name could have resolved. Reached only
+ * has a `vx.project.*` at all, so no name could have resolved. Reached only
  * on the error path. A workspace whose package globs match NOTHING is
  * told that instead — `vx init` would find no package to write for.
  */
@@ -1870,7 +1870,7 @@ async function initHint(prepared: {
   // never reaches: `vx init` would find no scripts either (item 248).
   const unreached = await unreachedPackages(await loadWorkspace(prepared.workspaceRoot))
   if (unreached.length > 0) return ` ${unreachedHint(unreached, prepared.workspaceRoot)}`
-  return ' No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.'
+  return ' No package declares a vx.project — run `vx init` to write one per package from its package.json scripts.'
 }
 
 /**
@@ -1916,7 +1916,7 @@ function didYouMean(
     // `//` is two edits from any two-letter name: it hinted `ui#build` (X-13).
     if (proj === '//') {
       lists.add(
-        "`//` is Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config with that task.",
+        "`//` is Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.project with that task.",
       )
       continue
     }

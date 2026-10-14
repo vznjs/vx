@@ -163,7 +163,7 @@ installed (a workspace with only `nx` and custom executors).
   cost on a fresh snapshot is the stats, a few ms at 1,000 projects.
 - The mapping is `migrate-nx.ts`'s, shared: what runs live is what the
   migrator would have written, minus the file, the same rule `turbo()`
-  keeps. A package's own `vx.config` wins; the plugin fills, never
+  keeps. A package's own `vx.project` wins; the plugin fills, never
   overwrites.
 - Executors: `nx:run-commands`, a plain `command` and `nx:run-script`
   map as before (shell, `cd` to where Nx ran it); `nx:noop` is a group;
@@ -239,7 +239,7 @@ them. Two ways to reproduce that were open:
 
 - **Read them at map time into `exec.env.define`.** The key would see the
   values. But the values would be in the config: a `.env.local` secret in
-  `vx show`, in `vx-lock.json`, and in every `vx.config.ts` the migrator
+  `vx show`, in `vx.lock.json`, and in every `vx.project.ts` the migrator
   writes — and the migrator could not write them, so the plugin and the
   migrator would stop producing the same task.
 - **Load them when the task runs** (chosen). The mapper lists which exist

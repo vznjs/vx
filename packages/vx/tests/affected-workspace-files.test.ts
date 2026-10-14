@@ -81,7 +81,7 @@ beforeEach(async () => {
   await write(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
   await write(path.join(root, 'pkgs/app/src/index.ts'), 'export const x = 1')
   await write(
-    path.join(root, 'pkgs/app/vx.config.mjs'),
+    path.join(root, 'pkgs/app/vx.project.mjs'),
     [
       'export default {',
       '  tasks: {',
@@ -150,7 +150,7 @@ describe('--affected sees a workspaceFiles change', () => {
       await write(path.join(root, 'pkgs/app/data.json'), '{"v":1}')
       await write(path.join(root, 'pkgs/tool/package.json'), JSON.stringify({ name: 'tool' }))
       await write(
-        path.join(root, 'pkgs/tool/vx.config.mjs'),
+        path.join(root, 'pkgs/tool/vx.project.mjs'),
         [
           'export default {',
           '  tasks: {',
@@ -217,7 +217,7 @@ describe('--affected sees a workspaceFiles change', () => {
       // changed-project set, and every uncached task there was seeded:
       // app#lint, which reads nothing of `shared/`, ran.
       await write(
-        path.join(root, 'pkgs/app/vx.config.mjs'),
+        path.join(root, 'pkgs/app/vx.project.mjs'),
         [
           'export default {',
           '  tasks: {',
@@ -275,7 +275,7 @@ describe('--affected sees a workspaceFiles change', () => {
       ] as const) {
         await write(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
         await write(
-          path.join(root, `pkgs/${name}/vx.config.mjs`),
+          path.join(root, `pkgs/${name}/vx.project.mjs`),
           `export default { tasks: { build: { exec: { command: "true" }, cache: { inputs: { files: [], workspaceFiles: [${JSON.stringify(glob)}] }, outputs: { files: [] } } } } }\n`,
         )
       }

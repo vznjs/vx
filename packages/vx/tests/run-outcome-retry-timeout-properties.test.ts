@@ -84,7 +84,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
         cache: { inputs: { files: ['src/${t}.txt'] }, outputs: { files: ['out/${t}.txt'] } } }`
     })
     .join(',\n')
-  await writeFile(path.join(p, 'vx.config.mjs'), `export default { tasks: { ${pTasks} } }\n`)
+  await writeFile(path.join(p, 'vx.project.mjs'), `export default { tasks: { ${pTasks} } }\n`)
   for (const t of ts) await writeFile(path.join(p, 'src', `${t}.txt`), `${t}\n`)
   gitInitCommit(root, 'init')
 

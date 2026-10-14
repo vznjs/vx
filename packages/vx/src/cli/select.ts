@@ -528,7 +528,7 @@ export async function pickTask(
   }
   if (entries.length === 0) {
     process.stderr.write(
-      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts\n',
+      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.project, or run `vx init` to write them from package.json scripts\n',
     )
     return null
   }
@@ -619,7 +619,7 @@ function didYouMeanProject(
     const typed = pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
     // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
     if (typed === '//') {
-      return ". `//` is Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config"
+      return ". `//` is Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.project"
     }
     const best = nearest(typed, names)
     if (best !== undefined) return `. Did you mean ${best}?`

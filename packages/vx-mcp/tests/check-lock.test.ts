@@ -26,7 +26,7 @@ beforeAll(async () => {
   await mkdir(pkg, { recursive: true })
   await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(
-    path.join(pkg, 'vx.config.mjs'),
+    path.join(pkg, 'vx.project.mjs'),
     `export default { tasks: { build: { exec: { command: 'echo built' } } } }\n`,
   )
 }, 30_000)
@@ -47,7 +47,7 @@ it("each state is the CLI's answer, with its exit code", async () => {
   const current = await both()
   // A comment evaluates the same; a changed command is drift.
   await writeFile(
-    path.join(root, 'packages', 'a', 'vx.config.mjs'),
+    path.join(root, 'packages', 'a', 'vx.project.mjs'),
     `export default { tasks: { build: { exec: { command: 'echo edited' } } } }\n`,
   )
   const drifted = await both()

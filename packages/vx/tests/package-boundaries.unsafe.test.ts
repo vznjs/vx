@@ -192,7 +192,7 @@ describe('package boundaries', () => {
     expect(actual).toEqual(expected)
   })
 
-  // The schema entry a generated `vx.config.ts` type-imports: through the
+  // The schema entry a generated `vx.project.ts` type-imports: through the
   // exports map (a user's `tsc`) and the directory shim (the compiled
   // binary, which ignores the map), it is `src/config.ts` and no more.
   it('@vzn/vx/config is the schema module through the map and the shim', async () => {

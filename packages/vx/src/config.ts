@@ -68,7 +68,7 @@ export interface RunSettings {
   /** How long a persistent task may take to match `readyWhen` before vx says it waits. Omitted → `'10s'`. */
   readyNotice?: Duration
   /**
-   * Load configs from `vx-lock.json` instead of evaluating them. A frozen
+   * Load configs from `vx.lock.json` instead of evaluating them. A frozen
    * run trusts the lock: `vx lock` checked the graph rules when it wrote it,
    * so the run does not check them again. With no lock, the run writes one
    * first. Omitted → on when `CI` is set.

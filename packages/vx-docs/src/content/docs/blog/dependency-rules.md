@@ -28,7 +28,7 @@ flowchart TD
 A project names its tags in its own config:
 
 ```ts
-// packages/button/vx.config.ts
+// packages/button/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -69,7 +69,7 @@ writes nothing:
 
 ```sh frame="terminal"
 $ vx lock
-vx lock: vx-lock.json not written: 2 dependencies break run.rules.dependencies:
+vx lock: vx.lock.json not written: 2 dependencies break run.rules.dependencies:
   @demo/button depends on @demo/checkout, which run.rules.dependencies[1] (from 'tag:type:ui') denies
   @demo/web depends on @demo/utils, which run.rules.dependencies[0] (from 'tag:type:app') does not allow
 Drop the dependency, or change the project's tags or the rule.
@@ -79,7 +79,7 @@ Drop the two edges and the lock is written:
 
 ```sh frame="terminal"
 $ vx lock
-vx lock: locked 4 project configs → vx-lock.json
+vx lock: locked 4 project configs → vx.lock.json
 
 $ vx lock --check
 vx lock --check: up to date (4 projects)

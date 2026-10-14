@@ -1,5 +1,5 @@
 // What the playground's config rewrite reads as an import (item 699). The
-// page evaluates a reader's `vx.config.mjs` alone, so its one allowed
+// page evaluates a reader's `vx.project.mjs` alone, so its one allowed
 // import, `@vzn/vx`, is pointed at the identity module and every other one
 // is refused by name; a specifier that only LOOKS like an import (in a
 // comment, a string, a template, a regular expression, a member call) is
@@ -182,7 +182,7 @@ describe('both evaluators answer as the CLI does', () => {
       expect(await evaluate('export default { f: () => 1 }\n')).toEqual({
         ok: false,
         error:
-          'vx.config.mjs: f is a function — a config must be JSON data, because the cache key folds its JSON',
+          'vx.project.mjs: f is a function — a config must be JSON data, because the cache key folds its JSON',
       })
       expect(await evaluate("throw new TypeError('boom')\n")).toEqual({
         ok: false,

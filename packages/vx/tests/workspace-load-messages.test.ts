@@ -41,19 +41,21 @@ const run = async (files: Record<string, string | Uint8Array>) => {
 const TASK = "export default { tasks: { build: { exec: { command: 'echo' } } } }\n"
 
 it('a config that throws names the error and its own line', async () => {
-  expect(await run({ 'p/vx.config.ts': "\nthrow new Error('boom')\n" })).toEqual({
+  expect(await run({ 'p/vx.project.ts': "\nthrow new Error('boom')\n" })).toEqual({
     code: 1,
-    err: 'vx: Error: boom\n    at <root>/p/vx.config.ts:2:11',
+    err: 'vx: Error: boom\n    at <root>/p/vx.project.ts:2:11',
     planned: false,
   })
 })
 
 it('a config importing a missing file names the specifier', async () => {
-  expect(await run({ 'p/vx.config.ts': "import x from './nope.ts'\nexport default x\n" })).toEqual({
-    code: 1,
-    err: "vx: Project config <root>/p/vx.config.ts: cannot find './nope.ts'",
-    planned: false,
-  })
+  expect(await run({ 'p/vx.project.ts': "import x from './nope.ts'\nexport default x\n" })).toEqual(
+    {
+      code: 1,
+      err: "vx: Project config <root>/p/vx.project.ts: cannot find './nope.ts'",
+      planned: false,
+    },
+  )
 })
 
 it('an unparseable manifest names its file', async () => {
@@ -66,7 +68,7 @@ it('an unparseable manifest names its file', async () => {
 
 it('a manifest saved with a byte-order mark reads as one without', async () => {
   const bom = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode('{"name":"p"}')])
-  expect(await run({ 'p/package.json': bom, 'p/vx.config.ts': TASK })).toEqual({
+  expect(await run({ 'p/package.json': bom, 'p/vx.project.ts': TASK })).toEqual({
     code: 0,
     err: '',
     planned: true,

@@ -617,7 +617,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
 
       // Rewrite config with a different MODE value.
       await writeFile(
-        path.join(dir, 'vx.config.mjs'),
+        path.join(dir, 'vx.project.mjs'),
         `
           export default {
             tasks: {
@@ -931,7 +931,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
         JSON.stringify({ name: 'root-proj', version: '0.0.0' }, null, 2),
       )
       await writeFile(
-        path.join(fixture.root, 'vx.config.mjs'),
+        path.join(fixture.root, 'vx.project.mjs'),
         `
           export default {
             tasks: {

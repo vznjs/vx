@@ -156,7 +156,7 @@ describe('the lifecycle is reached on a run that FAILED', () => {
     )
     await Bun.write(path.join(root, 'a/package.json'), JSON.stringify({ name: 'a' }))
     await Bun.write(
-      path.join(root, 'a/vx.config.mjs'),
+      path.join(root, 'a/vx.project.mjs'),
       `export default { tasks: { boom: { exec: { command: 'exit 7' } } } }`,
     )
     gitInitCommit(root, 'i')
@@ -252,7 +252,7 @@ describe('the lifecycle is reached on a run a signal stops', () => {
     )
     await Bun.write(path.join(root, 'a/package.json'), JSON.stringify({ name: 'a' }))
     await Bun.write(
-      path.join(root, 'a/vx.config.mjs'),
+      path.join(root, 'a/vx.project.mjs'),
       `export default { tasks: { slow: { exec: { command: 'echo up > up.txt; sleep 30' } } } }`,
     )
     gitInitCommit(root, 'i')
@@ -354,7 +354,7 @@ describe('an injected bus outlives the run: what a run subscribed leaves with it
     )
     await Bun.write(path.join(root, 'a/package.json'), JSON.stringify({ name: 'a' }))
     await Bun.write(
-      path.join(root, 'a/vx.config.mjs'),
+      path.join(root, 'a/vx.project.mjs'),
       `export default { tasks: { hello: { exec: { command: 'echo hello' } } } }`,
     )
     await Bun.write(
@@ -454,7 +454,7 @@ describe('the lifecycle is reached on a run that never started', () => {
     )
     await Bun.write(path.join(root, 'a/package.json'), JSON.stringify({ name: 'a' }))
     await Bun.write(
-      path.join(root, 'a/vx.config.mjs'),
+      path.join(root, 'a/vx.project.mjs'),
       `export default { tasks: { t: { exec: { command: 'true' } } } }`,
     )
     gitInitCommit(root, 'i')

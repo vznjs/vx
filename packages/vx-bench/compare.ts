@@ -262,7 +262,7 @@ async function generate(dir: string): Promise<void> {
       cache: { inputs: { files: ['src/**'] }, outputs: { files: ${t === 'build' ? "['dist/**']" : '[]'} } },
     },`
     await writeFile(
-      path.join(abs, 'vx.config.ts'),
+      path.join(abs, 'vx.project.ts'),
       `export default {\n  tasks: {\n${tasks.map(vxTask).join('\n')}\n  },\n}\n`,
     )
     for (let n = 0; n < SOURCE_FILES; n++)

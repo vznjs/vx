@@ -64,7 +64,7 @@ it("vx info's config error row is masked", async () => {
     stderr: 'pipe',
   })
   expect((JSON.parse(p.stdout.toString()) as { configErrors: unknown }).configErrors).toEqual([
-    { path: 'packages/app/vx.config.mjs', message: SAID },
+    { path: 'packages/app/vx.project.mjs', message: SAID },
   ])
 }, 20_000)
 
@@ -72,7 +72,7 @@ it("vx watch's failed cycle is masked", async () => {
   const dir = path.join(root, 'packages', 'app')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
-  const cfg = path.join(dir, 'vx.config.mjs')
+  const cfg = path.join(dir, 'vx.project.mjs')
   await writeFile(cfg, `export default { tasks: { build: { exec: { command: 'true' } } } }\n`)
   const w = startWatch(root, ['--all'], env)
   try {

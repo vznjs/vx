@@ -20,7 +20,7 @@ beforeEach(async () => {
   await mkdir(path.join(root, 'pkgs', 'app'), { recursive: true })
   await writeFile(path.join(root, 'pkgs', 'app', 'package.json'), JSON.stringify({ name: 'app' }))
   await writeFile(
-    path.join(root, 'pkgs', 'app', 'vx.config.mjs'),
+    path.join(root, 'pkgs', 'app', 'vx.project.mjs'),
     "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
   )
   await writeFile(
@@ -75,5 +75,5 @@ it('a frozen run that writes its lock first prints a stage warning once', () => 
 })
 
 function rmLock(): void {
-  rmSync(path.join(root, 'vx-lock.json'), { force: true })
+  rmSync(path.join(root, 'vx.lock.json'), { force: true })
 }

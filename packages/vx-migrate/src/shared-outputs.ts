@@ -27,19 +27,25 @@ import { relPosix } from './paths.js'
 import type { TrackedKinds } from './tracked-outputs.js'
 
 // Core refuses an output glob that covers the project's own package.json
-// or vx.config (config-schema's `ownFilesCovered`): vx cleans outputs before
+// or vx.project (config-schema's `ownFilesCovered`): vx cleans outputs before
 // a run and restores them on a hit, so the manifest would go. Turbo caches
 // it: trpc's client build lists `package.json` (it rewrites `exports`), and
 // the one task made core refuse the whole run (2026-09-28). The façade does
 // not export the check; tests/own-file-outputs.test.ts holds this copy to
 // the loader in both directions.
-const OWN_FILES = ['package.json', 'vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
+const OWN_FILES = [
+  'package.json',
+  'vx.project.ts',
+  'vx.project.mts',
+  'vx.project.js',
+  'vx.project.mjs',
+]
 
 /**
  * The first positive output glob that covers a project's own file, and that
  * file. `config` is the config file the mapped task will live beside, as
  * core checks it (null: none); absent, every spelling a user may add later.
- * sanity's builds output `*.js` (top-level shims) beside no vx.config.js.
+ * sanity's builds output `*.js` (top-level shims) beside no vx.project.js.
  */
 export function ownFileOutput(
   files: readonly string[],
@@ -75,7 +81,7 @@ export function ownFileTakeBacks(files: readonly string[], config?: string | nul
 export function ownFileTodo(own: { glob: string; file: string }): string {
   return (
     `output ${JSON.stringify(own.glob)} covers the project's own ${own.file}, which vx cleans ` +
-    'before every run — task runs uncached; declare the outputs without it in a vx.config to cache it'
+    'before every run — task runs uncached; declare the outputs without it in a vx.project to cache it'
   )
 }
 
@@ -151,7 +157,7 @@ export function wildcardTodo(glob: string): string {
   return (
     `output ${JSON.stringify(glob)}: a wildcard first segment reaches the sources, which ` +
     'vx cleans before every run — task runs uncached; declare the exact outputs in a ' +
-    'vx.config to cache it'
+    'vx.project to cache it'
   )
 }
 
@@ -344,7 +350,7 @@ export function excludeSiblingOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
           t.todos.push(
             `reads ${JSON.stringify(literal)}, which ${JSON.stringify(w.name)} writes — vx keys a ` +
               'task only on files no other task writes, so it runs uncached; read the source ' +
-              'instead in a vx.config to cache it',
+              'instead in a vx.project to cache it',
           )
           return
         }
@@ -493,7 +499,7 @@ export function excludeWorkspaceOutputs(
             t.todos.push(
               `reads ${JSON.stringify(literal)}, which ${w.id} writes — vx keys a task only on ` +
                 'files no other task writes, so it runs uncached; read the source instead in a ' +
-                'vx.config to cache it',
+                'vx.project to cache it',
             )
             break
           }
@@ -527,7 +533,7 @@ export function excludeWorkspaceOutputs(
             t.todos.push(
               `reads ${JSON.stringify(literal.slice(at.length))}, which ${w.id} writes — vx keys ` +
                 'a task only on files no other task writes, so it runs uncached; read the ' +
-                'source instead in a vx.config to cache it',
+                'source instead in a vx.project to cache it',
             )
             break
           }

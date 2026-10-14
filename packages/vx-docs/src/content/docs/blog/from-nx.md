@@ -80,7 +80,7 @@ graph, after every plugin has inferred its targets. The migration reads
 that:
 
 ```bash
-bunx @vzn/vx-migrate --dry   # preview the generated vx.config.ts files and a report
+bunx @vzn/vx-migrate --dry   # preview the generated vx.project.ts files and a report
 bunx @vzn/vx-migrate         # write them; never overwrites without --force
 ```
 

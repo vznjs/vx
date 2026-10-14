@@ -83,7 +83,7 @@ export async function makeWorkspace(opts: WorkspaceOptions = {}): Promise<string
 }
 
 export interface ProjectSpec {
-  /** `vx.config.mjs` source; omitted → a package with no config file. */
+  /** `vx.project.mjs` source; omitted → a package with no config file. */
   config?: string
   deps?: Record<string, string>
   devDeps?: Record<string, string>
@@ -107,7 +107,7 @@ export async function addProject(
   if (s.deps && Object.keys(s.deps).length > 0) pkg['dependencies'] = s.deps
   if (s.devDeps && Object.keys(s.devDeps).length > 0) pkg['devDependencies'] = s.devDeps
   await writeFile(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2))
-  if (s.config !== undefined) await writeFile(path.join(dir, 'vx.config.mjs'), s.config)
+  if (s.config !== undefined) await writeFile(path.join(dir, 'vx.project.mjs'), s.config)
   for (const [rel, content] of Object.entries(s.files ?? {})) {
     const full = path.join(dir, rel)
     await mkdir(path.dirname(full), { recursive: true })

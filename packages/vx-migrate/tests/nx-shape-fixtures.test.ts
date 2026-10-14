@@ -97,7 +97,7 @@ async function migrate(shape: string): Promise<{
     const configs: Record<string, Record<string, Record<string, unknown>>> = {}
     const tags: Record<string, readonly string[] | undefined> = {}
     for (const [name, rel] of roots) {
-      const file = path.join(root, rel, 'vx.config.ts')
+      const file = path.join(root, rel, 'vx.project.ts')
       if (!(await Bun.file(file).exists())) continue
       const config = await loadProjectConfig(file)
       const loaded = (config.tasks ?? {}) as Record<string, Record<string, unknown>>

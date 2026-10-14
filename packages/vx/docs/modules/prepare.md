@@ -32,7 +32,7 @@ export interface PreparedRun {
   declaredElsewhere: readonly string[] // bare names only projects outside a scoped run declare
   projects: ReadonlyMap<string, ProjectEntry> // the loaded projects: the workspace, or a scoped run's closure
   hintProjects: ReadonlyMap<string, ProjectEntry> // a typo's measure: every project when a `pkg#task` named none loaded
-  anyProjectConfig: boolean // some package has a vx.config.* at all, whatever the scope
+  anyProjectConfig: boolean // some package has a vx.project.* at all, whatever the scope
   workspaceFingerprint: string
   fingerprintWatch: FingerprintWatch // has a task rewritten what that digest folded? (fingerprint-watch.md)
   nestedDirsByProject: Map<string, string[]>

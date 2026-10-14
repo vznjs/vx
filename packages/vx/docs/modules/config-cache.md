@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Skip re-evaluating a `vx.config` whose result cannot have changed. A
+Skip re-evaluating a `vx.project` whose result cannot have changed. A
 config is a program; evaluating a thousand of them is the largest fixed
 cost of a warm run (2026-09-02, synthetic 1000-project workspace: ~80 ms
 to import the modules, ~12 ms to read the same files as data). The cache

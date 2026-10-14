@@ -1,5 +1,5 @@
 // The release steps npm.yml and release.yml run, each a `release.*` task in
-// vx.config.ts: CI runs vx tasks, never its own commands (owner,
+// vx.project.ts: CI runs vx tasks, never its own commands (owner,
 // 2026-10-03). The version is VX_RELEASE_VERSION, the release tag or the
 // dispatch input exactly as the workflow received it: it arrives through
 // the environment, never pasted into a script, and must be a version (L-28).

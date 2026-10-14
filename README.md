@@ -39,7 +39,7 @@ In a git repo with a `package.json` workspace:
 
 ```sh
 npm install -D @vzn/vx         # the scope matters: npm's `vx` is an unrelated package
-npx @vzn/vx init               # beside turbo.json or nx.json: migrates them; else a vx.config.ts per package
+npx @vzn/vx init               # beside turbo.json or nx.json: migrates them; else a vx.project.ts per package
 npx @vzn/vx run build --all    # builds in dependency order and stores the results
 npx @vzn/vx run build --all    # nothing changed: every task up-to-date
 ```
@@ -57,7 +57,7 @@ Without Turbo or Nx, tasks run uncached until you declare what they read (below)
 `init` writes one task per package script, uncached. Cache one by saying what it reads and writes:
 
 ```ts
-// packages/app/vx.config.ts
+// packages/app/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -121,7 +121,7 @@ Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 ## Coming from Turbo or Nx
 
 Beside `turbo.json` or `nx.json`, `npx @vzn/vx init` runs `@vzn/vx-migrate`:
-it writes a `vx.config.ts` per package from `turbo.json` or the Nx graph,
+it writes a `vx.project.ts` per package from `turbo.json` or the Nx graph,
 and you keep those and delete the old config. `vx init --keep` writes only
 a `vx.workspace.ts` that maps the old config instead: a temporary start,
 not a way to run the repo. The benchmark below uses native vx config.

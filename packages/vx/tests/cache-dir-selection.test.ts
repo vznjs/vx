@@ -107,7 +107,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         try {
           // A changed config misses the evaluation cache AND the file-hash
           // memo, the two stores a reader would write; each is a quiet no-op.
-          const config = path.join(root, 'packages', 'app', 'vx.config.mjs')
+          const config = path.join(root, 'packages', 'app', 'vx.project.mjs')
           await Bun.write(config, `${await Bun.file(config).text()}\n// changed\n`)
           const shown = await vx(['show'], null)
           expect(`${shown.code}\n${shown.err}`).toStartWith('0\n')
@@ -142,7 +142,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
       'a read-only checkout with no cache yet says so in one line, and so does a verb writing the tree',
       async () => {
         // The workspace root alone stops being writable: the cache directory
-        // cannot be created under it, and neither can vx-lock.json.
+        // cannot be created under it, and neither can vx.lock.json.
         const { chmod } = await import('node:fs/promises')
         await chmod(root, 0o555)
         try {

@@ -24,7 +24,7 @@ beforeEach(async () => {
   await mkdir(path.join(root, 'pkg'), { recursive: true })
   await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
   await writeFile(
-    path.join(root, 'pkg', 'vx.config.mjs'),
+    path.join(root, 'pkg', 'vx.project.mjs'),
     `export default { tasks: { build: { exec: { command: 'echo built > out.txt' } } } }`,
   )
   const git = (...a: string[]) => Bun.spawnSync({ cmd: ['git', ...a], cwd: root })

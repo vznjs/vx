@@ -205,7 +205,7 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'TypeScript: a vx.config.ts per package and a vx.workspace.ts. vx evaluates each file and hashes the object it returns.',
+          'TypeScript: a vx.project.ts per package and a vx.workspace.ts. vx evaluates each file and hashes the object it returns.',
         buys: 'Types and autocomplete, shared presets as plain imports, and computed values that still reach the key.',
         costs:
           'A config is a program: it must be evaluated (vx caches configs it can prove pure), it runs on Bun, and other tools cannot read it as data.',
@@ -647,7 +647,7 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'bunx @vzn/vx-migrate writes vx.config.ts files from turbo.json or the Nx graph; turbo() and nx() are a temporary start until it has.',
+          'bunx @vzn/vx-migrate writes vx.project.ts files from turbo.json or the Nx graph; turbo() and nx() are a temporary start until it has.',
         buys: 'A move to native vx config without retyping the graph.',
         costs:
           'The plugins are 0.0.x builds, like core. nx() runs Nx executors through a Node bin, and so does the written config until you rewrite each nx-exec line as the command it wraps. Moving to native configs means writing input lists.',
@@ -657,7 +657,7 @@ export const CHOICES: readonly Choice[] = [
           {
             label: 'packages/vx-migrate/tests/turbo.test.ts',
             href: `${GH}packages/vx-migrate/tests/turbo.test.ts`,
-            row: 'plans a turbo.json workspace with no vx.config: tasks, edges, cache blocks, inlined globals',
+            row: 'plans a turbo.json workspace with no vx.project: tasks, edges, cache blocks, inlined globals',
           },
         ],
       },

@@ -57,7 +57,7 @@ it(
     const a = path.join(root, 'packages/a')
     await write(path.join(a, 'package.json'), JSON.stringify({ name: 'a' }))
     await write(
-      path.join(a, 'vx.config.mjs'),
+      path.join(a, 'vx.project.mjs'),
       `export default {
         tasks: {
           build: {
@@ -79,7 +79,7 @@ it(
 
     const memo = new GitFilesCache()
     await populateGitFilesCache(root, [a], memo)
-    expect(memo.get(a)).toEqual(['package.json', 'vendor/lib/x.txt', 'vx.config.mjs'])
+    expect(memo.get(a)).toEqual(['package.json', 'vendor/lib/x.txt', 'vx.project.mjs'])
     expect(memo.oidsFor(a)?.has(path.join(lib, 'x.txt'))).toBe(false)
 
     await writeLocalWorkspace(root)

@@ -31,7 +31,7 @@ async function project(name: string, config: string): Promise<void> {
   const dir = path.join(root, 'packages', name)
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
-  await writeFile(path.join(dir, 'vx.config.mjs'), config)
+  await writeFile(path.join(dir, 'vx.project.mjs'), config)
 }
 
 const call = (name: string) =>
@@ -57,7 +57,7 @@ it("a config refusal quoting the config's own string reaches the agent masked", 
       content: [
         {
           type: 'text',
-          text: `${path.join(root, 'packages', 'app', 'vx.config.mjs')}: tasks.t must be an object — a command is { exec: { command: "deploy ***" } }`,
+          text: `${path.join(root, 'packages', 'app', 'vx.project.mjs')}: tasks.t must be an object — a command is { exec: { command: "deploy ***" } }`,
         },
       ],
       isError: true,

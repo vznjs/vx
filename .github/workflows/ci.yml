@@ -40,7 +40,7 @@ jobs:
   # hosts it, can read it: vx-migrate's sandbox grants its own directory,
   # vx-reapi's suites read their own files, both import core and the
   # workspace's plugins by their source, and every run evaluates every
-  # project's vx.config.ts and installs every package.json. Anything not
+  # project's vx.project.ts and installs every package.json. Anything not
   # listed runs the job.
   changes:
     name: changes
@@ -65,7 +65,7 @@ jobs:
           # An empty diff reads as one empty line, which `*)` runs.
           while IFS= read -r f; do
             case "$f" in
-              packages/vx-reapi/* | packages/vx-migrate/* | packages/*/vx.config.ts | packages/*/package.json) packages=true ;;
+              packages/vx-reapi/* | packages/vx-migrate/* | packages/*/vx.project.ts | packages/*/package.json) packages=true ;;
               packages/vx/docs/* | packages/vx/tests/* | packages/vx-docs/* | packages/vx-bench/* | packages/vx-plugin-examples/*) ;;
               packages/vx-ci/tests/* | packages/vx-lockfile/tests/* | packages/vx-mcp/tests/* | packages/vx-otel/tests/* | packages/vx-schedule-history/tests/*) ;;
               README.md | CLAUDE.md | CONTRIBUTING.md | SECURITY.md | LICENSE | .claude/*) ;;
@@ -78,7 +78,7 @@ jobs:
             # only for platform-touching PRs; main runs it always).
             case "$f" in
               '' | package.json | bun.lock | vx.workspace.ts | .github/* | scripts/*) darwin=true ;;
-              packages/*/vx.config.ts | packages/*/package.json | packages/*/scripts/*) darwin=true ;;
+              packages/*/vx.project.ts | packages/*/package.json | packages/*/scripts/*) darwin=true ;;
               packages/vx/src/exec/* | packages/vx/src/util/* | packages/vx/src/bin.ts | packages/vx/npm-launcher.*) darwin=true ;;
               *)
                 # Not `grep -q`: its early exit is git's SIGPIPE, a
@@ -116,7 +116,7 @@ jobs:
 
       - uses: ./.github/actions/vx-runner
 
-      # Dogfood: vx orchestrates its own gate via vx.config.ts. Core's
+      # Dogfood: vx orchestrates its own gate via vx.project.ts. Core's
       # `ci` task is a group fanning out to `lint` (→ lint.oxlint +
       # lint.oxfmt), `test` and `check.binary` (the host binary, compiled
       # the way release.yml does, must launch and report the manifest

@@ -63,7 +63,7 @@ for (let i = 0; i < count; i++) {
   )
   await writeFile(path.join(pdir, 'src', 'index.js'), `export const v = ${i}\n`)
   await writeFile(
-    path.join(pdir, 'vx.config.mjs'),
+    path.join(pdir, 'vx.project.mjs'),
     `export default {
   tasks: {
     build: {

@@ -94,7 +94,7 @@ export function delegatedScript(command: string): string | null
 - A generated config is `import type { ProjectConfig } from '@vzn/vx/config'` plus
   `satisfies ProjectConfig`: the type-only form loads in a workspace that
   runs the binary without the package installed. `format: 'mjs'`
-  (`--mjs`) writes the same object untyped as `vx.config.mjs`, for a
+  (`--mjs`) writes the same object untyped as `vx.project.mjs`, for a
   package whose `tsconfig` `include` would not cover a `.ts` config.
 - An empty plan in a single-project workspace whose root `package.json`
   has no `workspaces` field, while packages with scripts sit beneath it,

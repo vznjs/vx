@@ -5,7 +5,7 @@ import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
 const refusal = (task: unknown): string => {
   try {
-    validateProjectConfig({ tasks: { x: task } } as never, 'vx.config.ts')
+    validateProjectConfig({ tasks: { x: task } } as never, 'vx.project.ts')
   } catch (err) {
     return (err as Error).message
   }
@@ -14,10 +14,10 @@ const refusal = (task: unknown): string => {
 
 it('a task given as a command string names { exec: { command } }', () => {
   expect(refusal("tsc -b 'src'")).toBe(
-    `vx.config.ts: tasks.x must be an object — a command is { exec: { command: "tsc -b 'src'" } }`,
+    `vx.project.ts: tasks.x must be an object — a command is { exec: { command: "tsc -b 'src'" } }`,
   )
   // CONTROLS: an empty string and any other non-object keep the bare message.
-  expect(refusal(' ')).toBe('vx.config.ts: tasks.x must be an object')
-  expect(refusal(null)).toBe('vx.config.ts: tasks.x must be an object')
-  expect(refusal(true)).toBe('vx.config.ts: tasks.x must be an object')
+  expect(refusal(' ')).toBe('vx.project.ts: tasks.x must be an object')
+  expect(refusal(null)).toBe('vx.project.ts: tasks.x must be an object')
+  expect(refusal(true)).toBe('vx.project.ts: tasks.x must be an object')
 })

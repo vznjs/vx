@@ -1,4 +1,4 @@
-// Config evaluation cache — skip re-evaluating a `vx.config` that cannot
+// Config evaluation cache — skip re-evaluating a `vx.project` that cannot
 // have changed.
 //
 // A config is a program, and evaluating a thousand of them is the largest

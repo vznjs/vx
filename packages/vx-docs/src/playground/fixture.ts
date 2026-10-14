@@ -7,11 +7,11 @@
 // `pkg#task` edge, cache inputs with a negation and braces, a route
 // directory with LITERAL brackets (item 667), `outputs.files`, one
 // `cache.inputs.env` entry, one `workspaceFiles` entry, a task with no
-// cache block and a group task. Each config is the `vx.config.mjs` source
+// cache block and a group task. Each config is the `vx.project.mjs` source
 // a reader edits: the CLI evaluates the file, the playground the same text
 // (`evaluateConfig`, item 699).
 
-/** Project name → the source of its `vx.config.mjs`. */
+/** Project name → the source of its `vx.project.mjs`. */
 export const CONFIG_TEXTS: Record<string, string> = {
   '@pg/utils': `import { defineProject } from '@vzn/vx'
 
@@ -105,19 +105,19 @@ export const FILES: Record<string, string> = {
   'README.md': '# playground fixture\n',
 
   'packages/utils/package.json': pkg('@pg/utils'),
-  'packages/utils/vx.config.mjs': CONFIG_TEXTS['@pg/utils']!,
+  'packages/utils/vx.project.mjs': CONFIG_TEXTS['@pg/utils']!,
   'packages/utils/src/index.ts': "export * from './strings'\n",
   'packages/utils/src/strings.ts': 'export const shout = (s: string) => s.toUpperCase()\n',
   'packages/utils/README.md': 'utils\n',
 
   'packages/core/package.json': pkg('@pg/core', { '@pg/utils': 'workspace:*' }),
-  'packages/core/vx.config.mjs': CONFIG_TEXTS['@pg/core']!,
+  'packages/core/vx.project.mjs': CONFIG_TEXTS['@pg/core']!,
   'packages/core/src/index.ts':
     "import { shout } from '@pg/utils'\nexport const hello = () => shout('hi')\n",
   'packages/core/test/index.test.ts': "import { hello } from '../src'\nhello()\n",
 
   'packages/ui/package.json': pkg('@pg/ui', { '@pg/core': 'workspace:*' }),
-  'packages/ui/vx.config.mjs': CONFIG_TEXTS['@pg/ui']!,
+  'packages/ui/vx.project.mjs': CONFIG_TEXTS['@pg/ui']!,
   'packages/ui/src/button.tsx': 'export const Button = () => null\n',
   'packages/ui/src/button.test.ts': 'import "./button"\n',
   'packages/ui/src/app/[id]/page.tsx': 'export default function Page() { return null }\n',
@@ -130,12 +130,12 @@ export const FILES: Record<string, string> = {
     '@pg/ui': 'workspace:*',
     '@pg/core': 'workspace:*',
   }),
-  'packages/app/vx.config.mjs': CONFIG_TEXTS['@pg/app']!,
+  'packages/app/vx.project.mjs': CONFIG_TEXTS['@pg/app']!,
   'packages/app/src/main.ts': "import { Button } from '@pg/ui'\nButton()\n",
   'packages/app/gen.txt': 'generated\n',
 
   'packages/docs/package.json': pkg('@pg/docs'),
-  'packages/docs/vx.config.mjs': CONFIG_TEXTS['@pg/docs']!,
+  'packages/docs/vx.project.mjs': CONFIG_TEXTS['@pg/docs']!,
   'packages/docs/index.md': '# docs\n',
 }
 

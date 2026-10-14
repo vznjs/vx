@@ -1,6 +1,6 @@
 ---
 // The playground (playground/; item 700, design/playground-ui-2026-09.md).
-// Without JavaScript it is the toy workspace: each `vx.config.mjs`, folded,
+// Without JavaScript it is the toy workspace: each `vx.project.mjs`, folded,
 // and the tasks its run plans as a table of what each waits for and the
 // inputs it declares. `playground.ts` unhides the editor and the run
 // controls, hides that, and imports vx's planner from `data-planner` on the
@@ -28,12 +28,12 @@ const { files: FILES, env: ENV, tasks: TASKS } = START
 const configs: Record<string, unknown> = {}
 for (const [name, text] of Object.entries(configTextsOf(FILES))) {
   const r = await evaluateConfigInProcess(text)
-  if (!r.ok) throw new Error(`<Playground>: ${name}'s vx.config.mjs does not evaluate: ${r.error}`)
+  if (!r.ok) throw new Error(`<Playground>: ${name}'s vx.project.mjs does not evaluate: ${r.error}`)
   configs[name] = r.config
 }
 const rows = staticTable(staticProjects(FILES, configs), TASKS).map(staticCells)
 const paths = Object.keys(FILES)
-const configFiles = paths.filter((f) => f.endsWith('/vx.config.mjs'))
+const configFiles = paths.filter((f) => f.endsWith('/vx.project.mjs'))
 const planner = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}playground/planner.js`
 const HEAD = ['Task', 'Waits for', 'Inputs']
 ---

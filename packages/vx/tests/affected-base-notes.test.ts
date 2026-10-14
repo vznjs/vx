@@ -53,7 +53,7 @@ beforeEach(async () => {
   await mkdir(path.join(root, 'pkgs/app/src'), { recursive: true })
   await writeFile(path.join(root, 'pkgs/app/package.json'), JSON.stringify({ name: 'app' }))
   await writeFile(
-    path.join(root, 'pkgs/app/vx.config.mjs'),
+    path.join(root, 'pkgs/app/vx.project.mjs'),
     // `^build`: `--affected` reaches a dependent along a task edge.
     `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'cat src/a.txt > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } }\n`,
   )
@@ -182,7 +182,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     await mkdir(path.join(root, 'pkgs/lib/src'), { recursive: true })
     await writeFile(path.join(root, 'pkgs/lib/package.json'), JSON.stringify({ name: 'lib' }))
     await writeFile(
-      path.join(root, 'pkgs/lib/vx.config.mjs'),
+      path.join(root, 'pkgs/lib/vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     )
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l1\n')
@@ -232,7 +232,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     await mkdir(path.join(root, 'pkgs/lib/src'), { recursive: true })
     await writeFile(path.join(root, 'pkgs/lib/package.json'), JSON.stringify({ name: 'lib' }))
     await writeFile(
-      path.join(root, 'pkgs/lib/vx.config.mjs'),
+      path.join(root, 'pkgs/lib/vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     )
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l1\n')
@@ -269,7 +269,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       await mkdir(path.join(root, `pkgs/${name}/src`), { recursive: true })
       await writeFile(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
       await writeFile(
-        path.join(root, `pkgs/${name}/vx.config.mjs`),
+        path.join(root, `pkgs/${name}/vx.project.mjs`),
         `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
       )
       await writeFile(path.join(root, `pkgs/${name}/src/l.txt`), 'l1\n')
@@ -304,7 +304,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     await mkdir(path.join(root, 'pkgs/lib/src'), { recursive: true })
     await writeFile(path.join(root, 'pkgs/lib/package.json'), JSON.stringify({ name: 'lib' }))
     await writeFile(
-      path.join(root, 'pkgs/lib/vx.config.mjs'),
+      path.join(root, 'pkgs/lib/vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
     )
     await writeFile(path.join(root, 'pkgs/lib/src/l.txt'), 'l1\n')

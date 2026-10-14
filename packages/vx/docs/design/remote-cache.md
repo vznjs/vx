@@ -312,7 +312,7 @@ Missing either of the two required vars → local cache only. The
 orchestrator logs `remote cache: <url>` at the top of a run when the
 remote layer is active.
 
-`vx.config.ts`-based remote-cache configuration is on the roadmap.
+`vx.project.ts`-based remote-cache configuration is on the roadmap.
 Workspace-config loading is shipped (see
 [`schema.md` § Workspace config](../schema.md#workspace-config-vxworkspacets)),
 so the surface for adding `remoteCache: { url, token, teamId, slug,

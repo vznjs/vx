@@ -133,7 +133,7 @@ describe('a negated output', () => {
     async () => {
       await additive()
       await writeFile(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         `export default { tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.js' },
@@ -160,7 +160,7 @@ describe('a negated output in the task graph', () => {
     'separates nothing: two tasks with disjoint outputs, each taking a path back, both run',
     async () => {
       await writeFile(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         `export default { tasks: {
           a: {
             exec: { command: 'mkdir -p dist && echo a > dist/a.js' },
@@ -183,7 +183,7 @@ describe('a negated output in the task graph', () => {
     async () => {
       await additive()
       await writeFile(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         `export default { tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.js' },
@@ -217,7 +217,7 @@ describe('a negated workspace output', () => {
   beforeEach(async () => {
     await Bun.write(path.join(fx.root, 'gen', 'keep.txt'), 'W1')
     await writeFile(
-      path.join(app, 'vx.config.mjs'),
+      path.join(app, 'vx.project.mjs'),
       `export default { tasks: { build: {
         exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/x.txt' },
         cache: {
@@ -248,7 +248,7 @@ describe('a remote artifact carrying a negated output', () => {
     'is refused at ingest, so the read is a miss and nothing lands there',
     async () => {
       await writeFile(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         `export default { tasks: { build: {
           exec: { command: 'mkdir -p out && echo built > out/a.txt' },
           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**', '!out/keep.txt'] } },

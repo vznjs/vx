@@ -191,7 +191,7 @@ const TOOLS: readonly ToolDef[] = [
       'What `vx init` would write, nothing written, as `vx init --dry --format json` prints it: each file ' +
       'with its whole text, the configs it keeps, the TODOs the mapping left, notes and the next command. ' +
       "In a Turbo or Nx repo the plan is @vzn/vx-migrate's; `mode` keep plans the workspace file that " +
-      'runs the repo as it is, native (the default) a vx.config per package.',
+      'runs the repo as it is, native (the default) a vx.project per package.',
     inputSchema: {
       type: 'object',
       properties: {

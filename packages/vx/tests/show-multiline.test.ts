@@ -31,7 +31,7 @@ describe('vx show — a multi-line value continues under its first line', () => 
     const dir = path.join(root, 'packages', 'app')
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
-    await writeFile(path.join(dir, 'vx.config.mjs'), CONFIG)
+    await writeFile(path.join(dir, 'vx.project.mjs'), CONFIG)
   })
   afterAll(async () => {
     await rm(root, { recursive: true, force: true })

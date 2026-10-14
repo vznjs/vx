@@ -52,7 +52,7 @@ async function makeWorkspace(): Promise<string> {
   const appDir = path.join(root, 'packages', 'app')
   await mkdir(path.join(appDir, 'src'), { recursive: true })
   await writeFile(path.join(appDir, 'package.json'), JSON.stringify({ name: 'app' }))
-  await writeFile(path.join(appDir, 'vx.config.mjs'), APP_CONFIG)
+  await writeFile(path.join(appDir, 'vx.project.mjs'), APP_CONFIG)
   await writeFile(path.join(appDir, 'src', 'input.txt'), 'v1\n')
   const git = gitIn(root)
   git('init', '-q')

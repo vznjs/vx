@@ -511,7 +511,7 @@ carrying both was a contradiction, so it is gone.
 
 **`vx lock` + `--frozen`** is the headline `vx` row (since 2026-09-29;
 before, it was its own `vx (frozen)` row): it executes the frozen
-`vx-lock.json` graph with **zero per-run config evaluation**, and
+`vx.lock.json` graph with **zero per-run config evaluation**, and
 `vx (no lock)` keeps the per-run evaluation's cost in view. Read the
 difference as a tie, not a win: since the config-evaluation cache
 (2026-09-02) the plain warm run evaluates nothing either for a config
@@ -529,7 +529,7 @@ of lock read plus 12–14 ms of load frozen. The 83 vs 76 ms above
 whatever a config would read from the environment — and for configs
 the gate cannot prove pure, which evaluate live on every plain run and
 come from the lock under `--frozen`. In your repo: `vx lock`, then
-commit `vx-lock.json`.
+commit `vx.lock.json`.
 
 ## How the overhead scales with the workspace (2026-09-10)
 

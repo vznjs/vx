@@ -43,7 +43,7 @@ describe.skipIf(!available)("a task and vx's own environment", () => {
     await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(path.join(ws, 'packages', 'a', 'canary.pat'), `${canary}\n`)
     await writeFile(
-      path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+      path.join(ws, 'packages', 'a', 'vx.project.mjs'),
       `export default { tasks: {
   boxed: { exec: { command: ${JSON.stringify(PROBE)}, sandbox: { allow: { read: ['.'] } } } },
   open: { exec: { command: ${JSON.stringify(PROBE)} } },

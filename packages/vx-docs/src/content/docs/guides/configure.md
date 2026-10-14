@@ -4,17 +4,17 @@ description: Tasks and dependencies, caching, environment variables, dev servers
 ---
 
 Tell vx what each package runs, what it reads and what it may see: a
-`vx.config.ts` per package, and one [`vx.workspace.ts`](#workspace-config)
+`vx.project.ts` per package, and one [`vx.workspace.ts`](#workspace-config)
 at the root that marks the workspace. Every field:
 [the config reference](../../schema/).
 
 ## Tasks and dependencies
 
-Each task in a package's `vx.config.ts` is one shell command (chain
+Each task in a package's `vx.project.ts` is one shell command (chain
 steps with `&&`). `dependsOn` says what finishes first.
 
 ```ts
-// packages/app/vx.config.ts
+// packages/app/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -87,7 +87,7 @@ sandbox checks `allow.read`, never `cache.inputs`, so it catches a missing
 input only while the two lists match.
 
 ```ts
-// packages/app/vx.config.ts
+// packages/app/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -111,7 +111,7 @@ export default defineProject({
 | The key                | Holds                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the package's `package.json`, the lockfile, the keys of the tasks it depends on, the task's config, arguments after `--` |
-| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx`, `*.tsbuildinfo`, `vx-lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
+| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx`, `*.tsbuildinfo`, `vx.lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
 | In, when you say so    | a tool's version: `cache.inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
@@ -198,7 +198,7 @@ A `persistent` task is a server or watcher. Its dependents start once it
 prints a line matching `readyWhen`; if none comes, `exec.timeout` fails it.
 
 ```ts
-// packages/web/vx.config.ts
+// packages/web/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({

@@ -18,10 +18,10 @@ that binary.
    workspace, `pnpm add -D -w @vzn/vx`: npm refuses `workspace:*`; Bun:
    `bun add -d @vzn/vx`).
 2. Run `npx @vzn/vx init` (Bun: `bunx @vzn/vx init`; npm refuses a repo
-   whose `devEngines` names Bun). It writes a `vx.config.ts` per package from its
+   whose `devEngines` names Bun). It writes a `vx.project.ts` per package from its
    scripts, and a `vx.workspace.ts`. A root script that checks the whole
    repo (`format: prettier --check .`) becomes a task in a root
-   `vx.config.ts`; one that runs the members (`pnpm -r build`) does not,
+   `vx.project.ts`; one that runs the members (`pnpm -r build`) does not,
    nor one named like a package's own task (a root `lint` beside a
    package's `lint`), so `--all` never runs a check twice. No task gets a `cache` block, so
    nothing is cached yet: add the one each `build`'s TODO shows. A
@@ -34,7 +34,7 @@ that binary.
 ## Config
 
 ```ts
-// packages/app/vx.config.ts
+// packages/app/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -95,7 +95,7 @@ of a small package (first run, again, again after `rm -rf dist`):
 Start with one package and leave the rest of your tooling as it is.
 
 1. Add a `vx.workspace.ts` at the repo root (`export default {}` will do)
-   and give one package a `vx.config.ts` with the command its `build` script runs.
+   and give one package a `vx.project.ts` with the command its `build` script runs.
 2. Run `vx run build` twice in it. The second run is a cache hit. If it
    ran again, `vx why <package>#build` names what changed in its key.
 3. Edit a file the build reads. `vx run build --dry` now predicts a miss,
@@ -105,7 +105,7 @@ Start with one package and leave the rest of your tooling as it is.
 ## Coming from Turbo, Nx or Vite Task
 
 `npx @vzn/vx init` beside `turbo.json` or `nx.json` runs `@vzn/vx-migrate`, which
-writes the native `vx.config.ts` files from `turbo.json` or the Nx graph
+writes the native `vx.project.ts` files from `turbo.json` or the Nx graph
 (`bunx @vzn/vx-migrate` does the same from each `vite.config`'s `run.tasks`);
 from there everything above applies. `vx init --keep` writes only a
 `vx.workspace.ts` declaring `turbo()` or `nx()`: a temporary start, dropped
@@ -120,7 +120,7 @@ once the configs exist.
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
 - **`no vx.workspace.ts in …`.** The file marks the workspace root. Run `vx init`, or add `vx.workspace.ts` at the root by hand.
 - **`vx requires git`.** Run `git init` at the workspace root.
-- **A package has no `vx.config.ts`.** It gets a default `build`: a group behind `^build`, keyed on all its files, so editing it re-runs the packages that depend on it.
+- **A package has no `vx.project.ts`.** It gets a default `build`: a group behind `^build`, keyed on all its files, so editing it re-runs the packages that depend on it.
 - **`tsc -b` ran, but `dist/` came back empty.** With `rootDir: "src"`, tsc writes `tsconfig.tsbuildinfo` beside `tsconfig.json`, outside `dist/`. vx empties `dist/` before a miss, tsc sees the buildinfo, thinks it is current and writes nothing. Add `tsconfig.tsbuildinfo` to `outputs.files`, or point `tsBuildInfoFile` into `dist/`.
 - **A package has nothing to build, but others depend on it.** Its default `build` waits on its own dependencies' builds. `build: { dependsOn: [] }` waits on nothing, but also drops its files from its dependents' keys: use it only when no dependent reads its source.
 

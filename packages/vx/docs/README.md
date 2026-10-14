@@ -21,7 +21,7 @@ passed" is the symptom.
 
 Most of vx's design is a response to this:
 
-- **The config is evaluated, then hashed.** Your `vx.config.ts` is a
+- **The config is evaluated, then hashed.** Your `vx.project.ts` is a
   TypeScript program. A tool that hashes the config _file_ misses the
   preset it imported, the constant it computed, the environment it
   read. vx hashes the resolved object, so imports participate in cache
@@ -113,7 +113,7 @@ to that project's own, so the lockfile's version runs.
 The binaries link glibc; on musl (Alpine) the launcher runs vx from
 source with Bun when Bun is installed.
 
-Drop a `vx.config.ts` next to any workspace package:
+Drop a `vx.project.ts` next to any workspace package:
 
 ```ts
 import { defineProject } from '@vzn/vx/config'
@@ -182,7 +182,7 @@ seam in a plugin.
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | The pitch: what vx does that others don't                              | [`comparison.md` § Where vx is ahead](./comparison.md#where-vx-is-ahead) |
 | Understand the overall shape                                           | [`architecture.md`](./architecture.md)                                   |
-| Author a `vx.config.ts`                                                | [`schema.md`](./schema.md)                                               |
+| Author a `vx.project.ts`                                               | [`schema.md`](./schema.md)                                               |
 | Reason about caching                                                   | [`caching.md`](./caching.md)                                             |
 | Know what vx trusts and what the sandbox stops                         | [`security.md`](./security.md)                                           |
 | Trace what `vx run` actually does                                      | [`execution.md`](./execution.md)                                         |
@@ -226,7 +226,7 @@ traces, metrics and logs), `@vzn/vx-ci` (job summary and Checks API),
 lockfile), `@vzn/vx-schedule-history` (order by the critical path
 learned from run history), `@vzn/vx-mcp` (`vx mcp`, a server for AI
 agents) and `@vzn/vx-migrate` (migration from Turbo or Nx:
-`vx.config.ts` written from either, `turbo()` / `nx()` as the temporary
+`vx.project.ts` written from either, `turbo()` / `nx()` as the temporary
 start, their remote cache kept), each
 importing core only through the public `@vzn/vx` specifier — a
 boundary the test suite enforces.

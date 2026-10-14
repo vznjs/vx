@@ -54,7 +54,7 @@ beforeEach(async () => {
     await mkdir(path.join(root, 'pkgs', name), { recursive: true })
     await writeFile(path.join(root, 'pkgs', name, 'package.json'), JSON.stringify({ name }))
     await writeFile(
-      path.join(root, 'pkgs', name, 'vx.config.mjs'),
+      path.join(root, 'pkgs', name, 'vx.project.mjs'),
       `export default { tasks: { ${tasks} } }\n`,
     )
     await writeFile(path.join(root, 'pkgs', name, 'in.txt'), 'x\n')
@@ -142,7 +142,7 @@ describe('--affected: a task only an unaffected dependency declares is not a typ
 // exit 1, though `app` declares it.
 describe('--affected: a changed project with no vx config', () => {
   it('exits 0 and says no affected project declares the task', async () => {
-    await rm(path.join(root, 'pkgs', 'docs', 'vx.config.mjs'))
+    await rm(path.join(root, 'pkgs', 'docs', 'vx.project.mjs'))
     git(root, 'commit', '-qam', 'docs has no config')
     await writeFile(path.join(root, 'pkgs', 'docs', 'in.txt'), 'z\n')
     git(root, 'commit', '-qam', 'docs only')

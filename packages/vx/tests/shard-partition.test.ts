@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { partition, readWeights, testFiles } from '../scripts/test-shard.js'
-import { SHARD_COUNT } from '../vx.config.js'
+import { SHARD_COUNT } from '../vx.project.js'
 
 describe('weighted test shards', () => {
   const files = testFiles()

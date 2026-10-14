@@ -16,7 +16,7 @@ describe('vx watch --affected (e2e)', () => {
     // executes nothing. Every cycle used to judge against that same diff,
     // so the `src` edit below never ran `build`.
     await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
+      path.join(f.dir, 'vx.project.mjs'),
       `export default { tasks: {
         build: {
           exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },

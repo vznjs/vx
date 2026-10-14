@@ -8,7 +8,7 @@ tags:
 excerpt: 'vx show prints a project or a task as the run sees it: the evaluated config, after presets, plugins and TypeScript have had their say.'
 ---
 
-A `vx.config.ts` is TypeScript. Presets compose, plugins add tasks, a
+A `vx.project.ts` is TypeScript. Presets compose, plugins add tasks, a
 function can compute a command. So the file is not always the answer to
 "what will this task do?". `vx show` is.
 
@@ -44,7 +44,7 @@ preset sets `outputs` or a plugin rewrites a command, it shows here.
 
 ```mermaid
 flowchart LR
-  SRC["vx.config.ts"] --> EVAL["evaluate"]
+  SRC["vx.project.ts"] --> EVAL["evaluate"]
   PRE["presets"] --> EVAL
   PLUG["plugins"] --> EVAL
   EVAL --> SHOW["vx show"]

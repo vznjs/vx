@@ -1,9 +1,9 @@
 // A tsconfig that is a composite project (or sets `rootDir`) refuses a
 // source file outside its directory: withastro/astro's
-// `scripts/tsconfig.json` type-checked the written `vx.config.mjs`, and its
+// `scripts/tsconfig.json` type-checked the written `vx.project.mjs`, and its
 // import of the root `vx-preset.mjs` failed the build (TS6059, TS6307). So
 // did `packages/astro/tsconfig.test.json`, which takes in the nested
-// `performance/vx.config.mjs`. A config such a project takes in declares
+// `performance/vx.project.mjs`. A config such a project takes in declares
 // the preset values it uses itself.
 
 import { readdirSync, readFileSync } from 'node:fs'

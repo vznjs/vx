@@ -53,7 +53,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** A package with a vx.config.mjs; `deps` become real package.json deps. */
+/** A package with a vx.project.mjs; `deps` become real package.json deps. */
 async function pkg(name: string, config: string, deps: readonly string[] = []): Promise<void> {
   const dir = path.join(root, 'packages', name)
   await mkdir(path.join(dir, 'src'), { recursive: true })
@@ -68,7 +68,7 @@ async function pkg(name: string, config: string, deps: readonly string[] = []): 
         : {}),
     }),
   )
-  await writeFile(path.join(dir, 'vx.config.mjs'), config)
+  await writeFile(path.join(dir, 'vx.project.mjs'), config)
 }
 
 /** A task whose dependsOn is exactly `deps`. */
@@ -267,7 +267,7 @@ describe('scoped config loading reaches every project a run can need', () => {
         path.join(nested, 'package.json'),
         JSON.stringify({ name: 'inner', version: '1.0.0' }),
       )
-      await writeFile(path.join(nested, 'vx.config.mjs'), cfg(task('build')))
+      await writeFile(path.join(nested, 'vx.project.mjs'), cfg(task('build')))
 
       const p = await prepare({ projects: ['app'] })
       // `inner` is NOT in the run…

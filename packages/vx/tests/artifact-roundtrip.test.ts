@@ -115,7 +115,7 @@ describe('artifact round-trip', () => {
       )
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -184,7 +184,7 @@ describe('artifact round-trip', () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              snap: {
@@ -212,7 +212,7 @@ describe('artifact round-trip', () => {
     await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
     await writeLocalWorkspace(root)
     await write(
-      path.join(root, 'vx.config.mjs'),
+      path.join(root, 'vx.project.mjs'),
       `export default {
          tasks: {
            build: {
@@ -319,7 +319,7 @@ describe('artifact round-trip — odd names', () => {
       )
       await writeLocalWorkspace(root)
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              build: {

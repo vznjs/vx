@@ -2,7 +2,7 @@
 // `prepareRun` (a run, a plan) and `vx show` (introspection). One code
 // path, so what `show` prints is what a run would see — including the
 // plugin `project` stage, which can give tasks to a package that never
-// wrote a `vx.config.ts`.
+// wrote a `vx.project.ts`.
 
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
@@ -185,7 +185,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // A package with no config file declares no tasks — unless a plugin
   // fills the `project` stage, in which case it is a project the stage may
   // give tasks to (the zero-migration shape: `turbo.json` or `package.json`
-  // scripts mapped onto packages that never wrote a `vx.config.ts`). It
+  // scripts mapped onto packages that never wrote a `vx.project.ts`). It
   // then loads as `{ tasks: {} }` — nothing to evaluate, nothing to freeze
   // — and the stage runs on that like on any loaded config. With no
   // `project` plugin a plain run never seeds a config-less

@@ -16,10 +16,10 @@ it('names the workspace root when it shares a member’s name', async () => {
     await mkdir(path.join(dir, 'packages', 'a'), { recursive: true })
     await writeFile(path.join(dir, 'packages', 'a', 'package.json'), '{"name":"a"}')
     await writeFile(
-      path.join(dir, 'packages', 'a', 'vx.config.mjs'),
+      path.join(dir, 'packages', 'a', 'vx.project.mjs'),
       'export default { tasks: {} }\n',
     )
-    await writeFile(path.join(dir, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+    await writeFile(path.join(dir, 'vx.project.mjs'), 'export default { tasks: {} }\n')
     const list = async () =>
       listProjects(await loadWorkspace(dir)).then(
         (ps) => ps.map((p) => p.name),

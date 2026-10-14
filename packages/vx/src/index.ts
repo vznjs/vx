@@ -38,7 +38,7 @@ export { isLiteralPattern, normalizeGlob } from './util/index.js'
 // hands an agent (L-11).
 export { maskedCommand, maskedLine } from './util/index.js'
 
-// Schema types and helpers (used by user vx.config files and presets).
+// Schema types and helpers (used by user vx.project files and presets).
 export type {
   WorkspaceConfig,
   RunSettings,

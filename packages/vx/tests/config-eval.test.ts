@@ -469,7 +469,7 @@ describe('a first load in process: what a config prints', () => {
       ['a', 'b', 'c'].map(async (name) => {
         const dir = path.join(root, name)
         await mkdir(dir)
-        const file = path.join(dir, 'vx.config.mjs')
+        const file = path.join(dir, 'vx.project.mjs')
         await writeFile(
           file,
           "await Bun.sleep(5)\nconsole.log('log')\n" +

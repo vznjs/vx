@@ -56,7 +56,7 @@ function synthetic(n: number, f: number) {
     const name = `@syn/p${i}`
     const deps = i === 0 ? {} : { [`@syn/p${i - 1}`]: 'workspace:*' }
     files[`packages/p${i}/package.json`] = JSON.stringify({ name, dependencies: deps })
-    files[`packages/p${i}/vx.config.mjs`] = 'export default {}\n'
+    files[`packages/p${i}/vx.project.mjs`] = 'export default {}\n'
     for (let k = 0; k < f; k++)
       files[`packages/p${i}/src/f${k}.ts`] = `export const v${k} = ${i * k}\n`.repeat(20)
     configs[name] = {

@@ -25,7 +25,7 @@ beforeAll(async () => {
   await writeFile(path.join(app, 'package.json'), '{"name":"app"}')
   await writeFile(path.join(app, 'src', 'a.txt'), 'x\n')
   await writeFile(
-    path.join(app, 'vx.config.mjs'),
+    path.join(app, 'vx.project.mjs'),
     "export default { tasks: { build: { exec: { command: 'echo hi' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
   )
   const git = gitIn(root)

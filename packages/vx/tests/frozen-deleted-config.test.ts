@@ -34,7 +34,7 @@ beforeEach(async () => {
   await addProject(root, 'lib', {
     config: `export default { tasks: { build: { exec: { command: 'echo LIB' } } } }\n`,
   })
-  config = path.join(root, 'packages', 'app', 'vx.config.mjs')
+  config = path.join(root, 'packages', 'app', 'vx.project.mjs')
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
 })
@@ -58,6 +58,6 @@ it('a deleted config the lock holds is refused, not silently dropped', async () 
   expect([r.code, r.out.includes('LIB'), r.err.trim()]).toEqual([
     1,
     false,
-    'vx: vx-lock.json locks "app", but it has no config now — run `vx lock` to refresh, or delete vx-lock.json',
+    'vx: vx.lock.json locks "app", but it has no config now — run `vx lock` to refresh, or delete vx.lock.json',
   ])
 }, 30_000)

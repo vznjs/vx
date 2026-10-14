@@ -554,7 +554,7 @@ function globs(
         `${kind} ${JSON.stringify(pattern)}: glob syntax vx cannot take — ` +
           (kind === 'input'
             ? 'widened to every package file'
-            : 'task runs uncached; declare the exact outputs in a vx.config to cache it'),
+            : 'task runs uncached; declare the exact outputs in a vx.project to cache it'),
       )
       if (kind === 'output') uncached = true
       else if (!neg) files.push('**/*')

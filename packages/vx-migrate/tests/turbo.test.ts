@@ -1,4 +1,4 @@
-// A Turbo repo runs under vx with no vx.config written. Every pin is a real
+// A Turbo repo runs under vx with no vx.project written. Every pin is a real
 // `planRun` / `run` over a workspace whose only vx file declares the plugin:
 // the migrate suite's Turbo fixture, minus the migration.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -94,7 +94,7 @@ afterEach(async () => {
 
 describe('turbo()', () => {
   it(
-    'plans a turbo.json workspace with no vx.config: tasks, edges, cache blocks, inlined globals',
+    'plans a turbo.json workspace with no vx.project: tasks, edges, cache blocks, inlined globals',
     async () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const ids = plan.tasks.map((t) => t.node.id).sort()
@@ -181,10 +181,10 @@ describe('turbo()', () => {
   )
 
   it(
-    'a package that wrote its own vx.config keeps its declaration; the plugin only fills',
+    'a package that wrote its own vx.project keeps its declaration; the plugin only fills',
     async () => {
       await writeFile(
-        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        path.join(root, 'packages', 'app', 'vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: 'echo by-hand' } } } }`,
       )
       const plan = await planRun({ cwd: root, tasks: ['build', 'test'], log: silent() })
@@ -291,7 +291,7 @@ describe('turbo()', () => {
       await planRun({ cwd: root, tasks: ['build'], log })
       const lines = log.lines.filter((l) => l.includes('persistent'))
       expect(lines).toEqual([
-        '[@vzn/vx-migrate] 2 task(s) (dev across 2 package(s)): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
+        '[@vzn/vx-migrate] 2 task(s) (dev across 2 package(s)): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.project to gate dependents on their output',
       ])
     },
     TIMEOUT,
@@ -475,11 +475,11 @@ describe('root tasks (D-39)', () => {
       }),
     )
     if (rootConfig)
-      await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      await writeFile(path.join(root, 'vx.project.mjs'), 'export default { tasks: {} }\n')
   }
 
   it(
-    "a root with a vx.config runs Turbo's `//#task`, and `//#gen` is an edge to it",
+    "a root with a vx.project runs Turbo's `//#task`, and `//#gen` is an edge to it",
     async () => {
       await setUp(true)
       const log = silent()
@@ -530,7 +530,7 @@ describe('root tasks (D-39)', () => {
   // --all` said "No projects declare task(s)" until turbo() named the root
   // through `discover`.
   it(
-    'with no root vx.config, turbo() makes the root a project: `//#gen` runs under --all',
+    'with no root vx.project, turbo() makes the root a project: `//#gen` runs under --all',
     async () => {
       await setUp(false)
       const log = silent()
@@ -809,10 +809,10 @@ describe('output negation', () => {
       // A config the mapped task now lives beside: the kept mapping is
       // re-made, and the output takes the config back.
       await writeFile(
-        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        path.join(root, 'packages', 'app', 'vx.project.mjs'),
         'export default { tasks: {} }\n',
       )
-      expect((await cacheOf())?.outputs.files).toEqual(['lib/**', '*.mjs', '!vx.config.mjs'])
+      expect((await cacheOf())?.outputs.files).toEqual(['lib/**', '*.mjs', '!vx.project.mjs'])
     },
     TIMEOUT,
   )
@@ -1191,7 +1191,7 @@ describe('turbo(): the mapping cache', () => {
 })
 
 // Every bench arm runs vx from a lock (`vx lock` once, then `--frozen`), on
-// real Turbo repos too: the plugin's tasks are no vx.config, so the lock
+// real Turbo repos too: the plugin's tasks are no vx.project, so the lock
 // records none of them and a frozen run maps turbo.json live. A config
 // written after the lock is a project the lock lacks, and a frozen run
 // refuses it rather than evaluating it.
@@ -1214,7 +1214,7 @@ describe('turbo() under vx lock and --frozen', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx lock: locked 0 project configs → vx-lock.json (no vx.config, so never frozen: app, lib)\n',
+        out: 'vx lock: locked 0 project configs → vx.lock.json (no vx.project, so never frozen: app, lib)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all', '--frozen')
@@ -1226,13 +1226,13 @@ describe('turbo() under vx lock and --frozen', () => {
       expect({ code: second.code, err: second.err }).toEqual({ code: 0, err: '' })
       expect(second.out).toContain('3 tasks · all cached')
       await writeFile(
-        path.join(root, 'packages', 'lib', 'vx.config.mjs'),
+        path.join(root, 'packages', 'lib', 'vx.project.mjs'),
         'export default { tasks: { build: { command: "true" } } }\n',
       )
       const stale = vx('run', 'build', '--all', '--frozen')
       expect(stale.code).toBe(1)
       expect(stale.err).toContain(
-        'vx-lock.json has no entry for "lib" (packages/lib/vx.config.mjs) — run `vx lock` to refresh',
+        'vx.lock.json has no entry for "lib" (packages/lib/vx.project.mjs) — run `vx lock` to refresh',
       )
     },
     TIMEOUT,

@@ -13,7 +13,7 @@ async function refusal(sources: string[]): Promise<[string, string]> {
   try {
     const files = await Promise.all(
       sources.map(async (src, i) => {
-        const file = path.join(dir, `p${i}`, 'vx.config.mjs')
+        const file = path.join(dir, `p${i}`, 'vx.project.mjs')
         await Bun.write(file, src)
         return file
       }),
@@ -32,7 +32,7 @@ async function refusal(sources: string[]): Promise<[string, string]> {
 const moves = `process.chdir(${JSON.stringify(os.tmpdir())})\nexport default { tasks: {} }\n`
 const innocent = 'export default { tasks: {} }\n'
 const message = (n: number) =>
-  `<dir>/p${n}/vx.config.mjs changed process.cwd (a chdir) while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them; a task runs in its project directory, and \`cd <dir> && …\` in \`exec.command\` moves it`
+  `<dir>/p${n}/vx.project.mjs changed process.cwd (a chdir) while it was evaluated — a config must not change the built-ins vx runs on: other configs are read through them and cache keys are made with them; a task runs in its project directory, and \`cd <dir> && …\` in \`exec.command\` moves it`
 
 it('puts back a config’s chdir and names the config', async () => {
   expect(await refusal([moves])).toEqual([message(0), 'cwd kept'])

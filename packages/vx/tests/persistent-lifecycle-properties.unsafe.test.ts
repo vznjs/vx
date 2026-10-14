@@ -78,7 +78,7 @@ async function scenario(seed: number, iter: number, stopAt?: number): Promise<st
     tasks.push(`t${i}: ${task.replace(/^\{ /, `{ dependsOn: ${JSON.stringify(deps)}, `)}`)
   }
   await writeFile(
-    path.join(p, 'vx.config.mjs'),
+    path.join(p, 'vx.project.mjs'),
     `export default { tasks: { ${tasks.join(',\n')} } }\n`,
   )
   gitInitCommit(root, 'init')

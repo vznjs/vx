@@ -53,7 +53,7 @@ async function fixture(): Promise<string> {
   await writeFile(path.join(root, 'proj', 'src', 'ok.txt'), 'declared\n')
   await writeFile(path.join(root, 'secret.txt'), 'undeclared\n')
   await writeFile(
-    path.join(root, 'proj', 'vx.config.mjs'),
+    path.join(root, 'proj', 'vx.project.mjs'),
     `export default { tasks: {
        leak: {
          exec: {

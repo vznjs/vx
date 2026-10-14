@@ -47,7 +47,7 @@ function graph(projects: Record<string, Record<string, TaskConfig>>, rules?: Wor
     entries.set(name, {
       name,
       dir: `/w/${name}`,
-      configPath: `/w/${name}/vx.config.ts`,
+      configPath: `/w/${name}/vx.project.ts`,
       config: { tasks } as ProjectConfig,
     } as ProjectEntry)
   }
@@ -80,7 +80,7 @@ function graphNodes(projects: Record<string, Record<string, TaskConfig>>): Map<s
     entries.set(name, {
       name,
       dir: `/w/${name}`,
-      configPath: `/w/${name}/vx.config.ts`,
+      configPath: `/w/${name}/vx.project.ts`,
       config: { tasks } as ProjectConfig,
     } as ProjectEntry)
   }

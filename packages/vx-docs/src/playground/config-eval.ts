@@ -1,4 +1,4 @@
-// The reader's `vx.config.mjs`, evaluated the way the CLI evaluates one
+// The reader's `vx.project.mjs`, evaluated the way the CLI evaluates one
 // (roadmap W9, item 699; design/playground-spike-2026-09.md § W9
 // decisions).
 //
@@ -48,7 +48,7 @@ self.onmessage = async (e) => {
 `
 
 /** The file name the page's messages give the reader's config. */
-const CONFIG_FILE = 'vx.config.mjs'
+const CONFIG_FILE = 'vx.project.mjs'
 
 /** What the CLI says of a config whose default export is not an object (project-loader.ts). */
 export const NOT_AN_OBJECT = `Project config at ${CONFIG_FILE} did not export a default object`
@@ -257,7 +257,7 @@ const moduleUrl = (source: string): string =>
   URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
 
 /**
- * Evaluate a `vx.config.mjs` text in a fresh Worker and return its default
+ * Evaluate a `vx.project.mjs` text in a fresh Worker and return its default
  * export as the CLI's worker path hands it on, or the reason it has none.
  */
 export async function evaluateConfig(

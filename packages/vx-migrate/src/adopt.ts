@@ -13,7 +13,7 @@ export type AdoptionMode = 'native' | 'keep'
 /** The question a TTY run asks; `null` (no answer, EOF) is the default. */
 export const MODE_QUESTION = (runner: 'turbo' | 'nx', source: string) =>
   `${source} found. How should vx run this repo?\n` +
-  `  1) native: write a vx.config.ts per package from ${source} (recommended)\n` +
+  `  1) native: write a vx.project.ts per package from ${source} (recommended)\n` +
   `  2) keep: keep ${source} as the source; vx reads it on every run through ${runner}()\n` +
   'Choose 1 or 2 [1]:'
 

@@ -40,28 +40,28 @@
   ],
   "root from packages/a/src: package.json without workspaces": "packages/a",
   "root from apps/c: package.json without workspaces": "apps/c",
-  "project config: vx.config.ts + vx.config.mts + vx.config.js + vx.config.mjs": "vx.config.ts",
-  "project config: vx.config.mts + vx.config.js + vx.config.mjs": "vx.config.mts",
-  "project config: vx.config.js + vx.config.mjs": "vx.config.js",
-  "project config: vx.config.mjs": "vx.config.mjs",
+  "project config: vx.project.ts + vx.project.mts + vx.project.js + vx.project.mjs": "vx.project.ts",
+  "project config: vx.project.mts + vx.project.js + vx.project.mjs": "vx.project.mts",
+  "project config: vx.project.js + vx.project.mjs": "vx.project.js",
+  "project config: vx.project.mjs": "vx.project.mjs",
   "workspace config: vx.workspace.ts + vx.workspace.mts + vx.workspace.js + vx.workspace.mjs": "vx.workspace.ts",
   "workspace config: vx.workspace.mts + vx.workspace.js + vx.workspace.mjs": "vx.workspace.mts",
   "workspace config: vx.workspace.js + vx.workspace.mjs": "vx.workspace.js",
   "workspace config: vx.workspace.mjs": "vx.workspace.mjs",
-  "project config: vx.config.cts + vx.config.cjs": [
-    "vx.config.cts",
+  "project config: vx.project.cts + vx.project.cjs": [
+    "vx.project.cts",
     [
       "t0"
     ]
   ],
-  "project config: vx.config.cjs": [
-    "vx.config.cjs",
+  "project config: vx.project.cjs": [
+    "vx.project.cjs",
     [
       "t0"
     ]
   ],
-  "project config: vx.config.mjs + vx.config.cts": [
-    "vx.config.mjs",
+  "project config: vx.project.mjs + vx.project.cts": [
+    "vx.project.mjs",
     [
       "t0"
     ]

@@ -12,7 +12,7 @@ import { loadProjectConfigs } from '../src/workspace/project-loader.js'
 async function load(source: string): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-blind-'))
   try {
-    const file = path.join(dir, 'p', 'vx.config.mjs')
+    const file = path.join(dir, 'p', 'vx.project.mjs')
     await Bun.write(file, source)
     return await loadProjectConfigs([file]).then(
       () => 'loaded',

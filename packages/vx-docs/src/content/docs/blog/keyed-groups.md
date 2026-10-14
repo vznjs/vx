@@ -16,7 +16,7 @@ change, but nothing has to run for them on their own.
 A group task can now carry that key:
 
 ```ts
-// vx.config.ts
+// vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({

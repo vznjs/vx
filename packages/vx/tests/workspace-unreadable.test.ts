@@ -24,7 +24,7 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
         await mkdir(path.join(root, 'packages', p), { recursive: true })
         await writeFile(path.join(root, 'packages', p, 'package.json'), `{"name":"${p}"}`)
         await writeFile(
-          path.join(root, 'packages', p, 'vx.config.mjs'),
+          path.join(root, 'packages', p, 'vx.project.mjs'),
           `export default { tasks: { build: { exec: { command: 'echo ${p}' } } } }\n`,
         )
       }
@@ -61,9 +61,9 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
     })
 
     it('names a project config it may not read as a read', async () => {
-      expect(await run('packages/b/vx.config.mjs')).toEqual({
+      expect(await run('packages/b/vx.project.mjs')).toEqual({
         code: 1,
-        err: 'vx: <root>/packages/b/vx.config.mjs: not readable by this user (EACCES)',
+        err: 'vx: <root>/packages/b/vx.project.mjs: not readable by this user (EACCES)',
         planned: [],
       })
     })

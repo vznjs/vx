@@ -548,7 +548,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
     await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
     await writeFile(path.join(root, 'pkg', 'src', 'app.js'), 'console.log("app")\n')
     await writeFile(
-      path.join(root, 'pkg', 'vx.config.mjs'),
+      path.join(root, 'pkg', 'vx.project.mjs'),
       "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/app.js dist/app.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n",
     )
     await writeFile(

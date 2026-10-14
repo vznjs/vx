@@ -254,7 +254,7 @@ export async function affectedChanges(
       gitPaths(args.workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z']))(),
   ])
 
-  // vx-lock.json (workspace-root metadata) is excluded like a gitignored
+  // vx.lock.json (workspace-root metadata) is excluded like a gitignored
   // file: re-running `vx lock` must not mark every project affected.
   // An untracked file under `node_modules` is an install, which the input
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
@@ -377,7 +377,7 @@ export async function affectedChanges(
     }
   }
 
-  // THIRD CHANNEL: a project whose `vx.config.*` IMPORTS a changed file.
+  // THIRD CHANNEL: a project whose `vx.project.*` IMPORTS a changed file.
   // Resolved-config hashing folds those values into the key, so the same
   // sentence above applies — input hashing sees it, so selection must. This
   // runs on the FULL changed set, not just the paths no project owns: the

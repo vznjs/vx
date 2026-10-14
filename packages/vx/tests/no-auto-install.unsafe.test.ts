@@ -23,7 +23,7 @@ describe('a config never installs a package', () => {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
     await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
     await writeFile(
-      path.join(root, 'vx.config.mjs'),
+      path.join(root, 'vx.project.mjs'),
       `import { x } from './helper.mjs'
 export default { tasks: { a: { exec: { command: 'echo ' + x } } } }
 `,

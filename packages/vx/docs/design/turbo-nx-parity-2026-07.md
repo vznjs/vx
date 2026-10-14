@@ -474,7 +474,7 @@ root)` / the resolved selection from inside a package dir. Whatever the chosen
 - **vx equivalent**: `src/cli/plan-format.ts:111` `formatGraphDot` interpolates
   `t.node.id` directly into DOT quoted strings:
   `` `  "${t.node.id}" [label="${label}", …]` `` and `` `  "${dep}" -> "${t.node.id}";` ``.
-  Task names are arbitrary object keys in `vx.config.ts`, so `"`, `\` and
+  Task names are arbitrary object keys in `vx.project.ts`, so `"`, `\` and
   newlines are all reachable.
 - **Existing vx coverage**: NONE. `tests/plan-format.test.ts` has
   `emits a valid digraph with edges + per-status fillcolor` but only with plain
@@ -586,12 +586,12 @@ spaces.txt` must not break hashing or the dry run.
   covers that, `tests/workspace.test.ts:186`.)
 - **vx equivalent**: `src/workspace/workspace.ts` skips a member with no usable
   name; the decision log records that a nameless member now WARNS, but only when
-  the dir has a `vx.config.*`. `""` is falsy, so it takes the same path as
+  the dir has a `vx.project.*`. `""` is falsy, so it takes the same path as
   missing.
 - **Existing vx coverage**: `tests/workspace.test.ts:141` covers `'{}'` (no name
   → skipped). No case sets `"name": ""`, and none asserts the warning fires for a
   config-bearing member.
-- **Proposed test**: a member with `{"name": ""}` **and** a `vx.config.mjs`
+- **Proposed test**: a member with `{"name": ""}` **and** a `vx.project.mjs`
   warns (or errors) naming the directory, rather than vanishing from the project
   list — a vanished project means its tasks silently never run, which
   `tests/task-selection.test.ts` shows vx otherwise treats as a hard error.
@@ -770,7 +770,7 @@ contributes (fully decoupled)` at the unit level. What is missing is the
 
 ### L3. Root-level file change and the root project's affected status
 
-- **Status 2026-09-10**: already pinned — `tests/affected.test.ts` "a vx-lock.json change never marks a project affected, even the root project" has the root as a member and a root README edit selecting only it.
+- **Status 2026-09-10**: already pinned — `tests/affected.test.ts` "a vx.lock.json change never marks a project affected, even the root project" has the root as a member and a root README edit selecting only it.
 
 - **Turbo behaviour**: `filter_run_test.rs::test_filter_git_range_with_unstaged`
   — an unstaged edit to a root-level `bar.txt` puts the root package (`//`) in
@@ -1073,7 +1073,7 @@ used by its targets`**.
   seven live at the workspace root, i.e. inside no project dir, so `projectsContaining`
   returns the empty set for them.
 - **Existing vx coverage**: NONE. `tests/affected.test.ts` has a lockfile-adjacent test
-  (`:131`, `a vx-lock.json change never marks a project affected`) which pins the
+  (`:131`, `a vx.lock.json change never marks a project affected`) which pins the
   _deliberate exclusion of vx's own lockfile_ — the package-manager lockfiles are never
   exercised. `tests/cache.test.ts` covers the fingerprint's effect on the KEY only.
 - **Proposed test**: `tests/affected.test.ts` — commit a fixture, then modify
@@ -1162,7 +1162,7 @@ used by its targets`**.
   No test passes a `!` entry in `outputs.files` or `outputs.workspaceFiles`.
   **`tests/migrate.test.ts:74` makes this worse**: the Turbo migration fixture is
   `outputs: ['dist/**', '!dist/**/*.map']` — a standard Turbo idiom — and `vx migrate`
-  emits it verbatim into the generated `vx.config.ts`, producing a config whose negation
+  emits it verbatim into the generated `vx.project.ts`, producing a config whose negation
   does nothing and whose only pinned assertion is that it round-trips as text.
 - **Proposed test**: `tests/inputs.test.ts` — `resolveOutputs` over a project containing
   `dist/a.js` and `dist/a.js.map` with
@@ -1195,7 +1195,7 @@ graph`**, and its in-test comment names the scenario verbatim:
   the submitter's `--frozen` per assignment (shipped 2026-07-18), and a dirty tree is
   refused. But `--frozen` is **optional**, and vx configs are TypeScript _programs_ that
   may read `process.env` — a documented, first-class capability. Without `--frozen`,
-  every agent re-evaluates `vx.config.ts` under its OWN environment. Same commit, same
+  every agent re-evaluates `vx.project.ts` under its OWN environment. Same commit, same
   clean tree, different resolved config ⇒ different resolved-config hash ⇒ different
   cache key for the same logical task.
 - **Existing vx coverage**: NONE for the divergent case.
@@ -1205,11 +1205,11 @@ graph`**, and its in-test comment names the scenario verbatim:
   `packages/cloud/tests/` (`dist-*.test.ts`, `agents-e2e.test.ts`) varies an agent's env
   or asserts any warning. `grep -rn 'divergen' packages/cloud/src` → no hits.
 - **Proposed test**: `packages/cloud/tests/dist-hash-equality.test.ts` — a fixture whose
-  `vx.config.ts` reads `process.env.BUILD_FLAVOR` into `exec.command` (or into
+  `vx.project.ts` reads `process.env.BUILD_FLAVOR` into `exec.command` (or into
   `cache.inputs.env`, or any config value). Derive the submitter's stable keys with
   `BUILD_FLAVOR=a`, then run the agent-style scoped `run()` with `BUILD_FLAVOR=b`, and
   assert the two keys DIFFER — i.e. pin the hazard as a fact. Then assert the mitigation:
-  the same pair under `frozen: true` (with a `vx-lock.json` written by `vx lock` at
+  the same pair under `frozen: true` (with a `vx.lock.json` written by `vx lock` at
   flavor `a`) derives IDENTICAL keys. Add the ergonomic half in
   `packages/cloud/tests/dist-backend.test.ts`: submitting a distributed run _without_
   `--frozen` emits a warning naming `--frozen` as the reproducibility guarantee — the

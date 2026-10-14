@@ -101,7 +101,7 @@ export function ciConcurrency(): VxPlugin {
 ```
 
 `discover` makes a directory no member glob lists a project; its
-`vx.config.ts` gives it tasks:
+`vx.project.ts` gives it tasks:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'

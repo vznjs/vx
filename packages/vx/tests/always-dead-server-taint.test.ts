@@ -18,7 +18,7 @@ afterEach(async () => {
 })
 
 const cached = (out: string) =>
-  `cache: { inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['${out}'] } }`
+  `cache: { inputs: { files: ['vx.project.mjs'] }, outputs: { files: ['${out}'] } }`
 
 it('what starts after its server died is not saved under --continue=always', async () => {
   root = await makeWorkspace({ prefix: 'vx-always-dead-' })

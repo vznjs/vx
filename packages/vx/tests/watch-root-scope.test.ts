@@ -65,7 +65,7 @@ describe('vx watch //#task', () => {
     outside = await mkdtemp(path.join(os.tmpdir(), 'vx-watch-root-count-'))
     const log = path.join(outside, 'runs.log')
     await writeFile(
-      path.join(root, 'vx.config.mjs'),
+      path.join(root, 'vx.project.mjs'),
       `export default { tasks: { check: {
         exec: { command: 'echo run >> ${log}' },
         cache: { inputs: { files: ['tools/**'] }, outputs: { files: [] } } } } }`,

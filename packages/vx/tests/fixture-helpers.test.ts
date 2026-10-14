@@ -154,7 +154,7 @@ describe('addProject', () => {
       dependencies: { lib: 'workspace:*' },
       devDependencies: { tool: '1.0.0' },
     })
-    expect(await text(path.join(dir, 'vx.config.mjs'))).toBe('export default {}\n')
+    expect(await text(path.join(dir, 'vx.project.mjs'))).toBe('export default {}\n')
     expect(await text(path.join(dir, 'src/deep/a.ts'))).toBe('x')
     expect(await text(path.join(dir, 'b.txt'))).toBe('y')
   })
@@ -162,16 +162,16 @@ describe('addProject', () => {
   it('takes a bare string as the config, and leaves empty maps out', async () => {
     const root = track(await makeWorkspace({ git: false }))
     const a = await addProject(root, 'a', 'cfg')
-    expect(await text(path.join(a, 'vx.config.mjs'))).toBe('cfg')
+    expect(await text(path.join(a, 'vx.project.mjs'))).toBe('cfg')
     // An empty config is still a config file.
-    expect(await text(path.join(await addProject(root, 'e', ''), 'vx.config.mjs'))).toBe('')
+    expect(await text(path.join(await addProject(root, 'e', ''), 'vx.project.mjs'))).toBe('')
     const b = await addProject(root, 'b', { deps: {}, devDeps: {} })
     expect(JSON.parse(await text(path.join(b, 'package.json')))).toEqual({
       name: 'b',
       version: '0.0.0',
     })
     expect(existsSync(path.join(b, 'package.json'))).toBe(true)
-    expect(existsSync(path.join(b, 'vx.config.mjs'))).toBe(false)
+    expect(existsSync(path.join(b, 'vx.project.mjs'))).toBe(false)
   })
 
   it('puts a scoped name under packages/scope-name', async () => {
@@ -357,7 +357,7 @@ describe('the watch fixture', () => {
     expect(path.basename(f.root)).toStartWith('vx-watch-loop-')
     expect(f.log.startsWith(f.root)).toBe(false)
     expect(await text(path.join(f.dir, 'src', 'a.txt'))).toBe('a1\n')
-    const config = await text(path.join(f.dir, 'vx.config.mjs'))
+    const config = await text(path.join(f.dir, 'vx.project.mjs'))
     const command = /command: '([^']+)'/.exec(config)![1]!
     await Bun.write(path.join(f.dir, 'src', 'b.txt'), 'b1\n')
     Bun.spawnSync(['sh', '-c', command], { cwd: f.dir })

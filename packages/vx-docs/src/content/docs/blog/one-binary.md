@@ -55,7 +55,7 @@ is vx's business.
   keeps a fully cached run in milliseconds. Through npm, the launcher
   is one shell start first, a few milliseconds; Node starts only when
   no prebuilt binary fits.
-- **`vx.config.ts` evaluated natively.** TypeScript config with no
+- **`vx.project.ts` evaluated natively.** TypeScript config with no
   transpile step, no `ts-node`, no loader flag. The binary resolves the
   `@vzn/vx` import from your `node_modules`, which is also why the
   package stays in `devDependencies` even when you run the release

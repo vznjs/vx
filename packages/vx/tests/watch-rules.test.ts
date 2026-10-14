@@ -52,7 +52,7 @@ describe('the ignore filter', () => {
   it.each([
     ['ordinary source', 'packages/a/src/index.ts'],
     ['a root lockfile', 'pnpm-lock.yaml'],
-    ['a config', 'packages/a/vx.config.ts'],
+    ['a config', 'packages/a/vx.project.ts'],
     // The segment rule is not a substring rule: a file whose NAME merely
     // contains an ignored word is real source and must still trigger.
     ['a file named after node_modules', 'packages/a/src/node_modules-shim.ts'],
@@ -318,7 +318,7 @@ describe('sweepConfigs: which projects read what they like', () => {
       for (const [name, config] of Object.entries(configs)) {
         await mkdir(path.join(root, 'packages', name), { recursive: true })
         await writeFile(path.join(root, 'packages', name, 'package.json'), JSON.stringify({ name }))
-        await writeFile(path.join(root, 'packages', name, 'vx.config.mjs'), config)
+        await writeFile(path.join(root, 'packages', name, 'vx.project.mjs'), config)
       }
       const metas = await listProjects(await loadWorkspace(root))
       const swept = await sweepConfigs(metas, root)
@@ -344,7 +344,7 @@ describe('sweepConfigs: only the tasks the run reaches are judged', () => {
       await mkdir(path.join(root, 'packages', 'ui'), { recursive: true })
       await writeFile(path.join(root, 'packages', 'ui', 'package.json'), '{"name":"ui"}')
       await writeFile(
-        path.join(root, 'packages', 'ui', 'vx.config.mjs'),
+        path.join(root, 'packages', 'ui', 'vx.project.mjs'),
         `export default { tasks: {
           fetch: ${task('api/**')},
           gen: ${task('schema/**', '', ", dependsOn: ['fetch']")},
@@ -512,7 +512,7 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
         await mkdir(dir, { recursive: true })
         await writeFile(path.join(dir, 'package.json'), `{"name":"${name}"}`)
         await writeFile(
-          path.join(dir, 'vx.config.mjs'),
+          path.join(dir, 'vx.project.mjs'),
           `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'], workspaceFiles: ${globs} }, outputs: { files: [] } } } } }\n`,
         )
       }

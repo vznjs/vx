@@ -167,7 +167,7 @@ describe('the playground on playground/', () => {
     ].map((m) => [m[1], decode(m[2]!)])
     expect(configs).toEqual(
       Object.keys(FILES)
-        .filter((f) => f.endsWith('/vx.config.mjs'))
+        .filter((f) => f.endsWith('/vx.project.mjs'))
         .map((f) => [f, FILES[f]]),
     )
     expect(configs).toHaveLength(Object.keys(CONFIG_TEXTS).length)

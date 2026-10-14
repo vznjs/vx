@@ -20,7 +20,7 @@ own `node_modules` and runs the root's script under `npm run x
 
 ## Declaration
 
-A `vx.config.*` in the workspace root makes the root package a
+A `vx.project.*` in the workspace root makes the root package a
 project when no package glob already reaches it. That file was ignored
 before: a `root#build` edge refused with "no such project", and
 `vx run build` at the root said "not inside a project". The file is

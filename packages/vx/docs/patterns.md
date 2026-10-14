@@ -13,7 +13,7 @@ parity claim.
 
 vx's overall shape is **Turborepo with three swaps and a few subtractions**:
 
-- per-package config (Turbo's `turbo.json` → vx's `vx.config.ts`),
+- per-package config (Turbo's `turbo.json` → vx's `vx.project.ts`),
 - opt-in cache keyed by inputs + env + upstream + lockfile,
 - shell-only task contract,
 - tar artifact + a plugin-driven remote-cache layer,

@@ -901,7 +901,7 @@ describe('flow e2e against a real fixture workspace', () => {
       JSON.stringify({ name: 'one', version: '0.0.0' }),
     )
     await writeFile(
-      path.join(pkgDir, 'vx.config.mjs'),
+      path.join(pkgDir, 'vx.project.mjs'),
       `export default {
         tasks: {
           cached: {

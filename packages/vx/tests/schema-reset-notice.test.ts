@@ -111,7 +111,7 @@ describe('an upgrade resets the cache in silence', () => {
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(path.join(app, 'src', 'index.js'), 'export {}\n')
     await writeFile(
-      path.join(app, 'vx.config.mjs'),
+      path.join(app, 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'true' },
         cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n`,
     )
@@ -172,7 +172,7 @@ describe('an upgrade resets the cache in silence', () => {
    */
   async function fileArtifact(): Promise<void> {
     await writeFile(
-      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      path.join(root, 'packages', 'app', 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'head -c 49152 /dev/urandom > out.bin' },
         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.bin'] } } } } }\n`,
     )

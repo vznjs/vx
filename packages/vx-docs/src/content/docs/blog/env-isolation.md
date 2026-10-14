@@ -33,7 +33,7 @@ A short fixed list always gets through: `PATH`, `HOME`, `SHELL`, `USER`,
 a few more. Everything else is something you name:
 
 ```ts
-// packages/api/vx.config.ts
+// packages/api/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({

@@ -52,7 +52,7 @@ bun test ./tests/
 lint.oxfmt.fix` through vx).
 - **lint**: fix by hand; tsgolint findings are real type errors.
 - **test**: usual triage; core e2e fixtures write heredoc-string
-  `vx.config.mjs` files.
+  `vx.project.mjs` files.
 
 ## After pushing
 

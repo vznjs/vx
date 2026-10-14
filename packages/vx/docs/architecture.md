@@ -46,7 +46,7 @@ migration history live in
 | -------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                               |
 | `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                   |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`vx-lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint   |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`vx.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint   |
 | `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                          |
 | `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal |
 | `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                |
@@ -367,7 +367,7 @@ never branches on layering.
       workspace fingerprints → **scoped** config loading via
       `loadProjects`, the `project` stage included (only in-scope
       projects + their transitive dep closure evaluate; `--frozen`
-      loads from `vx-lock.json` instead of evaluating, with no
+      loads from `vx.lock.json` instead of evaluating, with no
       staleness check of its own — `vx lock --check` is the audit) →
       cache layer resolved (an injected `RunOptions.remoteCache`, else
       each plugin's remote, layered over the local cache, else the
@@ -463,7 +463,7 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
 
 ## The project loader & the config-time imports problem
 
-`workspace/project-loader.ts` loads each `vx.config.{ts,mts,js,mjs,cts,cjs}`
+`workspace/project-loader.ts` loads each `vx.project.{ts,mts,js,mjs,cts,cjs}`
 via Bun's native `await import()` — no jiti, no esbuild, no
 transpile-on-load step. We append a content-hash query string
 (`?vx-bust=<xxh3>`) to the import specifier so:
@@ -489,7 +489,7 @@ and `cache.outputs.files` are required when `cache` is set;
 
 ### Config-time imports & the bootstrap problem
 
-`vx.config.ts` is regular TypeScript. It can import anything Bun can
+`vx.project.ts` is regular TypeScript. It can import anything Bun can
 resolve — npm packages, relative files, workspace siblings. This is
 the headline UX win over Turbo's static JSON.
 
@@ -530,7 +530,7 @@ A **bootstrap mode** — vx detects that an import resolves to a
 workspace package and runs its `build` task before continuing — is
 technically possible but was rejected:
 
-1. It's recursive: the preset's own `vx.config.ts` could import
+1. It's recursive: the preset's own `vx.project.ts` could import
    another preset, requiring another bootstrap. Termination requires
    either declaring a special "tooling" preset class that doesn't
    participate, or scanning a fixed prefix of the import graph at

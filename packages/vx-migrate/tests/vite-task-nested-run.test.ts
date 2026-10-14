@@ -57,19 +57,20 @@ describe('vx-migrate (vite-task): nested `vp run`', () => {
   })
 
   it('a chain of them is a group of its edges; what follows stays the command', async () => {
-    const ws = (await loadProjectConfig(path.join(root, 'vx.config.ts'))).tasks!
+    const ws = (await loadProjectConfig(path.join(root, 'vx.project.ts'))).tasks!
     expect(ws['build']).toEqual({ dependsOn: ['app#build', 'lib#build'] })
     expect(ws['web']).toEqual({ dependsOn: ['app#build'] })
     expect(ws['ci']).toEqual({
       dependsOn: ['lint', 'ws#check'],
       exec: { command: 'node report.js' },
     })
-    const app = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))).tasks!
+    const app = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.project.ts')))
+      .tasks!
     expect(app['test']).toEqual({ dependsOn: ['lib#build'], exec: { command: 'vitest' } })
   })
 
   it('a form with no edge spelling stays verbatim with a TODO', async () => {
-    const ws = (await loadProjectConfig(path.join(root, 'vx.config.ts'))).tasks!
+    const ws = (await loadProjectConfig(path.join(root, 'vx.project.ts'))).tasks!
     expect(ws['dev']!.exec!.command).toBe('vp run -r --parallel dev')
     expect(ws['mix']!.exec!.command).toBe('echo a && vp run lint')
     expect(out).toContain('`vp run -r --parallel dev` runs Vite Task inside the command')

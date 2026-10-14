@@ -259,7 +259,7 @@ table** at the top of the doc.
 What we promise users:
 
 1. **Zero-install onboarding**: `bunx @vzn/vx migrate` in any Turbo or Nx
-   monorepo emits a working `vx.config.ts` + report. Already true.
+   monorepo emits a working `vx.project.ts` + report. Already true.
 2. **One-flag distributed**: `vx run --coordinator <url>` is the
    _only_ knob needed to go distributed. Workers join with `vx run
 --worker <url>`. No YAML, no orchestration files.

@@ -816,10 +816,10 @@ export function migrateScripts(
       `package.json (the workspace root) not mapped: it has no "name", and vx names a project by it; give it one and run \`vx init\` again to map ${would.length} of its scripts (${would.slice(0, 8).join(', ')}${would.length > 8 ? ', …' : ''})`,
     )
   } else if (rootName !== undefined && !(rootKept && mapsOf(root) > 0)) {
-    // A nameless root's vx.config is skipped (vx names projects by their
+    // A nameless root's vx.project is skipped (vx names projects by their
     // manifest's name), so the hand-written one needs a name first (vuejs/core).
     notes.push(
-      `${rootName} (the workspace root) not mapped: its scripts ${rootLeftOut()}; declare its own tasks in its vx.config by hand` +
+      `${rootName} (the workspace root) not mapped: its scripts ${rootLeftOut()}; declare its own tasks in its vx.project by hand` +
         (rootName === 'package.json' ? ', after giving its package.json a "name"' : ''),
     )
   }

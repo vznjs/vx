@@ -12,7 +12,7 @@ async function refusal(sources: string[]): Promise<string> {
   try {
     const files = await Promise.all(
       sources.map(async (src, i) => {
-        const file = path.join(dir, `p${i}`, 'vx.config.mjs')
+        const file = path.join(dir, `p${i}`, 'vx.project.mjs')
         await Bun.write(file, src)
         return file
       }),
@@ -35,17 +35,17 @@ it('names the config that changed a built-in, not the one whose load saw it', as
       'globalThis.Bun.spawn = () => { throw new Error("x") }\nexport default { tasks: {} }\n',
       innocent,
     ]),
-  ).toBe('<dir>/p1/vx.config.mjs changed Bun.spawn')
+  ).toBe('<dir>/p1/vx.project.mjs changed Bun.spawn')
   expect(
     await refusal([
       innocent,
       innocent,
       'process.env.VX_D119 = "1"\nexport default { tasks: {} }\n',
     ]),
-  ).toBe('<dir>/p2/vx.config.mjs changed process.env.VX_D119')
+  ).toBe('<dir>/p2/vx.project.mjs changed process.env.VX_D119')
   expect(process.env['VX_D119']).toBeUndefined()
   // CONTROL: a single config is named as before.
   expect(await refusal(['Math.max = () => 0\nexport default { tasks: {} }\n'])).toBe(
-    '<dir>/p0/vx.config.mjs changed Math.max',
+    '<dir>/p0/vx.project.mjs changed Math.max',
   )
 })

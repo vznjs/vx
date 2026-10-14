@@ -27,7 +27,7 @@ describe('the shell verdict line', () => {
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default { tasks: {
   bare: { exec: { command: \`tool-\${process.env.API_TOKEN} --x\` } },
   file: { exec: { command: \`./bin-\${process.env.API_TOKEN}/run\` } },

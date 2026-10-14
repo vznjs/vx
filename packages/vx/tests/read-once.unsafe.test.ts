@@ -2,7 +2,7 @@
 // with strace: the syscalls naming each path, in vx's own process (its git
 // children are dropped). `load-reads.test.ts` counts what vx ASKS for; this
 // counts what happens, Bun's module loader included — which is where the
-// config's second read lived: vx read `vx.config.mjs` to key it, and
+// config's second read lived: vx read `vx.project.mjs` to key it, and
 // `import()` opened and read it again. The loader's `vx-config-bytes`
 // onLoad now hands Bun the bytes vx read (workspace/project-loader.ts).
 //
@@ -89,7 +89,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(path.join(dir, 'src', 'index.js'), 'export {}\n')
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default {
   tasks: {
     build: {
@@ -134,7 +134,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
     'cold: the config is read once, by vx; warm: not at all',
     async () => {
       const cold = await tracedRun('cold')
-      expect(cold('packages/a/vx.config.mjs')).toEqual(['openat'])
+      expect(cold('packages/a/vx.project.mjs')).toEqual(['openat'])
       expect(cold('packages/a/package.json')).toEqual(['openat', 'openat'])
       expect(cold('packages/a')).toEqual(['openat', 'openat', 'openat'])
       expect(cold('vx.workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
@@ -145,9 +145,9 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       // `hashBytes`); after it the config is a stat, neither read nor
       // imported, so the resolver never visits its dir.
       const first = await tracedRun('warm-1')
-      expect(first('packages/a/vx.config.mjs')).toEqual(['openat', 'statx'])
+      expect(first('packages/a/vx.project.mjs')).toEqual(['openat', 'statx'])
       const warm = await tracedRun('warm-2')
-      expect(warm('packages/a/vx.config.mjs')).toEqual(['statx'])
+      expect(warm('packages/a/vx.project.mjs')).toEqual(['statx'])
       expect(warm('packages/a/package.json')).toEqual(['openat'])
       expect(warm('packages/a')).toEqual(['openat'])
       expect(warm('vx.workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
@@ -170,7 +170,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       // The selection's workspace-glob owners parsed it again only to learn
       // it exists, which the staged load had already proved (I-23); the run
       // parsed it again for configs the selection had staged (I-27).
-      expect(run('vx-lock.json').filter((c) => c === 'openat')).toEqual(['openat'])
+      expect(run('vx.lock.json').filter((c) => c === 'openat')).toEqual(['openat'])
     },
     TIMEOUT,
   )

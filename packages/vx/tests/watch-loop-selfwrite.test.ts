@@ -26,7 +26,7 @@ describe('vx watch loop (e2e): a file the task rewrites every run', () => {
     `export default { tasks: { build: { exec: { command: 'echo $$ >> run.pid; mkdir -p dist; cat src/*.txt > dist/out.txt; echo run >> ${log}' } } } }\n`
 
   it('git-ignored, it never starts a cycle: the edit cycle and its follower, then quiet', async () => {
-    await writeFile(path.join(f.dir, 'vx.config.mjs'), selfWriting(f.log))
+    await writeFile(path.join(f.dir, 'vx.project.mjs'), selfWriting(f.log))
     if (!existsSync(path.join(f.root, '.git')))
       Bun.spawnSync(['git', 'init', '-q'], { cwd: f.root })
     await writeFile(path.join(f.root, '.gitignore'), 'run.pid\n')
@@ -57,7 +57,7 @@ describe('vx watch loop (e2e): a file the task rewrites every run', () => {
   }, 40_000)
 
   it('not ignored and not declared, the loop re-runs on it and says so once', async () => {
-    await writeFile(path.join(f.dir, 'vx.config.mjs'), selfWriting(f.log))
+    await writeFile(path.join(f.dir, 'vx.project.mjs'), selfWriting(f.log))
     f.watch = startWatch(f.root)
     const w = f.watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')

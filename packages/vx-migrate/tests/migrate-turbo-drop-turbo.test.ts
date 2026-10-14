@@ -49,12 +49,12 @@ describe('migrateTurbo: a workspace that still declares turbo()', () => {
     ]).toEqual([
       [
         'vx.workspace.ts still declares turbo(), which reads turbo.json every run and fills any ' +
-          'task a vx.config does not declare; the configs written here declare them all. Once ' +
+          'task a vx.project does not declare; the configs written here declare them all. Once ' +
           '`vx run` does what turbo did, remove turbo() (and its import), then turbo.json',
       ],
       [
         'vx.workspace.cjs still declares turbo(), which reads turbo.json every run and fills any ' +
-          'task a vx.config does not declare; the configs written here declare them all. Once ' +
+          'task a vx.project does not declare; the configs written here declare them all. Once ' +
           '`vx run` does what turbo did, remove turbo() (and its import), then turbo.json',
       ],
       [],

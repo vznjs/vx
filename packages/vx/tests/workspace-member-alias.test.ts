@@ -17,7 +17,7 @@ afterEach(async () => {
 const member = async (dir: string, name: string, config = true) => {
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
-  if (config) await writeFile(path.join(dir, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+  if (config) await writeFile(path.join(dir, 'vx.project.mjs'), 'export default { tasks: {} }\n')
 }
 
 /** The workspace reached through `link` (macOS's temp dir is one). */

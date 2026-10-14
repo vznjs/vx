@@ -1,4 +1,4 @@
-// What a config may SAY — the schema validators for `vx.config.*` and
+// What a config may SAY — the schema validators for `vx.project.*` and
 // `vx.workspace.*`, split from the loader (which decides HOW a file is
 // evaluated) on 2026-09-10. Every object level refuses a key it does not
 // know (tests/schema-unknown-keys), every message names the level and what
@@ -126,7 +126,7 @@ function validateSettingsAt(value: unknown, at: string, configPath: string): voi
       if (at === 'cache')
         // Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx (D-98).
         throw new UserError(
-          `${where} must be an object like { dir, policy, scope }; a task caches through its own \`cache\` in its project's vx.config`,
+          `${where} must be an object like { dir, policy, scope }; a task caches through its own \`cache\` in its project's vx.project`,
         )
       throw new UserError(`${where} must be an object (fields: ${[...fields].join(', ')})`)
     }
@@ -440,7 +440,7 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
  * typechecked (plain .js, or TS with errors ignored). Catch the worst
  * shape problems early with a clear message rather than letting them
  * crash deeper in the orchestrator. Also applied to configs loaded
- * back from `vx-lock.json` (a hand-editable file — same boundary).
+ * back from `vx.lock.json` (a hand-editable file — same boundary).
  */
 export function validateProjectConfig(config: ProjectConfig, configPath: string): void {
   // Before the schema, on the object as it stands: the key folds its JSON,
@@ -1035,12 +1035,13 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
     },
   ],
   // A package's turbo.json and Nx's project.json keys, written into a
-  // project's vx.config (D-56).
+  // project's vx.project (D-56).
   [
     PROJECT_FIELDS,
     {
       targets: '`tasks` (a target is a task: `exec.command`, `dependsOn`, `cache`)',
-      extends: 'an imported module spread into `tasks` (a vx.config is code; nothing is inherited)',
+      extends:
+        'an imported module spread into `tasks` (a vx.project is code; nothing is inherited)',
       implicitDependencies: 'a `dependsOn` entry `pkg#task`, or a package.json dependency',
       name: 'the package.json `name` (a project is named by its package)',
       // A package.json's, turbo.json's and project.json's keys, and a
@@ -1048,7 +1049,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       scripts:
         "`tasks` (a script is a task's `exec.command`; `vx init` writes them from package.json)",
       pipeline: '`tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)',
-      namedInputs: 'a module the vx.config imports, spread into `cache.inputs.files`',
+      namedInputs: 'a module the vx.project imports, spread into `cache.inputs.files`',
       root: "no field: a project's directory is where its package.json sits",
       sourceRoot: "a task's `cache.inputs.files`",
       projectType: 'no field: vx runs every project alike',
@@ -1069,12 +1070,12 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
     WORKSPACE_FIELDS,
     {
       pipeline:
-        "each package's `vx.config` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
+        "each package's `vx.project` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
       tasks:
-        "each package's `vx.config` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
+        "each package's `vx.project` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
       targetDefaults:
-        "each package's `vx.config` `tasks`, sharing defaults through an imported module",
-      namedInputs: 'a module each `vx.config` imports, spread into `cache.inputs.files`',
+        "each package's `vx.project` `tasks`, sharing defaults through an imported module",
+      namedInputs: 'a module each `vx.project` imports, spread into `cache.inputs.files`',
       globalEnv: '`cache.inputs.env` on the tasks it keys',
       globalDependencies: '`cache.inputs.workspaceFiles` on the tasks it keys',
       remoteCache:
@@ -1155,7 +1156,7 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
 /**
  * The project file an output glob would take, or null. `outputs: ['**']`
  * loaded, and the clean before the run deleted the project's source,
- * `package.json` and `vx.config` while the run reported success (item
+ * `package.json` and `vx.project` while the run reported success (item
  * 1002); the message for `'.'` had even suggested `**`.
  */
 function ownFilesCovered(glob: string, configPath: string): string[] {

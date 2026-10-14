@@ -513,7 +513,7 @@ describe('what the run knew about the project goes with a move', () => {
       expect(await readFile(path.join(app, 'dist', 'out.txt'), 'utf8')).toBe('U\n')
 
       await writeFile(
-        path.join(app, 'vx.config.mjs'),
+        path.join(app, 'vx.project.mjs'),
         format("sed -i.bak 's/U/F/' a.ts && rm a.ts.bak && echo ok > fmt.log"),
       )
       commit()

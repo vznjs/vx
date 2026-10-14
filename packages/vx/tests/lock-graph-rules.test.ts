@@ -33,7 +33,7 @@ async function workspace(tasks: string): Promise<string> {
   await mkdir(path.join(dir, 'src'), { recursive: true })
   await writeFile(path.join(dir, 'src', 'x'), 'x')
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
-  await writeFile(path.join(dir, 'vx.config.mjs'), `export default { tasks: ${tasks} }\n`)
+  await writeFile(path.join(dir, 'vx.project.mjs'), `export default { tasks: ${tasks} }\n`)
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
   Bun.spawnSync({
@@ -65,8 +65,8 @@ describe('vx lock checks the graph rules', () => {
       expect({
         code: r.code,
         said:
-          r.err.includes('vx-lock.json not written') && r.err.includes('both declare the output'),
-        written: existsSync(path.join(root, 'vx-lock.json')),
+          r.err.includes('vx.lock.json not written') && r.err.includes('both declare the output'),
+        written: existsSync(path.join(root, 'vx.lock.json')),
       }).toEqual({ code: 1, said: true, written: false })
     },
     TIMEOUT,
@@ -78,7 +78,7 @@ describe('vx lock checks the graph rules', () => {
       const root = await workspace(`{ a: ${task(['dist/**'])} }`)
       expect(vx(root, ['lock']).code).toBe(0)
       await writeFile(
-        path.join(root, 'packages/a/vx.config.mjs'),
+        path.join(root, 'packages/a/vx.project.mjs'),
         `export default { tasks: ${OVERLAP} }\n`,
       )
       const r = vx(root, ['lock', '--check'])
@@ -96,7 +96,7 @@ describe('run.frozen', () => {
     'is on under CI: a run with no lock writes one, and VX_RUN_FROZEN=false or --no-frozen turn it off',
     async () => {
       const root = await workspace(`{ a: ${task(['dist/**'])} }`)
-      const lockFile = path.join(root, 'vx-lock.json')
+      const lockFile = path.join(root, 'vx.lock.json')
       expect(vx(root, ['run', 'a', '--all'], { CI: '1', VX_RUN_FROZEN: 'false' }).code).toBe(0)
       expect(existsSync(lockFile)).toBe(false)
       expect(vx(root, ['run', 'a', '--all', '--no-frozen'], { CI: '1' }).code).toBe(0)
@@ -120,8 +120,8 @@ describe('run.frozen', () => {
       const r = vx(root, ['run', 'a', '--all', '--frozen'])
       expect({
         code: r.code,
-        said: r.err.includes('vx-lock.json not written'),
-        written: existsSync(path.join(root, 'vx-lock.json')),
+        said: r.err.includes('vx.lock.json not written'),
+        written: existsSync(path.join(root, 'vx.lock.json')),
       }).toEqual({ code: 1, said: true, written: false })
     },
     TIMEOUT,

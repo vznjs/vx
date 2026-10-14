@@ -652,7 +652,7 @@ describe('local cache short-circuit', () => {
       config: writerConfig(outputs),
     })
     return (o: string) =>
-      Bun.write(path.join(fixture.root, 'packages', 'wsw', 'vx.config.mjs'), writerConfig(o)).then(
+      Bun.write(path.join(fixture.root, 'packages', 'wsw', 'vx.project.mjs'), writerConfig(o)).then(
         () => undefined,
       )
   }
@@ -952,7 +952,7 @@ describe('local cache short-circuit', () => {
       expect(c.restoreTier.has('dep#build')).toBe(false)
       // CONTROL: with the writer's output out of solo's tree, dep is in.
       await Bun.write(
-        path.join(fixture.root, 'packages', 'wsw', 'vx.config.mjs'),
+        path.join(fixture.root, 'packages', 'wsw', 'vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: "mkdir -p ../../shared && echo x > ../../shared/g.txt" }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/g.txt'] } } } } }`,
       )
       expect((await classify(fixture, ['build'])).restoreTier.has('dep#build')).toBe(true)
@@ -1002,7 +1002,7 @@ describe('local cache short-circuit', () => {
       )
       await Bun.write(path.join(fixture.root, 'root.txt'), 'r')
       await Bun.write(
-        path.join(fixture.root, 'vx.config.mjs'),
+        path.join(fixture.root, 'vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: 'cp root.txt root.out' }, cache: { inputs: { files: ['root.txt'] }, outputs: { files: ['root.out'] } } } } }`,
       )
       expect(

@@ -27,7 +27,7 @@ beforeEach(async () => {
     await mkdir(path.join(dir, 'src'), { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, dependencies: deps }))
     await writeFile(path.join(dir, 'src', 'index.js'), `export const name = '${name}'\n`)
-    await writeFile(path.join(dir, 'vx.config.mjs'), config)
+    await writeFile(path.join(dir, 'vx.project.mjs'), config)
   }
   const build = `build: {
       dependsOn: ['^build'],

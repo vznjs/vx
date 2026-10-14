@@ -2015,7 +2015,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           'cat:banner.txt:Nosuchfileordirectory',
         )
 
-        await writeFile(path.join(dir, 'vx.config.mjs'), config(['src/**', 'banner.txt']))
+        await writeFile(path.join(dir, 'vx.project.mjs'), config(['src/**', 'banner.txt']))
         const declared = await run({
           cwd: fixture.root,
           tasks: ['build'],
@@ -2193,7 +2193,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         await writeFile(path.join(dir, 'banner.txt'), '/*! v3 */\n')
         await deniesBanner(fixture.root, dir)
 
-        await writeFile(path.join(dir, 'vx.config.mjs'), config(['src/**', 'banner.txt'], demo))
+        await writeFile(path.join(dir, 'vx.project.mjs'), config(['src/**', 'banner.txt'], demo))
         const declared = await run({
           cwd: fixture.root,
           tasks: ['build'],
@@ -2389,7 +2389,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           // One denial; the withheld-link line beside it is vx's note (B-20).
           expect(denied?.sandboxViolations).toBe(1)
           await writeFile(
-            path.join(fixture.root, 'packages', 'x-app', 'vx.config.mjs'),
+            path.join(fixture.root, 'packages', 'x-app', 'vx.project.mjs'),
             appConfig('root', { cache: true, dependsOn: ['^source'] }),
           )
           const keyed = await runTest(link)

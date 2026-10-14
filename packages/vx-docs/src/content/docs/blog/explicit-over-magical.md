@@ -9,7 +9,7 @@ tags:
 excerpt: "Auto-inferred inputs are the most requested feature vx will not build. A traced read set describes what a task read once, on one machine, after it ran. A cache key has to be right before the task runs, everywhere."
 ---
 
-The most common first reaction to a `vx.config.ts` is: why do I have to
+The most common first reaction to a `vx.project.ts` is: why do I have to
 write `inputs: { files: ['src/**'] }`? Nx has `namedInputs` with a
 default of everything. Turborepo defaults to every file in the package.
 vite-task traces the filesystem and infers the set. Surely the tool

@@ -30,14 +30,14 @@ beforeAll(async () => {
     await writeFile(path.join(root, 'packages', name, 'package.json'), JSON.stringify({ name }))
   }
   await writeFile(
-    path.join(root, 'packages', 'a', 'vx.config.mjs'),
+    path.join(root, 'packages', 'a', 'vx.project.mjs'),
     `export default { tasks: {
       build: { exec: { command: 'echo built-a' } },
       fail: { exec: { command: 'echo token=s3cr3t-value >&2; exit 3', env: { secret: ['TOKEN'] } } },
     } }\n`,
   )
   await writeFile(
-    path.join(root, 'packages', 'b', 'vx.config.mjs'),
+    path.join(root, 'packages', 'b', 'vx.project.mjs'),
     `export default { tasks: { build: { exec: { command: 'echo built-b' } } } }\n`,
   )
   await writeFile(

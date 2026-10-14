@@ -255,8 +255,8 @@ export interface ApplyMigrationArgs {
    */
   unmapped?: boolean
   /**
-   * `ts` (default) writes `vx.config.ts` with the type-only import and
-   * `satisfies`; `mjs` writes `vx.config.mjs` — the same object, untyped —
+   * `ts` (default) writes `vx.project.ts` with the type-only import and
+   * `satisfies`; `mjs` writes `vx.project.mjs` — the same object, untyped —
    * for a package whose own `tsc --build` includes every `.ts` under it
    * and compiled the config into its dist (TanStack/query, 2026-09-11).
    */
@@ -268,7 +268,7 @@ export interface ApplyMigrationArgs {
   json?: boolean
   /**
    * Run after the files are written (not under `dry`): `vx lock`'s step, so
-   * the migrated workspace has its vx-lock.json and its graph rules checked
+   * the migrated workspace has its vx.lock.json and its graph rules checked
    * (owner, 2026-10-14). Prints its own line. A refusal (a graph rule, a
    * plugin not installed yet) is printed and the migration still succeeds:
    * its files are written, and `vx lock` is the step to re-run.
@@ -286,7 +286,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const { root, metas, plan, source, verb, dry, force } = args
   const init = args.init === true
   const format: MigrationFormat = args.format ?? 'ts'
-  const configName = `vx.config.${format}`
+  const configName = `vx.project.${format}`
   const workspaceName = `vx.workspace.${format}`
   const empty = plan.projects.length === 0
   // `vx init` never overwrites a member's config: a half-adopted workspace
@@ -358,7 +358,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     }
     // ALSO stat every actual write target. A SYNTHESIZED project (e.g. the Nx
     // workspace-root node, dir === root) has no discovered meta, so the meta
-    // scan alone would miss an existing vx.config.ts at that path and clobber
+    // scan alone would miss an existing vx.project.ts at that path and clobber
     // it. This also covers the extraFiles (vx-preset.ts).
     for (const f of files) {
       if (await Bun.file(f.abs).exists()) conflicts.add(f.relPath)

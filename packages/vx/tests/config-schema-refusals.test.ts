@@ -9,7 +9,7 @@ import { parseDependencySpec } from '../src/graph/dependency-spec.js'
 import { testPlugin } from './helpers/plugin.js'
 
 const WS = '/ws/vx.workspace.ts'
-const CFG = '/ws/pkg/vx.config.ts'
+const CFG = '/ws/pkg/vx.project.ts'
 
 function refusal(config: unknown): string | null {
   try {
@@ -372,7 +372,7 @@ describe('task refusals the sweep found unheld (item 653)', () => {
   })
 
   // `outputs: ['**']` loaded, and the clean before the run deleted the
-  // project's source, package.json and vx.config while the run reported
+  // project's source, package.json and vx.project while the run reported
   // success; the message for '.' had suggested `**` (item 1002).
   it("an output glob that takes the project's manifest or config is refused", () => {
     const out = (g: string) =>
@@ -387,14 +387,14 @@ describe('task refusals the sweep found unheld (item 653)', () => {
       `or take the file back with "!${own}".`
     expect(out('**')).toBe(why('**', 'package.json'))
     expect(out('*.json')).toBe(why('*.json', 'package.json'))
-    expect(out('vx.config.*')).toBe(why('vx.config.*', 'vx.config.ts'))
-    expect(out('*.ts')).toBe(why('*.ts', 'vx.config.ts'))
+    expect(out('vx.project.*')).toBe(why('vx.project.*', 'vx.project.ts'))
+    expect(out('*.ts')).toBe(why('*.ts', 'vx.project.ts'))
     expect(out('.')).toBe(
       `${CFG}: tasks.t.cache.outputs.files: "." names the project directory itself and selects nothing — ` +
         `name the directory the task writes, such as "dist/**"`,
     )
     // Controls: a directory's tree, and a file beside the manifest.
-    // `*.js` is another config's spelling: this project's is vx.config.ts.
+    // `*.js` is another config's spelling: this project's is vx.project.ts.
     for (const g of ['dist/**', '**/*.d.ts', 'out.json', 'src/**/*.js', '**/*.js']) {
       expect(out(g)).toBeNull()
     }
@@ -404,11 +404,11 @@ describe('task refusals the sweep found unheld (item 653)', () => {
         exec: { command: 'x' },
         cache: { inputs: { files: [] }, outputs: { files } },
       })
-    expect(outs(['**', '!package.json', '!vx.config.ts'])).toBeNull()
-    expect(outs(['*.ts', '!vx.config.*'])).toBeNull()
+    expect(outs(['**', '!package.json', '!vx.project.ts'])).toBeNull()
+    expect(outs(['*.ts', '!vx.project.*'])).toBeNull()
     // CONTROLS: a take-back of one own file leaves the other refused.
-    expect(outs(['**', '!package.json'])).toBe(why('**', 'vx.config.ts'))
-    expect(outs(['**', '!vx.config.ts'])).toBe(why('**', 'package.json'))
+    expect(outs(['**', '!package.json'])).toBe(why('**', 'vx.project.ts'))
+    expect(outs(['**', '!vx.project.ts'])).toBe(why('**', 'package.json'))
   })
 
   it('a null cache is refused by name, not by a TypeError from the field scan', () => {
@@ -705,7 +705,7 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
       return undefined
     }
     expect(where('pipeline')).toBe(
-      "vx spells it each package's `vx.config` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
+      "vx spells it each package's `vx.project` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
     )
     expect(where('remoteCache')).toBe(
       'vx spells it a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
@@ -845,7 +845,7 @@ describe("a package turbo.json's and Nx project.json's keys (D-56)", () => {
       'vx spells it `tasks` (a target is a task: `exec.command`, `dependsOn`, `cache`)',
     )
     expect(where({ extends: ['//'] })).toBe(
-      'vx spells it an imported module spread into `tasks` (a vx.config is code; nothing is inherited)',
+      'vx spells it an imported module spread into `tasks` (a vx.project is code; nothing is inherited)',
     )
     expect(where({ implicitDependencies: ['b'] })).toBe(
       'vx spells it a `dependsOn` entry `pkg#task`, or a package.json dependency',

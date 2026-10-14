@@ -26,8 +26,8 @@ function withFile(
   return Object.fromEntries([...entries.slice(0, at), [path, text], ...entries.slice(at)])
 }
 
-const UI_CONFIG = 'packages/ui/vx.config.mjs'
-const API_CONFIG = 'packages/api/vx.config.mjs'
+const UI_CONFIG = 'packages/ui/vx.project.mjs'
+const API_CONFIG = 'packages/api/vx.project.mjs'
 const API_BUILD = 'bun build src/server.ts --outdir dist'
 // A plain copy: the sandbox the lab turns on meets exactly this one read.
 const API_LAB_BUILD = 'mkdir -p dist && cp src/server.ts config.json dist/'

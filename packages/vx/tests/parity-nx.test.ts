@@ -135,9 +135,9 @@ describe('Nx parity — target defaults, `dependsOn` forms, inputs and outputs',
   let root: string
   beforeAll(async () => {
     root = await makeParityWorkspace('vx-parity-nx-config-')
-    const cfg = await readFile(path.join(root, 'packages', 'lib', 'vx.config.mjs'), 'utf8')
+    const cfg = await readFile(path.join(root, 'packages', 'lib', 'vx.project.mjs'), 'utf8')
     await writeFile(
-      path.join(root, 'packages', 'lib', 'vx.config.mjs'),
+      path.join(root, 'packages', 'lib', 'vx.project.mjs'),
       cfg.replace(
         'lint: {',
         `'check.types': { exec: { command: 'echo types' } },
@@ -154,9 +154,9 @@ describe('Nx parity — target defaults, `dependsOn` forms, inputs and outputs',
       lint: {`,
       ),
     )
-    const app = await readFile(path.join(root, 'packages', 'app', 'vx.config.mjs'), 'utf8')
+    const app = await readFile(path.join(root, 'packages', 'app', 'vx.project.mjs'), 'utf8')
     await writeFile(
-      path.join(root, 'packages', 'app', 'vx.config.mjs'),
+      path.join(root, 'packages', 'app', 'vx.project.mjs'),
       app.replace(
         'lint: {',
         `e2e: { exec: { command: 'echo e2e' }, dependsOn: ['ui#build'] },
@@ -271,9 +271,9 @@ describe('Nx parity — cache control and failure handling', () => {
   let root: string
   beforeAll(async () => {
     root = await makeParityWorkspace('vx-parity-nx-cache-')
-    const cfg = await readFile(path.join(root, 'packages', 'lib', 'vx.config.mjs'), 'utf8')
+    const cfg = await readFile(path.join(root, 'packages', 'lib', 'vx.project.mjs'), 'utf8')
     await writeFile(
-      path.join(root, 'packages', 'lib', 'vx.config.mjs'),
+      path.join(root, 'packages', 'lib', 'vx.project.mjs'),
       cfg.replace(
         'lint: {',
         `fail: { exec: { command: 'exit 2' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
@@ -324,7 +324,7 @@ describe('Nx parity — cache control and failure handling', () => {
   it(
     "Nx Cloud's flaky-task flag has a local answer: the same hash failing after it passed is named",
     async () => {
-      const cfgPath = path.join(root, 'packages', 'lib', 'vx.config.mjs')
+      const cfgPath = path.join(root, 'packages', 'lib', 'vx.project.mjs')
       const cfg = await readFile(cfgPath, 'utf8')
       // The command is part of the key, so flip the outcome through a
       // file the inputs do not cover instead.

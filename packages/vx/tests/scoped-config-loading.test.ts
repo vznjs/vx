@@ -39,7 +39,7 @@ async function addProject(name: string, config: string, deps: string[] = []): Pr
     }),
   )
   await writeFile(path.join(dir, 'src', 'in.txt'), 'v1')
-  await writeFile(path.join(dir, 'vx.config.mjs'), config)
+  await writeFile(path.join(dir, 'vx.project.mjs'), config)
 }
 
 const GOOD = `export default { tasks: { build: {

@@ -25,7 +25,7 @@ flowchart LR
 ## What a task needs: dependsOn
 
 ```ts
-// packages/web/vx.config.ts
+// packages/web/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({

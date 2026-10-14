@@ -69,7 +69,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
     {
       label: 'Config',
       items: [
-        { label: 'vx.config.ts', link: '/schema/' },
+        { label: 'vx.project.ts', link: '/schema/' },
         { label: 'Caching in depth', link: '/caching/' },
         { label: '@vzn/vx API', link: '/api/' },
         { label: 'Security model', link: '/security/' },

@@ -2946,15 +2946,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       ['k-new', '{"new":true}'],
     ])
     cache.putConfigClosures([
-      ['/w/old/vx.config.ts', ['/w/old/a.ts']],
-      ['/w/new/vx.config.ts', ['/w/new/b.ts']],
+      ['/w/old/vx.project.ts', ['/w/old/a.ts']],
+      ['/w/new/vx.project.ts', ['/w/new/b.ts']],
     ])
     const old = Date.now() - 40 * 24 * 60 * 60 * 1000
     const db = cache.dbHandle()
     db.query('UPDATE config_evals SET created_at = ? WHERE key = ?').run(old, 'k-old')
     db.query('UPDATE config_closures SET created_at = ? WHERE config_path = ?').run(
       old,
-      '/w/old/vx.config.ts',
+      '/w/old/vx.project.ts',
     )
     cache.close()
 
@@ -2962,8 +2962,8 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     try {
       expect([...reopened.getConfigEvals(['k-old', 'k-new']).keys()]).toEqual(['k-new'])
       expect([
-        ...reopened.getConfigClosures(['/w/old/vx.config.ts', '/w/new/vx.config.ts']).keys(),
-      ]).toEqual(['/w/new/vx.config.ts'])
+        ...reopened.getConfigClosures(['/w/old/vx.project.ts', '/w/new/vx.project.ts']).keys(),
+      ]).toEqual(['/w/new/vx.project.ts'])
     } finally {
       reopened.close()
     }

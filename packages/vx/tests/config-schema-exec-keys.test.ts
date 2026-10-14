@@ -7,7 +7,7 @@ const where = (key: string): string | undefined => {
   try {
     validateProjectConfig(
       { tasks: { t: { exec: { command: 'x', [key]: true } } } } as never,
-      'vx.config.ts',
+      'vx.project.ts',
     )
   } catch (err) {
     return (err as Error).message.split(' — ')[1]

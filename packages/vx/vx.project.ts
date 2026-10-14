@@ -45,7 +45,7 @@ const BUN_VERSION = ['bun --version']
 const SOURCES = ['**/*', '!dist/**']
 // The same for the other packages `test.bun.unsafe` reads: what
 // @vzn/vx-docs' `build`, `build.playground` and `import` write
-// (packages/vx-docs/vx.config.ts), all gitignored.
+// (packages/vx-docs/vx.project.ts), all gitignored.
 const OTHER_OUTPUTS = [
   'vx/dist/**',
   'vx-docs/dist/**',
@@ -434,7 +434,7 @@ export default defineProject({
             'CONTRIBUTING.md',
             'LICENSE',
             '.claude/skills/**',
-            'vx.config.ts',
+            'vx.project.ts',
             'vx.workspace.ts',
             ...OTHER_OUTPUTS,
           ],

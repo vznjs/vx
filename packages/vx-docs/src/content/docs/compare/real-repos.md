@@ -74,7 +74,7 @@ npx @vzn/vx init --keep
 `turbo.json` or Nx graph as it is: nothing in the repo changes. Run
 `vx run build --all` next to the tool you use today. To undo, delete
 `vx.workspace.ts`. When you want native config, `vx init --native`
-writes a `vx.config.ts` per package; [Migrate](../../guides/migrate/)
+writes a `vx.project.ts` per package; [Migrate](../../guides/migrate/)
 walks through it.
 
 More repos join this page as they are measured, each with its commit,

@@ -122,16 +122,16 @@ describe('vx-migrate (vite-task)', () => {
     await rm(root, { recursive: true, force: true })
   })
   const load = async (name: string) =>
-    (await loadProjectConfig(path.join(root, 'packages', name, 'vx.config.ts'))).tasks!
+    (await loadProjectConfig(path.join(root, 'packages', name, 'vx.project.ts'))).tasks!
 
   it('detects vite-plus and writes every package’s config and the root’s', () => {
     expect(result.err).toBe('')
     expect(result.code).toBe(0)
     for (const f of [
-      'packages/app/vx.config.ts',
-      'packages/lib/vx.config.ts',
-      'packages/tool/vx.config.ts',
-      'vx.config.ts',
+      'packages/app/vx.project.ts',
+      'packages/lib/vx.project.ts',
+      'packages/tool/vx.project.ts',
+      'vx.project.ts',
     ])
       expect(result.out).toContain(f)
   })
@@ -194,7 +194,7 @@ describe('vx-migrate (vite-task)', () => {
   })
 
   it('a root task keys the workspace’s files', async () => {
-    const ws = (await loadProjectConfig(path.join(root, 'vx.config.ts'))).tasks!
+    const ws = (await loadProjectConfig(path.join(root, 'vx.project.ts'))).tasks!
     expect(ws['check-all']!.cache).toEqual({
       inputs: { files: [], workspaceFiles: ['**/*.ts', '!dist/**'] },
       outputs: { files: [] },
@@ -217,7 +217,7 @@ describe('vx-migrate (vite-task)', () => {
       )
       const res = await vx(r, ['--from', 'vite-task'])
       expect(res.code).toBe(0)
-      const b = (await loadProjectConfig(path.join(r, 'packages', 'b', 'vx.config.ts'))).tasks!
+      const b = (await loadProjectConfig(path.join(r, 'packages', 'b', 'vx.project.ts'))).tasks!
       expect(b['build']!.dependsOn).toEqual(['^build'])
     } finally {
       await rm(r, { recursive: true, force: true })

@@ -56,7 +56,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
-    'package without vx.config is discovered but contributes no tasks',
+    'package without vx.project is discovered but contributes no tasks',
     async () => {
       // Project A has tasks; project B exists in pnpm workspace but has no config.
       await addProject(fixture.root, 'has-config', {
@@ -71,7 +71,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
           }
         `,
       })
-      // Bare package without vx.config:
+      // Bare package without vx.project:
       const bareDir = path.join(fixture.root, 'packages/bare')
       await mkdir(bareDir, { recursive: true })
       await writeFile(
@@ -360,7 +360,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       // Edit only the config file. It's outside `src/**` so file inputs are
       // unchanged. taskConfigHash differs -> cache must bust.
       await writeFile(
-        path.join(dir, 'vx.config.mjs'),
+        path.join(dir, 'vx.project.mjs'),
         `
           export default {
             tasks: {
@@ -401,7 +401,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       )
       // One meant to run: a pair with no vx config is left out instead.
       await writeFile(
-        path.join(fixture.root, 'packages/b/vx.config.mjs'),
+        path.join(fixture.root, 'packages/b/vx.project.mjs'),
         'export default { tasks: {} }\n',
       )
 
@@ -1561,7 +1561,7 @@ describe('the widest glob still stops at the project boundary', () => {
         JSON.stringify({ name: 'nested', version: '0.0.0' }),
       )
       await writeFile(
-        path.join(nested, 'vx.config.mjs'),
+        path.join(nested, 'vx.project.mjs'),
         `export default { tasks: { build: {
           exec: { command: 'true' },
           cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },

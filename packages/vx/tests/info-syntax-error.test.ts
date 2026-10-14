@@ -42,12 +42,12 @@ describe('vx info — a config with a syntax error', () => {
     const dir = path.join(root, 'packages', 'a')
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
-    await writeFile(path.join(dir, 'vx.config.mjs'), 'export default {\n')
+    await writeFile(path.join(dir, 'vx.project.mjs'), 'export default {\n')
     const { code, err, facts } = infoJson(root)
     expect({ code, err }).toEqual({ code: 0, err: '' })
     const errors = facts['configErrors']
     expect(errors).toEqual([
-      { path: 'packages/a/vx.config.mjs', message: expect.stringMatching(/^\d+:\d+: \S/) },
+      { path: 'packages/a/vx.project.mjs', message: expect.stringMatching(/^\d+:\d+: \S/) },
     ])
     expect(JSON.stringify(errors)).not.toContain(root)
   })
@@ -78,7 +78,7 @@ describe('vx info — a config with a syntax error', () => {
     const app = path.join(root, 'packages', 'app')
     await mkdir(app, { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
-    await writeFile(path.join(app, 'vx.config.mjs'), 'export default {{{\n')
+    await writeFile(path.join(app, 'vx.project.mjs'), 'export default {{{\n')
 
     const run = Bun.spawnSync({
       cmd: [process.execPath, BIN, 'run', 'build', '--all'],
@@ -86,7 +86,7 @@ describe('vx info — a config with a syntax error', () => {
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    const prefix = `vx: Project config ${path.join(app, 'vx.config.mjs')}:`
+    const prefix = `vx: Project config ${path.join(app, 'vx.project.mjs')}:`
     const stops = run.stderr.toString().trim()
     expect(stops.startsWith(prefix)).toBe(true)
 
@@ -95,7 +95,7 @@ describe('vx info — a config with a syntax error', () => {
       code: 0,
       err: '',
       tasks: 3,
-      errors: [{ path: 'packages/app/vx.config.mjs', message: stops.slice(prefix.length) }],
+      errors: [{ path: 'packages/app/vx.project.mjs', message: stops.slice(prefix.length) }],
     })
   })
 })

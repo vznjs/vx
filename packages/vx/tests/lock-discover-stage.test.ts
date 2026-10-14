@@ -1,6 +1,6 @@
 // X-143: `vx lock` listed projects with core's discovery alone, while a
 // run (and `--frozen`) discovers through the plugin `discover` stage. A
-// project such a plugin adds, with its own vx.config, was never locked:
+// project such a plugin adds, with its own vx.project, was never locked:
 // `vx lock --check` said up to date and the frozen run refused it.
 import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
@@ -35,7 +35,7 @@ beforeEach(async () => {
   // A manifest-less tool directory a `discover` plugin names, with its own config.
   await mkdir(path.join(root, 'tools', 'gen'), { recursive: true })
   await Bun.write(
-    path.join(root, 'tools', 'gen', 'vx.config.mjs'),
+    path.join(root, 'tools', 'gen', 'vx.project.mjs'),
     `export default { tasks: { build: { exec: { command: 'echo gen' } } } }\n`,
   )
   await Bun.write(
@@ -60,7 +60,7 @@ it('vx lock freezes the discovered project, so lock --check && run --frozen succ
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   const check = await vx(root, ['lock', '--check'])
   expect(`${check.code}\n${check.err}`).toStartWith('0\n')
-  const locked = Object.keys((await Bun.file(path.join(root, 'vx-lock.json')).json()).projects)
+  const locked = Object.keys((await Bun.file(path.join(root, 'vx.lock.json')).json()).projects)
   expect(locked).toEqual(['app', 'gen'])
   const frozen = await vx(root, ['run', 'build', '--all', '--frozen'])
   expect(`${frozen.code}\n${frozen.err}`).toStartWith('0\n')
@@ -68,7 +68,7 @@ it('vx lock freezes the discovered project, so lock --check && run --frozen succ
 
 it('the bare-project note names only projects a plugin gives tasks', async () => {
   // solidjs/solid after vx-migrate: solid-ssr has no task Turbo runs, so no
-  // vx.config, and `vx lock` counted it as "1 project has no vx.config;
+  // vx.project, and `vx lock` counted it as "1 project has no vx.project;
   // their tasks are never frozen" without naming it, though it had none.
   await addProject(root, 'empty')
   await addProject(root, 'mapped')
@@ -85,11 +85,11 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toBe(
-    'vx lock: locked 2 project configs → vx-lock.json (no vx.config, so never frozen: mapped)\n',
+    'vx lock: locked 2 project configs → vx.lock.json (no vx.project, so never frozen: mapped)\n',
   )
   const check = await vx(root, ['lock', '--check'])
   expect(check.out).toBe(
-    'vx lock --check: up to date (2 projects; not audited, no vx.config: mapped)\n',
+    'vx lock --check: up to date (2 projects; not audited, no vx.project: mapped)\n',
   )
   const json = await vx(root, ['lock', '--check', '--format', 'json'])
   expect(JSON.parse(json.out).notAudited).toBe(1)

@@ -47,18 +47,18 @@ async function rootNote(rootScripts: Record<string, string>): Promise<string[]> 
 
 it("a root whose scripts share a member's task name says so, not that they run the workspace", async () => {
   expect(await rootNote({ lint: 'eslint .' })).toEqual([
-    "root (the workspace root) not mapped: its scripts share a member's task name (lint); declare its own tasks in its vx.config by hand",
+    "root (the workspace root) not mapped: its scripts share a member's task name (lint); declare its own tasks in its vx.project by hand",
   ])
 })
 
 it('a root whose scripts run the members keeps its line (control)', async () => {
   expect(await rootNote({ build: 'bun run --filter "*" build' })).toEqual([
-    'root (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.config by hand',
+    'root (the workspace root) not mapped: its scripts run the workspace; declare its own tasks in its vx.project by hand',
   ])
 })
 
 it('a root with both says both', async () => {
   expect(await rootNote({ lint: 'eslint .', all: 'bun run --filter "*" build' })).toEqual([
-    "root (the workspace root) not mapped: its scripts run the workspace or share a member's task name (lint); declare its own tasks in its vx.config by hand",
+    "root (the workspace root) not mapped: its scripts run the workspace or share a member's task name (lint); declare its own tasks in its vx.project by hand",
   ])
 })

@@ -1,5 +1,5 @@
 // `vx init [--dry [--format json]] [--force] [--mjs] [--native|--keep]` — a workspace from nowhere:
-// one vx.config.ts per package from its package.json scripts, and the
+// one vx.project.ts per package from its package.json scripts, and the
 // workspace file every run needs. In a Turbo or Nx repo it hands over to
 // `@vzn/vx-migrate` (`migrate`), which asks a terminal whether to write
 // native config; `--keep` writes only the workspace file, declaring
@@ -30,7 +30,7 @@ import {
 interface InitArgs {
   dry: boolean
   force: boolean
-  /** `vx.config.mjs` instead of `.ts` — see `ApplyMigrationArgs.format`. */
+  /** `vx.project.mjs` instead of `.ts` — see `ApplyMigrationArgs.format`. */
   mjs: boolean
   /** `--plugin <seam>`: scaffold that seam's plugin instead of the workspace. */
   plugin?: string
@@ -153,7 +153,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
       !readFileSync(path.join(root, existing), 'utf8').includes(`${runner[0]}(`)
     ) {
       process.stdout.write(
-        `vx is already set up here (${existing} and the projects' vx.config files); --force regenerates them from ${runner[1]}.\n\nnext: ${adoptionNext(root, ...runner, ['@vzn/vx'])}\n`,
+        `vx is already set up here (${existing} and the projects' vx.project files); --force regenerates them from ${runner[1]}.\n\nnext: ${adoptionNext(root, ...runner, ['@vzn/vx'])}\n`,
       )
       return 0
     }

@@ -3,7 +3,7 @@
 // config goes red here. The sources are found, not listed: each ```ts
 // fence that calls `defineProject(` or `defineWorkspace(` in
 // packages/vx/docs (history and design aside: a record of the past) and in
-// the site's hand-authored pages, and every vx.config / vx.workspace
+// the site's hand-authored pages, and every vx.project / vx.workspace
 // under examples/. `vx-migrate`'s writers are held the same way by their
 // own suites (each written config goes through `loadProjectConfig`).
 //
@@ -92,7 +92,7 @@ function corpus(): Sample[] {
     ...walk(site, md).filter((p) => !/\/docs\/(design|modules)\//.test(p)),
   ]
   const examples = walk(path.join(REPO, 'examples'), (p) =>
-    /\/vx\.(config|workspace)\.[mc]?[jt]s$/.test(p),
+    /\/vx\.(project|workspace)\.[mc]?[jt]s$/.test(p),
   ).map((p) => ({
     where: path.relative(REPO, p),
     page: path.relative(REPO, p),
@@ -131,7 +131,7 @@ describe('the documented configs load under the current schema', () => {
     for (const file of [
       'packages/vx/docs/schema.md',
       'packages/vx-docs/src/content/docs/guides/configure.md',
-      'examples/basic/packages/app/vx.config.ts',
+      'examples/basic/packages/app/vx.project.ts',
       'examples/turbo/vx.workspace.ts',
     ]) {
       expect(where).toContain(file)
@@ -151,7 +151,7 @@ describe('the documented configs load under the current schema', () => {
   const written = samples.map((s, i) => {
     let d = pageDir.get(s.page)
     if (d === undefined) pageDir.set(s.page, (d = path.join(dir, String(pageDir.size))))
-    const rel = s.named ?? `${i}.${s.workspace ? 'vx.workspace' : 'vx.config'}.ts`
+    const rel = s.named ?? `${i}.${s.workspace ? 'vx.workspace' : 'vx.project'}.ts`
     const file = path.join(d, rel)
     mkdirSync(path.dirname(file), { recursive: true })
     writeFileSync(file, s.source)

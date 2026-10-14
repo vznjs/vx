@@ -15,7 +15,7 @@ async function pkg(name: string, config: string): Promise<void> {
   const dir = path.join(root, 'packages', name)
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
-  await writeFile(path.join(dir, 'vx.config.mjs'), config)
+  await writeFile(path.join(dir, 'vx.project.mjs'), config)
 }
 
 const run = (over: Partial<RunRecord> & { task: string; runId: string }): RunRecord => ({

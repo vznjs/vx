@@ -39,7 +39,7 @@ beforeAll(async () => {
   metas = [
     { name: 'app', dir: path.join(root, 'packages', 'app') },
     { name: 'lib', dir: path.join(root, 'packages', 'lib') },
-  ].map((m) => ({ ...m, configPath: path.join(m.dir, 'vx.config.mjs') })) as ProjectMeta[]
+  ].map((m) => ({ ...m, configPath: path.join(m.dir, 'vx.project.mjs') })) as ProjectMeta[]
 })
 
 afterAll(async () => {

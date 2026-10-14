@@ -138,7 +138,7 @@ async function workspace(n: number, settled: boolean): Promise<string> {
       path.join(dir, 'package.json'),
       JSON.stringify({ name: pkg(i), version: '0.0.0', dependencies }),
     )
-    await writeFile(path.join(dir, 'vx.config.mjs'), config)
+    await writeFile(path.join(dir, 'vx.project.mjs'), config)
     for (let f = 0; f < 5; f++) {
       await writeFile(path.join(dir, 'src', `m${f}.js`), `export const v = ${i * 10 + f}\n`)
     }

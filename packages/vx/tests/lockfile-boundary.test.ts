@@ -1,11 +1,11 @@
-// Unit tests for `src/workspace/lockfile.ts` — the `vx-lock.json` boundary and
+// Unit tests for `src/workspace/lockfile.ts` — the `vx.lock.json` boundary and
 // the frozen-config trust model.
 //
 // `tests/lock.test.ts` drives `vx lock` end-to-end through the real CLI (three
 // tests). This file covers the layer underneath, which is where the rules
 // actually live, and it matters for two reasons:
 //
-//   1. `vx-lock.json` is a COMMITTED, HAND-EDITABLE file. That makes
+//   1. `vx.lock.json` is a COMMITTED, HAND-EDITABLE file. That makes
 //      `readLockfile` a system boundary in this codebase's sense — the one
 //      place validation is not merely allowed but required. Its own docstring
 //      says so. Every rejection there is a message a user reads while their CI
@@ -83,12 +83,12 @@ function lock(over: Partial<Lockfile> = {}): Lockfile {
 }
 
 describe('lockfilePath', () => {
-  it('is vx-lock.json at the workspace root', () => {
+  it('is vx.lock.json at the workspace root', () => {
     // The name is part of the user contract — it is committed, it appears in
     // .gitignore discussions, and `--frozen` error messages tell people to
     // delete it by name.
-    expect(lockfilePath(root)).toBe(path.join(root, 'vx-lock.json'))
-    expect(LOCKFILE_NAME).toBe('vx-lock.json')
+    expect(lockfilePath(root)).toBe(path.join(root, 'vx.lock.json'))
+    expect(LOCKFILE_NAME).toBe('vx.lock.json')
   })
 })
 
@@ -175,7 +175,7 @@ describe('readLockfile — the boundary rejects malformed input loudly', () => {
 
   it.each([
     ['null', null],
-    ['a string', 'pkg/vx.config.ts'],
+    ['a string', 'pkg/vx.project.ts'],
     ['a number', 42],
     ['an array', [CONFIG]],
   ])('rejects an entry that is %s, naming the project', async (_label, entry) => {
@@ -273,7 +273,7 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     expect(await readdir(root)).toEqual([LOCKFILE_NAME])
   })
 
-  it('a refused write names vx-lock.json, not its temp (item 972)', async () => {
+  it('a refused write names vx.lock.json, not its temp (item 972)', async () => {
     // What a read-only checkout prints comes from this message. A root run
     // is refused no write for permissions, and `Bun.write` makes a missing
     // directory, so a FILE where the root should be stands in for it.
@@ -299,7 +299,7 @@ describe('frozenProjectConfig — the trust model', () => {
   }
 
   it('returns the frozen config for a locked project', async () => {
-    const cfg = await frozenProjectConfig(lock(), metaFor('pkg/vx.config.ts'), root)
+    const cfg = await frozenProjectConfig(lock(), metaFor('pkg/vx.project.ts'), root)
     expect(cfg).toEqual(CONFIG)
   })
 
@@ -310,12 +310,12 @@ describe('frozenProjectConfig — the trust model', () => {
     const err = await rejection(
       frozenProjectConfig(
         lock(),
-        { name: 'other', configPath: path.join(root, 'other/vx.config.ts') },
+        { name: 'other', configPath: path.join(root, 'other/vx.project.ts') },
         root,
       ),
     )
     expect(err.message).toContain('"other"')
-    expect(err.message).toContain('other/vx.config.ts')
+    expect(err.message).toContain('other/vx.project.ts')
     expect(err.message).toContain('vx lock')
   })
 
@@ -324,10 +324,10 @@ describe('frozenProjectConfig — the trust model', () => {
     // "locked" the package at undefined, and the refusal said it had moved.
     for (const name of ['constructor', 'toString', '__proto__']) {
       const err = await rejection(
-        frozenProjectConfig(lock(), { name, configPath: path.join(root, 'x/vx.config.ts') }, root),
+        frozenProjectConfig(lock(), { name, configPath: path.join(root, 'x/vx.project.ts') }, root),
       )
       expect(err.message).toBe(
-        `vx-lock.json has no entry for "${name}" (x/vx.config.ts) — run \`vx lock\` to refresh, or delete vx-lock.json`,
+        `vx.lock.json has no entry for "${name}" (x/vx.project.ts) — run \`vx lock\` to refresh, or delete vx.lock.json`,
       )
     }
   })
@@ -360,7 +360,7 @@ describe('frozenProjectConfig — the trust model', () => {
     const tampered = lock({
       projects: { pkg: { tasks: { build: { exec: { command: 'echo TAMPERED' } } } } },
     })
-    const cfg = await frozenProjectConfig(tampered, metaFor('pkg/vx.config.ts'), root)
+    const cfg = await frozenProjectConfig(tampered, metaFor('pkg/vx.project.ts'), root)
     expect(cfg.tasks?.['build']?.exec?.command).toBe('echo TAMPERED')
   })
 
@@ -371,7 +371,7 @@ describe('frozenProjectConfig — the trust model', () => {
     const shape = { tasks: [{ exec: { command: 'x' } }] } as unknown as ProjectConfig
     await writeRaw(JSON.stringify(lock({ projects: { pkg: shape } })))
     const read = (await readLockfile(root))!
-    expect(await frozenProjectConfig(read, metaFor('pkg/vx.config.ts'), root)).toEqual(shape)
+    expect(await frozenProjectConfig(read, metaFor('pkg/vx.project.ts'), root)).toEqual(shape)
   })
 
   it('accepts a locked project that declares no tasks', async () => {
@@ -380,7 +380,7 @@ describe('frozenProjectConfig — the trust model', () => {
     const empty = lock({
       projects: { pkg: {} },
     })
-    expect(await frozenProjectConfig(empty, metaFor('pkg/vx.config.ts'), root)).toEqual({})
+    expect(await frozenProjectConfig(empty, metaFor('pkg/vx.project.ts'), root)).toEqual({})
   })
 })
 

@@ -97,7 +97,7 @@ it('each discovery case answers as tests/contract/discovery.json records', async
     live[`root from apps/c: ${name}`] = await found('apps/c')
   }
 
-  const names = ['vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
+  const names = ['vx.project.ts', 'vx.project.mts', 'vx.project.js', 'vx.project.mjs']
   for (const [i, file] of names.entries()) {
     const root = fixture({
       'package.json': pkg('root', { workspaces: ['packages/*'] }),
@@ -130,9 +130,9 @@ it('each discovery case answers as tests/contract/discovery.json records', async
   const CJS = (v: number): string =>
     `module.exports = { tasks: { t${v}: { exec: { command: 'true' } } } }\n`
   for (const files of [
-    ['vx.config.cts', 'vx.config.cjs'],
-    ['vx.config.cjs'],
-    ['vx.config.mjs', 'vx.config.cts'],
+    ['vx.project.cts', 'vx.project.cjs'],
+    ['vx.project.cjs'],
+    ['vx.project.mjs', 'vx.project.cts'],
   ]) {
     const root = fixture({
       'package.json': pkg('root', { workspaces: ['packages/*'] }),

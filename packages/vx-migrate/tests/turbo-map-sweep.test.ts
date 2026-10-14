@@ -731,7 +731,7 @@ describe('turbo-map: Turbo’s glob grammar', () => {
       expect({ cache: t.task!['cache'], todos: t.todos }).toEqual({
         cache: undefined,
         todos: [
-          `output ${JSON.stringify(wild)}: a wildcard first segment reaches the sources, which vx cleans before every run — task runs uncached; declare the exact outputs in a vx.config to cache it`,
+          `output ${JSON.stringify(wild)}: a wildcard first segment reaches the sources, which vx cleans before every run — task runs uncached; declare the exact outputs in a vx.project to cache it`,
         ],
       })
     },

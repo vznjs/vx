@@ -418,12 +418,12 @@ describe('relPosix — call-site contracts', () => {
   // error on every CI run.
   it('is deterministic and does not mutate its arguments', () => {
     const from = '/repo'
-    const to = '/repo/packages/a/vx.config.ts'
+    const to = '/repo/packages/a/vx.project.ts'
     const first = relPosix(from, to)
     for (let i = 0; i < 100; i++) expect(relPosix(from, to)).toBe(first)
     expect(from).toBe('/repo')
-    expect(to).toBe('/repo/packages/a/vx.config.ts')
-    expect(first).toBe('packages/a/vx.config.ts')
+    expect(to).toBe('/repo/packages/a/vx.project.ts')
+    expect(first).toBe('packages/a/vx.project.ts')
   })
 
   it('reaches production through the util contract as the same function', () => {
@@ -663,7 +663,7 @@ describe('a bracket is a literal in a task glob (item 667)', () => {
       '**/.git/**',
       '**/.vx/**',
       '**/*.tsbuildinfo',
-      '**/vx-lock.json',
+      '**/vx.lock.json',
       '**/*.bun-build',
       '**/.????????????????-????????.tmp/**',
       'src/**',
@@ -722,8 +722,8 @@ describe('a bracket is a literal in a task glob (item 667)', () => {
       'a/b.tsbuildinfo',
       '.tsbuildinfo',
       'a/.tsbuildinfo',
-      'vx-lock.json',
-      'p/vx-lock.json',
+      'vx.lock.json',
+      'p/vx.lock.json',
       'z.bun-build',
       '.0123456789abcdef-01234567.tmp/x',
       'src',

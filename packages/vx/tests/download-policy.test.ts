@@ -405,7 +405,7 @@ async function fixture(
   )
   await Bun.write(path.join(root, 'packages', 'pkg-a', 'src', 'in.txt'), 'seed\n')
   await Bun.write(
-    path.join(root, 'packages', 'pkg-a', 'vx.config.mjs'),
+    path.join(root, 'packages', 'pkg-a', 'vx.project.mjs'),
     `export default { tasks: {
        gen: {
          exec: { command: 'true' },
@@ -427,7 +427,7 @@ async function fixture(
     )
     await Bun.write(path.join(root, 'packages', 'pkg-c', 'src', 'm.txt'), 'm\n')
     await Bun.write(
-      path.join(root, 'packages', 'pkg-c', 'vx.config.mjs'),
+      path.join(root, 'packages', 'pkg-c', 'vx.project.mjs'),
       `export default { tasks: {
          mid: { dependsOn: ['^gen'] },
        } }`,
@@ -447,7 +447,7 @@ async function fixture(
     )
     await Bun.write(path.join(root, 'packages', name, 'src', 'x.txt'), 'x\n')
     await Bun.write(
-      path.join(root, 'packages', name, 'vx.config.mjs'),
+      path.join(root, 'packages', name, 'vx.project.mjs'),
       `export default { tasks: {
          use: {
            exec: { command: 'cat ../pkg-a/out/gen.txt > used.txt' },
@@ -701,7 +701,7 @@ describe('--cache-download end to end', () => {
 
       // …and the downgrade path names the reason rather than staying silent.
       await Bun.write(
-        path.join(a.root, 'packages', 'pkg-a', 'vx.config.mjs'),
+        path.join(a.root, 'packages', 'pkg-a', 'vx.project.mjs'),
         `export default { tasks: {
            gen: {
              exec: { command: 'true' },
@@ -739,7 +739,7 @@ describe('--cache-download end to end', () => {
     const a = await fixture()
     try {
       await Bun.write(
-        path.join(a.root, 'packages', 'pkg-a', 'vx.config.mjs'),
+        path.join(a.root, 'packages', 'pkg-a', 'vx.project.mjs'),
         `export default { tasks: {
            gen: {
              exec: { command: 'true' },
@@ -990,7 +990,7 @@ async function sameProjectFixture(
   )
   await Bun.write(path.join(root, 'packages', 'pkg-a', 'src', 'in.txt'), 'seed\n')
   await Bun.write(
-    path.join(root, 'packages', 'pkg-a', 'vx.config.mjs'),
+    path.join(root, 'packages', 'pkg-a', 'vx.project.mjs'),
     `export default { tasks: {
        gen: {
          exec: { command: 'true' },

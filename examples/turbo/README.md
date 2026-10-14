@@ -12,7 +12,7 @@ npx @vzn/vx run test --all    # 3 up-to-date
 ```
 
 The goal is configs of your own: `bunx @vzn/vx-migrate` writes a
-`vx.config.ts` per package from the same `turbo.json`. They derive the
+`vx.project.ts` per package from the same `turbo.json`. They derive the
 same cache keys, so the cache `turbo()` filled still hits.
 
 `packages/vx/tests/examples.unsafe.test.ts` runs both paths on every CI

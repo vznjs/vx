@@ -53,7 +53,7 @@ describe('workspaceFiles loader validation', () => {
     tasks: { build: { exec: { command: 'true' }, cache } },
   })
   const validate = (cache: Record<string, unknown>): void => {
-    validateProjectConfig(cfgWith(cache), '/ws/pkg/vx.config.ts')
+    validateProjectConfig(cfgWith(cache), '/ws/pkg/vx.project.ts')
   }
   const base = { inputs: { files: ['src/**'] }, outputs: { files: [] } }
 

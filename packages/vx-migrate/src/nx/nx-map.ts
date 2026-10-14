@@ -749,7 +749,7 @@ function dropUnheldDeps(
     if (typeof d !== 'string' || d.includes('*')) return true
     if (d.startsWith('^')) return emitted.has(d.slice(1))
     // `pkg#task` on a project no package holds (the root project with no
-    // vx.config) refused the whole run as "no such project".
+    // vx.project) refused the whole run as "no such project".
     if (!d.includes('#') || emittedIds.has(d)) return true
     t.todos.push(
       `dependsOn ${JSON.stringify(d)}: no vx project runs it — edge dropped, and the key misses it`,

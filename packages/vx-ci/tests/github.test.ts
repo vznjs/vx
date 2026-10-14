@@ -332,7 +332,7 @@ describe('vx run with github() — the composition proof', () => {
       await writeFile(path.join(root, 'pkg', 'package.json'), JSON.stringify({ name: 'pkg' }))
       await writeFile(path.join(root, 'pkg', 'src', 'in.txt'), 'x\n')
       await writeFile(
-        path.join(root, 'pkg', 'vx.config.mjs'),
+        path.join(root, 'pkg', 'vx.project.mjs'),
         `export default { tasks: {
            build: {
              exec: { command: 'cat src/in.txt > out.txt' },

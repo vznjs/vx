@@ -23,9 +23,9 @@ it('names a member dir that has a vx config but no package.json', async () => {
       }
     }
     const config = 'export default { tasks: {} }\n'
-    await member('lost', { 'vx.config.mjs': config })
+    await member('lost', { 'vx.project.mjs': config })
     // CONTROLS: a member with both, and a dir with neither (no word).
-    await member('kept', { 'package.json': '{"name":"kept"}', 'vx.config.mjs': config })
+    await member('kept', { 'package.json': '{"name":"kept"}', 'vx.project.mjs': config })
     await member('empty', { 'README.md': 'x\n' })
     process.stderr.write = ((chunk: unknown): boolean => {
       written.push(String(chunk))
@@ -51,7 +51,7 @@ it('names the workspace root when it has a vx config but no package.json (D-154)
   const real = process.stderr.write.bind(process.stderr)
   try {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n')
-    await writeFile(path.join(dir, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+    await writeFile(path.join(dir, 'vx.project.mjs'), 'export default { tasks: {} }\n')
     await mkdir(path.join(dir, 'packages', 'a'), { recursive: true })
     await writeFile(path.join(dir, 'packages', 'a', 'package.json'), '{"name":"a"}')
     process.stderr.write = ((chunk: unknown): boolean => {

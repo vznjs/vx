@@ -47,7 +47,7 @@ describe('vx why names what moved the key', () => {
     root = await makeWorkspace({ prefix: 'vx-why-verdict-', git: false })
     await mkdir(path.join(app(), 'src'), { recursive: true })
     await writeFile(path.join(app(), 'package.json'), JSON.stringify({ name: 'app' }))
-    await writeFile(path.join(app(), 'vx.config.mjs'), CONFIG)
+    await writeFile(path.join(app(), 'vx.project.mjs'), CONFIG)
     await writeFile(path.join(app(), 'src', 'a.txt'), 'v1\n')
     const git = gitIn(root)
     git('init', '-q')
@@ -97,11 +97,11 @@ describe('vx why names what moved the key', () => {
       const lib = path.join(root, 'packages', 'lib')
       await mkdir(path.join(lib, 'src'), { recursive: true })
       await writeFile(path.join(lib, 'package.json'), JSON.stringify({ name: 'lib' }))
-      await writeFile(path.join(lib, 'vx.config.mjs'), CONFIG)
+      await writeFile(path.join(lib, 'vx.project.mjs'), CONFIG)
       await writeFile(path.join(lib, 'src', 'a.txt'), 'v1\n')
       await vx(root, ['run', 'build', '--all'], { MODE: 'same' })
       await writeFile(
-        path.join(app(), 'vx.config.mjs'),
+        path.join(app(), 'vx.project.mjs'),
         CONFIG.replace('build: {', "build: { description: 'edited',"),
       )
       await vx(root, ['run', 'build', '--all'], { MODE: 'same' })

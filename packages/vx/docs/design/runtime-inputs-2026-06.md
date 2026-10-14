@@ -15,7 +15,7 @@ Nx supports this as _runtime inputs_ (`{ "runtime": "node --version" }`
 version into its hash).
 
 vx has an _accidental_ escape hatch — because the resolved config
-object is hashed, a value computed in `vx.config.ts` (e.g.
+object is hashed, a value computed in `vx.project.ts` (e.g.
 `execSync('node -v')` baked into `exec.env`) participates in the key.
 **But it breaks under `--frozen`**: with a lockfile, config eval
 happens once at `vx lock` time and the resolved object is frozen, so
@@ -27,7 +27,7 @@ canonical mechanism** that is correct in every mode, including frozen.
 `cache.inputs.env` already has exactly the right split:
 
 - the **names** (`['NODE_ENV']`) are part of the resolved config →
-  frozen into `vx-lock.json`, auditable;
+  frozen into `vx.lock.json`, auditable;
 - the **values** are resolved **live at hash time** from
   `process.env` inside `resolveInputs` (`inputs.ts:81`), so they are
   fresh on every run including `--frozen`.

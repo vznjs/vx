@@ -44,7 +44,7 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
       await writeFile(path.join(dir, 'src', 'x.txt'), 'x')
       await writeFile(
-        path.join(dir, 'vx.config.mjs'),
+        path.join(dir, 'vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: 'true' }, ${cache} } } }\n`,
       )
     }

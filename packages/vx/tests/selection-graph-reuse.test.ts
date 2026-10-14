@@ -24,7 +24,7 @@ beforeEach(async () => {
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'true' }${
         name === 'app' ? ", dependsOn: ['lib#build']" : ''
       } } } }\n`,

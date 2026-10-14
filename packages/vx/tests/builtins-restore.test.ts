@@ -20,7 +20,7 @@ describe('a config that deletes a built-in (D-74)', () => {
   const task = "export default { tasks: { t: { exec: { command: 'true' } } } }\n"
   // A child each: without the check the change outlives the load.
   const drive = async (body: string, after: string): Promise<unknown> => {
-    const file = path.join(dir, 'p', 'vx.config.mjs')
+    const file = path.join(dir, 'p', 'vx.project.mjs')
     await mkdir(path.dirname(file), { recursive: true })
     await writeFile(file, body + task)
     const driver = path.join(dir, 'drive.ts')
@@ -38,7 +38,7 @@ describe('a config that deletes a built-in (D-74)', () => {
 
   it('refuses a deleted property, names it, and puts it back', async () => {
     const got = await drive('delete Math.max\n', 'Math.max === max')
-    const file = path.join(dir, 'p', 'vx.config.mjs')
+    const file = path.join(dir, 'p', 'vx.project.mjs')
     expect(got).toEqual({ got: REFUSAL(file, 'Math.max'), after: true, file })
   })
 
@@ -47,7 +47,7 @@ describe('a config that deletes a built-in (D-74)', () => {
       'delete Math[Symbol.toStringTag]\n',
       "Math[Symbol.toStringTag] === 'Math'",
     )
-    const file = path.join(dir, 'p', 'vx.config.mjs')
+    const file = path.join(dir, 'p', 'vx.project.mjs')
     expect(got).toEqual({
       got: REFUSAL(file, 'Math.Symbol(Symbol.toStringTag)'),
       after: true,
@@ -57,13 +57,13 @@ describe('a config that deletes a built-in (D-74)', () => {
 
   it('refuses a delete and an add that keep the count, and undoes both', async () => {
     const got = await drive('delete Math.max\nMath.mx = 1\n', "Math.max === max && !('mx' in Math)")
-    const file = path.join(dir, 'p', 'vx.config.mjs')
+    const file = path.join(dir, 'p', 'vx.project.mjs')
     expect(got).toEqual({ got: REFUSAL(file, 'Math.mx, Math.max'), after: true, file })
   })
 
   it('CONTROL: a config that leaves them alone loads', async () => {
     const got = await drive('', 'Math.max === max')
-    const file = path.join(dir, 'p', 'vx.config.mjs')
+    const file = path.join(dir, 'p', 'vx.project.mjs')
     expect(got).toEqual({ got: 'loaded', after: true, file })
   })
 })

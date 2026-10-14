@@ -29,7 +29,7 @@ is what a single command operates over.
 **One buildable unit inside the workspace**, usually a package with its
 own `package.json`. Projects depend on each other the way packages do.
 
-- vx: a project, one `vx.config.ts` per package
+- vx: a project, one `vx.project.ts` per package
 - Turborepo: a package ([package graph](https://turborepo.com/docs/core-concepts/package-and-task-graph#package-graph))
 - Nx: a project ([glossary](https://nx.dev/docs/reference/glossary#project))
 - Bazel: a [package](https://bazel.build/reference/glossary#package), holding [targets](https://bazel.build/reference/glossary#target)

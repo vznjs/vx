@@ -17,7 +17,7 @@ own posts. Two more starting points convert just as directly: plain
 flowchart LR
   S[package.json scripts] --> I[vx init]
   V[vite-plus run.tasks] --> M[bunx @vzn/vx-migrate]
-  I --> C[vx.config.ts per package]
+  I --> C[vx.project.ts per package]
   M --> C
   style C stroke:#c6f84e,stroke-width:2px
 ```
@@ -34,7 +34,7 @@ $ cat packages/app/package.json
 {"name":"app","scripts":{"prebuild":"rimraf dist","build":"tsc","postbuild":"node scripts/copy.js"}}
 
 $ vx init --dry
-vx init: package.json scripts → vx.config.ts
+vx init: package.json scripts → vx.project.ts
 note: each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got a cache block
 
 0 tasks migrated clean, 2 TODOs:

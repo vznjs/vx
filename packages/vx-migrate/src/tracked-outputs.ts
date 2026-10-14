@@ -288,7 +288,7 @@ export function spareTrackedOutputs(
           todos.push([
             `${q.name}#${r.name}`,
             `reads the committed ${f}, which its inputs take back with ${p.name}#${t.name}'s ` +
-              'outputs — task runs uncached; declare its inputs in a vx.config to cache it',
+              'outputs — task runs uncached; declare its inputs in a vx.project to cache it',
           ])
         }
       }

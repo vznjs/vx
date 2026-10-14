@@ -1080,7 +1080,7 @@ describe('the config-in-typescript post shows what vx init writes', () => {
     expect(src).toContain("import type { ProjectConfig } from '@vzn/vx/config'")
     expect(src).toContain('} satisfies ProjectConfig')
     // The page's own snippet must carry the import it tells people to write.
-    const block = fencedBlock(page, 'ts', '// packages/ui/vx.config.ts')
+    const block = fencedBlock(page, 'ts', '// packages/ui/vx.project.ts')
     expect(block).toContain("import type { ProjectConfig } from '@vzn/vx/config'")
     expect(block).toContain('satisfies ProjectConfig')
   })
@@ -1197,7 +1197,7 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
     const found: string[] = []
     const dir = path.resolve(import.meta.dir, '..', '..')
     for (const pkg of readdirSync(dir)) {
-      const cfg = path.join(dir, pkg, 'vx.config.ts')
+      const cfg = path.join(dir, pkg, 'vx.project.ts')
       if (!existsSync(cfg)) continue
       const src = stripStrings(readFileSync(cfg, 'utf8'))
       for (const m of src.matchAll(/^ {4}(?:''|[\w.$-]+): \{/gm)) {
@@ -1722,7 +1722,7 @@ describe('the README and the Docs say which packages npm has', () => {
 
 describe('a config sample imports the schema from @vzn/vx/config', () => {
   // `@vzn/vx` is core's own src/index.ts: a user's tsc over a package that
-  // includes its vx.config.ts walked core's Bun-only sources and printed
+  // includes its vx.project.ts walked core's Bun-only sources and printed
   // 527 errors, where `@vzn/vx/config` checked clean (J-94).
   it('no page, README or example imports only config.ts exports from @vzn/vx', async () => {
     const schema = new Set(Object.keys(await import('../src/config.js')))
@@ -1737,8 +1737,8 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
       ...readdirSync(path.join(repo, 'packages', 'vx', 'docs'))
         .filter((f) => f.endsWith('.md'))
         .map((f) => path.join(repo, 'packages', 'vx', 'docs', f)),
-      path.join(repo, 'examples', 'basic', 'packages', 'app', 'vx.config.ts'),
-      path.join(repo, 'examples', 'basic', 'packages', 'lib', 'vx.config.ts'),
+      path.join(repo, 'examples', 'basic', 'packages', 'app', 'vx.project.ts'),
+      path.join(repo, 'examples', 'basic', 'packages', 'lib', 'vx.project.ts'),
     ].filter((f) => existsSync(f))
     const offenders: string[] = []
     let schemaImports = 0

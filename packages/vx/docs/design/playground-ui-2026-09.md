@@ -1,7 +1,7 @@
 # The playground page (2026-09-24, roadmap W9, item 700)
 
 W9's last step is the page the playground bundle exists for. The reader
-edits a small monorepo's files and `vx.config.mjs` files and runs
+edits a small monorepo's files and `vx.project.mjs` files and runs
 `vx run`, and vx's real planner, bundled from core's source, says which
 tasks hit, which miss and why. The bundle (item 695) and in-page config
 evaluation (item 699) are the model. This note decides the view.
@@ -98,7 +98,7 @@ the caching and correctness pages link to it in one sentence each.
 
 - **Where things are.** The workspace is
   `packages/vx-docs/src/playground/workspace.ts`: `CONFIG_TEXTS` (one
-  `vx.config.mjs` text per package), `FILES`, `ENV` (`API_URL`, which
+  `vx.project.mjs` text per package), `FILES`, `ENV` (`API_URL`, which
   `api#build` declares) and `TASKS` (`build test`). What the page
   computes is `src/components/demos/model/playground-view.ts`. The
   island is `Playground.astro` plus `demos/playground.ts`
@@ -204,8 +204,8 @@ moved.". Appending a line to `packages/ui/src/button.tsx` in the editor
 then gave "9 tasks: 5 hit, 4 miss. Keys moved: ui#build, ui#test,
 app#build, app#test.", and exactly those four rows carried "moved".
 Adding `packages/ui/README.md` gave all nine hits and no key moved.
-Deleting the last `}` of `packages/api/vx.config.mjs` gave the error
-"api (packages/api/vx.config.mjs): SyntaxError: Unexpected token ')'",
+Deleting the last `}` of `packages/api/vx.project.mjs` gave the error
+"api (packages/api/vx.project.mjs): SyntaxError: Unexpected token ')'",
 kept the last good table with `data-stale="true"` and a stale caption,
 and the live region said so. Reset hid the table, and the next Run
 missed all nine again. There was no page error and no console error.

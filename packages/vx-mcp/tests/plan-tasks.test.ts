@@ -27,7 +27,7 @@ beforeAll(async () => {
   await mkdir(pkg, { recursive: true })
   await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(
-    path.join(pkg, 'vx.config.mjs'),
+    path.join(pkg, 'vx.project.mjs'),
     `export default { tasks: { build: { exec: { command: 'touch ran' }, cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } } } } }\n`,
   )
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })

@@ -13,7 +13,7 @@ Edit `packages/lib/src/greet.js` and run again: all three re-run, since
 `app#build` depends on `^build` and `app#test` on `build`.
 
 `vx.workspace.ts` marks the workspace root. Each package's
-`vx.config.ts` declares its tasks: the command, what runs
+`vx.project.ts` declares its tasks: the command, what runs
 first, and the files the cache keys on and restores. More:
 [Quickstart](https://vznjs.github.io/vx/quickstart/).
 

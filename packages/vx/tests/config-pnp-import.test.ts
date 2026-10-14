@@ -11,7 +11,7 @@ async function refusal(pnp: boolean): Promise<string> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-pnp-import-'))
   try {
     if (pnp) await writeFile(path.join(dir, '.pnp.cjs'), '')
-    const file = path.join(dir, 'vx.config.ts')
+    const file = path.join(dir, 'vx.project.ts')
     await writeFile(file, "import x from 'vx-no-such-pkg-d109'\nexport default { tasks: {} }\n")
     return await loadProjectConfig(file).then(
       () => 'loaded',

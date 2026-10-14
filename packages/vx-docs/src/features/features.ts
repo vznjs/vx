@@ -220,7 +220,7 @@ const FIRST: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: `// packages/web/vx.config.ts
+      code: `// packages/web/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -252,7 +252,7 @@ export default defineProject({
     ],
     example: {
       lang: 'ts',
-      code: `// packages/app/vx.config.ts
+      code: `// packages/app/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -281,12 +281,12 @@ export default defineProject({
     category: 'cache',
     hook: 'Change a shared preset and exactly the tasks that use it re-run.',
     body: [
-      'A JSON config is data, so a tool can only hash the file. `vx.config.ts` is a program: it imports presets, reads env vars and computes values.',
+      'A JSON config is data, so a tool can only hash the file. `vx.project.ts` is a program: it imports presets, reads env vars and computes values.',
       'vx evaluates it and keys each task on the resolved object. Edit a preset that ten packages import and those ten packages’ tasks re-key; a config that evaluates to the same task keeps its key.',
     ],
     example: {
       lang: 'ts',
-      code: `// packages/web/vx.config.ts
+      code: `// packages/web/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 import { viteBuild } from '@acme/vx-presets' // your own shared preset
 
@@ -479,7 +479,7 @@ would run:
     ],
     example: {
       lang: 'ts',
-      code: `// packages/web/vx.config.ts
+      code: `// packages/web/vx.project.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -602,12 +602,12 @@ export default defineProject({
     category: 'ci',
     hook: 'CI runs exactly the config you reviewed.',
     body: [
-      'A TypeScript config can evaluate differently on another machine. `vx lock` evaluates every config now and writes the resolved objects to `vx-lock.json`.',
+      'A TypeScript config can evaluate differently on another machine. `vx lock` evaluates every config now and writes the resolved objects to `vx.lock.json`.',
       '`vx run --frozen` loads configs from the lock and evaluates nothing. `vx lock --check` re-evaluates every config and fails on drift, so a pipeline can check the lock first.',
     ],
     example: { lang: 'sh', code: 'vx lock\nvx lock --check\nvx run ci --all --frozen' },
     image: 'vx-lock.png',
-    imageAlt: 'vx lock writing vx-lock.json; CI runs with --frozen.',
+    imageAlt: 'vx lock writing vx.lock.json; CI runs with --frozen.',
     docs: { label: 'vx lock', href: 'cli/#vx-lock' },
     deepDive: { label: 'Lock and frozen', href: 'blog/lock-and-frozen/' },
   },
@@ -655,7 +655,7 @@ export default defineProject({
     category: 'adoption',
     hook: 'Install, init, run.',
     body: [
-      '`vx init` writes a `vx.config.ts` per package from its `package.json` scripts. Add the cache block each TODO shows, and the second run of a task is up-to-date in milliseconds.',
+      '`vx init` writes a `vx.project.ts` per package from its `package.json` scripts. Add the cache block each TODO shows, and the second run of a task is up-to-date in milliseconds.',
       'No account, no service to sign up for: the cache is a directory on your machine.',
     ],
     example: {
@@ -687,12 +687,12 @@ export default defineProject({
     category: 'adoption',
     hook: 'One command writes native vx config from turbo.json or the Nx graph.',
     body: [
-      '`@vzn/vx-migrate` writes a `vx.config.ts` per package from `turbo.json` or your Nx project graph, and installs vx with your own package manager. Your `package.json` scripts stay as they are.',
+      '`@vzn/vx-migrate` writes a `vx.project.ts` per package from `turbo.json` or your Nx project graph, and installs vx with your own package manager. Your `package.json` scripts stay as they are.',
       'It declares the plugins the repo calls for, such as the lockfile plugin and the GitHub plugin, and it can keep your existing Turborepo or Nx remote cache.',
     ],
     example: { lang: 'sh', code: 'bunx @vzn/vx-migrate' },
     image: 'migrate.png',
-    imageAlt: 'vx-migrate writing a vx.config.ts per package.',
+    imageAlt: 'vx-migrate writing a vx.project.ts per package.',
     docs: { label: 'Migrate', href: 'guides/migrate/' },
     deepDive: { label: 'Moving to vx from Turborepo', href: 'blog/from-turborepo/' },
   },

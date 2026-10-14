@@ -71,7 +71,7 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
       const dir = path.join(root, name)
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, 'tsconfig.json'), body)
-      return sealsConfig(root, path.join(dir, 'vx.config.mjs'))
+      return sealsConfig(root, path.join(dir, 'vx.project.mjs'))
     }
     await writeFile(path.join(root, 'base.json'), '{"compilerOptions":{"composite":true}}')
     expect([
@@ -103,7 +103,7 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
       false,
       false,
     ])
-    expect(sealsConfig(root, path.join(root, 'none', 'vx.config.mjs'))).toBe(false)
+    expect(sealsConfig(root, path.join(root, 'none', 'vx.project.mjs'))).toBe(false)
   })
 
   // withastro/astro 3cbd72c on 0.0.634: packages/astro/tsconfig.test.json
@@ -124,7 +124,7 @@ describe('migrateTurbo: a package whose tsconfig refuses files outside it', () =
         '  "include": ["test/*.ts", "./performance/*.mjs"], "exclude": ["test/fixtures/**"] }\n',
     )
     await writeFile(path.join(pkg, 'tsconfig.json'), '{ "files": ["./bin/astro.mjs"] }')
-    const config = (...dir: string[]) => path.join(pkg, ...dir, 'vx.config.mjs')
+    const config = (...dir: string[]) => path.join(pkg, ...dir, 'vx.project.mjs')
     expect([
       sealsConfig(root, config('performance')),
       sealsConfig(root, config('performance', 'fixtures', 'md')),

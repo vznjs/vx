@@ -194,7 +194,7 @@ describe('errorCode', () => {
     expect([
       errorCode(new UserError('x', 'VX_E_CYCLE')),
       errorCode(new UserError('x')),
-      errorCode(new UserError('/ws/packages/a/vx.config.ts: tasks.b has unknown field "c"')),
+      errorCode(new UserError('/ws/packages/a/vx.project.ts: tasks.b has unknown field "c"')),
       errorCode(Object.assign(new Error('from another core'), { name: 'UserError' })),
       errorCode(errno('EMFILE')),
       errorCode(errno('EACCES')),

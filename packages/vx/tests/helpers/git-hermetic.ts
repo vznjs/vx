@@ -2,7 +2,7 @@
 // core.checkStat=minimal or core.trustctime=false, vx drops every index OID
 // (A-6) and the trusted-OID rows fail for the host, not the code. The gate's
 // test tasks run with GIT_CONFIG_GLOBAL=/dev/null and GIT_CONFIG_NOSYSTEM=1
-// (vx.config.ts). A bare `bun test` cannot be fixed from here: a spawned
+// (vx.project.ts). A bare `bun test` cannot be fixed from here: a spawned
 // git reads the process's STARTUP environment, so setting process.env in a
 // preload reaches no child (probed on Bun 1.4.2). It refuses instead, naming
 // the fix. A sandboxed shard has no git; nothing to check there.

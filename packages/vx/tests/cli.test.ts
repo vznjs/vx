@@ -200,7 +200,7 @@ describe('cli run()', () => {
       await mkdir(path.join(root, 'p'), { recursive: true })
       await writeFile(path.join(root, 'p', 'package.json'), JSON.stringify({ name: 'p' }))
       await writeFile(
-        path.join(root, 'p', 'vx.config.mjs'),
+        path.join(root, 'p', 'vx.project.mjs'),
         `export default { tasks: { hello: { exec: { command: 'true' } } } }\n`,
       )
       for (const args of [
@@ -255,7 +255,7 @@ describe('cli run()', () => {
       await mkdir(path.join(root, 'p'), { recursive: true })
       await writeFile(path.join(root, 'p', 'package.json'), JSON.stringify({ name: 'p' }))
       await writeFile(
-        path.join(root, 'p', 'vx.config.mjs'),
+        path.join(root, 'p', 'vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: 'true' } }, lint: { exec: { command: 'true' } } } }\n`,
       )
       for (const args of [
@@ -294,7 +294,7 @@ describe('cli run()', () => {
       await mkdir(path.join(root, 'p'), { recursive: true })
       await writeFile(path.join(root, 'p', 'package.json'), JSON.stringify({ name: 'p' }))
       await writeFile(
-        path.join(root, 'p', 'vx.config.mjs'),
+        path.join(root, 'p', 'vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
       )
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
@@ -481,7 +481,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       JSON.stringify({ name: 'one', version: '0.0.0' }),
     )
     await writeFile(
-      path.join(pkgDir, 'vx.config.mjs'),
+      path.join(pkgDir, 'vx.project.mjs'),
       `export default {
         tasks: {
           hello: {
@@ -642,7 +642,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     await mkdir(real, { recursive: true })
     await writeFile(path.join(real, 'package.json'), JSON.stringify({ name: 'two' }))
     await writeFile(
-      path.join(real, 'vx.config.mjs'),
+      path.join(real, 'vx.project.mjs'),
       `export default { tasks: { hello: { exec: { command: "echo hello-two" } } } }`,
     )
     await symlink(path.join('..', 'ext', 'two'), path.join(workspaceRoot, 'packages', 'two'))
@@ -684,7 +684,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     await mkdir(two, { recursive: true })
     await writeFile(path.join(two, 'package.json'), JSON.stringify({ name: 'two' }))
     await writeFile(
-      path.join(two, 'vx.config.mjs'),
+      path.join(two, 'vx.project.mjs'),
       `export default { tasks: { gen: { exec: { command: "true" } } } }`,
     )
     process.chdir(path.join(workspaceRoot, 'packages', 'one'))
@@ -882,7 +882,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     const { writeFile } = await import('node:fs/promises')
     const path = await import('node:path')
     await writeFile(
-      path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
+      path.join(workspaceRoot, 'packages', 'one', 'vx.project.mjs'),
       `export default {
         tasks: {
           hello: {
@@ -917,7 +917,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     const { writeFile } = await import('node:fs/promises')
     const path = await import('node:path')
     await writeFile(
-      path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
+      path.join(workspaceRoot, 'packages', 'one', 'vx.project.mjs'),
       `export default {
         tasks: {
           fail: {
@@ -945,7 +945,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     const { writeFile } = await import('node:fs/promises')
     const path = await import('node:path')
     await writeFile(
-      path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
+      path.join(workspaceRoot, 'packages', 'one', 'vx.project.mjs'),
       `export default {
         tasks: {
           echo: {
@@ -1228,7 +1228,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       JSON.stringify({ name: 'one', version: '0.0.0' }),
     )
     await writeFile(
-      path.join(pkgDir, 'vx.config.mjs'),
+      path.join(pkgDir, 'vx.project.mjs'),
       `export default {
         tasks: {
           hello: {
@@ -1274,7 +1274,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       // the content check the watcher re-ran on its own write without end
       // (reproduced on the init walkthrough, 2026-09-04).
       await writeFile(
-        path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
+        path.join(workspaceRoot, 'packages', 'one', 'vx.project.mjs'),
         `export default {
           tasks: {
             hello: { exec: { command: "cat src/index.txt > out.txt" } },
@@ -1514,7 +1514,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       await mkdir(path.join(workspaceRoot, 'shared'), { recursive: true })
       await writeFile(path.join(workspaceRoot, 'shared', 'base.txt'), 'ws0')
       await writeFile(
-        path.join(workspaceRoot, 'packages', 'one', 'vx.config.mjs'),
+        path.join(workspaceRoot, 'packages', 'one', 'vx.project.mjs'),
         `export default {
           tasks: {
             hello: {
@@ -1652,7 +1652,7 @@ describe('parseRunArgs', () => {
     // `vx run --chek` was told "did you mean --check?".
     const fixture = [
       'Execution (for run):',
-      '  --frozen          Refuse drift from vx-lock.json;',
+      '  --frozen          Refuse drift from vx.lock.json;',
       '                    pair with vx lock --check in CI.',
       'Cache (for prune):',
       '  --older-than <d>  Prune entries older than d.',
@@ -2684,7 +2684,7 @@ describe('the project a bare task runs in, from a nested subdirectory (e2e)', ()
         await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
         await writeFile(path.join(dir, 'vx.workspace.mjs'), 'export default {}\n')
         await writeFile(
-          path.join(dir, 'vx.config.mjs'),
+          path.join(dir, 'vx.project.mjs'),
           `export default { tasks: { build: { exec: { command: 'true' } } } }`,
         )
       }

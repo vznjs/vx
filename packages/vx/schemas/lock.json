@@ -7,10 +7,10 @@
   "required": ["upToDate", "audited", "notAudited", "problems"],
   "properties": {
     "upToDate": { "type": "boolean" },
-    "audited": { "type": "integer", "description": "projects with a vx.config, each audited" },
+    "audited": { "type": "integer", "description": "projects with a vx.project, each audited" },
     "notAudited": {
       "type": "integer",
-      "description": "projects with tasks and no vx.config: nothing to freeze, never audited"
+      "description": "projects with tasks and no vx.project: nothing to freeze, never audited"
     },
     "problems": {
       "type": "array",

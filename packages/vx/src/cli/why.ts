@@ -48,7 +48,7 @@ export const WHAT_TO_DO: Readonly<Record<string, string>> = {
   workspace:
     'a lockfile or root manifest changed, which re-keys every task; a lockfile plugin keys each project on its own dependencies',
   config:
-    "the task's evaluated config changed (its vx.config or a file it imports); `vx show <that task>` prints it as it is now",
+    "the task's evaluated config changed (its vx.project or a file it imports); `vx show <that task>` prints it as it is now",
   upstream: "a dependency's key moved; `vx why <that task>` says why",
   plugin: "a key plugin's material changed; that plugin decides what it folds",
   format:

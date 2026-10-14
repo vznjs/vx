@@ -45,7 +45,7 @@ describe("a reading verb stores a pure config's evaluation", () => {
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
     )
     const git = gitIn(root)

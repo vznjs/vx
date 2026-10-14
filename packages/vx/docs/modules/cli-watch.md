@@ -86,7 +86,7 @@ export function makeRootEventFilter(
   workspaceRoot: string,
   projectDirs: readonly string[],
   workspaceInputs: readonly string[],
-  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and vx-lock.json under --frozen
+  claimedRootFiles?: ReadonlySet<string>, // fingerprint plugins' claims, and vx.lock.json under --frozen
   fenced?: (ownDir: string, abs: string) => boolean,
 ): (filename: string) => boolean
 export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean // inside a configured project nested under ownDir, its own config aside
@@ -316,7 +316,7 @@ reasons:
   cache-hit re-run (~tens of ms). Pre-filtering would mean redoing
   the glob + project-boundary work on every event — easily worse
   than the cache lookup.
-- **Globs change with `vx.config.ts` edits.** Pre-computing would
+- **Globs change with `vx.project.ts` edits.** Pre-computing would
   miss config changes that re-shape what's watched. The current
   "watch the whole project dir" approach is robust.
 

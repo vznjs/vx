@@ -218,7 +218,7 @@ describe('no doc describes exec.resources as a field a config can declare', () =
     expect(() =>
       validateProjectConfig(
         { tasks: { t: { exec: { command: 'x', resources: {} } } } } as never,
-        'vx.config.ts',
+        'vx.project.ts',
       ),
     ).toThrow('has unknown field "resources"')
     const roots = [DOCS, path.resolve(import.meta.dir, '..', 'docs')]

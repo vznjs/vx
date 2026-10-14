@@ -13,7 +13,7 @@ body:
     id: repro
     attributes:
       label: Steps to reproduce
-      description: The smallest workspace that shows it. A `vx.config.ts` and the commands are usually enough; `examples/basic` is a starting point.
+      description: The smallest workspace that shows it. A `vx.project.ts` and the commands are usually enough; `examples/basic` is a starting point.
     validations:
       required: true
   - type: textarea

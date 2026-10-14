@@ -66,7 +66,7 @@ describe('config import closure freshness', () => {
 
   it('a repeat load in the same process sees an edited preset', async () => {
     const preset = path.join(root, 'vx-preset.mjs')
-    const config = path.join(root, 'vx.config.mjs')
+    const config = path.join(root, 'vx.project.mjs')
     await writeFile(preset, `export const COMMAND = 'echo v1'\n`)
     await writeFile(
       config,
@@ -97,7 +97,7 @@ describe('config import closure freshness', () => {
         `export const COMMAND = 'echo v1 > out.txt'\n`,
       )
       await writeFile(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `import { COMMAND } from './vx-preset.mjs'\n` +
           `export default {\n` +
           `  tasks: {\n` +
@@ -155,7 +155,7 @@ describe('worker-evaluated repeat loads', () => {
   })
 
   const write = async (body: string): Promise<string> => {
-    const file = path.join(root, `vx.config.${n++}.mjs`)
+    const file = path.join(root, `vx.project.${n++}.mjs`)
     await writeFile(file, body)
     return file
   }
@@ -289,7 +289,7 @@ describe('a typo in a cache-key field', () => {
       await mkdir(path.join(root, 'pkg'), { recursive: true })
       await writeFile(path.join(root, 'shared.txt'), 'CONTENT-V1')
       await writeFile(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
           tasks: {
             build: {
@@ -340,7 +340,7 @@ describe('config worker settlement', () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-worker-settle-'))
     try {
       const { evaluateConfigFresh } = await import('../src/workspace/config-eval.js')
-      const cfg = path.join(dir, 'vx.config.mjs')
+      const cfg = path.join(dir, 'vx.project.mjs')
       await writeFile(cfg, 'await new Promise(() => {})\nexport default {}\n')
       const outcome = await Promise.race([
         evaluateConfigFresh(cfg).then(
@@ -384,7 +384,7 @@ describe('what the transpiler was told besides the bytes', () => {
       await writeLocalWorkspace(root)
       await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'a' }))
       await writeFile(
-        path.join(pkg, 'vx.config.ts'),
+        path.join(pkg, 'vx.project.ts'),
         "declare const BUILD_MODE: string\nexport default { tasks: { build: { exec: { command: 'echo MODE_' + BUILD_MODE } } } }\n",
       )
       git(root, 'init', '-q')
@@ -422,7 +422,7 @@ describe('what the transpiler was told besides the bytes', () => {
       await writeLocalWorkspace(root)
       await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'a' }))
       await writeFile(
-        path.join(pkg, 'vx.config.ts'),
+        path.join(pkg, 'vx.project.ts'),
         "declare const BUILD_MODE: string\nexport default { tasks: { build: { exec: { command: 'echo MODE_' + BUILD_MODE } } } }\n",
       )
       git(root, 'init', '-q')
@@ -486,7 +486,7 @@ describe('a config the project stage edits in place', () => {
         await mkdir(path.join(root, 'packages', name), { recursive: true })
         await writeFile(path.join(root, 'packages', name, 'package.json'), JSON.stringify({ name }))
         await writeFile(
-          path.join(root, 'packages', name, 'vx.config.mjs'),
+          path.join(root, 'packages', name, 'vx.project.mjs'),
           "import { build } from '../../preset.mjs'\nexport default { tasks: { build } }\n",
         )
       }

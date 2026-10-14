@@ -1,4 +1,4 @@
-// The gate's test tasks set VX_CACHE_DIR=.vx/cache (vx.config.ts), so each
+// The gate's test tasks set VX_CACHE_DIR=.vx/cache (vx.project.ts), so each
 // fixture keeps its whole cache in its own directory instead of sharing
 // entries through the user's store. A bare `bun test` gets the same here
 // for every run in this process and every child spawned with

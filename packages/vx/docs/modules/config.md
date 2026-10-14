@@ -1,6 +1,6 @@
 # `src/config.ts` — the public schema
 
-The single source of truth for what users can write in `vx.config.ts`.
+The single source of truth for what users can write in `vx.project.ts`.
 Pure types + two identity helpers; no runtime logic.
 
 ## Purpose

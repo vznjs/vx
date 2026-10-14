@@ -2,7 +2,7 @@
   "name": "@vzn/vx-migrate",
   "version": "0.0.0",
   "license": "MIT",
-  "description": "Adopt @vzn/vx from Turborepo or Nx: run the repo unchanged, migrate it to vx.config.ts, and keep your Turbo or Nx remote cache",
+  "description": "Adopt @vzn/vx from Turborepo or Nx: run the repo unchanged, migrate it to vx.project.ts, and keep your Turbo or Nx remote cache",
   "keywords": [
     "vx",
     "vx-plugin",

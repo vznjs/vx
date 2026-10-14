@@ -68,7 +68,7 @@ finishes. The message names the glob to exclude.
 
 ## A config that hangs
 
-A `vx.config.ts` is code, and code can hang: an `await` on a server that
+A `vx.project.ts` is code, and code can hang: an `await` on a server that
 is down, or a loop. Each config gets 30 seconds, and then the load fails
 and names the config. A real evaluation takes about 10 ms.
 `VX_CONFIG_WORKER_TIMEOUT` changes the limit.

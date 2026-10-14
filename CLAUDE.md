@@ -11,7 +11,7 @@ not change week to week.
 
 The Vite of task orchestration: a Bun-native task runner and
 content-addressed cache for JS monorepos, built as a **pipeline with
-seams**. Core discovers projects, evaluates `vx.config.ts` files, builds a
+seams**. Core discovers projects, evaluates `vx.project.ts` files, builds a
 task graph, derives cache keys, and schedules. Plugins decide where a task
 runs (`executor`), where artifacts live (`cache`), who observes
 (`telemetry`), and — as the seams widen — how the graph is shaped and which
@@ -79,7 +79,7 @@ packages/vx-migrate     adoption, one package (2026-09-11): `turbo()` runs a Tur
                         targets are `nx-exec` lines — `src/nx-exec.cjs`, a Node bin over Nx's public
                         `runExecutor`, design docs/design/nx-unchanged-2026-09.md),
                         `turboCache()` / `nxCache()` keep a Turbo (`/v8/artifacts`) or Nx (`/v1/cache`) remote
-                        cache, and `bunx @vzn/vx-migrate` writes vx.config.ts from turbo.json or an Nx graph
+                        cache, and `bunx @vzn/vx-migrate` writes vx.project.ts from turbo.json or an Nx graph
                         (core keeps `vx init`). `src/turbo/`, `src/nx/`, `src/turbo-cache/`, `src/nx-cache/`
 packages/vx-schedule-history  `schedule` plugin: order by the critical path learned from run history
 packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fingerprint` seam) and keys each
@@ -111,7 +111,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   It refuses a Bun below `engines.bun` first (`check.bun`, item 575).
 - `bun test` alone cannot see a type error: it is transpile-only. Never
   pipe a check through `tail`/`grep` — it masks the exit.
-- The core suite runs as `SHARD_COUNT` (12, `vx.config.ts`) parallel
+- The core suite runs as `SHARD_COUNT` (12, `vx.project.ts`) parallel
   shard tasks, generated from one template; `scripts/test-shard.ts <i>
 <n>` deals the files by recorded weight (`tests/shard-weights.json`,
   refreshed with `--weigh <junit-dir>`), so the wall time is the
@@ -170,7 +170,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   migration shim (owner, 2026-10-14): old names simply stop working.
   Release notes, blog posts and change files may name the rename.
 - Trust internal code; validate only at boundaries (user input, FS, network).
-- Test fixtures use heredoc strings for `vx.config.mjs`.
+- Test fixtures use heredoc strings for `vx.project.mjs`.
 - A probe that confirms a thesis becomes a test, not a note.
 - A value `export` only its own file uses is not one; one nothing uses is
   dead. `tests/exports-referenced.unsafe.test.ts` holds the law (item 613);

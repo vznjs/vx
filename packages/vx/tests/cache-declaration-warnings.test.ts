@@ -55,7 +55,7 @@ describe('cache declarations that match nothing', () => {
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(path.join(app, 'src', 'index.js'), 'export {}\n')
     await writeFile(
-      path.join(app, 'vx.config.mjs'),
+      path.join(app, 'vx.project.mjs'),
       `export default { tasks: {
         // Both globs against directories that do not exist.
         lost: { exec: { command: 'true' },
@@ -107,7 +107,7 @@ describe('cache declarations that match nothing', () => {
     try {
       await writeFile(path.join(outside, 'creds.txt'), 'not yours\n')
       await writeFile(
-        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        path.join(root, 'packages', 'app', 'vx.project.mjs'),
         `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} dist' },
           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n`,
       )
@@ -141,7 +141,7 @@ describe('cache declarations that match nothing', () => {
     try {
       await writeFile(path.join(outside, 'creds.txt'), 'not yours\n')
       await writeFile(
-        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        path.join(root, 'packages', 'app', 'vx.project.mjs'),
         `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} ../../shared' },
           cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/**'] } } } } }\n`,
       )

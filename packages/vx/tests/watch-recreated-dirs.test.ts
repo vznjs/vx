@@ -76,7 +76,7 @@ describe('vx watch over a member base made again', () => {
     await mkdir(dir)
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'later' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
     )
     await until(() => w.out().includes('watching 2 project(s)'), 'the new package joining')
@@ -96,7 +96,7 @@ describe('vx watch over a nested base whose parent is made again', () => {
     await mkdir(path.join(dir, 'src'), { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'site' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'cat src/a.txt > out.txt && echo run >> ${log}' } } } }\n`,
     )
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a1\n')
@@ -136,7 +136,7 @@ describe('vx watch over a nested base whose parent is made again', () => {
     await mkdir(path.join(dir, 'src'), { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'site' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `export default { tasks: { build: { exec: { command: 'cat src/a.txt > out.txt && echo run >> ${log}' } } } }\n`,
     )
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a1\n')
@@ -186,7 +186,7 @@ describe('vx watch over a config import directory made again', () => {
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       `import { word } from '../../shared/preset.mjs'\nexport default { tasks: { build: { exec: { command: 'echo ' + word + ' >> ${log}' } } } }\n`,
     )
     const w = startWatch(root)
@@ -237,7 +237,7 @@ describe('vx watch over a package directory made again before its manifest', () 
     await until(() => w.out().split('vx watch: watching').length >= 3, 'the re-arm')
     await writeFile(path.join(later, 'package.json'), JSON.stringify({ name: 'later' }))
     await writeFile(
-      path.join(later, 'vx.config.mjs'),
+      path.join(later, 'vx.project.mjs'),
       "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
     )
     await until(() => w.out().includes('watching 2 project(s)'), 'the package joining')

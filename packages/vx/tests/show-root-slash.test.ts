@@ -25,7 +25,7 @@ async function workspace(rootConfig: boolean): Promise<string> {
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
   if (rootConfig) {
     await writeFile(
-      path.join(root, 'vx.config.mjs'),
+      path.join(root, 'vx.project.mjs'),
       `export default { tasks: { check: { exec: { command: 'true' } } } }\n`,
     )
   }

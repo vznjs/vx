@@ -1,4 +1,4 @@
-// An Nx repo runs under vx with no vx.config written. Every pin is a real
+// An Nx repo runs under vx with no vx.project written. Every pin is a real
 // `planRun` / `run` over a workspace whose only vx file declares the
 // plugin. Nx itself is the fake in `helpers/fake-nx.ts`: a `.bin/nx` that
 // exports `<root>/graph.json` on `graph --file=…` and counts the call, and
@@ -171,10 +171,10 @@ describe('nx(): a wildcard-first output', () => {
       expect((await cacheOf('lib#gen'))?.outputs.files).toEqual(['*.mjs'])
       expect((await cacheOf('app#test'))?.outputs.files).toEqual(['**/*.xml'])
       await writeFile(
-        path.join(root, 'packages', 'lib', 'vx.config.mjs'),
+        path.join(root, 'packages', 'lib', 'vx.project.mjs'),
         'export default { tasks: {} }\n',
       )
-      expect((await cacheOf('lib#gen'))?.outputs.files).toEqual(['*.mjs', '!vx.config.mjs'])
+      expect((await cacheOf('lib#gen'))?.outputs.files).toEqual(['*.mjs', '!vx.project.mjs'])
       // The clean removes what the glob reaches and git does not track.
       await mkdir(path.join(app, 'reports'), { recursive: true })
       await writeFile(path.join(app, 'reports', 'stale.xml'), '<old/>\n')
@@ -261,7 +261,7 @@ describe('nx()', () => {
   )
 
   it(
-    'plans an Nx workspace with no vx.config: executors as nx-exec lines, run-commands as shell, noop as a group',
+    'plans an Nx workspace with no vx.project: executors as nx-exec lines, run-commands as shell, noop as a group',
     async () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build', 'lint', 'all'], log })
@@ -475,7 +475,7 @@ describe('nx()', () => {
   }
 
   it(
-    'a project no glob lists attaches with no vx.config: the root and a project.json-only library',
+    'a project no glob lists attaches with no vx.project: the root and a project.json-only library',
     async () => {
       await mkdir(path.join(root, 'libs', 'tool'), { recursive: true })
       await writeFile(path.join(root, 'libs', 'tool', 'project.json'), '{ "name": "tool" }')
@@ -583,10 +583,10 @@ describe('nx()', () => {
   )
 
   it(
-    'a package’s own vx.config wins over the graph, task by task',
+    'a package’s own vx.project wins over the graph, task by task',
     async () => {
       await writeFile(
-        path.join(root, 'packages', 'lib', 'vx.config.mjs'),
+        path.join(root, 'packages', 'lib', 'vx.project.mjs'),
         `export default { tasks: { lint: { exec: { command: 'echo mine > lint.log' } } } }\n`,
       )
       const plan = await planRun({ cwd: root, tasks: ['lint', 'build'], log: silent() })
@@ -1520,7 +1520,7 @@ describe('nx(): the graph snapshot, keyed and not', () => {
 })
 
 // Every bench arm runs vx from a lock, real Nx repos too: nx()'s tasks are
-// no vx.config, so the lock records none and a frozen run maps the graph live.
+// no vx.project, so the lock records none and a frozen run maps the graph live.
 describe('nx() under vx lock and --frozen', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
@@ -1540,7 +1540,7 @@ describe('nx() under vx lock and --frozen', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx lock: locked 0 project configs → vx-lock.json (no vx.config, so never frozen: app, lib, ws)\n',
+        out: 'vx lock: locked 0 project configs → vx.lock.json (no vx.project, so never frozen: app, lib, ws)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all', '--frozen')
@@ -1609,7 +1609,7 @@ describe('nx(): one git status per run', () => {
 
 describe("nx(): an Nx project's tags", () => {
   it(
-    "are its vx tags, a blank one dropped and a vx.config's own winning, kept with the mapping",
+    "are its vx tags, a blank one dropped and a vx.project's own winning, kept with the mapping",
     async () => {
       await workspace("nx({ graph: 'graph.json' })")
       const graph = structuredClone(GRAPH) as {
@@ -1619,7 +1619,7 @@ describe("nx(): an Nx project's tags", () => {
       graph.graph.nodes['app']!.data['tags'] = ['scope:web']
       await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
       await writeFile(
-        path.join(root, 'packages', 'app', 'vx.config.mjs'),
+        path.join(root, 'packages', 'app', 'vx.project.mjs'),
         "export default { tags: ['mine'] }\n",
       )
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })

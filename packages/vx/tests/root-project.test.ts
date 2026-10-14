@@ -1,4 +1,4 @@
-// A workspace-root task (D-39): a `vx.config` at a root the package globs
+// A workspace-root task (D-39): a `vx.project` at a root the package globs
 // do not list makes the root package a project. Before, the file was
 // ignored: `a#test` depending on `fixture-root#build` refused with "no such
 // project", and every adoption path dropped the root tasks it met.
@@ -22,7 +22,7 @@ const ROOT_CONFIG = `export default {
 }
 `
 
-describe('a root vx.config makes the root a project (D-39)', () => {
+describe('a root vx.project makes the root a project (D-39)', () => {
   let fixture: Fixture
   beforeEach(async () => {
     const root = await makeWorkspace({ prefix: 'vx-rootproj-' })
@@ -43,7 +43,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
 
   it('is a project with the config, and is not without it', async () => {
     expect(await names()).toEqual(['a'])
-    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    await writeFile(path.join(fixture.root, 'vx.project.mjs'), ROOT_CONFIG)
     expect(await names()).toEqual(['a', 'fixture-root'])
     // A root the globs list already is one project, not two.
     await writeFile(
@@ -54,7 +54,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
   })
 
   it('runs before a member that depends on it', async () => {
-    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    await writeFile(path.join(fixture.root, 'vx.project.mjs'), ROOT_CONFIG)
     const r = await run({ cwd: fixture.root, tasks: ['a#test'], log: silentLogger(fixture) })
     expect(r.ok).toBe(true)
     expect(r.outcomes.map((o) => o.node.id).sort()).toEqual(['a#test', 'fixture-root#build'])
@@ -63,7 +63,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
   // `vx show //#build` and `vx why //#build` read `//` as a project name, as
   // `vx run` did before E-100.
   it("show and why take //#task as the root project's task", async () => {
-    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    await writeFile(path.join(fixture.root, 'vx.project.mjs'), ROOT_CONFIG)
     const r = await run({
       cwd: fixture.root,
       tasks: ['fixture-root#build'],
@@ -91,7 +91,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
   // says the root is no project rather than "no such project".
   it("takes Turbo's //#task as the root project's task", async () => {
     await writeFile(
-      path.join(fixture.root, 'packages', 'a', 'vx.config.mjs'),
+      path.join(fixture.root, 'packages', 'a', 'vx.project.mjs'),
       `export default { tasks: { test: { dependsOn: ['//#build'], exec: { command: 'cat ../../out/gen.txt' } } } }\n`,
     )
     const refused = await run({ cwd: fixture.root, tasks: ['a#test'], log: silentLogger(fixture) })
@@ -100,13 +100,13 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     expect(refused).toContain(
       "dependsOn //#build, Turbo's root package, but the workspace root is no project here",
     )
-    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    await writeFile(path.join(fixture.root, 'vx.project.mjs'), ROOT_CONFIG)
     const r = await run({ cwd: fixture.root, tasks: ['a#test'], log: silentLogger(fixture) })
     expect(r.ok).toBe(true)
     expect(r.outcomes.map((o) => o.node.id).sort()).toEqual(['a#test', 'fixture-root#build'])
     // The same spelling in `cache.inputs.tasks`, a negated one included.
     await writeFile(
-      path.join(fixture.root, 'packages', 'a', 'vx.config.mjs'),
+      path.join(fixture.root, 'packages', 'a', 'vx.project.mjs'),
       `export default { tasks: { test: { dependsOn: ['//#build'], exec: { command: 'true' }, cache: { inputs: { files: [], tasks: ['//#build', '!//#lint'] }, outputs: { files: [] } } } } }\n`,
     )
     const a = (await loadResolvedProjects(fixture.root)).get('a')!
@@ -129,7 +129,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
       await writeFile(path.join(root, 'vx.workspace.mjs'), 'export default {}\n')
       await writeFile(path.join(root, 'packages', 'ui', 'package.json'), '{"name":"ui"}')
       await writeFile(
-        path.join(root, 'packages', 'ui', 'vx.config.mjs'),
+        path.join(root, 'packages', 'ui', 'vx.project.mjs'),
         `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
       )
       const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -167,7 +167,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
   // `turbo run //#build` runs the root's task from any package; vx read
   // `//` as a project name and said no project declares it.
   it("runs //#task as the root project's task, from the root or a member", async () => {
-    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    await writeFile(path.join(fixture.root, 'vx.project.mjs'), ROOT_CONFIG)
     for (const cwd of [fixture.root, path.join(fixture.root, 'packages', 'a')]) {
       const r = await run({ cwd, tasks: ['//#build'], log: silentLogger(fixture) })
       expect([cwd, r.ok, r.outcomes.map((o) => o.node.id)]).toEqual([
@@ -179,7 +179,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
   })
 
   it("keys on the files no member owns: a member's edit leaves it, a root file's moves it", async () => {
-    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    await writeFile(path.join(fixture.root, 'vx.project.mjs'), ROOT_CONFIG)
     const key = async (): Promise<string> => {
       const r = await run({
         cwd: fixture.root,
@@ -197,7 +197,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
   })
 
   it('--affected gives a file no member owns to the root, and a member file to the member', async () => {
-    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    await writeFile(path.join(fixture.root, 'vx.project.mjs'), ROOT_CONFIG)
     const git = gitIn(fixture.root)
     git('add', '-A')
     git('commit', '-q', '-m', 'init')

@@ -9,7 +9,7 @@
 // the real key fold (`foldKey`) and the scheduler. What this
 // file supplies is what `prepareRun` gets from the machine: the git
 // enumeration (every VFS file tracked and clean, its OID a git blob SHA-1),
-// the evaluated configs (plain objects, as a `vx.config.mjs` default export
+// the evaluated configs (plain objects, as a `vx.project.mjs` default export
 // evaluates; `evaluateConfig` turns the reader's text into one), and a cache
 // layer whose store is a set of keys.
 
@@ -50,7 +50,7 @@ export interface PlaygroundInput {
   root: string
   /** Root-relative path → contents. */
   files: Record<string, string>
-  /** Project name → its evaluated `vx.config` default export. */
+  /** Project name → its evaluated `vx.project` default export. */
   configs: Record<string, unknown>
   /** The environment `cache.inputs.env` reads. */
   env: Record<string, string>

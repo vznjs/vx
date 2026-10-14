@@ -149,8 +149,8 @@ describe('examples/turbo', () => {
     const out = migrate.stdout.toString()
     said.push(out.split('\n').find((l) => l.includes('migrated'))!)
     expect(out.slice(out.indexOf('files written:')).split('\n').slice(1, 3)).toEqual([
-      '  packages/app/vx.config.ts',
-      '  packages/lib/vx.config.ts',
+      '  packages/app/vx.project.ts',
+      '  packages/lib/vx.project.ts',
     ])
     expect(readFileSync(path.join(root, 'vx.workspace.ts'), 'utf8')).toBe(workspace)
     commit(root)

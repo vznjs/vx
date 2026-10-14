@@ -7,7 +7,7 @@ const hint = (cache: Record<string, unknown>): string | undefined => {
   try {
     validateProjectConfig(
       { tasks: { t: { exec: { command: 'x' }, cache } } } as never,
-      'vx.config.ts',
+      'vx.project.ts',
     )
   } catch (err) {
     return (err as Error).message.split(' — ')[1] ?? (err as Error).message

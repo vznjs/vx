@@ -66,7 +66,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
         `${x}: { exec: { command: 'if [ -e ${flags}/g-${x} ]; then sleep 0.3; echo PARTIAL > ${gOut}/${x}; exit 1; fi; echo GOOD-${x} > ${gOut}/${x}' } }`,
     )
     .join(',\n')
-  await writeFile(path.join(g, 'vx.config.mjs'), `export default { tasks: { ${gTasks} } }\n`)
+  await writeFile(path.join(g, 'vx.project.mjs'), `export default { tasks: { ${gTasks} } }\n`)
   const read = (d: string): string =>
     d.startsWith('g#') ? `${gOut}/${d.slice(2)}` : `out/${d}.txt`
   const pTasks = ps
@@ -77,7 +77,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
         cache: { inputs: { files: ['src/${t}.txt'] }, outputs: { files: ['out/${t}.txt'] } } }`
     })
     .join(',\n')
-  await writeFile(path.join(p, 'vx.config.mjs'), `export default { tasks: { ${pTasks} } }\n`)
+  await writeFile(path.join(p, 'vx.project.mjs'), `export default { tasks: { ${pTasks} } }\n`)
   for (const t of ps) await writeFile(path.join(p, 'src', `${t}.txt`), `${t}-v1\n`)
   gitInitCommit(root, 'init')
 

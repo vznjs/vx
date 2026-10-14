@@ -36,7 +36,7 @@ it('every git vx runs sees the git and locale variables, not the rest', async ()
   await writeFile(path.join(ws, 'vx.workspace.mjs'), 'export default {}\n')
   await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(
-    path.join(ws, 'packages', 'a', 'vx.config.mjs'),
+    path.join(ws, 'packages', 'a', 'vx.project.mjs'),
     `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } } } } }\n`,
   )
   expect(Bun.spawnSync({ cmd: [real, 'init', '-q'], cwd: ws }).exitCode).toBe(0)

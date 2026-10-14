@@ -960,7 +960,7 @@
       },
       "cache": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `cache` must be an object like { dir, policy, scope }; a task caches through its own `cache` in its project's vx.config": [
+        "$CONFIG: `cache` must be an object like { dir, policy, scope }; a task caches through its own `cache` in its project's vx.project": [
           "null",
           "true",
           "false",

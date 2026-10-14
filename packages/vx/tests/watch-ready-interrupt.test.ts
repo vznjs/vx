@@ -65,9 +65,9 @@ it('an edit stops a cycle waiting on a server that never becomes ready', async (
   watch = startWatch(root, ['--all'], {}, 'dev')
   const w = watch
   await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-  await writeFile(path.join(dir, 'vx.config.mjs'), config('true', true))
+  await writeFile(path.join(dir, 'vx.project.mjs'), config('true', true))
   await until(async () => (await lines('pids')).length === 2, 'the hanging server')
-  await writeFile(path.join(dir, 'vx.config.mjs'), config('true'))
+  await writeFile(path.join(dir, 'vx.project.mjs'), config('true'))
   await until(() => runsEnded(w) === 3, 'the cycle after the fix')
   const pids = (await lines('pids')).map(Number)
   expect(pids).toHaveLength(3)

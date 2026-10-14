@@ -83,7 +83,7 @@ covers two things, and the page separates them.
   no plugin. vx does not write your source. The `commands` seam would let
   a plugin add a `vx gen` verb, but none ships and none is planned. The
   cost is that a vx user runs a second tool for scaffolding (Plop,
-  `bun create`, a framework's CLI) and then writes the `vx.config.ts`, by
+  `bun create`, a framework's CLI) and then writes the `vx.project.ts`, by
   hand or with `vx init`.
 - **Build-time generation** (`graphql-codegen`, `prisma generate`,
   `protoc`) is a task whose outputs are source. It declares its schema as

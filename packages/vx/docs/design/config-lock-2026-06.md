@@ -1,10 +1,10 @@
-# Config lock — `vx lock` / `vx-lock.json` (2026-06)
+# Config lock — `vx lock` / `vx.lock.json` (2026-06)
 
 Status: **shipped**.
 
 ## Problem
 
-vx configs are programs (`vx.config.ts` is evaluated, not parsed).
+vx configs are programs (`vx.project.ts` is evaluated, not parsed).
 That is the source of vx's "resolved-config hashing" power — imports
 and computed values participate in cache keys — but it has two costs:
 
@@ -36,7 +36,7 @@ lock is the sound dependency story that rejection asked for:
 
 ## Format
 
-`vx-lock.json` at the workspace root:
+`vx.lock.json` at the workspace root:
 
 ```json
 {
@@ -89,8 +89,8 @@ Hard failures (`UserError`, exit 1):
 
 | condition                              | outcome                                     |
 | -------------------------------------- | ------------------------------------------- |
-| no `vx-lock.json`                      | `--frozen` refuses and names `vx lock`      |
-| project has a config but no lock entry | `vx-lock.json has no entry for "<project>"` |
+| no `vx.lock.json`                      | `--frozen` refuses and names `vx lock`      |
+| project has a config but no lock entry | `vx.lock.json has no entry for "<project>"` |
 
 There is deliberately **no silent fallback to evaluation**: the lock's
 contract is "what runs is what was locked". Falling back would

@@ -91,7 +91,7 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
    base, so its resolved commit stands in and no `git merge-base`
    spawns (#2288).
 3. Untracked files (`git ls-files --others --exclude-standard`) are
-   unioned in — a brand-new source file is a change. `vx-lock.json` is
+   unioned in — a brand-new source file is a change. `vx.lock.json` is
    filtered out, so re-running `vx lock` never selects everything.
 4. If `pnpm-workspace.yaml` or a ROOT lockfile no plugin claims
    changed, **every** project is selected and the walk stops: those
@@ -109,7 +109,7 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
      project above it, whose inputs it took (D-1). (This replaced an
      earlier sort-by-directory-length-descending pass; the walk is
      O(files · depth) instead of O(files · projects).)
-   - **Config imports.** A project whose `vx.config.*` transitively
+   - **Config imports.** A project whose `vx.project.*` transitively
      imports the changed file — see
      [`config-imports.md`](./config-imports.md). Resolved-config
      hashing folds those values into the key, so selection has to see

@@ -12,7 +12,7 @@
 //            real git, real disk, real Bun;
 //   bundle — `planPlayground` over the same files held in memory, each
 //            config the bundle's `evaluateConfig` of the same
-//            `vx.config.mjs` text (item 699), with the host's Bun APIs and
+//            `vx.project.mjs` text (item 699), with the host's Bun APIs and
 //            `node:fs` TRAPPED (each replaced by a function that counts and
 //            throws) for the whole call, so a reach past the shim fails
 //            loudly instead of quietly agreeing.
@@ -136,11 +136,11 @@ const LAB = (await import(path.join(DOCS, 'src/playground/labs.ts'))) as {
 
 const ONLY_VX = 'the playground evaluates a config on its own: it can import only @vzn/vx'
 const CONFIG_FILE: Record<string, string> = {
-  '@pg/utils': 'packages/utils/vx.config.mjs',
-  '@pg/core': 'packages/core/vx.config.mjs',
-  '@pg/ui': 'packages/ui/vx.config.mjs',
-  '@pg/app': 'packages/app/vx.config.mjs',
-  '@pg/docs': 'packages/docs/vx.config.mjs',
+  '@pg/utils': 'packages/utils/vx.project.mjs',
+  '@pg/core': 'packages/core/vx.project.mjs',
+  '@pg/ui': 'packages/ui/vx.project.mjs',
+  '@pg/app': 'packages/app/vx.project.mjs',
+  '@pg/docs': 'packages/docs/vx.project.mjs',
 }
 
 // `ci` is a group task (no exec): its key is `computeGroupHash` over its deps.
@@ -654,7 +654,7 @@ describe("the bundle's entry, one field at a time (item 835)", () => {
   it('an invalid config is refused as the CLI refuses it; an unknown task is reported', async () => {
     const configs = await evaluateAll(CONFIG_TEXTS)
     const bad = { ...configs, '@pg/utils': { tasks: { build: { exec: { command: 1 } } } } }
-    expect(await refusal(plan({ configs: bad }))).toContain('packages/utils/vx.config.mjs')
+    expect(await refusal(plan({ configs: bad }))).toContain('packages/utils/vx.project.mjs')
     const unknown = await plan({ tasks: ['no-such-task'] })
     expect(unknown.unresolvedTasks).toEqual(['no-such-task'])
     expect(unknown.vfsReads).toBeGreaterThan(0)
@@ -667,7 +667,7 @@ describe("the bundle's entry, one field at a time (item 835)", () => {
       files: {
         'package.json': '{"name":"other","private":true,"workspaces":["pkgs/*"]}',
         'pkgs/x/package.json': '{"name":"@o/x","version":"0.0.0"}',
-        'pkgs/x/vx.config.mjs': 'export default {}\n',
+        'pkgs/x/vx.project.mjs': 'export default {}\n',
       },
     }
     // Both calls start in the same tick: the listing must wait for the plan.
@@ -680,7 +680,7 @@ describe("the bundle's entry, one field at a time (item 835)", () => {
     // And the caller's configs come back as they went in.
     expect(JSON.stringify(configs)).toBe(snapshot)
     expect(comparable(planned.tasks)).toEqual(solo)
-    expect(listed).toEqual([{ name: '@o/x', configFile: 'pkgs/x/vx.config.mjs' }])
+    expect(listed).toEqual([{ name: '@o/x', configFile: 'pkgs/x/vx.project.mjs' }])
   })
 })
 
@@ -711,7 +711,7 @@ describe("the page evaluates a config's text as the CLI does (item 699)", () => 
       expect(cli.exitCode).toBe(1)
       const want = name === 'a function' ? NOT_AN_OBJECT_FUNCTION : NOT_AN_OBJECT
       expect(page).toEqual({ ok: false, error: want })
-      expect(cli.stderr.replace(file, 'vx.config.mjs')).toBe(`vx: ${want}\n`)
+      expect(cli.stderr.replace(file, 'vx.project.mjs')).toBe(`vx: ${want}\n`)
     })
   }
 
@@ -784,7 +784,7 @@ describe('a config is JSON data on the page as in the CLI (item 701)', () => {
       // The CLI names the same refusal at its line, a frame under it.
       expect(cli.stderr).toStartWith(`vx: ${refusal(`${path.relative(ws, file)}:2:48`)}\n\n`)
       expect(worker).toBe(refusal(file))
-      expect(page).toEqual({ ok: false, error: refusal('vx.config.mjs') })
+      expect(page).toEqual({ ok: false, error: refusal('vx.project.mjs') })
     } finally {
       write(FILES)
     }
@@ -915,7 +915,7 @@ describe('the page names what moved a key as `vx why` does (item 703)', () => {
     Object.fromEntries(
       Object.entries(files).map(([f, text]) => [
         f,
-        f.endsWith('vx.config.mjs') ? text.replace(/command: '[^']*'/g, "command: 'true'") : text,
+        f.endsWith('vx.project.mjs') ? text.replace(/command: '[^']*'/g, "command: 'true'") : text,
       ]),
     )
   const committed = harmless(PAGE.FILES)

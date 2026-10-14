@@ -150,7 +150,7 @@ and nothing on the spawns.
 
 ## The full rewrite
 
-### Config evaluation (`vx.config.ts` is a program)
+### Config evaluation (`vx.project.ts` is a program)
 
 Configs import presets, `@vzn/vx` (`defineProject`) and npm packages,
 and they are TypeScript.
@@ -285,7 +285,7 @@ the startup gap a Rust rewrite would close, at a fraction of the cost.
 
 - Generate the workspace: `bun packages/vx-bench/generate.ts <dir> 150`.
 - Build the compiled binary with the release command from
-  `vx.config.ts` (`bun build --compile --no-compile-autoload-dotenv --minify --bytecode src/bin.ts`).
+  `vx.project.ts` (`bun build --compile --no-compile-autoload-dotenv --minify --bytecode src/bin.ts`).
 - Take the stage table with `VX_TIMING=1 <vx> run build --all`, warm.
 - The probe's fold is vx's `foldKey` field order for a task with no
   env, upstream or runtime inputs:

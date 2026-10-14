@@ -167,7 +167,7 @@ and run on every arm under both tools, ~12 s together. Wide set
 
 The same arms against the repo's own Nx (`NX_DAEMON=false`,
 `NX_NO_CLOUD=true`: local runner against local runner), on the
-`vx.config` files `bunx @vzn/vx-migrate --from nx` wrote from the
+`vx.project` files `bunx @vzn/vx-migrate --from nx` wrote from the
 repo's exported graph. Parity is the task graph Nx plans
 (`nx run-many … --graph=<file>`) against vx's `--dry=json`. Two
 bench-side rules for every Nx repo, named here: the generated configs

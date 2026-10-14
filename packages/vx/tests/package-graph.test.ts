@@ -549,7 +549,7 @@ describe('the planner reads the same edges', () => {
             JSON.stringify({ name, version, ...fields }, null, 2),
           )
           await writeFile(
-            path.join(dir, 'vx.config.mjs'),
+            path.join(dir, 'vx.project.mjs'),
             `export default {
               tasks: { build: { exec: { command: 'true' }, dependsOn: ['^build'] } },
             }
@@ -627,7 +627,7 @@ describe('the planner reads the same edges', () => {
             await mkdir(dir, { recursive: true })
             await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, ...fields }))
             await writeFile(
-              path.join(dir, 'vx.config.mjs'),
+              path.join(dir, 'vx.project.mjs'),
               `export default {
                 tasks: { build: { exec: { command: 'true' }, dependsOn: ['^build'] } },
               }

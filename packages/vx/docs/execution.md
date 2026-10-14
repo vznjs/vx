@@ -47,7 +47,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       watch / plugins),
  │       then the plugin `config` stage runs on it.
  │    4. listProjects — globs every workspace member's package.json,
- │       finds sibling vx.config.* files, detects duplicate package
+ │       finds sibling vx.project.* files, detects duplicate package
  │       names (hard error with both paths).
  │    5. buildPackageGraph — workspace dep edges from package.json.
  │    6. Local cache open: new Cache(cacheDir, { read, write }, root)
@@ -64,7 +64,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       transitive dependency closure evaluate ('^task' frontier
  │       expansion never escapes the closure); one staged load,
  │       loadProjects, shared with every reading verb. Under --frozen,
- │       configs load from vx-lock.json — no evaluation, no staleness
+ │       configs load from vx.lock.json — no evaluation, no staleness
  │       check of its own (vx lock --check is the audit), frozen-env
  │       semantics; a missing lock or entry is a hard UserError.
  │       Otherwise loadProjectConfigs in one batch: native Bun await

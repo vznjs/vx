@@ -118,7 +118,7 @@ If no task name is given:
   so `vx run > out.txt` still asks on the terminal. Ctrl-C at the prompt exits `130`
   as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
   A workspace with no task exits `1` naming how to declare one (under
-  `tasks` in a vx.config, or `vx init`).
+  `tasks` in a vx.project, or `vx init`).
 - **Not a TTY** — exits `1` with
   `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`,
   naming the cwd project's tasks, else every project's (twelve, then
@@ -302,7 +302,7 @@ change seeds tasks in the projects it touches:
   (`files`, `workspaceFiles`), or a changed submodule or embedded
   repository is one its `workspaceFiles` may reach into (git reports it
   as one path; a glob whose fixed prefix is above or inside it counts);
-- every task of a project whose `package.json` or `vx.config.*`
+- every task of a project whose `package.json` or `vx.project.*`
   changed, or that holds a changed path no cached task of its declares
   (vx cannot prove that path re-keys nothing), or that holds a changed
   submodule or embedded repository (git reports it as one path, and no
@@ -355,7 +355,7 @@ change to it, and every project under it is selected, the project that
 holds it included. A repository's own request to hide submodules from a diff
 (`diff.ignoreSubmodules`, `submodule.<name>.ignore`) does not apply:
 the key sees the change whatever git is told to show.
-`vx-lock.json` is filtered out of the changed set — a `vx lock`
+`vx.lock.json` is filtered out of the changed set — a `vx lock`
 re-write never marks every project affected.
 
 **A lockfile change selects everything.** The root lockfiles,
@@ -405,7 +405,7 @@ without importing it is seen when the plugin CLAIMS it
 which answers every project (item 961).
 
 **A file your config IMPORTS selects that project.** vx hashes the
-resolved config, so a shared preset a `vx.config.*` imports is part of
+resolved config, so a shared preset a `vx.project.*` imports is part of
 the cache key — and selection follows the same rule. Editing
 `shared/preset.ts` selects every project whose config imports it,
 directly or through another shared file, even though the file belongs
@@ -490,7 +490,7 @@ than run with the args unheard.
 | `--kill-grace <duration>`                  | duration       | `run.killGrace`, else `2s`                        | How long a task that ignores SIGTERM gets before SIGKILL: on a timeout, on a signal, and at the end-of-run shutdown of persistent tasks.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--teardown-timeout <duration>`            | duration       | `run.teardownTimeout`, else `3s`                  | The bound on each plugin's end-of-run flush or teardown, and on its `telemetry()` setup, so a third party's I/O cannot hold the run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--ready-notice <duration>`                | duration       | `run.readyNotice`, else `10s`                     | How long a persistent task may take to match `readyWhen` before vx says once what it waits for.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `--frozen` (`--no-frozen`)                 | boolean        | `run.frozen`, else on when `CI` is set            | Load configs from `vx-lock.json` instead of evaluating them, or evaluate them — the run's, and the ones `--affected` owners and the picker select from. No lock: one is written first. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `--frozen` (`--no-frozen`)                 | boolean        | `run.frozen`, else on when `CI` is set            | Load configs from `vx.lock.json` instead of evaluating them, or evaluate them — the run's, and the ones `--affected` owners and the picker select from. No lock: one is written first. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--output-logs <mode>`                     | value          | `VX_RUN_OUTPUT_LOGS`, else flow-derived           | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--cache-download <mode>`                  | value          | `cache.download`, else `all`                      | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--cache-download`. `--cache-download=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `--verbosity <n>`                          | int (0+)       | `0`                                               | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -1277,7 +1277,7 @@ the task's config — there is no `--sandbox` CLI flag. See
 full reference.
 
 ```ts
-// vx.config.ts
+// vx.project.ts
 export default {
   tasks: {
     build: {
@@ -1522,7 +1522,7 @@ and so does any other root file a plugin claims (`turbo.json` under
 `turbo()`, item 961), a plugin added to the workspace config mid-watch
 included from the cycle that loads it; the keys then decide which
 projects actually re-run. Under `vx watch --frozen` every cycle's configs come from
-`vx-lock.json`, so a config edit alone changes no command, and a re-lock
+`vx.lock.json`, so a config edit alone changes no command, and a re-lock
 (`vx lock`) is a cycle that re-reads the watched set (item 971).
 
 ### Constraints
@@ -1568,7 +1568,7 @@ re-runs itself and what it depends on.
   same `Did you mean` hint, and watch exits rather than re-run the
   refusal on every change.
 
-A cycle that throws — a `vx.config.*` that does not parse — prints
+A cycle that throws — a `vx.project.*` that does not parse — prints
 `vx watch: cycle failed: <reason>` and watch keeps watching, the initial
 run included, so saving the fix re-runs (item 1017).
 
@@ -1697,7 +1697,7 @@ pruned there.
 
 `run.frozen` (`--frozen` / `--no-frozen`, `VX_RUN_FROZEN`, or
 `run.frozen` in `vx.workspace`) loads configs from the committed
-`vx-lock.json` instead of evaluating them. It is on when `CI` is set and
+`vx.lock.json` instead of evaluating them. It is on when `CI` is set and
 off otherwise (owner, 2026-10-13): locally a byte hash can't see a
 config's import closure, so silently consuming the lock would risk stale
 freezes. A frozen run trusts the lock: it performs NO staleness checks
@@ -1714,7 +1714,7 @@ is refused, as before.
 
 ## `vx lock`
 
-Freeze every project's **resolved** config into `vx-lock.json` at the
+Freeze every project's **resolved** config into `vx.lock.json` at the
 workspace root. Configs are programs; `vx lock` evaluates them in the
 current environment and stores the post-evaluation objects, by project
 name. "Every project" is the set a run
@@ -1722,11 +1722,11 @@ sees, a plugin's `discover` stage included (X-143). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
 included, and checks the graph rules (`run.rules`) a frozen run no
 longer checks, `dependencies` (which projects a project may depend on,
-`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `vx lock: vx-lock.json not written:
+`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `vx lock: vx.lock.json not written:
 <the rule's refusal>` and writes nothing.
 
 ```
-vx lock              # Evaluate all vx.config.* now; write vx-lock.json.
+vx lock              # Evaluate all vx.project.* now; write vx.lock.json.
 vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
 vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
 ```
@@ -1752,12 +1752,12 @@ its `problems`); it answers `--check` only.
 Full design: `docs/design/config-lock-2026-06.md`. A lock written by a
 1.x vx stays valid for every later 1.x (`tests/contract-lockfile.test.ts`).
 
-A project with no `vx.config.*` — its tasks from a plugin's `project`
+A project with no `vx.project.*` — its tasks from a plugin's `project`
 stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing
 to freeze: the lock records nothing for it, `--check` does not audit
 it, and `--frozen` still loads its tasks live. Both verbs name such
-projects that have tasks (`locked 0 project configs → vx-lock.json (no
-vx.config, so never frozen: app, lib)`, five names then `and N more`),
+projects that have tasks (`locked 0 project configs → vx.lock.json (no
+vx.project, so never frozen: app, lib)`, five names then `and N more`),
 so an empty lock on a plugin-only workspace never reads like an audit.
 One with no task (core's default `build` aside) is not named.
 
@@ -2004,12 +2004,12 @@ In a Turbo or Nx repo (a `turbo.json`, `turbo.jsonc` or `nx.json` at
 the root) it runs `@vzn/vx-migrate`, so `vx init` is the one command
 (owner, 2026-10-08): the installed one, else this vx's version through
 `bun x` (`BUN_BE_BUN=1` makes the compiled binary that runtime). It asks a
-terminal native (a `vx.config.ts` per package, the default) or keep;
+terminal native (a `vx.project.ts` per package, the default) or keep;
 `--native` or `--keep` answer it, and without a terminal it is native.
 `--dry`, `--format`, `--force` and `--mjs` pass through.
 
 Once it has written the configs (natively, not under `--dry`), it ends
-with `vx lock`'s step: `vx-lock.json` is written and the graph rules are
+with `vx lock`'s step: `vx.lock.json` is written and the graph rules are
 checked, in one line before `next:` (owner, 2026-10-14). A refusal (a
 graph rule, a plugin not installed yet) is printed, the configs stay
 written, the exit is 0, and `next:` says to fix it and run `vx lock`.
@@ -2048,7 +2048,7 @@ plugin is inert where its variable is unset. An nx.json that connects
 Nx Cloud (`nxCloudId`, `nxCloudAccessToken`, the `nx-cloud` runner) is
 named instead: vx does not speak its wire, so runs cache locally.
 
-Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.ts` per
+Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.project.ts` per
 package from its `package.json` scripts, plus a `vx.workspace.ts` of
 `{ plugins: [] }`: running and caching here are the floor, so it
 declares no executor or cache, and the file carries no comment (it is
@@ -2085,13 +2085,13 @@ no `@vzn/vx` installed for it — the type-only form is still what the
 scaffold writes, because it types the same with no import to resolve
 in an editor without the package. A workspace that imports a PLUGIN
 package at runtime without having installed it is told so, and to
-install its dependencies. `--mjs` writes the same objects as `vx.config.mjs` and
+install its dependencies. `--mjs` writes the same objects as `vx.project.mjs` and
 `vx.workspace.mjs`, with no type import and no `satisfies`: a package whose
-own `tsconfig` includes every `.ts` under it compiles a `vx.config.ts`
+own `tsconfig` includes every `.ts` under it compiles a `vx.project.ts`
 into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
 `.mjs` is outside that include. `@vzn/vx-migrate` takes the same flag.
 A file it writes that `.gitignore` drops (vueuse ignores
-`packages/**/*.mjs`) gets a `note:` naming it and the `!vx.config.mjs`
+`packages/**/*.mjs`) gets a `note:` naming it and the `!vx.project.mjs`
 line that keeps it, since a commit would leave it behind unnoticed.
 
 Each script becomes a task with its command verbatim. `build` gets
@@ -2149,7 +2149,7 @@ the kept ones under `kept`, so a half-adopted workspace adopts the rest
 
 A missing `vx.workspace.*` is not an error. A run where no package has
 a config fails before any task, exit 1:
-``vx run: no projects declare task(s): build. No package declares a vx.config — run `vx init` to write one per package from its package.json scripts.``
+``vx run: no projects declare task(s): build. No package declares a vx.project — run `vx init` to write one per package from its package.json scripts.``
 
 Two npm conventions are mapped rather than copied, because copying them
 loses behaviour. `pre<x>` / `post<x>` hooks, which npm runs around `x`
@@ -2161,7 +2161,7 @@ as text, so no part sees them as `$1` (X-60). The
 command is a small shell function, `vx_script`, around the three parts;
 it carries a TODO saying so; a `pre<x>` with no `x` stays a task of its own, and
 npm's lifecycle hooks (`prepack`, `prepublishOnly`, …) are never tasks.
-Every project gets a `vx.config.ts` (owner, 2026-10-14): a member with
+Every project gets a `vx.project.ts` (owner, 2026-10-14): a member with
 no script to run (none, or only lifecycle hooks: a types-only or config
 package), or with none a Turbo or Nx repo runs, gets one declaring
 `tasks: {}`. A project that already has a config keeps it. A package with no `build` script whose `prepack`, `prepublishOnly`,
@@ -2198,7 +2198,7 @@ nor is one that runs such a script by name (vite's `ci-docs`: `pnpm build &&
 pnpm docs-build`; through `run-s` / `run-p` / `npm-run-all` or `concurrently
 "npm:x"` too, lexical's `ci-check`, D-95), and neither is one whose name a member's task carries, so `--all` never runs
 a check twice (D-45). The rest check the whole repo (`lint: oxlint .`,
-`test: vitest`) and become the root's own tasks in a root vx.config, when
+`test: vitest`) and become the root's own tasks in a root vx.project, when
 the root has a `"name"` (vx skips a nameless root's config) and no config
 of its own; one already there, hand-written or from an earlier
 `vx init`, stays as written, `--force` included, and is listed under
@@ -2285,9 +2285,9 @@ The Turbo and Nx mappers are `@vzn/vx-migrate`, their own package, run
 before a workspace file exists (it writes one) —
 
 ```
-bunx @vzn/vx-migrate           # turbo.json, an Nx graph or vite-plus run.tasks → vx.config.ts
+bunx @vzn/vx-migrate           # turbo.json, an Nx graph or vite-plus run.tasks → vx.project.ts
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
-bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
+bunx @vzn/vx-migrate --force   # overwrite existing vx.project.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when both runners are checked in
 ```
 
@@ -2469,7 +2469,7 @@ the task once (`vx run <task>`); history is this checkout's own.
 
 #### `VX_E_CONFIG`
 
-A `vx.config.*` or `vx.workspace.*` that does not load or is refused. The
+A `vx.project.*` or `vx.workspace.*` that does not load or is refused. The
 message names the file and the field; fix that field
 (`vx docs <field>` prints its reference). `vx info --format json` lists
 every config error at once.
@@ -2575,7 +2575,7 @@ plugin `config` and `project` stages included, so a package a plugin
 gives tasks to (`turbo()` or `nx()` from `@vzn/vx-migrate`, a
 temporary start toward native config) shows them; cached
 evaluations are served from the local cache like a run's. `vx show`
-never reads `vx-lock.json` (the lock is already the frozen JSON — open
+never reads `vx.lock.json` (the lock is already the frozen JSON — open
 it directly if you want the frozen view).
 
 ```
@@ -2671,7 +2671,7 @@ share `TMPDIR`: a `nix develop` shell sets its own.
 Every verb: a path vx must write that this user cannot (`EACCES`,
 `EPERM`, `EROFS` — a read-only checkout, another user's files) or that
 the disk has no room for (`ENOSPC`, `EDQUOT`) exits 1 with one line
-naming the path, `vx: EACCES: permission denied, open '…/vx-lock.json'
+naming the path, `vx: EACCES: permission denied, open '…/vx.lock.json'
 — a path vx must write is not writable by this user` (or `— the disk
 that path is on is full`), never a stack. Inside a run the task's line
 says the same. A process out of file descriptors (`EMFILE`, `ENFILE`;
@@ -2707,7 +2707,7 @@ orphans:          3 artifacts (12 MB) the index does not know — `vx cache prun
 task runs (24h):  7 (5 cache hits)
 flaky tasks:      1 — web#test (3 of 11 runs failed on unchanged inputs)
 sandbox:          available (9 tasks declare exec.sandbox)
-vx-lock.json:     yes
+vx.lock.json:     yes
 ```
 
 - `git` shows `(not found)` when the binary is missing; a broken
@@ -3179,7 +3179,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_RUN_KILL_GRACE`                 | [`run.killGrace`](schema.md#settings)                 | How long a task that ignores SIGTERM gets before SIGKILL.                                                                                                   |
 | `VX_RUN_TEARDOWN_TIMEOUT`           | [`run.teardownTimeout`](schema.md#settings)           | The bound on each plugin's end-of-run flush and teardown.                                                                                                   |
 | `VX_RUN_READY_NOTICE`               | [`run.readyNotice`](schema.md#settings)               | How long a persistent task may take to match `readyWhen` before vx says it waits.                                                                           |
-| `VX_RUN_FROZEN`                     | [`run.frozen`](schema.md#settings)                    | Load configs from `vx-lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.                                                       |
+| `VX_RUN_FROZEN`                     | [`run.frozen`](schema.md#settings)                    | Load configs from `vx.lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.                                                       |
 | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | [`run.rules.exclusiveOutputs`](schema.md#settings)    | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                       |
 | `VX_RUN_RULES_UPFRONT_KEYS`         | [`run.rules.upfrontKeys`](schema.md#settings)         | Refuse a task whose inputs can match another task's outputs.                                                                                                |
 | `VX_CACHE_DIR`                      | [`cache.dir`](schema.md#settings)                     | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                     |

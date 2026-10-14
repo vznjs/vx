@@ -17,7 +17,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** A package `name` whose `vx.config.mjs` is `config`. */
+/** A package `name` whose `vx.project.mjs` is `config`. */
 async function pkg(
   name: string,
   config: string,
@@ -29,7 +29,7 @@ async function pkg(
     path.join(dir, 'package.json'),
     JSON.stringify({ name, version: '1.0.0', ...(scripts ? { scripts } : {}) }),
   )
-  await writeFile(path.join(dir, 'vx.config.mjs'), config)
+  await writeFile(path.join(dir, 'vx.project.mjs'), config)
   return dir
 }
 

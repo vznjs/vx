@@ -30,7 +30,7 @@ const graph = (...ns: TaskNode[]): Map<string, TaskNode> => new Map(ns.map((n) =
 
 const refusal = (task: Record<string, unknown>): string => {
   try {
-    validateProjectConfig({ tasks: { t: task } } as never, 'vx.config.ts')
+    validateProjectConfig({ tasks: { t: task } } as never, 'vx.project.ts')
   } catch (err) {
     return (err as Error).message
   }
@@ -53,12 +53,12 @@ describe('exec.interactive in the schema', () => {
       off: refusal({ exec: { command: 'x', interactive: false }, cache }),
     }).toEqual({
       cache:
-        'vx.config.ts: tasks.t: `cache` is not allowed on an interactive task — what it does depends on what is typed, which no key holds',
+        'vx.project.ts: tasks.t: `cache` is not allowed on an interactive task — what it does depends on what is typed, which no key holds',
       sandbox:
-        "vx.config.ts: tasks.t: `sandbox` is not allowed on an interactive task — a sandboxed task's output passes through vx, and an interactive one writes to the terminal",
+        "vx.project.ts: tasks.t: `sandbox` is not allowed on an interactive task — a sandboxed task's output passes through vx, and an interactive one writes to the terminal",
       readyWhen:
-        'vx.config.ts: tasks.t: `persistent.readyWhen` is not allowed on an interactive task — its output goes to the terminal, so vx reads none of it; it is ready once spawned',
-      shape: 'vx.config.ts: tasks.t.exec.interactive must be a boolean (or omitted)',
+        'vx.project.ts: tasks.t: `persistent.readyWhen` is not allowed on an interactive task — its output goes to the terminal, so vx reads none of it; it is ready once spawned',
+      shape: 'vx.project.ts: tasks.t.exec.interactive must be a boolean (or omitted)',
       server: 'ok',
       timeout: 'ok',
       off: 'ok',

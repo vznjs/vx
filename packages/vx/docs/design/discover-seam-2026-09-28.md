@@ -12,7 +12,7 @@ graph with the `cacheDir` the context carries. Leads from N
 ## Why
 
 Core finds projects one way: the package manager's member globs (and,
-since D-39, a root `vx.config`). An integrated Nx repo does not list its
+since D-39, a root `vx.project`). An integrated Nx repo does not list its
 projects there. analogjs/analog (40cc8b4) keeps its libraries out of
 `pnpm-workspace.yaml`; each is an Nx project by its `project.json`, and
 some have a `package.json` no workspace lists. `nx()` reads Nx's graph
@@ -73,7 +73,7 @@ interface DiscoverContext extends PluginContext {
    Either `discover` returns the files its answer depends on, or watch
    re-runs discovery when a plugin's `project` inputs move (C/E).
 2. `vx lock` records project configs by path; a named project with no
-   `vx.config` records nothing, as a config-less member does today.
+   `vx.project` records nothing, as a config-less member does today.
 3. Does a named project need its own `package.json`-less identity in
    `vx info` / `vx show`? Proposed: the plugin's name, directory as usual.
 

@@ -275,7 +275,7 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
     await mkdir(path.join(root, 'app'), { recursive: true })
     await writeFile(path.join(root, 'preset.ts'), 'export const p = 1\n')
     await writeFile(
-      path.join(root, 'app', 'vx.config.ts'),
+      path.join(root, 'app', 'vx.project.ts'),
       "import { p } from '../preset.js'\nexport default { tasks: {} , p }\n",
     )
   })
@@ -293,7 +293,7 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
             name: 'app',
             dir: path.join(root, 'app'),
             packageJson: { name: 'app' },
-            configPath: path.join(root, 'app', 'vx.config.ts'),
+            configPath: path.join(root, 'app', 'vx.project.ts'),
           },
         ] as never,
         changed,
@@ -321,7 +321,7 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
   // the project importing the changed preset never ran (D-63).
   const refusingConfigRead = (code: string) => {
     const file = Bun.file
-    const config = path.join(real, 'app', 'vx.config.ts')
+    const config = path.join(real, 'app', 'vx.project.ts')
     return spyOn(Bun, 'file').mockImplementation(((p: string, o?: BlobPropertyBag) => {
       const f = file(p, o)
       if (p !== config) return f
@@ -364,7 +364,7 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
     // never runs — the silent wrong answer this whole channel exists to
     // prevent, reachable by nothing more exotic than a type annotation.
     await writeFile(
-      path.join(root, 'app', 'vx.config.ts'),
+      path.join(root, 'app', 'vx.project.ts'),
       "import { p } from '../preset.js'\nconst v: number = p\nexport default { tasks: {}, v }\n",
     )
     expect(await owners(['preset.ts'])).toEqual(['app'])
@@ -381,7 +381,7 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
     await writeFile(path.join(root, 'core', 'src', 'deep.ts'), 'export const d = 1\n')
     await writeFile(path.join(root, 'core', 'src', 'index.ts'), "export { d } from './deep.js'\n")
     await writeFile(
-      path.join(root, 'app', 'vx.config.ts'),
+      path.join(root, 'app', 'vx.project.ts'),
       "import { d } from '../core/src/index.js'\nexport default { tasks: {}, d }\n",
     )
     const projects = [
@@ -389,7 +389,7 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
         name: 'app',
         dir: path.join(root, 'app'),
         packageJson: { name: 'app' },
-        configPath: path.join(root, 'app', 'vx.config.ts'),
+        configPath: path.join(root, 'app', 'vx.project.ts'),
       },
       {
         name: 'core',
@@ -420,7 +420,7 @@ describe('configImportOwners under a NON-CANONICAL workspace root', () => {
     // arm that fails when only THAT normalisation is dropped: the BFS
     // records the edge correctly and the changed file still matches no
     // root.
-    expect(await owners(['app/vx.config.ts'])).toEqual(['app'])
+    expect(await owners(['app/vx.project.ts'])).toEqual(['app'])
   })
 })
 
@@ -430,7 +430,7 @@ describe('a config importing what no node_modules provides', () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-missing-import-'))
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(
-      path.join(dir, 'vx.config.mjs'),
+      path.join(dir, 'vx.project.mjs'),
       "import { preset } from 'nope-pkg'\nexport default { tasks: { build: { exec: { command: 'true' }, ...preset } } }\n",
     )
   })
@@ -440,7 +440,7 @@ describe('a config importing what no node_modules provides', () => {
 
   it('an .mts config is refused too — the loader is chosen for every TS extension', async () => {
     // The refusal reads the source with a loader chosen from the
-    // extension, and `vx.config.mts` is a DISCOVERED config name
+    // extension, and `vx.project.mts` is a DISCOVERED config name
     // (workspace.ts's CONFIG_FILENAMES lists .ts, .mts, .js, .mjs). Every
     // fixture spells `.mjs` or `.ts`, so the `[cm]?` in that pattern had
     // no witness — and losing it does not merely mislabel the file, it
@@ -452,7 +452,7 @@ describe('a config importing what no node_modules provides', () => {
     //
     // 539 found the same "loader from the extension" rule unheld in
     // `configImportOwners`; this is its second copy, one file over.
-    const mts = path.join(dir, 'vx.config.mts')
+    const mts = path.join(dir, 'vx.project.mts')
     await writeFile(
       mts,
       "import { preset } from 'nope-pkg'\nconst v: number = 1\nexport default { tasks: { build: { exec: { command: 'true' }, ...preset } }, v }\n",
@@ -474,7 +474,7 @@ describe('a config importing what no node_modules provides', () => {
     // came before the import, where Bun's says only "cannot find".
     let err: Error | undefined
     try {
-      await loadProjectConfig(path.join(dir, 'vx.config.mjs'))
+      await loadProjectConfig(path.join(dir, 'vx.project.mjs'))
     } catch (e) {
       err = e as Error
     }
@@ -487,7 +487,7 @@ describe('a config importing what no node_modules provides', () => {
   it('a REPEAT load is refused too, before the worker evaluates it (D-18)', async () => {
     // A path loaded before re-evaluates in the config worker (`vx watch`,
     // `vx lock`), which is a second door to Bun's auto-install.
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     const refusal = async (): Promise<string | undefined> => {
       try {
         await loadProjectConfig(file)
@@ -512,7 +512,7 @@ describe('a config importing what no node_modules provides', () => {
       path.join(pkg, 'index.js'),
       "export const preset = { description: 'from the package' }\n",
     )
-    const config = await loadProjectConfig(path.join(dir, 'vx.config.mjs'))
+    const config = await loadProjectConfig(path.join(dir, 'vx.project.mjs'))
     expect(config.tasks?.['build']?.description).toBe('from the package')
   })
 })

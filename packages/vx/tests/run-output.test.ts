@@ -129,7 +129,7 @@ describe('vx last --format json (e2e)', () => {
     app = path.join(root, 'packages', 'app')
     await mkdir(path.join(app, 'src'), { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
-    await writeFile(path.join(app, 'vx.config.mjs'), CONFIG)
+    await writeFile(path.join(app, 'vx.project.mjs'), CONFIG)
     await writeFile(path.join(app, 'src', 'a.ts'), 'x\n')
     gitInitCommit(root)
   }, TIMEOUT)

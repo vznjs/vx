@@ -92,7 +92,7 @@ describe('a task killed by a shutdown signal', () => {
       await write(path.join(root, 'packages/a/package.json'), '{"name":"a","version":"0.0.0"}')
       await write(path.join(root, 'packages/a/src/in.txt'), 'a-source')
       await write(
-        path.join(root, 'packages/a/vx.config.mjs'),
+        path.join(root, 'packages/a/vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -112,7 +112,7 @@ describe('a task killed by a shutdown signal', () => {
       )
       await write(path.join(root, 'packages/b/src/in.txt'), 'b-source')
       await write(
-        path.join(root, 'packages/b/vx.config.mjs'),
+        path.join(root, 'packages/b/vx.project.mjs'),
         `export default {
            tasks: {
              build: {
@@ -157,7 +157,7 @@ describe('a task killed by a shutdown signal', () => {
       await writeLocalWorkspace(root)
       await write(path.join(root, '.gitignore'), '.vx/\n')
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              fine: { exec: { command: 'echo fine' } },
@@ -202,7 +202,7 @@ describe('a task killed by a shutdown signal', () => {
       // 0.3 s: a flat `sleep 0.3` raced three spawns and lost under gate
       // load, so `later` ran before fail-fast tripped (C-44).
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default {
            tasks: {
              selfkill: { exec: { command: 'echo DIAGNOSTIC; echo x >> attempts; kill -TERM $$', retries: 2 } },
@@ -232,7 +232,7 @@ describe('a task killed by a shutdown signal', () => {
       await writeLocalWorkspace(root)
       await write(path.join(root, '.gitignore'), '.vx/\n')
       await write(
-        path.join(root, 'vx.config.mjs'),
+        path.join(root, 'vx.project.mjs'),
         `export default { tasks: { fine: { exec: { command: 'echo fine' } } } }`,
       )
       git(root, 'init', '-q')

@@ -72,7 +72,7 @@ describe('the `config` stage reaches every verb that opens the cache', () => {
     const app = path.join(root, 'packages', 'app')
     await mkdir(path.join(app, 'src'), { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
-    await writeFile(path.join(app, 'vx.config.mjs'), APP_CONFIG)
+    await writeFile(path.join(app, 'vx.project.mjs'), APP_CONFIG)
     await writeFile(path.join(app, 'src', 'index.js'), 'export {}\n')
     await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
     const r = await vx(root, ['run', 'build', '--all'])

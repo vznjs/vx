@@ -19,7 +19,7 @@ async function writeFixture(): Promise<{ workspaceRoot: string; cleanup: () => v
   )
   await Bun.write(path.join(workspaceRoot, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
   await Bun.write(
-    path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+    path.join(workspaceRoot, 'pkg-a/vx.project.mjs'),
     `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
   )
   return { workspaceRoot, cleanup: () => rmSync(workspaceRoot, { recursive: true, force: true }) }

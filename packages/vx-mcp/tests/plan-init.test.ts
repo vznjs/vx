@@ -42,7 +42,7 @@ it('answers what the CLI prints, and writes nothing', async () => {
   const plan = await handleToolCall('planInit', {}, ctx())
   expect(plan).toEqual({ exitCode: 0, init: cli })
   expect((cli as { files: { path: string }[] }).files.map((f) => f.path)).toEqual([
-    'packages/a/vx.config.ts',
+    'packages/a/vx.project.ts',
     'vx.workspace.ts',
   ])
   expect(existsSync(path.join(root, 'vx.workspace.ts'))).toBe(false)

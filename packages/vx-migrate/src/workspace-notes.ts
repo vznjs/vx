@@ -44,7 +44,7 @@ export async function adoptedToolNotes(root: string, tool: AdoptedTool): Promise
     if (new RegExp(`\\b${tool.plugin}\\s*\\(`).test(declared))
       notes.push(
         `${name} still declares ${tool.plugin}(), which reads ${tool.config} every run and fills any task ` +
-          'a vx.config does not declare; the configs written here declare them all. Once ' +
+          'a vx.project does not declare; the configs written here declare them all. Once ' +
           `\`vx run\` does what ${tool.runner} did, remove ${tool.plugin}() (and its import), then ${tool.config}`,
       )
     break

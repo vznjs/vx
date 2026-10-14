@@ -16,7 +16,7 @@ const refused = (p: Promise<unknown>, file: string): Promise<string> =>
 it('a function default export is named, in-process and from the worker', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-fn-export-'))
   try {
-    const file = path.join(dir, 'vx.config.mjs')
+    const file = path.join(dir, 'vx.project.mjs')
     await writeFile(file, 'export default () => ({ tasks: {} })\n')
     const fn =
       'did not export a default object: it exports a function, and vx reads the object itself — export what the function returns'
@@ -27,7 +27,7 @@ it('a function default export is named, in-process and from the worker', async (
     await writeFile(ws, 'export default async () => ({ plugins: [] })\n')
     expect(await refused(loadWorkspaceConfig(dir), ws)).toBe(`Workspace config at <file> ${fn}`)
     // CONTROL: a number keeps the bare message.
-    const n = path.join(dir, 'n', 'vx.config.mjs')
+    const n = path.join(dir, 'n', 'vx.project.mjs')
     await Bun.write(n, 'export default 42\n')
     expect(await refused(loadProjectConfig(n), n)).toBe(
       'Project config at <file> did not export a default object',
