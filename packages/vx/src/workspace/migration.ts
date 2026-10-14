@@ -274,6 +274,13 @@ export interface ApplyMigrationArgs {
    * its files are written, and `vx lock` is the step to re-run.
    */
   lock?: (root: string) => Promise<number>
+  /** What the written workspace file declares, e.g. `pnpm()` from `@vzn/vx-lockfile`. */
+  plugins?: readonly WorkspacePlugin[]
+}
+
+export interface WorkspacePlugin {
+  readonly pkg: string
+  readonly factory: string
 }
 
 export type MigrationFormat = 'ts' | 'mjs'
@@ -346,7 +353,11 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // A plan may bring its own (vx-migrate declares the plugins it detects).
   if (!hasWorkspaceFile && !plan.extraFiles.some((f) => f.relPath === workspaceName)) {
     const abs = path.join(root, workspaceName)
-    files.push({ relPath: relPosix(root, abs), abs, contents: workspaceFile(format) })
+    files.push({
+      relPath: relPosix(root, abs),
+      abs,
+      contents: workspaceFile(format, args.plugins ?? []),
+    })
   }
   // `.vx/.gitignore` keeps the machine-local `.vx/cache` out of git and the
   // workspace config and lock in; one already there is the user's.
@@ -709,12 +720,12 @@ function exampleConfig(format: MigrationFormat): string {
 // into every run — measured 2026-09-09 at ~17 ms on a two-package
 // workspace, a fifth of the whole run — for an identity function.
 // No explanatory comment: the file is the user's (owner, 2026-10-06).
-const WORKSPACE_BODY = `export default { plugins: [] }`
-
-function workspaceFile(format: MigrationFormat): string {
+function workspaceFile(format: MigrationFormat, plugins: readonly WorkspacePlugin[]): string {
+  const imports = plugins.map((p) => `import { ${p.factory} } from '${p.pkg}'\n`).join('')
+  const body = `export default { plugins: [${plugins.map((p) => `${p.factory}()`).join(', ')}] }`
   return format === 'ts'
-    ? `import type { WorkspaceConfig } from '@vzn/vx/config'\n\n${WORKSPACE_BODY} satisfies WorkspaceConfig\n`
-    : `${WORKSPACE_BODY}\n`
+    ? `import type { WorkspaceConfig } from '@vzn/vx/config'\n${imports}\n${body} satisfies WorkspaceConfig\n`
+    : `${imports}${imports === '' ? '' : '\n'}${body}\n`
 }
 
 const IDENT = /^[A-Za-z_$][\w$]*$/
