@@ -56,7 +56,7 @@ loop forever.
 
 On macOS a directory watcher can return before its event stream is
 live, and an edit in that gap is silently lost. vx writes a probe file
-under every watcher and does not print `vx watch: watching …` until
+under every watcher and does not print its `watching` line until
 each probe's event has arrived, re-writing on a short backoff. The line
 is a promise, not a hope. A directory whose watcher stays silent for
 two seconds is polled instead, with a warning naming the interval.
@@ -68,6 +68,9 @@ reach.
 
 ## The rest of the contract
 
+- The output is the work: one opening line, `watching N projects · M
+  tasks`, then each cycle as a blank line, `changed <project> <file>`
+  (with `+N more` when more changed) and its task rows, with no footer.
 - Events during a cycle queue and drain after it; re-runs are debounced
   about 150 ms after the last event.
 - A failed cycle prints its failure and waits for the next change; it

@@ -1,7 +1,7 @@
 // An inotify watch holds an inode, not a path. A member base removed and
 // made again (`rm -rf packages && git checkout packages`) left its watch on
 // the deleted directory, and the root arm drops every name but its own
-// files, so the base coming back was no event: `watching 0 project(s)`,
+// files, so the base coming back was no event: `watching 0 projects`,
 // and no edit after it ran until a restart. Made again inside one window,
 // the re-read found the same project paths and kept their dead watches.
 
@@ -34,13 +34,13 @@ describe('vx watch over a member base made again', () => {
   it('a base removed, then made again, is watched again', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await recreate(f.root, true, () =>
-      until(() => w.out().includes('watching 0 project(s)'), 'the cycle that drops the project'),
+      until(() => w.out().includes('watching 0 projects'), 'the cycle that drops the project'),
     )
     await until(
-      () => w.out().split('watching 1 project(s)').length === 3,
+      () => w.out().split('watching 1 project ').length === 3,
       'the re-arm after the base came back',
     )
     const before = await executions(f.log)
@@ -52,11 +52,11 @@ describe('vx watch over a member base made again', () => {
   it('a base made again inside one window is watched again', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await recreate(f.root, false)
     await until(() => w.cycles() >= 1, 'the cycle for the base made again')
-    await until(() => w.out().split('vx watch: watching').length >= 3, 'its re-arm')
+    await until(() => w.out().split('watching ').length >= 3, 'its re-arm')
     const before = await executions(f.log)
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a3\n')
     await until(async () => (await executions(f.log)) > before, 'the edit after the base came back')
@@ -69,10 +69,10 @@ describe('vx watch over a member base made again', () => {
   it('a package added to a base made again joins', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await recreate(f.root, false)
-    await until(() => w.out().split('vx watch: watching').length >= 3, 'the re-arm')
+    await until(() => w.out().split('watching ').length >= 3, 'the re-arm')
     const dir = path.join(f.root, 'packages', 'later')
     await mkdir(dir)
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'later' }))
@@ -80,7 +80,7 @@ describe('vx watch over a member base made again', () => {
       path.join(dir, 'vx.config.mjs'),
       "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
     )
-    await until(() => w.out().includes('watching 2 project(s)'), 'the new package joining')
+    await until(() => w.out().includes('watching 2 projects'), 'the new package joining')
   }, 40_000)
 })
 
@@ -103,15 +103,15 @@ describe('vx watch over a nested base whose parent is made again', () => {
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a1\n')
     const w = startWatch(root)
     try {
-      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await until(() => w.out().includes('watching '), 'the watching marker')
       const copy = await mkdtemp(path.join(os.tmpdir(), 'vx-apps-copy-'))
       await cp(path.join(root, 'apps'), path.join(copy, 'apps'), { recursive: true })
       await rm(path.join(root, 'apps'), { recursive: true, force: true })
-      await until(() => w.out().includes('watching 0 project(s)'), 'the cycle that drops it')
+      await until(() => w.out().includes('watching 0 projects'), 'the cycle that drops it')
       await cp(path.join(copy, 'apps'), path.join(root, 'apps'), { recursive: true })
       await rm(copy, { recursive: true, force: true })
       await until(
-        () => w.out().split('watching 1 project(s)').length === 3,
+        () => w.out().split('watching 1 project ').length === 3,
         'the re-arm after apps/ came back',
       )
       const before = await executions(log)
@@ -151,14 +151,14 @@ describe('vx watch over a nested base whose parent is made again', () => {
       await rm(copy, { recursive: true, force: true })
     }
     try {
-      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await until(() => w.out().includes('watching '), 'the watching marker')
       await swap('apps')
-      await until(() => w.out().split('vx watch: watching').length >= 3, 'the re-arm')
+      await until(() => w.out().split('watching ').length >= 3, 'the re-arm')
       await swap(path.join('apps', 'web'), () =>
-        until(() => w.out().includes('watching 0 project(s)'), 'the cycle that drops it'),
+        until(() => w.out().includes('watching 0 projects'), 'the cycle that drops it'),
       )
       await until(
-        () => w.out().split('watching 0 project(s)')[1]!.includes('watching 1 project(s)'),
+        () => w.out().split('watching 0 projects')[1]!.includes('watching 1 project '),
         'the re-arm after apps/web came back',
       )
       const before = await executions(log)
@@ -196,12 +196,11 @@ describe('vx watch over a config import directory made again', () => {
     const runs = async (): Promise<string[]> =>
       (await readFile(log, 'utf8')).split('\n').filter(Boolean)
     try {
-      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await until(() => w.out().includes('watching '), 'the watching marker')
       // Each re-arm prints this line (the startup one carries a suffix).
       // The removal's cycle re-arms too, so the restore's re-arm is the
       // second: on macOS an edit before it landed in an unwatched gap.
-      const rearms = (): number =>
-        w.out().match(/^vx watch: watching 1 project\(s\)$/gm)?.length ?? 0
+      const rearms = (): number => w.out().match(/^watching 1 project · /gm)?.length ?? 0
       const copy = await mkdtemp(path.join(os.tmpdir(), 'vx-shared-copy-'))
       await cp(path.join(root, 'shared'), path.join(copy, 'shared'), { recursive: true })
       await rm(path.join(root, 'shared'), { recursive: true, force: true })
@@ -240,18 +239,18 @@ describe('vx watch over a package directory made again before its manifest', () 
     await mkdir(later)
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     // Replaced in one rename (POSIX renames onto an empty directory), so
     // the base's names never change: no member event, whatever the timing.
     const fresh = await mkdtemp(path.join(os.tmpdir(), 'vx-later-'))
     await rename(fresh, later)
-    await until(() => w.out().split('vx watch: watching').length >= 3, 'the re-arm')
+    await until(() => w.out().split('watching ').length >= 3, 'the re-arm')
     await writeFile(path.join(later, 'package.json'), JSON.stringify({ name: 'later' }))
     await writeFile(
       path.join(later, 'vx.config.mjs'),
       "export default { tasks: { build: { exec: { command: 'true' } } } }\n",
     )
-    await until(() => w.out().includes('watching 2 project(s)'), 'the package joining')
+    await until(() => w.out().includes('watching 2 projects'), 'the package joining')
   }, 40_000)
 })

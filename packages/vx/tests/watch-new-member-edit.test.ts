@@ -43,7 +43,7 @@ it('an edit in a package added mid-watch, made while its first cycle still runs,
   await addProject(root, 'slow', slow)
   w = startWatch(root)
   const ww = w
-  await until(() => ww.out().includes('vx watch: watching'), 'watching')
+  await until(() => ww.out().includes('watching '), 'watching')
   // The lock lands first, and fresh only once the lock's cycle has re-armed:
   // added during a cycle, fresh would be armed at that cycle's end, before
   // it ever ran.
@@ -52,7 +52,7 @@ it('an edit in a package added mid-watch, made while its first cycle still runs,
     await readFile(path.join(twin, '.vx', 'projects.lock.json')),
   )
   await until(
-    () => ww.out().split('watching 1 project(s)').length - 1 === 2,
+    () => ww.out().split('watching 1 project ').length - 1 === 2,
     're-armed after the cycle the lock started',
   )
   await rm(marker, { force: true })
@@ -64,7 +64,7 @@ it('an edit in a package added mid-watch, made while its first cycle still runs,
   )
   // The cycle is still in slow#build's sleep: fresh is not armed yet.
   await writeFile(path.join(root, 'packages', 'fresh', 'src', 'a.txt'), '2')
-  await until(() => ww.out().includes('watching 2 project(s)'), 'the re-arm')
+  await until(() => ww.out().includes('watching 2 projects'), 'the re-arm')
   await Bun.sleep(SETTLE_MS * 2)
   expect(await runs()).toEqual(['fresh 1', 'fresh 2'])
 }, 40_000)

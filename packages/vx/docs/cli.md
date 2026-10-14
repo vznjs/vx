@@ -1449,7 +1449,8 @@ run...` precedes it.
    at the root, a `coverage/` or `.turbo/` tree, an editor's scratch
    file are dropped before the trigger — so `vx watch … > build.log`
    inside the repo settles instead of feeding itself a cycle per line
-   of its own output. `vx watch: watching …` is
+   of its own output. The opening line, `watching N projects · M tasks`
+   (after the initial run's rows), is
    printed only after every watcher has reported a probe file written
    under it (`.vx-watch-probe`, re-written on a short backoff until its
    event arrives, then removed): on macOS a directory watcher can return
@@ -1461,10 +1462,14 @@ run...` precedes it.
    watcher whose probe is not heard within 2 s is replaced by a poller
    that checks every 250 ms, with the notice `vx watch: <dir>: no OS
 watch events within 2000 ms; polling every 250 ms instead`.
-3. **On change.** The triggering path is logged
-   (`vx watch: <project> <relpath>; re-running...`): the first changed
-   path that still exists, so an editor's temporary file renamed away
-   names nothing; a deletion names the cycle when nothing else changed. The
+3. **On change.** A cycle opens with a blank line and
+   `changed <project> <relpath>`, plus ` (+N more)` when more paths
+   changed, then its task rows as `vx run` prints them, with no footer.
+   The named path is the first changed one that still exists, so an
+   editor's temporary file renamed away names nothing; a deletion names
+   the cycle when nothing else changed. A cycle that re-read the watched
+   set (a member came or went, the lock or a plugin changed) says the
+   `watching` line again. Errors and refusals go to stderr. The
    orchestrator is invoked again with the same options, save one: the
    `--affected` diff is read once, for the initial run. A later cycle
    runs the requested task in every project of the scope fixed at start,

@@ -23,7 +23,7 @@ describe('vx watch with VX_DEBUG_TIMING', () => {
   it("a cycle's table holds that cycle's stages alone, timed from its own start", async () => {
     f.watch = startWatch(f.root, ['--all'], { VX_DEBUG_TIMING: '1' })
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await until(() => w.err().includes(TABLE), 'the initial table')
     const idleFrom = Date.now()
     await Bun.sleep(1_000)

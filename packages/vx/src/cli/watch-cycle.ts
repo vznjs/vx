@@ -15,6 +15,8 @@ export interface WatchCycle {
   /** Stop the run as a SIGTERM would; watch keeps going. */
   interrupt(): void
   readonly interrupted: boolean
+  /** The run's task count, once it has started. */
+  readonly tasks: number | undefined
 }
 
 /** `onWaiting` hears each task event after which the cycle waits on readiness alone. */
@@ -23,21 +25,26 @@ export function watchCycle(opts: RunOptions, stop: AbortSignal, onWaiting: () =>
   const bus = createEventBus()
   // id → persistent; a group task has no process and holds nothing up.
   const active = new Map<string, boolean>()
+  let tasks: number | undefined
   const waitsOnReadiness = (): boolean =>
     active.size > 0 && [...active.values()].every((persistent) => persistent)
   bus.subscribe((e) => {
-    if (e.kind === 'task:start' && e.node.config.exec !== undefined)
+    if (e.kind === 'run:start') tasks = e.info.total
+    else if (e.kind === 'task:start' && e.node.config.exec !== undefined)
       active.set(e.node.id, e.node.config.exec.persistent !== undefined)
     else if (e.kind === 'task:complete') active.delete(e.node.id)
     else return
     if (waitsOnReadiness()) onWaiting()
   })
   return {
-    opts: { ...opts, bus, signal: AbortSignal.any([stop, own.signal]) },
+    opts: { ...opts, bus, footer: false, signal: AbortSignal.any([stop, own.signal]) },
     waitsOnReadiness,
     interrupt: () => own.abort('SIGTERM'),
     get interrupted() {
       return own.signal.aborted
+    },
+    get tasks() {
+      return tasks
     },
   }
 }

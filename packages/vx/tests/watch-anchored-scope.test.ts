@@ -48,8 +48,8 @@ describe('vx watch with anchored tasks (e2e)', () => {
   it('only anchored tasks watch their own projects, not every project (X-38)', async () => {
     watch = startWatch(root, [], {}, 'lib#build')
     const w = watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-    expect(w.out()).toContain('vx watch: watching 1 project(s)')
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    expect(w.out()).toContain('watching 1 project ')
 
     await writeFile(path.join(root, 'packages', 'other', 'src', 'a.txt'), 'o2\n')
     await Bun.sleep(SETTLE_MS)
@@ -67,8 +67,8 @@ describe('vx watch with anchored tasks (e2e)', () => {
   it("a bare task beside an anchored one watches the anchored task's project too (X-38)", async () => {
     watch = startWatch(path.join(root, 'packages', 'lib'), ['other#test'], {}, 'test')
     const w = watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-    expect(w.out()).toContain('vx watch: watching 2 project(s)')
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    expect(w.out()).toContain('watching 2 projects')
 
     await writeFile(path.join(root, 'packages', 'other', 'src', 'a.txt'), 'o2\n')
     await until(() => w.cycles() === 1, 'the cycle the other edit starts')

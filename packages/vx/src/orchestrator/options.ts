@@ -198,6 +198,12 @@ export interface RunOptions {
    */
   beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   /**
+   * `false`: no footer, live or printed, and no blank line opening the
+   * task log; the run is its task rows (`vx watch`, which frames each
+   * cycle with its own line).
+   */
+  footer?: boolean
+  /**
    * If set, write a Chrome-trace JSON profile of the run's wallclock
    * spans. Path is cwd-relative. Default `profile.json` is selected
    * by the CLI parser, not here.

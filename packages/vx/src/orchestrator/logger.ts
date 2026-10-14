@@ -202,6 +202,8 @@ export function defaultLogger(
     tty?: boolean
     /** The args after `--`: a requested task's `$ <command>` line shows them, as it ran. */
     forwardArgs?: readonly string[]
+    /** `false`: no summary in the live region and no blank line opening the log (`RunOptions.footer`). */
+    footer?: boolean
     /** The environment that names the terminal (`TERM_PROGRAM`, …); `process.env` by default. */
     env?: Readonly<Record<string, string | undefined>>
   } = {},
@@ -431,29 +433,32 @@ export function defaultLogger(
     }
     // The live summary IS the final summary's section, built from the
     // same formatter so the region visually becomes the printout.
-    const summaryLines = formatSummarySection(
-      {
-        failed,
-        successful: succeeded + upToDate + restoredLocal + restoredRemote,
-        skipped: skippedCount,
-        total,
-        upToDate,
-        restoredLocal,
-        restoredRemote,
-        miss: succeeded + failed - noCache,
-        noCache,
-        savedMs,
-        left: total - done,
-        ...(etaMs !== undefined ? { etaMs } : {}),
-        spread:
-          spreadCount > 0
-            ? { maxMs: spreadMax, minMs: spreadMin, sumMs: spreadSum, count: spreadCount }
-            : null,
-      },
-      Date.now() - startedAtMs,
-      colors,
-      runContext,
-    )
+    const summaryLines =
+      opts.footer === false
+        ? []
+        : formatSummarySection(
+            {
+              failed,
+              successful: succeeded + upToDate + restoredLocal + restoredRemote,
+              skipped: skippedCount,
+              total,
+              upToDate,
+              restoredLocal,
+              restoredRemote,
+              miss: succeeded + failed - noCache,
+              noCache,
+              savedMs,
+              left: total - done,
+              ...(etaMs !== undefined ? { etaMs } : {}),
+              spread:
+                spreadCount > 0
+                  ? { maxMs: spreadMax, minMs: spreadMin, sumMs: spreadSum, count: spreadCount }
+                  : null,
+            },
+            Date.now() - startedAtMs,
+            colors,
+            runContext,
+          )
     writer.setRegion(
       formatStatusRegion(
         {
@@ -491,8 +496,9 @@ export function defaultLogger(
 
   // The task log opens with one blank line before its first row, on a
   // terminal and off one (M, 2026-10-14). A note vx prints before it is
-  // no task row (`status`).
-  let logOpened = false
+  // no task row (`status`). Without a footer, the caller frames the log
+  // (`vx watch` opens each cycle with its own line).
+  let logOpened = opts.footer === false
   const taskWrite = (chunk: string): void => {
     if (!logOpened && chunk.length > 0) {
       logOpened = true

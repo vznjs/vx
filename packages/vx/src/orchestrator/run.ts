@@ -330,6 +330,7 @@ export async function run(options: RunOptions): Promise<RunSummary> {
             coalesce: true,
             ...(options.tty === true ? { tty: true } : {}),
             ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
+            ...(options.footer === false ? { footer: false } : {}),
           },
         )
       : null
@@ -1555,7 +1556,8 @@ async function runOnBus(
     if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
     const above = options.beforeFooter?.(list, ok)
     if (above) log.status(above.replace(/\n$/, ''))
-    for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
+    if (options.footer !== false)
+      for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
 
     // Edge case the summary already reported: the user requested a
     // persistent task (dev server / watcher). The run is "done" in every
