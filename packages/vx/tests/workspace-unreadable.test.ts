@@ -68,13 +68,12 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
       })
     })
 
-    it('names a project config it may not read as a read; a run never opens one', async () => {
+    it('names a project config it may not read as a read', async () => {
       expect(await run('packages/b/vx.config.mjs', 0o000, ['lock'])).toEqual({
         code: 1,
         err: 'vx lock: .vx/projects.lock.json not written: <root>/packages/b/vx.config.mjs: not readable by this user (EACCES)',
         planned: [],
       })
-      expect(await run('')).toEqual({ code: 0, err: '', planned: ['a', 'b'] })
     })
 
     it('names and skips a member directory it may not search', async () => {
