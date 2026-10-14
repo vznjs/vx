@@ -11,13 +11,14 @@ carries them, but only through a CI cache step the user wires by hand.
 
 ## Design
 
-The timings travel as one blob in the remote cache the workspace already
+The timings travel as one blob in the cache the workspace already
 declares. No new wire, no mutable entry.
 
 - **Key:** `xxh3('vx-timings\0' + commitSha)`. Content-addressed by the
   commit that produced it; a blob is never rewritten, so the cache stays
   immutable.
-- **Write (policy allows remote writes, i.e. CI):** after the run, fetch
+- **Write (on CI, core's `ci` fact; the policy decides which layers keep
+  it):** after the run, fetch
   the parent commit's blob (`HEAD~1`, walking back up to 5), merge this
   run's p50s over it, drop task ids the graph no longer has, put it under
   `HEAD`. A branch or PR run writes under its own sha, which no reader on
@@ -42,15 +43,15 @@ declares. No new wire, no mutable entry.
 
 ## Core seam
 
-Plugins see no remote layer today (`CacheContext` builds one, nothing reads
-one). The `setup` context gains `remote`: `get(key)` / `put(key, bytes)`
-over the run's declared remote layers, in chain order, bypassing the local
-artifact store. Core keys the name per plugin (`xxh3(pluginName\0key)`),
-applies the run's scope and policy (a `put` without remote write is a
-no-op), bounds each call by the layer's own deadline, and degrades every
-error to `null`, silently (`VX_DEBUG` names why). No remote declared: `remote` is
-`undefined` and nothing is spawned (zero-cost gate). One seam, any plugin;
-schedule-history is its first user.
+The plugin seam exposes the cache, never the remote (M 21:06). The `setup`
+context gains `cache`: `get(key)` / `put(key, bytes)` backed by the same
+layered cache tasks use: the local store first, then each declared remote
+in order, under the run's write policy and scope. Core keys the name per
+plugin (`xxh3(pluginName\0key)`), bounds each call by the layers' own
+deadlines, and degrades every error to `null`, silently (`VX_DEBUG` names
+why). The plugin never learns whether a remote exists: with none, `get`
+is a local lookup. One seam, any plugin; schedule-history is its first
+user.
 
 ## Concurrency
 
@@ -79,14 +80,13 @@ The blob is untrusted input from a shared store:
 - A local run on a branch with no history orders by the merge-base's blob
   in the same run; a remote that never answers costs at most the deadline,
   and the run orders without it.
-- No remote declared: no git spawn, no read (zero-cost gate).
 - Every task has current-branch history: no git spawn, no fetch.
 - A merge-base whose rows are already in the store: no fetch.
 - Oversized, malformed, out-of-range and non-graph entries are dropped,
   silently (`VX_DEBUG` names each).
-- A read-only policy never puts.
+- A read-only policy keeps a `put` out of the remote; a local run never puts.
 
 ## Out of scope
 
-Sharing anything else through `remote` (run history, reservations): the
+Sharing anything else through `cache` (run history, reservations): the
 seam allows it, nothing asks for it yet.
