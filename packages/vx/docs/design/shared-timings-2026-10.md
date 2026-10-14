@@ -25,10 +25,12 @@ declares. No new wire, no mutable entry.
   are ever read back.
 - **Read (only when needed):** only when some task in the run has no
   current-branch history does the plugin compute the merge-base of `HEAD`
-  with the default branch; the blob is kept on disk keyed by that sha
-  (`~/.vx/<repo-id>/timings/<sha>.json`, the store every worktree of the
-  repo shares, M 20:59: one download per repo, not per worktree), and fetched only when no local copy
-  exists, walking back up to 5 commits for a missing blob. So most runs
+  with the default branch. A downloaded blob is applied as rows in the
+  shared store's duration table (`~/.vx/<repo-id>`, the one DX's forecast
+  reads), tagged by that merge-base sha; no timings file is kept on disk
+  (M 21:01). It is fetched only when no row carries that sha, walking back
+  up to 5 commits for a missing blob, so each repo downloads it once for
+  all its worktrees. So most runs
   make no network call and no extra git spawn. A fetch is awaited before
   scheduling (M 20:55: "wait for download") under a short deadline
   (500 ms); on timeout or error the run orders without it, silently
@@ -49,6 +51,13 @@ no-op), bounds each call by the layer's own deadline, and degrades every
 error to `null`, silently (`VX_DEBUG` names why). No remote declared: `remote` is
 `undefined` and nothing is spawned (zero-cost gate). One seam, any plugin;
 schedule-history is its first user.
+
+## Concurrency
+
+Rows are append-only and written in the run's existing IMMEDIATE
+transaction with the busy timeout. A test runs several worktrees in
+parallel on one store: no lost rows, no `SQLITE_BUSY` failure, no lock
+wait on the warm path.
 
 ## Validation (with Security)
 
@@ -72,7 +81,7 @@ The blob is untrusted input from a shared store:
   and the run orders without it.
 - No remote declared: no git spawn, no read (zero-cost gate).
 - Every task has current-branch history: no git spawn, no fetch.
-- A merge-base whose blob is already on disk: no fetch.
+- A merge-base whose rows are already in the store: no fetch.
 - Oversized, malformed, out-of-range and non-graph entries are dropped,
   silently (`VX_DEBUG` names each).
 - A read-only policy never puts.
