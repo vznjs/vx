@@ -125,7 +125,7 @@ describe('vx cache clean with no bound clears the cache', () => {
       const victim = path.join(home, 'projects')
       await Bun.write(path.join(victim, 'keep.txt'), 'mine')
       const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
-      db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'store_dir'").run(victim)
+      db.query("UPDATE schema_meta SET value = ? WHERE key = 'store_dir'").run(victim)
       db.close()
       const r = await vx(['cache', 'clean'])
       expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
