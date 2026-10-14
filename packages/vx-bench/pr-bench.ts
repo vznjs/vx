@@ -124,7 +124,10 @@ try {
     )
   // Each tool's own cache only: Turbo's cold rep must not empty vx's before vx's restore rep.
   const wipeCache = (tool: 'vx' | 'turbo') => {
-    sh(['rm', '-rf', ...(tool === 'vx' ? ['.vx/cache'] : ['.turbo', 'node_modules/.cache/turbo'])], ws)
+    sh(
+      ['rm', '-rf', ...(tool === 'vx' ? ['.vx/cache'] : ['.turbo', 'node_modules/.cache/turbo'])],
+      ws,
+    )
   }
   const best = new Map<string, number>()
   const time = (tool: 'vx' | 'turbo', arm: Arm) => {
