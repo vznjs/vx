@@ -1960,7 +1960,6 @@ export interface RunSettings {
   concurrency?: number | `${number}%`
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   affectedBase?: string
-  branch?: string
   timeout?: Duration
   retries?: number
   continue?: 'never' | 'deps-ok' | 'always'

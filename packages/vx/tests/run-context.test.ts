@@ -180,14 +180,12 @@ describe('currentBranch', () => {
     expect(currentBranch(dir, workspace, 'from-flag', env)).toBe('from-flag')
   })
 
-  it('takes VX_RUN_BRANCH over the workspace and git', () => {
+  it('takes VX_RUN_BRANCH over git', () => {
     expect(currentBranch(dir, workspace, undefined, env)).toBe('from-env')
   })
 
-  it("takes the workspace's run.branch over git", () => {
-    expect(currentBranch(dir, workspace, undefined, { GITHUB_HEAD_REF: 'from-ci' })).toBe(
-      'from-workspace',
-    )
+  it('never takes a branch from the workspace config', () => {
+    expect(currentBranch(dir, workspace, undefined, {})).toBe('main')
   })
 
   it("falls back to git's branch, then the CI provider's", () => {

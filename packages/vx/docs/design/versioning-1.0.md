@@ -43,16 +43,16 @@ the values it takes and each refusal's exact words are recorded in
 
 `.vx/workspace.ts`:
 
-| Level                  | Fields                                                                                                                                        |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| (top)                  | `cache`, `lock`, `plugins`, `run`, `watch`                                                                                                    |
-| `run`                  | `affectedBase`, `branch`, `concurrency`, `continue`, `killGrace`, `readyNotice`, `retries`, `rules`, `schedule`, `teardownTimeout`, `timeout` |
-| `lock`                 | `reviewFiles`                                                                                                                                 |
-| `run.rules`            | `dependencies`, `exclusiveOutputs`, `upfrontKeys`                                                                                             |
-| `cache`                | `dir`, `download`, `inputStability`, `policy`, `retention`, `scope`                                                                           |
-| `cache.retention`      | `maxSize`, `olderThan`                                                                                                                        |
-| `cache.inputStability` | `severity`, `strategy`                                                                                                                        |
-| `watch`                | `poll`                                                                                                                                        |
+| Level                  | Fields                                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| (top)                  | `cache`, `lock`, `plugins`, `run`, `watch`                                                                                          |
+| `run`                  | `affectedBase`, `concurrency`, `continue`, `killGrace`, `readyNotice`, `retries`, `rules`, `schedule`, `teardownTimeout`, `timeout` |
+| `lock`                 | `reviewFiles`                                                                                                                       |
+| `run.rules`            | `dependencies`, `exclusiveOutputs`, `upfrontKeys`                                                                                   |
+| `cache`                | `dir`, `download`, `inputStability`, `policy`, `retention`, `scope`                                                                 |
+| `cache.retention`      | `maxSize`, `olderThan`                                                                                                              |
+| `cache.inputStability` | `severity`, `strategy`                                                                                                              |
+| `watch`                | `poll`                                                                                                                              |
 
 `vx.config.ts`:
 

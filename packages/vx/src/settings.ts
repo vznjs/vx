@@ -65,8 +65,9 @@ export const SETTINGS: readonly Setting[] = [
     path: 'run.branch',
     kind: { type: 'string' },
     default: "git's branch, then the CI provider's",
-    doc: 'The branch a run records in its history and forecasts from.',
+    doc: 'The branch a run records in its history and forecasts from. Flag and env only: a committed branch would be wrong on every other branch.',
     flag: { verb: 'run', name: '--branch' },
+    config: false,
   },
   {
     path: 'run.timeout',
