@@ -11,7 +11,7 @@ first; its text is that footer: what changed and what to do.
 
 ## lock: runs read only .vx/projects.lock.json
 
---frozen, --no-frozen, run.frozen, VX_RUN_FROZEN and run({ frozen }) are gone. Every run, watch cycle, --affected selection and the picker loads configs only from .vx/projects.lock.json (was .vx/lock.json); with no lock a run stops with "run `vx lock`". Run `vx lock` after a config change (`vx lock --check` in CI).
+--frozen, --no-frozen, run.frozen, VX_RUN_FROZEN and run({ frozen }) are removed. .vx/lock.json is renamed .vx/projects.lock.json.
 
 ## vx-lockfile: remove the vx prune verb
 
