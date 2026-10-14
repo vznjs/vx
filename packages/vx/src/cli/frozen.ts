@@ -4,6 +4,7 @@
 // pipeline needs no `vx lock` step of its own.
 
 import path from 'node:path'
+import { notePrintedByLock } from '../orchestrator/index.js'
 import { resolveSetting, settingEnv } from '../settings.js'
 import { findWorkspaceRoot, LOCKFILE_NAME } from '../workspace/index.js'
 import { lockWorkspace } from './lock.js'
@@ -33,8 +34,14 @@ export async function settleFrozen(
   }
   // A stat: the run reads the lock itself, once.
   if (!frozen || (await Bun.file(path.join(root, LOCKFILE_NAME)).exists())) return frozen
-  const code = await lockWorkspace(root)
-  return code === 0 ? true : code
+  const printed: string[] = []
+  const code = await lockWorkspace(root, undefined, (message) => {
+    process.stderr.write(`${message}\n`)
+    printed.push(message)
+  })
+  if (code !== 0) return code
+  notePrintedByLock(printed)
+  return true
 }
 
 /** CI=0 and CI=false are "not CI": several vendors set CI=true. */

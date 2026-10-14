@@ -102,9 +102,13 @@ async function configuredProjects(
  * `vx lock`: evaluate every config, check the graph rules over every task,
  * and write the lock. Also what a frozen run with no lock does first.
  */
-export async function lockWorkspace(root: string, reads?: LoadReads): Promise<number> {
+export async function lockWorkspace(
+  root: string,
+  reads?: LoadReads,
+  warn: (message: string) => void = warnToStderr,
+): Promise<number> {
   const { all, metas, bare } = await configuredProjects(root, reads)
-  const broken = await graphRuleRefusal(root, all)
+  const broken = await graphRuleRefusal(root, all, warn)
   if (broken !== null) {
     process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${broken}\n`)
     return 1
@@ -118,10 +122,14 @@ export async function lockWorkspace(root: string, reads?: LoadReads): Promise<nu
  * (owner, 2026-10-13). The graph is the one a run builds, the `graph`
  * stage included; its refusal, or null.
  */
-async function graphRuleRefusal(root: string, all: ProjectMeta[]): Promise<string | null> {
+async function graphRuleRefusal(
+  root: string,
+  all: ProjectMeta[],
+  warn: (message: string) => void,
+): Promise<string | null> {
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
-    const projects = await loadResolvedProjects(root, { warn: warnToStderr })
+    const projects = await loadResolvedProjects(root, { warn })
     const names = new Set<string>()
     for (const entry of projects.values())
       for (const t of Object.keys(entry.config.tasks ?? {})) names.add(t)
@@ -146,7 +154,7 @@ async function graphRuleRefusal(root: string, all: ProjectMeta[]): Promise<strin
         workspaceRoot: root,
         cacheDir,
         projectMetas: all,
-        warn: warnToStderr,
+        warn,
         rules,
       })
   } catch (err) {
@@ -299,7 +307,7 @@ async function checkLock(
     }),
   )
   const failures = results.filter((r): r is string => r !== null)
-  const broken = await graphRuleRefusal(root, all)
+  const broken = await graphRuleRefusal(root, all, warnToStderr)
   if (broken !== null) failures.push(broken)
   const inWorkspace = new Set(metas.map((m) => m.name))
   for (const name of Object.keys(lock.projects)) {
