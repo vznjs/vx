@@ -143,7 +143,7 @@ A task with `exec.sandbox` runs where only what it declares exists:
   `~/.npmrc`, `~/.netrc`, the token files of deploy and agent CLIs such
   as Vercel, Wrangler, Fly or Claude, and the like; the list is in the
   schema's sandbox section) are unreadable unless `allow.read` names one
-  (L-41), and a denied read's `fix:` hint never suggests granting one
+  (L-41), cannot be hard-linked into an output for vx to pack, and a denied read's `fix:` hint never suggests granting one
   (`tests/sandbox-credential-stores.unsafe.test.ts`, `tests/sandbox-fix.test.ts`);
 - vx's own cache directory, wherever `cache.dir` puts it in the
   workspace, is a wall like `.vx`: a broad grant stops at it, and a write
