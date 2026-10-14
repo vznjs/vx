@@ -9,6 +9,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { describePid, isAlive, waitForDead } from './helpers/alive.js'
+import { NOT_CI } from './helpers/watch-loop.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -193,7 +194,7 @@ describe('vx watch under a signal (e2e)', () => {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, VX_RUN_KILL_GRACE: '5000ms', NO_COLOR: '1' },
+      env: { ...process.env, ...NOT_CI, VX_RUN_KILL_GRACE: '5000ms', NO_COLOR: '1' },
     })
     let out = ''
     const reader = (async () => {

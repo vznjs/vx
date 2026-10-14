@@ -34,6 +34,7 @@ import { waitForProducers } from './helpers/local-workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 import { skipAsRoot } from './helpers/nonroot-gate.js'
+import { NOT_CI } from './helpers/watch-loop.js'
 
 describe('the ignore filter', () => {
   // Every project dir is watched RECURSIVELY, so without this a `bun install`
@@ -408,6 +409,7 @@ describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
+        env: { ...process.env, ...NOT_CI },
       })
       let out = ''
       const reader = (async () => {

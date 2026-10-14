@@ -15,6 +15,8 @@ import { addProject, makeWorkspace } from './workspace.js'
 export const BIN = path.resolve(import.meta.dir, '..', '..', 'src', 'bin.ts')
 const LOCKED_BIN = path.resolve(import.meta.dir, 'vx-locked.ts')
 export const SETTLE_MS = 1_000
+/** Rows, not CI's full blocks: the suites count a task's row per cycle, and CI sets these. */
+export const NOT_CI = { CI: '', GITHUB_ACTIONS: '' }
 
 export interface Watch {
   proc: ReturnType<typeof Bun.spawn>
@@ -73,7 +75,7 @@ export function startWatch(
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: { ...process.env, VX_RUN_KILL_GRACE: '200ms', ...env },
+    env: { ...process.env, ...NOT_CI, VX_RUN_KILL_GRACE: '200ms', ...env },
   })
   let out = ''
   let err = ''
