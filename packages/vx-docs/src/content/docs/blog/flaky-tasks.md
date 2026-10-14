@@ -47,10 +47,9 @@ note after its name:
 A task that was not flaky carries no note. `vx info` keeps the
 standing list across runs, `--summarize` carries it as typed data
 (`flaky: { passes, failures, attempts }` on the task, so a consumer can
-tell a break from a flake without parsing text), and the MCP server
-reports the same signal to an agent — `getRunHistory` as each task's
-failure mode, `getWorkspaceInfo` as the standing list — so an agent
-does not learn to shrug at a repeated failure on changing inputs.
+tell a break from a flake without parsing text), and
+`vx last --stats --format json` gives an agent each task's failure
+mode, so it does not learn to shrug at a repeated failure on changing inputs.
 
 ## Why it is free
 

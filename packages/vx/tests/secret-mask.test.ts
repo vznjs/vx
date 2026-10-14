@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
-import { run } from '../src/orchestrator/index.js'
+import { run as runFromLock } from '../src/orchestrator/index.js'
+import { lock, run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/orchestrator/logger.js'
 import { MASKED, maskedEmitter, secretMask } from '../src/util/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -131,11 +132,23 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
     await rm(root, { recursive: true, force: true })
   })
 
+  // `vx lock` refuses a config that evaluated to a secret in its own
+  // environment; one locked where the variable was unset still reaches a
+  // run where it is set, and the mask is what keeps the value off screen.
+  const lockWithoutSecret = async (): Promise<void> => {
+    delete process.env['API_TOKEN']
+    try {
+      await lock(root)
+    } finally {
+      process.env['API_TOKEN'] = SECRET
+    }
+  }
+
   const once = async () => {
     const chunks: string[] = []
     const records: unknown[] = []
     const out = { write: (c: string) => (chunks.push(c), true) }
-    const r = await run({
+    const r = await runFromLock({
       cwd: root,
       tasks: ['t'],
       log: defaultLogger({ enabled: false }, { mode: 'focused' }, out),
@@ -161,8 +174,9 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
         }
       `,
     })
+    await lockWithoutSecret()
     const chunks: string[] = []
-    const r = await run({
+    const r = await runFromLock({
       cwd: root,
       tasks: ['dev'],
       projects: ['srv'],
@@ -188,6 +202,7 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
   })
 
   it('never shows the value; the miss and the replaying hit print the mask', async () => {
+    await lockWithoutSecret()
     const miss = await once()
     const hit = await once()
     const show = Bun.spawnSync(

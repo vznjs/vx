@@ -1,7 +1,7 @@
 // X-143: `vx lock` listed projects with core's discovery alone, while a
-// run (and `--frozen`) discovers through the plugin `discover` stage. A
-// project such a plugin adds, with its own vx.config, was never locked:
-// `vx lock --check` said up to date and the frozen run refused it.
+// run discovers through the plugin `discover` stage. A project such a
+// plugin adds, with its own vx.config, was never locked: `vx lock
+// --check` said up to date and a run from the lock refused it.
 import { mkdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -9,10 +9,11 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+const REAL_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
-async function vx(root: string, args: string[]) {
-  const proc = Bun.spawn([process.execPath, BIN, ...args], {
+async function vx(root: string, args: string[], bin = BIN) {
+  const proc = Bun.spawn([process.execPath, bin, ...args], {
     cwd: root,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -49,27 +50,30 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
 })
 
-it('control: a live run sees the discovered project', async () => {
+it('control: a run sees the discovered project', async () => {
   const r = await vx(root, ['run', 'build', '--all'])
   expect(`${r.code}\n${r.err}`).toStartWith('0\n')
   expect(r.out).toContain('gen#build')
 }, 30_000)
 
-it('vx lock freezes the discovered project, so lock --check && run --frozen succeeds', async () => {
+it('vx lock freezes the discovered project, so lock --check && run succeeds', async () => {
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   const check = await vx(root, ['lock', '--check'])
   expect(`${check.code}\n${check.err}`).toStartWith('0\n')
-  const locked = Object.keys((await Bun.file(path.join(root, '.vx/lock.json')).json()).projects)
+  const locked = Object.keys(
+    (await Bun.file(path.join(root, '.vx/projects.lock.json')).json()).projects,
+  )
   expect(locked).toEqual(['app', 'gen'])
-  const frozen = await vx(root, ['run', 'build', '--all', '--frozen'])
-  expect(`${frozen.code}\n${frozen.err}`).toStartWith('0\n')
+  const run = await vx(root, ['run', 'build', '--all'], REAL_BIN)
+  expect(`${run.code}\n${run.err}`).toStartWith('0\n')
+  expect(run.out).toContain('gen#build')
 }, 30_000)
 
 it('the bare-project note names only projects a plugin gives tasks', async () => {
   // solidjs/solid after vx-migrate: solid-ssr has no task Turbo runs, so no
-  // vx.config, and `vx lock` counted it as "1 project has no vx.config;
-  // their tasks are never frozen" without naming it, though it had none.
+  // vx.config, and `vx lock` counted it among projects with no vx.config
+  // without naming it, though it had no task.
   await addProject(root, 'empty')
   await addProject(root, 'mapped')
   await Bun.write(
@@ -85,7 +89,7 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toBe(
-    'vx lock: locked 2 project configs → .vx/lock.json (no vx.config, so never frozen: mapped)\n',
+    'vx lock: locked 2 project configs → .vx/projects.lock.json (no vx.config, so not locked: mapped)\n',
   )
   const check = await vx(root, ['lock', '--check'])
   expect(check.out).toBe(

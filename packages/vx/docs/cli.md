@@ -30,7 +30,7 @@ released binary carries its own Bun and the row never says it.
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
-vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]
+vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]
 vx lock [--check] [--format pretty|json]
 vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
 vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--format pretty|json]
@@ -355,7 +355,7 @@ change to it, and every project under it is selected, the project that
 holds it included. A repository's own request to hide submodules from a diff
 (`diff.ignoreSubmodules`, `submodule.<name>.ignore`) does not apply:
 the key sees the change whatever git is told to show.
-`.vx/lock.json` is filtered out of the changed set — a `vx lock`
+`.vx/projects.lock.json` is filtered out of the changed set — a `vx lock`
 re-write never marks every project affected.
 
 **A lockfile change selects everything.** The root lockfiles,
@@ -490,7 +490,6 @@ than run with the args unheard.
 | `--kill-grace <duration>`                  | duration       | `run.killGrace`, else `2s`                        | How long a task that ignores SIGTERM gets before SIGKILL: on a timeout, on a signal, and at the end-of-run shutdown of persistent tasks.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--teardown-timeout <duration>`            | duration       | `run.teardownTimeout`, else `3s`                  | The bound on each plugin's end-of-run flush or teardown, and on its `telemetry()` setup, so a third party's I/O cannot hold the run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--ready-notice <duration>`                | duration       | `run.readyNotice`, else `10s`                     | How long a persistent task may take to match `readyWhen` before vx says once what it waits for.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `--frozen` (`--no-frozen`)                 | boolean        | `run.frozen`, else on when `CI` is set            | Load configs from `.vx/lock.json` instead of evaluating them, or evaluate them — the run's, and the ones `--affected` owners and the picker select from. No lock: one is written first. See § `--frozen`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--output-logs <mode>`                     | value          | `VX_RUN_OUTPUT_LOGS`, else flow-derived           | `full` \| `errors-only` \| `hash-only` \| `none` — explicit output override. See § `--output-logs`. `--output-logs=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--cache-download <mode>`                  | value          | `cache.download`, else `all`                      | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--cache-download`. `--cache-download=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `--verbosity <n>`                          | int (0+)       | `0`                                               | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -1521,8 +1520,8 @@ Watch mode hears those because it watches the workspace root
 and so does any other root file a plugin claims (`turbo.json` under
 `turbo()`, item 961), a plugin added to the workspace config mid-watch
 included from the cycle that loads it; the keys then decide which
-projects actually re-run. Under `vx watch --frozen` every cycle's configs come from
-`.vx/lock.json`, so a config edit alone changes no command, and a re-lock
+projects actually re-run. Every cycle's configs come from
+`.vx/projects.lock.json`, so a config edit alone changes no command, and a re-lock
 (`vx lock`) is a cycle that re-reads the watched set (item 971).
 
 ### Constraints
@@ -1577,7 +1576,7 @@ the watch loop — a failed cycle just prints the framed FAILED block
 and waits for the next change. This matches `turbo watch` / `nx
 watch`.
 
-## `vx cache prune`
+## `vx cache clean`
 
 Evict old or oversized cache entries. Operates on the entries and
 `<hash>.tar.zst` artifacts of the store the workspace's index records
@@ -1585,22 +1584,24 @@ Evict old or oversized cache entries. Operates on the entries and
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
 
-`prune` is the only `vx cache` subcommand: the statistics other runners
+`clean` is the only `vx cache` subcommand: the statistics other runners
 put under a `cache` verb — the directory, the entry count, the size —
 are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
-`clean`, `gc`, `purge` and their neighbours say so (`list` also names
-`vx last --list`) rather than printing a bare "unknown subcommand".
+`gc` and their neighbours say so (`list` also names `vx last --list`;
+`clear`, `purge`, `reset` and `wipe` name a bare `vx cache clean`) rather than printing a bare "unknown subcommand".
 
 ```
-vx cache prune --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
-vx cache prune --max-size <size>            # After age-based pruning, evict LRU until under <size>.
-vx cache prune ... --dry-run                # Say what either policy would reap; delete nothing.
-vx cache prune ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
-vx cache prune ... --cache-dir <path>       # The cache a run with the same flag uses.
+vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
+vx cache clean --max-size <size>            # After age-based pruning, evict LRU until under <size>.
+vx cache clean ... --dry-run                # Say what either policy would reap; delete nothing.
+vx cache clean ... --format json            # { dryRun, evicted, bytesFreed, orphans, orphanBytes }
+vx cache clean ... --cache-dir <path>       # The cache a run with the same flag uses.
+vx cache clean                              # No bound: clear the whole cache (below).
+vx cache clean --global                     # Also clear every other repository's store.
 ```
 
-At least one of `--older-than` / `--max-size` is required. Both may
-be combined: age-based eviction runs first, then LRU eviction if the
+With no bound it clears the cache ([below](#with-no-bound-clear-the-cache)).
+Both bounds may be combined: age-based eviction runs first, then LRU eviction if the
 total is still over the size cap. The same policy runs unattended at
 the end of every run when `.vx/workspace.ts` declares
 `cacheRetention: { olderThan, maxSize }` (same spellings; see
@@ -1643,22 +1644,20 @@ write `10G`, or `10B` when bytes really are the unit.
 
 **A zero bound is rejected.** `--max-size 0` and `--older-than 0d` would
 evict every entry in the cache, which is far more often a
-computed-to-zero retention than an intent — and no flag combination
-expresses "wipe the cache" (running with neither flag is an error, not a
-full prune). Delete the cache store `vx info` names when that is really
-what you want: the entries live there, not in the workspace's `.vx/cache`.
+computed-to-zero retention than an intent. `vx cache clean` with no
+bound clears the whole cache when that is really what you want.
 
 ```
-$ vx cache prune --older-than 30d
+$ vx cache clean --older-than 30d
 Pruned 42 entries (1.3 GB freed)
 
-$ vx cache prune --older-than 7d --max-size 500M
+$ vx cache clean --older-than 7d --max-size 500M
 Pruned 18 entries (320 MB freed)
 
-$ vx cache prune --older-than 30d      # after a SCHEMA_VERSION bump
+$ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
 Pruned 0 entries (0 B freed), reaped 42 orphaned artifacts (1.3 GB)
 
-$ vx cache prune --older-than 30d --dry-run
+$ vx cache clean --older-than 30d --dry-run
 Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
 ```
 
@@ -1687,59 +1686,97 @@ Exit codes:
   nothing is created.
 - `1` — parse error, missing policy, or workspace-discovery error.
 
-`vx cache prune` resolves the workspace root from cwd and honors a
+`vx cache clean` resolves the workspace root from cwd and honors a
 `defineWorkspace({ cache: { dir } })` override — it prunes the same
 directory a run would use. `--cache-dir <path>` (cwd-relative, as on
 `vx run`) names another one, so a run that wrote elsewhere can be
 pruned there.
 
-## `--frozen` (run flag)
+### With no bound: clear the cache
 
-`run.frozen` (`--frozen` / `--no-frozen`, `VX_RUN_FROZEN`, or
-`run.frozen` in `.vx/workspace`) loads configs from the committed
-`.vx/lock.json` instead of evaluating them. It is on when `CI` is set and
-off otherwise (owner, 2026-10-13): locally a byte hash can't see a
-config's import closure, so silently consuming the lock would risk stale
-freezes. A frozen run trusts the lock: it performs NO staleness checks
-and does not check the graph rules (`run.rules`), which `vx lock`
-checked when it wrote the lock. With no lock, a frozen run writes one
-first (`vx lock`, rules included) and runs from it, printing a warning
-the lock already printed (a plugin's, a config's) once; a project missing
-from a lock that exists is still a hard error. Run `vx lock --check`
-first in a pipeline that commits its lock: that audit re-evaluates
-everything and checks the rules, making any per-run re-check redundant.
-A run that is not frozen checks the rules itself, since its configs are
-not the locked ones. An embedder's `run({ frozen: true })` with no lock
-is refused, as before.
+`vx cache clean` with neither `--older-than` nor `--max-size` clears
+the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
+`--cache-dir`: the index and this workspace's run history, so `vx last`
+and `vx why` start over) and the store its index names, where the
+entries live (`~/.vx/<id>/cache`, shared by this repository's
+checkouts, so their entries go too). `--global` also clears every other
+repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
+and no `--cache-dir`. `.vx/workspace.ts`, the lock and `.vx/.gitignore`
+sit outside them and stay; a `cache.dir` that holds them (`.vx`, the
+workspace root) is refused. A `cache.dir` you named may be shared
+(`build/`, `~/.cache`), so there only what vx wrote goes (the index,
+its artifacts, run history, its `*` `.gitignore`); your own files stay,
+and the directory goes only if that empties it. A directory with no
+`cache.db` is not a vx cache and is left alone; a workspace that never ran says
+`Nothing to clear: no cache here`. The next run misses every task once
+and saves again.
+
+```
+$ vx cache clean
+Cleared this repository's store, shared by its checkouts, and this workspace's run history (1.4 GB freed):
+  .vx/cache
+  /home/me/.vx/3f2a9c01b4d5e6f7/cache
+
+$ vx cache clean --global --dry-run
+Would clear every repository's store and this workspace's run history (3.1 GB):
+  .vx/cache
+  /home/me/.vx/3f2a9c01b4d5e6f7/cache
+  /home/me/.vx/9b8e7d6c5a4f3e2d/cache
+```
+
+It waits for a `vx run` on this workspace to finish first (the run's
+lock), as a trim does. With `--format json` it prints
+`{ dryRun, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
+listing the directories.
+
+## Runs read the lock
+
+Every run, `vx watch` cycle, `--affected` selection and the picker loads
+configs only from the committed `.vx/projects.lock.json` (owner, 2026-10-14). A
+run never evaluates a config, never checks the graph rules
+(`run.rules`) and never writes the lock: only `vx lock` does. With no
+lock, a run fails with `no lock: run \`vx lock\``. A run trusts the
+lock: it performs NO staleness check, so after editing a config, run
+`vx lock`. In a pipeline, `vx lock --check` first re-evaluates every
+config and checks the rules.
 
 ## `vx lock`
 
-Freeze every project's **resolved** config into `.vx/lock.json` at the
+Freeze every project's **resolved** config into `.vx/projects.lock.json` at the
 workspace root. Configs are programs; `vx lock` evaluates them in the
 current environment and stores the post-evaluation objects, by project
 name. "Every project" is the set a run
 sees, a plugin's `discover` stage included (X-143). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
-included, and checks the graph rules (`run.rules`) a frozen run no
-longer checks, `dependencies` (which projects a project may depend on,
-`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `vx lock: .vx/lock.json not written:
+included, and checks the graph rules (`run.rules`), which no run
+checks, `dependencies` (which projects a project may depend on,
+`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `vx lock: .vx/projects.lock.json not written:
 <the rule's refusal>` and writes nothing.
 
 ```
-vx lock              # Evaluate all vx.config.* now; write .vx/lock.json.
+vx lock              # Evaluate all vx.config.* now; write .vx/projects.lock.json.
 vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
 vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
 ```
 
-**When to run it.** Run `vx lock` and commit `.vx/lock.json` after
+**When to run it.** Run `vx lock` and commit `.vx/projects.lock.json` after
 editing any `vx.config.*` or `.vx/workspace.*`, after updating
 dependencies or plugins, and after changing a file a config imports.
 Runs read their configs from the lock, so until then they keep the old
 ones. `vx lock --check` as CI's first step fails a stale lock.
 The full workflow: the site's CI guide and `examples/ci`.
 
-A run that is not frozen evaluates live — the lock's existence changes
-nothing. Only a frozen run consumes it: configs come from the
+`.vx/projects.lock.json` is minified: it is the one file vx reads, and it loads
+faster that way (10,000 projects: 15.6 ms against 22.5 ms pretty). For
+review, `vx lock` also writes each project's resolved config (plugins
+applied), pretty, to `vx.lock.json` beside its `vx.config`; vx never reads
+it, it is no task's input, and `lock.reviewFiles: false`
+(`VX_LOCK_REVIEW_FILES`) turns it off. `vx lock` also writes
+`.vx/.gitattributes` (`projects.lock.json linguist-generated=true`) when it is
+missing, so GitHub collapses the machine lock in a diff; `vx init` does
+too, and an existing one is never edited.
+
+Every run consumes it: configs come from the
 lock with no evaluation, no staleness check and no schema validation
 of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
@@ -1751,8 +1788,8 @@ environment and `Bun.deepEquals`-compares it with the frozen object. A
 project that differs gets one message, whether its config, a file it
 imports or the environment it reads changed. A lock an earlier vx wrote
 fails the shape check and asks for `vx lock`. It also checks the graph rules over the configs as they
-evaluate now. The CI recipe is `vx lock --check && vx run …`, frozen
-under CI by default.
+evaluate now, and that each `vx.lock.json` is what its project resolves to
+here (unless `lock.reviewFiles` is off). The CI recipe is `vx lock --check && vx run …`.
 `--format json` prints the audit as one document
 (`schemas/lock.json`, exit code unchanged; a missing lock is one of
 its `problems`); it answers `--check` only.
@@ -1762,9 +1799,9 @@ Full design: `docs/design/config-lock-2026-06.md`. A lock written by a
 A project with no `vx.config.*` — its tasks from a plugin's `project`
 stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing
 to freeze: the lock records nothing for it, `--check` does not audit
-it, and `--frozen` still loads its tasks live. Both verbs name such
-projects that have tasks (`locked 0 project configs → .vx/lock.json (no
-vx.config, so never frozen: app, lib)`, five names then `and N more`),
+it, and a run still loads its tasks live. Both verbs name such
+projects that have tasks (`locked 0 project configs → .vx/projects.lock.json (no
+vx.config, so not locked: app, lib)`, five names then `and N more`),
 so an empty lock on a plugin-only workspace never reads like an audit.
 One with no task (core's default `build` aside) is not named.
 
@@ -1773,7 +1810,7 @@ secret: a config that evaluated to the value of a secret-named variable
 (or one a task lists in `exec.env.secret`), say
 `` `--token ${process.env.API_TOKEN}` ``. It names each place
 (`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
-Masking it instead would freeze a `***` that `--frozen` runs. Let the
+Masking it instead would freeze a `***` that every run runs. Let the
 shell expand it: `$API_TOKEN` in the command, the name in
 `exec.env.passThrough` (L-42).
 
@@ -2016,7 +2053,7 @@ terminal native (a `vx.config.ts` per package, the default) or keep;
 `--dry`, `--format`, `--force` and `--mjs` pass through.
 
 Once it has written the configs (natively, not under `--dry`), it ends
-with `vx lock`'s step: `.vx/lock.json` is written and the graph rules are
+with `vx lock`'s step: `.vx/projects.lock.json` is written and the graph rules are
 checked, in one line before `next:` (owner, 2026-10-14). A refusal (a
 graph rule, a plugin not installed yet) is printed, the configs stay
 written, the exit is 0, and `next:` says to fix it and run `vx lock`.
@@ -2035,7 +2072,8 @@ set up and prints the next step, exit 0, without starting
 `@vzn/vx-migrate`; `--force` regenerates the files.
 
 `vx init --keep` writes `.vx/workspace.ts` declaring `turbo()` or `nx()`
-from `@vzn/vx-migrate` and nothing else: those read the repo's own
+from `@vzn/vx-migrate`, and the lockfile's `@vzn/vx-lockfile` plugin
+when the root has one, and nothing else: those read the repo's own
 config live, so no task is copied — a temporary start until
 `vx init --native` writes native config. `--native` or `--keep` in any
 other repo is refused. The `next:` line is one command:
@@ -2056,10 +2094,15 @@ Nx Cloud (`nxCloudId`, `nxCloudAccessToken`, the `nx-cloud` runner) is
 named instead: vx does not speak its wire, so runs cache locally.
 
 Anywhere else it scaffolds a workspace that comes from nowhere: one `vx.config.ts` per
-package from its `package.json` scripts, plus a `.vx/workspace.ts` of
-`{ plugins: [] }`: running and caching here are the floor, so it
-declares no executor or cache, and the file carries no comment (it is
-the user's). `@vzn/vx-migrate` takes the
+package from its `package.json` scripts, plus a `.vx/workspace.ts`
+that declares only the `@vzn/vx-lockfile` plugin for the lockfile at
+the root (`pnpm()`, `bun()`, `npm()` or `yarn()`; `{ plugins: [] }`
+without one): package edges (`^build`, `--affected`) come from it.
+Running and caching here are the floor, so it declares no executor or
+cache, and the file carries no comment (it is the user's). When
+`@vzn/vx-lockfile` is not installed, init installs it with that manager,
+pinned to its own version, before `vx lock` runs (`--dry` names the
+command instead). A workspace file already there is left as it is. `@vzn/vx-migrate` takes the
 same `--dry` / `--force` flags but reads a runner's config (turbo, nx);
 package.json scripts are `init`'s. A workspace with no scripts at
 all still gets the workspace file, a printed example config, and the
@@ -2100,6 +2143,10 @@ into its dist (TanStack/query's `tsc --build`, 2026-09-11), and an
 A file it writes that `.gitignore` drops (vueuse ignores
 `packages/**/*.mjs`) gets a `note:` naming it and the `!vx.config.mjs`
 line that keeps it, since a commit would leave it behind unnoticed.
+When a whole directory is ignored, such as the old layout's `/.vx/`
+cache line now hiding `.vx/workspace.ts` and the lock, the note names
+that directory instead: git re-includes nothing inside an ignored
+directory, so no `!` line helps. vx never edits `.gitignore`.
 A package with a `tsconfig.json` and no `"type": "module"` gets
 `vx.config.mts`: tsc (node16, nodenext) reads a `.ts` there as
 CommonJS, and its type import of the ESM `@vzn/vx/config` fails
@@ -2323,7 +2370,7 @@ none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
 kebab-case row. A `[=<bool>]` row takes `=true` (the flag bare) and `=false` (left out), as Turbo's and Nx's parsers do. `vx run-many` and `vx affected` name the
 `vx run` that does the same, and the other verbs a hand types from
 either tool name what does it here: `graph` (`--graph`), `ls`
-(`vx show`), `query` (`--dry=json`), `reset` (`vx cache prune`), and
+(`vx show`), `query` (`--dry=json`), `reset` (`vx cache clean`), and
 `daemon`, `login`, `logout`, `link` and `unlink`, which vx has no use
 for. Nx's `project:target` (`vx run web:build`,
 when `web` declares `build`) is answered with `vx run web#build`: from
@@ -2417,7 +2464,7 @@ copy to the source.
 
 ## Machine-readable output
 
-`vx show`, `vx info`, `vx why`, `vx last` and `vx cache prune` take
+`vx show`, `vx info`, `vx why`, `vx last` and `vx cache clean` take
 `--format json`. Each prints one JSON document on one line, as
 `vx run --format json` does, whose shape is a
 checked-in JSON Schema (draft 2020-12) shipped with the package:
@@ -2488,12 +2535,14 @@ the task once (`vx run <task>`); history is this checkout's own.
 A `vx.config.*` or `.vx/workspace.*` that does not load or is refused. The
 message names the file and the field; fix that field
 (`vx docs <field>` prints its reference). `vx info --format json` lists
-every config error at once.
+every config error at once. A project config's refusal is `vx lock`'s,
+not a run's: a run never evaluates one.
 
 #### `VX_E_CYCLE`
 
 The task graph has a cycle. The message names the loop; drop one of its
 `dependsOn` edges.
+`vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_NO_WORKSPACE`
 
@@ -2517,7 +2566,7 @@ message is that plugin's or check's: do what it says.
 #### `VX_E_FS`
 
 The file system refused a write: permissions, a full disk. The message
-names the path. Free space (`vx cache prune --max-size <size>` trims the
+names the path. Free space (`vx cache clean --max-size <size>` trims the
 cache) or grant the write, then re-run.
 
 #### `VX_E_FDS`
@@ -2546,12 +2595,14 @@ A task's `dependsOn` names a task or project that is not declared, or uses
 a form vx does not take (a bare wildcard, a negation, a pattern in
 `pkg#task`). The message names the task and the entry: declare the
 target, fix its spelling, or drop the entry.
+`vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_OUTPUT_OVERLAP`
 
 Two tasks declare overlapping outputs with no `dependsOn` edge between
 them, so whichever runs second deletes the other's files. Give each task
 its own output path, or make one depend on the other.
+`vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_INPUT_IS_OUTPUT`
 
@@ -2560,6 +2611,7 @@ a run, so it would delete its sources) or another task's (its key must
 not read them; `dependsOn` already cascades). Exclude the outputs from
 the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.
+`vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 #### `VX_E_DEPENDENCY_RULE`
 
@@ -2591,7 +2643,7 @@ plugin `config` and `project` stages included, so a package a plugin
 gives tasks to (`turbo()` or `nx()` from `@vzn/vx-migrate`, a
 temporary start toward native config) shows them; cached
 evaluations are served from the local cache like a run's. `vx show`
-never reads `.vx/lock.json` (the lock is already the frozen JSON — open
+never reads `.vx/projects.lock.json` (the lock is already the frozen JSON — open
 it directly if you want the frozen view).
 
 ```
@@ -2687,7 +2739,7 @@ share `TMPDIR`: a `nix develop` shell sets its own.
 Every verb: a path vx must write that this user cannot (`EACCES`,
 `EPERM`, `EROFS` — a read-only checkout, another user's files) or that
 the disk has no room for (`ENOSPC`, `EDQUOT`) exits 1 with one line
-naming the path, `vx: EACCES: permission denied, open '…/.vx/lock.json'
+naming the path, `vx: EACCES: permission denied, open '…/.vx/projects.lock.json'
 — a path vx must write is not writable by this user` (or `— the disk
 that path is on is full`), never a stack. Inside a run the task's line
 says the same. A process out of file descriptors (`EMFILE`, `ENFILE`;
@@ -2715,15 +2767,15 @@ projects:         12 (34 tasks)
 plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
 workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
-cache dir:        /work/repo/.vx/cache
-cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache
+cache dir:        /work/repo/.vx/cache (8.2 MB, this workspace's run history)
+cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
 cache versions:   keys vx-cache-v43 · index schema v34
 cache entries:    42 (1.3 GB)
-orphans:          3 artifacts (12 MB) the index does not know — `vx cache prune` reaps them
+orphans:          3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
 task runs (24h):  7 (5 cache hits)
 flaky tasks:      1 — web#test (3 of 11 runs failed on unchanged inputs)
 sandbox:          available (9 tasks declare exec.sandbox)
-.vx/lock.json:     yes
+projects lock:    yes
 ```
 
 - `git` shows `(not found)` when the binary is missing; a broken
@@ -2776,10 +2828,12 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   the hits are a share of it: three `vx run` of two tasks are six. An
   invocation is what `vx last` calls a run; `vx last --list` counts
   those.
-- `cache store` is where the entries and their artifacts live: the
-  store every workspace of this user shares (`docs/caching.md`), or
-  `none: the cache dir holds the entries` when the workspace names its
-  cache dir. Before a first run it is the store a run would open.
+- `cache dir` holds the index and this workspace's run history; its size
+  is on disk. `cache store` is where the entries and their artifacts
+  live: the store shared by this repo's checkouts (`docs/caching.md`),
+  with its size on disk, or `none: the cache dir holds the entries` when
+  the workspace names its cache dir. Before a first run it is the store a
+  run would open. A bare `vx cache clean` frees both sizes.
 - `cache entries` counts the entries and their size; with a
   `cacheRetention.maxSize` it reads against it (`812 (3.0 GB of 10 GB,
 30%)`), and a `cache retention` row says what each run's end evicts.
@@ -2798,7 +2852,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   save temps the index has no row for, older than an hour (what a
   `SCHEMA_VERSION` reset leaves behind; a fresh one is a save in
   flight). A task that asks for one's key again indexes it and hits;
-  the rest only `vx cache prune` reclaims, so the doctor says so.
+  the rest only `vx cache clean` reclaims, so the doctor says so.
 - `--format json` prints the same facts as one typed object, for a
   script or a bug-report template: `vx`, `vxPath` (the file that ran),
   `handedOffFrom` (the vx that handed the call to the project's own, else
@@ -2810,8 +2864,9 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   empty when all did), `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
 cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
   `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
-cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheStore`
-  (null when the cache dir holds the entries), `cacheVersion`,
+cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
+  (on disk: the index and run history), `cacheStore` (null when the cache
+  dir holds the entries), `cacheStoreBytes` (on disk, null with no store), `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `settings` (every
   setting by path, `{ value, source }`, `source` one of `env` /
   `workspace` / `default`, `value` null for the default), `cacheRetention`
@@ -2825,7 +2880,7 @@ declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
   pretty rows render this object;
   there is no second source.
 - `--cache-dir <path>` reads the cache a run with the same flag uses, as
-  `vx why`, `vx last` and `vx cache prune` do.
+  `vx why`, `vx last` and `vx cache clean` do.
 
 Exit codes: `0` the facts printed, a config that did not load included;
 `1` no workspace here or above, or a parse error.
@@ -2955,23 +3010,6 @@ latest cache entry's key.
 Exit codes: `0` the task's run explained; `1` no recorded run of the
 task, a `--run` with no row for it, or a parse error.
 
-## `vx prune`
-
-```
-vx prune <project...> [--out-dir <dir>] [--docker] [--production]
-```
-
-A plugin verb of `@vzn/vx-lockfile`: declaring `pnpm()`, `bun()`,
-`npm()` or `yarn()` adds it. It copies the named projects, their
-transitive workspace dependencies, the root manifests (workspace lists
-rewritten to the subset), the vx configs and each lockfile pruned to what
-the subset installs into `--out-dir` (default `out/`), so a Docker build
-installs it with a frozen lockfile; `--docker` splits `json/` (the
-install layer) from `full/`; `--production` leaves out a workspace
-package only a dev dependency reaches and strikes it from the kept
-manifests and lockfiles. `turbo prune`. Reference:
-`packages/vx-lockfile/README.md` § `vx prune`.
-
 ## `vx last`
 
 Replay a recorded run's summary from the local history — no
@@ -3067,14 +3105,14 @@ line of its own without them, X-140). The
 replayed `$ vx run …` or `$ vx watch …` line and that one keep each
 argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
 
-`vx why`, `vx last`, `vx info` and `vx cache prune` all read the cache
+`vx why`, `vx last`, `vx info` and `vx cache clean` all read the cache
 a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
 (cwd-relative, absolute used as-is): a run that wrote its history
 elsewhere is replayed, explained, reported on and pruned there. Without
 the flag they open the workspace's cache (`defineWorkspace({ cache: { dir } })`
 or `.vx/cache`). A `--cache-dir` that is not there is refused by name
 (`--cache-dir .vx/cahce: no such directory`). In a workspace that never
-ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache prune`
+ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache clean`
 (dry or not) read it as empty and create nothing (item 900, E-7, E-38).
 
 Exit codes: `0` the run (or the list) printed, `--list` with no runs
@@ -3116,7 +3154,7 @@ of each verb, read from the same help text `vx <verb> --help` prints:
 the verb's own Usage line, and for `run` and `watch` the run option
 lines, less the ones `watch` refuses. So a flag cannot be documented
 and not completed, nor completed and then refused: a flag another
-verb's line names in passing (`vx lock --check` beside `--frozen`) is
+verb's line names in passing (`--check` in a line about `vx lock`) is
 not one. After a flag with a fixed value set the script offers that
 set: `--format` pretty or json, `--output-logs` full, errors-only,
 hash-only or none, `--cache-download` all, toplevel or none — each value one
@@ -3164,8 +3202,8 @@ the workspace config from the cwd to find them (outside a workspace the
 verb is simply unknown). A plugin verb that names a core verb, or one
 plugins of two packages both declare, is refused when the workspace
 loads — such a verb could never run, or would hide the other plugin's.
-Plugins of one package are one owner (`bun()` and `pnpm()` both carry
-`prune`): the first declared runs. A plugin verb's
+Plugins of one package are one owner (two of its plugins may carry the
+same verb): the first declared runs. A plugin verb's
 return value is the exit code, an integer 0–255 (anything else — nothing,
 a fraction, 256, which the OS would keep as 0 — fails naming the plugin
 and the verb), and a thrown `UserError` prints as
@@ -3206,7 +3244,6 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_RUN_KILL_GRACE`                 | [`run.killGrace`](schema.md#settings)                 | How long a task that ignores SIGTERM gets before SIGKILL.                                                                                                   |
 | `VX_RUN_TEARDOWN_TIMEOUT`           | [`run.teardownTimeout`](schema.md#settings)           | The bound on each plugin's end-of-run flush and teardown.                                                                                                   |
 | `VX_RUN_READY_NOTICE`               | [`run.readyNotice`](schema.md#settings)               | How long a persistent task may take to match `readyWhen` before vx says it waits.                                                                           |
-| `VX_RUN_FROZEN`                     | [`run.frozen`](schema.md#settings)                    | Load configs from `.vx/lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.                                                      |
 | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | [`run.rules.exclusiveOutputs`](schema.md#settings)    | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                       |
 | `VX_RUN_RULES_UPFRONT_KEYS`         | [`run.rules.upfrontKeys`](schema.md#settings)         | Refuse a task whose inputs can match another task's outputs.                                                                                                |
 | `VX_CACHE_DIR`                      | [`cache.dir`](schema.md#settings)                     | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                     |
@@ -3217,6 +3254,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_CACHE_DOWNLOAD`                 | [`cache.download`](schema.md#settings)                | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                               |
 | `VX_CACHE_INPUT_STABILITY_STRATEGY` | [`cache.inputStability.strategy`](schema.md#settings) | What a write to an input during the command means for the save, for tasks without their own.                                                                |
 | `VX_CACHE_INPUT_STABILITY_SEVERITY` | [`cache.inputStability.severity`](schema.md#settings) | Whether a skipped save warns or fails the task, for tasks without their own.                                                                                |
+| `VX_LOCK_REVIEW_FILES`              | [`lock.reviewFiles`](schema.md#settings)              | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                           |
 | `VX_WATCH_POLL`                     | [`watch.poll`](schema.md#settings)                    | Poll for changes from the start instead of the OS watcher.                                                                                                  |
 | `VX_CONFIG_WORKER_TIMEOUT`          | [`config.workerTimeout`](schema.md#settings)          | How long one config evaluation may take.                                                                                                                    |
 | `VX_DEBUG_TIMING`                   | [`debug.timing`](schema.md#settings)                  | Print the run's stage timings to stderr.                                                                                                                    |
@@ -3432,7 +3470,7 @@ Only a run's own output (`vx run`, `vx watch`) is painted, and the
 help on a terminal: headings bold, `vx <verb>` and each flag or example
 in cyan; `NO_COLOR` or `FORCE_COLOR=0` turns it off
 (`tests/help-colors.test.ts`). Every other verb (`show`, `info`, `why`,
-`last`, a `--dry` plan, `--graph`, `cache prune`), and the help off a
+`last`, a `--dry` plan, `--graph`, `cache clean`), and the help off a
 terminal, prints plain text whatever `FORCE_COLOR` says, so a script
 that forces colour for a run's log still parses them
 (`tests/cli-colors-e2e.test.ts`).

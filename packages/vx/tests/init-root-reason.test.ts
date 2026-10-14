@@ -26,6 +26,12 @@ async function rootNote(rootScripts: Record<string, string>): Promise<string[]> 
     }),
   )
   await writeFile(path.join(root, 'bun.lock'), '')
+  // Installed already: init would otherwise install it, and the sandbox has no network.
+  await mkdir(path.join(root, 'node_modules', '@vzn', 'vx-lockfile'), { recursive: true })
+  await writeFile(
+    path.join(root, 'node_modules', '@vzn', 'vx-lockfile', 'package.json'),
+    '{"name":"@vzn/vx-lockfile"}',
+  )
   const dir = path.join(root, 'packages', 'web')
   await mkdir(dir, { recursive: true })
   await writeFile(

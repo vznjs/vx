@@ -9,17 +9,17 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 const VERBS = [
   ['last'],
   ['info'],
   ['why', 'app#build'],
-  ['cache', 'prune', '--older-than', '1d', '--dry-run'],
+  ['cache', 'clean', '--older-than', '1d', '--dry-run'],
   // Not a reading verb, but with no cache there is nothing for it to
   // delete, and opening one to find that out made it.
-  ['cache', 'prune', '--older-than', '1d'],
+  ['cache', 'clean', '--older-than', '1d'],
 ]
 
 async function vx(
@@ -76,8 +76,8 @@ describe('a reading verb makes nothing on disk', () => {
   it(
     'a prune with no cache prunes nothing and exits 0, dry or not',
     async () => {
-      const dry = await vx(root, ['cache', 'prune', '--max-size', '1G', '--dry-run'])
-      const real = await vx(root, ['cache', 'prune', '--max-size', '1G'])
+      const dry = await vx(root, ['cache', 'clean', '--max-size', '1G', '--dry-run'])
+      const real = await vx(root, ['cache', 'clean', '--max-size', '1G'])
       expect([dry, real]).toEqual([
         { code: 0, out: 'Would prune 0 entries (0 B)\n', err: '' },
         { code: 0, out: 'Pruned 0 entries (0 B freed)\n', err: '' },

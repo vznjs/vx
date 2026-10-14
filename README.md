@@ -85,7 +85,7 @@ npx @vzn/vx run build --all    # restored from the cache, not rebuilt
 
 ### When to run `vx lock`
 
-`init` also writes `.vx/lock.json`, every project's config as it evaluated.
+`init` also writes `.vx/projects.lock.json`, every project's config as it evaluated.
 Commit it. Every run reads its configs from the lock, so run
 `npx @vzn/vx lock` and commit the lock again after you:
 
@@ -138,7 +138,7 @@ Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 Beside `turbo.json` or `nx.json`, `npx @vzn/vx init` runs `@vzn/vx-migrate`:
 it writes a `vx.config.ts` per package from `turbo.json` or the Nx graph,
 and you keep those and delete the old config. `vx init --keep` writes only
-a `.vx/workspace.ts` that maps the old config instead: a temporary start,
+a `.vx/workspace.ts` that maps the old config instead, and its lock: a temporary start,
 not a way to run the repo. The benchmark below uses native vx config.
 [Migration guide](https://vznjs.github.io/vx/guides/migrate/).
 

@@ -8,6 +8,7 @@
   "sortPackageJson": false,
   "ignorePatterns": [
     "node_modules",
+    "vx.lock.json",
     "dist",
     "coverage",
     "*.tsbuildinfo",

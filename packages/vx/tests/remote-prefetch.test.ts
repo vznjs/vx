@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import type { CacheLayer } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { prepareRun } from '../src/orchestrator/index.js'
+import { prepareRun } from './helpers/orchestrator.js'
 import { startRemotePrefetch } from '../src/orchestrator/remote-prefetch.js'
 
 const TIMEOUT = 30_000

@@ -12,7 +12,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import type { TaskConfig } from '../src/config.js'
 import type { TaskNode } from '../src/graph/index.js'
 import { keyedProjects } from '../src/orchestrator/keyed-projects.js'
-import { prepareRun, run } from '../src/orchestrator/index.js'
+import { prepareRun } from './helpers/orchestrator.js'
+import { run } from './helpers/orchestrator.js'
 import {
   addProject,
   FORCE,

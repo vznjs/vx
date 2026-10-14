@@ -41,7 +41,7 @@ set -u
 # (bench-env.ts); the arms run without it.
 unset BUN_OPTIONS
 # vx's store is per user under ~/.vx/<repo id>/ since 2026-10-06, where the
-# cold arm's `.vx` wipe never reached it: reps 2+ of a cold arm were all hits.
+# cold arm's cache wipe never reached it: reps 2+ of a cold arm were all hits.
 # A named cache dir holds everything inside the repo.
 export VX_CACHE_DIR=.vx/cache
 R=$1; VX=$2; TASKS=$3; REPS=${4:-3}
@@ -75,14 +75,15 @@ wipe_outputs() {
     -e '!.vx-bench-*'
 }
 wipe_turbo_cache() { rm -rf node_modules/.cache/turbo .turbo packages/*/.turbo; }
-wipe_vx_cache() { rm -rf .vx; }
+# Not all of `.vx`: the workspace file and the lock every run reads live there.
+wipe_vx_cache() { rm -rf .vx/cache; }
 ms() { date +%s%N; }
 # One log per tool AND arm (.vx-bench-<tool>-<arm>.log), kept out of the
 # clean above (astro ignores `*.log`, and the restore arm's clean took the
 # cold arm's log with it): a cold arm that failed under one log per tool
 # was overwritten by the restore arm before anyone read it (n8n,
 # 2026-09-11 — two OOM kills, found in dmesg instead).
-run_vx() { "$VX" run $TASKS "${vx_scope[@]}" --frozen $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
+run_vx() { "$VX" run $TASKS "${vx_scope[@]}" $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
 run_turbo() { node_modules/.bin/turbo run $TASKS "${turbo_scope[@]}" $TURBO_ARGS --no-daemon > ".vx-bench-turbo-$1.log" 2>&1; echo $?; }
 time_arm() {
   local t0 t1 code
@@ -92,9 +93,9 @@ time_arm() {
   # copy (astro's cold rep 1 exited 1 and its cause was lost, 2026-10-09).
   [ "$code" = 0 ] || cp ".vx-bench-$1-$2.log" ".vx-bench-$1-$2.fail-$t0.log"
 }
-# vx runs from a `vx lock` snapshot (`--frozen`), as CI would, taken once
-# here before any arm; a config edited after it is re-locked by running
-# this script again, never inside a rep. A lock that fails ends the bench.
+# Every vx run loads configs only from `.vx/projects.lock.json`, taken once here
+# before any arm; a config edited after it is re-locked by running this
+# script again, never inside a rep. A lock that fails ends the bench.
 "$VX" lock || exit 1
 # SKIP_ARMS=n resumes a rep at its n-th arm (of the eight: four per tool,
 # vx first): every arm's precondition is on disk (the caches persist

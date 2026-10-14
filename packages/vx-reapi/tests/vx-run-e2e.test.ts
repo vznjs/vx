@@ -9,7 +9,7 @@ import { describe, expect, it } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile, access } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { run } from '@vzn/vx'
+import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const ENDPOINT = Bun.env['VX_REAPI_EXEC_ENDPOINT']

@@ -9,7 +9,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
 

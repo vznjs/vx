@@ -9,7 +9,8 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { createEventBus, run, type HeldPersistent, type Logger } from '../src/orchestrator/index.js'
+import { createEventBus, type HeldPersistent, type Logger } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 process.env['VX_RUN_KILL_GRACE'] = '200ms'
 

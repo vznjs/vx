@@ -152,17 +152,17 @@ describe('vx lock', () => {
       const r = Bun.spawnSync({
         cmd: [process.execPath, path.resolve(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
         cwd: root,
-        env: { ...process.env, CI: '', VX_RUN_FROZEN: '' },
+        env: { ...process.env, CI: '', VX_LOCK_REVIEW_FILES: 'false' },
         stderr: 'pipe',
       })
       expect({
         code: r.exitCode,
         err: r.stderr.toString().split('\n').slice(0, 2),
-        written: existsSync(path.join(root, '.vx/lock.json')),
+        written: existsSync(path.join(root, '.vx/projects.lock.json')),
       }).toEqual({
         code: 1,
         err: [
-          'vx lock: .vx/lock.json not written: 1 dependency breaks run.rules.dependencies:',
+          'vx lock: .vx/projects.lock.json not written: 1 dependency breaks run.rules.dependencies:',
           "  lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies",
         ],
         written: false,

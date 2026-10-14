@@ -13,7 +13,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { planRun, run } from '../src/orchestrator/index.js'
+import { lock, planRun, run } from './helpers/orchestrator.js'
 import { resolveRunOptions, parseRunArgs } from '../src/cli/run.js'
 
 const TIMEOUT = 30_000
@@ -240,6 +240,8 @@ describe('task selection', () => {
     'an anchored task still runs when a co-requested bare task selects nothing',
     async () => {
       await addProject('a', ['build'])
+      // An `--affected` selection reads the configs from the lock, as the run does.
+      await lock(root)
       git('add', '-A')
       git('commit', '-qm', 'init')
 
@@ -356,6 +358,7 @@ describe('task selection', () => {
     'a bare-only invocation whose filter selects nothing still exits clean',
     async () => {
       await addProject('a', ['build'])
+      await lock(root)
       git('add', '-A')
       git('commit', '-qm', 'init')
 

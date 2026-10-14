@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const available = await sandboxAvailable('sandbox parent env test')
 let root: string | undefined
 

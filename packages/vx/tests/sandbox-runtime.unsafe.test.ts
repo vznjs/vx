@@ -58,7 +58,8 @@ import {
   refusedWritesOutside,
   reportableViolations,
 } from '../src/exec/sandbox-violations.js'
-import { run, type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
+import { type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
@@ -4087,7 +4088,7 @@ describe('sandbox probe', () => {
         const p = Bun.spawnSync({
           cmd: [
             process.execPath,
-            path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+            path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts'),
             'run',
             'build',
             '--all',
@@ -4133,7 +4134,7 @@ describe('sandbox probe', () => {
         const p = Bun.spawnSync({
           cmd: [
             process.execPath,
-            path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+            path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts'),
             'run',
             'plain',
             'boxed',
@@ -4195,7 +4196,7 @@ describe('sandbox probe', () => {
           const p = Bun.spawnSync({
             cmd: [
               process.execPath,
-              path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+              path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts'),
               'run',
               'build',
               '--all',
@@ -4252,7 +4253,7 @@ describe('sandbox probe', () => {
         const p = Bun.spawnSync({
           cmd: [
             process.execPath,
-            path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+            path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts'),
             'run',
             'build',
             '--all',
@@ -4767,7 +4768,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         const proc = Bun.spawn(
           [
             process.execPath,
-            path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+            path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts'),
             'run',
             'serve',
             '--all',
@@ -6347,7 +6348,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
 describe.skipIf(!available || process.platform !== 'linux')(
   'a signal to vx reaches a sandboxed task',
   () => {
-    const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
     const TRAPS =
       "trap 'echo SIGINT > got.txt; exit 0' INT; trap 'echo SIGTERM > got.txt; exit 0' TERM"
     let root = ''
@@ -6484,7 +6485,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
 describe.skipIf(!available || process.platform !== 'linux')(
   'a SIGKILLed vx takes a sandboxed task’s whole tree with it',
   () => {
-    const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
     let root = ''
     beforeEach(async () => {
       root = await makeWorkspaceRoot({ prefix: 'vx-sbx-kill9-' })

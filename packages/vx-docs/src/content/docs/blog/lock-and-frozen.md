@@ -6,14 +6,8 @@ authors:
 tags:
   - config
   - ci
-excerpt: "Configs are programs and programs can read the environment. `vx lock` evaluates every config now and writes the resolved objects to a lockfile; `vx run --frozen` uses them without evaluating; `vx lock --check` catches drift a byte hash cannot see."
+excerpt: "Configs are programs and programs can read the environment. `vx lock` evaluates every config now and writes the resolved objects to a lockfile; every `vx run` uses them without evaluating; `vx lock --check` catches drift a byte hash cannot see."
 ---
-
-_Since vx 0.0.637 a run under CI (`CI` set) is frozen without the flag,
-and writes the lock first when there is none; `--no-frozen` or
-`VX_RUN_FROZEN=false` turn it off. `vx lock` now checks the graph rules,
-so a frozen run does not. See
-[When to run vx lock](../../guides/ci/#when-to-run-vx-lock)._
 
 A TypeScript config buys composition and costs one guarantee: what it
 evaluates to can depend on where it is evaluated. `process.env.CI`,
@@ -29,16 +23,22 @@ dependencies.
 ```bash
 vx lock              # evaluate every vx.config.* now; write .vx/lock.json
 vx lock --check      # audit: full re-evaluation against the lock; exit 1 on drift
-vx run … --frozen    # consume the lock; no evaluation at all
+vx run …             # consume the lock; no evaluation at all
 ```
 
 `vx lock` evaluates each config in the current environment and stores
-the post-evaluation object under the project's name.
-Plain runs **always** evaluate live; the lock's existence changes
-nothing about `vx run`. Only `--frozen` consumes it, and under
-`--frozen` there is no evaluation and no staleness check of its own: a
-config's env reads keep their lock-time values, a project absent from
-the lock is a hard error, a missing lock is a hard error.
+the post-evaluation object under the project's name. It also checks the
+graph rules. It is the only verb that writes the lock.
+
+Every `vx run`, `vx watch` cycle, `--affected` selection and the picker
+reads configs **only** from the lock. A run never evaluates a config,
+never checks the rules and has no staleness check of its own: a
+config's env reads keep their lock-time values, and a project absent
+from the lock is a hard error. With no lock a run stops with
+`` no lock: run `vx lock` ``. Edit a config, run `vx lock`. A project
+with no `vx.config.*` (its tasks from a plugin's `project` stage, such
+as `turbo()`) has nothing to lock and gets its tasks live on every
+run.
 
 ## The check that a hash cannot do
 
@@ -52,7 +52,7 @@ on stderr and the exit code is 1.
 The CI recipe is two lines:
 
 ```bash
-vx lock --check && vx run ci --all --frozen
+vx lock --check && vx run ci --all
 ```
 
 The first line proves the lock still describes the configs as this
@@ -71,21 +71,21 @@ first line, which is the point.
   the key. The two mechanisms are parallel on purpose: config-time
   values are locked, run-time values are keyed.
 - **Not a performance feature.** Evaluation is already cheap and cached
-  where it is provably pure. `--frozen` is about determinism, and the
+  where it is provably pure. The lock is about determinism, and the
   milliseconds it saves are incidental.
 
 ## For agents
 
 An agent asks the same question in JSON: `vx lock --check --format json`
 prints `{"upToDate": false, "audited": 4, "notAudited": 0, "problems": [...]}`
-with the same exit code, and `vx mcp` answers it as `checkLock`. Each
+with the same exit code. Each
 problem is the line a person would read on stderr.
 
 ## Where it came from
 
 The lock exists because the resolved-config hash made configs
 powerful, and power needs an audit. Package managers learned the same
-lesson with `--frozen-lockfile`: let resolution be dynamic in
-development and pin it where reproducibility is the contract. The
+lesson with `--frozen-lockfile`. vx goes one step further: resolution
+happens only in `vx lock`, and every run is pinned to its result. The
 design note is in the repository under `docs/design/config-lock`; the
 reference is [`vx lock`](../../cli/#vx-lock).

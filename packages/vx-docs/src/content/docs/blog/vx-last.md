@@ -73,8 +73,7 @@ FAIL src/sum.test.ts > adds
 
 `--log` prints what one task printed in the last run that ran it. A
 failure's output is kept, and a cached task's log is its cache entry,
-so a task that passed reads too. Agents get the same through
-`vx mcp`'s `getTaskLog`.
+so a task that passed reads too.
 
 ```mermaid
 flowchart LR

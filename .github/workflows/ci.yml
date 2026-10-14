@@ -179,6 +179,10 @@ jobs:
           sudo mkdir -p /tmp/vx-small
           sudo mount -t tmpfs -o size=2m tmpfs /tmp/vx-small
           sudo chown "$USER" /tmp/vx-small
+      # Every run reads configs from the committed lock and trusts it; this
+      # re-evaluates them and fails on drift.
+      - name: vx lock --check
+        run: bun packages/vx/src/bin.ts lock --check
       - name: vx run ci
         env:
           VX_REQUIRE_SANDBOX: '1'

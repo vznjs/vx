@@ -1,5 +1,5 @@
 import { constants, existsSync, type Dirent } from 'node:fs'
-import { access, readdir, realpath, stat } from 'node:fs/promises'
+import { access, lstat, readdir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
@@ -87,7 +87,8 @@ const decoder = new TextDecoder()
  *
  * Outside git, a file another user owns is refused (root aside): a
  * `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
- * code that would run as you. Inside git the walk never leaves your
+ * code that would run as you. The owner is the file's own, a link's
+ * included, and its `.vx` directory's. Inside git the walk never leaves your
  * checkout. The directory you run in is yours to judge, and costs no
  * stat. Run as root, vx trusts every owner, as a container over a mounted
  * checkout needs. `uid` is for tests.
@@ -107,11 +108,18 @@ export async function findWorkspaceRoot(
   }
   const root = workspaceRootOf(file)
   if (uid !== 0 && root !== start && (await gitTop(start)) === null) {
-    const owner = await stat(file).then(
-      (st) => st.uid,
-      () => uid,
+    // The link itself and the `.vx` holding it, not what a link names: a
+    // link another user planted to a root-owned file passed as root's, and
+    // its owner could point it at their own code once it had.
+    const owners = await Promise.all(
+      [lstat(file), stat(path.dirname(file))].map((p) =>
+        p.then(
+          (st) => st.uid,
+          () => uid,
+        ),
+      ),
     )
-    if (owner !== uid && owner !== 0) {
+    if (owners.some((owner) => owner !== uid && owner !== 0)) {
       throw new UserError(
         `${file} belongs to another user, so vx does not take its directory as your workspace: ` +
           'its config would run as you. Run vx in a checkout you own, or run `vx init` in yours',

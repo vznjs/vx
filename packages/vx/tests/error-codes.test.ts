@@ -10,12 +10,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { errorCode, errorDocument, UserError, wantsJson } from '../src/util/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+
+const REAL_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 let root: string
-let broken: string
 let bare: string
 let badPolicy: string
+/** One workspace per refusal `vx lock` makes: it stops at the first. */
+const refusedByLock: Record<string, string> = {}
 beforeAll(async () => {
   root = await makeWorkspace({ prefix: 'vx-error-codes-' })
   await addProject(
@@ -23,36 +26,25 @@ beforeAll(async () => {
     'a',
     `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
   )
-  await addProject(
-    root,
-    'loop',
-    `export default { tasks: {
+  const out = `cache: { inputs: { files: ['in/**'] }, outputs: { files: ['dist/**'] } }`
+  for (const [name, config] of Object.entries({
+    cycle: `export default { tasks: {
       x: { exec: { command: 'true' }, dependsOn: ['y'] },
       y: { exec: { command: 'true' }, dependsOn: ['x'] },
     } }\n`,
-  )
-  await addProject(
-    root,
-    'dangling',
-    `export default { tasks: { d: { exec: { command: 'true' }, dependsOn: ['ghost'] } } }\n`,
-  )
-  const out = `cache: { inputs: { files: ['in/**'] }, outputs: { files: ['dist/**'] } }`
-  await addProject(
-    root,
-    'twin',
-    `export default { tasks: {
+    dependsOn: `export default { tasks: { d: { exec: { command: 'true' }, dependsOn: ['ghost'] } } }\n`,
+    outputOverlap: `export default { tasks: {
       p: { exec: { command: 'true' }, ${out} },
       q: { exec: { command: 'true' }, ${out} },
+    } }\n`,
+    inputIsOutput: `export default { tasks: {
       s: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/**'] } } },
     } }\n`,
-  )
-  // Its own workspace: a config that does not load refuses every run there.
-  broken = await makeWorkspace({ prefix: 'vx-error-codes-broken-' })
-  await addProject(
-    broken,
-    'bad',
-    `export default { tasks: { b: { exec: { command: 'true' }, nope: 1 } } }\n`,
-  )
+    config: `export default { tasks: { b: { exec: { command: 'true' }, nope: 1 } } }\n`,
+  })) {
+    refusedByLock[name] = await makeWorkspace({ prefix: `vx-error-codes-${name}-` })
+    await addProject(refusedByLock[name], 'p', config)
+  }
   badPolicy = await makeWorkspace({ prefix: 'vx-error-codes-policy-', workspaceFile: false })
   await Bun.write(
     path.join(badPolicy, '.vx/workspace.mjs'),
@@ -67,7 +59,7 @@ beforeAll(async () => {
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
-  await rm(broken, { recursive: true, force: true })
+  for (const dir of Object.values(refusedByLock)) await rm(dir, { recursive: true, force: true })
   await rm(bare, { recursive: true, force: true })
   await rm(badPolicy, { recursive: true, force: true })
 })
@@ -111,13 +103,8 @@ describe('a refusal under --format json', () => {
     expect({
       unknownTask: await refusal(['run', 'nope', '--all', '--format', 'json']),
       usage: await refusal(['run', 'build', '--bogus', '--format=json']),
-      cycle: await refusal(['run', 'x', '--filter', 'loop', '--format', 'json']),
-      config: await refusal(['run', 'b', '--all', '--dry=json'], broken),
       noWorkspace: await refusal(['run', 'build', '--format', 'json'], bare),
       affectedBase: await refusal(['run', 'build', '--affected=a..b', '--dry=json']),
-      dependsOn: await refusal(['run', 'd', '--filter', 'dangling', '--dry=json']),
-      outputOverlap: await refusal(['run', 'p', 'q', '--filter', 'twin', '--dry=json']),
-      inputIsOutput: await refusal(['run', 's', '--filter', 'twin', '--dry=json']),
       cachePolicy: await refusal(['run', 'build', '--all', '--dry=json'], badPolicy),
       cacheFlag: await refusal(['run', 'build', '--all', '--cache-policy=disk:r', '--dry=json']),
       cacheEnv: await refusal(['run', 'build', '--all', '--dry=json'], root, {
@@ -129,17 +116,47 @@ describe('a refusal under --format json', () => {
     }).toEqual({
       unknownTask: 'VX_E_UNKNOWN_TASK',
       usage: 'VX_E_USAGE',
-      cycle: 'VX_E_CYCLE',
-      config: 'VX_E_CONFIG',
       noWorkspace: 'VX_E_NO_WORKSPACE',
       affectedBase: 'VX_E_AFFECTED_BASE',
-      dependsOn: 'VX_E_DEPENDS_ON',
-      outputOverlap: 'VX_E_OUTPUT_OVERLAP',
-      inputIsOutput: 'VX_E_INPUT_IS_OUTPUT',
       cachePolicy: 'VX_E_CONFIG',
       cacheFlag: 'VX_E_USAGE',
       cacheEnv: 'VX_E_USAGE',
       stabilityEnv: 'VX_E_USAGE',
+    })
+  })
+
+  it("a graph or config refusal is the lock's, so a run there has no lock", async () => {
+    const said: Record<string, [number, string, string]> = {}
+    for (const [name, cwd] of Object.entries(refusedByLock)) {
+      const p = Bun.spawnSync([process.execPath, REAL_BIN, 'lock'], { cwd, stderr: 'pipe' })
+      said[name] = [
+        p.exitCode,
+        p.stderr.toString().replaceAll(cwd, '<root>'),
+        await refusal(['run', 'b', '--all', '--dry=json'], cwd),
+      ]
+    }
+    const refused = (why: string): [number, string, string] => [
+      1,
+      `vx lock: .vx/projects.lock.json not written: ${why}\n`,
+      'VX_E_REFUSED',
+    ]
+    expect(said).toEqual({
+      cycle: refused('dependsOn cycle: p#x -> p#y -> p#x — remove one edge of the loop'),
+      dependsOn: refused('p#d: dependsOn p#ghost but no such task is declared'),
+      outputOverlap: refused(
+        'p#p and p#q both declare the output "dist/**" in cache.outputs.files — vx cleans a task\'s declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other\'s output and the run still reports success. Give each task its own output path.',
+      ),
+      inputIsOutput: refused(
+        'p#s: every file "src/**" in cache.inputs.files selects is also its own output — vx removes a task\'s outputs before it runs, so the task would delete its own sources. A task that rewrites files in place (a formatter) declares no outputs.',
+      ),
+      // The text is config-error-audit.test.ts's to pin.
+      config: [
+        1,
+        expect.stringMatching(
+          /^vx lock: \.vx\/projects\.lock\.json not written: packages\/p\/vx\.config\.mjs:1:59: /,
+        ),
+        'VX_E_REFUSED',
+      ],
     })
   })
 
@@ -152,9 +169,9 @@ describe('a refusal under --format json', () => {
       whyUsage: await refusal(['why', '--format', 'json']),
       whyHistory: await refusal(['why', 'a#build', '--format', 'json']),
       lastHistory: await refusal(['last', '--format', 'json']),
-      pruneUsage: await refusal(['cache', 'prune', '--bogus', '--format', 'json']),
+      pruneUsage: await refusal(['cache', 'clean', '--bogus', '--format', 'json']),
       pruneWorkspace: await refusal(
-        ['cache', 'prune', '--max-size', '1G', '--format', 'json'],
+        ['cache', 'clean', '--max-size', '1G', '--format', 'json'],
         bare,
       ),
       cacheSub: await refusal(['cache', 'bogus', '--format', 'json']),

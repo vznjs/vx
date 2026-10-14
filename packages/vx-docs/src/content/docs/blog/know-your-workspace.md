@@ -35,7 +35,7 @@ sandbox:          available (0 tasks declare exec.sandbox)
 It reads what vx already knows: the run history, the cache index, the
 host. It notes when a container caps memory below the machine's, and
 whether git's fast status cache is on. `--format json` gives agents the
-same facts, and `vx mcp` serves them as a tool.
+same facts.
 
 ## A cache that keeps itself in bounds
 
@@ -63,10 +63,10 @@ flowchart LR
   style LRU stroke:#c6f84e,stroke-width:2px
 ```
 
-Or prune by hand, and look first:
+Or trim by hand, and look first:
 
 ```sh frame="terminal"
-$ vx cache prune --max-size 4KB --dry-run
+$ vx cache clean --max-size 4KB --dry-run
 Would prune 25 entries (5.9 KB)
 ```
 

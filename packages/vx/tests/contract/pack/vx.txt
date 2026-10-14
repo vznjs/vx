@@ -51,7 +51,6 @@ src/cli/docs-text.d.ts
 src/cli/docs.ts
 src/cli/foreign-flags.ts
 src/cli/format.ts
-src/cli/frozen.ts
 src/cli/help.ts
 src/cli/index.ts
 src/cli/info.ts

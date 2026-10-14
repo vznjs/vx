@@ -1,5 +1,5 @@
 // A cache entry whose artifact is removed between the probe and the restore
-// — a `vx cache prune` in another shell, or the `cacheRetention` of another
+// — a `vx cache clean` in another shell, or the `cacheRetention` of another
 // workspace sharing `--cache-dir` — is a MISS: the task runs and the run
 // stays green. It failed every such task with "internal error …
 // CorruptArtifactError: artifact file vanished before restore" (upstream
@@ -14,7 +14,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
 import { removeStoredArtifact, replaceStoredArtifact } from './helpers/stored-artifact.js'

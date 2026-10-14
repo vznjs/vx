@@ -6,6 +6,7 @@
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
+import { lock } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -16,6 +17,8 @@ beforeAll(async () => {
   root = await makeWorkspace({ prefix: 'vx-task-typo-' })
   await addProject(root, 'app', TASKS)
   await addProject(root, 'lib', TASKS)
+  // The hint names the tasks a run would see: the lock's.
+  await lock(root)
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })

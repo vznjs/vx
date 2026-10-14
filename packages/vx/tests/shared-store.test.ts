@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { resolveStoreRoot } from '../src/workspace/index.js'
 import { parseGitConfigRemotes, parseRemoteUrl, repoIdOf } from '../src/workspace/repo-id.js'
 import { restoreEnv } from './helpers/env.js'
@@ -482,10 +482,10 @@ describe('repoIdOf', () => {
     }
     const info = vx('info')
     expect(info).toMatch(/cache entries:\s+1 \(/)
-    expect(vx('cache', 'prune', '--max-size', '1B', '--dry-run')).toMatch(
+    expect(vx('cache', 'clean', '--max-size', '1B', '--dry-run')).toMatch(
       /^0 Would prune 1 entry \(/,
     )
-    expect(vx('cache', 'prune', '--max-size', '1B')).toMatch(/^0 Pruned 1 entry \(/)
+    expect(vx('cache', 'clean', '--max-size', '1B')).toMatch(/^0 Pruned 1 entry \(/)
     rmSync(path.join(a.root, '.vx', 'cache'), { recursive: true })
     expect(await build(a)).toEqual({ status: 'success', restored: undefined })
   })
@@ -502,7 +502,7 @@ describe('repoIdOf', () => {
     const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
     const vx = (...args: string[]): string[] => {
       const p = Bun.spawnSync({
-        cmd: [process.execPath, bin, 'cache', 'prune', '--max-size', '1B', ...args],
+        cmd: [process.execPath, bin, 'cache', 'clean', '--max-size', '1B', ...args],
         cwd: a.root,
         env: { ...process.env, NO_COLOR: '1' },
       })

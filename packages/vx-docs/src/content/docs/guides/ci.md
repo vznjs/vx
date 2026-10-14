@@ -114,7 +114,7 @@ Each step, in order:
 
 1. **`fetch-depth: 0`.** `--affected` needs the history to find the base.
 2. **`vx lock --check`.** It evaluates every config again and fails on
-   any difference from `.vx/lock.json`, before a task runs
+   any difference from `.vx/projects.lock.json`, before a task runs
    ([when to run `vx lock`](#when-to-run-vx-lock)).
 3. **`vx run ci`.** Its configs come from the lock. A push to `main` runs `--all`; a pull request runs
    `--affected=origin/<base>`: what it changed, and what depends on that.
@@ -179,12 +179,13 @@ A failure on inputs that passed before says so on its row:
 
 ### When to run vx lock
 
-`vx lock` writes each project's resolved config to `.vx/lock.json`, and
+`vx lock` writes each project's resolved config to `.vx/projects.lock.json`, and
 refuses a graph that breaks a `run.rules` rule (two tasks writing one
 output, an input that reads another task's output); commit it. Every
 run reads its configs from the lock and evaluates none, so after a
 change the runs keep the old configs until you run `vx lock` and commit
-the lock again. Do it after you:
+the lock again; with no lock a run fails with `` no lock: run `vx lock` ``.
+Do it after you:
 
 - edit any `vx.config.ts` or `.vx/workspace.ts`,
 - update dependencies or plugins,

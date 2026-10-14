@@ -16,8 +16,10 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
+import type { ProjectConfig } from '../src/config.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { prepareRun } from '../src/orchestrator/index.js'
+import { prepareRun as prepareFromLock } from '../src/orchestrator/index.js'
+import { lock, prepareRun } from './helpers/orchestrator.js'
 import { pluginSource } from './helpers/plugin.js'
 import { UserError } from '../src/util/index.js'
 
@@ -82,6 +84,22 @@ function cfg(...tasks: string[]): string {
 }
 
 /**
+ * Locks the workspace, then edits the lock: a lock `vx lock` would not
+ * write, read by `prepare({ locked: true })` as is.
+ */
+async function editLock(edit: (projects: Record<string, ProjectConfig>) => void): Promise<void> {
+  await lock(root)
+  const file = path.join(root, '.vx', 'projects.lock.json')
+  const held = (await Bun.file(file).json()) as { projects: Record<string, ProjectConfig> }
+  edit(held.projects)
+  await Bun.write(file, JSON.stringify(held))
+}
+
+/** What a run says when the lock holds no entry for a config it reads. */
+const noEntry = (name: string): string =>
+  `.vx/projects.lock.json has no entry for "${name}" (packages/${name}/vx.config.mjs) — run \`vx lock\``
+
+/**
  * NB `prepareRun` takes an EXPLICIT project scope — resolving cwd to "the
  * project that contains it" is the CLI's job (`cli/run.ts`), not this
  * function's. Passing only `cwd` therefore selects the WHOLE workspace, which
@@ -93,9 +111,11 @@ async function prepare(
     cwd?: string
     projects?: string[]
     excludeDependencies?: 'all' | string[]
+    /** Read the lock as it is, instead of locking first. */
+    locked?: boolean
   } = {},
 ): Promise<Awaited<ReturnType<typeof prepareRun>>> {
-  const p = await prepareRun(
+  const p = await (opts.locked === true ? prepareFromLock : prepareRun)(
     {
       cwd: opts.cwd ?? root,
       tasks: opts.tasks ?? ['build'],
@@ -181,45 +201,49 @@ describe('scoped config loading reaches every project a run can need', () => {
     async () => {
       // A real optimisation rule, not an accident: with no explicit scope, BARE
       // task names fan out across the workspace, so every config must be
-      // evaluated. When every requested spec is `pkg#task`, the anchors are the
-      // scope and nothing else needs evaluating — which is what keeps
+      // read from the lock. When every requested spec is `pkg#task`, the anchors
+      // are the scope and nothing else needs reading — which is what keeps
       // `vx run a#build` from paying for a 1000-package config load.
       //
-      // Asserted through a BROKEN sibling, because the observable is which
-      // configs get EVALUATED, and `nodes` cannot see it: `expandRequested`
-      // resolves an anchored spec to the same one node either way, so a test
-      // that reads `nodes` passes whether or not the optimisation exists.
-      // (Confirmed — it was the first version of this test, and the mutation
-      // that seeds every project survived it.)
+      // Asserted through a sibling the lock holds no entry for, because the
+      // observable is which configs get READ, and `nodes` cannot see it:
+      // `expandRequested` resolves an anchored spec to the same one node either
+      // way, so a test that reads `nodes` passes whether or not the optimisation
+      // exists. (Confirmed — it was the first version of this test, and the
+      // mutation that seeds every project survived it.)
       await pkg('app', cfg(task('build')))
-      await pkg('other', 'export default { tasks: 42 }')
+      await pkg('other', cfg(task('build')))
+      await editLock((projects) => delete projects['other'])
 
-      const anchoredOnly = await prepare({ tasks: ['app#build'] })
+      const anchoredOnly = await prepare({ tasks: ['app#build'], locked: true })
       expect([...anchoredOnly.nodes.keys()]).toEqual(['app#build'])
 
       // The control: ONE bare name beside the anchor re-opens the fan-out, so
       // the rule is about the whole spec set rather than per-entry — and the
-      // broken config is now in scope and reported.
-      await expect(prepare({ tasks: ['app#build', 'build'] })).rejects.toThrow()
+      // missing entry is now in scope and reported.
+      await expect(prepare({ tasks: ['app#build', 'build'], locked: true })).rejects.toThrow(
+        noEntry('other'),
+      )
     },
     TIMEOUT,
   )
 
   it(
-    'an out-of-scope BROKEN config does not fail a scoped run',
+    'a BROKEN config anywhere fails the lock, so no run starts, scoped or not',
     async () => {
-      // Deliberate, and a Turbo-like semantic rather than an accident: scoped
-      // loading only evaluates what the run can reach, so a package with a
-      // broken config surfaces when it ENTERS scope, not before. Pinned because
-      // it is the user-visible consequence of the scoping optimisation, and the
-      // obvious "load everything and validate up front" refactor would undo it.
+      // `vx lock` evaluates every config and writes nothing when one fails, and
+      // a run reads configs only from the lock (owner, 2026-10-14): a broken
+      // config out of a run's scope stops the run too, until it is fixed.
       await pkg('app', cfg(task('build')))
       await pkg('broken', 'export default { tasks: 42 }')
 
-      const p = await prepare({ projects: ['app'] })
-      expect([...p.nodes.keys()]).toEqual(['app#build'])
-      // …and it IS reported once that project is in scope.
-      await expect(prepare({ projects: ['broken'] })).rejects.toThrow()
+      await expect(lock(root)).rejects.toThrow(
+        `vx lock: .vx/projects.lock.json not written: ${path.join(root, 'packages', 'broken', 'vx.config.mjs')}: ` +
+          '`tasks` must be an object keyed by task name',
+      )
+      await expect(prepare({ projects: ['app'], locked: true })).rejects.toThrow(
+        'no lock: run `vx lock`',
+      )
     },
     TIMEOUT,
   )
@@ -293,11 +317,21 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
     }
     return undefined
   }
-  /** A config that leaves `<name>.evaluated` in the workspace root when it loads. */
-  const marking = (name: string, ...tasks: string[]): string =>
-    `import { writeFileSync } from 'node:fs'\n` +
-    `writeFileSync(${JSON.stringify(path.join(root, `${name}.evaluated`))}, '')\n` +
-    cfg(...tasks)
+  /**
+   * `vx lock` refuses the typo, so a run meets it only in a lock edited by
+   * hand: app's `typo` is locked without it, then given it.
+   */
+  const typoLocked = async (): Promise<void> => {
+    await pkg('app', cfg(task('typo')), ['cart'])
+    await editLock((projects) => {
+      projects['app']!.tasks!['typo']!.dependsOn = ['^biuld']
+    })
+  }
+  /** Web's locked entry without `pack`: a run that reads it finds no declarer. */
+  const webWithoutPack = (): Promise<void> =>
+    editLock((projects) => {
+      delete projects['web']!.tasks!['pack']
+    })
 
   it(
     'refuses it when the run loads only part of the workspace',
@@ -306,7 +340,11 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
       await pkg('cart', cfg(task('build')))
       await pkg('web', cfg(task('build')))
 
-      const err = await refusal({ tasks: ['app#typo'] })
+      await expect(lock(root)).rejects.toThrow(
+        'vx lock: .vx/projects.lock.json not written: app#typo: dependsOn ^biuld but no project in the workspace declares biuld',
+      )
+      await typoLocked()
+      const err = await refusal({ tasks: ['app#typo'], locked: true })
       expect(err).toBeInstanceOf(UserError)
       expect((err as Error).message).toBe(
         'app#typo: dependsOn ^biuld but no project in the workspace declares biuld',
@@ -325,12 +363,14 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
       await pkg('app', cfg(task('typo', ['^biuld'])), ['cart'])
       await pkg('cart', cfg(task('build')))
       await pkg('web', cfg(task('build')))
+      await typoLocked()
 
       const messages: unknown[] = []
       for (const tasks of [['app#typo'], ['typo']]) {
         for (const excludeDependencies of ['all', ['biuld'], ['build']] as const) {
           const err = await refusal({
             tasks,
+            locked: true,
             excludeDependencies: excludeDependencies === 'all' ? 'all' : [...excludeDependencies],
           })
           messages.push(err instanceof UserError ? err.message : err)
@@ -348,15 +388,21 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
     async () => {
       // `pack`, not `build`: every project has a build (the default).
       // app → cart, neither declares pack; web does and is nobody's dep, so
-      // it is loaded only to prove the name is not a typo.
+      // its entry is read only to prove the name is not a typo.
       await pkg('app', cfg(task('test', ['^pack'])), ['cart'])
       await pkg('cart', cfg(task('lint')))
-      await pkg('web', marking('web', task('pack')))
+      await pkg('web', cfg(task('pack')))
 
       const p = await prepare({ tasks: ['app#test'] })
       expect([...p.nodes.keys()]).toEqual(['app#test'])
       expect(p.nodes.get('app#test')!.deps).toEqual([])
-      expect(await Bun.file(path.join(root, 'web.evaluated')).exists()).toBe(true)
+      // Web's entry is what proved it: locked without pack, the name is refused.
+      await webWithoutPack()
+      const err = await refusal({ tasks: ['app#test'], locked: true })
+      expect(err).toBeInstanceOf(UserError)
+      expect((err as Error).message).toBe(
+        'app#test: dependsOn ^pack but no project in the workspace declares pack',
+      )
     },
     TIMEOUT,
   )
@@ -365,12 +411,14 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
     'loads nothing more when a loaded project declares the name',
     async () => {
       // The control for the row above: cart declares pack, so nothing is
-      // left to prove and web's config is never evaluated.
+      // left to prove and web's entry is never read — locked without pack,
+      // it refuses nothing.
       await pkg('app', cfg(task('test', ['^pack'])), ['cart'])
       await pkg('cart', cfg(task('pack')))
-      await pkg('web', marking('web', task('pack')))
+      await pkg('web', cfg(task('pack')))
+      await webWithoutPack()
 
-      const p = await prepare({ tasks: ['app#test'] })
+      const p = await prepare({ tasks: ['app#test'], locked: true })
       expect([...p.nodes.keys()].sort()).toEqual(['app#test', 'cart#pack'])
       expect(await Bun.file(path.join(root, 'web.evaluated')).exists()).toBe(false)
     },
@@ -378,16 +426,17 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
   )
 
   it(
-    'an out-of-scope broken config leaves the name unjudged, not the run failed',
+    'an out-of-scope entry the lock lacks leaves the name unjudged, not the run failed',
     async () => {
-      // Proving the typo needs every config; a broken one out of scope
-      // cannot fail a scoped run (the row above this describe), so the name
-      // is let through as before.
+      // Proving the typo needs every config; one the lock holds no entry for
+      // cannot fail a scoped run (the anchored row above this describe), so
+      // the name is let through. Other's pack is what let `vx lock` write it.
       await pkg('app', cfg(task('test', ['^pack'])), ['cart'])
       await pkg('cart', cfg(task('lint')))
-      await pkg('broken', 'export default { tasks: 42 }')
+      await pkg('other', cfg(task('pack')))
+      await editLock((projects) => delete projects['other'])
 
-      const p = await prepare({ tasks: ['app#test'] })
+      const p = await prepare({ tasks: ['app#test'], locked: true })
       expect([...p.nodes.keys()]).toEqual(['app#test'])
     },
     TIMEOUT,
@@ -613,9 +662,10 @@ describe('a refused cache plugin leaks nothing', () => {
         path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource([pluginSource('org/junk', `{ cache: () => ({ nope: true }) }`)]),
       )
+      await lock(root)
       const closes = spyOn(Cache.prototype, 'close')
       try {
-        await expect(prepare()).rejects.toThrow(
+        await expect(prepare({ locked: true })).rejects.toThrow(
           "plugin 'org/junk' returned from cache something that is not a remote cache layer",
         )
         // The one handle prepare opened, closed once on the way out — the
@@ -631,7 +681,7 @@ describe('a refused cache plugin leaks nothing', () => {
 
 describe('a broken config leaks nothing either', () => {
   it(
-    'the local handle is closed when a project config throws, not only when a cache plugin is refused',
+    'the local handle is closed when a project config fails to load, not only when a cache plugin is refused',
     async () => {
       // The twin of the row above, thirty lines earlier in `prepare.ts` and
       // with the same one-line body and the same comment explaining it. The
@@ -644,10 +694,11 @@ describe('a broken config leaks nothing either', () => {
       // throw between the open and the return strands an open SQLite handle
       // for a process that keeps running — `vx watch`, an editor plugin, a
       // daemon — and the next open of the same file meets a busy lock.
-      await pkg('app', 'export default { this is not javascript }')
+      await pkg('app', cfg(task('build')))
+      await editLock((projects) => delete projects['app'])
       const closes = spyOn(Cache.prototype, 'close')
       try {
-        await expect(prepare()).rejects.toThrow()
+        await expect(prepare({ locked: true })).rejects.toThrow(noEntry('app'))
         expect(closes).toHaveBeenCalledTimes(1)
       } finally {
         closes.mockRestore()

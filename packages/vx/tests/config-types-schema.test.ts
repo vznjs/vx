@@ -25,6 +25,7 @@ import type {
   SandboxIgnore,
   TaskConfig,
   WorkspaceConfig,
+  LockSettings,
 } from '../src/config.js'
 import { defineProject } from '../src/config.js'
 import { validateProjectConfig, validateWorkspace } from '../src/workspace/index.js'
@@ -37,6 +38,7 @@ type Exhaustive<T, L extends readonly string[]> = [Exclude<Keys<T>, L[number]>] 
 
 const WORKSPACE = [
   'cache',
+  'lock',
   'plugins',
   'run',
   'watch',
@@ -45,7 +47,6 @@ const RUN = [
   'affectedBase',
   'concurrency',
   'continue',
-  'frozen',
   'killGrace',
   'readyNotice',
   'retries',
@@ -58,6 +59,7 @@ const RULES = ['dependencies', 'exclusiveOutputs', 'upfrontKeys'] as const satis
   NonNullable<RunSettings['rules']>
 >[]
 const WATCH = ['poll'] as const satisfies readonly Keys<WatchSettings>[]
+const LOCK = ['reviewFiles'] as const satisfies readonly Keys<LockSettings>[]
 const PROJECT = ['tags', 'tasks'] as const satisfies readonly Keys<ProjectConfig>[]
 const TASK = [
   'cache',
@@ -134,6 +136,7 @@ const exhaustive: [
   Exhaustive<RunSettings, typeof RUN>,
   Exhaustive<NonNullable<RunSettings['rules']>, typeof RULES>,
   Exhaustive<WatchSettings, typeof WATCH>,
+  Exhaustive<LockSettings, typeof LOCK>,
   Exhaustive<ProjectConfig, typeof PROJECT>,
   Exhaustive<TaskConfig, typeof TASK>,
   Exhaustive<ExecConfig, typeof EXEC>,
@@ -150,6 +153,7 @@ const exhaustive: [
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
 ] = [
+  true,
   true,
   true,
   true,
@@ -248,6 +252,7 @@ describe('the config types and the validator agree on every level (D-71)', () =>
     ['run', RUN, () => validateWorkspace({ run: { ...X } } as never, 'w')],
     ['run.rules', RULES, () => validateWorkspace({ run: { rules: X } } as never, 'w')],
     ['watch', WATCH, () => validateWorkspace({ watch: { ...X } } as never, 'w')],
+    ['lock', LOCK, () => validateWorkspace({ lock: { ...X } } as never, 'w')],
     [
       'cache.inputStability (workspace)',
       STABILITY,

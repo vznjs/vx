@@ -13,13 +13,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
 import type { Logger, RunSummary } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { captureGitContext } from '../src/orchestrator/run-context.js'
 import { repoIdOf } from '../src/workspace/repo-id.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const TIMEOUT = 60_000
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 function gitVersion(): [number, number] | null {
   const p = Bun.spawnSync(['git', '--version'], { stdout: 'pipe', stderr: 'ignore' })

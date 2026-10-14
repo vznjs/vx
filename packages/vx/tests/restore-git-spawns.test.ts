@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { waitForProducers, writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const TIMEOUT = 60_000
-const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 interface Fixture {
   root: string

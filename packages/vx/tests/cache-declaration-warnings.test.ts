@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { run } from '../src/index.js'
+import { run } from './helpers/orchestrator.js'
 
 let root: string
 
@@ -75,10 +75,11 @@ describe('cache declarations that match nothing', () => {
             outputs: { files: [], workspaceFiles: ['nowhere/**'] } } },
         // The other side of the sum: \`files\` matches nothing but the
         // root-anchored glob DOES match, so the outputs are not empty and
-        // there is nothing to warn about.
+        // there is nothing to warn about. Not \`build/**\`: the lock refuses
+        // two tasks declaring one output.
         wsfound: { exec: { command: 'mkdir -p ../../shared && echo x > ../../shared/a.js' },
           cache: { inputs: { files: ['src/**'] },
-            outputs: { files: ['build/**'], workspaceFiles: ['shared/**'] } } },
+            outputs: { files: ['out/**'], workspaceFiles: ['shared/**'] } } },
       } }\n`,
     )
     await gitInit(root)

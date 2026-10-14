@@ -13,7 +13,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const RECORD = path.join(import.meta.dir, 'contract', 'exit-codes.json')
 
 /** Each documented outcome: its cli.md section, then the arguments that reach it. */
@@ -28,8 +28,8 @@ const CASES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['an unknown verb', ['no-such-verb']],
   ['watch: a rejected flag', ['watch', 'build', '--all', '--dry']],
   ['watch: nothing affected since the ref', ['watch', 'build', '--affected=HEAD']],
-  ['cache prune: no policy', ['cache', 'prune']],
-  ['cache prune: a policy', ['cache', 'prune', '--older-than', '1d']],
+  ['cache clean: a policy', ['cache', 'clean', '--older-than', '1d']],
+  ['cache clean: no bound clears', ['cache', 'clean', '--dry-run']],
   ['lock: write', ['lock']],
   ['lock --check: up to date', ['lock', '--check']],
   ['show', ['show']],
@@ -82,7 +82,7 @@ it('the watch exit codes name the empty --affected exit', () => {
   // `vx watch build --affected=HEAD` exits 0 without watching, as the
   // contract above records; the watch section's exit codes left it out (J2-59).
   const doc = readFileSync(path.join(import.meta.dir, '..', 'docs', 'cli.md'), 'utf8')
-  const watch = doc.slice(doc.indexOf('## `vx watch`'), doc.indexOf('## `vx cache prune`'))
+  const watch = doc.slice(doc.indexOf('## `vx watch`'), doc.indexOf('## `vx cache clean`'))
   const codes = watch.slice(watch.indexOf('### Exit codes'))
   expect(codes.slice(0, codes.indexOf('- `1`'))).toContain('when `--affected` selects nothing')
 })

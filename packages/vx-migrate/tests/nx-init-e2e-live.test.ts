@@ -192,6 +192,8 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
         expect(await readFile(path.join(root, lib, 'vx.config.ts'), 'utf8')).toContain(
           'nx-exec @nx/js:tsc',
         )
+        // The edits above change the configs a run reads: re-lock, as a user would.
+        expect(await run(['bun', VX, 'lock'])).toEqual({ code: 0, tail: '' })
         expect(await run(['bun', VX, 'run', 'build', '--all'])).toEqual({ code: 0, tail: '' })
         expect(await built()).toEqual(outputs.map(() => true))
       },

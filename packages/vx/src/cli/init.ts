@@ -15,7 +15,13 @@ import { lockAfterMigration } from './lock.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isCompiledBinary } from './upgrade.js'
 import { VERSION } from '../version.js'
-import { DOT_VX_GITIGNORE, isUserError, relPosix, UserError } from '../util/index.js'
+import {
+  DOT_VX_GITATTRIBUTES,
+  DOT_VX_GITIGNORE,
+  isUserError,
+  relPosix,
+  UserError,
+} from '../util/index.js'
 import {
   applyMigration,
   discoverProjects,
@@ -165,6 +171,12 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     )
   }
   const unmapped = namelessNotes(root, nameless)
+  // Only a workspace file this run writes declares it; one already here is the user's.
+  const lockfile = WORKSPACE_CONFIG_FILENAMES.some((f) => existsSync(path.join(root, f)))
+    ? undefined
+    : lockfilePlugin(root)
+  const installed =
+    lockfile === undefined ? [] : await installLockfilePlugin(root, lockfile, parsed.dry)
   return applyMigration({
     root,
     metas,
@@ -175,7 +187,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     ),
     source: 'package.json scripts',
     verb: 'vx init',
-    notes: [...(await unreadWorkspaces(root, workspace.packageGlobs)), ...unmapped],
+    notes: [...(await unreadWorkspaces(root, workspace.packageGlobs)), ...unmapped, ...installed],
     unmapped: unmapped.length > 0,
     dry: parsed.dry,
     json: parsed.json === true,
@@ -183,6 +195,7 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     init: true,
     format: parsed.mjs ? 'mjs' : 'ts',
     lock: lockAfterMigration,
+    plugins: lockfile === undefined ? [] : [{ pkg: LOCKFILE_PKG, factory: lockfile }],
   })
 }
 
@@ -263,8 +276,13 @@ async function adopt(
   const remote = remoteCacheSignal(root, runner)
   const cache = REMOTE_CACHE[runner]
   const imports = remote === undefined ? runner : `${runner}, ${cache}`
-  const plugins = remote === undefined ? `${runner}()` : `${runner}(), ${cache}()`
-  const body = `import { ${imports} } from '@vzn/vx-migrate'\n\nexport default { plugins: [${plugins}] }`
+  const lockfile = lockfilePlugin(root)
+  const plugins = [
+    runner,
+    ...(remote === undefined ? [] : [cache]),
+    ...(lockfile === undefined ? [] : [lockfile]),
+  ]
+  const body = `import { ${imports} } from '@vzn/vx-migrate'\n${lockfile === undefined ? '' : `import { ${lockfile} } from '${LOCKFILE_PKG}'\n`}\nexport default { plugins: [${plugins.map((p) => `${p}()`).join(', ')}] }`
   const text = args.mjs
     ? `${body}\n`
     : `import type { WorkspaceConfig } from '@vzn/vx/config'\n${body} satisfies WorkspaceConfig\n`
@@ -283,10 +301,17 @@ async function adopt(
     await Bun.write(path.join(root, name), text)
   }
   const kept = existing !== undefined && !args.force
+  const needs = [
+    '@vzn/vx',
+    '@vzn/vx-migrate',
+    ...(lockfile === undefined || kept ? [] : [LOCKFILE_PKG]),
+  ]
   const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
-  // vx's own housekeeping, as a run's first cache open writes it.
+  // vx's own housekeeping, as a run's first cache open and `vx lock` write them.
   if (!args.dry && ignore.length > 0)
     await Bun.write(path.join(root, '.vx', '.gitignore'), DOT_VX_GITIGNORE)
+  const attributes = path.join(root, '.vx', '.gitattributes')
+  if (!args.dry && !existsSync(attributes)) await Bun.write(attributes, DOT_VX_GITATTRIBUTES)
   const wrote = kept
     ? `${existing} already declares ${runner}().`
     : args.dry
@@ -315,16 +340,21 @@ async function adopt(
         replaced: !kept && existing !== undefined && existing !== name ? [existing] : [],
         todos: [],
         notes: cacheLine === '' ? [] : [cacheLine.trimEnd()],
-        next: adoptionNext(root, runner, source),
+        next: adoptionNext(root, runner, source, needs),
       })}\n`,
     )
     return 0
   }
+  const next = adoptionNext(root, runner, source, needs)
   process.stdout.write(
-    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until vx init --native writes native config; nothing else written.\n` +
-      `${wrote}\n${cacheLine}\nnext: ${adoptionNext(root, runner, source)}\n`,
+    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.\n` +
+      `${wrote}\n${cacheLine}\n`,
   )
-  return 0
+  // A run reads only the lock; with the plugin installed it is written now,
+  // else `next` names `vx lock` after the install.
+  const code = args.dry || next.includes(' lock && ') ? 0 : await lockAfterMigration(root)
+  process.stdout.write(`next: ${next}\n`)
+  return code
 }
 
 const REMOTE_CACHE = { turbo: 'turboCache', nx: 'nxCache' } as const
@@ -423,7 +453,46 @@ const LOCKFILES: ReadonlyArray<[string, PackageManager]> = [
   ['bun.lock', 'bun'],
   ['bun.lockb', 'bun'],
   ['package-lock.json', 'npm'],
+  ['npm-shrinkwrap.json', 'npm'],
 ]
+
+/**
+ * The `@vzn/vx-lockfile` plugin claiming the root's lockfile, named as its
+ * manager: package edges (`^build`, --affected) come from it alone.
+ */
+function lockfilePlugin(root: string): PackageManager | undefined {
+  return LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1]
+}
+
+const LOCKFILE_PKG = '@vzn/vx-lockfile'
+
+/**
+ * Install `@vzn/vx-lockfile` with the repo's manager, pinned to this vx
+ * (every @vzn package releases in lockstep), unless it is there: the
+ * written workspace file imports it and `vx lock` runs straight after.
+ * Returns the report's note.
+ */
+async function installLockfilePlugin(
+  root: string,
+  pm: PackageManager,
+  dry: boolean,
+): Promise<string[]> {
+  if (existsSync(path.join(root, 'node_modules', LOCKFILE_PKG, 'package.json'))) return []
+  const spec = VERSION === '0.0.0' ? LOCKFILE_PKG : `${LOCKFILE_PKG}@${VERSION}`
+  const cmd = `${installCommand(root, pm)} ${spec}`
+  if (dry) return [`would run ${cmd} (dry run)`]
+  const p = Bun.spawn(['sh', '-c', cmd], { cwd: root, stdout: 'ignore', stderr: 'pipe' })
+  const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited])
+  if (code !== 0) throw new UserError(`vx init: ${cmd} failed (exit ${code}):\n${err.trimEnd()}`)
+  return [`ran ${cmd}: the workspace file imports it`]
+}
+
+/** Yarn 1 refuses `add` at a workspace root without `-W`; Berry has no such flag. */
+function installCommand(root: string, pm: PackageManager): string {
+  return pm === 'yarn' && !readText(path.join(root, 'yarn.lock')).includes('__metadata:')
+    ? `${INSTALL.yarn} -W`
+    : INSTALL[pm]
+}
 
 const INSTALL: Record<PackageManager, string> = {
   pnpm: 'pnpm add -D -w',
@@ -461,15 +530,10 @@ export function adoptionNext(
   const task = firstTask(path.join(root, source), runner)
   const run = `${vx} run ${task} --all`
   if (missing.length === 0) return run
-  // Yarn 1 refuses `add` at a workspace root without `-W`; Berry has no such
-  // flag and refuses it. A Berry lockfile carries `__metadata`.
-  const install =
-    pm === 'yarn' && !readText(path.join(root, 'yarn.lock')).includes('__metadata:')
-      ? `${INSTALL.yarn} -W`
-      : INSTALL[pm]
+  const install = installCommand(root, pm)
   // A source checkout is 0.0.0, which npm never had.
   const pinned = version === '0.0.0' ? missing : missing.map((p) => `${p}@${version}`)
-  return `${install} ${pinned.join(' ')} && ${run}`
+  return `${install} ${pinned.join(' ')} && ${vx} lock && ${run}`
 }
 
 function readText(file: string): string {

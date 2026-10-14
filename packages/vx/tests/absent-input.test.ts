@@ -15,7 +15,7 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { ABSENT_INPUT, Cache, type CacheKeyInput } from '../src/cache/index.js'
 import { foldKey } from '../src/cache/key-fold.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import type { TaskNode } from '../src/graph/index.js'
 import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js'
 

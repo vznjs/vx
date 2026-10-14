@@ -48,7 +48,7 @@ $ vx run build --all --format json 2>/dev/null
 ```
 
 `savedMs` is the time the cache saved this run. `vx show`, `vx info`,
-`vx why`, `vx last` and `vx cache prune` take the same `--format json`.
+`vx why`, `vx last` and `vx cache clean` take the same `--format json`.
 
 ## Every shape has a schema
 
@@ -113,8 +113,7 @@ $ mkdir -p .claude/skills/vx
 $ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 ```
 
-For live questions over the Model Context Protocol, see
-[Give your coding agent the build's memory](../agents-and-mcp/). The
+Or install it with `npx skills add vznjs/vx/packages/vx/skills/vx`. The
 [agents guide](../../guides/agents/) and
 [machine-readable output](../../cli/#machine-readable-output) have the
 details.

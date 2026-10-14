@@ -14,7 +14,7 @@ import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-works
 import { pluginSource } from './helpers/plugin.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 function git(cwd: string, ...args: string[]): void {
   const p = Bun.spawnSync({
@@ -369,27 +369,25 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
   )
 
   it(
-    'an unknown ^name in a task the diff does not reach is not judged',
+    'an unknown ^name is refused by `vx lock`, even in a task no diff reaches',
     async () => {
-      // `!x` leaves x unloaded, so `^nope` is judged against the rest of
-      // the workspace only for the tasks that stay in the run.
-      await write(path.join(root, 'pkgs/x/package.json'), JSON.stringify({ name: 'x' }))
-      await write(path.join(root, 'pkgs/x/vx.config.mjs'), CONFIG)
+      // A run judged `^nope` only for the tasks the diff kept; a run now
+      // checks no rule, and the lock checks every task.
       await write(
         path.join(root, 'pkgs/tool/vx.config.mjs'),
         CONFIG.replace("dependsOn: ['^build']", "dependsOn: ['^build', '^nope']"),
       )
       await graphPlugin('')
-      await commitEdit('pkgs/app/src/index.ts', 'export const x = 3')
-      expect(planned(['build'], '--affected=HEAD~1', '--filter', '!x')).toEqual([
-        'app#build',
-        'lib#build',
+      const lock = Bun.spawnSync({
+        cmd: ['bun', path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
+        cwd: root,
+        stderr: 'pipe',
+        env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+      })
+      expect([lock.exitCode, lock.stderr.toString()]).toEqual([
+        1,
+        'vx lock: .vx/projects.lock.json not written: tool#build: dependsOn ^nope but no project in the workspace declares nope\n',
       ])
-      // CONTROL: once the diff reaches tool#build, the name is refused.
-      await commitEdit('pkgs/tool/src/index.ts', 'export const x = 3')
-      expect(planned(['build'], '--affected=HEAD~1', '--filter', '!x')).toContain(
-        'tool#build: dependsOn ^nope',
-      )
     },
     TIMEOUT,
   )

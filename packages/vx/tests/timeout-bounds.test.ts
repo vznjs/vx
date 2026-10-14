@@ -215,7 +215,7 @@ describe('the refusal reaches a real run', () => {
     Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
 
     const proc = Bun.spawnSync({
-      cmd: ['bun', path.join(import.meta.dir, '..', 'src', 'bin.ts'), 'run', 'build'],
+      cmd: ['bun', path.join(import.meta.dir, 'helpers', 'vx-locked.ts'), 'run', 'build'],
       cwd: dir,
       stdout: 'pipe',
       stderr: 'pipe',

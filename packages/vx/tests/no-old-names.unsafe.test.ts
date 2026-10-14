@@ -27,7 +27,13 @@ const OLD: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bvx migrate\b/, 'bunx @vzn/vx-migrate'],
   [/@vzn\/vx-github\b/, '@vzn/vx-ci'],
   [/\bvx\.workspace\.(ts|mts|js|mjs|cts|cjs|\*|\{)/, '.vx/workspace.ts'],
-  [/\bvx-lock\.json\b/, '.vx/lock.json'],
+  [/\bvx-lock\.json\b/, '.vx/projects.lock.json'],
+  [/\bvx cache prune\b/, 'vx cache clean'],
+  [
+    /(?<![\w-])--(no-)?frozen\b(?!-)|\brun\.frozen\b|\bVX_RUN_FROZEN\b/,
+    'vx lock (runs read only the lock)',
+  ],
+  [/\.vx\/lock\.json\b/, '.vx/projects.lock.json'],
 ]
 
 const SKIP = [

@@ -1,0 +1,1415 @@
+{
+  "tasks": {
+    "test.bun.shard-1": {
+      "description": "bun test, shard 1 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 1 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-2": {
+      "description": "bun test, shard 2 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 2 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-3": {
+      "description": "bun test, shard 3 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 3 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-4": {
+      "description": "bun test, shard 4 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 4 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-5": {
+      "description": "bun test, shard 5 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 5 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-6": {
+      "description": "bun test, shard 6 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 6 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-7": {
+      "description": "bun test, shard 7 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 7 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-8": {
+      "description": "bun test, shard 8 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 8 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-9": {
+      "description": "bun test, shard 9 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 9 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-10": {
+      "description": "bun test, shard 10 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 10 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-11": {
+      "description": "bun test, shard 11 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 11 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-12": {
+      "description": "bun test, shard 12 of 12 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 12 12)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "README.md"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "release.stamp": {
+      "description": "stamp VX_RELEASE_VERSION into package.json, the manifest the binary inlines",
+      "exec": {
+        "command": "bun scripts/release.ts stamp",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "write": [
+              "package.json"
+            ]
+          }
+        }
+      }
+    },
+    "release.npm": {
+      "description": "make sure npm can publish with provenance (>= 11.5.1, sigstore intact)",
+      "exec": {
+        "command": "bun scripts/release.ts npm",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "write": [
+              "dist/npm-cli/",
+              "~/.npm/"
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ]
+          }
+        }
+      }
+    },
+    "release.prove.linux": {
+      "description": "the linux binaries launch (re-signed only if macOS refuses) and report VX_RELEASE_VERSION",
+      "exec": {
+        "command": "bun scripts/release.ts prove linux",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ]
+          }
+        }
+      }
+    },
+    "release.assemble.linux": {
+      "description": "assemble the linux npm packages under dist/npm (scripts/build-npm.ts)",
+      "exec": {
+        "command": "bun scripts/release.ts assemble linux",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              ".",
+              "../*",
+              "../../README.md",
+              "../../LICENSE"
+            ],
+            "write": [
+              "dist/npm/"
+            ]
+          }
+        }
+      }
+    },
+    "release.publish.linux": {
+      "description": "npm publish the linux packages under dist/npm, skipping any already on the registry",
+      "exec": {
+        "command": "bun scripts/release.ts publish linux",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION",
+            "GITHUB_ACTIONS",
+            "ACTIONS_ID_TOKEN_REQUEST_URL",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+            "GITHUB_WORKFLOW_REF",
+            "GITHUB_REPOSITORY",
+            "GITHUB_REPOSITORY_ID",
+            "GITHUB_REPOSITORY_OWNER_ID",
+            "GITHUB_SERVER_URL",
+            "GITHUB_EVENT_NAME",
+            "GITHUB_REF",
+            "GITHUB_SHA",
+            "GITHUB_RUN_ID",
+            "GITHUB_RUN_ATTEMPT",
+            "RUNNER_ENVIRONMENT"
+          ],
+          "secret": [
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "write": [
+              "~/.npm/"
+            ],
+            "network": [
+              "registry.npmjs.org",
+              "*.actions.githubusercontent.com",
+              "fulcio.sigstore.dev",
+              "rekor.sigstore.dev",
+              "tuf-repo-cdn.sigstore.dev"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ]
+          }
+        }
+      }
+    },
+    "release.prove.darwin": {
+      "description": "the darwin binaries launch (re-signed only if macOS refuses) and report VX_RELEASE_VERSION",
+      "exec": {
+        "command": "bun scripts/release.ts prove darwin",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "write": [
+              "dist/vx-darwin-x64",
+              "dist/vx-darwin-arm64",
+              "dist/vx-darwin-x64.cstemp",
+              "dist/vx-darwin-arm64.cstemp"
+            ],
+            "machLookup": [
+              "com.apple.trustd.agent"
+            ]
+          },
+          "ignore": {
+            "systemInfo": [
+              "hw.optional.bmi1",
+              "hw.optional.avx2_0"
+            ]
+          }
+        }
+      }
+    },
+    "release.assemble.darwin": {
+      "description": "assemble the darwin npm packages under dist/npm (scripts/build-npm.ts)",
+      "exec": {
+        "command": "bun scripts/release.ts assemble darwin",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              ".",
+              "../*",
+              "../../README.md",
+              "../../LICENSE"
+            ],
+            "write": [
+              "dist/npm/"
+            ]
+          }
+        }
+      }
+    },
+    "release.publish.darwin": {
+      "description": "npm publish the darwin packages under dist/npm, skipping any already on the registry",
+      "exec": {
+        "command": "bun scripts/release.ts publish darwin",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION",
+            "GITHUB_ACTIONS",
+            "ACTIONS_ID_TOKEN_REQUEST_URL",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+            "GITHUB_WORKFLOW_REF",
+            "GITHUB_REPOSITORY",
+            "GITHUB_REPOSITORY_ID",
+            "GITHUB_REPOSITORY_OWNER_ID",
+            "GITHUB_SERVER_URL",
+            "GITHUB_EVENT_NAME",
+            "GITHUB_REF",
+            "GITHUB_SHA",
+            "GITHUB_RUN_ID",
+            "GITHUB_RUN_ATTEMPT",
+            "RUNNER_ENVIRONMENT"
+          ],
+          "secret": [
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "write": [
+              "~/.npm/"
+            ],
+            "network": [
+              "registry.npmjs.org",
+              "*.actions.githubusercontent.com",
+              "fulcio.sigstore.dev",
+              "rekor.sigstore.dev",
+              "tuf-repo-cdn.sigstore.dev"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ]
+          }
+        }
+      }
+    },
+    "release.upload.linux": {
+      "description": "attach the linux binaries to the draft release (scripts/release-assets.ts)",
+      "exec": {
+        "command": "bun scripts/release-assets.ts linux",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION",
+            "GITHUB_REPOSITORY",
+            "GH_TOKEN"
+          ],
+          "secret": [
+            "GH_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "network": [
+              "api.github.com",
+              "uploads.github.com"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ],
+            "systemInfo": [
+              "hw.optional.neon"
+            ]
+          }
+        }
+      }
+    },
+    "release.upload.darwin": {
+      "description": "attach the darwin binaries to the draft release, then publish it (scripts/release-assets.ts)",
+      "exec": {
+        "command": "bun scripts/release-assets.ts darwin --publish",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION",
+            "GITHUB_REPOSITORY",
+            "GH_TOKEN"
+          ],
+          "secret": [
+            "GH_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "network": [
+              "api.github.com",
+              "uploads.github.com"
+            ],
+            "machLookup": [
+              "com.apple.SystemConfiguration.DNSConfiguration"
+            ],
+            "systemInfo": [
+              "hw.optional.neon"
+            ]
+          }
+        }
+      }
+    },
+    "release.auto": {
+      "description": "tag a green main commit with its next version, release it, dispatch the publish",
+      "exec": {
+        "command": "bun scripts/auto-release.ts",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_SHA",
+            "GITHUB_REPOSITORY",
+            "GH_TOKEN"
+          ],
+          "secret": [
+            "GH_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              ".",
+              "../../.git"
+            ],
+            "network": [
+              "api.github.com"
+            ]
+          }
+        }
+      }
+    },
+    "ci": {
+      "dependsOn": [
+        "lint",
+        "test",
+        "check.binary"
+      ]
+    },
+    "install": {
+      "dependsOn": [
+        "^build",
+        "check.bun"
+      ]
+    },
+    "check.bun": {
+      "description": "refuse a Bun below the floor (engines.bun) before any shard starts",
+      "exec": {
+        "command": "bun scripts/bun-floor.ts",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ]
+          }
+        }
+      }
+    },
+    "build": {
+      "description": "nothing to build — core is consumed as source; the release binaries are build.bun",
+      "dependsOn": [
+        "source"
+      ]
+    },
+    "source": {
+      "description": "the source dependants import: a key, not a build",
+      "exec": {
+        "command": "true",
+        "sandbox": {
+          "allow": {
+            "read": []
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "src/**",
+            "index.ts",
+            "tsconfig.json"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "check.binary": {
+      "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun scripts/check-binary.ts",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../vx-schedule-history/**"
+            ],
+            "write": [
+              "dist/**",
+              "~/.bun/install/cache/",
+              ".*.tmp/**"
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          },
+          "ignore": {
+            "write": [
+              "*.bun-build"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "src/**",
+            "index.ts",
+            "package.json",
+            "scripts/check-binary.ts",
+            "scripts/binary-launch.ts"
+          ],
+          "workspaceFiles": [
+            "packages/vx-schedule-history/**"
+          ],
+          "runtime": [
+            "bun --version"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "lint": {
+      "dependsOn": [
+        "lint.oxlint",
+        "lint.oxfmt"
+      ]
+    },
+    "test": {
+      "dependsOn": [
+        "test.bun"
+      ]
+    },
+    "test.bun": {
+      "description": "bun test",
+      "dependsOn": [
+        "test.bun.shard-*",
+        "test.bun.unsafe"
+      ]
+    },
+    "test.bun.unsafe": {
+      "description": "bun test — the files a sandbox cannot host",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures ./tests/*.unsafe.test.ts",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_TAGS",
+            "VX_REQUIRE_REFTABLE",
+            "VX_PR_TITLE",
+            "VX_PR_BASE",
+            "VX_PR_HEAD",
+            "VX_SMALL_DISK",
+            "NODE_EXTRA_CA_CERTS"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "workspaceFiles": [
+            "packages/*/**",
+            "examples/**",
+            ".github/**",
+            "scripts/**",
+            "CLAUDE.md",
+            "README.md",
+            "CONTRIBUTING.md",
+            "LICENSE",
+            ".claude/skills/**",
+            "vx.config.ts",
+            ".vx/workspace.ts",
+            "!packages/vx/dist/**",
+            "!packages/vx-docs/dist/**",
+            "!packages/vx-docs/public/playground/planner.js",
+            "!packages/vx-docs/src/content/docs/all-features.md",
+            "!packages/vx-docs/src/content/docs/api.md",
+            "!packages/vx-docs/src/content/docs/architecture.md",
+            "!packages/vx-docs/src/content/docs/benchmarks.md",
+            "!packages/vx-docs/src/content/docs/caching.md",
+            "!packages/vx-docs/src/content/docs/cli.md",
+            "!packages/vx-docs/src/content/docs/compare/turbo-nx-support.md",
+            "!packages/vx-docs/src/content/docs/comparison.md",
+            "!packages/vx-docs/src/content/docs/execution.md",
+            "!packages/vx-docs/src/content/docs/flows.md",
+            "!packages/vx-docs/src/content/docs/optimizations.md",
+            "!packages/vx-docs/src/content/docs/overview.md",
+            "!packages/vx-docs/src/content/docs/parity.md",
+            "!packages/vx-docs/src/content/docs/patterns.md",
+            "!packages/vx-docs/src/content/docs/schema.md",
+            "!packages/vx-docs/src/content/docs/security.md",
+            "!packages/vx-docs/src/content/docs/upstream-ledger.md",
+            "!packages/vx-docs/src/content/docs/modules/**",
+            "!packages/vx-docs/src/content/docs/design/**",
+            "!packages/vx-docs/src/content/docs/plugins/**"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "lint.oxlint": {
+      "description": "oxlint with tsgolint-backed type-aware checks",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "oxlint --type-aware --type-check",
+        "sandbox": {
+          "allow": {
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "read": [
+              "."
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "lint.oxfmt": {
+      "description": "oxfmt --check (no rewrite; CI-safe)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "oxfmt --check .",
+        "sandbox": {
+          "allow": {
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "read": [
+              "."
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "lint.oxfmt.fix": {
+      "description": "oxfmt . — rewrite formatting in place",
+      "exec": {
+        "command": "oxfmt .",
+        "sandbox": {
+          "allow": {
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "read": [
+              "."
+            ],
+            "write": [
+              "."
+            ]
+          }
+        }
+      }
+    },
+    "build.bun": {
+      "description": "compile standalone binaries for every target",
+      "dependsOn": [
+        "build.bun.linux-x64",
+        "build.bun.linux-arm64",
+        "build.bun.darwin-x64",
+        "build.bun.darwin-arm64"
+      ]
+    },
+    "build.bun.linux-x64": {
+      "description": "compile standalone binary (linux x64)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-x64 src/bin.ts --outfile dist/vx-linux-x64",
+        "sandbox": {
+          "allow": {
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "read": [
+              "."
+            ],
+            "write": [
+              "dist/vx-linux-x64",
+              "~/.bun/install/cache/",
+              ".*.tmp/**"
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ]
+          },
+          "ignore": {
+            "write": [
+              "*.bun-build"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "runtime": [
+            "bun --version"
+          ]
+        },
+        "outputs": {
+          "files": [
+            "dist/vx-linux-x64"
+          ]
+        }
+      }
+    },
+    "build.bun.linux-arm64": {
+      "description": "compile standalone binary (linux arm64)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-linux-arm64 src/bin.ts --outfile dist/vx-linux-arm64",
+        "sandbox": {
+          "allow": {
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "read": [
+              "."
+            ],
+            "write": [
+              "dist/vx-linux-arm64",
+              "~/.bun/install/cache/",
+              ".*.tmp/**"
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ]
+          },
+          "ignore": {
+            "write": [
+              "*.bun-build"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "runtime": [
+            "bun --version"
+          ]
+        },
+        "outputs": {
+          "files": [
+            "dist/vx-linux-arm64"
+          ]
+        }
+      }
+    },
+    "build.bun.darwin-x64": {
+      "description": "compile standalone binary (darwin x64)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-x64 src/bin.ts --outfile dist/vx-darwin-x64",
+        "sandbox": {
+          "allow": {
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "read": [
+              "."
+            ],
+            "write": [
+              "dist/vx-darwin-x64",
+              "~/.bun/install/cache/",
+              ".*.tmp/**"
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ]
+          },
+          "ignore": {
+            "write": [
+              "*.bun-build"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "runtime": [
+            "bun --version"
+          ]
+        },
+        "outputs": {
+          "files": [
+            "dist/vx-darwin-x64"
+          ]
+        }
+      }
+    },
+    "build.bun.darwin-arm64": {
+      "description": "compile standalone binary (darwin arm64)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun build --compile --no-compile-autoload-dotenv --compile-autoload-package-json --minify --bytecode --target=bun-darwin-arm64 src/bin.ts --outfile dist/vx-darwin-arm64",
+        "sandbox": {
+          "allow": {
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "read": [
+              "."
+            ],
+            "write": [
+              "dist/vx-darwin-arm64",
+              "~/.bun/install/cache/",
+              ".*.tmp/**"
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ]
+          },
+          "ignore": {
+            "write": [
+              "*.bun-build"
+            ]
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*",
+            "!dist/**"
+          ],
+          "runtime": [
+            "bun --version"
+          ]
+        },
+        "outputs": {
+          "files": [
+            "dist/vx-darwin-arm64"
+          ]
+        }
+      }
+    }
+  }
+}

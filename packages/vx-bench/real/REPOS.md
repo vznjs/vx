@@ -9,8 +9,9 @@ config cannot run here as shipped, or when it handicaps one tool for a
 reason that has nothing to do with the runner; every one is named.
 
 Every run below predates 2026-09-29 and ran vx without a lock, each
-config evaluated per run. Both scripts now take `vx lock` once before the
-arms and run vx `--frozen`; a re-run says so.
+config evaluated per run. A vx run now loads configs only from
+`.vx/projects.lock.json`, so both scripts take `vx lock` once before the arms; a
+re-run says so.
 
 Box for every run below: this container — 4 cores, 16 GB of which the
 session's memory cgroup allows 13.3 GiB (`memory.limit_in_bytes`; a

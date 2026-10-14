@@ -3,7 +3,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 const cached = (extra = '') => `export default {
   tasks: {

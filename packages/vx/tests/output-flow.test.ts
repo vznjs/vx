@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { detectFlow } from '../src/cli/run.js'
-import { run as cliRun } from '../src/cli/index.js'
+import { run as cliRun } from './helpers/cli.js'
 import { defaultLogger, resolveOutputView } from '../src/orchestrator/logger.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 
@@ -1074,7 +1074,7 @@ describe('flow e2e against a real fixture workspace', () => {
     'GITHUB_ACTIONS subprocess: tasks collapse in ::group::, failures stay open + annotate',
     async () => {
       const path = await import('node:path')
-      const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+      const BIN = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
       const ghaEnv = { ...process.env, CI: '1', GITHUB_ACTIONS: 'true' }
       const vx = async (args: string[]): Promise<{ code: number; out: string }> => {
         const proc = Bun.spawn([process.execPath, BIN, ...args], {

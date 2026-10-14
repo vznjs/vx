@@ -7,7 +7,7 @@
 export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
 
 /**
- * The workspace: settings in groups (`run`, `cache`, `watch`) and the
+ * The workspace: settings in groups (`run`, `cache`, `lock`, `watch`) and the
  * plugins. Each setting's environment variable and flag derive from its
  * path (`run.concurrency` → `VX_RUN_CONCURRENCY`, `vx run --concurrency`); a flag beats
  * the variable, which beats this file. `docs/schema.md` lists them all.
@@ -16,6 +16,7 @@ export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
 export interface WorkspaceConfig {
   run?: RunSettings
   cache?: CacheSettings
+  lock?: LockSettings
   watch?: WatchSettings
   /**
    * Plugins registered for this workspace, consulted in this order once
@@ -68,15 +69,8 @@ export interface RunSettings {
   /** How long a persistent task may take to match `readyWhen` before vx says it waits. Omitted → `'10s'`. */
   readyNotice?: Duration
   /**
-   * Load configs from `.vx/lock.json` instead of evaluating them. A frozen
-   * run trusts the lock: `vx lock` checked the graph rules when it wrote it,
-   * so the run does not check them again. With no lock, the run writes one
-   * first. Omitted → on when `CI` is set.
-   */
-  frozen?: boolean
-  /**
-   * Graph rules checked before anything is scheduled: by `vx lock` and
-   * `vx lock --check`, and by every run that is not frozen. Each is on
+   * Graph rules checked by `vx lock` and `vx lock --check`, never by a
+   * run. Each is on
    * unless set to `false`; turning one off allows a shape vx handles
    * correctly but more slowly.
    */
@@ -94,10 +88,10 @@ export interface CacheSettings {
   /**
    * Evict from the local cache at the end of every run, whatever its
    * policy (a remote hit is ingested under any), by the same policy
-   * `vx cache prune` takes as flags: entries not used for `olderThan`
+   * `vx cache clean` takes as flags: entries not used for `olderThan`
    * (`'30d'`, `'12h'`), then least-recently-used entries until the cache
    * is under `maxSize` (`'10GB'`, `'500MB'`). Either or both. Omitted →
-   * nothing is evicted unless you run `vx cache prune`.
+   * nothing is evicted unless you run `vx cache clean`.
    */
   retention?: { olderThan?: Duration; maxSize?: string }
   /**
@@ -120,6 +114,16 @@ export interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   /** The `cache.inputStability` of every task that does not set its own. */
   inputStability?: InputStability
+}
+
+/** `WorkspaceConfig.lock`. */
+export interface LockSettings {
+  /**
+   * `vx lock` writes each project's resolved config, pretty, to
+   * `vx.lock.json` beside its `vx.config`, for review; vx never reads it.
+   * On unless `false`.
+   */
+  reviewFiles?: boolean
 }
 
 /** `WorkspaceConfig.watch`. */
@@ -678,8 +682,8 @@ export interface CacheInputs {
    * trimmed (stdout + stderr) output is folded into the cache key.
    * Deduped per (projectDir, command) within a run. A non-zero exit
    * fails the run. Modeled on `env`: the COMMANDS are frozen in the
-   * lock, the OUTPUT is resolved live every run — correct under
-   * `--frozen`. Use for project-specific runtime probes.
+   * lock, the OUTPUT is resolved live every run. Use for
+   * project-specific runtime probes.
    */
   runtime?: readonly string[]
   /**
@@ -779,6 +783,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
         inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
       }
+      lock?: Known<At<T, 'lock'>, LockSettings>
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T {

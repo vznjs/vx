@@ -111,7 +111,7 @@ export default defineProject({
 | The key                | Holds                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the package's `package.json`, the lockfile, the keys of the tasks it depends on, the task's config, arguments after `--` |
-| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `*.tsbuildinfo`, `.vx/lock.json`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
+| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `*.tsbuildinfo`, `.vx/projects.lock.json`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
 | In, when you say so    | a tool's version: `cache.inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
@@ -261,12 +261,13 @@ the variable, which beats this file. Durations carry a unit (`'500ms'`,
 | `run.timeout`, `run.retries` | a task's time limit and re-runs, for tasks without their own `exec.timeout` / `exec.retries` |
 | `run.affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
 | `run.schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest chain), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/scheduling-strategies/#pick-the-guess)) |
-| `run.rules` | graph checks, each on unless `false`: `exclusiveOutputs` refuses two tasks on one output path even when one depends on the other, `upfrontKeys` a task whose inputs can match another task's outputs, so every key is known before anything runs; `vx lock` and every run that is not frozen check them ([Schema](../../schema/#workspace-config-vxworkspacets)) |
+| `run.rules` | graph checks, each on unless `false`: `exclusiveOutputs` refuses two tasks on one output path even when one depends on the other, `upfrontKeys` a task whose inputs can match another task's outputs, so every key is known before anything runs; `vx lock` and `vx lock --check` check them, never a run ([Schema](../../schema/#workspace-config-vxworkspacets)) |
 | `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
 | `cache.retention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 | `cache.policy` | which layers read and write (`'local:rw,remote:r'`) |
 | `cache.scope` | where cache writes land: none reads and writes the default keys, a name like `'pr-123'` reads the default keys then its own and writes only its own; `cache.policy` alone decides whether a run writes; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
 | `cache.inputStability` | every task's `cache.inputStability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_CACHE_INPUT_STABILITY_*` variables win over both ([Schema](../../schema/#cache-optional)) |
+| `lock.reviewFiles` | `false` stops `vx lock` writing a pretty `vx.lock.json` (the project's resolved config, for review) beside each `vx.config` |
 | `watch.poll` | `vx watch` polls instead of using the OS watcher |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then

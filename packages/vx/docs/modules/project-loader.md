@@ -285,8 +285,8 @@ evaluation cache. The module object shares what the source shares — one
 preset task imported by two configs, one `exec` in two tasks — so a
 `project` hook that edits in place (the way the API invites) edited all
 of them at once: a cold run ran `echo P +plug +plug` where the warm run
-and `--frozen` ran `echo P +plug`, under another key (item 967). The copy
-costs about 1.7 ms per 1,000 configs, and only on the live path.
+and a lock run ran `echo P +plug`, under another key (item 967). The copy
+costs about 1.7 ms per 1,000 configs, and only on the evaluating path.
 
 Two properties make the swap safe:
 

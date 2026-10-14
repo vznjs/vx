@@ -7,7 +7,8 @@ import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { loadResolvedProjects, run } from '../src/orchestrator/index.js'
+import { loadResolvedProjects } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { affectedProjects, listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { silentLogger, type Fixture } from './helpers/orchestrator-fixture.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -70,7 +71,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
       log: silentLogger(fixture),
     })
     expect(r.ok).toBe(true)
-    const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+    const bin = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
     const said = (verb: string) => {
       const p = Bun.spawnSync({
         cmd: [process.execPath, bin, verb, '//#build', '--format', 'json'],
@@ -132,7 +133,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
         path.join(root, 'packages', 'ui', 'vx.config.mjs'),
         `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
       )
-      const bin = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+      const bin = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
       const said = (...args: string[]) => {
         const p = Bun.spawnSync({
           cmd: [process.execPath, bin, 'run', ...args],

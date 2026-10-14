@@ -32,7 +32,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { MAX_TIMEOUT_MS } from '../src/util/index.js'
 import { settingEnv } from '../src/settings.js'
 

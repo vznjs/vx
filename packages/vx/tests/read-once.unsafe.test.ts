@@ -1,21 +1,18 @@
 // What the kernel sees vx do to a project's files across one run, counted
 // with strace: the syscalls naming each path, in vx's own process (its git
 // children are dropped). `load-reads.test.ts` counts what vx ASKS for; this
-// counts what happens, Bun's module loader included — which is where the
-// config's second read lived: vx read `vx.config.mjs` to key it, and
-// `import()` opened and read it again. The loader's `vx-config-bytes`
-// onLoad now hands Bun the bytes vx read (workspace/project-loader.ts).
+// counts what happens, Bun's module loader included. A run reads each
+// project's config from `.vx/projects.lock.json` (owner, 2026-10-14), so it never
+// opens a `vx.config.*` and Bun's resolver never visits the project.
 //
 // The rows name what stays and why, so a Bun upgrade that moves a count
 // fails here with the reason beside it:
-//   - `package.json` twice: discovery reads it, and Bun's resolver reads
-//     the importer's nearest manifest (its `type`) whatever vx hands it;
-//   - the project directory three times: discovery lists it for the
-//     config's name (Linux), and the resolver opens it twice;
+//   - `package.json` and the project directory once each: discovery;
 //   - `.vx/workspace.mjs` three times: a probe, vx's read and Bun's. Serving
 //     it measured 0.3 ms slower (the parser's first use), so Bun reads it;
 //   - `pnpm-workspace.yaml` twice: a probe and one read for the root, the
-//     globs and the fingerprint (it was three of each).
+//     globs and the fingerprint (it was three of each);
+//   - `.vx/projects.lock.json` twice: `readLockfile`'s exists probe and its read.
 // Linux only (strace). CI's Linux job sets VX_REQUIRE_SANDBOX and installs
 // strace for the sandbox; without strace there it fails instead of skipping.
 
@@ -100,6 +97,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
 }
 `,
     )
+    expect(Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd: root }).exitCode).toBe(0)
     gitInitCommit(root)
   })
 
@@ -131,33 +129,23 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
   }
 
   it(
-    'cold: the config is read once, by vx; warm: not at all',
+    'a run never opens the config and reads the lock once, cold or warm',
     async () => {
-      const cold = await tracedRun('cold')
-      expect(cold('packages/a/vx.config.mjs')).toEqual(['openat'])
-      expect(cold('packages/a/package.json')).toEqual(['openat', 'openat'])
-      expect(cold('packages/a')).toEqual(['openat', 'openat', 'openat'])
-      expect(cold('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
-      expect(cold('pnpm-workspace.yaml')).toEqual(['newfstatat', 'openat'])
-
-      // The evaluation is cached. The first warm run reads the config once
-      // more, for the file-hash memo the cold run left unwritten (config-cache.ts,
-      // `hashBytes`); after it the config is a stat, neither read nor
-      // imported, so the resolver never visits its dir.
-      const first = await tracedRun('warm-1')
-      expect(first('packages/a/vx.config.mjs')).toEqual(['openat', 'statx'])
-      const warm = await tracedRun('warm-2')
-      expect(warm('packages/a/vx.config.mjs')).toEqual(['statx'])
-      expect(warm('packages/a/package.json')).toEqual(['openat'])
-      expect(warm('packages/a')).toEqual(['openat'])
-      expect(warm('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
-      expect(warm('pnpm-workspace.yaml')).toEqual(['newfstatat', 'openat'])
+      for (const name of ['cold', 'warm']) {
+        const run = await tracedRun(name)
+        expect(run('packages/a/vx.config.mjs')).toEqual([])
+        expect(run('packages/a/package.json')).toEqual(['openat'])
+        expect(run('packages/a')).toEqual(['openat'])
+        expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
+        expect(run('pnpm-workspace.yaml')).toEqual(['newfstatat', 'openat'])
+        expect(run('.vx/projects.lock.json')).toEqual(['newfstatat', 'openat'])
+      }
     },
     TIMEOUT,
   )
 
   it(
-    'an --affected --frozen run reads the lock once, in the selection',
+    'an --affected run reads the lock once, in the selection',
     async () => {
       const vx = (...args: string[]) => {
         const p = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: root })
@@ -166,11 +154,11 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
       vx('lock')
       await writeFile(path.join(root, 'packages', 'a', 'src', 'index.js'), 'export const x = 1\n')
       gitInitCommit(root)
-      const run = await tracedRun('affected', ['run', 'build', '--affected=HEAD~1', '--frozen'])
+      const run = await tracedRun('affected', ['run', 'build', '--affected=HEAD~1'])
       // The selection's workspace-glob owners parsed it again only to learn
       // it exists, which the staged load had already proved (I-23); the run
       // parsed it again for configs the selection had staged (I-27).
-      expect(run('.vx/lock.json').filter((c) => c === 'openat')).toEqual(['openat'])
+      expect(run('.vx/projects.lock.json').filter((c) => c === 'openat')).toEqual(['openat'])
     },
     TIMEOUT,
   )

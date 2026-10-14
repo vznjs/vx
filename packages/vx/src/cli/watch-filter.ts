@@ -36,7 +36,8 @@ export function isIgnoredWatchPath(rel: string): boolean {
   const segments = rel.split(path.sep)
   for (let i = 1; i <= segments.length; i++) if (isIgnoredDir(segments.slice(0, i))) return true
   if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return true
-  return false
+  // `vx lock`'s review copy: no input, so a re-lock is no cycle.
+  return segments[segments.length - 1] === 'vx.lock.json'
 }
 
 /**

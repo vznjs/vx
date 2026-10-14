@@ -1,7 +1,6 @@
 // The graph rules (`run.rules`) are checked by `vx lock` and `vx lock
-// --check`; a frozen run trusts the lock and checks them no more (owner,
-// 2026-10-13). `run.frozen` is on under CI, and a frozen run with no lock
-// writes one first.
+// --check`; a run trusts the lock and checks them no more (owner,
+// 2026-10-13), and never writes a lock: with none it refuses (2026-10-14).
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
@@ -47,7 +46,7 @@ function vx(root: string, args: string[], env: Record<string, string | undefined
   const r = Bun.spawnSync({
     cmd: [process.execPath, BIN, ...args],
     cwd: root,
-    env: { ...process.env, CI: '', VX_RUN_FROZEN: '', ...env },
+    env: { ...process.env, CI: '', VX_LOCK_REVIEW_FILES: 'false', ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -65,8 +64,9 @@ describe('vx lock checks the graph rules', () => {
       expect({
         code: r.code,
         said:
-          r.err.includes('.vx/lock.json not written') && r.err.includes('both declare the output'),
-        written: existsSync(path.join(root, '.vx/lock.json')),
+          r.err.includes('.vx/projects.lock.json not written') &&
+          r.err.includes('both declare the output'),
+        written: existsSync(path.join(root, '.vx/projects.lock.json')),
       }).toEqual({ code: 1, said: true, written: false })
     },
     TIMEOUT,
@@ -91,38 +91,38 @@ describe('vx lock checks the graph rules', () => {
   )
 })
 
-describe('run.frozen', () => {
+describe('a run', () => {
   it(
-    'is on under CI: a run with no lock writes one, and VX_RUN_FROZEN=false or --no-frozen turn it off',
+    'with no lock refuses and writes none, under CI or not',
     async () => {
       const root = await workspace(`{ a: ${task(['dist/**'])} }`)
-      const lockFile = path.join(root, '.vx/lock.json')
-      expect(vx(root, ['run', 'a', '--all'], { CI: '1', VX_RUN_FROZEN: 'false' }).code).toBe(0)
-      expect(existsSync(lockFile)).toBe(false)
-      expect(vx(root, ['run', 'a', '--all', '--no-frozen'], { CI: '1' }).code).toBe(0)
-      expect(existsSync(lockFile)).toBe(false)
-      expect(vx(root, ['run', 'a', '--all']).code).toBe(0)
-      expect(existsSync(lockFile)).toBe(false)
-      const r = vx(root, ['run', 'a', '--all'], { CI: '1' })
-      expect({ code: r.code, locked: r.out.includes('vx lock: locked 1 project config') }).toEqual({
-        code: 0,
-        locked: true,
-      })
-      expect(existsSync(lockFile)).toBe(true)
+      const lockFile = path.join(root, '.vx/projects.lock.json')
+      for (const CI of ['', '1']) {
+        const r = vx(root, ['run', 'a', '--all'], { CI })
+        expect({ code: r.code, err: r.err, written: existsSync(lockFile) }).toEqual({
+          code: 1,
+          err: 'vx: no lock: run `vx lock`\n',
+          written: false,
+        })
+      }
     },
     TIMEOUT,
   )
 
   it(
-    'a frozen run with no lock and a broken rule fails before any task',
+    'checks no rule: a lock holding an output overlap runs',
     async () => {
-      const root = await workspace(OVERLAP)
-      const r = vx(root, ['run', 'a', '--all', '--frozen'])
-      expect({
-        code: r.code,
-        said: r.err.includes('.vx/lock.json not written'),
-        written: existsSync(path.join(root, '.vx/lock.json')),
-      }).toEqual({ code: 1, said: true, written: false })
+      const root = await workspace(`{ a: ${task(['dist/**'])} }`)
+      expect(vx(root, ['lock']).code).toBe(0)
+      // What `vx lock` would refuse, edited into the lock by hand.
+      const lockFile = path.join(root, '.vx/projects.lock.json')
+      const lock = (await Bun.file(lockFile).json()) as {
+        projects: { a: { tasks: Record<string, unknown> } }
+      }
+      lock.projects.a.tasks['b'] = lock.projects.a.tasks['a']
+      await writeFile(lockFile, JSON.stringify(lock))
+      const r = vx(root, ['run', 'a', 'b', '--all'])
+      expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
     },
     TIMEOUT,
   )

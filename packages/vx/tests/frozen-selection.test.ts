@@ -1,5 +1,5 @@
-// `--frozen` reaches selection: the `--affected` owners a frozen run selects
-// from are read from `.vx/lock.json`, as the run's own configs are. Before,
+// A run's selection reads the lock: the `--affected` owners a run selects
+// from are read from `.vx/projects.lock.json`, as the run's own configs are. Before,
 // they were evaluated live, so a `workspaceFiles` glob that depends on the
 // environment could select in one environment what the run then keyed by
 // the lock's other one.
@@ -35,7 +35,7 @@ async function vx(
   args: string[],
   env: Record<string, string> = {},
 ): Promise<{ code: number; out: string; err: string }> {
-  // SHARED must be ABSENT, not empty, in the runs that prove the live path.
+  // SHARED must be ABSENT, not empty: the lock alone names the glob.
   const { SHARED: _inherited, ...inherited } = process.env
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd: root,
@@ -51,7 +51,7 @@ async function vx(
   return { code, out, err }
 }
 
-describe('--frozen selection reads the lock', () => {
+describe('selection reads the lock', () => {
   let root: string
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-frozen-sel-' })
@@ -78,9 +78,9 @@ describe('--frozen selection reads the lock', () => {
   })
 
   it(
-    'a frozen --affected run selects the task whose LOCKED glob claims the change',
+    'an --affected run selects the task whose LOCKED glob claims the change',
     async () => {
-      const r = await vx(root, ['run', 'build', '--frozen', '--affected=HEAD~1'])
+      const r = await vx(root, ['run', 'build', '--affected=HEAD~1'])
       expect(`${r.code}\n${r.err}`).toStartWith('0\n')
       expect(r.out).toContain('app#build')
     },
@@ -88,26 +88,12 @@ describe('--frozen selection reads the lock', () => {
   )
 
   it(
-    'the same run without --frozen evaluates live, where the glob does not exist, and selects nothing',
+    'a run with no lock refuses and writes none',
     async () => {
+      await Bun.$`rm ${path.join(root, '.vx/projects.lock.json')}`.quiet()
       const r = await vx(root, ['run', 'build', '--affected=HEAD~1'])
-      expect(r.code).toBe(0)
-      expect(r.out + r.err).not.toContain('app#build')
-      expect(r.out + r.err).toContain('nothing affected')
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'a frozen run with no lock writes one first, then selects from it',
-    async () => {
-      await Bun.$`rm ${path.join(root, '.vx/lock.json')}`.quiet()
-      const r = await vx(root, ['run', 'build', '--frozen', '--affected=HEAD~1'])
-      expect({ code: r.code, locked: r.out.includes('vx lock: locked') }).toEqual({
-        code: 0,
-        locked: true,
-      })
-      expect(await Bun.file(path.join(root, '.vx/lock.json')).exists()).toBe(true)
+      expect([r.code, r.err]).toEqual([1, 'vx run: no lock: run `vx lock`\n'])
+      expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(false)
     },
     TIMEOUT,
   )
@@ -117,22 +103,20 @@ describe('--frozen selection reads the lock', () => {
   // prepare) — which is precisely how all three came to be unpinned
   // while a row named for the behaviour passed (item 461, then 462).
   // This one takes the PROGRAMMATIC entry, where the two CLI layers do
-  // not exist: an embedder calling `run({ frozen: true })` reaches
-  // prepare and nothing else. Without prepare's guard the run proceeds
-  // with `lock === null`, evaluating configs LIVE under a flag whose
-  // whole meaning is "read them from the lock".
+  // not exist: an embedder calling `run()` reaches prepare and nothing
+  // else.
   it(
     'the programmatic run refuses too — prepare is the only layer an embedder meets',
     async () => {
-      await Bun.$`rm ${path.join(root, '.vx/lock.json')}`.quiet()
       const { run } = await import('../src/orchestrator/index.js')
-      // Control: the same call without `frozen` gets past this point, so
-      // the rejection below is the flag and not a broken fixture.
+      // Control: with the lock the same call gets past this point, so the
+      // rejection below is the missing lock and not a broken fixture.
       const ok = await run({ cwd: root, tasks: ['build'], handleSignals: false })
       expect(ok.ok).toBe(true)
-      await expect(
-        run({ cwd: root, tasks: ['build'], frozen: true, handleSignals: false }),
-      ).rejects.toThrow(/--frozen requires \.vx\/lock\.json/)
+      await Bun.$`rm ${path.join(root, '.vx/projects.lock.json')}`.quiet()
+      await expect(run({ cwd: root, tasks: ['build'], handleSignals: false })).rejects.toThrow(
+        'no lock: run `vx lock`',
+      )
     },
     TIMEOUT,
   )
@@ -143,15 +127,10 @@ describe('--frozen selection reads the lock', () => {
   it(
     'a workspace config refusal still comes before the missing lock',
     async () => {
-      await Bun.$`rm ${path.join(root, '.vx/lock.json')}`.quiet()
+      await Bun.$`rm ${path.join(root, '.vx/projects.lock.json')}`.quiet()
       await Bun.write(path.join(root, '.vx/workspace.mjs'), "throw new Error('ws-boom')\n")
       const { run } = await import('../src/orchestrator/index.js')
-      const err = await run({
-        cwd: root,
-        tasks: ['build'],
-        frozen: true,
-        handleSignals: false,
-      }).then(
+      const err = await run({ cwd: root, tasks: ['build'], handleSignals: false }).then(
         () => new Error('resolved'),
         (e: unknown) => e as Error,
       )

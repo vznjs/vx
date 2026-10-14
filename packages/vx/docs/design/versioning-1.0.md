@@ -17,7 +17,7 @@ adds to them, and only a major removes or changes one.
 | The package's exports                                                                                                                                                  | `src/index.ts`; names pinned by `package-boundaries.unsafe.test.ts`, shapes by `tests/contract/package-api.txt`                                                                                                                                                                                                                                                                                                                                  |
 | The first-party plugin packages' exports (`@vzn/vx-reapi`, `@vzn/vx-otel`, …)                                                                                          | each package's `src/index.ts`; recorded in `tests/contract/plugin-api/`, one file per package                                                                                                                                                                                                                                                                                                                                                    |
 | The CLI: verbs, flags, exit codes, and the machine-readable outputs (`--dry=json`, `--graph`, `--summarize`, `--profile`, `vx mcp`'s tools)                            | `docs/cli.md`; verbs, flags and their values recorded in `tests/contract/cli-surface.json`; exit codes recorded in `tests/contract/exit-codes.json`, `tests/contract/exit-codes-states.json` and `tests/contract/exit-codes-init.json`; `--dry=json`, `--summarize` and `--graph` recorded in `tests/contract/cli-wire.json`; `--profile` in `tests/contract/profile-wire.json`; `vx mcp`'s tools in `packages/vx-mcp/tests/contract/tools.json` |
-| The lock file: `.vx/lock.json`, what `vx lock` writes and `vx lock --check` / `--frozen` read                                                                          | `src/workspace/lockfile.ts` (`LOCKFILE_VERSION`), `docs/cli.md`; recorded in `tests/contract/lock.json`                                                                                                                                                                                                                                                                                                                                          |
+| The lock file: `.vx/lock.json`, what `vx lock` writes and `vx lock --check` and every run read                                                                         | `src/workspace/lockfile.ts` (`LOCKFILE_VERSION`), `docs/cli.md`; recorded in `tests/contract/lock.json`                                                                                                                                                                                                                                                                                                                                          |
 | The environment variables vx reads (`VX_*`)                                                                                                                            | `docs/cli.md` § Environment variables vx reads, held to the source by `tests/env-doc-drift.test.ts`; recorded in `tests/contract/cli-surface.json`                                                                                                                                                                                                                                                                                               |
 | Workspace discovery: which manifests make a root and list its projects, which root a run from inside a member finds, and which config file names load, in which order  | `src/workspace/workspace.ts`, `src/workspace/project-loader.ts`; recorded in `tests/contract/discovery.json`                                                                                                                                                                                                                                                                                                                                     |
 | The environment variables the first-party plugins read (`VX_REAPI_*`, `OTEL_*`, `GITHUB_*`, `TURBO_*`, …)                                                              | each package's `src/`; recorded in `tests/contract/plugin-env.txt`                                                                                                                                                                                                                                                                                                                                                                               |
@@ -43,15 +43,16 @@ the values it takes and each refusal's exact words are recorded in
 
 `.vx/workspace.ts`:
 
-| Level                  | Fields                                                                                                                                        |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| (top)                  | `cache`, `plugins`, `run`, `watch`                                                                                                            |
-| `run`                  | `affectedBase`, `concurrency`, `continue`, `frozen`, `killGrace`, `readyNotice`, `retries`, `rules`, `schedule`, `teardownTimeout`, `timeout` |
-| `run.rules`            | `dependencies`, `exclusiveOutputs`, `upfrontKeys`                                                                                             |
-| `cache`                | `dir`, `download`, `inputStability`, `policy`, `retention`, `scope`                                                                           |
-| `cache.retention`      | `maxSize`, `olderThan`                                                                                                                        |
-| `cache.inputStability` | `severity`, `strategy`                                                                                                                        |
-| `watch`                | `poll`                                                                                                                                        |
+| Level                  | Fields                                                                                                                              |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| (top)                  | `cache`, `lock`, `plugins`, `run`, `watch`                                                                                          |
+| `run`                  | `affectedBase`, `concurrency`, `continue`, `killGrace`, `readyNotice`, `retries`, `rules`, `schedule`, `teardownTimeout`, `timeout` |
+| `lock`                 | `reviewFiles`                                                                                                                       |
+| `run.rules`            | `dependencies`, `exclusiveOutputs`, `upfrontKeys`                                                                                   |
+| `cache`                | `dir`, `download`, `inputStability`, `policy`, `retention`, `scope`                                                                 |
+| `cache.retention`      | `maxSize`, `olderThan`                                                                                                              |
+| `cache.inputStability` | `severity`, `strategy`                                                                                                              |
+| `watch`                | `poll`                                                                                                                              |
 
 `vx.config.ts`:
 
@@ -248,7 +249,7 @@ on a PR, the same diff between its base and head needs the title marked
   `package.json`, `--dry`, files written, files already there with and
   without `--force`, in `tests/contract/exit-codes-init.json`.
   `tests/contract-exit-codes-states.test.ts` records those that need a
-  state or a signal first: `lock --check` and `run --frozen` with no
+  state or a signal first: `lock --check` and `run` with no
   lock, `lock --check` after a config drifted, `show` of an unknown
   target, `why` and `last` with and without a recorded run, `completions`
   of an unknown shell, and a run interrupted by SIGINT, SIGTERM and
@@ -256,7 +257,7 @@ on a PR, the same diff between its base and head needs the title marked
 - **The lock file.** `tests/contract-lockfile.test.ts` locks one fixture
   workspace and compares the file with `tests/contract/lock.json` byte
   for byte, then writes the committed lock back and requires
-  `vx lock --check` to pass and `vx run --frozen` to run from it (under an
+  `vx lock --check` to pass and `vx run` to run from it (under an
   environment a live evaluation would read differently). A change to the
   format or to `LOCKFILE_VERSION` fails
   here; a lock written by 1.x is valid for every later 1.x.

@@ -1,7 +1,6 @@
 // Module contract for `orchestrator`. Cross-module imports must come
 // through here (enforced by tests/module-boundaries.test.ts).
 
-export { notePrintedByLock } from './events.js'
 export { run, planRun, nxProjectTarget, projectNamed } from './run.js'
 export { prepareRun, type PreparedRun } from './prepare.js'
 export { affectedTaskProjects } from './affected-tasks.js'
@@ -33,7 +32,7 @@ export {
 // It records its own argv quoted as the runner quotes forwarded args.
 export { exitSignal, shellQuote } from '../exec/index.js'
 export { forwardedSignal } from './signals.js'
-// `vx cache prune` waits for a run on the workspace before it evicts.
+// `vx cache clean` waits for a run on the workspace before it evicts.
 export { acquireRunLock } from './run-lock.js'
 export { defaultLogger, resolveOutputView } from './logger.js'
 export { detectColors, paint, type ColorSupport } from './colors.js'

@@ -23,16 +23,6 @@
       "warmRestoreCpu": 5156.171
     },
     {
-      "runner": "vx (no lock)",
-      "version": "vx 0.0.0 @ 126d60a93",
-      "fresh": 120646.108286,
-      "warmNoRestore": 1234.917125,
-      "warmRestore": 2296.005939,
-      "freshCpu": 65748.918,
-      "warmNoRestoreCpu": 1885.984,
-      "warmRestoreCpu": 5816.085
-    },
-    {
       "runner": "turbo",
       "version": "2.11.7",
       "fresh": 123154.479639,

@@ -34,6 +34,9 @@ export const TMPDIR_HINT: string // "point TMPDIR at a writable directory"
 export function isExecutableMissing(err: unknown): boolean // Bun's ENOENT for a spawn that could not run at all
 export function gitSpawnRefusal(cwd: string): UserError // the one refusal for a git that is not on PATH
 export function notAWorkTree(cwd: string, stderr?: string): UserError // the one refusal for a directory git does not track
+
+// src/util/config-frame.ts: a config refusal at its `line:col`, with the source under it; undefined when it names no field
+export function configErrorFrame(message: string, cwd: string): string | undefined
 ```
 
 `UserError` instances have `.name === 'UserError'`. `bin.ts` prints
@@ -89,7 +92,7 @@ run at all, and `gitSpawnRefusal(cwd)` the one `UserError` for a git that
 is not on PATH — the input enumeration and `--affected` say it (item 241): install git, not "git init".
 
 `configErrorFrame(message, cwd)` (`src/util/config-frame.ts`) is how
-`bin.ts` prints a config refusal: from the message the schema writes
+`bin.ts` and `vx lock` print a config refusal: from the message the schema writes
 (`<file>: tasks.<name>.<path> …`, or `<file> has unknown field …`) it
 finds the field's key in the file, path segment after path segment, and
 returns the message with the file at `line:col` (relative to `cwd`

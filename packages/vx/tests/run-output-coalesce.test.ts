@@ -5,7 +5,7 @@
 // twenty cache hits.
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const N = 20

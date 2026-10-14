@@ -11,7 +11,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox nested placeholder test')
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 describe.skipIf(!available || process.platform !== 'linux')(
   'a directory made inside a file grant',

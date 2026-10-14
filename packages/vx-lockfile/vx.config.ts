@@ -68,21 +68,11 @@ export default defineProject({
             GIT_CONFIG_GLOBAL: '/dev/null',
             GIT_CONFIG_NOSYSTEM: '1',
             VX_CACHE_DIR: '.vx/cache',
-            VX_RUN_FROZEN: 'false',
           },
         },
         sandbox: {
           allow: {
             read: ['**/*'],
-            // pnpm 12 locks its store in a fixed host directory, whatever
-            // --store-dir or TMPDIR say, and checks TLS through trustd on
-            // macOS even offline (prune.test.ts's installs). npm's Node
-            // asks the DNS configuration service on startup, offline too.
-            write: ['/tmp/pnpm-store-operation-locks-*/'],
-            machLookup: [
-              'com.apple.trustd.agent',
-              'com.apple.SystemConfiguration.DNSConfiguration',
-            ],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
             localBinding: true,
           },

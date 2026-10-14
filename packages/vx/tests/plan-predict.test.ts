@@ -33,7 +33,7 @@ import { type CacheLayer, type CachePolicy, GitFilesCache } from '../src/cache/i
 import type { TaskNode } from '../src/graph/index.js'
 import type { HistoryProvider, HistoryTable, TaskHistory } from '../src/orchestrator/history.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { planRun, run } from '../src/orchestrator/index.js'
+import { planRun, run } from './helpers/orchestrator.js'
 import { plan, type CacheStatus, type RunPlan } from '../src/orchestrator/plan.js'
 import { UserError } from '../src/util/index.js'
 
@@ -744,7 +744,7 @@ describe('planRun() — planning executes nothing', () => {
       // Warm planning is equally inert: the probe is an existence check, so
       // it must not re-execute and must not touch the entry's LRU timestamp
       // (an `accessed_at` bump here would let `--dry` rescue an entry a
-      // `vx cache prune --max-size` was about to evict).
+      // `vx cache clean --max-size` was about to evict).
       const warm = await planRun({ cwd: root, tasks: ['build'], log: quietLogger })
       expect(warm.tasks.map((t) => t.cacheStatus)).toEqual(['hit-local'])
       expect(await Bun.file(ranLog).text()).toBe('x\n')

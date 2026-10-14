@@ -24,6 +24,13 @@ import {
   useWatchFixture,
   type Watch,
 } from './helpers/watch-loop.js'
+import { waitForProducers } from './helpers/local-workspace.js'
+
+/** `vx lock` in `root`: what a run, and each watch cycle, reads its configs from. */
+function lock(root: string): void {
+  const r = Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: root, stderr: 'pipe' })
+  if (r.exitCode !== 0) throw new Error(`vx lock: ${r.stderr.toString()}`)
+}
 
 describe('vx watch loop (e2e)', () => {
   const f = useWatchFixture()
@@ -90,13 +97,8 @@ describe('vx watch loop (e2e)', () => {
     expect(last.stdout.toString()).toContain("$ vx watch build --filter 'a*'")
   }, 40_000)
 
-  it('under --frozen a re-lock re-runs, and a config edit alone does not change the command (item 971)', async () => {
-    const lock = () => {
-      const r = Bun.spawnSync([process.execPath, BIN, 'lock'], { cwd: f.root, stderr: 'pipe' })
-      if (r.exitCode !== 0) throw new Error(`vx lock: ${r.stderr.toString()}`)
-    }
-    lock()
-    f.watch = startWatch(f.root, ['--all', '--frozen'])
+  it('a re-lock re-runs, and a config edit alone does not change the command (item 971)', async () => {
+    f.watch = startWatch(f.root, ['--all'])
     const w = f.watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
     await initialOnly(w, f.log)
@@ -110,8 +112,8 @@ describe('vx watch loop (e2e)', () => {
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(1)
 
-    // The re-lock is the edit that changes what a frozen cycle runs.
-    lock()
+    // The re-lock is the edit that changes what a cycle runs.
+    lock(f.root)
     await until(async () => (await executions(f.log)) === 2, 'the re-run after a re-lock')
     expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a1\na1\n')
   }, 40_000)
@@ -120,6 +122,9 @@ describe('vx watch loop (e2e)', () => {
     // An in-place formatter declares `src/**` as its outputs; the watch
     // ignore folded every task's outputs, so `build`'s `src` edits were
     // ignored and no cycle ran, while `vx run build` would have run it.
+    // The formatter reads no `src` (`vx lock` refuses a task whose inputs
+    // are all its own outputs), and build reads its outputs unordered.
+    await waitForProducers(f.root)
     await writeFile(
       path.join(f.dir, 'vx.config.mjs'),
       `export default { tasks: {
@@ -129,7 +134,7 @@ describe('vx watch loop (e2e)', () => {
         },
         format: {
           exec: { command: 'true' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/**'] } },
+          cache: { inputs: { files: ['package.json'] }, outputs: { files: ['src/**'] } },
         },
       } }\n`,
     )
@@ -178,27 +183,36 @@ describe('vx watch loop (e2e)', () => {
     expect(await readFile(path.join(f.dir, 'shown.txt'), 'utf8')).toBe('A=3\n')
   }, 40_000)
 
-  it('a shared preset outside the project is watched, and its edit re-runs under it (item 949)', async () => {
+  it('a shared preset outside the project is watched, and its edit runs once re-locked (item 949)', async () => {
     // Configs compose through imports; a preset outside the project was in
-    // no arm, so its edit ran nothing while `vx run` would have run it.
+    // no arm, so its edit started no cycle. A cycle runs the lock's
+    // configs, so the edit changes the command only once `vx lock` runs.
+    // Outside the workspace, as the count is: only the preset and the lock start cycles.
+    const said = path.join(path.dirname(f.log), 'said.txt')
     await mkdir(path.join(f.root, 'shared'), { recursive: true })
     await writeFile(path.join(f.root, 'shared', 'preset.mjs'), "export const word = 'ONE'\n")
     await writeFile(
       path.join(f.dir, 'vx.config.mjs'),
       `import { word } from '../../shared/preset.mjs'
       export default { tasks: {
-        build: { exec: { command: 'echo ' + word + ' > said.txt && echo run >> ${f.log}' } },
+        build: { exec: { command: 'echo ' + word + ' > ${said} && echo run >> ${f.log}' } },
       } }\n`,
     )
     f.watch = startWatch(f.root)
     const w = f.watch
     await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
     await initialOnly(w, f.log)
-    expect(await readFile(path.join(f.dir, 'said.txt'), 'utf8')).toBe('ONE\n')
+    expect(await readFile(said, 'utf8')).toBe('ONE\n')
 
     await writeFile(path.join(f.root, 'shared', 'preset.mjs'), "export const word = 'TWO'\n")
-    await until(async () => (await executions(f.log)) === 2, 'the re-run after the preset edit')
-    expect(await readFile(path.join(f.dir, 'said.txt'), 'utf8')).toBe('TWO\n')
+    await until(() => w.cycles() === 1, 'the cycle the preset edit starts')
+    await Bun.sleep(SETTLE_MS)
+    expect(await executions(f.log)).toBe(2)
+    expect(await readFile(said, 'utf8')).toBe('ONE\n')
+
+    lock(f.root)
+    await until(async () => (await executions(f.log)) === 3, 'the re-run after a re-lock')
+    expect(await readFile(said, 'utf8')).toBe('TWO\n')
   }, 40_000)
 
   it('an edit to a file the workspace config imports is named with the restart it needs (item 949)', async () => {
@@ -474,7 +488,7 @@ describe('vx watch with a persistent task (e2e)', () => {
   // One `time` line per run's summary: the count says how many runs have ended.
   const runsEnded = (w: Watch): number => w.out().split('\n  time ').length - 1
 
-  it('the dev server stays up across cycles and is replaced when its config changes', async () => {
+  it('the dev server stays up across cycles and is replaced when its locked config changes', async () => {
     // cli.md: a cycle keeps a server still up whose task is unchanged; the
     // dev tool's own reload takes the edit. Until then every cycle restarted
     // it, so `vx watch dev` dropped the server on each save. Before that it
@@ -492,10 +506,15 @@ describe('vx watch with a persistent task (e2e)', () => {
     expect(await readPids()).toEqual([first!])
     expect(isAlive(first!)).toBe(true)
 
-    // Its own config changed: the old one goes before the new one starts.
+    // Its config edit alone leaves the locked task unchanged, so it stays…
     const cfg = path.join(dir, 'vx.config.mjs')
     await writeFile(cfg, (await readFile(cfg, 'utf8')).replace('echo READY', 'echo READY again'))
     await until(() => runsEnded(w) === 3, 'the end of the cycle after a config edit')
+    expect(await readPids()).toEqual([first!])
+
+    // …and once locked the old one goes before the new one starts.
+    lock(root)
+    await until(() => runsEnded(w) === 4, 'the end of the cycle after a re-lock')
     const all = await readPids()
     expect(all).toHaveLength(2)
     expect(isAlive(first!)).toBe(false)

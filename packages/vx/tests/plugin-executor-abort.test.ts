@@ -12,7 +12,8 @@ import { isAlive, waitForDead } from './helpers/alive.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { run, type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 
 const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 

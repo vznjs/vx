@@ -20,7 +20,7 @@ import { UserError } from '../src/util/index.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 import { declaresInput, startGitEnumeration } from '../src/cache/index.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 async function git(cwd: string, ...args: string[]): Promise<void> {
   // -c commit.gpgsign=false defends against environments (CI sandboxes,
@@ -726,23 +726,23 @@ describe('affectedProjects', () => {
     expect([...out]).toEqual([])
   })
 
-  it('a .vx/lock.json change never marks a project affected, even the root project', async () => {
+  it('a .vx/projects.lock.json change never marks a project affected, even the root project', async () => {
     // The root is a project here, so a root-level file edit WOULD map to
     // it — proving the exclusion is the lock filter, not "root isn't a
-    // project". A README edit at root still marks it; .vx/lock.json never.
+    // project". A README edit at root still marks it; .vx/projects.lock.json never.
     const withRoot: ProjectMeta[] = [
       ...projects,
       { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
     ]
     // Commit both root files so `git diff` (tracked changes only) can see
     // edits to them.
-    await Bun.write(path.join(root, '.vx/lock.json'), '{"v":1}')
+    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":1}')
     await writeFile(path.join(root, 'README.md'), 'v1')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'add lock + readme')
 
     // Editing only the lock → nothing affected.
-    await Bun.write(path.join(root, '.vx/lock.json'), '{"v":2}')
+    await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":2}')
     expect([
       ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withRoot })),
     ]).toEqual([])
@@ -1325,17 +1325,17 @@ describe('affectedProjects', () => {
       expect([...out]).toEqual([])
     })
 
-    it('.vx/lock.json still never widens, even though it sits at the root', async () => {
+    it('.vx/projects.lock.json still never widens, even though it sits at the root', async () => {
       // vx's OWN lockfile is deliberately excluded from cache inputs, so
       // re-running `vx lock` must not rebuild the workspace.
       //
       // The root is a project here ON PURPOSE. Without it the assertion is
-      // VACUOUS — .vx/lock.json maps to no project directory anyway, so `[]`
+      // VACUOUS — .vx/projects.lock.json maps to no project directory anyway, so `[]`
       // comes back whether or not any guard exists (mutation-verified: with
       // only a/b in scope, deleting the exclusion filter still passed). With
       // root in scope, deleting the filter yields ['root'] and this fails.
       //
-      // What the filter, and ONLY the filter, enforces: adding '.vx/lock.json'
+      // What the filter, and ONLY the filter, enforces: adding '.vx/projects.lock.json'
       // to the widening set is inert, because the filter has already removed
       // it from `changed`. That mutation survives and no test can kill it —
       // recorded rather than papered over, so nobody adds a second guard here
@@ -1344,11 +1344,11 @@ describe('affectedProjects', () => {
         ...projects,
         { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
       ]
-      await Bun.write(path.join(root, '.vx/lock.json'), '{"v":1}')
+      await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":1}')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'add vx lock')
 
-      await Bun.write(path.join(root, '.vx/lock.json'), '{"v":2}')
+      await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":2}')
       const out = await affectedProjects({
         workspaceRoot: root,
         since: 'HEAD',
@@ -2141,20 +2141,20 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
 
   // The OUTER guard of the same pair, pinned on its own for the same
   // reason. `loadCliProjects` is the staged load every verb goes
-  // through, and it refuses a frozen run with no lock before selection
-  // even begins — which is why the inner guard above could be deleted
+  // through, and it refuses a run's load with no lock before selection
+  // even begins — which is why the inner guard below could be deleted
   // with the whole repo still green.
-  it('the staged load itself refuses a frozen run with no lock', async () => {
+  it('the staged load itself refuses a run with no lock', async () => {
     const metas = await listProjects(await loadWorkspace(root))
-    // Control: the same load without `frozen` succeeds, so the rejection
-    // is the flag and not the fixture.
+    // Control: a reader's load (live) succeeds, so the rejection is the
+    // run's lock and not the fixture.
     expect((await loadCliProjects(root, metas, 'all', {})).size).toBeGreaterThan(0)
-    await expect(loadCliProjects(root, metas, 'all', { frozen: true })).rejects.toThrow(
-      /--frozen requires/,
+    await expect(loadCliProjects(root, metas, 'all', { fromLock: true })).rejects.toThrow(
+      'no lock: run `vx lock`',
     )
   })
 
-  // A `--frozen` run with no lock is refused HERE, before the tolerant
+  // A run with no lock is refused HERE, before the tolerant
   // sweep below can answer "nothing affected". The layering is what hid
   // this: `workspace-config.ts` refuses first on the CLI path, so
   // removing either guard alone leaves the other covering and the whole
@@ -2163,14 +2163,14 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
   // "nothing affected" — a green CI that ran nothing and never said why
   // (measured, item 461). This row pins THIS guard on its own, so the
   // pair is covered rather than each hiding the other's absence.
-  it('refuses a frozen run with no lock instead of sweeping and answering "nothing"', async () => {
+  it('refuses a run with no lock instead of sweeping and answering "nothing"', async () => {
     const metas = await listProjects(await loadWorkspace(root))
-    // Control first: without `frozen` the same call answers normally, so
-    // the rejection below is the flag's doing and not a broken fixture.
+    // Control first: a live load answers normally, so the rejection below
+    // is the missing lock's doing and not a broken fixture.
     expect(await workspaceGlobOwners(root, metas, ['shared/x.ts'])).toEqual(['bare'])
     await expect(
-      workspaceGlobOwners(root, metas, ['shared/x.ts'], { frozen: true }),
-    ).rejects.toThrow(/--frozen requires/)
+      workspaceGlobOwners(root, metas, ['shared/x.ts'], { fromLock: true }),
+    ).rejects.toThrow('no lock: run `vx lock`')
   })
 
   it('a glob a plugin gave a config-less package selects it; a sibling without one is not selected', async () => {

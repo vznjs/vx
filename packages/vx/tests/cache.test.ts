@@ -17,7 +17,7 @@ import { decodedTar } from '../src/cache/zstd.js'
 import { UserError, xxh3hex } from '../src/util/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 
@@ -1571,7 +1571,7 @@ describe('Cache storage (v10)', () => {
     // whether anything else has to go. Drop that subtraction and the
     // budget sees the PRE-prune total, so it evicts entries the user's
     // own cap says fit — here both survivors, silently, on every
-    // `vx cache prune --older-than ... --max-bytes ...`.
+    // `vx cache clean --older-than ... --max-bytes ...`.
     //
     //   correct:  remaining = 200 - 100 = 100, not > 100 → evicted 1
     //   mutated:  remaining = 200            > 100 → evicted 3

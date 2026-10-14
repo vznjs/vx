@@ -819,8 +819,10 @@ Declared `cache.outputs.files` are wiped in two distinct places:
   list instead of walking again: nothing is awaited between them (X-161).
 
 Both branches use the same `cleanOutputs` helper (`src/cache/inputs.ts`)
-with the same boundary rules, and two directories stay off the wipe
-whatever the glob: `.git` and `.vx/cache` (`OUTPUT_NEVER`). `node_modules` is
+with the same boundary rules, and vx's own paths stay off the wipe
+whatever the glob: `.git`, `.vx` and each `vx.lock.json` (`OUTPUT_NEVER`;
+`.vx` holds the workspace config and the lock, which a clean deleted and a
+hit restored stale while `.vx/cache` alone was listed). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
 legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
@@ -932,7 +934,7 @@ A task's cache becomes invalid when any of these change:
 | Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                                                                                                    |
 | Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                                                                                              |
 | Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                                                                                             |
-| Edit `.vx/lock.json`                                                                                                                     | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                             |
+| Edit `.vx/projects.lock.json`                                                                                                            | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                             |
 | Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception)                                                                       |
 
 The cascade in step 10 is what makes monorepo caching work: edit a
@@ -1039,7 +1041,7 @@ exactly on `cache.inputs.env`, and they share its asymmetry with the
 lockfile:
 
 - **The command _strings_ live in the resolved config**, so `vx lock`
-  freezes them into `.vx/lock.json` (just as it freezes the env _names_
+  freezes them into `.vx/projects.lock.json` (just as it freezes the env _names_
   a task declares).
 - **The command _output_ is resolved live at hash time on every run**
   — inside `resolveInputs`, the same place env _values_ are read from
@@ -1071,10 +1073,10 @@ A probe runs in its own process group. One still running when vx exits
 SIGKILLed with its whole tree; until 2026-09-27 (A-9) it ran on under
 init. A `kill -9` of vx runs no exit hook, and leaves it.
 
-So `vx run --frozen` loads the frozen command strings but still spawns
-them and folds their current output into the key. A `node -v` that goes
-from `v20` to `v22` after the lock was written busts the cache under
-`--frozen`, exactly as a changed `NODE_ENV` value would — the TypeScript
+So a run loads the frozen command strings from the lock but still
+spawns them and folds their current output into the key. A `node -v`
+that goes from `v20` to `v22` after the lock was written busts the
+cache, exactly as a changed `NODE_ENV` value would — the TypeScript
 escape hatch (`define: { TSC_VERSION: execSync(...) }`) goes stale here
 because its value was baked into the config object at lock time, whereas
 a runtime input re-resolves.
@@ -1126,7 +1128,7 @@ has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
 An eviction can still land between a hit's probe and its restore: a
-`vx cache prune` in another shell, or the `cache.retention` of another
+`vx cache clean` in another shell, or the `cache.retention` of another
 workspace that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
 bumps and reads its fresh hits as old. The restore then finds no
@@ -1153,14 +1155,14 @@ The run must be able to write here — it records its history at the
 end of every run, hit or miss — so a directory this user cannot write
 into (another user's `.vx/cache`, a read-only checkout) fails the run before
 any task: `cache directory <path> is not writable (EACCES: …)`, with
-`--cache-dir <path>` as the way out. `vx cache prune` is refused the
+`--cache-dir <path>` as the way out. `vx cache clean` is refused the
 same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on: a config
 that misses the evaluation cache is evaluated live and not stored.
 Where the directory cannot be created at all (a read-only checkout with
 no cache yet) a run says `cannot create cache directory <path>
 (EACCES: …)`, naming the workspace `cache.dir` field and `--cache-dir`;
-the readers and `vx cache prune` find no cache and go on.
+the readers and `vx cache clean` find no cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
 of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
@@ -1423,7 +1425,7 @@ miss, and the save that follows replaces it. An inline artifact with no
 row is indexed the same way, from its bytes, in one transaction; a reset
 keeps the `artifacts` table, but deleting `store.db` or `cache.db` by
 hand takes the inline artifacts with it. A `.tmp-*` a crashed save
-left is never a hit. `vx cache prune` sweeps row-less files, and so does a run whose workspace declares `cache.retention`, at
+left is never a hit. `vx cache clean` sweeps row-less files, and so does a run whose workspace declares `cache.retention`, at
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
 the policy sums index rows, so orphans alone never make it due). A
 row-less artifact may be in use: two vx versions share one store, and
@@ -1462,7 +1464,7 @@ and stamp are one write transaction, so another version's open waits
 rather than landing between them; an index already current is opened
 without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
-says why (item 896; `vx cache prune --dry-run` previews the reset
+says why (item 896; `vx cache clean --dry-run` previews the reset
 instead, item 1083).
 That open prints nothing (owner, 2026-10-06: the cache is vx's to
 keep). The artifacts stay: each is indexed again from its own bytes
@@ -1770,15 +1772,15 @@ moat.
 
 ## Config evaluation cache
 
-Evaluating configs is the largest fixed cost of a warm run on a big
-workspace (~80 ms for 1000 synthetic configs; reading them as data is
+A run reads configs from `.vx/projects.lock.json`; `vx lock` and the reading
+verbs evaluate them, the largest fixed cost on a big workspace (~80 ms for 1000 synthetic configs; reading them as data is
 ~12 ms). A config that is **provably pure** — every import relative or
 `@vzn/vx`, and no mention of `process`, `Bun`, `Date`, `fetch`,
 `import.meta`, `require`, a dynamic `import()`, `await`, … outside string
 literals and comments — is served from `cache.db`'s `config_evals` table,
 keyed by the git blob id of the config and of every file in its
 relative import closure, the workspace fingerprint (lockfiles) and Bun's
-version. Editing a shared preset moves the key. On a warm run the
+version. Editing a shared preset moves the key. On a warm load the
 closure is remembered per config, so the key comes from a stat-backed
 identity per file — no read, no scan — for every config whose relative
 imports name their files outright: an explicit extension, the file
@@ -1826,11 +1828,13 @@ built to defeat it can). Details and the deny-list:
   The canonical mechanism is `cache.inputs.runtime` /
   `workspaceRuntime` (e.g. `workspaceRuntime: ['node -v']`): the
   command output is resolved live at hash time, so it stays correct
-  under `--frozen`. Avoid baking versions via
+  under the lock. Avoid baking versions via
   `define: { X: execSync(...) }` — that value freezes into the config
   object at lock time and goes stale.
-- **`.vx/lock.json`** — globally excluded (v24); also filtered out of
-  `--affected` change sets.
+- **`.vx/projects.lock.json`** — globally excluded (v24); also filtered out of
+  `--affected` change sets. So are the files `vx lock` and `vx init`
+  write beside it: each project's `vx.lock.json` review copy,
+  `.vx/.gitattributes` and `.vx/.gitignore`.
 - **`exec.remote`.** Pure PLACEMENT: it decides _where_ a task runs,
   never what it produces, so pinning a task to this machine does not
   bust its cache. It must not — the
@@ -1852,7 +1856,7 @@ The cache records the version it was written under
 (`schema_meta.cache_version`). After an upgrade every cached task
 misses once and re-saves, with nothing printed (owner, 2026-10-06: the
 cache is vx's to keep). The index survives, so the old entries stay
-until they age out under `vx cache prune --older-than` or
+until they age out under `vx cache clean --older-than` or
 `cache.retention`; no key derives to them again.
 
 Required when:
@@ -2100,7 +2104,7 @@ breaking footer).
   artifact is gone or cannot produce an output the index recorded (the
   caller has already wiped the declared outputs by then, so a quiet
   return reported a green hit over an emptied tree — reachable via a
-  concurrent `vx cache prune`); the tar reader rejects an entry whose
+  concurrent `vx cache clean`); the tar reader rejects an entry whose
   declared size runs past the end of the archive (`subarray` clamps, so
   it used to install short, NUL-padded content as a cache hit instead of
   degrading to a miss); and directory entries now get the same
@@ -2144,7 +2148,7 @@ breaking footer).
   so existing artifacts stay valid and `CACHE_VERSION` stays `v24`. The
   schema gate drops + recreates on the version mismatch (pre-alpha, no
   migration).
-- **v23 → v24**: exclude `.vx/lock.json` from the input file set
+- **v23 → v24**: exclude `.vx/projects.lock.json` from the input file set
   globally (`ALWAYS_IGNORE` in `cache/inputs.ts`). The lockfile is
   committed, so git enumerates it, but it's vx's own frozen-config
   metadata — never a task input. Without this, a `vx lock` re-write

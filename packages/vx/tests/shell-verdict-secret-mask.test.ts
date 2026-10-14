@@ -1,7 +1,9 @@
 // The frame line vx adds under a 127 names the command's first word. A
 // config that interpolated a secret into that word (`tool-${API_TOKEN}`)
 // had the task's own "not found" masked and vx's line beside it whole
-// (L-37).
+// (L-37). `vx lock` now refuses a config that reads a secret from its env,
+// so the secret here is a literal the lock's env does not hold and the
+// run's does.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -29,12 +31,20 @@ describe('the shell verdict line', () => {
     await writeFile(
       path.join(dir, 'vx.config.mjs'),
       `export default { tasks: {
-  bare: { exec: { command: \`tool-\${process.env.API_TOKEN} --x\` } },
-  file: { exec: { command: \`./bin-\${process.env.API_TOKEN}/run\` } },
+  bare: { exec: { command: 'tool-${SECRET} --x' } },
+  file: { exec: { command: './bin-${SECRET}/run' } },
 } }
 `,
     )
     expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)
+    const { API_TOKEN: _, ...lockEnv } = process.env
+    const lock = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'lock'],
+      cwd: root,
+      env: { ...lockEnv, VX_LOCK_REVIEW_FILES: 'false' },
+      stderr: 'pipe',
+    })
+    expect(lock.stderr.toString()).toBe('')
     const run = Bun.spawnSync({
       cmd: [process.execPath, BIN, 'run', 'a#bare', 'a#file', '--continue'],
       cwd: root,

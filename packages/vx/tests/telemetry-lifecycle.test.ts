@@ -18,7 +18,7 @@ import {
   type TelemetrySink,
 } from '../src/orchestrator/index.js'
 import { createEventBus } from '../src/orchestrator/events.js'
-import { run } from '../src/index.js'
+import { run } from './helpers/orchestrator.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
 
 const RUN: RunContextRecord = {
@@ -225,7 +225,7 @@ describe('a hook that never settles', () => {
     const r = Bun.spawnSync({
       cmd: [
         process.execPath,
-        path.resolve(import.meta.dir, '../src/bin.ts'),
+        path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
         'run',
         'boom',
         '--all',

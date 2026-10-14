@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { affectedProjects } from '../src/workspace/index.js'
 import { GitFilesCache, repoRootOf } from '../src/cache/index.js'
 import { populateGitFilesCache } from '../src/cache/inputs.js'
-import { run, type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { dry, type DryTask } from './helpers/parity.js'
 import { BIN, SETTLE_MS, executions, initialOnly, startWatch, until } from './helpers/watch-loop.js'
 import { addProject, gitIn, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
@@ -277,6 +278,13 @@ describe('vx run inside a git pre-commit hook', () => {
     await git(root, ['init', '-q'])
     await git(root, ['config', 'user.email', 'test@vx.local'])
     await git(root, ['config', 'user.name', 'vx test'])
+    // The hook runs from the committed lock, as a checkout does.
+    expect(
+      Bun.spawnSync([process.execPath, BIN, 'lock'], {
+        cwd: root,
+        env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+      }).exitCode,
+    ).toBe(0)
     await git(root, ['add', '-A'])
     await git(root, ['commit', '-q', '-m', 'init'])
     const hook = path.join(root, '.git', 'hooks', 'pre-commit')

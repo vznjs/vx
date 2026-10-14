@@ -143,16 +143,14 @@ async function workspace(n: number, settled: boolean): Promise<string> {
       await writeFile(path.join(dir, 'src', `m${f}.js`), `export const v = ${i * 10 + f}\n`)
     }
   }
-  const id = ['-c', 'user.email=perf@vx', '-c', 'user.name=perf', '-c', 'commit.gpgsign=false']
   sh(root, 'git', 'init', '-q')
   sh(root, 'git', 'add', '-A')
-  sh(root, 'git', ...id, 'commit', '-qm', 'fixture')
+  sh(root, 'git', ...ID, 'commit', '-qm', 'fixture')
   return root
 }
 
-const options = (cwd: string, frozen = false) => ({
+const options = (cwd: string) => ({
   cwd,
-  frozen,
   tasks: ['test'],
   cacheDir: path.join(cwd, '.vx', 'cache'),
   log: silent,
@@ -160,8 +158,8 @@ const options = (cwd: string, frozen = false) => ({
   handleSignals: false,
 })
 
-async function vxRun(cwd: string, frozen = false): Promise<void> {
-  if (!(await run(options(cwd, frozen))).ok) {
+async function vxRun(cwd: string): Promise<void> {
+  if (!(await run(options(cwd))).ok) {
     throw new Error(`perf-guard: the run failed in ${cwd}`)
   }
 }
@@ -172,9 +170,16 @@ const BIN = path.join(
   'bin.ts',
 )
 
-/** Freezes the workspace with `vx lock`, then drops the cache that wrote it. */
+const ID = ['-c', 'user.email=perf@vx', '-c', 'user.name=perf', '-c', 'commit.gpgsign=false']
+
+/**
+ * Locks the workspace with `vx lock`, which every run reads, and commits what
+ * it wrote, as a repo does; then drops the cache that wrote it.
+ */
 async function lock(cwd: string): Promise<void> {
   sh(cwd, process.execPath, BIN, 'lock')
+  sh(cwd, 'git', 'add', '-A')
+  sh(cwd, 'git', ...ID, 'commit', '-qm', 'lock')
   await rm(path.join(cwd, '.vx', 'cache'), { recursive: true, force: true })
 }
 
@@ -184,7 +189,7 @@ interface Phase {
   name: string
   /** Puts the workspace in the phase's starting state; not measured. */
   setup?: (cwd: string, n: number) => Promise<void>
-  body: (cwd: string, frozen: boolean) => Promise<void>
+  body: (cwd: string) => Promise<void>
   /** Its wall time is held. A phase that spawns a shell per task is not. */
   timed: boolean
 }
@@ -205,8 +210,8 @@ const PHASES: readonly Phase[] = [
   },
   {
     name: 'plan',
-    body: async (cwd, frozen) => {
-      await planRun(options(cwd, frozen))
+    body: async (cwd) => {
+      await planRun(options(cwd))
     },
     timed: true,
   },
@@ -224,25 +229,18 @@ const PHASES: readonly Phase[] = [
 const byKey = <T>(o: Record<string, T>): Record<string, T> =>
   Object.fromEntries(Object.entries(o).sort(([a], [b]) => a.localeCompare(b)))
 
-const FROZEN = ' --frozen'
-const phaseKey = (name: string, n: number, frozen: boolean) =>
-  `${name}${frozen ? FROZEN : ''} @${n}`
-
-/**
- * Every phase's counts, at `n` packages: with no lock, or each run
- * `--frozen` from a `vx lock` taken first.
- */
-async function countPhases(n: number, frozen: boolean): Promise<Record<string, Counts>> {
+/** Every phase's counts, at `n` packages, from a `vx lock` taken first. */
+async function countPhases(n: number): Promise<Record<string, Counts>> {
   const cwd = await workspace(n, true)
   const out: Record<string, Counts> = {}
   try {
-    if (frozen) await lock(cwd)
+    await lock(cwd)
     for (const p of PHASES) {
       await p.setup?.(cwd, n)
       await Bun.sleep(RACY_MS)
       counts = {}
-      await p.body(cwd, frozen)
-      out[phaseKey(p.name, n, frozen)] = byKey(counts)
+      await p.body(cwd)
+      out[`${p.name} @${n}`] = byKey(counts)
     }
   } finally {
     await rm(cwd, { recursive: true, force: true })
@@ -278,19 +276,16 @@ async function timePhases(n: number): Promise<Record<string, number>> {
     await lock(cwd)
     for (const p of PHASES) {
       await p.setup?.(cwd, n)
-      await p.body(cwd, false)
+      await p.body(cwd)
     }
     await vxRun(cwd)
     for (let r = 0; r < REPS; r++) {
       for (const p of PHASES.filter((q) => q.timed)) {
-        for (const frozen of [false, true]) {
-          await p.setup?.(cwd, n)
-          cal.push(calibrate())
-          const t = Bun.nanoseconds()
-          await p.body(cwd, frozen)
-          const k = `${p.name}${frozen ? FROZEN : ''}`
-          walls.set(k, [...(walls.get(k) ?? []), (Bun.nanoseconds() - t) / 1e6])
-        }
+        await p.setup?.(cwd, n)
+        cal.push(calibrate())
+        const t = Bun.nanoseconds()
+        await p.body(cwd)
+        walls.set(p.name, [...(walls.get(p.name) ?? []), (Bun.nanoseconds() - t) / 1e6])
       }
     }
   } finally {
@@ -342,32 +337,8 @@ interface Baseline {
   time: Record<string, number>
 }
 
-/**
- * M's rule: running from the lock is never slower than running without
- * it. Time is not held here, so the work is: every count of a `--frozen`
- * phase is at most the same phase's with no lock, at every size.
- */
-function frozenDoesMore(counted: Record<string, Counts>): string[] {
-  const out: string[] = []
-  for (const [phase, now] of Object.entries(counted)) {
-    if (!phase.includes(FROZEN)) continue
-    const plain = counted[phase.replace(FROZEN, '')] ?? {}
-    for (const [k, v] of Object.entries(now)) {
-      if (v > (plain[k] ?? 0)) out.push(`${phase}: ${k} ${v} > ${plain[k] ?? 0} with no lock`)
-    }
-  }
-  return out
-}
-
 async function main(): Promise<void> {
   const counted = await measure<Record<string, Counts>>('counts')
-  const more = frozenDoesMore(counted)
-  if (more.length > 0) {
-    process.stdout.write(
-      `perf-guard: --frozen does more work than no lock:\n${more.map((f) => `  ${f}`).join('\n')}\n`,
-    )
-    process.exitCode = 1
-  }
   const platform = `${process.platform}-${process.arch}`
   const all = (await Bun.file(BASELINE)
     .json()
@@ -416,10 +387,6 @@ async function main(): Promise<void> {
     )
   }
 
-  for (const k of Object.keys(time).filter((t) => t.includes(FROZEN))) {
-    const ratio = time[k]! / time[k.replace(FROZEN, '')]!
-    rows.push(`  ${`${k} / no lock`.padEnd(46)} ${ratio.toFixed(2).padStart(15)}×`)
-  }
   process.stdout.write(
     `perf-guard (${platform})${' '.repeat(26)} baseline     now\n${rows.join('\n')}\n`,
   )
@@ -441,10 +408,8 @@ const mode = process.argv.find((a) => a.startsWith('--measure='))?.slice('--meas
 if (mode === 'counts') {
   process.stdout.write(
     JSON.stringify({
-      ...(await countPhases(SMALL, false)),
-      ...(await countPhases(LARGE, false)),
-      ...(await countPhases(SMALL, true)),
-      ...(await countPhases(LARGE, true)),
+      ...(await countPhases(SMALL)),
+      ...(await countPhases(LARGE)),
     }),
   )
 } else if (mode === 'time') {

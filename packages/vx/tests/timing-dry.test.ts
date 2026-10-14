@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 async function vx(root: string, args: string[], env: Record<string, string>): Promise<string> {
   const proc = Bun.spawn([process.execPath, BIN, 'run', ...args], {

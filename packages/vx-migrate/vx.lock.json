@@ -1,0 +1,205 @@
+{
+  "tasks": {
+    "install": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "build": {
+      "description": "nothing to build — consumed as source",
+      "dependsOn": [
+        "^build",
+        "source"
+      ]
+    },
+    "source": {
+      "description": "the source dependants import: a key, not a build",
+      "exec": {
+        "command": "true",
+        "sandbox": {
+          "allow": {
+            "read": []
+          }
+        }
+      },
+      "cache": {
+        "inputs": {
+          "files": [
+            "src/**"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "ci": {
+      "dependsOn": [
+        "lint",
+        "test"
+      ]
+    },
+    "lint": {
+      "dependsOn": [
+        "lint.oxlint",
+        "lint.oxfmt"
+      ]
+    },
+    "lint.oxlint": {
+      "description": "oxlint with tsgolint-backed type-aware checks",
+      "exec": {
+        "command": "oxlint --type-aware --type-check",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "cache": {
+        "inputs": {
+          "files": [
+            "src/**",
+            "tests/**",
+            "package.json",
+            ".oxlintrc.json",
+            "tsconfig.json"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "lint.oxfmt": {
+      "description": "oxfmt --check (no rewrite; CI-safe)",
+      "exec": {
+        "command": "oxfmt --check .",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "cache": {
+        "inputs": {
+          "files": [
+            "**/*"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test": {
+      "description": "bun test",
+      "exec": {
+        "command": "bun test --only-failures",
+        "env": {
+          "passThrough": [
+            "VX_NX_MODULES",
+            "VX_REQUIRE_NX",
+            "VX_REQUIRE_REFTABLE"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space",
+              "net.link.addr"
+            ],
+            "localBinding": true
+          },
+          "ignore": {
+            "network": [
+              "no-such-host.invalid:80"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "cache": {
+        "inputs": {
+          "files": [
+            "src/**",
+            "tests/**",
+            "package.json"
+          ],
+          "env": [
+            "VX_NX_MODULES",
+            "VX_REQUIRE_NX",
+            "VX_REQUIRE_REFTABLE"
+          ]
+        },
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.live": {
+      "description": "bun test, the live Nx files (VX_NX_MODULES names an install)",
+      "exec": {
+        "command": "bun test --only-failures ./tests/*-live.test.ts",
+        "env": {
+          "passThrough": [
+            "VX_NX_MODULES",
+            "VX_REQUIRE_NX"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space",
+              "net.link.addr"
+            ],
+            "localBinding": true
+          },
+          "ignore": {
+            "network": [
+              "no-such-host.invalid:80"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ]
+    }
+  }
+}

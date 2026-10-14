@@ -24,7 +24,7 @@ import {
 } from './helpers/stored-artifact.js'
 
 const TIMEOUT = 60_000
-const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 async function write(p: string, content: string): Promise<void> {
   await mkdir(path.dirname(p), { recursive: true })
@@ -395,7 +395,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
 
   it('names a VANISHED artifact as such, not as an unreadable one', async () => {
     await saveEntry('gone')
-    // A concurrent `vx cache prune` is the documented way this happens. The
+    // A concurrent `vx cache clean` is the documented way this happens. The
     // caller has ALREADY wiped the declared outputs by now, so the restore
     // must fail rather than report a green hit over an emptied tree.
     //

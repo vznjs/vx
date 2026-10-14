@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TASKS = `export default { tasks: { build: { exec: { command: 'true' } }, dev: { exec: { command: 'true' } } } }`
 
 let root: string
@@ -16,6 +16,12 @@ beforeAll(async () => {
   root = await makeWorkspace({ prefix: 'vx-task-verb-' })
   await addProject(root, 'app', TASKS)
   await addProject(root, 'lib', TASKS)
+  // The hints read the lock; the shim locks first only for `run` and `watch`.
+  Bun.spawnSync({
+    cmd: [process.execPath, path.resolve(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
+    cwd: root,
+    env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+  })
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })

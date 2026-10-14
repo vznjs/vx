@@ -9,7 +9,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { CORE_VERBS } from '../src/cli/help.js'
-import { run } from '../src/cli/index.js'
+import { run } from './helpers/cli.js'
 
 let stderr = ''
 let cwd = ''
@@ -45,7 +45,7 @@ async function refused(argv: string[]): Promise<[number, string]> {
 const HLP: Record<string, string[]> = {
   run: ['run', 'build', '--hlp'],
   watch: ['watch', 'build', '--hlp'],
-  cache: ['cache', 'prune', '--hlp'],
+  cache: ['cache', 'clean', '--hlp'],
   why: ['why', 'build', '--hlp'],
 }
 

@@ -15,7 +15,7 @@ import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 
 const TIMEOUT = 60_000
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const available = await sandboxAvailable('sandbox session guard tests')
 
 const pids = (): string[] => readdirSync('/proc').filter((d) => /^\d+$/.test(d))

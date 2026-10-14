@@ -9,7 +9,7 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const roots: string[] = []
 
 afterAll(async () => {
@@ -52,7 +52,7 @@ describe('vx info — a config with a syntax error', () => {
     expect(JSON.stringify(errors)).not.toContain(root)
   })
 
-  it('counts the other projects as vx run does and names the error vx run stops on', async () => {
+  it('counts the other projects as vx run does and names the error vx lock stops on', async () => {
     const root = await workspace('vx-info-staged-')
     const scripts = pluginSource(
       'scripts-plugin',
@@ -80,14 +80,15 @@ describe('vx info — a config with a syntax error', () => {
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
     await writeFile(path.join(app, 'vx.config.mjs'), 'export default {{{\n')
 
-    const run = Bun.spawnSync({
-      cmd: [process.execPath, BIN, 'run', 'build', '--all'],
+    // `vx lock` is what evaluates a run's configs, so its refusal is the one a run stops on.
+    const lock = Bun.spawnSync({
+      cmd: [process.execPath, BIN, 'lock'],
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    const prefix = `vx: Project config ${path.join(app, 'vx.config.mjs')}:`
-    const stops = run.stderr.toString().trim()
+    const prefix = `vx lock: .vx/projects.lock.json not written: Project config ${path.join(app, 'vx.config.mjs')}:`
+    const stops = lock.stderr.toString().trim()
     expect(stops.startsWith(prefix)).toBe(true)
 
     const { code, err, facts } = infoJson(root)

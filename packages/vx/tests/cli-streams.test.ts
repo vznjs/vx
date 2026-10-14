@@ -13,7 +13,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 const NOTICE = 'cache index reset'
 
@@ -84,10 +84,10 @@ describe('a verb prints its product alone on stdout over an aged index', () => {
   }
 
   it(
-    'the products that open no index: cache prune --format json, completions',
+    'the products that open no index: cache clean --format json, completions',
     () => {
       aged()
-      const prune = vx('cache', 'prune', '--max-size', '1G', '--dry-run', '--format', 'json')
+      const prune = vx('cache', 'clean', '--max-size', '1G', '--dry-run', '--format', 'json')
       expect([prune[0], json(prune[1])]).toEqual([0, true])
       const comp = vx('completions', 'bash')
       expect([comp[0], comp[1].includes('complete'), comp[2]]).toEqual([0, true, ''])

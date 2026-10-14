@@ -302,13 +302,16 @@ export interface CacheStats {
 // which stored BYTES are readable (bump when they would be wrong under
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
-// the first run after one says so and names `vx cache prune`.
+// the first run after one says so and names `vx cache clean`.
 export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
 // An input gone between its listing and its hash folds as this, never an
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
 export const SCHEMA_VERSION = 'v34'
+// What vx wrote in a cache dir (index, artifacts, run history, its `*`
+// ignore): all a clear of a dir the user named may delete (item 968).
+export function vxCacheEntries(cacheDir: string): string[]
 
 // The two WHERE fragments every history query shares, so "a run that
 // executed" and "a run with a key" mean one thing across metrics.ts,
@@ -453,7 +456,7 @@ asks `artifacts` only then. Its own version is `artifacts_meta.layout`
 where the schema was not this vx's (a reset, a new index or store, a
 store moved), so a warm open spends no statement on it and a layout
 change bumps `SCHEMA_VERSION` too. A reading open over an index or store
-of another schema (`vx cache prune --dry-run` after an upgrade) reads
+of another schema (`vx cache clean --dry-run` after an upgrade) reads
 them through a TEMP view over the file, so it names the row-less ones
 the real prune reaps. A workspace index whose entries move to a store
 drops its own `artifacts`, which an unqualified name would otherwise
@@ -542,7 +545,7 @@ Reads via `get()` are non-blocking thanks to WAL.
   the one a save refuses past before it packs, so vx never stores an
   artifact its own restore would refuse.
 - Throws `ArtifactVanishedError` when the artifact is gone (removed
-  after the probe: a `vx cache prune` in another shell, another
+  after the probe: a `vx cache clean` in another shell, another
   workspace's retention on a shared `--cache-dir`) — the caller treats
   that entry as a miss and runs the task. An artifact that is not a
   readable archive or lacks an output the index recorded
@@ -606,7 +609,7 @@ Surfaced by `vx info`.
 ## What this does NOT do
 
 - Doesn't garbage-collect old entries unasked. Eviction is
-  `vx cache prune --older-than <d>` / `--max-size <s>` (calls into
+  `vx cache clean --older-than <d>` / `--max-size <s>` (calls into
   `Cache.prune`), or the workspace's `cache.retention` at the end of a
   run (`Cache.evictIfDue`); both sweep artifacts the index has no row
   for by the same policy, on file times, and temps once an hour old
@@ -657,7 +660,7 @@ the file, past the pages the open reads, surfaces where it is read, and
 there too as the same `UserError`: every lookup, save, prune, retention
 pass, stats read, run record and config-evaluation read or write passes
 through `guard` (A-8). Before, every task of a run failed on it as an
-"internal error" and `vx cache prune` printed a stack. The open that drops them records it:
+"internal error" and `vx cache clean` printed a stack. The open that drops them records it:
 `Cache.schemaReset` carries a `SchemaReset`, `{ from, to }`, on that one open (null on
 every later one). A `CACHE_VERSION` bump alone keeps the index, so
 `Cache.formatChange` carries `{ from, to }` on the open that first sees

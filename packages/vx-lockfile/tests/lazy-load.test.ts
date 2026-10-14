@@ -1,6 +1,6 @@
 // Every run evaluates `.vx/workspace.ts`, so what this package loads at
 // import is paid by every run: a parser loads when its manager first
-// digests, and `prune` when the verb runs.
+// digests, and no other parser with it.
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 
@@ -19,14 +19,18 @@ Bun.plugin({
   },
 })
 const m = await import(process.argv[1])
-m.bun()
+const bun = m.bun()
 m.pnpm()
 const before = [...seen].sort()
-await m.bun().commands.prune.run(['--help'], {}).catch(() => {})
+const lock = new TextEncoder().encode('{ "lockfileVersion": 1, "workspaces": { "": { "name": "r" } }, "packages": {} }')
+bun.fingerprint.affected(
+  { file: 'bun.lock', before: lock, after: lock },
+  { workspaceRoot: '/w', projects: [] },
+)
 console.log('SEEN ' + JSON.stringify({ before, after: [...seen].sort() }))
 `
 
-it('declaring a plugin loads no parser and not prune', async () => {
+it('declaring a plugin loads no parser; a digest loads only its own', async () => {
   const proc = Bun.spawn(
     [process.execPath, '-e', PROBE, path.join(import.meta.dir, '..', 'src', 'index.ts')],
     { env: { ...process.env }, stdout: 'pipe', stderr: 'pipe' },
@@ -40,6 +44,7 @@ it('declaring a plugin loads no parser and not prune', async () => {
   const line = out.split('\n').find((l) => l.startsWith('SEEN ')) ?? 'SEEN {}'
   const { before, after } = JSON.parse(line.slice(5)) as { before: string[]; after: string[] }
   expect(before).toEqual(['index.ts'])
-  // The control: the verb does load its module, so the probe sees a load.
-  expect(after).toContain('prune.ts')
+  // The control: a digest does load its parser, so the probe sees a load.
+  expect(after).toContain('bun.ts')
+  expect(after).not.toContain('pnpm.ts')
 })

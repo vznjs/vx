@@ -16,7 +16,7 @@ import {
   findWorkspaceRoot,
   type LoadReads,
   type FingerprintClaims,
-  FROZEN_WITHOUT_LOCK,
+  NO_LOCK,
   loadProjectConfig,
   loadWorkspace,
   parseFilter,
@@ -56,8 +56,7 @@ import { resolveSetting } from '../settings.js'
  * matching a changed path, one inside another project included (item
  * 954): `--affected` selects them, since the glob is that task's input. Through the run
  * path's staged load, so a glob a `project` plugin gave a config-less
- * package counts; evaluated live as a default run does, or read from the
- * lock as a `--frozen` run does. A load that fails drops to the config files that
+ * package counts; read from the lock as a run does. A load that fails drops to the config files that
  * do load, one by one — a broken out-of-scope config does not fail a
  * scoped run, and must not fail its selection either.
  */
@@ -86,20 +85,24 @@ export async function workspaceGlobOwners(
   } catch {
     // Fall through to the per-file sweep.
   }
-  // A frozen run with no lock is refused here, before the tolerant sweep
-  // below could answer "nothing affected" and exit 0 without ever reaching
-  // the run's own refusal. Asked only once the staged load failed: a
-  // frozen load that succeeded read the lock, and a second read parsed it
-  // again (1,000 projects: a 1.1 MB lock, ~10 ms).
-  if (load.frozen === true && (await readLockfile(root)) === null) {
-    throw new UserError(FROZEN_WITHOUT_LOCK)
-  }
+  // A run with no lock is refused here, before the tolerant sweep below
+  // could answer "nothing affected" and exit 0 without ever reaching the
+  // run's own refusal. A run's sweep reads each entry from the lock: it
+  // never evaluates a config.
+  const lock = load.fromLock === true ? await readLockfile(root) : undefined
+  if (lock === null) throw new UserError(NO_LOCK)
   const owners: string[] = []
   await Promise.all(
     projects.map(async (meta) => {
       if (meta.configPath === null || meta.configPath === '') return
       try {
-        if (declaresMatch(await loadProjectConfig(meta.configPath))) owners.push(meta.name)
+        const config =
+          lock === undefined
+            ? await loadProjectConfig(meta.configPath)
+            : Object.hasOwn(lock.projects, meta.name)
+              ? lock.projects[meta.name]
+              : undefined
+        if (config !== undefined && declaresMatch(config)) owners.push(meta.name)
       } catch {
         // A config that will not load cannot be shown to declare a matching
         // glob; surfacing it here would fail a run the loader itself tolerates.

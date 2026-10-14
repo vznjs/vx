@@ -489,8 +489,8 @@ describe('the strict-output-ownership post names what the wipe never touches', (
     )
     const arr = /const OUTPUT_NEVER = \[([^\]]*)\]/.exec(src)
     expect(arr).not.toBeNull()
-    const names = [...arr![1]!.matchAll(/'\*\*\/([^']+)\/\*\*'/g)].map((m) => m[1]!)
-    expect(names.length).toBe(2)
+    const names = [...arr![1]!.matchAll(/'\*\*\/([^'/]+)(?:\/\*\*)?'/g)].map((m) => m[1]!)
+    expect(names).toEqual(['.git', '.vx', 'vx.lock.json'])
     for (const name of names) expect(section![1]!).toContain('`' + name + '`')
     expect(section![1]!).toContain('`node_modules/**` is a legitimate output')
   })
@@ -1171,7 +1171,7 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
     const decl = /export interface WorkspaceConfig \{([\s\S]*?)\n\}/.exec(src)
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
-    expect(fields.length).toBe(4)
+    expect(fields.length).toBe(5)
     const page = section(
       readFileSync(path.join(GUIDES, 'configure.md'), 'utf8'),
       'Workspace config',
@@ -1205,6 +1205,21 @@ describe('the plugins guide names the remote seam core defines', () => {
   })
 })
 
+describe('the CI guide quotes only run figures benchmarks.md measured', () => {
+  it('every figure beside its lock is on the benchmarks page', () => {
+    // It sold `--frozen` as "roughly 10–21%" off a warm run; the 2026-09-12
+    // measurement read the row as a tie (item 346, 2026-09-19), and every run
+    // now reads the lock (2026-10-14).
+    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
+    const ci = section(readFileSync(path.join(GUIDES, 'ci.md'), 'utf8'), 'GitHub Actions')
+    expect(ci).toContain('`vx lock --check`')
+    for (const m of ci.matchAll(/(\d+(?:[–-]\d+)?)\s?(%|ms)\b/g)) {
+      expect(m[0]).toBe(bench.includes(m[1]!) ? m[0] : `${m[0]} — not on benchmarks.md`)
+    }
+    expect(ci).not.toMatch(/10–21%/)
+  })
+})
+
 // The caching guide is the configure page's section (the short site); its
 // always-excluded sentence became a row of the key's table.
 describe('the caching guide lists what the cache never reads', () => {
@@ -1223,7 +1238,7 @@ describe('the caching guide lists what the cache never reads', () => {
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n')
     const names = [...entries.matchAll(/'\*\*\/([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
-    expect(names.length).toBe(7)
+    expect(names.length).toBe(10)
     const excluded = /^\| Always excluded +\|.*$/m.exec(page)
     expect(excluded).not.toBeNull()
     for (const name of names) expect(excluded![0]).toContain(name)
@@ -1585,7 +1600,7 @@ describe('the values post states the principles CLAUDE.md numbers', () => {
 
 describe("the site's Turbo and Nx verb rows say what `vx <verb>` says", () => {
   // The migrate guide mapped `nx reset` to "nothing" while `vx reset` named
-  // `vx cache prune` (J-90).
+  // `vx cache clean` (J-90).
   it('a row naming `nx <verb>` or `turbo <verb>` (no flag that changes it) holds the command and flags of its FOREIGN_VERBS hint', () => {
     let rows = 0
     for (const page of handAuthoredSitePages()) {

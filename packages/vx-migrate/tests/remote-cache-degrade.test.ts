@@ -13,7 +13,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { run } from '@vzn/vx'
+import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const TOKEN = 'tok'
@@ -355,7 +355,7 @@ describe('a refused token costs ONE line on a whole workspace', () => {
     const proc = Bun.spawn({
       cmd: [
         'bun',
-        path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
+        path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts'),
         'run',
         'build',
         '--all',
@@ -383,7 +383,7 @@ describe('a refused token costs ONE line on a whole workspace', () => {
   })
 })
 
-const BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts')
 
 /** `vx run build` through the CLI: the warnings are stderr lines, and their count is the claim. */
 async function cliRun(

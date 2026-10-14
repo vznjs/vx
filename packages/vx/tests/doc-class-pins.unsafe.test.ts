@@ -161,8 +161,8 @@ describe('no page says a failed task aborts its dependents', () => {
   })
 })
 
-describe('every --frozen figure on a page is one benchmarks.md measured', () => {
-  it('no page quotes a frozen speed number the benchmarks page does not have', () => {
+describe('every lock-run figure on a page is one benchmarks.md measured', () => {
+  it('no page quotes a lock-run speed number the benchmarks page does not have', () => {
     // Item 346 struck the CI guide's "roughly 10–21%" and did not grep the
     // class: the root README still sold "~120 ms back per 1,000 packages"
     // (item 351, 2026-09-19). The 2026-09-12 head-to-head reads as a tie.
@@ -192,7 +192,7 @@ describe('every --frozen figure on a page is one benchmarks.md measured', () => 
       for (const para of text.split(/\n\s*\n/)) {
         if (!para.includes('--frozen') && !para.includes('`vx lock`')) continue
         paragraphs += 1
-        // A figure attached to a frozen claim must be the benchmarks page's.
+        // A figure attached to a lock claim (`--frozen` in dated posts) must be the benchmarks page's.
         for (const m of para.matchAll(/(\d+(?:[–-]\d+)?)\s?(%|ms)\b/g)) {
           expect({ page: path.basename(page), figure: m[0] }).toEqual({
             page: path.basename(page),
@@ -201,7 +201,7 @@ describe('every --frozen figure on a page is one benchmarks.md measured', () => 
         }
       }
     }
-    // Without this the pin passes on nothing the day `--frozen` is reworded
+    // Without this the pin passes on nothing the day the lock is reworded
     // — the drift it exists to catch (item 361).
     expect(paragraphs).toBeGreaterThan(20)
   })

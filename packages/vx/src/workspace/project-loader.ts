@@ -575,7 +575,7 @@ export async function loadProjectConfigs(
     // shares what the config shares: one preset's task in two configs, one
     // `exec` in two tasks. A `project` hook that edits in place then edited
     // them all, so a cold run ran `echo P +plug +plug` where the warm run
-    // and `--frozen` ran `echo P +plug`, under another key (item 967). A
+    // and a locked run ran `echo P +plug`, under another key (item 967). A
     // config is JSON data (config-schema.ts), so the copy loses nothing.
     const config = JSON.parse(json) as ProjectConfig
     if (key === null) return { config }

@@ -1,17 +1,17 @@
-# `src/workspace/lockfile.ts` — .vx/lock.json
+# `src/workspace/lockfile.ts` — .vx/projects.lock.json
 
 ## Purpose
 
 `vx lock` freshly evaluates every project config and freezes it, by
-project name, into `.vx/lock.json`. `vx run --frozen` loads configs FROM
-the lock (zero eval, no staleness check, no schema validation);
+project name, into `.vx/projects.lock.json`. Every run loads configs FROM the
+lock (zero eval, no staleness check, no schema validation);
 `vx lock --check` re-evaluates every config and reports one drift
 message per project that differs.
 
 ## Public surface
 
 ```ts
-export const LOCKFILE_NAME = '.vx/lock.json'
+export const LOCKFILE_NAME = '.vx/projects.lock.json'
 export const LOCKFILE_VERSION = 2
 
 export interface Lockfile {
@@ -21,7 +21,7 @@ export interface Lockfile {
 }
 
 export function lockfilePath(root: string): string
-export const FROZEN_WITHOUT_LOCK: string // the `--frozen` refusal when no lock exists
+export const NO_LOCK = 'no lock: run `vx lock`' // a run's refusal when no lock exists
 export async function readLockfile(root: string): Promise<Lockfile | null>
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
 export function frozenProjectConfigs(
@@ -34,40 +34,39 @@ export function frozenProjectConfigs(
 `readLockfile` checks the JSON shape only: an object, this
 `LOCKFILE_VERSION`, `projects` an object of objects. Anything else,
 including a lock an earlier vx wrote, is a `UserError` asking for
-`vx lock`. `frozenProjectConfigs` is what a `--frozen` load serves
-instead of an evaluation: an entry missing for the project is a
+`vx lock`. `frozenProjectConfigs` is what a run's load serves instead
+of an evaluation: an entry missing for the project is a
 `UserError` naming the project and the remedy. No entry is validated:
 `vx lock` validated what it wrote, and `--check` re-evaluates
 (owner, 2026-10-14). `writeLockfile` ends the lock with a `validated`
 field, a digest of the bytes above it under vx's version; no reader
 consults it. The CLI's own selection load (`loadCliProjects`, what a
-filter that walks the graph stages) reads the lock the same way under
-`--frozen`, so the selection and the run see one graph. A run with
+filter that walks the graph stages) reads the lock the same way, so
+the selection and the run see one graph. A run with
 nothing staged starts reading the lock when it finds the workspace root,
 beside discovery; a missing lock still refuses at the config load, after
 any refusal that comes first.
 
 ## Invariants
 
-- Deliberate asymmetry: `--frozen` runs TRUST the lock outright — a
+- Deliberate asymmetry: runs TRUST the lock outright — a
   config edited since `vx lock` runs as locked (owner, 2026-06-13: a
   byte-hash re-check cannot see import closures or env, so it would be
   a weaker guarantee pretending to add safety); only `--check` pays the
-  full re-evaluation, and the CI recipe is `vx lock --check && vx run
---frozen`.
-- A missing entry (or a missing lock) under `--frozen` is a hard
+  full re-evaluation, and the CI recipe is `vx lock --check && vx run`.
+- A missing entry (or a missing lock) in a run is a hard
   `UserError` — never a silent fallback to evaluation. The lock is
   keyed by name, so a config that moved and evaluates the same is still
   locked.
 - `writeLockfile` writes a temp file beside the lock and renames it over
   the lock, so a reader sees the old lock or the new one, never a
-  truncated one. A write in place truncated first, and a `--frozen` run
-  or `vx watch --frozen` woken by the write could read the lock empty
+  truncated one. A write in place truncated first, and a run or a
+  `vx watch` cycle woken by the write could read the lock empty
   (item 972).
-- `--check` refuses at least what `--frozen` refuses: a project with no
+- `--check` refuses at least what a run refuses: a project with no
   entry, and it also names a locked project with no config in the
   workspace. It compares a fresh evaluation in the
   lock's JSON form, so a field a config leaves `undefined` is not drift.
   An unknown argument exits 1 before anything is read or written.
-- `.vx/lock.json` is globally excluded from cache inputs and
+- `.vx/projects.lock.json` is globally excluded from cache inputs and
   `--affected` (it's vx's own metadata, never a task input).

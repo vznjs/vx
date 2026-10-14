@@ -5,7 +5,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { planRun, run, type Logger, type ProjectConfig, type ProjectMeta } from '@vzn/vx'
+import { type Logger, type ProjectConfig, type ProjectMeta } from '@vzn/vx'
+import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { turbo } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
@@ -601,7 +602,7 @@ describe('turbo.json is a claimed root file (item 961)', () => {
       const p = Bun.spawnSync({
         cmd: [
           process.execPath,
-          path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts'),
+          path.resolve(import.meta.dir, '..', '..', 'vx', 'tests', 'helpers', 'vx-locked.ts'),
           'run',
           'lint',
           '--affected=HEAD',
@@ -654,6 +655,69 @@ describe('a committed file under an output', () => {
   )
 })
 
+describe('input zero segments', () => {
+  it(
+    "a wildcard `X/**` input also keys on X, as Turbo's `**` matches zero segments",
+    async () => {
+      const app = path.join(root, 'packages', 'app')
+      await pkg('app', { build: 'mkdir -p dist && cat config.json > dist/out.json' })
+      await pkg('lib', { build: 'mkdir -p dist && echo l > dist/l.js' })
+      await writeFile(path.join(app, 'config.json'), '{"v":1}\n')
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: { build: { inputs: ['*/**', '!*.md', '!dist-*/**'], outputs: ['dist/**'] } },
+        }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const plan = await planRun({ cwd: root, tasks: ['app#build'], log: silent() })
+      const node = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      expect(node.config.cache?.inputs.files).toEqual([
+        '*/**',
+        '*',
+        '!*.md',
+        '!dist-*/**',
+        '!dist-*',
+      ])
+      const opts = { cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false }
+      const status = (r: Awaited<ReturnType<typeof run>>) =>
+        r.outcomes.find((o) => o.node.id === 'app#build')!.status
+      expect(status(await run(opts))).toBe('success')
+      expect(status(await run(opts))).toBe('cache-hit')
+      // Matched only through `*/**`'s zero segments: a hit here replays `{"v":1}`.
+      await writeFile(path.join(app, 'config.json'), '{"v":2}\n')
+      expect(status(await run(opts))).toBe('success')
+      expect(await Bun.file(path.join(app, 'dist', 'out.json')).text()).toBe('{"v":2}\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a root task takes X as a workspace glob; $TURBO_DEFAULT$ and literal inputs are unchanged',
+    async () => {
+      await writeFile(
+        path.join(root, 'package.json'),
+        JSON.stringify({ name: 'ws', private: true, scripts: { gen: 'echo g' } }),
+      )
+      await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: {} }\n')
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: {
+            '//#gen': { inputs: ['*/**'] },
+            build: { inputs: ['$TURBO_DEFAULT$', 'package.json', 'src/**'] },
+          },
+        }),
+      )
+      const plan = await planRun({ cwd: root, tasks: ['ws#gen', 'lib#build'], log: silent() })
+      const cache = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache!
+      expect(cache('ws#gen').inputs.workspaceFiles).toEqual(['*/**', '*'])
+      expect(cache('lib#build').inputs.files).toEqual(['**/*', 'package.json', 'src/**'])
+    },
+    TIMEOUT,
+  )
+})
+
 describe('output negation', () => {
   it(
     'a wildcard output carved by negations stays cached and names what the clean deletes',
@@ -681,7 +745,9 @@ describe('output negation', () => {
         '!node_modules/**',
         '!src/**',
         '*/**',
+        '*',
         '.medusa/**',
+        '!package.json',
       ])
       expect(log.lines.join('\n')).toContain(
         '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
@@ -691,6 +757,41 @@ describe('output negation', () => {
       expect(
         await Bun.file(path.join(root, 'packages', 'app', 'src', 'gen', 'api.js')).exists(),
       ).toBe(true)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a wildcard `X/**` output also matches X, as Turbo's `**` matches zero segments (medusa `*/**`)",
+    async () => {
+      // medusa's framework build writes `tsconfig.tsbuildinfo` at the package
+      // root; Turbo's artifact for `*/**` held it, vx's restore did not.
+      const script = 'mkdir -p lib && echo t > tsconfig.tsbuildinfo && echo l > lib/x.js'
+      await pkg('app', { build: script })
+      await pkg('lib', { build: script })
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({ tasks: { build: { outputs: ['!node_modules/**', '!src/**', '*/**'] } } }),
+      )
+      Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
+      expect(app.config.cache?.outputs.files).toEqual([
+        '!node_modules/**',
+        '!src/**',
+        '*/**',
+        '*',
+        '!package.json',
+      ])
+      const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
+      const dir = path.join(root, 'packages', 'app')
+      const info = path.join(dir, 'tsconfig.tsbuildinfo')
+      expect((await build()).ok).toBe(true)
+      await rm(info)
+      const second = await build()
+      expect(second.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      expect(await Bun.file(info).text()).toBe('t\n')
+      expect(await Bun.file(path.join(dir, 'package.json')).exists()).toBe(true)
     },
     TIMEOUT,
   )
@@ -715,9 +816,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist/**'])
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist/**', '**/dist'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist/**'])
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist/**', '**/dist'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const nested = path.join(root, 'packages', 'app', 'rsc', 'dist', 'r.js')
       expect((await build()).ok).toBe(true)
@@ -777,9 +878,9 @@ describe('output negation', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
-      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*/**'])
+      expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*/**', 'dist-*'])
       // CONTROL: lib commits a file the glob reaches; the output stays as declared.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*/**'])
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*/**', 'dist-*'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const out = path.join(root, 'packages', 'app', 'dist-esm', 'a.js')
       expect((await build()).ok).toBe(true)
@@ -1190,12 +1291,11 @@ describe('turbo(): the mapping cache', () => {
   })
 })
 
-// Every bench arm runs vx from a lock (`vx lock` once, then `--frozen`), on
-// real Turbo repos too: the plugin's tasks are no vx.config, so the lock
-// records none of them and a frozen run maps turbo.json live. A config
-// written after the lock is a project the lock lacks, and a frozen run
-// refuses it rather than evaluating it.
-describe('turbo() under vx lock and --frozen', () => {
+// Every run reads configs from the lock, on real Turbo repos too: the
+// plugin's tasks are no vx.config, so the lock records none of them and a
+// run maps turbo.json live. A config written after the lock is a project the
+// lock lacks, and a run refuses it rather than evaluating it.
+describe('turbo() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
       cmd: [
@@ -1210,30 +1310,30 @@ describe('turbo() under vx lock and --frozen', () => {
   }
 
   it(
-    'locks, runs frozen, hits on the second frozen run, and refuses a config the lock lacks',
+    'locks, runs from the lock, hits on the second run, and refuses a config the lock lacks',
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx lock: locked 0 project configs → .vx/lock.json (no vx.config, so never frozen: app, lib)\n',
+        out: 'vx lock: locked 0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)\n',
         err: '',
       })
-      const first = vx('run', 'build', '--all', '--frozen')
+      const first = vx('run', 'build', '--all')
       expect({ code: first.code, err: first.err }).toEqual({ code: 0, err: '' })
       expect(await Bun.file(path.join(root, 'packages', 'app', 'dist', 'app.js')).text()).toBe(
         '// api\n',
       )
-      const second = vx('run', 'build', '--all', '--frozen')
+      const second = vx('run', 'build', '--all')
       expect({ code: second.code, err: second.err }).toEqual({ code: 0, err: '' })
       expect(second.out).toContain('3 tasks · all cached')
       await writeFile(
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
         'export default { tasks: { build: { command: "true" } } }\n',
       )
-      const stale = vx('run', 'build', '--all', '--frozen')
-      expect(stale.code).toBe(1)
-      expect(stale.err).toContain(
-        '.vx/lock.json has no entry for "lib" (packages/lib/vx.config.mjs) — run `vx lock` to refresh',
-      )
+      expect(vx('run', 'build', '--all')).toEqual({
+        code: 1,
+        out: '',
+        err: 'vx: .vx/projects.lock.json has no entry for "lib" (packages/lib/vx.config.mjs) — run `vx lock`\n',
+      })
     },
     TIMEOUT,
   )

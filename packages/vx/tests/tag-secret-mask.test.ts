@@ -6,10 +6,11 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { run, type TelemetryRecord } from '../src/index.js'
+import { type TelemetryRecord } from '../src/index.js'
+import { run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/orchestrator/logger.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const SECRET = 'supersecretvalue123'
 const roots: string[] = []
 

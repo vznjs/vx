@@ -24,7 +24,7 @@ import { streamOf } from './helpers/stream.js'
 import { validateProjectConfig } from '../src/workspace/project-loader.js'
 import { computeTaskHash } from '../src/orchestrator/task-hash.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
 
 const TIMEOUT = 30_000

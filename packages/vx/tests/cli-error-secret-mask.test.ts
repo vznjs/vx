@@ -2,7 +2,7 @@
 // header it was sent) or a config's own throw: each is text vx did not
 // write, and a secret in it reached stderr whole, as did `vx watch`'s
 // `cycle failed` line (L-11).
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
@@ -11,7 +11,7 @@ import { startWatch, until } from './helpers/watch-loop.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const SECRET = 'supersecretvalue123'
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const THROW = `throw new Error('reply token=' + process.env.API_TOKEN + ' id=' + process.env.REQ_ID)`
 let root: string
 beforeEach(async () => {
@@ -51,7 +51,8 @@ it("a plugin's failure in setup, in a stage and in its verb is masked", async ()
 
 it("a config's own throw is masked", async () => {
   await addProject(root, 'app', `${THROW}\n`)
-  const err = stderr(['run', 't', '--all'])
+  // `vx lock` is the one verb a run's configs are evaluated by.
+  const err = stderr(['lock'])
   expect(err.split('\n').filter((l) => l.includes('reply'))).toEqual([`vx: Error: ${SAID}`])
 }, 20_000)
 
@@ -69,22 +70,23 @@ it("vx info's config error row is masked", async () => {
 }, 20_000)
 
 it("vx watch's failed cycle is masked", async () => {
-  const dir = path.join(root, 'packages', 'app')
-  await mkdir(dir, { recursive: true })
-  await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
-  const cfg = path.join(dir, 'vx.config.mjs')
-  await writeFile(cfg, `export default { tasks: { build: { exec: { command: 'true' } } } }\n`)
+  // A cycle reads configs from the lock and evaluates none, so the text
+  // vx did not write is a plugin's, failing in a stage of the cycle.
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
+  )
+  await plugin(`{ key() { ${THROW} } }`)
   const w = startWatch(root, ['--all'], env)
   try {
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
-    await writeFile(cfg, `${THROW}\n`)
-    await until(() => w.err().includes('cycle failed'), 'the cycle that cannot load the config')
+    await until(() => w.err().includes('cycle failed'), 'the cycle the plugin fails')
     expect(
       w
         .err()
         .split('\n')
         .filter((l) => l.includes('cycle failed')),
-    ).toEqual([`vx watch: cycle failed: ${SAID}`])
+    ).toEqual([`vx watch: cycle failed: plugin 'org/p' failed in key: ${SAID}`])
   } finally {
     w.proc.kill('SIGTERM')
     await w.proc.exited

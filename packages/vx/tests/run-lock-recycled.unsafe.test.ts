@@ -11,7 +11,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 const realFs = { ...fs }
 const real = { ...fsPromises }

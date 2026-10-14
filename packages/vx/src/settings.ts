@@ -114,13 +114,6 @@ export const SETTINGS: readonly Setting[] = [
     flag: { verb: 'run', name: '--ready-notice' },
   },
   {
-    path: 'run.frozen',
-    kind: { type: 'bool' },
-    default: 'on when CI is set',
-    doc: 'Load configs from `.vx/lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.',
-    flag: { verb: 'run', name: '--frozen' },
-  },
-  {
     path: 'run.rules.exclusiveOutputs',
     kind: { type: 'bool' },
     default: 'true',
@@ -187,6 +180,12 @@ export const SETTINGS: readonly Setting[] = [
     task: 'cache.inputStability.severity',
   },
   {
+    path: 'lock.reviewFiles',
+    kind: { type: 'bool' },
+    default: 'true',
+    doc: "`vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.",
+  },
+  {
     path: 'watch.poll',
     kind: { type: 'bool' },
     default: 'false',
@@ -217,7 +216,7 @@ export const SETTINGS: readonly Setting[] = [
 ]
 
 /** The `.vx/workspace` groups that hold settings; `plugins` is the other key. */
-export const SETTING_GROUPS = ['run', 'cache', 'watch'] as const
+export const SETTING_GROUPS = ['run', 'cache', 'lock', 'watch'] as const
 
 const BY_PATH = new Map(SETTINGS.map((s) => [s.path, s]))
 

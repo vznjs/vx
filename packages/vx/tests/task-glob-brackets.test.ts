@@ -10,7 +10,7 @@
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { declaresInput } from '../src/cache/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 

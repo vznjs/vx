@@ -315,7 +315,7 @@ when the workspace names its cache dir (`cache.dir`, `VX_CACHE_DIR`),
 which then holds everything, with no repository id, or with no home. A run given `--cache-dir` passes null itself.
 
 Used by `prepareRun` (so `run` and `planRun`), the doctor, and every
-reading verb through `cli/workspace-config.ts` — `vx cache prune`
+reading verb through `cli/workspace-config.ts` — `vx cache clean`
 included (`cliCacheDir`: `--cache-dir`, else this over the config with
 the plugin `config` stage applied).
 

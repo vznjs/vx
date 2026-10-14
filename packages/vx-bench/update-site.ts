@@ -48,9 +48,6 @@ const vx = rows.get('vx')!
 const turbo = rows.get('turbo')!
 const nx = rows.get('nx')!
 const vt = rows.get('vite-task')!
-// The same run evaluating every config per run; the doc keeps it beside
-// the frozen headline so config eval's cost stays visible.
-const noLock = rows.get('vx (no lock)')!
 const B = d.baseline
 const n = (x: number): string => x.toLocaleString('en-US')
 
@@ -173,9 +170,8 @@ const pairs = PAIRS.map(([rel, name, r]) => {
 // ---- benchmarks.md head-to-head section ----
 const docPath = path.join(ROOT, 'packages/vx/docs/benchmarks.md')
 let doc = readFileSync(docPath, 'utf8')
-const cell = (r: Row, f: (r: Row) => number): string =>
-  r === vx ? `**${disp(f(r))}**` : r === noLock ? disp(f(r)) : vs(r, f)
-const cols = [vx, noLock, turbo, nx, vt]
+const cell = (r: Row, f: (r: Row) => number): string => (r === vx ? `**${disp(f(r))}**` : vs(r, f))
+const cols = [vx, turbo, nx, vt]
 const section = `## Head to head: ${n(d.tasks)} tasks, ${d.levels} levels (${d.date.slice(0, 10)})
 
 The shape (owner's spec, 2026-10-09): ${d.levels - 1} levels of 50 libraries and a
@@ -197,8 +193,7 @@ does not run, so no edit row compares fairly).
 Same repo, same hardware, same commands, every tool at concurrency ${d.concurrency}, each in its own native
 config: Turborepo ${turbo.version} (\`turbo.json\`), Nx ${nx.version} (\`nx:run-commands\` targets,
 \`^\` inputs, \`.env\` loading off), Vite Task (\`vp run\`, vite-plus ${vt.version}, tasks in each \`vite.config.ts\`).
-vx runs from a \`vx lock\` snapshot (\`--frozen\`), as a CI pipeline runs it;
-*vx, no lock* evaluates every config per run. Both order tasks with
+vx runs from a \`vx lock\` snapshot, as every vx run does, and orders tasks with
 \`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, from timings an earlier
 run recorded; cache wipes keep that file, as CI caches it. This machine: ${d.machine}.
 \`bun packages/vx-bench/compare.ts 3\`; the committed
@@ -206,8 +201,8 @@ run recorded; cache wipes keep that file, as CI caches it. This machine: ${d.mac
 
 **Time each tool adds over the ideal run:**
 
-|                              | vx         | vx, no lock | Turborepo | Nx       | Vite Task |
-| ---------------------------- | ---------- | ----------- | --------- | -------- | --------- |
+|                              | vx         | Turborepo | Nx       | Vite Task |
+| ---------------------------- | ---------- | --------- | -------- | --------- |
 ${table.map(([label, f]) => `| **${label}** | ${cols.map((r) => cell(r, f)).join(' | ')} |`).join('\n')}
 
 ${FORMULA}

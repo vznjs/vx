@@ -795,7 +795,7 @@ describe('LayeredCache', () => {
     // WITHOUT an RSS assertion: stall the pool, save, then delete the local
     // artifacts. Bytes captured at save time would still upload; bytes read
     // at PUT time cannot. Deleting stands in for the documented racer, a
-    // concurrent `vx cache prune`.
+    // concurrent `vx cache clean`.
     let releasePut!: () => void
     remote.putGate = new Promise<void>((resolve) => {
       releasePut = resolve

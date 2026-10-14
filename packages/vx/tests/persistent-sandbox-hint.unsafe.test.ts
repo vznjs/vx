@@ -4,7 +4,7 @@
 import { realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 

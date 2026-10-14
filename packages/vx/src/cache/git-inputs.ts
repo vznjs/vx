@@ -909,7 +909,10 @@ async function dropFilteredOids(
   // index blob keyed it through an edit (item 977).
   if (!attributesPossible) {
     for (const rel of args.listed) {
-      if (rel === '.gitattributes' || rel.endsWith('/.gitattributes')) {
+      if (
+        (rel === '.gitattributes' || rel.endsWith('/.gitattributes')) &&
+        attributesCanConvert(path.join(args.workspaceRoot, rel))
+      ) {
         attributesPossible = true
         break
       }
@@ -971,10 +974,39 @@ function attributesInIndex(args: {
     return true
   }
   for (const rel of args.tracked) {
-    if (rel === '.gitattributes' || rel.endsWith('/.gitattributes')) return true
+    if (
+      (rel === '.gitattributes' || rel.endsWith('/.gitattributes')) &&
+      attributesCanConvert(path.join(args.workspaceRoot, rel))
+    )
+      return true
   }
   return attributesAbove(args)
 }
+
+/**
+ * Whether a `.gitattributes` can set an attribute that converts bytes. One
+ * that names none of them, nor `binary` (git's one built-in macro) nor a
+ * macro definition, cannot: `.vx/.gitattributes`' `linguist-generated`
+ * line asked `check-attr` on every run (21 ms) and changed nothing. A macro
+ * defined outside the tree already counts as an attributes source. A file
+ * that does not read counts as one that converts. Read once per enumeration.
+ */
+function attributesCanConvert(file: string): boolean {
+  let can = attributeReads.get(file)
+  if (can === undefined) {
+    try {
+      can = CONVERTING_ATTRIBUTE.test(readFileSync(file, 'utf8'))
+    } catch {
+      can = true
+    }
+    attributeReads.set(file, can)
+  }
+  return can
+}
+
+const CONVERTING_ATTRIBUTE =
+  /\[attr\]|\b(?:text|eol|ident|filter|working-tree-encoding|crlf|binary)\b/
+const attributeReads = new Map<string, boolean>()
 
 /**
  * The repository root, derived from the workspace root and git's own
@@ -1006,7 +1038,8 @@ function attributesAbove(args: {
     for (;;) {
       if (!seen.has(dir)) {
         seen.add(dir)
-        if (existsSync(path.join(dir, '.gitattributes'))) return true
+        const file = path.join(dir, '.gitattributes')
+        if (existsSync(file) && attributesCanConvert(file)) return true
       }
       const parent = path.dirname(dir)
       // Stop at the repo root, and never walk past the filesystem root on a
@@ -1301,6 +1334,7 @@ export async function startGitEnumeration(
   workspaceRoot: string,
   pathspecs: readonly string[],
 ): Promise<GitEnumeration> {
+  attributeReads.clear()
   // The spawns are independent — run them concurrently so the
   // bulk-populate costs max(ls-files, status) wall time, not the sum
   // (status alone is ~74 ms on a 1000-project tree; serial spawning

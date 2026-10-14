@@ -7,7 +7,9 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { run, type Logger } from '../src/index.js'
+import { type Logger } from '../src/index.js'
+import { run } from '../src/orchestrator/index.js'
+import { lock } from './helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 
@@ -31,6 +33,9 @@ beforeEach(async () => {
     path.join(dir, 'vx.config.mjs'),
     `export default { tasks: { t: { exec: { command: 'true' } } } }\n`,
   )
+  // Locked before the plugin exists: `vx lock` runs the `project` stage too.
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
+  await lock(root)
 })
 afterEach(async () => {
   if (saved === undefined) delete process.env['API_TOKEN']

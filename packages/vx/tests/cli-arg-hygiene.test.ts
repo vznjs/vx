@@ -1,4 +1,4 @@
-// Argument-parsing hygiene for `vx run` / `vx watch` / `vx cache prune`.
+// Argument-parsing hygiene for `vx run` / `vx watch` / `vx cache clean`.
 //
 // Every case here pins a defect where the parser accepted an input and
 // then did something OTHER than what it said: a no-op that read as
@@ -14,7 +14,7 @@ import path from 'node:path'
 import { parseRunArgs } from '../src/cli/run.js'
 import { parseConcurrency } from '../src/settings.js'
 import { parseDuration, parsePruneArgs, parseSize } from '../src/cli/cache.js'
-import { run } from '../src/cli/index.js'
+import { run } from './helpers/cli.js'
 
 describe('--cache-policy spec validation', () => {
   it('rejects an empty spec instead of silently leaving caching FULL', () => {
@@ -220,7 +220,7 @@ describe('numeric flags take a plain decimal integer only', () => {
   })
 })
 
-describe('vx cache prune value parsing', () => {
+describe('vx cache clean value parsing', () => {
   it('parses duration units case-insensitively, like sizes always have', () => {
     expect(parseDuration('30D')).toBe(parseDuration('30d'))
     expect(parseDuration('5M')).toBe(parseDuration('5m'))
@@ -249,13 +249,11 @@ describe('vx cache prune value parsing', () => {
     expect(parsePruneArgs(['--older-than', '30D']).error).toBeUndefined()
   })
 
-  it('--dry-run rides along either policy flag and is still no policy on its own', () => {
+  it('--dry-run rides along either policy flag and alone is a clear', () => {
     expect(parsePruneArgs(['--older-than=30d', '--dry-run']).dryRun).toBe(true)
     expect(parsePruneArgs(['--dry-run', '--max-size', '1G']).dryRun).toBe(true)
     expect(parsePruneArgs(['--older-than=30d']).dryRun).toBeUndefined()
-    expect(parsePruneArgs(['--dry-run']).error).toBe(
-      'needs --older-than <duration> or --max-size <size> (see `vx cache --help`)',
-    )
+    expect(parsePruneArgs(['--dry-run']).error).toBeUndefined()
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--cache-dir=x', '--max-size=1G']).cacheDir).toBe('x')
     expect(parsePruneArgs(['--older-than=30d', '--cache-dir']).error).toMatch(/requires a path/)

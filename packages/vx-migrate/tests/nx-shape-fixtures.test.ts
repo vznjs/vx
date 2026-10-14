@@ -11,7 +11,8 @@ import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { type Logger, listProjectMetas, loadProjectConfig, loadWorkspace, planRun } from '@vzn/vx'
+import { type Logger, listProjectMetas, loadProjectConfig, loadWorkspace } from '@vzn/vx'
+import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const CORE_PKG = path.resolve(import.meta.dir, '..', '..', 'vx')

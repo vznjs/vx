@@ -68,6 +68,7 @@ export interface ApplyMigrationArgs {
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<number>
+  plugins?: readonly WorkspacePlugin[]
 }
 ```
 
@@ -436,6 +437,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
         inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
       }
+      lock?: Known<At<T, 'lock'>, LockSettings>
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
@@ -673,7 +675,8 @@ not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
 
 Outside git, a file another user owns is refused (root aside): a
 `.vx/workspace.ts` planted in a shared directory above you (`/tmp`) is
-code that would run as you. Inside git the walk never leaves your
+code that would run as you. The owner is the file's own, a link's
+included, and its `.vx` directory's. Inside git the walk never leaves your
 checkout. The directory you run in is yours to judge, and costs no
 stat. Run as root, vx trusts every owner, as a container over a mounted
 checkout needs. `uid` is for tests.
@@ -1066,6 +1069,18 @@ export interface LockfileClaimOptions {
   readonly version: number
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
+}
+```
+
+## `LockSettings`
+
+type · `src/config.ts`
+
+`WorkspaceConfig.lock`.
+
+```ts
+export interface LockSettings {
+  reviewFiles?: boolean
 }
 ```
 
@@ -1827,7 +1842,6 @@ export interface RunOptions {
   remoteRequested?: boolean
   cacheScope?: string
   remoteReadOnlyByDefault?: boolean
-  frozen?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   flow?: 'focused' | 'broad'
@@ -1940,7 +1954,6 @@ export interface RunSettings {
   killGrace?: Duration
   teardownTimeout?: Duration
   readyNotice?: Duration
-  frozen?: boolean
   rules?: WorkspaceRules
 }
 ```
@@ -2591,7 +2604,7 @@ export function withForwardArgs(command: string, args: readonly string[] | undef
 
 type · `src/config.ts`
 
-The workspace: settings in groups (`run`, `cache`, `watch`) and the
+The workspace: settings in groups (`run`, `cache`, `lock`, `watch`) and the
 plugins. Each setting's environment variable and flag derive from its
 path (`run.concurrency` → `VX_RUN_CONCURRENCY`, `vx run --concurrency`); a flag beats
 the variable, which beats this file. `docs/schema.md` lists them all.
@@ -2601,6 +2614,7 @@ Nothing here is folded into a cache key.
 export interface WorkspaceConfig {
   run?: RunSettings
   cache?: CacheSettings
+  lock?: LockSettings
   watch?: WatchSettings
   plugins?: readonly (Plugin | undefined | null | false)[]
 }

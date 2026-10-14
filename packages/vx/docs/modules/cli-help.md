@@ -74,7 +74,7 @@ gap before its description.
 - `Execution (for run)` — concurrency, `--schedule`,
   `--exclude-dependencies`, `--no-cache` / `--force`, `--cache-policy`,
   `--continue`, `--retries`, `--timeout`, `--kill-grace`,
-  `--teardown-timeout`, `--ready-notice`, `--frozen`, `--output-logs`,
+  `--teardown-timeout`, `--ready-notice`, `--output-logs`,
   `--cache-download`, `--verbosity`.
 - `Planning (for run — skips execution)` — `--dry`, `--graph`.
 - `Artifacts (for run)` — `--summarize`, `--profile`, `--report`,
@@ -84,7 +84,7 @@ gap before its description.
 - `Turbo and Nx spellings (for run)` — what `turbo run` / `nx run-many` flags do here; the table is cli.md § Turbo and Nx flags.
 - `Argument forwarding (for run)` — explanation of `--`.
 - `Watch mode` — `vx watch`.
-- `Cache management` — `vx cache prune` examples.
+- `Cache management` — `vx cache clean` examples.
 - `Introspection` — `vx show`, `vx info`, `vx why`, `vx last`.
 - `Migration` — `vx init` and the pointer to `bunx @vzn/vx-migrate`.
 - `Shell completions` — `vx completions bash|zsh|fish`.

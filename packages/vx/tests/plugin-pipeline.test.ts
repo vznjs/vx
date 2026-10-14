@@ -7,7 +7,9 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { planRun, run, type Logger } from '../src/index.js'
+import { type Logger } from '../src/index.js'
+import { lock, planRun, run } from './helpers/orchestrator.js'
+import { planRun as corePlanRun } from '../src/orchestrator/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
 import {
@@ -24,6 +26,8 @@ import type { VxPlugin } from '../src/orchestrator/index.js'
 import type { TaskNode } from '../src/graph/index.js'
 
 const TIMEOUT = 20_000
+// A graph stage breaks the graph `vx lock` builds too, so the lock refuses first.
+const LOCK_REFUSED = 'vx lock: .vx/projects.lock.json not written: '
 let root: string
 
 beforeEach(async () => {
@@ -342,6 +346,47 @@ describe('project stage', () => {
   )
 
   it(
+    "a plugin's output is judged against the project's own config file, not the refusal's label",
+    async () => {
+      // The label `<path> (after plugin 'org/x')` was read as the config
+      // path, so `*` covered its basename `x')` and no `!` could take it back.
+      await pkg('a', build)
+      await pkg('b', build)
+      const outputs = (globs: string[]) =>
+        `{ cache: { inputs: { files: ['src/**'] }, outputs: { files: ${JSON.stringify(globs)} } } }`
+      await workspace([
+        pluginSource(
+          'org/x',
+          `{ project(config, ctx) {
+            if (ctx.name === 'a') config.tasks.build = { ...config.tasks.build, ...${outputs(['*', '!package.json', '!vx.config.mjs'])} }
+          } }`,
+        ),
+        pluginSource(
+          'org/y',
+          `{ graph(nodes) {
+            const n = nodes.get('b#build'); n.config = { ...n.config, ...${outputs(['*', '!package.json', '!vx.config.mjs'])} }
+          } }`,
+        ),
+      ])
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
+      expect(plan.tasks.map((t) => t.node.config.cache?.outputs.files)).toEqual([
+        ['*', '!package.json', '!vx.config.mjs'],
+        ['*', '!package.json', '!vx.config.mjs'],
+      ])
+      await workspace([
+        pluginSource(
+          'org/x',
+          `{ project(config) { config.tasks.build = { ...config.tasks.build, ...${outputs(['*', '!package.json'])} } } }`,
+        ),
+      ])
+      await expect(planRun({ cwd: root, tasks: ['build'], log: silent() })).rejects.toThrow(
+        /\(after plugin 'org\/x'\): tasks\.build\.cache\.outputs\.files: "\*" covers the project's own vx\.config\.mjs/,
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a plugin that puts a value JSON cannot carry into a config is refused like a user would be (item 701)',
     async () => {
       // A Map where `sandbox` goes passes the schema (an object with no
@@ -532,7 +577,7 @@ describe('graph stage', () => {
         (e: Error) => e.message,
       )
       expect(said).toBe(
-        `${path.join(root, 'packages/a/vx.config.mjs')} (after plugin 'org/typo'): ` +
+        `${LOCK_REFUSED}${path.join(root, 'packages/a/vx.config.mjs')} (after plugin 'org/typo'): ` +
           'tasks.build.exec has unknown field "comand" (allowed: command, env, interactive, ' +
           'persistent, remote, retries, sandbox, timeout) — did you mean command?',
       )
@@ -838,7 +883,7 @@ describe('fingerprint claim — a plugin keys a lockfile per project', () => {
       await writeFile(path.join(root, 'pnpm-lock.yaml'), 'v2\n')
       const vx = (...args: string[]) => {
         const r = Bun.spawnSync({
-          cmd: [process.execPath, path.resolve(import.meta.dir, '../src/bin.ts'), ...args],
+          cmd: [process.execPath, path.resolve(import.meta.dir, 'helpers/vx-locked.ts'), ...args],
           cwd: root,
           env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
         })
@@ -874,7 +919,12 @@ describe('key stage — explainability', () => {
       await workspace([pluginSource('org/tool', `{ key() { return { 'node-major': '24' } } }`)])
       await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const why = Bun.spawnSync({
-        cmd: [process.execPath, path.resolve(import.meta.dir, '../src/bin.ts'), 'why', 'a#build'],
+        cmd: [
+          process.execPath,
+          path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
+          'why',
+          'a#build',
+        ],
         cwd: root,
         env: { ...process.env, NO_COLOR: '1' },
       })
@@ -886,7 +936,12 @@ describe('key stage — explainability', () => {
       await workspace([])
       await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const gone = Bun.spawnSync({
-        cmd: [process.execPath, path.resolve(import.meta.dir, '../src/bin.ts'), 'why', 'a#build'],
+        cmd: [
+          process.execPath,
+          path.resolve(import.meta.dir, 'helpers/vx-locked.ts'),
+          'why',
+          'a#build',
+        ],
         cwd: root,
         env: { ...process.env, NO_COLOR: '1' },
       })
@@ -1336,9 +1391,8 @@ describe('zero cost when absent', () => {
   })
 
   it(
-    'a workspace with no stage plugins validates each config exactly once',
+    'a run over a workspace with no stage plugins validates no config: the lock did',
     async () => {
-      const { validateProjectConfig } = await import('../src/workspace/project-loader.js')
       const { spyOn } = await import('bun:test')
       const mod = await import('../src/workspace/project-loader.js')
       const spy = spyOn(mod, 'validateProjectConfig')
@@ -1346,11 +1400,16 @@ describe('zero cost when absent', () => {
         await pkg('a', build)
         await pkg('b', build)
         await workspace([])
-        await planRun({ cwd: root, tasks: ['build'], log: silent() })
+        await lock(root)
+        spy.mockClear()
+        await corePlanRun({ cwd: root, tasks: ['build'], log: silent() })
+        expect(spy).toHaveBeenCalledTimes(0)
+        // CONTROL: a `project` stage re-validates each config it edits.
+        await workspace([pluginSource('org/p', `{ project() {} }`)])
+        await corePlanRun({ cwd: root, tasks: ['build'], log: silent() })
         expect(spy).toHaveBeenCalledTimes(2)
       } finally {
         spy.mockRestore()
-        void validateProjectConfig
       }
     },
     TIMEOUT,
@@ -1546,7 +1605,7 @@ describe('plugin-host, called directly', () => {
         (e: Error) => e.message,
       )
       expect(said).toBe(
-        "plugin 'org/second' failed in graph: a#build depends on 'zz#nope', which is not a task in this run's graph",
+        `${LOCK_REFUSED}plugin 'org/second' failed in graph: a#build depends on 'zz#nope', which is not a task in this run's graph`,
       )
     },
     TIMEOUT,
@@ -1569,8 +1628,8 @@ describe('plugin-host, called directly', () => {
         await said(`nodes.set('a#build', null)`),
         await said(`nodes.get('a#build').deps = []`),
       ]).toEqual([
-        "plugin 'org/edit' failed in graph: a#build's deps is null, not an array of task ids",
-        "plugin 'org/edit' failed in graph: 'a#build' holds null, not a task",
+        `${LOCK_REFUSED}plugin 'org/edit' failed in graph: a#build's deps is null, not an array of task ids`,
+        `${LOCK_REFUSED}plugin 'org/edit' failed in graph: 'a#build' holds null, not a task`,
         'planned',
       ])
     },
@@ -1611,10 +1670,10 @@ describe('plugin-host, called directly', () => {
         // CONTROL: the whole node runs.
         await said(`projectName: 'a', taskName: 'x', projectDir: dir`),
       ]).toEqual([
-        "plugin 'org/add' failed in graph: a#x's projectDir is undefined, not an absolute path",
-        `plugin 'org/add' failed in graph: a#x's projectDir is "packages/a", not an absolute path`,
-        "plugin 'org/add' failed in graph: a#x's taskName is undefined, not a name",
-        `plugin 'org/add' failed in graph: a#x's projectName is "", not a name`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectDir is undefined, not an absolute path`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectDir is "packages/a", not an absolute path`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's taskName is undefined, not a name`,
+        `${LOCK_REFUSED}plugin 'org/add' failed in graph: a#x's projectName is "", not a name`,
         'a#build success, a#x success',
       ])
     },

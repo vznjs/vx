@@ -14,7 +14,7 @@ import type { VxPlugin } from '../orchestrator/index.js'
 import {
   buildPackageGraph,
   computeWorkspaceFingerprint,
-  FROZEN_WITHOUT_LOCK,
+  NO_LOCK,
   type Workspace,
   type ProjectEntry,
   type ProjectMeta,
@@ -56,7 +56,7 @@ export async function discoverCliProjects(workspace: Workspace): Promise<Project
 
 /**
  * `--cache-dir <path>` / `--cache-dir=<path>` for a verb that reads the
- * cache a run wrote — `why`, `last`, `info`, `cache prune`. Same rules as
+ * cache a run wrote — `why`, `last`, `info`, `cache clean`. Same rules as
  * `vx run`'s: a value is required, and the space form refuses a value
  * that looks like a flag (an unquoted empty shell variable would otherwise
  * swallow the next flag as the path). Returns null when `args[i]` is not
@@ -106,8 +106,8 @@ export async function cliCacheDir(
 export interface CliLoadOptions {
   /** `--cache-dir`: where the cached evaluations live. */
   cacheDir?: string
-  /** `--frozen`: configs come from `.vx/lock.json`, not evaluation. */
-  frozen?: boolean
+  /** A run's load: configs come from `.vx/projects.lock.json`, not evaluation. */
+  fromLock?: boolean
   /**
    * A reading verb (`vx show`) makes nothing on disk (item 900): with no
    * cache directory yet, it evaluates without the cache rather than
@@ -140,11 +140,11 @@ export async function loadCliProjects(
   // The cached evaluations live where the run's do: a verb given
   // `--cache-dir` must not open (and create) the workspace's default one.
   const cacheDir = opts.cacheDir ?? ws.cacheDir
-  // A frozen run reads its configs from the lock; what it SELECTS must be
+  // A run reads its configs from the lock; what it SELECTS must be
   // decided from the same configs, or an env-dependent `workspaceFiles`
   // glob could select live what the run then treats otherwise.
-  const lock = opts.frozen === true ? await readLockfile(workspaceRoot) : null
-  if (opts.frozen === true && lock === null) throw new UserError(FROZEN_WITHOUT_LOCK)
+  const lock = opts.fromLock === true ? await readLockfile(workspaceRoot) : null
+  if (opts.fromLock === true && lock === null) throw new UserError(NO_LOCK)
   const cache =
     opts.noCreate === true && !existsSync(cacheDir)
       ? null

@@ -13,13 +13,15 @@ re-exported from `@vzn/vx`.
 ├── pnpm-workspace.yaml          (or: package.json with "workspaces", or bare package.json)
 ├── .vx/
 │   ├── workspace.ts             (required: marks the root; workspace-wide settings)
-│   ├── lock.json                (`vx lock`; committed)
+│   ├── projects.lock.json                (`vx lock`, minified; committed)
+│   ├── .gitattributes           (`projects.lock.json linguist-generated=true`; written when missing)
 │   ├── .gitignore               (`/cache`; written by `vx init` and the cache when missing)
 │   └── cache/                   (machine-local state; the only part git ignores)
 └── packages/
     └── <pkg>/
         ├── package.json
-        └── vx.config.ts         (per-package task definitions)
+        ├── vx.config.ts         (per-package task definitions)
+        └── vx.lock.json         (`vx lock`: its resolved config, pretty, for review)
 ```
 
 A project is discovered as a vx project by the **presence of a
@@ -869,7 +871,7 @@ Always applied to every glob pass (regardless of what you wrote):
 
 - **gitignore filter** — workspace-root + project `.gitignore`.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`, `*.tsbuildinfo`,
-  `.vx/lock.json`, `*.bun-build`, and Bun's cross-compile extraction
+  `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction
   directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
   `.vx-tmp-*`, at any depth.
 - **Installs** — an untracked file under any `node_modules/` (ignored or
@@ -924,7 +926,7 @@ backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
-`*.tsbuildinfo`, `.vx/lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
+`*.tsbuildinfo`, `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
 in its own project (a task never invalidates itself).
@@ -1001,8 +1003,8 @@ Semantics:
   `resolveInputs`), exactly like `inputs.env` reads host env values
   live. `vx lock` freezes the command _strings_ (they're in the
   resolved config), not their output, so the field stays correct under
-  `vx run --frozen` — the changed output of a frozen command still
-  busts the cache.
+  the lock every run reads — the changed output of a locked command
+  still busts the cache.
 - A **non-zero exit fails the run** (a hard `UserError` naming the
   command and exit code) — fail-loud, like a missing git binary. A
   flaky probe should not silently degrade to a stale hit.
@@ -1604,7 +1606,7 @@ The loader rejects:
 ## Workspace config (`.vx/workspace.ts`)
 
 Loaded from `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`: the directory holding
-`.vx` is the workspace root. `.vx` also holds the lock (`.vx/lock.json`)
+`.vx` is the workspace root. `.vx` also holds the lock (`.vx/projects.lock.json`)
 and `.vx/cache`, the machine-local state (the cache, the workspace id),
 which is the only part git ignores: `.vx/.gitignore` says `/cache`. Every field falls back to its
 built-in default.
@@ -1623,7 +1625,6 @@ export default defineWorkspace({
     killGrace: '2s',
     teardownTimeout: '3s',
     readyNotice: '10s',
-    frozen: false,
     rules: {
       exclusiveOutputs: true,
       upfrontKeys: true,
@@ -1638,12 +1639,13 @@ export default defineWorkspace({
     scope: 'main',
     inputStability: { strategy: 'immutable', severity: 'warn' },
   },
+  lock: { reviewFiles: true },
   watch: { poll: false },
   plugins: [otel()],
 })
 ```
 
-The workspace holds settings in groups (`run`, `cache`, `watch`) and the
+The workspace holds settings in groups (`run`, `cache`, `lock`, `watch`) and the
 `plugins`. Every setting has one path, and its environment variable and
 flag derive from it: `run.timeout` is `VX_RUN_TIMEOUT` and
 `vx run --timeout`. A flag beats its variable, which beats this file,
@@ -1674,7 +1676,6 @@ default and where it came from.
 | `run.killGrace`                                | `VX_RUN_KILL_GRACE`                 | `--kill-grace`       | a duration like '500ms', '30s' or '5m', at most 24 days                 | 2s                                         | How long a task that ignores SIGTERM gets before SIGKILL.                                                                                           |
 | `run.teardownTimeout`                          | `VX_RUN_TEARDOWN_TIMEOUT`           | `--teardown-timeout` | a duration like '500ms', '30s' or '5m', at most 24 days                 | 3s                                         | The bound on each plugin's end-of-run flush and teardown.                                                                                           |
 | `run.readyNotice`                              | `VX_RUN_READY_NOTICE`               | `--ready-notice`     | a duration like '500ms', '30s' or '5m', at most 24 days                 | 10s                                        | How long a persistent task may take to match `readyWhen` before vx says it waits.                                                                   |
-| `run.frozen`                                   | `VX_RUN_FROZEN`                     | `--frozen`           | true or false                                                           | on when CI is set                          | Load configs from `.vx/lock.json`, whose graph rules `vx lock` checked; with no lock, write one first.                                              |
 | `run.rules.exclusiveOutputs`                   | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | —                    | true or false                                                           | true                                       | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                               |
 | `run.rules.upfrontKeys`                        | `VX_RUN_RULES_UPFRONT_KEYS`         | —                    | true or false                                                           | true                                       | Refuse a task whose inputs can match another task's outputs.                                                                                        |
 | `cache.dir`                                    | `VX_CACHE_DIR`                      | `--cache-dir`        | a non-blank string                                                      | .vx/cache, entries in ~/.vx/<repo>/cache   | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                             |
@@ -1685,6 +1686,7 @@ default and where it came from.
 | `cache.download`                               | `VX_CACHE_DOWNLOAD`                 | `--cache-download`   | one of 'all', 'toplevel', 'none'                                        | all                                        | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                       |
 | `cache.inputStability.strategy`                | `VX_CACHE_INPUT_STABILITY_STRATEGY` | —                    | one of 'immutable', 'mutable', 'unchecked'                              | immutable                                  | What a write to an input during the command means for the save, for tasks without their own. A task's own `cache.inputStability.strategy` beats it. |
 | `cache.inputStability.severity`                | `VX_CACHE_INPUT_STABILITY_SEVERITY` | —                    | one of 'warn', 'error'                                                  | warn                                       | Whether a skipped save warns or fails the task, for tasks without their own. A task's own `cache.inputStability.severity` beats it.                 |
+| `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`              | —                    | true or false                                                           | true                                       | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                   |
 | `watch.poll`                                   | `VX_WATCH_POLL`                     | `vx watch --poll`    | true or false                                                           | false                                      | Poll for changes from the start instead of the OS watcher.                                                                                          |
 | `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`          | —                    | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                        | How long one config evaluation may take.                                                                                                            |
 | `debug.timing` (variable or flag only)         | `VX_DEBUG_TIMING`                   | —                    | true or false                                                           | false                                      | Print the run's stage timings to stderr.                                                                                                            |
@@ -1696,6 +1698,7 @@ default and where it came from.
 interface WorkspaceConfig {
   run?: RunSettings
   cache?: CacheSettings
+  lock?: LockSettings
   watch?: { poll?: boolean }
   /** Run-level plugins (cache / executor / telemetry capabilities). */
   plugins?: readonly (Plugin | undefined | null | false)[]
@@ -1711,14 +1714,17 @@ interface RunSettings {
   killGrace?: Duration
   teardownTimeout?: Duration
   readyNotice?: Duration
-  /** Load configs from .vx/lock.json; on when CI is set. */
-  frozen?: boolean
-  /** Graph rules `vx lock` and every unfrozen run check; each on unless set to false. */
+  /** Graph rules `vx lock` checks, never a run; each on unless set to false. */
   rules?: { exclusiveOutputs?: boolean; upfrontKeys?: boolean; dependencies?: DependencyRule[] }
 }
 
 /** `run.rules.dependencies`, checked by `vx lock` only. */
 type DependencyRule = { from: string; allow?: string[]; deny?: string[] }
+
+interface LockSettings {
+  /** A pretty vx.lock.json beside each config, for review; on unless false. */
+  reviewFiles?: boolean
+}
 
 interface CacheSettings {
   dir?: string
@@ -1749,12 +1755,8 @@ interface CacheSettings {
   end-of-run flush and teardown (3 s; there is no "no limit"), and how
   long a persistent task may wait for `readyWhen` before vx says what it
   waits for (10 s).
-- **`run.frozen`** — load configs from `.vx/lock.json` instead of
-  evaluating them; on when `CI` is set. A frozen run checks no graph
-  rules: `vx lock` checked them when it wrote the lock, and with no lock
-  the run writes one first (`docs/cli.md` § `--frozen`).
-- **`run.rules`** — checked by `vx lock`, `vx lock --check` and every
-  run that is not frozen; `dependencies` by `vx lock` alone.
+- **`run.rules`** — checked by `vx lock` and `vx lock --check` only;
+  no run checks them.
 - **`cache.dir`** — unset, the workspace keeps its index and history in
   `.vx/cache` and its entries and artifacts in its repository's shared
   store (`~/.vx/<id>/cache`), where every other checkout of the
@@ -1764,7 +1766,7 @@ interface CacheSettings {
   `VX_CACHE_DIR`, which beats this.
   Relative paths are resolved against the workspace
   root, `~/` against the home directory; absolute paths are used
-  as-is. The home directory itself (`~`) is refused. `vx run`, `vx cache prune`,
+  as-is. The home directory itself (`~`) is refused. `vx run`, `vx cache clean`,
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
@@ -1775,7 +1777,7 @@ interface CacheSettings {
   directory other than the default `.vx/cache` gets that `*` `.gitignore`;
   the default is ignored by `.vx/.gitignore` (`/cache`) instead, written
   when missing and never edited.
-- **`cache.retention`** — the `vx cache prune` policy, applied at the
+- **`cache.retention`** — the `vx cache clean` policy, applied at the
   end of every run: entries unused for
   `olderThan` (`30d`, `12h`, `90m`, `45s`) go first, then the
   least-recently-used until the cache is under `maxSize` (`10GB`,
@@ -1788,13 +1790,13 @@ interface CacheSettings {
   nothing to evict pays one scan of the index), and says nothing:
   housekeeping prints no line (owner, 2026-10-06). Under `olderThan` an entry the run just used is never due, but `maxSize` is least-recently-used first, so a bound below one run's outputs evicts that run's own. The prune's
   orphan sweep (artifacts no index row counts, judged by file time —
-  see `vx cache prune`) also runs on its own clock, at most once an
+  see `vx cache clean`) also runs on its own clock, at most once an
   hour, so their bytes go even when nothing the index holds is due;
   listing the directory every run would cost 0.5 ms per 1,000
   entries. Housekeeping,
   not the run's work: a failure is silent, never a failed run. Not
   folded into any cache key. Omitted → the cache grows until
-  `vx cache prune`.
+  `vx cache clean`.
 - **`run.affectedBase`** — the git ref a bare `--affected` compares with
   (`origin/develop`); `--affected=<base>` still wins. Omitted →
   `origin/HEAD`, then the first of `origin/main`, `origin/master`, `main`, `master` that is not HEAD (D-93), else `HEAD~1`. A plugin's `config` stage may set it:
@@ -2352,7 +2354,7 @@ Workspace-config errors:
 | `run.affectedBase must be a git ref like 'origin/main'`                                                                                                                               | Empty, holding whitespace or a NUL, or starting with `-`, which git would read as an option.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `cache.scope must be a scope name of <rule>`                                                                                                                                          | Not a string, or a scope name holding a character a cache key cannot carry.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `cache.retention names neither olderThan nor maxSize`                                                                                                                                 | An empty policy would evict nothing and read as one.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `cache.retention.olderThan of 0 evicts every entry after every run`                                                                                                                   | Every run would evict what it just saved; `vx cache prune` refuses it too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `cache.retention.olderThan of 0 evicts every entry after every run`                                                                                                                   | Every run would evict what it just saved; `vx cache clean` refuses it too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `cache.retention.maxSize of 0 evicts every entry after every run`                                                                                                                     | The same, for the size bound.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `cache.retention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>MB', '<n>GB')`                                                                                              | A bare number is bytes; a cache capped at ten bytes keeps nothing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `plugins must be an array of plugin objects`                                                                                                                                          | Wrong shape.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |

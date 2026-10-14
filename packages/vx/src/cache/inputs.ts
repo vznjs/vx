@@ -58,7 +58,7 @@ export {
   type GitEnumeration,
 } from './git-inputs.js'
 
-// .vx/lock.json is committed (so git enumerates it) but it's vx's own
+// .vx/projects.lock.json is committed (so git enumerates it) but it's vx's own
 // frozen-config metadata — never a task input. Excluded globally so a
 // re-lock can't bust every cache key the way a tracked source file
 // would. (Literal pattern, not the workspace `LOCKFILE_NAME` constant:
@@ -82,7 +82,14 @@ const ALWAYS_IGNORE = [
   // vx's machine-local state; the workspace config beside it is a source.
   '**/.vx/cache/**',
   '**/*.tsbuildinfo',
-  '**/.vx/lock.json',
+  '**/.vx/projects.lock.json',
+  // `vx lock`'s review copy of a project's resolved config: the config is
+  // keyed already, and a re-lock must not move every `**` reader's key.
+  '**/vx.lock.json',
+  // What `vx lock` and `vx init` write beside the lock: a re-lock or init
+  // must not select every `**` reader under --affected.
+  '**/.vx/.gitattributes',
+  '**/.vx/.gitignore',
   // `bun build --compile` writes a transient `.<hash>-<n>.bun-build` intermediate
   // in the cwd. It never rests on disk, so it can't be a real input — but a
   // broad `inputs.files: ['**/*']` on a compile task would try to hash the temp
@@ -674,11 +681,13 @@ async function resolveRuntimeValues(
 /**
  * What no output glob reaches. An output is otherwise taken as written —
  * `node_modules/**` IS an install task's output, so `ALWAYS_IGNORE` does not
- * apply here — but these two directories no task produces, and a root
- * project declaring `**` would otherwise wipe its repository and the cache
- * it is restoring from (2026-09-16).
+ * apply here — but no task produces these, and a root project declaring
+ * `**` would otherwise wipe its repository and the cache it is restoring
+ * from (2026-09-16). `.vx` whole and each `vx.lock.json` are vx's own: as
+ * outputs, the clean deleted an uncommitted workspace config and a hit
+ * restored a lock or ignore file the key does not see over the current one.
  */
-const OUTPUT_NEVER = ['**/.git/**', '**/.vx/cache/**']
+const OUTPUT_NEVER = ['**/.git/**', '**/.vx/**', '**/vx.lock.json']
 
 /**
  * What a set of output globs may not reach: `OUTPUT_NEVER`, and every

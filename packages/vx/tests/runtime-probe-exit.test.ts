@@ -11,7 +11,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
-const CLI = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 let root: string
 
 beforeEach(async () => {

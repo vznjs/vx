@@ -207,6 +207,7 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
         inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
       }
+      lock?: Known<At<T, 'lock'>, LockSettings>
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
@@ -331,6 +332,7 @@ export interface ApplyMigrationArgs {
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<number>
+  plugins?: readonly WorkspacePlugin[]
 }
 == type At (src/config.ts)
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
@@ -818,6 +820,10 @@ export interface LockfileClaimOptions {
   readonly scope?: 'project' | 'workspace'
   readonly part?: string
 }
+== type LockSettings (src/config.ts)
+export interface LockSettings {
+  reviewFiles?: boolean
+}
 == type Logger (src/orchestrator/logger.ts)
 export interface Logger {
   status(line: string): void
@@ -1191,7 +1197,6 @@ export interface RunOptions {
   remoteRequested?: boolean
   cacheScope?: string
   remoteReadOnlyByDefault?: boolean
-  frozen?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
   flow?: 'focused' | 'broad'
@@ -1285,7 +1290,6 @@ export interface RunSettings {
   killGrace?: Duration
   teardownTimeout?: Duration
   readyNotice?: Duration
-  frozen?: boolean
   rules?: WorkspaceRules
 }
 == type RunStage (src/orchestrator/telemetry.ts)
@@ -1738,6 +1742,7 @@ export interface Workspace {
 export interface WorkspaceConfig {
   run?: RunSettings
   cache?: CacheSettings
+  lock?: LockSettings
   watch?: WatchSettings
   plugins?: readonly (Plugin | undefined | null | false)[]
 }
@@ -1762,6 +1767,11 @@ export interface WorkspaceIdentity {
   name: string
   repository?: string
   path?: string
+}
+== type WorkspacePlugin (src/workspace/migration.ts)
+export interface WorkspacePlugin {
+  readonly pkg: string
+  readonly factory: string
 }
 == type WorkspaceRules (src/config.ts)
 export interface WorkspaceRules {

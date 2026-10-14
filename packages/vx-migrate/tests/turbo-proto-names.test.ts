@@ -4,7 +4,7 @@
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { planRun } from '@vzn/vx'
+import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
 
 const ws = useTurboWorkspace({

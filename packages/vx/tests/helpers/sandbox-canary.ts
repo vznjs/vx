@@ -18,7 +18,7 @@ import { mkdtempSync } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { run } from '../../src/index.js'
+import { run } from './orchestrator.js'
 import { probeSandbox } from '../../src/exec/index.js'
 import { localWorkspaceSource } from './local-workspace.js'
 

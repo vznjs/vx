@@ -107,7 +107,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Usage:',
     '  vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]',
     '  vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]',
-    '  vx cache prune [--older-than <duration>] [--max-size <size>] [--dry-run] [--format pretty|json] [--cache-dir <path>]',
+    '  vx cache clean [--older-than <duration>] [--max-size <size>] [--global] [--dry-run] [--format pretty|json] [--cache-dir <path>]',
     '  vx lock [--check] [--format pretty|json]',
     '  vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]',
     '  vx upgrade [TAG]',
@@ -171,10 +171,6 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '      --continue[=<mode>]         What a failed task takes down: never | deps-ok',
     '                                  (default, skips its dependents) | always (bare',
     '                                  form; dependents run, never save).',
-    '      --frozen, --no-frozen       Load configs from .vx/lock.json, or evaluate',
-    '                                  them (run.frozen; on under CI; with no lock,',
-    '                                  writes one first; pair it with a',
-    '                                  `vx lock --check` step).',
     '      --output-logs <mode>        full | errors-only | hash-only | none, over',
     '                                  the flow default (focused without',
     '                                  --all/--filter/--affected, broad with, full in',
@@ -226,8 +222,10 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                             outputs + replay logs).',
     '',
     'Cache management:',
-    '  vx cache prune --older-than 30d     Evict entries last accessed > 30 days ago.',
-    '  vx cache prune --max-size 1G        Keep total cache under 1 GB (LRU eviction).',
+    '  vx cache clean --older-than 30d     Evict entries last accessed > 30 days ago.',
+    '  vx cache clean --max-size 1G        Keep total cache under 1 GB (LRU eviction).',
+    "  vx cache clean                      Clear .vx/cache and this repo's store ~/.vx/<id>/cache.",
+    "      --global                        Clear every repo's store under ~/.vx.",
     '      --dry-run                       Say what the policy would reap; delete nothing.',
     '      --format <fmt>                  pretty (default) | json.',
     '      --cache-dir <path>              The cache a run with the same flag uses (why, last, info too).',
@@ -300,12 +298,13 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Config lock:',
     '  vx lock              Evaluate every vx.config in the current environment, check',
     '                       the graph rules (run.rules) and freeze the resolved objects',
-    '                       into .vx/lock.json. Only a frozen run (run.frozen, on under',
-    '                       CI) consumes the lock, and it checks no rules itself.',
+    '                       into .vx/projects.lock.json, the only place a run reads configs',
+    '                       from. A run never evaluates one, never checks the rules',
+    '                       and never writes the lock: with none it fails.',
     '  vx lock --check      Audit the lock: file-changed hash report PLUS a full',
     '                       re-evaluation compared against the frozen objects, and the',
     '                       graph rules. Exits 1 on drift (e.g. configs that read env',
-    '                       vars). Run it before a frozen run in CI. With --format json it prints',
+    '                       vars). Run it before the run in CI. With --format json it prints',
     '                       {upToDate, audited, notAudited, problems}.',
     '',
     ...(pluginCommands.length > 0 ? ['Plugin commands:', ...pluginCommands, ''] : []),
@@ -372,8 +371,8 @@ export function flagHint(verb: string, arg: string): string {
  * The documented `--flags` of one verb, read from the help text's
  * sections headed `… (for <verb>):` so there is no second list to drift —
  * and no hint that names another verb's flag. Only the flag an option line
- * OPENS with is one: `--frozen`'s line says "pair with vx lock --check", and
- * reading every flag on it put `--check` in the list, so `vx run --chek`
+ * OPENS with is one: an option line that named `vx lock --check` once put
+ * `--check` in the list, so `vx run --chek`
  * was told "did you mean --check?" and `--check` was then refused.
  */
 export function documentedFlags(verb: string, text = helpText()): string[] {
@@ -383,7 +382,7 @@ export function documentedFlags(verb: string, text = helpText()): string[] {
     if (/^[A-Z][A-Za-z ]*(?: \(for [a-z]+\))?:$/.test(line))
       inVerb = line.endsWith(`(for ${verb}):`)
     if (!inVerb) continue
-    // `--frozen, --no-frozen`: a flag and its negation.
+    // `--x, --no-x`: a flag and its negation.
     const own = /^\s+(--[a-zA-Z][a-zA-Z-]*)(?:, (--[a-zA-Z][a-zA-Z-]*))?/.exec(line)
     if (own !== null) for (const f of own.slice(1)) if (f !== undefined) flags.add(f)
   }

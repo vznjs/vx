@@ -8,7 +8,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'bun:test'
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 

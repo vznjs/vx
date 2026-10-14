@@ -15,18 +15,18 @@ directory is exempt by name: the site's playground
 the browser, not a consumer of its API, and
 `tests/playground-parity.unsafe.test.ts` holds it to the CLI:
 
-| Package                        | What                                                                                                                                                                                                                          |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/vx`                  | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                                                                    |
-| `packages/vx-otel`             | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces, metrics and logs, zero SDK deps                                                                                                                            |
-| `packages/vx-reapi`            | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                                                              |
-| `packages/vx-ci`               | `@vzn/vx-ci` — `github()` telemetry plugin: the GitHub Actions job summary and a Checks API run                                                                                                                               |
-| `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`                                                   |
-| `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI                                                  |
-| `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim`; `vx prune` (Docker subset, lockfile pruned) |
-| `packages/vx-docs`             | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                                                                           |
-| `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                                                                         |
-| `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                                                                   |
+| Package                        | What                                                                                                                                                                             |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vx`                  | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                       |
+| `packages/vx-otel`             | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces, metrics and logs, zero SDK deps                                                                               |
+| `packages/vx-reapi`            | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                 |
+| `packages/vx-ci`               | `@vzn/vx-ci` — `github()` telemetry plugin: the GitHub Actions job summary and a Checks API run                                                                                  |
+| `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`      |
+| `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI     |
+| `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
+| `packages/vx-docs`             | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                              |
+| `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
+| `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (42 runtime symbols, a deliberate
@@ -41,16 +41,16 @@ single root file when it has no internals to hide. The design and
 migration history live in
 [`design/module-isolation-2026-06.md`](./design/module-isolation-2026-06.md).
 
-| Module         | Form                        | Contract highlights                                                                                                                            |
-| -------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                               |
-| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                   |
-| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint  |
-| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                          |
-| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal |
-| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                |
-| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                       |
-| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                             |
+| Module         | Form                        | Contract highlights                                                                                                                                    |
+| -------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `util`         | dir + `index.ts`            | `UserError`, `xxh3*` hashing, `relPosix`, `ulid`                                                                                                       |
+| `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                           |
+| `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, workspace fingerprint |
+| `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                                  |
+| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal         |
+| `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                        |
+| `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                               |
+| `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                     |
 
 Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `settings.ts` (every setting once:
@@ -120,7 +120,7 @@ graph TD
 
 Composition happens only at `orchestrator` (wires workspace → graph →
 cache → exec into a run) and `cli` (wires argv → orchestrator).
-`cli → cache` is deliberate — `vx cache prune` / `vx last` / `vx why`
+`cli → cache` is deliberate — `vx cache clean` / `vx last` / `vx why`
 open the cache without a run. `cli → exec` is deliberately absent.
 `bin → index` is a lazy `import()`: a plugin's `@vzn/vx` resolves to
 this copy (`registerCoreAlias`). `bin → version` answers a lone `--version`
@@ -337,8 +337,7 @@ never branches on layering.
 2. **`cli/index.ts`** dispatches by subcommand: `run`, `watch`,
    `cache`, `lock`, `init`, `upgrade`, `show`, `info`, `why`, `last`,
    `docs`, `completions`, `help`, `version`; any other
-   verb is asked of the workspace's plugins (`commands` seam — `vx prune`
-   is one).
+   verb is asked of the workspace's plugins (`commands` seam).
 3. **`cli/run.ts:parseRunArgs`** parses the argv into a `RunArgs`
    object (including the 4-axis cache policy from `--cache-policy` /
    `--no-cache` / `--force`). Surfaces parse errors as `RunArgs.error`
@@ -365,9 +364,9 @@ never branches on layering.
       package graph → local `Cache` open (the policy's local slice) +
       workspace fingerprints → **scoped** config loading via
       `loadProjects`, the `project` stage included (only in-scope
-      projects + their transitive dep closure evaluate; `--frozen`
-      loads from `.vx/lock.json` instead of evaluating, with no
-      staleness check of its own — `vx lock --check` is the audit) →
+      projects + their transitive dep closure, loaded from
+      `.vx/projects.lock.json` with no evaluation and no staleness check of its
+      own — `vx lock --check` is the audit) →
       cache layer resolved (an injected `RunOptions.remoteCache`, else
       each plugin's remote, layered over the local cache, else the
       bare local cache) → bulk `git ls-files` populate (started at the
@@ -721,9 +720,9 @@ architecture:
   executor changes where a command runs, never the command.
   Presets-as-imports cover config reuse.
 - **No daemon.** Every `vx run` is a fresh process. Workspace
-  re-discovery + config evaluation is cheap enough on Bun that a
-  daemon doesn't pay for itself (and config loading is scoped to the
-  run's dependency closure).
+  re-discovery + the lock read is cheap enough on Bun that a daemon
+  doesn't pay for itself (and config loading is scoped to the run's
+  dependency closure).
 - **No nested task graphs.** The unit of caching, scheduling, and
   reporting is the task. For parallelism, define separate tasks
   linked by `dependsOn`. For chained commands inside one task, use

@@ -100,7 +100,8 @@ export function loadResolvedProjects(
 `prepareRun` passes `closure: true` and the run's lock and eval cache.
 `vx show`, `vx watch`'s config sweep and the CLI's selection pass load
 through `cli/workspace-config.ts`, which passes `closure: false`, the
-lock only under `--frozen`, and a local cache opened for the
+lock when the caller asks (`fromLock`: the run's selection, `vx watch`),
+and a local cache opened for the
 evaluations alone. `loadResolvedProjects` is the same read for an
 embedder — `@vzn/vx-schedule-history` calls it, and
 `@vzn/vx` exports it — with discovery and the plugin load folded in:

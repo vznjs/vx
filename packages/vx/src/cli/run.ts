@@ -3,7 +3,6 @@ import path from 'node:path'
 import { isatty } from 'node:tty'
 import { cacheScopeError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
-import { onCI, settleFrozen } from './frozen.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   planRun,
@@ -67,10 +66,6 @@ export interface RunArgs {
   cacheDir: string | undefined
   /** `--cache-scope <name>`: this run's `cache.scope`, above `VX_CACHE_SCOPE` and the workspace's. */
   cacheScope?: string
-  /** `run.frozen`, settled by `settleFrozen` before anything loads. */
-  frozen: boolean
-  /** `--frozen` / `--no-frozen`, as typed. */
-  frozenFlag?: boolean
   /** `vx watch --poll` (`watch.poll`). */
   poll?: true
   forwardArgs: string[]
@@ -110,12 +105,12 @@ function flagOf(a: string | undefined, name: string): string | undefined {
   return a === name || a?.startsWith(`${name}=`) ? name : undefined
 }
 
-// The settings parsed by their kind alone; the cache flags, `--continue`,
-// `--frozen` and `--cache-dir` keep their own branches above.
+// The settings parsed by their kind alone; the cache flags, `--continue`
+// and `--cache-dir` keep their own branches above.
 const GENERIC_FLAGS = SETTINGS.filter(
   (s) =>
     s.flag?.verb === 'run' &&
-    !['run.continue', 'run.frozen', 'cache.dir', 'cache.policy', 'cache.scope'].includes(s.path),
+    !['run.continue', 'cache.dir', 'cache.policy', 'cache.scope'].includes(s.path),
 )
 
 /** The setting a flag names. */
@@ -151,7 +146,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     settings: {},
     cache: { ...FULL_CACHE_POLICY },
     cacheDir: undefined,
-    frozen: false,
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
@@ -221,8 +215,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         .split(',')
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
-    } else if (a === '--frozen' || a === '--no-frozen') {
-      out.frozenFlag = a === '--frozen'
     } else if (a === '--cache-dir' || a?.startsWith('--cache-dir=')) {
       const v = a === '--cache-dir' ? before[++i] : a.slice('--cache-dir='.length)
       if (v === undefined || v === '') return { ...out, error: `--cache-dir requires a path` }
@@ -550,7 +542,7 @@ export async function resolveRunOptions(
           filterStrings,
           {
             ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
-            ...(parsed.frozen ? { frozen: true } : {}),
+            fromLock: true,
           },
           affectedFilter,
         )
@@ -607,7 +599,6 @@ export async function resolveRunOptions(
       ? { remoteReadOnlyByDefault: true }
       : {}),
     flow: detectFlow(parsed),
-    ...(parsed.frozen ? { frozen: true } : {}),
     ...(parsed.verbosity > 0 ? { summaryTable: true } : {}),
     ...(parsed.continueMode !== undefined ? { continueMode: parsed.continueMode } : {}),
     forwardArgs: parsed.forwardArgs,
@@ -648,9 +639,6 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
 
   const cwd = process.cwd()
-  const frozen = await settleFrozen(cwd, parsed.frozenFlag)
-  if (typeof frozen === 'number') return frozen
-  parsed.frozen = frozen
   let tasks = [...parsed.tasks]
   let picked: string | undefined
 
@@ -684,7 +672,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     }
     const load = {
       ...(parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}),
-      ...(parsed.frozen ? { frozen: true } : {}),
+      fromLock: true,
     }
     // `--filter` / `--affected` scope the menu, as they scope a bare task:
     // the menu listed every project and the anchored pick ran outside it.
@@ -836,4 +824,9 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   }
   if (summary.json !== undefined) process.stdout.write(`${JSON.stringify(summary.json)}\n`)
   return summary.ok ? 0 : 1
+}
+
+/** CI=0 and CI=false are "not CI": several vendors set CI=true. */
+function onCI(v: string | undefined): boolean {
+  return v !== undefined && v !== '' && v !== '0' && v !== 'false'
 }

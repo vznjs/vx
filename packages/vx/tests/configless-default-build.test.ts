@@ -6,7 +6,7 @@
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { run } from '../src/orchestrator/index.js'
+import { run } from './helpers/orchestrator.js'
 import {
   addProject,
   makeWorkspace,

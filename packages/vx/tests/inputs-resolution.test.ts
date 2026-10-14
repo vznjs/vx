@@ -352,7 +352,10 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     '.git/HEAD',
     '.vx/cache/log',
     'tsconfig.tsbuildinfo',
-    '.vx/lock.json',
+    '.vx/projects.lock.json',
+    'vx.lock.json',
+    '.vx/.gitattributes',
+    '.vx/.gitignore',
     '.18bf7d9ff3ffeffe-00000001.bun-build',
     '.cd5e87e3246b0795-00000000.tmp/bun',
     '.vx-tmp-1z2-a',
@@ -361,7 +364,10 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     'a/b/.git/HEAD',
     'a/b/.vx/cache/log',
     'a/b/tsconfig.tsbuildinfo',
-    'a/b/.vx/lock.json',
+    'a/b/.vx/projects.lock.json',
+    'a/b/vx.lock.json',
+    'a/b/.vx/.gitattributes',
+    'a/b/.vx/.gitignore',
     'a/b/.18bf7d9ff3ffeffe-00000001.bun-build',
     'a/b/.cd5e87e3246b0795-00000000.tmp/bun',
     'a/b/.vx-tmp-1z2-a',
@@ -374,7 +380,10 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     '.vxrc',
     'my_node_modules/x.js',
     'x.tsbuildinfo.bak',
-    '.vx/lock.json.bak',
+    '.vx/projects.lock.json.bak',
+    'vx.lock.json.bak',
+    '.gitattributes',
+    '.vx/.gitignore.bak',
     'x.bun-build.txt',
     '.cd5e87e3246b0795-00000000.tmp.txt',
     '.cd5e87e3246b079-00000000.tmp/bun',
@@ -470,7 +479,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     // The two resolvers each build their own exclude list. A fix or a
     // regression applied to one does not reach the other, so the guarantee is
     // asserted on both paths.
-    await write(path.join(root, '.vx/lock.json'), '{}')
+    await write(path.join(root, '.vx/projects.lock.json'), '{}')
     await write(path.join(root, 'tsconfig.json'), '{}')
     Bun.spawnSync({ cmd: ['git', 'add', '-Af'], cwd: root, stdout: 'pipe', stderr: 'pipe' })
     // Untracked and not ignored: an install the enumeration drops.
@@ -487,7 +496,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     const seen = got.files.map((f) => relPosix(root, f))
     expect(seen).toContain('tsconfig.json')
     expect(seen).not.toContain(path.join('node_modules', 'dep', 'index.js'))
-    expect(seen).not.toContain('.vx/lock.json')
+    expect(seen).not.toContain('.vx/projects.lock.json')
   })
 })
 

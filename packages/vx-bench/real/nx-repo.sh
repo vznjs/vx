@@ -22,8 +22,7 @@
 # resident process the repo's CI would not have either) through the
 # repo's own `node_modules/.bin/nx`. Its local cache is `.nx/cache`
 # (older releases: `node_modules/.cache/nx`); its graph cache lives in
-# `.nx/workspace-data` and is wiped with the task cache on a cold arm,
-# as vx's config cache in `.vx` is. FILTERS scopes both tools alike:
+# `.nx/workspace-data` and is wiped with the task cache on a cold arm. FILTERS scopes both tools alike:
 # a pattern is a project for vx `--filter` and nx `--projects`; a
 # negated one (`!examples/*`) is vx `--filter '!…'` and nx `--exclude`.
 # NX_ARGS / VX_ARGS add what the repo's own script passes.
@@ -32,7 +31,7 @@ set -u
 # (bench-env.ts); the arms run without it.
 unset BUN_OPTIONS
 # vx's store is per user under ~/.vx/<repo id>/ since 2026-10-06, where the
-# cold arm's `.vx` wipe never reached it: reps 2+ of a cold arm were all hits.
+# cold arm's cache wipe never reached it: reps 2+ of a cold arm were all hits.
 # A named cache dir holds everything inside the repo.
 export VX_CACHE_DIR=.vx/cache
 R=$1; VX=$2; TASKS=$3; REPS=${4:-3}
@@ -78,9 +77,10 @@ wipe_outputs() {
     -e '!.vx-bench-*'
 }
 wipe_nx_cache() { rm -rf .nx/cache .nx/workspace-data node_modules/.cache/nx; }
-wipe_vx_cache() { rm -rf .vx; }
+# Not all of `.vx`: the workspace file and the lock every run reads live there.
+wipe_vx_cache() { rm -rf .vx/cache; }
 ms() { date +%s%N; }
-run_vx() { "$VX" run $TASKS "${vx_scope[@]}" --frozen $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
+run_vx() { "$VX" run $TASKS "${vx_scope[@]}" $VX_ARGS > ".vx-bench-vx-$1.log" 2>&1; echo $?; }
 run_nx() { node_modules/.bin/nx run-many -t $TASKS "${nx_scope[@]}" $NX_ARGS > ".vx-bench-nx-$1.log" 2>&1; echo $?; }
 time_arm() {
   local t0 t1 code
@@ -90,9 +90,9 @@ time_arm() {
   # copy (astro's cold rep 1 exited 1 and its cause was lost, 2026-10-09).
   [ "$code" = 0 ] || cp ".vx-bench-$1-$2.log" ".vx-bench-$1-$2.fail-$t0.log"
 }
-# vx runs from a `vx lock` snapshot (`--frozen`), as CI would, taken once
-# here before any arm; a config edited after it is re-locked by running
-# this script again, never inside a rep. A lock that fails ends the bench.
+# Every vx run loads configs only from `.vx/projects.lock.json`, taken once here
+# before any arm; a config edited after it is re-locked by running this
+# script again, never inside a rep. A lock that fails ends the bench.
 "$VX" lock || exit 1
 SKIP_ARMS=${SKIP_ARMS:-0}
 arm_index=0

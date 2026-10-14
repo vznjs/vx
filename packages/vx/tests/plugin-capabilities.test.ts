@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
-import { planRun, run } from '../src/index.js'
+import { planRun, run } from './helpers/orchestrator.js'
 import {
   REMOTE_CACHE_METHODS,
   resolveCache,

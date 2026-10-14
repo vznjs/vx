@@ -1,7 +1,10 @@
-// `vx lock` — freeze every resolved vx.config.* into .vx/lock.json.
+// `vx lock` — freeze every resolved vx.config.* into .vx/projects.lock.json, and
+// each one, pretty, into a `vx.lock.json` beside it for review.
 // `vx lock --check` — audit the lock against a fresh evaluation in the
 // current environment. Design: docs/design/config-lock-2026-06.md.
 
+import { open } from 'node:fs/promises'
+import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { buildTaskGraph, expandRequested } from '../graph/index.js'
@@ -11,8 +14,14 @@ import {
   isDefaultBuild,
   loadResolvedProjects,
 } from '../orchestrator/index.js'
-import { runRules } from '../settings.js'
-import { isUserError, relPosix, secretMask } from '../util/index.js'
+import { resolveSetting, runRules } from '../settings.js'
+import {
+  configErrorFrame,
+  DOT_VX_GITATTRIBUTES,
+  isUserError,
+  relPosix,
+  secretMask,
+} from '../util/index.js'
 import {
   findWorkspaceRoot,
   type LoadReads,
@@ -83,7 +92,7 @@ async function configuredProjects(
 ): Promise<{ all: ProjectMeta[]; metas: ConfiguredMeta[] }> {
   const workspace = await loadWorkspace(root, reads)
   // As a run discovers them: a project a plugin's `discover` stage adds
-  // was left out of the lock, and every `--frozen` run then refused it
+  // was left out of the lock, and every run then refused it
   // with "run vx lock", which changed nothing (X-143).
   // Sorted by name, as core's discovery is, for stable lockfile diffs.
   const all = (await discoverCliProjects(workspace)).sort((a, b) =>
@@ -95,10 +104,10 @@ async function configuredProjects(
 
 /**
  * Projects with tasks and no vx.config: a plugin's tasks, which load live
- * under --frozen too, so both verbs name them — `locked 0 project configs`
+ * in every run, so both verbs name them — `locked 0 project configs`
  * on a turbo() repo read like an audit of something (2026-09-16). One with
  * no task is left out: solidjs/solid's solid-ssr, which has no script Turbo
- * runs, read as a project whose tasks are never frozen.
+ * runs, read as a project whose tasks come live from the plugin `project` stage.
  */
 function bareProjects(all: ProjectMeta[], tasked: ReadonlySet<string>): string[] {
   return all.filter((m) => m.configPath === null && tasked.has(m.name)).map((m) => m.name)
@@ -106,7 +115,7 @@ function bareProjects(all: ProjectMeta[], tasked: ReadonlySet<string>): string[]
 
 /**
  * `vx lock`: evaluate every config, check the graph rules over every task,
- * and write the lock. Also what a frozen run with no lock does first.
+ * and write the lock: the only writer of it.
  */
 export async function lockWorkspace(
   root: string,
@@ -114,17 +123,17 @@ export async function lockWorkspace(
   warn: (message: string) => void = warnToStderr,
 ): Promise<number> {
   const { all, metas } = await configuredProjects(root, reads)
-  const { broken, tasked } = await graphRuleRefusal(root, all, warn)
-  if (broken !== null) {
-    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${broken}\n`)
+  const check = await graphRuleRefusal(root, all, warn)
+  if (check.broken !== null) {
+    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${framed(check.broken)}\n`)
     return 1
   }
-  return await writeLock(root, metas, bareProjects(all, tasked))
+  return await writeLock(root, metas, bareProjects(all, check.tasked), check)
 }
 
 /**
  * The graph rules (`run.rules`), checked here over every project and task the
- * workspace declares: a frozen run trusts the lock and does not check them
+ * workspace declares: a run trusts the lock and does not check them
  * (owner, 2026-10-13). The graph is the one a run builds, the `graph`
  * stage included; its refusal, or null, and the projects that have a task.
  */
@@ -132,11 +141,15 @@ async function graphRuleRefusal(
   root: string,
   all: ProjectMeta[],
   warn: (message: string) => void,
-): Promise<{ broken: string | null; tasked: Set<string> }> {
+): Promise<GraphCheck> {
   const tasked = new Set<string>()
+  const resolved = new Map<string, ProjectConfig>()
+  let reviewFiles = true
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
+    reviewFiles = resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
     const projects = await loadResolvedProjects(root, { warn })
+    for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     const names = new Set<string>()
     for (const entry of projects.values()) {
       const tasks = Object.entries(entry.config.tasks ?? {})
@@ -169,10 +182,21 @@ async function graphRuleRefusal(
         rules,
       })
   } catch (err) {
-    if (isUserError(err)) return { broken: err.message, tasked }
+    if (isUserError(err)) return { broken: err.message, tasked, resolved, reviewFiles }
     throw err
   }
-  return { broken: null, tasked }
+  return { broken: null, tasked, resolved, reviewFiles }
+}
+
+interface GraphCheck {
+  /** A graph rule's refusal, or a config that does not load; null when sound. */
+  broken: string | null
+  /** The projects that have a task. */
+  tasked: Set<string>
+  /** Each project's config as a run resolves it, plugins applied. */
+  resolved: Map<string, ProjectConfig>
+  /** `lock.reviewFiles`. */
+  reviewFiles: boolean
 }
 
 /**
@@ -195,9 +219,14 @@ export async function lockAfterMigration(root: string): Promise<number> {
     return await lockWorkspace(root)
   } catch (err) {
     if (!isUserError(err)) throw err
-    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${err.message}\n`)
+    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${framed(err.message)}\n`)
     return 1
   }
+}
+
+/** A config refusal as a run used to print it: path:line:col and the source line. */
+function framed(message: string): string {
+  return configErrorFrame(message, process.cwd()) ?? message
 }
 
 /** Names shown per note: a turbo() repo can have hundreds of bare projects. */
@@ -209,13 +238,59 @@ function bareNames(bare: readonly string[]): string {
 }
 
 function bareNote(bare: readonly string[]): string {
-  return bare.length === 0 ? '' : ` (no vx.config, so never frozen: ${bareNames(bare)})`
+  return bare.length === 0 ? '' : ` (no vx.config, so not locked: ${bareNames(bare)})`
+}
+
+/** The name `vx lock` writes each project's review copy under. */
+const REVIEW_FILE = 'vx.lock.json'
+
+interface Review {
+  name: string
+  file: string
+  config: ProjectConfig
+  text: string
+}
+
+/** Each configured project's review copy: its resolved config, pretty. */
+function sameJson(text: string, config: ProjectConfig): boolean {
+  try {
+    return Bun.deepEquals(JSON.parse(text), JSON.parse(JSON.stringify(config)), true)
+  } catch {
+    return false
+  }
+}
+
+function reviewsOf(metas: ConfiguredMeta[], resolved: Map<string, ProjectConfig>): Review[] {
+  return metas.flatMap((m) => {
+    const config = resolved.get(m.name)
+    if (config === undefined) return []
+    return [
+      {
+        name: m.name,
+        file: path.join(path.dirname(m.configPath), REVIEW_FILE),
+        config,
+        text: `${JSON.stringify(config, null, 2)}\n`,
+      },
+    ]
+  })
+}
+
+/** Writes `text` to `file` unless it exists: one a user edited stays theirs. */
+async function writeIfMissing(file: string, text: string): Promise<void> {
+  try {
+    const fh = await open(file, 'wx')
+    await fh.writeFile(text)
+    await fh.close()
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  }
 }
 
 async function writeLock(
   root: string,
   metas: ConfiguredMeta[],
   bare: readonly string[],
+  check: GraphCheck,
 ): Promise<number> {
   const entries = await Promise.all(metas.map(evaluate))
   // Sorted by name above — stable lockfile diffs. Defined,
@@ -223,7 +298,13 @@ async function writeLock(
   const projects: Record<string, ProjectConfig> = Object.fromEntries(
     metas.map((m, i) => [m.name, entries[i]!]),
   )
+  const reviews = check.reviewFiles ? reviewsOf(metas, check.resolved) : []
+  // The review copies are committed too; a plugin's `project` stage can add
+  // a value the bare config lacks. A place both hold is named once.
   const leaks = secretsIn(projects)
+  const named = new Set(leaks.map((l) => l.at))
+  for (const l of secretsIn(Object.fromEntries(reviews.map((r) => [r.name, r.config]))))
+    if (!named.has(l.at)) leaks.push(l)
   if (leaks.length > 0) {
     process.stderr.write(
       `vx lock: ${LOCKFILE_NAME} is committed, and these configs evaluated to a secret value:\n` +
@@ -234,6 +315,10 @@ async function writeLock(
   }
   const lock: Lockfile = { version: LOCKFILE_VERSION, projects }
   await writeLockfile(root, lock)
+  await Promise.all([
+    ...reviews.map((r) => Bun.write(r.file, r.text)),
+    writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES),
+  ])
   const n = metas.length
   process.stdout.write(
     `vx lock: locked ${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}\n`,
@@ -246,7 +331,7 @@ async function writeLock(
  * environment, by the rule output masking uses (a secret-named variable,
  * or one a task lists in `exec.env.secret`). The lock is committed, so
  * such a value would be published, and masking it would freeze a `***`
- * that `--frozen` runs (L-42).
+ * that every run runs (L-42).
  */
 function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string; name: string }> {
   const named = new Set<string>()
@@ -286,8 +371,9 @@ async function checkLock(
   metas: ConfiguredMeta[],
   json: boolean,
 ): Promise<number> {
-  const { broken, tasked } = await graphRuleRefusal(root, all, warnToStderr)
-  const bare = bareProjects(all, tasked)
+  const check = await graphRuleRefusal(root, all, warnToStderr)
+  const { broken } = check
+  const bare = bareProjects(all, check.tasked)
   const answer = (problems: string[]): number => {
     if (json) {
       const out = {
@@ -323,6 +409,27 @@ async function checkLock(
   )
   const failures = results.filter((r): r is string => r !== null)
   if (broken !== null) failures.push(broken)
+  if (check.reviewFiles && broken === null) {
+    // A project the lock already fails is named once.
+    const drifted = new Set(metas.filter((_, i) => results[i] !== null).map((m) => m.name))
+    const stale = await Promise.all(
+      reviewsOf(
+        metas.filter((m) => !drifted.has(m.name)),
+        check.resolved,
+      ).map(async (r) => {
+        const text = await Bun.file(r.file)
+          .text()
+          .catch(() => null)
+        // Compared as JSON: a formatter may lay the copy out its own way.
+        if (text !== null && sameJson(text, r.config)) return null
+        const rel = relPosix(root, r.file)
+        return text === null
+          ? `"${r.name}" has no ${rel} — run 'vx lock'`
+          : `"${r.name}" (${rel}) is not what its config resolves to here — run 'vx lock'`
+      }),
+    )
+    for (const f of stale) if (f !== null) failures.push(f)
+  }
   const inWorkspace = new Set(metas.map((m) => m.name))
   for (const name of Object.keys(lock.projects)) {
     if (!inWorkspace.has(name)) {

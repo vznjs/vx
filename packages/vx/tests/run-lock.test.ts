@@ -90,7 +90,7 @@ describe('the run lock', () => {
   it('a root reached through a symlink names the same lock as its real path', async () => {
     // macOS's temp dir is /var -> /private/var: a caller holding the
     // mkdtemp spelling and a CLI whose cwd came back canonical hashed two
-    // strings, and `vx cache prune` never saw the run's lock (CI, darwin).
+    // strings, and `vx cache clean` never saw the run's lock (CI, darwin).
     const real = path.join(dir, 'real')
     await mkdir(real)
     await symlink(real, path.join(dir, 'link'))

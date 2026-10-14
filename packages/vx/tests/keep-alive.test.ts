@@ -16,7 +16,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 
-const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
 // Every vx a row spawns, SIGKILLed after the row if it still runs: a row
 // that fails before its own kill left a vx holding its servers in the

@@ -26,7 +26,7 @@
  * The headline is OVERHEAD: each state minus its ideal (the tasks' own
  * durations list-scheduled on the same workers, plus the floor of asking
  * git what changed). vx runs as its compiled binary from a `vx lock`
- * snapshot (`--frozen`); `vx (no lock)` evaluates every config per run.
+ * snapshot, as every vx run does.
  */
 import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -346,27 +346,19 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   const conc = ['--concurrency', String(CONCURRENCY)]
   const clearVx = () => rm(path.join(dir, '.vx', 'cache'), { recursive: true, force: true })
   const suffix = compiled.ok ? '' : ' (ts-source)'
-  // The headline vx row runs from a lock taken once here, before any rep:
-  // the CI fast path, no config evaluation per run. A failed lock is a bug
-  // to see, never a silent fall back to the unfrozen row.
+  // Every run loads configs only from the lock, taken once here, before any rep.
   const locked = await sh([...vxRun, 'lock'], dir)
   if (!locked.ok) throw new Error(`vx lock failed:\n${locked.out}`)
   // One untimed run, once git is in place, writes the timings file every
   // timed rep reads.
   seedVx = async () => {
-    const seeded = await sh([...vxRun, 'run', ...RUN_TASKS, '--all', ...conc, '--frozen'], dir)
+    const seeded = await sh([...vxRun, 'run', ...RUN_TASKS, '--all', ...conc], dir)
     if (!seeded.ok) throw new Error(`vx seed run failed:\n${seeded.out}`)
     await clearVx()
     await deleteDist(dir)
   }
   runners.push({
     name: `vx${suffix}`,
-    version: vxVer,
-    run: [...vxRun, 'run', ...RUN_TASKS, '--all', ...conc, '--frozen'],
-    clear: clearVx,
-  })
-  runners.push({
-    name: `vx (no lock)${suffix}`,
     version: vxVer,
     run: [...vxRun, 'run', ...RUN_TASKS, '--all', ...conc],
     clear: clearVx,
@@ -596,7 +588,7 @@ function markdown(rows: Row[], b: Baseline): string {
 - **Workspace:** ${PROJECTS.length.toLocaleString('en-US')} projects, ${TASKS.toLocaleString('en-US')} tasks: ${LEVELS - 1} levels × ${PER_LEVEL} libs and ${APPS} apps, ${TERMINALS} terminal libs at level 15, one \`e2e\` on every edge, five core libs ~400 projects each use (packages/vx-bench/shape.ts).
 - **Tasks:** \`installDeps\` (^build, no command), \`build\`, \`lint\`, \`test\` (after installDeps), \`publish\` (after build), \`typecheck\` (^build). Each sleeps: build ${BUILD_MS} ms, lint ${BUILD_MS / 4} ms, test ${BUILD_MS / 2} ms, publish ${BUILD_MS / 10} ms, typecheck ${BUILD_MS / 2} ms. \`build\` writes dist/index.js from 20 source files and 200 KB of seeded incompressible bytes. Identical commands in every runner.
 - **Concurrency:** ${CONCURRENCY} for every runner. **Reps:** cold ${COLD_REPS}, the rest median of ${REPS}.
-- **vx:** compiled binary from a \`vx lock\` snapshot (\`--frozen\`); \`vx (no lock)\` evaluates every config per run. Both use \`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
+- **vx:** compiled binary from a \`vx lock\` snapshot, as every run does. Uses \`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
 - **Git:** default config for every runner (\`GIT_CONFIG_GLOBAL=/dev/null\`, \`GIT_CONFIG_NOSYSTEM=1\`); the bench host's own sets \`core.checkstat=minimal\`, under which vx hashes every input from disk.
 - **Host:** ${os.type()} ${os.release()} · ${os.cpus().length} cores · ${process.platform}/${process.arch}
 - **Date:** ${new Date().toISOString().slice(0, 10)}
@@ -675,7 +667,7 @@ for (const r of runners) {
   }
 }
 
-const ORDER = ['vx', 'vx (no lock)', 'turbo', 'nx', 'vite-task']
+const ORDER = ['vx', 'turbo', 'nx', 'vite-task']
 rows.sort((a, b) => ORDER.indexOf(a.runner) - ORDER.indexOf(b.runner))
 console.error('measuring the baseline (ideal schedule, one git walk, a raw copy) …')
 const baseline = await measureBaseline(ws)

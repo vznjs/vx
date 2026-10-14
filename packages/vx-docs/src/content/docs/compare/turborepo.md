@@ -42,7 +42,7 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 | Plugins                    | Every pipeline stage, 15 hooks; core applies none                 | Its docs describe no plugin surface          |
 | Why a task missed          | `vx why` diffs two keys: the file, env var or upstream that moved | `--summarize` shows hashes, not the diff     |
 | Watch mode                 | `vx watch <task>`                                                 | `turbo watch`                                |
-| Prune for Docker           | `vx prune`, from `@vzn/vx-lockfile`                               | `turbo prune`                                |
+| Prune for Docker           | No equivalent                                                     | `turbo prune`                                |
 | Import boundaries          | No: a lint's job                                                  | `boundaries`                                 |
 | Non-JS projects            | No                                                                | Experimental: Go, Cargo, uv                  |
 | Terminal output            | Streamed blocks you can scroll, copy and pipe                     | Terminal UI                                  |

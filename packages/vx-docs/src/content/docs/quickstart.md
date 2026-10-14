@@ -62,6 +62,7 @@ Installed from npm, the command is `npx @vzn/vx` (pnpm: `pnpm vx`, Bun:
 `bunx @vzn/vx`); the lines below drop the prefix.
 
 ```bash
+vx lock                   # resolve each config into .vx/projects.lock.json, which runs read
 vx run build --all        # every package, in dependency order
 vx run test --affected    # changed since main or the last commit, and dependents
 vx run build --all --dry  # the plan; runs nothing
@@ -70,7 +71,8 @@ vx run build              # ⇢ success local — after dist/ is deleted; else u
 vx run build --graph      # the task graph as Graphviz DOT
 ```
 
-The first run stores the result. The second finds nothing changed and
+A run never evaluates a `vx.config.ts`: after editing one, run `vx lock`
+again and commit `.vx/projects.lock.json`. The first run stores the result. The second finds nothing changed and
 `dist/` still as stored, so it restores nothing: the task's frame closes
 `up-to-date` (`► success fresh` in the `--output-logs full` row). Delete
 `dist/` and the next run restores it from the cache: `restored-local`, the
@@ -92,7 +94,7 @@ of a small package (first run, again, again after `rm -rf dist`):
 
 ## When to run vx lock
 
-`vx init` also writes `.vx/lock.json`: every project's config as it
+`vx init` also writes `.vx/projects.lock.json`: every project's config as it
 evaluated. Commit it. Every run reads its configs from the lock and
 evaluates none, so after you change one the runs keep the old tasks
 until you run `vx lock`. Run it, and commit the lock, after you:
@@ -123,7 +125,7 @@ Start with one package and leave the rest of your tooling as it is.
 writes the native `vx.config.ts` files from `turbo.json` or the Nx graph
 (`bunx @vzn/vx-migrate` does the same from each `vite.config`'s `run.tasks`);
 from there everything above applies. `vx init --keep` writes only a
-`.vx/workspace.ts` declaring `turbo()` or `nx()`: a temporary start, dropped
+`.vx/workspace.ts` declaring `turbo()` or `nx()` and your lockfile's plugin: a temporary start, dropped
 once the configs exist.
 [Migrate](../guides/migrate/) has the steps.
 

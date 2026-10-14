@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os'
 import { existsSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { loadResolvedProjects, planRun, run, type Logger } from '@vzn/vx'
+import { loadResolvedProjects, planRun as corePlanRun, type Logger } from '@vzn/vx'
+import { lock, planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { fakeNx, fakeNxCli, nxCalls } from './helpers/fake-nx.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
@@ -1502,7 +1503,10 @@ describe('nx(): the graph snapshot, keyed and not', () => {
         await fakeNx(sub)
         await fakeNxCli(sub)
         await workspace(`nx({ root: ${JSON.stringify(sub)} })`)
-        await plan()
+        // Locked once: a lock maps the graph too, and a manifest still newer
+        // than the snapshot would re-export at the lock and again at the run.
+        await lock(root)
+        const plan = () => corePlanRun({ cwd: root, tasks: ['lint'], log: silent() })
         let calls = 1
         await plan()
         expect(await nxCalls(sub)).toBe(calls)
@@ -1527,9 +1531,9 @@ describe('nx(): the graph snapshot, keyed and not', () => {
   )
 })
 
-// Every bench arm runs vx from a lock, real Nx repos too: nx()'s tasks are
-// no vx.config, so the lock records none and a frozen run maps the graph live.
-describe('nx() under vx lock and --frozen', () => {
+// Every run reads configs from the lock, real Nx repos too: nx()'s tasks are
+// no vx.config, so the lock records none and a run maps the graph live.
+describe('nx() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
       cmd: [
@@ -1544,19 +1548,19 @@ describe('nx() under vx lock and --frozen', () => {
   }
 
   it(
-    'locks, runs frozen, and hits on the second frozen run',
+    'locks, runs from the lock, and hits on the second run',
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx lock: locked 0 project configs → .vx/lock.json (no vx.config, so never frozen: app, lib, ws)\n',
+        out: 'vx lock: locked 0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib, ws)\n',
         err: '',
       })
-      const first = vx('run', 'build', '--all', '--frozen')
+      const first = vx('run', 'build', '--all')
       expect({ code: first.code, err: first.err }).toEqual({ code: 0, err: '' })
       expect(await Bun.file(path.join(root, 'packages', 'lib', 'dist', 'lib.js')).text()).toBe(
         'lib v1',
       )
-      const second = vx('run', 'build', '--all', '--frozen')
+      const second = vx('run', 'build', '--all')
       expect({ code: second.code, err: second.err }).toEqual({ code: 0, err: '' })
       expect(second.out).toContain('2 tasks · all cached')
     },
@@ -1581,6 +1585,7 @@ describe('nx(): one git status per run', () => {
         { mode: 0o755 },
       )
       await appendFile(path.join(root, '.gitignore'), '.gitbin*\n')
+      // The real bin, locked once: a lock maps the graph and walks too.
       const statuses = async (...args: string[]) => {
         await rm(log, { force: true })
         const p = Bun.spawnSync({
@@ -1596,12 +1601,14 @@ describe('nx(): one git status per run', () => {
             CI: '',
             GITHUB_ACTIONS: '',
             NO_COLOR: '1',
+            VX_LOCK_REVIEW_FILES: 'false',
           },
         })
         expect([p.exitCode, p.stderr.toString()]).toEqual([0, expect.any(String)])
         const lines = (await Bun.file(log).text()).split('\n')
         return lines.filter((l) => /(^| )status /.test(l)).length
       }
+      await statuses('lock')
       expect(await statuses('run', 'lint', '--all', '--dry')).toBe(1)
       expect(await nxCalls(root)).toBe(1)
       expect(await statuses('run', 'lint', '--all', '--dry')).toBe(1)
