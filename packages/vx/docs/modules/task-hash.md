@@ -73,7 +73,7 @@ export async function movedInput(
   facts: readonly InputFact[],
   cache: CacheLayer,
   commandFrom?: number, // the describe's start, just before the command
-  writesByBytes = false, // `inputStability.strategy: 'mutable'`: judged by bytes
+  byBytes?: (file: string, ctimeMs: number) => boolean, // `'mutable'`: true judges that write by bytes
 ): Promise<string | undefined>
 export function computeGroupKey(args: ComputeHashArgs): Promise<string>
 export interface UpfrontGroupKey {
@@ -109,9 +109,11 @@ export interface UpfrontGroupKey {
   has moved. So has one whose ctime is at or after `commandFrom`
   (less that widening for a whole-second stamp), whatever it holds now:
   an input changed and changed BACK while the command ran matches its
-  digest again (item 1015). With `writesByBytes` (execute-task sets it
-  for `inputStability.strategy: 'mutable'` or `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`)
-  such a write is hashed and compared instead. Returns the
+  digest again (item 1015). Where `byBytes` answers true (execute-task
+  passes it for `inputStability.strategy: 'mutable'` or
+  `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`, true when no other command
+  that may write the file ran between the describe and that write,
+  `command-windows.ts`) such a write is hashed and compared instead. Returns the
   first moved path; execute-task then withholds the save.
 - `computeGroupKey` — for group tasks (no `exec`): rolls up upstream
   hashes only, so downstream keys still cascade through the group. The

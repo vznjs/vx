@@ -96,6 +96,7 @@ src/index.ts
 src/orchestrator/admission.ts
 src/orchestrator/affected-tasks.ts
 src/orchestrator/colors.ts
+src/orchestrator/command-windows.ts
 src/orchestrator/deferred-outputs.ts
 src/orchestrator/doctor.ts
 src/orchestrator/download-policy.ts

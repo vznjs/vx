@@ -71,7 +71,10 @@ build: {
 },
 ```
 
-Different bytes still withhold the entry. `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
+Different bytes still withhold the entry, and so does a write made while
+another task that may write the file was running, since it may have
+changed the file and put it back; the line names that task.
+`VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
 makes `mutable` the default for every task that does not say. And when
 the file named is not `package.json`, it is usually generated and should
 be declared as an output instead, and the status line says so.
