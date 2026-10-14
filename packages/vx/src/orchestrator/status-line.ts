@@ -272,6 +272,8 @@ export interface StatusRegionState {
   blocks?: ReadonlyMap<string, number>
   /** The running task at the head of the longest unfinished chain. */
   critical?: string
+  /** A running task's usual duration from history; its row shows it. */
+  expected?: ReadonlyMap<string, number>
   /**
    * Ready persistent tasks (dev servers …) whose children keep
    * running after their outcome lands. Pinned until runEnd — the
@@ -375,13 +377,14 @@ export function formatStatusRegion(
     const notes: string[] = []
     if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
     if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
+    const usual = s.expected?.get(slot.id)
     lines.push(
       formatTaskRow(
         ' ',
         Math.max(0, s.nowMs - slot.startedMs),
         'running',
         ACCENT,
-        '',
+        usual === undefined ? '' : formatExpected(usual),
         '',
         paintPinnedId(slot.id, colors),
         colors,
@@ -395,4 +398,17 @@ export function formatStatusRegion(
   // so the region visually BECOMES the summary when the run ends.
   lines.push(...s.summaryLines)
   return lines
+}
+
+/**
+ * A running task's usual duration, fixed while the elapsed time counts up
+ * toward it (M, 2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
+ * column below 100 minutes.
+ */
+function formatExpected(ms: number): string {
+  if (ms < 1000) return `~${Math.round(ms)}ms`
+  if (ms < 9950) return `~${(ms / 1000).toFixed(1)}s`
+  const s = Math.round(ms / 1000)
+  if (s < 60) return `~${s}s`
+  return `~${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
 }

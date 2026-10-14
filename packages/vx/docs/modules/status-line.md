@@ -79,7 +79,8 @@ Slot rules (the point of the design — the display derives from the
 - More running tasks than rows queue for a freed row and surface as
   a `… +k more running` line under the rows.
 - A worker row leads with the ticking elapsed time (no glyph), then
-  `running` and the id. Ids are identity-colored (`paintIdParts`):
+  `running`, the task's usual duration from history when known
+  (`~5.2s`, dim, in the cache column; `expected`), and the id. Ids are identity-colored (`paintIdParts`):
   project hue hashed stably from the project name, task in fixed pink —
   never status colors. The id is the last column and is never
   truncated.

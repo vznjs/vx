@@ -609,6 +609,26 @@ describe('formatStatusRegion', () => {
     expect(lines.slice(1, 11).every((l) => l.includes('idle'))).toBe(true)
   })
 
+  // M, 2026-10-14: a running row says how long the task usually takes, in
+  // the column a finished row says miss / hit, as a fixed value the
+  // elapsed time counts up toward. With no history the column stays empty.
+  it('a running row shows its expected duration in the cache column', () => {
+    const expected = new Map([
+      ['a#x', 5200],
+      ['b#x', 42_400],
+      ['c#x', 125_000],
+      ['d#x', 300],
+    ])
+    const ids = ['a#x', 'b#x', 'c#x', 'd#x', 'e#x']
+    const lines = formatStatusRegion({ ...base, slots: ids.map((id) => slot(id)), expected })
+    expect(lines[1]).toBe('     2.00s running ~5.2s    a#x')
+    expect(lines[2]).toBe('     2.00s running ~42s     b#x')
+    expect(lines[3]).toBe('     2.00s running ~2m 05s  c#x')
+    expect(lines[4]).toBe('     2.00s running ~300ms   d#x')
+    // No history for it: the column holds its width, empty.
+    expect(lines[5]).toBe('     2.00s running          e#x')
+  })
+
   it('overflow gets its own dim line between slots and summary', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x')], overflow: 3 })
     expect(lines[2]).toBe('… +3 more running')

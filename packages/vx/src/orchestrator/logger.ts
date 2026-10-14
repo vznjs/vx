@@ -299,6 +299,7 @@ export function defaultLogger(
   let etaMs: number | undefined
   let critical: string | undefined
   let blocks: ReadonlyMap<string, number> | undefined
+  let expected: ReadonlyMap<string, number> | undefined
   let etaAtMs = 0
   const signals = writer.enabled
     ? terminalSignals(opts.env ?? process.env)
@@ -412,6 +413,7 @@ export function defaultLogger(
       etaMs = f.etaMs
       critical = f.critical
       blocks = f.blocks
+      expected = f.expected
     }
     if (signals.progress && total > 0) {
       const elapsed = now - startedAtMs
@@ -461,6 +463,7 @@ export function defaultLogger(
           nowMs: Date.now(),
           summaryLines,
           ...(blocks !== undefined ? { blocks } : {}),
+          ...(expected !== undefined ? { expected } : {}),
           ...(critical !== undefined ? { critical } : {}),
         },
         colors,

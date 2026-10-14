@@ -765,7 +765,10 @@ other persistent task`), and a non-zero exit makes the run exit 1
    says what waits on it: `critical path` (yellow) on the running task
    the longest unfinished chain waits on, by the same p50s as the
    forecast below and only while two or more run, and a dim
-   `blocks N`, its unfinished dependents direct and transitive.
+   `blocks N`, its unfinished dependents direct and transitive. Where
+   local history knows the task, its row also shows its usual duration
+   (its executed p50) in the cache column, fixed while the elapsed time
+   counts up toward it (`3.33s running ~5.2s  solid-js#types`).
 4. **The live summary section** — the SAME meters the final footer
    prints (`tasks` + `cache` bars with legends, `time`), filling in as
    the run progresses, under a bare `vx` wordmark rule. A second in,

@@ -107,6 +107,23 @@ describe('createForecast', () => {
     expect(over.blocks.get('p#b')).toBe(1)
   })
 
+  it("names each running task's p50, the row's expected duration", () => {
+    const f = createForecast(nodes, p50s, 8)
+    const r = f(
+      new Set(['p#a']),
+      new Map([
+        ['p#b', 0],
+        ['p#x', 0],
+      ]),
+      100,
+    )
+    expect([...(r.expected ?? [])]).toEqual([['p#b', 2000]])
+    // A running task past its p50 still says it: the row's value is fixed.
+    expect([...(f(new Set(['p#a']), new Map([['p#b', 0]]), 9000).expected ?? [])]).toEqual([
+      ['p#b', 2000],
+    ])
+  })
+
   it('costs nothing for a group or a task history never saw', () => {
     const g = graph(node('p#x'), node('p#all', ['p#x', 'p#y'], true), node('p#y'))
     const f = createForecast(
