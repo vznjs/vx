@@ -729,7 +729,8 @@ means. `strategy` says which writes count:
   (tsdown's `package.json`); different bytes still count, and so does
   any write while another task that may write the file was running (one
   of the same project, or one whose sandbox grants writes elsewhere in
-  the workspace), since it may have changed the file and put it back.
+  the workspace; a server `vx watch` keeps from an earlier run counts),
+  since it may have changed the file and put it back.
   The line names that task; order the two with `dependsOn` to save.
 - `'unchecked'`: none. The entry is saved under the key taken before the
   command, whatever the command did to its inputs; `severity` is ignored.
