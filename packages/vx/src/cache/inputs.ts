@@ -313,7 +313,13 @@ function resolveWorkspaceFiles(args: {
   let isPositive: ((rel: string) => boolean) | undefined
   const excludedByDeclaration = (rel: string): boolean =>
     (isExcluded ??= anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)]))(rel)
-  const own = (rel: string): boolean => ownOutput(rel) || ownProject(rel)
+  // A committed file stays an input whatever output reaches it (`committedFiles`).
+  let committed: ((abs: string) => boolean) | undefined
+  const own = (rel: string): boolean =>
+    (ownOutput(rel) || ownProject(rel)) &&
+    !(committed ??= committedFiles(args.gitFilesCache, args.workspaceRoot))(
+      path.join(args.workspaceRoot, rel),
+    )
   const listing: InputListing = {
     root: args.workspaceRoot,
     listed: gitFiles,
@@ -695,9 +701,25 @@ export async function resolveOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  /** What git tracks (`committedFiles`; asked of git when absent): never an output. */
+  committed?: (abs: string) => boolean
 }): Promise<string[]> {
+  return (await splitOutputs(args)).files
+}
+
+/**
+ * `resolveOutputs`, with the committed files the globs reach beside it: a
+ * miss marks those changed too, since the task may have rewritten one and
+ * its index OID no longer says what it holds.
+ */
+export async function splitOutputs(args: {
+  projectDir: string
+  outputs: readonly string[]
+  nestedProjectDirs: string[]
+  committed?: (abs: string) => boolean
+}): Promise<{ files: string[]; committed: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
-  if (positive.length === 0) return []
+  if (positive.length === 0) return { files: [], committed: [] }
   const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
   refuseDirLinkedOut(args.projectDir, trees)
@@ -716,7 +738,34 @@ export async function resolveOutputs(args: {
   // outside the project, so any future caller reaching it by another route (a
   // programmatic embedder, a config source that skips the loader) is contained
   // by construction.
-  return containedIn(args.projectDir, scanned).sort()
+  return splitCommitted(
+    containedIn(args.projectDir, scanned).sort(),
+    args.committed ?? committedFiles(undefined, args.projectDir),
+  )
+}
+
+function splitCommitted(
+  sorted: readonly string[],
+  isCommitted: (abs: string) => boolean,
+): { files: string[]; committed: string[] } {
+  const files: string[] = []
+  const committed: string[] = []
+  for (const f of sorted) (isCommitted(f) ? committed : files).push(f)
+  return { files, committed }
+}
+
+/**
+ * Whether git tracks a file under `dir`. A committed (or `git add`ed) file
+ * an output glob reaches is the user's, not the task's: no clean deletes
+ * it, no artifact holds it, no restore writes it, and it stays an input
+ * (owner, 2026-10-14: "never delete committed file"). Turbo and Nx never
+ * clean an output at all; vx cleans only what git does not track.
+ */
+export function committedFiles(
+  cache: GitFilesCache | undefined,
+  dir: string,
+): (abs: string) => boolean {
+  return (cache ?? new GitFilesCache()).committedIn(dir)
 }
 
 /**
@@ -838,6 +887,7 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  committed?: (abs: string) => boolean
   /**
    * What `resolveOutputs` returned for these same arguments, when the
    * caller walked the tree with no await since: a hit that found its tree
@@ -868,8 +918,10 @@ export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]
   outputs: readonly string[]
+  committed?: (abs: string) => boolean
 }): Promise<void> {
-  const files = args.rels.map((r) => path.resolve(args.projectDir, r))
+  const committed = args.committed ?? committedFiles(undefined, args.projectDir)
+  const files = args.rels.map((r) => path.resolve(args.projectDir, r)).filter((f) => !committed(f))
   await pruneEmptiedDirs(
     args.projectDir,
     await removeAll(files, args.projectDir),
@@ -899,6 +951,7 @@ export async function stampOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  committed?: (abs: string) => boolean
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveOutputs(args))
 }
@@ -907,6 +960,7 @@ export async function stampOutputs(args: {
 export async function stampWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  committed?: (abs: string) => boolean
 }): Promise<Map<string, OutputStamp>> {
   return stampFiles(await resolveWorkspaceOutputs(args))
 }
@@ -937,7 +991,12 @@ function stampFiles(files: readonly string[]): Map<string, OutputStamp> {
  * file back, so no entry reproduces that run and none is saved.
  */
 export async function ownOutputsSince(
-  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
+  args: {
+    projectDir: string
+    outputs: readonly string[]
+    nestedProjectDirs: string[]
+    committed?: (abs: string) => boolean
+  },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveOutputs(args), before)
@@ -945,7 +1004,7 @@ export async function ownOutputsSince(
 
 /** `ownOutputsSince` for root-anchored `cache.outputs.workspaceFiles` (A-43). */
 export async function ownWorkspaceOutputsSince(
-  args: { workspaceRoot: string; outputs: readonly string[] },
+  args: { workspaceRoot: string; outputs: readonly string[]; committed?: (abs: string) => boolean },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined> {
   return changedSince(await resolveWorkspaceOutputs(args), before)
@@ -1156,16 +1215,30 @@ function inScope(dir: string, scope: PruneScope): boolean {
 export async function resolveWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  /** What git tracks (`committedFiles`): never an output. */
+  committed?: (abs: string) => boolean
 }): Promise<string[]> {
+  return (await splitWorkspaceOutputs(args)).files
+}
+
+/** `splitOutputs` for root-anchored `cache.outputs.workspaceFiles`. */
+export async function splitWorkspaceOutputs(args: {
+  workspaceRoot: string
+  outputs: readonly string[]
+  committed?: (abs: string) => boolean
+}): Promise<{ files: string[]; committed: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
-  if (positive.length === 0) return []
+  if (positive.length === 0) return { files: [], committed: [] }
   const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
   const scanned = [...(await scanUnion(asTrees(positive), excludeGlobs, args.workspaceRoot))]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
   // escaping the WORKSPACE was never part of it, and `cleanWorkspaceOutputs`
   // deletes what this returns.
-  return containedIn(args.workspaceRoot, scanned).sort()
+  return splitCommitted(
+    containedIn(args.workspaceRoot, scanned).sort(),
+    args.committed ?? committedFiles(undefined, args.workspaceRoot),
+  )
 }
 
 /**
@@ -1179,6 +1252,7 @@ export async function resolveWorkspaceOutputs(args: {
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  committed?: (abs: string) => boolean
   /** `cleanOutputs`'s `resolved`, from `resolveWorkspaceOutputs`. */
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
@@ -1380,6 +1454,12 @@ interface FilesPlan {
    * `package.json`), so each is matched once per plan.
    */
   verdicts: Map<string, boolean>
+  /**
+   * Whether a path is an input but for the task's own outputs: one git
+   * tracks stays an input (`committedFiles`), so the key sees an edit to a
+   * committed file an output glob reaches.
+   */
+  ownOnly: Map<string, boolean>
 }
 
 /**
@@ -1423,6 +1503,7 @@ function filesPlan(
           isPositive: anyTaskGlob(asTrees(positive)),
           ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
+          ownOnly: new Map<string, boolean>(),
         }
   filesPlans.set(key, plan)
   return plan
@@ -1432,8 +1513,8 @@ function filesPlan(
  * Whether a changed path is one of a cached task's declared file inputs:
  * `projectRel` (the path relative to the project that owns it) against
  * `files`, `workspaceRel` (relative to the workspace root) against
- * `workspaceFiles`; null skips that half, by the globs, `!` exclusions and own-output takebacks
- * the key resolves. `--affected` seeds a task with it (owner, 2026-10-04).
+ * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a path under
+ * the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (owner, 2026-10-04).
  */
 export function declaresInput(
   cache: CacheConfig,
@@ -1441,13 +1522,15 @@ export function declaresInput(
   workspaceRel: string | null,
 ): boolean {
   if (projectRel !== null) {
+    // A changed path under the task's own outputs is a committed file
+    // (`git diff` lists only what git tracks) or a stray `git status`
+    // lists: either way it may be an input, so it counts.
     const plan = filesPlan(cache.inputs.files, cache.outputs.files)
-    if (plan !== null && inPlan(plan, projectRel)) return true
+    if (plan !== null && (inPlan(plan, projectRel) || ownOnly(plan, projectRel))) return true
   }
   const ws = cache.inputs.workspaceFiles
   if (workspaceRel === null || ws === undefined || ws.length === 0) return false
-  const matcher = workspaceMatcher(ws, cache.outputs.workspaceFiles ?? [])
-  return matcher(workspaceRel)
+  return workspaceMatcher(ws)(workspaceRel)
 }
 
 /**
@@ -1471,20 +1554,26 @@ function inPlan(plan: FilesPlan, rel: string): boolean {
   return input
 }
 
+/** `FilesPlan.ownOnly`, memoised: asked only of a path `inPlan` refused. */
+function ownOnly(plan: FilesPlan, rel: string): boolean {
+  let own = plan.ownOnly.get(rel)
+  if (own === undefined) {
+    own = plan.ownOutput(rel) && plan.isPositive(rel) && !plan.isExcluded(rel)
+    plan.ownOnly.set(rel, own)
+  }
+  return own
+}
+
 const workspaceMatchers = new Map<string, (rel: string) => boolean>()
 
-function workspaceMatcher(
-  decl: readonly string[],
-  ownOutputs: readonly string[],
-): (rel: string) => boolean {
-  const key = JSON.stringify([decl, ownOutputs])
+function workspaceMatcher(decl: readonly string[]): (rel: string) => boolean {
+  const key = JSON.stringify(decl)
   let m = workspaceMatchers.get(key)
   if (m !== undefined) return m
   const { positive, negative } = splitNegations(decl)
   const isPositive = anyTaskGlob(asTrees(positive))
   const isExcluded = anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)])
-  const ownOutput = outputMatcher(ownOutputs)
-  m = (rel) => isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
+  m = (rel) => isPositive(rel) && !isExcluded(rel)
   workspaceMatchers.set(key, m)
   return m
 }
@@ -1521,7 +1610,7 @@ async function resolveFiles(
     if (memo !== undefined && memo.snapshot === gitFiles) {
       return {
         files: [...memo.result],
-        listing: listingFor(args.projectDir, gitFiles, plan, nested, ownWsOutput),
+        listing: listingFor(args, gitFiles, plan, nested, ownWsOutput),
       }
     }
   }
@@ -1566,14 +1655,17 @@ async function resolveFiles(
       : undefined
   const candidates: string[] = []
   const verdicts = plan.verdicts
+  const committed = committedFiles(args.gitFilesCache, args.projectDir)
   for (const rel of gitFiles) {
     let input = verdicts.get(rel)
     if (input === undefined) {
       input = isPositive(rel) && !isExcluded(rel) && !ownOutput(rel)
       verdicts.set(rel, input)
     }
-    if (!input || nested(rel) || ownWsOutput(rel)) continue
-    candidates.push(base === undefined ? path.resolve(args.projectDir, rel) : base + rel)
+    if ((!input && !ownOnly(plan, rel)) || nested(rel) || ownWsOutput(rel)) continue
+    const abs = base === undefined ? path.resolve(args.projectDir, rel) : base + rel
+    if (!input && !committed(abs)) continue
+    candidates.push(abs)
   }
   const unmatchedLiterals = unanswered(plan.literals, gitFiles)
   if (unmatchedLiterals.size > 0) {
@@ -1601,21 +1693,27 @@ async function resolveFiles(
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
   return {
     files: [...resolved],
-    listing: listingFor(args.projectDir, gitFiles, plan, nested, ownWsOutput),
+    listing: listingFor(args, gitFiles, plan, nested, ownWsOutput),
   }
 }
 
 function listingFor(
-  root: string,
+  args: { projectDir: string; gitFilesCache?: GitFilesCache | undefined },
   listed: readonly string[],
   plan: FilesPlan,
   nested: (rel: string) => boolean,
   ownWsOutput: (rel: string) => boolean,
 ): InputListing {
+  const root = args.projectDir
+  let committed: ((abs: string) => boolean) | undefined
   return {
     root,
     listed,
-    isInput: (rel) => inPlan(plan, rel) && !ownWsOutput(rel),
+    isInput: (rel) =>
+      (inPlan(plan, rel) ||
+        (ownOnly(plan, rel) &&
+          (committed ??= committedFiles(args.gitFilesCache, root))(path.join(root, rel)))) &&
+      !ownWsOutput(rel),
     nested,
     prefixes: plan.prefixes,
     literals: plan.literals,

@@ -12,8 +12,9 @@ import path from 'node:path'
 import {
   type CacheLayer,
   type GitFilesCache,
-  resolveOutputs,
-  resolveWorkspaceOutputs,
+  committedFiles,
+  splitOutputs,
+  splitWorkspaceOutputs,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
@@ -48,8 +49,11 @@ export interface OutputDirSnapshot {
  */
 export function entryHolds(
   node: TaskNode,
+  committed: (abs: string) => boolean,
 ): (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean {
-  return (files, rows) => {
+  return (walked, rows) => {
+    // A committed file beside the outputs is no output (`committedFiles`).
+    const files = walked.filter((f) => !committed(path.join(node.projectDir, f)))
     const expected = new Set(
       rows.map((r) => r.path).filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX)),
     )
@@ -115,19 +119,9 @@ export interface SaveFacts {
 export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveFacts> }> {
   const { node, cache, log } = a
   const endResolve = span('miss: resolve outputs')
-  const outputFiles =
-    a.ownOutputFiles ??
-    (await resolveOutputs({
-      projectDir: node.projectDir,
-      outputs: a.outputs,
-      nestedProjectDirs: a.nestedProjectDirs,
-    }))
-  const wsOutputFiles =
-    a.ownWsOutputFiles ??
-    (await resolveWorkspaceOutputs({
-      workspaceRoot: a.workspaceRoot,
-      outputs: a.wsOutputs,
-    }))
+  const reached = await reachedOutputs(a)
+  const outputFiles = a.ownOutputFiles ?? reached.files
+  const wsOutputFiles = a.ownWsOutputFiles ?? reached.wsFiles
   endResolve()
   // The mirror of the input warning: declared outputs that resolve to
   // nothing save an empty artifact, and the next hit "restores" it —
@@ -217,11 +211,11 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
         hash: a.hash,
         projectDir: node.projectDir,
         prefixes: savedDirPrefixes,
-        holds: entryHolds(node),
+        holds: entryHolds(node, committedFiles(a.gitFilesCache, node.projectDir)),
       })
     }
   }
-  markWritten(a, outputFiles, wsOutputFiles)
+  markWritten(a, [...outputFiles, ...reached.committed], [...wsOutputFiles, ...reached.wsCommitted])
   // Off the slot when the run keeps a lane (the save lane bounds and
   // drains it); in the slot otherwise — an embedder without a lane gets
   // the entry before the outcome.
@@ -244,17 +238,44 @@ export type UnsavedArgs = Pick<
  */
 export async function markUnsaved(a: UnsavedArgs): Promise<void> {
   const endResolve = span('miss: resolve outputs')
-  const outputFiles = await resolveOutputs({
+  const reached = await reachedOutputs(a)
+  endResolve()
+  markWritten(
+    a,
+    [...reached.files, ...reached.committed],
+    [...reached.wsFiles, ...reached.wsCommitted],
+  )
+}
+
+/**
+ * The outputs a run left, and what to mark changed in the git snapshot:
+ * those plus the committed files the globs reach, which are no output
+ * (`committedFiles`) but which the task may have rewritten, so their index
+ * OIDs no longer vouch for them.
+ */
+async function reachedOutputs(a: UnsavedArgs): Promise<{
+  files: string[]
+  wsFiles: string[]
+  committed: string[]
+  wsCommitted: string[]
+}> {
+  const proj = await splitOutputs({
     projectDir: a.node.projectDir,
     outputs: a.outputs,
     nestedProjectDirs: a.nestedProjectDirs,
+    committed: committedFiles(a.gitFilesCache, a.node.projectDir),
   })
-  const wsOutputFiles = await resolveWorkspaceOutputs({
+  const ws = await splitWorkspaceOutputs({
     workspaceRoot: a.workspaceRoot,
     outputs: a.wsOutputs,
+    committed: committedFiles(a.gitFilesCache, a.workspaceRoot),
   })
-  endResolve()
-  markWritten(a, outputFiles, wsOutputFiles)
+  return {
+    files: proj.files,
+    wsFiles: ws.files,
+    committed: proj.committed,
+    wsCommitted: ws.committed,
+  }
 }
 
 /**

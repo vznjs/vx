@@ -25,6 +25,7 @@ export interface OutputDirSnapshot {
 }
 export function entryHolds(
   node: TaskNode,
+  committed: (abs: string) => boolean, // a tracked file is never in an entry
 ): (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean
 
 export interface SaveMissArgs {

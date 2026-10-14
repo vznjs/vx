@@ -222,6 +222,37 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    */
   private undecodable = new Set<string>()
   /**
+   * What git tracks, by absolute path, within `trackedScopes`: a file there
+   * no clean deletes and no artifact holds (`committedIn`). Filled by the
+   * enumeration, and per directory on demand for one it did not cover.
+   */
+  private tracked = new Set<string>()
+  private trackedScopes: string[] = []
+
+  noteTracked(scopes: readonly string[], absPaths: readonly string[]): void {
+    for (const p of absPaths) this.tracked.add(p)
+    this.trackedScopes.push(...scopes)
+  }
+
+  /**
+   * Whether git tracks a file under `dir`: committed (or `git add`ed)
+   * files are the user's, never an output (owner, 2026-10-14: "never
+   * delete committed file"). A directory no enumeration covered (a
+   * nested repository, a cache no enumeration filled) is listed once.
+   */
+  committedIn(dir: string): (abs: string) => boolean {
+    let listed = false
+    return (abs) => {
+      if (!listed) {
+        listed = true
+        const covered = this.trackedScopes.some((s) => dir === s || dir.startsWith(s + path.sep))
+        if (!covered) this.noteTracked([dir], listTracked(dir))
+      }
+      return this.tracked.has(abs)
+    }
+  }
+
+  /**
    * When the enumeration that vouched for `oids` started (ms since the
    * epoch): an index OID says what a file held when `git status` looked,
    * so a file changed since may hold something else (item 743). Unset on
@@ -333,30 +364,6 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     if (partitionOids) {
       for (const rel of relPaths) partitionOids.delete(path.resolve(partitionDir, rel))
     }
-  }
-
-  /** Tracked files a task's clean removed this run, and whose clean (A-48). */
-  private trackedCleans: Array<{ path: string; by: string }> = []
-
-  /**
-   * Note which of the files a task's clean just removed git tracks. Called
-   * before `markOutputsChanged`, which drops their OIDs. A committed output
-   * another task reads with no edge to its producer is gone for as long as
-   * the producer runs (vueuse's `metadata/index.json`, N's dogfood), and the
-   * reader failed naming only the missing file (A-48).
-   */
-  noteClean(by: string, dir: string, rels: readonly string[]): void {
-    const oids = this.oids.get(dir)
-    if (oids === undefined) return
-    for (const rel of rels) {
-      const abs = path.resolve(dir, rel)
-      if (oids.has(abs)) this.trackedCleans.push({ path: abs, by })
-    }
-  }
-
-  /** The tracked files other tasks' cleans removed that are still missing. */
-  trackedCleansMissing(except: string): Array<{ path: string; by: string }> {
-    return this.trackedCleans.filter((c) => c.by !== except && !existsSync(c.path))
   }
 
   /** Trusted index OIDs for a project (abs path → oid), if any survive. */
@@ -498,6 +505,32 @@ export function runGitLsFiles(cwd: string): GitLsResult {
   parsed.files = nested.files
   parsed.undecodable.push(...nested.undecodable)
   return parsed
+}
+
+/**
+ * The files git tracks under `dir`, absolute: one `ls-files` of the index,
+ * no worktree walk. Outside a work tree (an embedder's temp dir) nothing
+ * is tracked.
+ */
+function listTracked(dir: string): string[] {
+  let proc
+  try {
+    proc = Bun.spawnSync({
+      cmd: [executablePath('git'), 'ls-files', '-z', '--', '.'],
+      env: gitEnv(),
+      cwd: dir,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+  } catch {
+    return []
+  }
+  if (proc.exitCode !== 0) return []
+  const { text } = decodeGitZ(proc.stdout)
+  return text
+    .split('\0')
+    .filter((rel) => rel.length > 0)
+    .map((rel) => path.join(dir, rel))
 }
 
 /**
@@ -1184,6 +1217,10 @@ export async function populateGitFilesCache(
 export interface GitEnumeration {
   /** Every enumerated path, workspace-relative, tracked and untracked. */
   all: string[]
+  /** The paths the index lists, workspace-relative: what git tracks. */
+  tracked: readonly string[]
+  /** The directories `tracked` covers, workspace-relative (`.` for the whole tree). */
+  scopes: readonly string[]
   /** Workspace-relative path → index OID, for files whose worktree state matched the index. */
   trusted: Map<string, string>
   /** Whether the worktree had uncommitted changes; null when `git status` failed. */
@@ -1474,6 +1511,8 @@ export async function startGitEnumeration(
   }
   return {
     all,
+    tracked,
+    scopes: pathspecs,
     trusted,
     dirty: worktreeDirty,
     vars: vars !== null && vars.exitCode === 0 ? vars.stdout : null,
@@ -1548,6 +1587,10 @@ export async function applyGitEnumeration(
   cache.setGitVars(enumeration.vars)
   cache.enumeratedAtMs = enumeration.startedAtMs
   cache.markUndecodable(enumeration.undecodable.map((rel) => path.join(workspaceRoot, rel)))
+  cache.noteTracked(
+    enumeration.scopes.map((rel) => path.join(workspaceRoot, rel)),
+    enumeration.tracked.map((rel) => path.join(workspaceRoot, rel)),
+  )
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
   // the O(P·F) per-project startsWith scan (54 ms at 1090 projects ×

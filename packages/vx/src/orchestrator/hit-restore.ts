@@ -14,6 +14,7 @@ import {
   cleanOutputPaths,
   cleanOutputs,
   cleanWorkspaceOutputs,
+  committedFiles,
   resolveOutputs,
   resolveWorkspaceOutputs,
   WORKSPACE_OUTPUT_PREFIX,
@@ -67,8 +68,13 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     projectDir: node.projectDir,
     outputs,
     nestedProjectDirs: args.nestedProjectDirs,
+    committed: committedFiles(args.gitFilesCache, node.projectDir),
   }
-  const wsCleanArgs = { workspaceRoot: args.workspaceRoot, outputs: wsOutputs }
+  const wsCleanArgs = {
+    workspaceRoot: args.workspaceRoot,
+    outputs: wsOutputs,
+    committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
+  }
   // The two sides of an overlapping pair (item 588). An ADDITIVE task owns
   // only its recorded rows: its glob also selects the upstream's files it
   // adds beside, so "no strays" is not a claim it can make, and its clean
@@ -151,10 +157,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
           projectDir: node.projectDir,
           outputs,
           nestedProjectDirs: args.nestedProjectDirs,
+          committed: cleanArgs.committed,
         })
         const actualWsAbs = await resolveWorkspaceOutputs({
           workspaceRoot: args.workspaceRoot,
           outputs: wsOutputs,
+          committed: wsCleanArgs.committed,
         })
         endGlob()
         const setsMatch = (
@@ -215,10 +223,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         projectDir: node.projectDir,
         outputs,
         nestedProjectDirs: args.nestedProjectDirs,
+        committed: cleanArgs.committed,
       })
       const actualWs = await resolveWorkspaceOutputs({
         workspaceRoot: args.workspaceRoot,
         outputs: wsOutputs,
+        committed: wsCleanArgs.committed,
       })
       endGlob()
       skipRestore = actual.length === 0 && actualWs.length === 0
@@ -230,7 +240,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     let cleanedWsRels: string[] = []
     if (additive) {
       cleanedRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))
-      await cleanOutputPaths({ projectDir: node.projectDir, rels: cleanedRels, outputs })
+      await cleanOutputPaths({
+        projectDir: node.projectDir,
+        rels: cleanedRels,
+        outputs,
+        committed: cleanArgs.committed,
+      })
       cleanedWsRels = hit.outputFiles
         .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
         .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length))
@@ -238,6 +253,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         projectDir: args.workspaceRoot,
         rels: cleanedWsRels,
         outputs: wsOutputs,
+        committed: wsCleanArgs.committed,
       })
     } else {
       if (outputs.length > 0) {
@@ -264,7 +280,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         hash,
         projectDir: node.projectDir,
         prefixes: dirPrefixes,
-        holds: entryHolds(node),
+        holds: entryHolds(node, cleanArgs.committed),
       })
     }
     // Restored outputs changed the project's tree — but on this

@@ -815,11 +815,15 @@ whatever the glob: `.git` and `.vx` (`OUTPUT_NEVER`). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
 legitimate output); until 2026-09-27 (A-13) `**/*.js` cleaned every
 installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
-A task that fails while a git-tracked file another task's clean removed
-is still missing gets one line naming the file and that task: vx cleans
-before a run where Turbo does not, so a reader with no edge to the
-producer of a committed output fails naming only the file (A-48,
-vueuse's `metadata/index.json`).
+A file git tracks is never an output (owner, 2026-10-14): no clean
+deletes it, no artifact holds it, no restore writes it, and it stays in
+the task's key even under its own output glob. The task may rewrite it,
+and an identical rewrite is no input change; an edit moves the key. Until
+then the clean deleted a committed file under an output, and a reader
+with no edge to its producer failed naming only the file (A-48,
+vueuse's `metadata/index.json`). An artifact saved before still holding
+one may write it on a restore, with the bytes its key was saved under.
+Untracked files under the glob are cleaned as before.
 Workspace outputs take the same rules, and a path an output `!` entry
 takes back (A-44) is off the wipe, the artifact and the restore alike.
 Skipped when:

@@ -14,6 +14,7 @@
 
 import {
   cleanOutputs,
+  committedFiles,
   resolveOutputs,
   type CacheLayer,
   type GitFilesCache,
@@ -116,7 +117,12 @@ export class DeferredOutputs {
     // workspace-anchored can reach this path.
     const outputs = producer.config.cache?.outputs.files ?? []
     const nestedProjectDirs = this.args.nestedDirsByProject.get(producer.projectName) ?? []
-    const cleanArgs = { projectDir: producer.projectDir, outputs, nestedProjectDirs }
+    const cleanArgs = {
+      projectDir: producer.projectDir,
+      outputs,
+      nestedProjectDirs,
+      committed: committedFiles(this.args.gitFilesCache, producer.projectDir),
+    }
 
     // Mirror `restoreHit`'s sequencing so the two paths cannot drift: wipe
     // the declared outputs, write, then tell the git snapshot what moved.
@@ -138,11 +144,7 @@ export class DeferredOutputs {
         `could not fetch deferred outputs of ${taskId}: ${msg} — re-run it with --force, or use --download=all`,
       )
     }
-    const outputFiles = await resolveOutputs({
-      projectDir: producer.projectDir,
-      outputs,
-      nestedProjectDirs,
-    })
+    const outputFiles = await resolveOutputs(cleanArgs)
     this.args.gitFilesCache?.markOutputsChanged(
       producer.projectDir,
       outputFiles.map((f) => f.slice(producer.projectDir.length + 1)),

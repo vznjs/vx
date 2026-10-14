@@ -2182,11 +2182,11 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
     expect(await workspaceGlobOwners(root, metas, ['docs/x.md'])).toEqual([])
   })
 
-  it("reads a glob as the key does: the task's own outputs and vx's own files are not inputs", async () => {
-    // A drifted copy of the key's matcher answered here and lacked both
-    // takebacks, so a change to a task's own committed output, or to a
-    // `.vx/` file under a declared tree, selected a project whose key the
-    // change leaves unchanged (X-8).
+  it("reads a glob as the key does: vx's own files are not inputs, a changed own output is", async () => {
+    // A drifted copy of the key's matcher answered here, so a change to a
+    // `.vx/` file under a declared tree selected a project whose key the
+    // change leaves unchanged (X-8). A diffed path is committed, and a
+    // committed file under the task's own outputs stays in its key.
     const config = {
       tasks: {
         gen: {
@@ -2204,7 +2204,7 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
       await owners('shared/src.txt'),
       await owners('shared/gen/out.txt'),
       await owners('shared/.vx/x'),
-    ]).toEqual([['p'], [], []])
+    ]).toEqual([['p'], ['p'], []])
   })
 })
 

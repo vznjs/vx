@@ -46,8 +46,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   setWorktreeDirty(dirty: boolean | null): void // what `git status` said, for the run context
   get worktreeDirty(): boolean | null
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void // a save or restore wrote these
-  noteClean(by: string, dir: string, rels: readonly string[]): void // which of a clean's paths git tracks (A-48)
-  trackedCleansMissing(except: string): Array<{ path: string; by: string }> // another task's clean removed it; still gone
+  noteTracked(scopes: readonly string[], absPaths: readonly string[]): void // what the index lists under these dirs
+  committedIn(dir: string): (abs: string) => boolean // git tracks it: never an output (lists an uncovered dir once)
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
   clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)
@@ -70,6 +70,8 @@ export interface GitEnumeration {
   untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
   startedAtMs: number // Date.now() before the spawns
+  tracked: readonly string[] // every index path, root-relative: never an output
+  scopes: readonly string[] // the pathspecs listed, root-relative
   blobCheck: IndexBlobCheck // the blob-size check's input (A-60)
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)
 }
