@@ -27,11 +27,13 @@ that binary.
    nothing is cached yet: add the one each `build`'s TODO shows. A
    repo with `turbo.json` or `nx.json` starts at
    [Coming from Turbo, Nx or Vite Task](#coming-from-turbo-nx-or-vite-task) instead.
-3. Or write one by hand, beside a package's `package.json`, and a
-   `.vx/workspace.ts` at the root (`export default {}` will do): the
-   nearest one up from where you run marks the workspace.
+
+`vx init` is how every repo starts. The `.vx/workspace.ts` it writes
+marks the workspace root.
 
 ## Config
+
+What `vx init` wrote for a package, with the cache block its TODO asks for:
 
 ```ts
 // packages/app/vx.config.ts
@@ -111,13 +113,14 @@ config again and fails on any difference, naming the project.
 
 Start with one package and leave the rest of your tooling as it is.
 
-1. Add a `.vx/workspace.ts` at the repo root (`export default {}` will do)
-   and give one package a `vx.config.ts` with the command its `build` script runs.
-2. Run `vx run build` twice in it. The second run is a cache hit. If it
+1. Run `npx @vzn/vx init` at the repo root. It writes a `vx.config.ts`
+   per package and changes none of your scripts.
+2. Add the cache block to one package's `build`, as its TODO shows, and
+   run `vx lock`.
+3. Run `vx run build` twice in it. The second run is a cache hit. If it
    ran again, `vx why <package>#build` names what changed in its key.
-3. Edit a file the build reads. `vx run build --dry` now predicts a miss,
+4. Edit a file the build reads. `vx run build --dry` now predicts a miss,
    and after the run `vx why` names that file.
-4. Add configs to more packages. `^build` orders them by your `package.json` dependencies.
 
 ## Coming from Turbo, Nx or Vite Task
 
@@ -135,7 +138,7 @@ once the configs exist.
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
 - **A task ran again with nothing changed.** `vx why <package>#<task>` names what moved in its key: a file, an env var, or an upstream task (often one that rewrites a file this task reads).
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.
-- **`no .vx/workspace.ts in …`.** The file marks the workspace root. Run `vx init`, or add `.vx/workspace.ts` at the root by hand.
+- **`no .vx/workspace.ts in …`.** The file marks the workspace root. Run `vx init` at the repo root.
 - **`vx requires git`.** Run `git init` at the workspace root.
 - **A package has no `vx.config.ts`.** It gets a default `build`: a group behind `^build`, keyed on all its files, so editing it re-runs the packages that depend on it.
 - **`tsc -b` ran, but `dist/` came back empty.** With `rootDir: "src"`, tsc writes `tsconfig.tsbuildinfo` beside `tsconfig.json`, outside `dist/`. vx empties `dist/` before a miss, tsc sees the buildinfo, thinks it is current and writes nothing. Add `tsconfig.tsbuildinfo` to `outputs.files`, or point `tsBuildInfoFile` into `dist/`.
