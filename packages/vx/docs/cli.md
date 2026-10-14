@@ -1895,7 +1895,8 @@ worktree is its own; a submodule looks on into its superproject), and
 outside git it looks up to `/`. Nothing else marks the root: not a
 `package.json`, `pnpm-workspace.yaml` or a lockfile (owner, 2026-10-13).
 Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
-`vx init` writes it at the package manager's root. Projects inside the
+`vx init` writes it at the package manager's root, and does so too in
+a nested workspace the outer one does not list. Projects inside the
 root are found from its package globs as before.
 
 ## Which vx runs
