@@ -48,7 +48,7 @@ one committed change per scenario and compared vx's projects with
 | cal.com | 54343aa | Turborepo 2.7.1 | `build`, embeds and platform | parity, one cosmetic diff |
 | TanStack query | 817bd02 | Nx 23.2.1 | `build`, 25 | parity |
 | vercel/ai | e8c8e32 | Turborepo 2.9.14 | `build`, 82 | parity |
-| documenso | d4e6eeaf | Turborepo 2.10.5 | `--affected`, 11 changes | parity |
+| documenso | d4e6eeaf | Turborepo 2.10.5 | `--affected`, 9 commits and working-tree edits | parity |
 | typescript-eslint | 57e7cccce | Nx 23 | `--affected` | after one fix, vx never selects less |
 
 An eleventh, n8n, never got that far: its `pnpm install` could not
@@ -56,7 +56,8 @@ fetch a tarball through our runner's network policy.
 
 ## Where they matched
 
-On react-email, trpc, TanStack query and vercel/ai, every arm agreed.
+On react-email, TanStack query and vercel/ai, every arm agreed. trpc
+agreed on cold, restore and edit; it had no clean-clone arm.
 vercel/ai is the largest: 82 packages, 783 tasks written with no
 `TODO` left, identical output trees (0 name and 0 byte differences),
 82 of 82 hits on restore and on a clean clone, and the same re-run set
@@ -93,7 +94,7 @@ Six problems were ours, and each fix is merged.
   under their own outputs, so the mapping left them uncached and a
   restore ran them again: 75 hits to Turborepo's 81. vx now never
   deletes a committed file under an output and keeps those tasks cached
-  ([#3514](https://github.com/vznjs/vx/pull/3514)); restore is 81 of 81.
+  ([#3514](https://github.com/vznjs/vx/pull/3514)); restore is now 83 of 83 under both.
   On create-t3-turbo, `build` and `typecheck` share one
   `tsbuildinfo` file, which left three typechecks uncached; that is
   fixed too ([#3478](https://github.com/vznjs/vx/pull/3478)).
@@ -142,10 +143,6 @@ package whose `npx rimraf` hit a certificate error through our proxy,
 and vueuse, whose build reads a file only the repo's own script
 generates first. cal.com's Prisma client also came out with the same
 JSON keys in another order under vx; that is noted, not fixed.
-
-## Timings
-
-<!-- Growth's timing table goes here, with its method. -->
 
 ## Try it on yours
 
