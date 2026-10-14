@@ -204,7 +204,7 @@ describe('formatRunSummary', () => {
     expect(lines.find((l) => l.startsWith('  result'))).toBeUndefined()
   })
 
-  it('ends with the run in one line: tasks, cached, time; all cached; failures first', () => {
+  it('ends with the run in one line: tasks, cached, time; all cached only when every task hit; failures first', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
     const result = (outcomes: TaskOutcome[], ms: number): string | undefined =>
       formatRunSummary(outcomes, ms, { enabled: false }, ctx).at(-1)
@@ -226,7 +226,7 @@ describe('formatRunSummary', () => {
       result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'success'), miss('c#x')], 50),
     ).toBe('  result    3 tasks · 1 cached (50%) · 1 no-cache · 50ms')
     expect(result([outcome('a#x', 'cache-hit'), outcome('b#dev', 'failed', 1)], 50)).toBe(
-      '  result    2 tasks · 1 failed · all cached · 1 no-cache · 50ms',
+      '  result    2 tasks · 1 failed · 1 cached (100%) · 1 no-cache · 50ms',
     )
     // A hit says what it saved: its STORED exec time, not the restore.
     const hit = (id: string, storedDurationMs: number): TaskOutcome => ({

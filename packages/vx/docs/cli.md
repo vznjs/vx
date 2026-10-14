@@ -3302,7 +3302,7 @@ only — a hit's restore time never enters it — which is why one executed
 task reads as its own max, avg and min. The `result` row is the run in
 one line, last: tasks, cached (every hit, local or remote, over every
 task with a cache that ran or hit; a skipped task asked no cache) and the wall time — `3 tasks · all cached · 40ms`
-when nothing that could hit ran, with `N failed` after the count on a
+when every task hit, with `N failed` after the count on a
 red run. A task with no `cache` block, or any task of a run whose
 `--cache` reads and writes nothing (`--no-cache`), could never hit, so it
 is counted apart (`1 task · 1 no-cache · 37ms` for `vx run dev`), as

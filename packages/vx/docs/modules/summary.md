@@ -103,8 +103,8 @@ A blank line separates the meters from the `info` row (worker pool +
 cache mode, and `admit held N tasks · Ns` when a policy held any — a
 sum, said as one), the `time` row and the `result` row (`N tasks · N
 cached (P%) · time` over the tasks that consulted a cache (a skipped
-task never did, nor one still to run), `all cached` when each of them
-hit, `N no-cache` for the rest (`ranNoCache`: no `cache` block, or a
+task never did, nor one still to run), `all cached` when every task
+of the run hit, `N no-cache` for the rest (`ranNoCache`: no `cache` block, or a
 policy that reads and writes nothing), then `<time> saved` (green:
 the hits' STORED exec times summed, what the cache skipped, never the
 restore this run paid; left out under 1 ms), `N failed` after the

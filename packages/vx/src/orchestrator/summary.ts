@@ -316,7 +316,8 @@ function formatEta(ms: number): string {
 }
 
 /**
- * `42 tasks · 38 cached (90%) · 3.2s`, `2 tasks · all cached · 23ms`,
+ * `42 tasks · 38 cached (90%) · 3.2s`, `2 tasks · all cached · 23ms`
+ * (every task hit),
  * with the failures first when there are any. Cached is every hit (up to
  * date, restored locally or remotely) over every task that consulted a
  * cache: a skipped or not-yet-run task never did.
@@ -337,7 +338,9 @@ function resultLine(
   const cacheable = stats.total - noCache - stats.skipped - (stats.left ?? 0)
   if (cacheable > 0)
     parts.push(
-      hits === cacheable
+      // "all cached" beside a failure or a no-cache count read as a run
+      // that did nothing; it is said only when every task hit.
+      hits === stats.total
         ? paint(SUCCESS, 'all cached', colors, { bold: true })
         : `${hits} cached (${Math.floor((hits / cacheable) * 100)}%)`,
     )
