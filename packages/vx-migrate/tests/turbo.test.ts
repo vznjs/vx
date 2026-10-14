@@ -623,7 +623,8 @@ describe('turbo.json is a claimed root file (item 961)', () => {
 describe('a committed file under an output', () => {
   // typescript-eslint's website build caches `data`, which holds the
   // committed `sponsors.json`: Turbo and Nx never clean an output, vx does,
-  // and the first run deleted it (2026-09-29). It is taken back with `!`.
+  // and the first run deleted it (2026-09-29). Core never cleans a
+  // committed file (owner, 2026-10-14), so the output stays as declared.
   it(
     'survives the clean, and the task keeps its cache',
     async () => {
@@ -639,11 +640,8 @@ describe('a committed file under an output', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
       const node = plan.tasks.find((t) => t.node.id === 'app#build')!.node
-      expect(node.config.cache!.outputs.files).toEqual(['data/**', '!data/sponsors.json'])
-      expect(log.lines.join('\n')).toContain(
-        '[@vzn/vx-migrate] app#build: outputs cover 1 committed file(s) (data/sponsors.json) — ' +
-          'vx cleans outputs before a run, so they are taken back with `!` and kept',
-      )
+      expect(node.config.cache!.outputs.files).toEqual(['data/**'])
+      expect(log.lines.join('\n')).not.toContain('committed')
       const opts = { cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false }
       const status = (r: Awaited<ReturnType<typeof run>>) =>
         r.outcomes.find((o) => o.node.id === 'app#build')!.status
@@ -718,8 +716,8 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
       expect(cacheOf('app#build')?.outputs.files).toEqual(['**/dist/**'])
-      // CONTROL: lib commits a file the glob reaches; it is taken back and kept.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist/**', '!src/dist/keep.js'])
+      // CONTROL: lib commits a file the glob reaches; the output stays as declared.
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['**/dist/**'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const nested = path.join(root, 'packages', 'app', 'rsc', 'dist', 'r.js')
       expect((await build()).ok).toBe(true)
@@ -748,8 +746,8 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['test'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
       expect(cacheOf('app#test')?.outputs.files).toEqual(['coverage/**', '*.xml'])
-      // CONTROL: lib commits a file the glob reaches; it is taken back and kept.
-      expect(cacheOf('lib#test')?.outputs.files).toEqual(['coverage/**', '*.xml', '!pom.xml'])
+      // CONTROL: lib commits a file the glob reaches; the output stays as declared.
+      expect(cacheOf('lib#test')?.outputs.files).toEqual(['coverage/**', '*.xml'])
       const test = () => run({ cwd: root, tasks: ['test'], log: silent(), handleSignals: false })
       const report = path.join(root, 'packages', 'app', 'junit.xml')
       expect((await test()).ok).toBe(true)
@@ -780,8 +778,8 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const cacheOf = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache
       expect(cacheOf('app#build')?.outputs.files).toEqual(['dist-*/**'])
-      // CONTROL: lib commits a file the glob reaches; it is taken back and kept.
-      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*/**', '!dist-types/keep.d.ts'])
+      // CONTROL: lib commits a file the glob reaches; the output stays as declared.
+      expect(cacheOf('lib#build')?.outputs.files).toEqual(['dist-*/**'])
       const build = () => run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
       const out = path.join(root, 'packages', 'app', 'dist-esm', 'a.js')
       expect((await build()).ok).toBe(true)

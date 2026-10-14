@@ -33,9 +33,8 @@ export async function migrateNx(
     manifestField: (key) => ({ raw: `pkg.${key}` }),
     migration: true,
   })
-  // nx() takes each committed file under an output back every run; a
-  // written config must carry the same `!` entries, or its first run's
-  // clean deletes them.
+  // A reader whose `!` hides a committed file under another task's output
+  // runs uncached, as under nx().
   if (tracked !== null)
     for (const [id, todo] of spareTrackedOutputs(root, mapped.projects, tracked)) {
       const at = id.lastIndexOf('#')

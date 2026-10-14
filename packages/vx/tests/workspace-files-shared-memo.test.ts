@@ -25,11 +25,13 @@ beforeEach(async () => {
   for (const p of ['a', 'b']) {
     await mkdir(path.join(root, 'packages', p, 'gen'), { recursive: true })
     await writeFile(path.join(root, 'packages', p, 'package.json'), `{"name":"${p}"}\n`)
-    await writeFile(path.join(root, 'packages', p, 'gen', 'out.txt'), `${p}\n`)
   }
   await mkdir(path.join(root, 'shared'))
-  await writeFile(path.join(root, 'shared', 'gen.txt'), 'g\n')
   gitInitCommit(root)
+  // Untracked: a committed file under an output stays an input (2026-10-14).
+  for (const p of ['a', 'b'])
+    await writeFile(path.join(root, 'packages', p, 'gen', 'out.txt'), `${p}\n`)
+  await writeFile(path.join(root, 'shared', 'gen.txt'), 'g\n')
   git = new GitFilesCache()
   const dirs = ['a', 'b'].map((p) => path.join(root, 'packages', p))
   await applyGitEnumeration(await startGitEnumeration(root, ['.']), root, dirs, git)

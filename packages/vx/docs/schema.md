@@ -1167,12 +1167,12 @@ Empty `[]` is valid for tasks that produce no files (e.g. `lint`,
 run is a no-op too.
 
 A **`!` entry takes a path back** from what the positive globs select
-(A-44; a tracked fixture and a scratch dir under `dist` stay out of
-the clean this way):
+(A-44; a scratch dir under `dist` stays out of the clean this way; a
+tracked file needs no `!`, below):
 
 ```ts
 outputs: {
-  files: ['dist/**', '!dist/fixture.html', '!**/*.tmp']
+  files: ['dist/**', '!**/*.tmp']
 }
 ```
 
@@ -1193,6 +1193,8 @@ positive globs, so a task with a `!` entry keeps it (A-46).
 - Before restore on a cache hit: same wipe, then files are copied
   from the cache entry into the project dir. The post-restore tree
   is the cached snapshot, byte-for-byte.
+- A file git tracks is never wiped (2026-10-14). It is still saved and
+  restored, and stays in the task's key, so an edit to it moves the key.
 
 Skipped when `cache.outputs.files` is empty (nothing declared as
 output) and when no cache-write axis is enabled (e.g. `--no-cache`,

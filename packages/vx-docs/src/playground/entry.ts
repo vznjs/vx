@@ -223,6 +223,8 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
   await applyGitEnumeration(
     {
       all: [...trusted.keys()],
+      tracked: [...trusted.keys()],
+      scopes: ['.'],
       trusted,
       dirty: false,
       vars: null,

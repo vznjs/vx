@@ -36,6 +36,7 @@ export {
   addedInput,
   type InputListing,
   cleanOutputs,
+  committedFiles,
   cleanWorkspaceOutputs,
   declaresInput,
   workspaceFilesReachInto,

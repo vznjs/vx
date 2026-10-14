@@ -350,13 +350,112 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'a committed file under an output survives the clean before a run',
+    async () => {
+      // gen/b.ts is committed under codegen's `gen/**`: never an output
+      // (owner, 2026-10-14: "never delete committed file"), so the clean
+      // before codegen's run leaves it, and the consumer still reads it
+      // after codegen stops writing it. Until then the clean deleted it.
+      //
+      // `cache.inputs.tasks: []` decouples the consumer from the producer's
+      // hash — a documented pattern (docs/schema.md).
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             codegen: {
+               exec: { command: 'sh emit.sh' },
+               cache: { inputs: { files: ['emit.sh'] }, outputs: { files: ['gen/**'] } },
+             },
+             consume: {
+               dependsOn: ['codegen'],
+               exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               cache: {
+                 inputs: { files: ['gen/*.ts'], tasks: [] },
+                 outputs: { files: ['out/**'] },
+               },
+             },
+           },
+         }`,
+      )
+      await write(
+        path.join(root, 'emit.sh'),
+        'mkdir -p gen\nprintf a > gen/a.js\nprintf content-of-b > gen/b.ts\n',
+      )
+      await write(path.join(root, 'gen/a.js'), 'a')
+      await write(path.join(root, 'gen/b.ts'), 'content-of-b')
+      await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await waitForProducers(root)
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
+
+      // The producer stops emitting b.ts; the committed copy stays.
+      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
+
+      vx(root, 'run', 'consume')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a submodule under an output survives the clean before a run and before a restore',
+    async () => {
+      // git lists a submodule as one gitlink path, never its files, so a
+      // committed-file check by exact path cleaned gen/sub/x.txt.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             codegen: {
+               exec: { command: 'mkdir -p gen && printf a > gen/a.js' },
+               cache: { inputs: { files: [] }, outputs: { files: ['gen/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'gen/sub/x.txt'), 'pinned')
+      await write(path.join(root, '.gitignore'), '.vx/\n')
+      const sub = path.join(root, 'gen/sub')
+      for (const dir of [sub, root]) {
+        git(dir, 'init', '-q')
+        git(dir, 'config', 'user.email', 'test@vx.local')
+        git(dir, 'config', 'user.name', 'vx test')
+      }
+      git(sub, 'add', '-A')
+      git(sub, 'commit', '-q', '-m', 'sub')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await waitForProducers(root)
+      vx(root, 'run', 'codegen')
+      expect(await readFile(path.join(sub, 'x.txt'), 'utf8')).toBe('pinned')
+      await rm(path.join(root, 'gen/a.js'))
+      vx(root, 'run', 'codegen')
+      expect(await readFile(path.join(root, 'gen/a.js'), 'utf8')).toBe('a')
+      expect(await readFile(path.join(sub, 'x.txt'), 'utf8')).toBe('pinned')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a wiped output stops counting as a consumer input on the cache-miss path',
     async () => {
-      // The producer's `cleanOutputs` wipes gen/ before every attempt. Those
-      // paths are tracked and clean at run start, so they carry index OIDs —
-      // and resolveFiles skips its existence probe for OID-carrying paths.
-      // Unless the wipe is recorded, a file that is GONE FROM DISK stays in
-      // the consumer's input set and its key never moves.
+      // The producer removes the committed gen/b.ts (no clean deletes it,
+      // 2026-10-14). It is tracked and clean at run start, so it carries an
+      // index OID, and resolveFiles skips its existence probe for
+      // OID-carrying paths. Unless the removal is seen, a file GONE FROM
+      // DISK stays in the consumer's input set and its key never moves.
       //
       // `cache.inputs.tasks: []` decouples the consumer from the producer's
       // hash — a documented pattern (docs/schema.md), and what makes the
@@ -401,7 +500,7 @@ describe('stale cache hits', () => {
 
       // The producer stops emitting b.ts. The consumer's real input set is now
       // empty, so its output must become empty too.
-      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
+      await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\nrm -f gen/b.ts\n')
 
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
@@ -472,19 +571,11 @@ describe('stale cache hits', () => {
   )
 
   it(
-    'a wiped output stops counting as a consumer input on the cache-HIT path too',
+    'a committed file under an output survives the restore on a hit',
     async () => {
-      // The hit's restore wipes gen/ before it writes the artifact's files,
-      // and marks BOTH sets — the wiped paths and the restored ones. Only
-      // the restored half had a witness. The snapshot must predate the
-      // wipe for the mark to matter (`early` reads it; codegen waits on
-      // early): a tracked-clean file the wipe removes and the artifact
-      // does not bring back (old.ts here) then keeps its index OID, and
-      // the consumer keys on a file that is gone and misses where it
-      // should hit (item 638). Enumerated after the wipe, git status
-      // reports the deletion itself and the mark is moot; and a restored
-      // file the consumer's globs match re-enumerates on its own, so the
-      // artifact here holds only a .js.
+      // gen/old.ts is committed under codegen's `gen/**`: the hit's clean
+      // leaves it and the restore writes the bytes the run left, so the
+      // consumer reads it on the cold run and on the warm one.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
@@ -512,7 +603,6 @@ describe('stale cache hits', () => {
          }`,
       )
       await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
-      await write(path.join(root, 'gen/b.js'), 'b')
       await write(path.join(root, 'gen/old.ts'), 'content-of-old')
       await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
       git(root, 'init', '-q')
@@ -521,26 +611,24 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      // Cold: codegen wipes old.ts and emits b.js; consume's set is empty.
+      // Cold: codegen keeps old.ts and emits b.js.
       await waitForProducers(root)
       vx(root, 'run', 'consume')
-      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-old')
 
-      // old.ts is back from the index, tracked and clean; codegen's key is
-      // unchanged, so it HITS, and its restore wipes old.ts again. The
-      // restored b.js matches none of consume's globs, so only the WIPED
-      // path can send consume back to git for a fresh listing.
-      git(root, 'checkout', '--', 'gen/old.ts')
+      // Warm: codegen hits and restores; old.ts stays, and consume hits.
+      await rm(path.join(root, 'gen/b.js'))
       const out = vx(root, 'run', 'consume')
-      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
-      // consume's real input set is empty, as in the cold run: a hit.
+      expect(await readFile(path.join(root, 'gen/old.ts'), 'utf8')).toBe('content-of-old')
+      expect(await readFile(path.join(root, 'gen/b.js'), 'utf8')).toBe('b')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-old')
       expect(out).toMatch(/consume[^\n]*up-to-date/)
     },
     TIMEOUT,
   )
 
   it(
-    'the ROOT-ANCHORED twin of that hit-path wipe is recorded too',
+    'a committed file under a root-anchored output survives the restore on a hit',
     async () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
@@ -572,7 +660,6 @@ describe('stale cache hits', () => {
          }`,
       )
       await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf b > gen/b.js\n')
-      await write(path.join(root, 'gen/b.js'), 'b')
       await write(path.join(root, 'gen/old.ts'), 'content-of-old')
       await write(path.join(root, '.gitignore'), 'out/\n.vx/\n')
       git(root, 'init', '-q')
@@ -583,11 +670,13 @@ describe('stale cache hits', () => {
 
       await waitForProducers(root)
       vx(root, 'run', 'consume')
-      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-old')
 
-      git(root, 'checkout', '--', 'gen/old.ts')
+      await rm(path.join(root, 'gen/b.js'))
       const out = vx(root, 'run', 'consume')
-      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+      expect(await readFile(path.join(root, 'gen/old.ts'), 'utf8')).toBe('content-of-old')
+      expect(await readFile(path.join(root, 'gen/b.js'), 'utf8')).toBe('b')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-old')
       expect(out).toMatch(/consume[^\n]*up-to-date/)
     },
     TIMEOUT,
@@ -650,16 +739,97 @@ describe('stale cache hits', () => {
   )
 
   it(
-    'the ROOT-ANCHORED twin of that wipe is recorded too',
+    'an edit to a committed file under its own output moves the key',
     async () => {
-      // `cache.outputs.workspaceFiles` is wiped by `cleanWorkspaceOutputs`
-      // and recorded by `markWorkspaceOutputsChanged` — the exact twin of the
-      // per-project pair above, and the one that can delete files in ANOTHER
-      // project's directory. Only the per-project copy had a witness: remove
-      // the workspace mark, or the workspace wipe outright, and nothing in
-      // the suite moved. Same defect, same mechanism (a tracked-clean path
-      // keeps its index OID, so resolveFiles skips the existence probe and a
-      // deleted file stays in the consumer's input set).
+      // `data/sponsors.json` is committed under the task's own `data`
+      // output, and the build reads it. An output is out of its own key, so
+      // a committed one stays IN it (`committedFiles`): left out, an edit to
+      // it hit and replayed the old build. The build also rewrites it,
+      // which keeps the save: the bytes it leaves are an output.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'cp data/sponsors.json data/sponsors.json.tmp && mv data/sponsors.json.tmp data/sponsors.json && mkdir -p data && cp data/sponsors.json data/gen.json' },
+               cache: { inputs: { files: ['**/*'] }, outputs: { files: ['data'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'data/sponsors.json'), '["a"]')
+      await write(path.join(root, '.gitignore'), '.vx/\ndata/gen.json\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await waitForProducers(root)
+      expect(vx(root, 'run', 'build')).not.toMatch(/not saved/)
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      await write(path.join(root, 'data/sponsors.json'), '["b"]')
+      const third = vx(root, 'run', 'build')
+      expect(third).not.toMatch(/build[^\n]*up-to-date/)
+      expect(await readFile(path.join(root, 'data/gen.json'), 'utf8')).toBe('["b"]')
+      expect(await readFile(path.join(root, 'data/sponsors.json'), 'utf8')).toBe('["b"]')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a codegen that rewrites its committed output is saved, and a hit writes what it left',
+    async () => {
+      // TanStack Router's committed `routeTree.gen.ts`, declared an output
+      // (item 1015): a new route makes the build write new bytes there. The
+      // key folded the old bytes, so the run is saved under it, and a hit
+      // on that state writes the new bytes, as the run would. Keyed as a
+      // plain input, the rewrite read as an input moved mid-run: not saved,
+      // and a failure under `inputStability.severity: 'error'`.
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'ls routes > src/routeTree.gen.ts' },
+               cache: {
+                 inputs: { files: ['routes/**', 'src/**'] },
+                 outputs: { files: ['src/routeTree.gen.ts'] },
+                 inputStability: { severity: 'error' },
+               },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'routes/a.tsx'), 'a')
+      await write(path.join(root, 'src/routeTree.gen.ts'), 'a.tsx\n')
+      await write(path.join(root, '.gitignore'), '.vx/\n')
+      git(root, 'init', '-q')
+      git(root, 'config', 'user.email', 'test@vx.local')
+      git(root, 'config', 'user.name', 'vx test')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await waitForProducers(root)
+      await write(path.join(root, 'routes/b.tsx'), 'b')
+      expect(vx(root, 'run', 'build')).not.toMatch(/changed after its key/)
+      expect(await readFile(path.join(root, 'src/routeTree.gen.ts'), 'utf8')).toBe('a.tsx\nb.tsx\n')
+      git(root, 'checkout', '--', 'src/routeTree.gen.ts')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*restored-local/)
+      expect(await readFile(path.join(root, 'src/routeTree.gen.ts'), 'utf8')).toBe('a.tsx\nb.tsx\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a committed file under a root-anchored output survives the clean before a run',
+    async () => {
+      // The twin of the project case above: `cleanWorkspaceOutputs` can
+      // reach another project's directory, and leaves committed files too.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
       await write(
@@ -702,7 +872,7 @@ describe('stale cache hits', () => {
       await write(path.join(root, 'emit.sh'), 'mkdir -p gen\nprintf a > gen/a.js\n')
 
       vx(root, 'run', 'consume')
-      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('')
+      expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
     },
     TIMEOUT,
   )

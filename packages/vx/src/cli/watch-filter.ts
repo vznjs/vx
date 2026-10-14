@@ -55,6 +55,8 @@ export function makeWatchIgnore(
   cacheDir: string,
   outputs: ReadonlyMap<string, readonly string[]> = new Map(),
   inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>> = new Map(),
+  /** What git tracked at the arm (`gitFiles`): never an output, so an edit there is one. */
+  tracked?: ReadonlySet<string>,
 ): (base: string, filename: string) => boolean {
   // Watchers report under the real root; a cache dir named through a link
   // (`VX_CACHE_DIR`, macOS `/var` -> `/private/var`) is matched as its target.
@@ -123,6 +125,14 @@ export function makeWatchIgnore(
     const abs = path.resolve(base, filename)
     if (abs === cacheAbs || abs.startsWith(cacheAbs + path.sep)) return true
     if (isInput(abs)) return false
+    // Core never cleans or saves a file git tracks and keys it under the
+    // task's own output glob (2026-10-14); a submodule is listed as its
+    // gitlink alone, so a path under a tracked one counts.
+    if (tracked !== undefined)
+      for (let p = abs; p.length > 1; p = path.dirname(p)) {
+        if (tracked.has(p)) return false
+        if (p === path.dirname(p)) break
+      }
     for (const [dir, isOutput, containers] of declared) {
       if (!abs.startsWith(dir + path.sep)) continue
       const rel = abs

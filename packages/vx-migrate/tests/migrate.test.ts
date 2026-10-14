@@ -1771,10 +1771,10 @@ describe('migrateNx: an output beside the config it writes', () => {
         ['*.mjs'],
         ['*.mjs', '!vx.config.mjs'],
       ])
-      // A committed match is taken back in the written config, as nx() does live.
+      // A committed match stays: core never cleans it.
       await writeFile(path.join(dir, 'keep.mjs'), 'export {}\n')
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
-      expect(await outputs('ts')).toEqual(['*.mjs', '!keep.mjs'])
+      expect(await outputs('ts')).toEqual(['*.mjs'])
     } finally {
       await rm(root, { recursive: true, force: true })
     }

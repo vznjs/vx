@@ -64,6 +64,22 @@ describe('the ignore filter', () => {
   })
 })
 
+describe('a committed file under a declared output is an edit (2026-10-14)', () => {
+  it('git tracks it, so it is never an output and its edit re-keys the task', () => {
+    const dir = path.resolve('/w/app')
+    const outputs = new Map([[dir, ['data/**']]])
+    const tracked = new Set([path.join(dir, 'data/sponsors.json'), path.join(dir, 'data/sub')])
+    const ignore = makeWatchIgnore('/w/.vx', outputs, new Map(), tracked)
+    expect([
+      ignore(dir, 'data/sponsors.json'),
+      // A submodule is tracked as its gitlink alone.
+      ignore(dir, 'data/sub/x.txt'),
+      // CONTROL: an untracked file there is the task's own write.
+      ignore(dir, 'data/gen.json'),
+    ]).toEqual([false, false, true])
+  })
+})
+
 describe("a path some task reads is never ignored as another task's output (item 946)", () => {
   it('an input under a declared output still counts; an output nobody reads does not', () => {
     const dir = path.resolve('/w/app')

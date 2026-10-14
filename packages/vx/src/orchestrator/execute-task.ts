@@ -6,6 +6,7 @@ import {
   type CacheLayer,
   type CachePolicy,
   cleanOutputs,
+  committedFiles,
   cleanWorkspaceOutputs,
   type OutputStamp,
   ownOutputsSince,
@@ -54,6 +55,7 @@ import {
   MASKED,
   parseDuration,
   maskedEmitter,
+  outputMatcher,
   printable,
   relPosix,
   secretMask,
@@ -93,6 +95,7 @@ import {
   computeTaskHash,
   describeTaskInputs,
   type HashCache,
+  type InputFact,
   movedInput,
   type TaskInputComponent,
   type UpfrontGroupKey,
@@ -951,8 +954,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     projectDir: node.projectDir,
     outputs,
     nestedProjectDirs: args.nestedProjectDirs,
+    committed: committedFiles(args.gitFilesCache, node.projectDir),
   }
-  const wsCleanArgs = { workspaceRoot: args.workspaceRoot, outputs: wsOutputs }
+  const wsCleanArgs = {
+    workspaceRoot: args.workspaceRoot,
+    outputs: wsOutputs,
+    committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
+  }
   // An ADDITIVE task (its outputs overlap an upstream's, with the edge that
   // orders them; item 588) does not clean by glob — the glob selects the
   // upstream's files it adds beside. Its outputs are stamped once before
@@ -1029,6 +1037,23 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
     return rewroteBy === undefined
   }
+
+  /**
+   * A committed file under the task's own outputs is keyed (`committedFiles`)
+   * and the task may rewrite it (TanStack Router's `routeTree.gen.ts`): the
+   * bytes it leaves are an output the entry saves and a restore writes, and
+   * they follow from the key, so their change is no moved input.
+   */
+  const ownOutput = outputs.length === 0 ? undefined : outputMatcher(outputs)
+  const ownWsOutput = wsOutputs.length === 0 ? undefined : outputMatcher(wsOutputs)
+  const keyedInputs = (facts: readonly InputFact[]): readonly InputFact[] =>
+    ownOutput === undefined && ownWsOutput === undefined
+      ? facts
+      : facts.filter(
+          (f) =>
+            ownOutput?.(relPosix(node.projectDir, f.path)) !== true &&
+            ownWsOutput?.(relPosix(args.workspaceRoot, f.path)) !== true,
+        )
 
   // A name only `exec.env.secret` makes secret is not one the name rule
   // sees later: its row carries the mark, so `vx why` hides its hash (M-63).
@@ -1130,7 +1155,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const endClean = span('miss: clean outputs')
       const cleanedRels = await cleanOutputs(cleanArgs)
       endClean()
-      args.gitFilesCache?.noteClean(node.id, node.projectDir, cleanedRels)
       args.gitFilesCache?.markOutputsChanged(node.projectDir, cleanedRels)
     }
     if (additive && willWrite && !deferralRequested && wsOutputs.length > 0) {
@@ -1302,18 +1326,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // The line quotes the command's first word, which a config may have
       // built from a secret: masked as the task's own output is (L-37).
       if (verdict !== undefined) log.taskStderr(node, `\n${secrets?.mask(verdict) ?? verdict}\n`)
-      // A committed file another task's clean removed, still gone: vx
-      // cleans outputs before a run where Turbo does not, so a reader with
-      // no edge to the producer fails naming only the file (A-48).
-      if (code !== 0) {
-        for (const c of (args.gitFilesCache?.trackedCleansMissing(node.id) ?? []).slice(0, 3)) {
-          const rel = relPosix(args.workspaceRoot, c.path)
-          log.taskStderr(
-            node,
-            `\n[vx] ${rel} is tracked by git, and ${c.by} removed it as an output before its run; it is still missing. A task that reads it needs dependsOn on ${c.by}.\n`,
-          )
-        }
-      }
     }
     return { result: res, exitCode: code }
   }
@@ -1631,7 +1643,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     if (described!.hash !== hash) return null
     return (
       (await movedInput(
-        described!.facts,
+        keyedInputs(described!.facts),
         cache,
         described!.describedAt,
         stability.strategy === 'mutable' ? ownRewrite : undefined,

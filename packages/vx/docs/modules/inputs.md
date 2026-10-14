@@ -108,6 +108,7 @@ export async function cleanOutputs(args: {
   projectDir: string
   outputs: readonly string[]
   nestedProjectDirs: string[]
+  committed?: (abs: string) => boolean // git tracks it: never removed (default: asks git)
 }): Promise<string[]>
 
 // The same pair for `outputs.workspaceFiles`, anchored at the root with
@@ -120,7 +121,15 @@ export async function resolveWorkspaceOutputs(args: {
 export async function cleanWorkspaceOutputs(args: {
   workspaceRoot: string
   outputs: readonly string[]
+  committed?: (abs: string) => boolean
 }): Promise<string[]>
+
+// No clean removes a file git tracks (owner, 2026-10-14); `committedFiles`
+// answers from the run's enumeration, listing a dir it did not cover once.
+export function committedFiles(
+  cache: GitFilesCache | undefined,
+  dir: string,
+): (abs: string) => boolean
 
 /** A literal entry compiles to itself plus its subtree: `src/` → `src`, `src/**`. */
 export function asTrees(patterns: readonly string[]): string[]
