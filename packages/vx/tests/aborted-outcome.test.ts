@@ -181,7 +181,7 @@ describe('a task killed by a shutdown signal', () => {
 
       const rep = vx(root, 'run', 'fine', 'doomed', '--report=markdown')
       expect(rep.out).toContain('\n## vx run — interrupted\n')
-      expect(rep.out).toMatch(/not counted: 1 aborted\n/)
+      expect(rep.out).toContain('**2 tasks** · 1 success · 0 failed · 0 cached · 1 aborted · ')
       expect(rep.out).toMatch(/\|\s*r#doomed\s*\|\s*aborted\s*\|/)
     },
     TIMEOUT,

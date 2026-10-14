@@ -98,8 +98,8 @@ describe('flaky-task detection (e2e)', () => {
       ])
       expect(relapse.code).toBe(1)
       expect(relapse.text).toContain('app#test flaky - passed 1× before')
-      // Nothing prints below the footer: its result line is the last word.
-      expect(lastLine(relapse.text)).toMatch(/^ {2}result {4}1 task · /)
+      // Nothing prints below the footer: its time row is the last word.
+      expect(lastLine(relapse.text)).toMatch(/^ {2}time {6}/)
       const relapseSummary = JSON.parse(await readFile(path.join(root, 'relapse.json'), 'utf8'))
       expect(relapseSummary.tasks[0].id).toBe('app#test')
       expect(relapseSummary.tasks[0].flaky).toEqual({ passes: 1, failures: 2, attempts: 1 })
@@ -150,7 +150,7 @@ describe('flaky-task detection (e2e)', () => {
       const r = await vx(root, ['run', 'build', '--filter', 'retry', '--summarize=retry.json'])
       expect(r.code).toBe(0)
       expect(r.text).toContain('retry#build flaky - 2 attempts')
-      expect(lastLine(r.text)).toMatch(/^ {2}result {4}1 task · /)
+      expect(lastLine(r.text)).toMatch(/^ {2}time {6}/)
       const summary = JSON.parse(await readFile(path.join(root, 'retry.json'), 'utf8'))
       expect(summary.tasks[0].flaky).toEqual({ passes: 1, failures: 0, attempts: 2 })
       // The doctor's list said `none` over it: a retry's pass is one

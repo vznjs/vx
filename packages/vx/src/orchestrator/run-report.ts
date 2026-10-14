@@ -144,8 +144,13 @@ const cell = escapeMarkdownCell
 export function formatRunReportMarkdown(result: RunResult): string {
   const t = tally(result.outcomes)
   const cached = t.cachedLocal + t.cachedRemote
+  // The terminal summary's words and counts: every task in the run counts
+  // (M, 2026-10-14), and a task the stop reached before it ran was never
+  // aborted.
+  const aborted = t.aborted - t.notRun
+  const count = t.total + aborted + t.notRun
   const parts = [
-    `**${t.total} task${t.total === 1 ? '' : 's'}**`,
+    `**${count} task${count === 1 ? '' : 's'}**`,
     `${t.successful} success`,
     `${t.failed} failed`,
     // What the hits did to the disk, as the run's summary splits them.
@@ -154,15 +159,10 @@ export function formatRunReportMarkdown(result: RunResult): string {
       : '0 cached',
   ]
   if (t.skipped > 0) parts.push(`${t.skipped} skipped`)
+  if (aborted > 0) parts.push(`${aborted} aborted`)
+  if (t.notRun > 0) parts.push(`${t.notRun} not run`)
   parts.push(`${fmtDuration(t.executedMs)} total`)
   if (t.savedMs > 0) parts.push(`${fmtDuration(t.savedMs)} saved`)
-  // The terminal summary's words: neither is in `total`, and a task the stop
-  // reached before it ran was never aborted.
-  const aborted = t.aborted - t.notRun
-  const uncounted: string[] = []
-  if (aborted > 0) uncounted.push(`${aborted} aborted`)
-  if (t.notRun > 0) uncounted.push(`${t.notRun} not run`)
-  if (uncounted.length > 0) parts.push(`not counted: ${uncounted.join(', ')}`)
 
   // Only a stop (a signal, `RunOptions.signal`) makes an `aborted` outcome,
   // so one is how an interrupted run tells itself from a failed one.

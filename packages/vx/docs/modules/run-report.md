@@ -23,5 +23,5 @@ CI step summaries (`vx run ci --report-file="$GITHUB_STEP_SUMMARY"`).
   appending (a step summary is shared with other steps).
 - An interrupted run uses the terminal summary's words: heading
   `interrupted` when any task is `aborted`, a status of `aborted` (killed,
-  its time in the total) or `not run` (`neverStarted`, no time), and
-  `not counted: N aborted, N not run` after the total.
+  its time in the total) or `not run` (`neverStarted`, no time); both
+  count in the header's task total, listed as `N aborted` and `N not run`.

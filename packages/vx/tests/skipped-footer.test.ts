@@ -49,7 +49,7 @@ describe('a skipped task', () => {
     expect(r.text).toContain('1 failed · 1 skipped · 2 total')
     expect(r.text).toContain(' ⊘         skipped          app#build • blocked by lib#build\n')
     expect(r.text).not.toContain('Skipped:')
-    expect(r.text.trimEnd().split('\n').at(-1)).toMatch(/^ {2}result {4}2 tasks · /)
+    expect(r.text.trimEnd().split('\n').at(-1)).toMatch(/^ {2}time {6}/)
   })
 
   it('the summarize row names the blocker; a failed row carries none', async () => {

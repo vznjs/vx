@@ -1324,7 +1324,7 @@ describe('turbo() under vx lock', () => {
       )
       const second = vx('run', 'build', '--all')
       expect({ code: second.code, err: second.err }).toEqual({ code: 0, err: '' })
-      expect(second.out).toContain('3 tasks · all cached')
+      expect(second.out).toContain('3 up-to-date')
       await writeFile(
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
         'export default { tasks: { build: { command: "true" } } }\n',

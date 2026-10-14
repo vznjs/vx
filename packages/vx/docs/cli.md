@@ -1215,9 +1215,9 @@ which never consulted one / `local` / `remote` / `up-to-date` /
 `—`). A stopped run (a Ctrl-C teardown) reads `## vx run — interrupted`,
 and its tasks keep the terminal's words: one the signal killed is
 `aborted` with its time so far, one the stop reached before it ran is
-`not run` with no time. Neither joins the counts; the header names them
-after the total, `not counted: 1 aborted, 1 not run`, so a red report
-with no failing row still says why. Group tasks (no `exec`) get neither — they are not
+`not run` with no time. Both count in the header's task total, listed
+as `1 aborted · 1 not run`, so a red report with no failing row still
+says why. Group tasks (no `exec`) get neither — they are not
 work, and the header's counts match the terminal summary and
 `--summarize` exactly.
 
