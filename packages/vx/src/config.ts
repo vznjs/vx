@@ -146,6 +146,27 @@ export interface WorkspaceRules {
    * waits for its producer (`caching.md` § Local restore tier).
    */
   upfrontKeys?: boolean
+  /**
+   * Which workspace projects a project may depend on, checked by `vx lock`
+   * over each project's direct dependencies (its manifest's and its tasks'
+   * cross-project `dependsOn`). Every rule whose `from` selects a project
+   * applies to it; a project no rule selects is free.
+   */
+  dependencies?: readonly DependencyRule[]
+}
+
+/**
+ * One `run.rules.dependencies` entry. A selector is `tag:<tag>`, matching
+ * a project that carries the tag, or a project name; `*` matches any
+ * characters in either (`tag:scope:*`, `@acme/*`, `*`).
+ */
+export interface DependencyRule {
+  /** The projects this rule constrains. */
+  from: string
+  /** Given, each dependency must match one of these. */
+  allow?: readonly string[]
+  /** No dependency may match one of these; beats `allow`. */
+  deny?: readonly string[]
 }
 
 /**

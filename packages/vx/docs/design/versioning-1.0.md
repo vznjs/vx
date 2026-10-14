@@ -47,7 +47,7 @@ the values it takes and each refusal's exact words are recorded in
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | (top)                  | `cache`, `plugins`, `run`, `watch`                                                                                                            |
 | `run`                  | `affectedBase`, `concurrency`, `continue`, `frozen`, `killGrace`, `readyNotice`, `retries`, `rules`, `schedule`, `teardownTimeout`, `timeout` |
-| `run.rules`            | `exclusiveOutputs`, `upfrontKeys`                                                                                                             |
+| `run.rules`            | `dependencies`, `exclusiveOutputs`, `upfrontKeys`                                                                                             |
 | `cache`                | `dir`, `download`, `inputStability`, `policy`, `retention`, `scope`                                                                           |
 | `cache.retention`      | `maxSize`, `olderThan`                                                                                                                        |
 | `cache.inputStability` | `severity`, `strategy`                                                                                                                        |

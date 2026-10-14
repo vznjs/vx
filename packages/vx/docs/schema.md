@@ -1611,7 +1611,11 @@ export default defineWorkspace({
     teardownTimeout: '3s',
     readyNotice: '10s',
     frozen: false,
-    rules: { exclusiveOutputs: true, upfrontKeys: true },
+    rules: {
+      exclusiveOutputs: true,
+      upfrontKeys: true,
+      dependencies: [{ from: 'tag:lib', deny: ['tag:app'] }],
+    },
   },
   cache: {
     dir: 'build/.vx-cache',
@@ -1699,8 +1703,11 @@ interface RunSettings {
   /** Load configs from vx-lock.json; on when CI is set. */
   frozen?: boolean
   /** Graph rules `vx lock` and every unfrozen run check; each on unless set to false. */
-  rules?: { exclusiveOutputs?: boolean; upfrontKeys?: boolean }
+  rules?: { exclusiveOutputs?: boolean; upfrontKeys?: boolean; dependencies?: DependencyRule[] }
 }
+
+/** `run.rules.dependencies`, checked by `vx lock` only. */
+type DependencyRule = { from: string; allow?: string[]; deny?: string[] }
 
 interface CacheSettings {
   dir?: string
@@ -1736,7 +1743,7 @@ interface CacheSettings {
   rules: `vx lock` checked them when it wrote the lock, and with no lock
   the run writes one first (`docs/cli.md` § `--frozen`).
 - **`run.rules`** — checked by `vx lock`, `vx lock --check` and every
-  run that is not frozen.
+  run that is not frozen; `dependencies` by `vx lock` alone.
 - **`cache.dir`** — unset, the workspace keeps its index and history in
   `.vx/cache` and its entries and artifacts in its repository's shared
   store (`~/.vx/<id>/cache`), where every other checkout of the
@@ -1856,6 +1863,21 @@ false in vx.workspace.ts to let it wait for its producer.` Such a key
     `!` entries take back no longer holds its key back either. A task's
     own outputs, a task with no `cache`, and a group are exempt. Off,
     the key waits for its producer, as before.
+  - **`dependencies`** — which workspace projects a project may depend
+    on, checked by `vx lock` and `vx lock --check` only, over each
+    project's direct dependencies (its `package.json` buckets and its
+    tasks' cross-project `dependsOn`). Each rule is
+    `{ from, allow?, deny? }`; a selector is `tag:<tag>` (a project
+    carrying the tag) or a project name, and `*` matches any characters
+    in either (`tag:scope:*`, `@acme/*`). Every rule whose `from`
+    selects a project applies: each dependency must match an `allow`
+    selector when `allow` is given, and none of `deny`, so a deny beats
+    any allow. A project no rule selects is free, and an untagged
+    dependency matches no `tag:` selector. A broken edge refuses the lock
+    with `VX_E_DEPENDENCY_RULE`:
+    `lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies`,
+    every broken edge on its own line. A rule with neither `allow` nor
+    `deny` is refused.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list, and the first

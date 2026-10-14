@@ -73,6 +73,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
     'run.rules': keys<NonNullable<RunSettings['rules']>>({
       exclusiveOutputs: true,
       upfrontKeys: true,
+      dependencies: true,
     }),
     cache: keys<CacheSettings>({
       dir: true,
@@ -157,7 +158,11 @@ function workspaceSeed(): Record<string, unknown> {
       teardownTimeout: '3s',
       readyNotice: '10s',
       frozen: false,
-      rules: { exclusiveOutputs: true, upfrontKeys: true },
+      rules: {
+        exclusiveOutputs: true,
+        upfrontKeys: true,
+        dependencies: [{ from: 'tag:app', allow: ['tag:lib'], deny: ['tag:e2e'] }],
+      },
     },
     cache: {
       dir: '.vx/cache',

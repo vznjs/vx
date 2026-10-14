@@ -1716,7 +1716,8 @@ content hash of each config file. "Every project" is the set a run
 sees, a plugin's `discover` stage included (X-143). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
 included, and checks the graph rules (`run.rules`) a frozen run no
-longer checks: a broken one prints `vx lock: vx-lock.json not written:
+longer checks, `dependencies` (which projects a project may depend on,
+`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `vx lock: vx-lock.json not written:
 <the rule's refusal>` and writes nothing.
 
 ```
@@ -2530,6 +2531,12 @@ a run, so it would delete its sources) or another task's (its key must
 not read them; `dependsOn` already cascades). Exclude the outputs from
 the inputs with a `!` glob, as the message shows, or declare no outputs
 for a task that rewrites files in place.
+
+#### `VX_E_DEPENDENCY_RULE`
+
+`vx lock` found a project depending on one a `run.rules.dependencies`
+rule denies or does not allow. Each line names both projects and the
+rule. Drop the dependency, or change the project's tags or the rule.
 
 #### `VX_E_INTERNAL`
 
