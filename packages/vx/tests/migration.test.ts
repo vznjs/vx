@@ -345,12 +345,17 @@ describe('a written config passes the repo’s own checks', () => {
   }
 
   it('a TypeScript CommonJS package gets vx.config.mts, which tsc reads as ESM', async () => {
-    const metas = [
-      pkg('cjs', {}),
-      pkg('esm', { type: 'module' }),
-      pkg('plain', {}, false),
-    ]
-    expect(await apply(plan([['cjs', []], ['esm', []], ['plain', []]]), { metas })).toBe(0)
+    const metas = [pkg('cjs', {}), pkg('esm', { type: 'module' }), pkg('plain', {}, false)]
+    expect(
+      await apply(
+        plan([
+          ['cjs', []],
+          ['esm', []],
+          ['plain', []],
+        ]),
+        { metas },
+      ),
+    ).toBe(0)
     expect(
       ['cjs/vx.config.mts', 'esm/vx.config.ts', 'plain/vx.config.ts'].map((f) =>
         existsSync(path.join(root, f)),
@@ -388,7 +393,9 @@ describe('a written config passes the repo’s own checks', () => {
     chmodSync(path.join(bin, 'prettier'), 0o755)
     expect(await apply(plan([['a', [task('build', null)]]]))).toBe(0)
     expect(existsSync(path.join(root, 'a', 'vx.config.ts'))).toBe(true)
-    expect(stdout).toContain('note: prettier did not format the written files (exit 2): no parser\n')
+    expect(stdout).toContain(
+      'note: prettier did not format the written files (exit 2): no parser\n',
+    )
   })
 })
 

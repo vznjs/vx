@@ -389,7 +389,12 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     for (const f of files) await Bun.write(f.abs, f.contents)
     for (const f of replaced) await unlink(f)
   }
-  const formatted = dry ? [] : formatWritten(root, files.map((f) => f.relPath))
+  const formatted = dry
+    ? []
+    : formatWritten(
+        root,
+        files.map((f) => f.relPath),
+      )
 
   // One reason, its tasks: on a Turbo template the same two-line cache TODO
   // printed five times and the persistent one eight (the first-five-minutes
