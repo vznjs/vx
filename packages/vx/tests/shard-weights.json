@@ -44,7 +44,6 @@
   "cli.test.ts": 3957,
   "colors.test.ts": 2,
   "completions.test.ts": 47,
-  "config-cache.test.ts": 328,
   "config-eval.test.ts": 1945,
   "config-missing-import.test.ts": 67,
   "config-schema-refusals.test.ts": 9,

@@ -373,10 +373,10 @@ describe('what the transpiler was told besides the bytes', () => {
   })
 
   it(
-    'a bunfig.toml [define] the config reads is in the eval key: flipping it re-evaluates (item 956)',
+    'flipping a bunfig.toml [define] the config reads re-evaluates it (item 956)',
     async () => {
-      // `BUILD_MODE` is a bare identifier to the config, so no deny word sees
-      // it, and the evaluation cache replayed `dev` after the define said `prod`.
+      // `BUILD_MODE` is a bare identifier to the config; a cached evaluation
+      // once replayed `dev` after the define said `prod`.
       const pkg = path.join(root, 'packages/a')
       await mkdir(pkg, { recursive: true })
       await writeFile(
@@ -412,7 +412,7 @@ describe('what the transpiler was told besides the bytes', () => {
   )
 
   it(
-    "a --define on Bun's command line is in the eval key too: flipping it re-evaluates (D-20)",
+    "flipping a --define on Bun's command line re-evaluates the config too (D-20)",
     async () => {
       // The flag reaches the transpiler through `execArgv`, not a file.
       const pkg = path.join(root, 'packages/a')

@@ -10,11 +10,12 @@ import {
 } from '../src/workspace/fingerprint.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
-import { listProjects, loadWorkspace } from '../src/workspace/index.js'
+import { listProjects, loadWorkspace, LOCKFILE_NAME } from '../src/workspace/index.js'
 import { workspaceGlobOwners } from '../src/cli/select.js'
 import { loadCliProjects } from '../src/cli/workspace-config.js'
 import { PLUGIN_IMPORT, pluginSource, testPlugin } from './helpers/plugin.js'
 import { claimedAffected } from '../src/orchestrator/index.js'
+import { lock } from './helpers/orchestrator.js'
 import type { FingerprintContext, VxPlugin } from '../src/index.js'
 import { UserError } from '../src/util/index.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
@@ -484,28 +485,18 @@ describe('affectedProjects', () => {
     ).toEqual(['c', 'd'])
   })
 
-  it('a workspace config edit, or one to a file it imports, selects every project (item 953)', async () => {
+  it('a workspace config edit selects every project (item 953)', async () => {
     // Its plugins' `project` and `config` stages shape every resolved config,
     // so the edit can re-key any task; it selected nothing (item 953).
-    await mkdir(path.join(root, 'tools'), { recursive: true })
-    await writeFile(path.join(root, 'tools/gen.mjs'), "export const cmd = 'echo v1'\n")
-    await writeFile(path.join(root, 'tools/unrelated.mjs'), 'export {}\n')
-    await Bun.write(
-      path.join(root, '.vx/workspace.mjs'),
-      "import { cmd } from '../tools/gen.mjs'\nexport default { plugins: [] }\n",
-    )
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
     await git(root, 'add', '.')
     await git(root, 'commit', '-q', '-m', 'workspace config')
     const all = () =>
       affectedProjects({ workspaceRoot: root, since: 'HEAD', projects }).then((s) => [...s].sort())
-    // Control: a root file the workspace config does not import selects nothing.
-    await writeFile(path.join(root, 'tools/unrelated.mjs'), 'export const x = 1\n')
+    // Control: an unrelated root file selects nothing.
+    await writeFile(path.join(root, 'unrelated.mjs'), 'export {}\n')
     expect(await all()).toEqual([])
-    await git(root, 'checkout', '--', 'tools/unrelated.mjs')
-    await writeFile(path.join(root, 'tools/gen.mjs'), "export const cmd = 'echo v2'\n")
-    expect(await all()).toEqual(['a', 'b'])
-    await git(root, 'checkout', '--', 'tools/gen.mjs')
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default { plugins: [ ] }\n')
     expect(await all()).toEqual(['a', 'b'])
   })
 
@@ -2134,6 +2125,7 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name }))
       if (config !== null) await writeFile(path.join(dir, 'vx.config.mjs'), config)
     }
+    await lock(root)
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
@@ -2146,12 +2138,11 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
   // with the whole repo still green.
   it('the staged load itself refuses a run with no lock', async () => {
     const metas = await listProjects(await loadWorkspace(root))
-    // Control: a reader's load (live) succeeds, so the rejection is the
-    // run's lock and not the fixture.
+    // Control: with the lock the load succeeds, so the rejection is the
+    // missing lock and not the fixture.
     expect((await loadCliProjects(root, metas, 'all', {})).size).toBeGreaterThan(0)
-    await expect(loadCliProjects(root, metas, 'all', { fromLock: true })).rejects.toThrow(
-      'no lock: run `vx lock`',
-    )
+    await rm(path.join(root, LOCKFILE_NAME))
+    await expect(loadCliProjects(root, metas, 'all', {})).rejects.toThrow('no lock: run `vx lock`')
   })
 
   // A run with no lock is refused HERE, before the tolerant
@@ -2165,12 +2156,13 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
   // pair is covered rather than each hiding the other's absence.
   it('refuses a run with no lock instead of sweeping and answering "nothing"', async () => {
     const metas = await listProjects(await loadWorkspace(root))
-    // Control first: a live load answers normally, so the rejection below
-    // is the missing lock's doing and not a broken fixture.
+    // Control first: with the lock it answers normally, so the rejection
+    // below is the missing lock's doing and not a broken fixture.
     expect(await workspaceGlobOwners(root, metas, ['shared/x.ts'])).toEqual(['bare'])
-    await expect(
-      workspaceGlobOwners(root, metas, ['shared/x.ts'], { fromLock: true }),
-    ).rejects.toThrow('no lock: run `vx lock`')
+    await rm(path.join(root, LOCKFILE_NAME))
+    await expect(workspaceGlobOwners(root, metas, ['shared/x.ts'])).rejects.toThrow(
+      'no lock: run `vx lock`',
+    )
   })
 
   it('a glob a plugin gave a config-less package selects it; a sibling without one is not selected', async () => {

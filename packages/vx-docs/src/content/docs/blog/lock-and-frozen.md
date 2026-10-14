@@ -70,8 +70,8 @@ first line, which is the point.
   run-time input and belongs under `cache.inputs.env`, where it joins
   the key. The two mechanisms are parallel on purpose: config-time
   values are locked, run-time values are keyed.
-- **Not a performance feature.** Evaluation is already cheap and cached
-  where it is provably pure. The lock is about determinism, and the
+- **Not a performance feature first.** A run reads its configs from the
+  lock and evaluates none; the lock is about determinism, and the
   milliseconds it saves are incidental.
 
 ## For agents

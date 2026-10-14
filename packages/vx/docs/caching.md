@@ -62,9 +62,7 @@ over (in order):
    package's, so `pnpm update foo` re-keys only the projects that depend
    on `foo` — every project when the root does, since the root's tools
    run from the root `node_modules/.bin` on every task's PATH; its `bun()` is the same
-   for `bun.lock`, and this repo declares that one). The
-   config-evaluation cache still keys on every file: a config may import
-   a dependency the lockfile resolved.
+   for `bun.lock`, and this repo declares that one).
 
    The fingerprint is read once per run, before any task. A task in the
    root project may rewrite one of these files — `pnpm install` without
@@ -606,8 +604,7 @@ Caching is controlled by a four-axis `CachePolicy` — **localRead**,
 **localWrite**, **remoteRead**, **remoteWrite** — independent toggles,
 each enforced inside the matching cache layer at construction time. The
 local `Cache` gets a `{ read, write }` slice gating its task artifact
-get/save, the config-evaluation cache's reads and writes, and the
-file-hash memo's writes (never `recordRun` / `stats` / `prune` / ingest
+get/save and the file-hash memo's writes (never `recordRun` / `stats` / `prune` / ingest
 / key derivation); the `LayeredCache` additionally gates its own remote
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
@@ -1157,8 +1154,7 @@ into (another user's `.vx/cache`, a read-only checkout) fails the run before
 any task: `cache directory <path> is not writable (EACCES: …)`, with
 `--cache-dir <path>` as the way out. `vx cache clean` is refused the
 same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
-`last`, `info`) open such a directory read-only and go on: a config
-that misses the evaluation cache is evaluated live and not stored.
+`last`, `info`) open such a directory read-only and go on.
 Where the directory cannot be created at all (a read-only checkout with
 no cache yet) a run says `cannot create cache directory <path>
 (EACCES: …)`, naming the workspace `cache.dir` field and `--cache-dir`;
@@ -1458,8 +1454,8 @@ hit replays it with pure SQL, never decompressing the artifact).
 `SCHEMA_VERSION`, earlier or newer, is reset by the first run that opens
 it (pre-alpha: no migrations; the index is an inventory, owner
 2026-10-06): every table but `schema_meta` is dropped and recreated,
-so each comes back in its current shape (A-54: `config_closures` and
-`output_dirs` kept an earlier vx's columns). The check, drop, re-create
+so each comes back in its current shape (A-54: `output_dirs` kept an
+earlier vx's columns). The check, drop, re-create
 and stamp are one write transaction, so another version's open waits
 rather than landing between them; an index already current is opened
 without the lock.
@@ -1471,24 +1467,14 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v34', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v35', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs
 -- and store_meta live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'config_evals_swept_at', 'store_dir'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'store_dir'
   value TEXT NOT NULL
-);
-
--- The config-evaluation cache (§ Config evaluation cache): the validated,
--- JSON-serialised result of a provably pure config, keyed by everything
--- the evaluation could have observed. Machine-local. Rows not written in
--- 30 days are swept at most once a day (`config_evals_swept_at`).
-CREATE TABLE config_evals (
-  key        TEXT PRIMARY KEY,
-  json       TEXT NOT NULL,
-  created_at INTEGER NOT NULL
 );
 
 CREATE TABLE entries (
@@ -1629,15 +1615,6 @@ CREATE TABLE output_stamps (
   PRIMARY KEY (entry_hash, path)
 );
 
--- Each config's ORDERED import closure (the config first), so a warm
--- load keys it by stat-hashing the list through file_hashes instead of
--- reading every file. Machine-local; pruned with config_evals.
-CREATE TABLE config_closures (
-  config_path TEXT PRIMARY KEY,
-  files_json  TEXT NOT NULL,
-  created_at  INTEGER NOT NULL
-);
-
 -- Every directory under a whole-subtree output glob, with its mtime as
 -- of the last save or restore on THIS machine: unchanged mtimes prove
 -- the output SET unchanged without a glob walk. Machine-local — a remote
@@ -1769,28 +1746,6 @@ moat.
   local storage and the remote round-trip — no repacking.
 - **One handle, one schema-meta sentinel.** An older schema drops
   and recreates every table but `schema_meta` (pre-alpha) — there's no migration code to maintain.
-
-## Config evaluation cache
-
-A run reads configs from `.vx/projects.lock.json`; `vx lock` and the reading
-verbs evaluate them, the largest fixed cost on a big workspace (~80 ms for 1000 synthetic configs; reading them as data is
-~12 ms). A config that is **provably pure** — every import relative or
-`@vzn/vx`, and no mention of `process`, `Bun`, `Date`, `fetch`,
-`import.meta`, `require`, a dynamic `import()`, `await`, … outside string
-literals and comments — is served from `cache.db`'s `config_evals` table,
-keyed by the git blob id of the config and of every file in its
-relative import closure, the workspace fingerprint (lockfiles) and Bun's
-version. Editing a shared preset moves the key. On a warm load the
-closure is remembered per config, so the key comes from a stat-backed
-identity per file — no read, no scan — for every config whose relative
-imports name their files outright: an explicit extension, the file
-itself, no symlink on the way (an extensionless import, a `.js` Bun
-answers with a `.ts`, or a link could be re-resolved without touching a
-listed file, so such a config keeps the scan). Anything the static check cannot prove
-pure evaluates live, exactly as before, so the cache can be slower but
-not wrong for a config written in good faith (the check is syntactic; one
-built to defeat it can). Details and the deny-list:
-[`modules/config-cache.md`](./modules/config-cache.md).
 
 ## Performance characteristics
 

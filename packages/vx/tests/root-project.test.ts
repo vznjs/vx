@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { loadResolvedProjects } from '../src/orchestrator/index.js'
-import { run } from './helpers/orchestrator.js'
+import { lock, run } from './helpers/orchestrator.js'
 import { affectedProjects, listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { silentLogger, type Fixture } from './helpers/orchestrator-fixture.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -110,6 +110,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
       path.join(fixture.root, 'packages', 'a', 'vx.config.mjs'),
       `export default { tasks: { test: { dependsOn: ['//#build'], exec: { command: 'true' }, cache: { inputs: { files: [], tasks: ['//#build', '!//#lint'] }, outputs: { files: [] } } } } }\n`,
     )
+    await lock(fixture.root)
     const a = (await loadResolvedProjects(fixture.root)).get('a')!
     expect(a.config.tasks!['test']!.cache!.inputs!.tasks).toEqual([
       'fixture-root#build',

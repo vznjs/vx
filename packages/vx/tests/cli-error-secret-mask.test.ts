@@ -56,19 +56,6 @@ it("a config's own throw is masked", async () => {
   expect(err.split('\n').filter((l) => l.includes('reply'))).toEqual([`vx: Error: ${SAID}`])
 }, 20_000)
 
-it("vx info's config error row is masked", async () => {
-  await addProject(root, 'app', `${THROW}\n`)
-  const p = Bun.spawnSync([process.execPath, BIN, 'info', '--format', 'json'], {
-    cwd: root,
-    env: { ...process.env, ...env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  expect((JSON.parse(p.stdout.toString()) as { configErrors: unknown }).configErrors).toEqual([
-    { path: 'packages/app/vx.config.mjs', message: SAID },
-  ])
-}, 20_000)
-
 it("vx watch's failed cycle is masked", async () => {
   // A cycle reads configs from the lock and evaluates none, so the text
   // vx did not write is a plugin's, failing in a stage of the cycle.

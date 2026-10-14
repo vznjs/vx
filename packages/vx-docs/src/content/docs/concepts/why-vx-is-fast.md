@@ -92,14 +92,9 @@ Speed by subtraction is still speed:
 
 - **No daemon / project-graph process** — the cold numbers say it isn't
   needed.
-- **A config-eval cache only where it is provably sound** — configs
-  are programs, so the cache is gated, not heuristic: a config that
-  reads the environment, the clock, or anything non-deterministic is
-  refused the cache outright (denied identifiers, including escaped and
-  aliased spellings), and one that passes is keyed by the git blob ids
-  of its whole import closure. The `load configs` stage is 16–25 ms per
-  1,000 configs served from it, against ~200 ms of evaluations; a
-  refused config simply evaluates live.
+- **No config evaluation in a run** — configs are programs, and a run
+  evaluates none: it reads the resolved objects from `.vx/projects.lock.json`.
+  Only `vx lock` evaluates them.
 - **No filesystem-tracing auto-inputs.** Not a gap — a position. A
   traced input set describes what the task read *that time*, on that
   machine, which is not the same as what it depends on; and it cannot be

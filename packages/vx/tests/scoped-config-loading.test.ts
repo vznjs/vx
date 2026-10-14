@@ -253,8 +253,7 @@ describe('scoped config loading', () => {
         packageGraph: buildPackageGraph([...metas]),
         seeds: 'all',
         closure: false,
-        lock: null,
-        evalCache: undefined,
+        configs: 'evaluate',
         warn: () => {},
         staged,
       })
@@ -310,8 +309,7 @@ describe('scoped config loading', () => {
           },
           seeds,
           closure: true,
-          lock: null,
-          evalCache: undefined,
+          configs: 'evaluate',
           warn: () => {},
           staged,
         })
@@ -351,8 +349,7 @@ describe('scoped config loading', () => {
   it(
     'a READER sees its scope and nothing else — no closure, no config-less packages',
     async () => {
-      // `loadResolvedProjects` is what `vx show` and an embedder
-      // read. It passes `closure: false` deliberately: a reader asked about
+      // `loadResolvedProjects` is what an embedder reads, from the lock. It passes `closure: false` deliberately: a reader asked about
       // one project is answered about that project, where a RUN pulls the
       // dependency closure in because `^task` needs it. And a package that
       // wrote no config declares no tasks unless a `project` plugin fills
@@ -362,6 +359,7 @@ describe('scoped config loading', () => {
       const bare = path.join(root, 'packages', 'bare')
       await mkdir(bare, { recursive: true })
       await writeFile(path.join(bare, 'package.json'), JSON.stringify({ name: 'bare' }))
+      await lock(root)
 
       const scoped = await loadResolvedProjects(root, { scope: ['app'] })
       expect([...scoped.keys()]).toEqual(['app'])
@@ -374,12 +372,12 @@ describe('scoped config loading', () => {
 
   // C-5: a reader (`vx show`) opened the index as a
   // run does: where there was none it made `.vx/cache/`, and an earlier
-  // schema's index it reset, run history and all. It reads it as `vx last`
-  // does now, and evaluates live what it cannot read there.
+  // schema's index it reset, run history and all. A reader opens no index.
   it(
     'a READER makes no index where there is none, and leaves an earlier schema as it was',
     async () => {
       await addProject('app', GOOD)
+      await lock(root)
       const cacheDir = path.join(root, '.vx', 'cache')
       expect([...(await loadResolvedProjects(root)).keys()]).toEqual(['app'])
       expect(existsSync(cacheDir)).toBe(false)

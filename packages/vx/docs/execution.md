@@ -51,12 +51,10 @@ terminal and a task succeeding or failing. Read it alongside
  │       names (hard error with both paths).
  │    5. buildPackageGraph — workspace dep edges from package.json.
  │    6. Local cache open: new Cache(cacheDir, { read, write }, root)
- │       with the policy's local slice — BEFORE the configs load,
- │       because it also holds their cached evaluations. Then
+ │       with the policy's local slice. Then
  │       computeWorkspaceFingerprints: one read of every supported
  │       lockfile + pnpm-workspace.yaml + .yarnrc.yml + .npmrc + bunfig.toml at the root
- │       yields `all` (every file; keys the config-evaluation cache),
- │       `unclaimed` (minus the files a `fingerprint` plugin claims —
+ │       yields `all` (every file), `unclaimed` (minus the files a `fingerprint` plugin claims —
  │       `@vzn/vx-lockfile` keys those per project; reused for every
  │       task's cache key) and `files` (the bytes, for the mid-run
  │       fingerprint check).
@@ -69,8 +67,8 @@ terminal and a task succeeding or failing. Read it alongside
  │       semantics; a missing lock or entry is a hard UserError. The
  │       verbs that evaluate (vx lock, the readers) use
  │       loadProjectConfigs in one batch: native Bun await import()
- │       with a content-hash query-string bust, cached evaluations
- │       served for pure configs; the loader validates each
+ │       with a content-hash query-string bust, every config
+ │       evaluated; the loader validates each
  │       TaskConfig shape. Either way the plugin `project` stage runs
  │       on each config with a re-validation after every plugin.
  │    8. computeNestedProjectDirs — set of projects rooted inside each

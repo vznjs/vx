@@ -97,7 +97,7 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    out, asked by name: a config-less project in the closure does not
    make it whole, X-182), the builder cannot
    see the whole workspace, so it hands such a name back
-   (`undeclaredDeps`) and `refuseUndeclaredDeps` evaluates the configs
+   (`undeclaredDeps`) and `refuseUndeclaredDeps` reads the locked configs
    the scope left out — only then, and never for a name something loaded
    declares — refusing if none of them declares it either. One of them
    failing to load leaves the name unjudged, since an out-of-scope broken

@@ -1,7 +1,7 @@
 // The index's tables, one concern: what a cache.db holds. `Cache` opens the
 // file, checks `SCHEMA_VERSION` and creates these; every statement against
-// them lives in the store that owns the table (file-hashes, config-evals,
-// output-index, history) or in cache.ts for `entries`, `entry_inputs` and
+// them lives in the store that owns the table (file-hashes, output-index,
+// history) or in cache.ts for `entries`, `entry_inputs` and
 // `artifacts`.
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
@@ -30,17 +30,6 @@ export function lazyStatement(db: Database, sql: string): ReturnType<Database['p
  * a statement; SQLite finds it in `main` or in `store`, whichever has it.
  */
 export function createTables(db: Database, store: 'main' | 'store' = 'main'): void {
-  // Cached config evaluations (workspace/config-cache.ts): the validated
-  // config as JSON, keyed by everything the evaluation could observe. A
-  // separate exec so the artifact schema stays byte-identical.
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS main.config_evals (
-      key        TEXT PRIMARY KEY,
-      json       TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
-  `)
-
   db.exec(`
     -- The queryable index: command, exit_code, duration, size and
     -- timestamps; stdout in entry_stdout below.
@@ -196,15 +185,6 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       ino         INTEGER NOT NULL,
       ctime_ms    INTEGER NOT NULL,
       PRIMARY KEY (entry_hash, path)
-    );
-    -- Each config's ORDERED import closure (the config first), so a warm
-    -- load keys it by stat-hashing the list (the file_hashes memo) instead
-    -- of reading and scanning every file. Machine-local; pruned with
-    -- config_evals (2026-09-03).
-    CREATE TABLE IF NOT EXISTS main.config_closures (
-      config_path TEXT PRIMARY KEY,
-      files_json  TEXT NOT NULL,
-      created_at  INTEGER NOT NULL
     );
     -- Every directory under a whole-subtree output glob, with its mtime
     -- as of the last save/restore on THIS machine (2026-09-03). On a warm

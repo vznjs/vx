@@ -1158,30 +1158,6 @@ export const MORE: readonly Feature[] = [
     },
   },
   {
-    slug: 'config-cache',
-    title: 'Configs read, not re-run',
-    category: 'cache',
-    hook: 'A config that is plain data is read back from cache, not evaluated again.',
-    body: [
-      'Evaluating a hundred TypeScript configs on every run adds up. Most of them are pure: same file, same result.',
-      'vx proves a config is pure and keeps its result; the next run reads it as data. Edit the file and it is evaluated again.',
-    ],
-    example: {
-      lang: 'text',
-      code: 'first run    vx.config.ts evaluated, result kept\nnext run     read back as data\nfile edited  evaluated again',
-    },
-    image: 'config-cache.png',
-    imageAlt: 'Pure configs read from cache on the next run.',
-    docs: {
-      label: 'What a run does',
-      href: 'execution/',
-    },
-    deepDive: {
-      label: 'Guard rails that tell you the fix',
-      href: 'blog/guard-rails/',
-    },
-  },
-  {
     slug: 'line-endings',
     title: 'Keys that see what the build sees',
     category: 'cache',

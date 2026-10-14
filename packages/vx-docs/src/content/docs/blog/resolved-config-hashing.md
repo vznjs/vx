@@ -61,51 +61,12 @@ runs, which is not what it produces. `timeout`, `retries` and `description` are
 folded, because a task that was allowed to run longer may have finished
 where the shorter one was killed.
 
-## Evaluating a program has a cost, so gate the cache
+## Evaluating a program has a cost, so a run does not
 
-Evaluating a hundred TypeScript files per run is not free, and the
-obvious fix, caching the evaluation, is unsound for a program that
-reads the environment or the clock. vx caches evaluation results only
-where it can prove soundness. Every file in the import closure is
-read, with its string literals and comments stripped first (a command
-string is not code: `node -e "process.exit(0)"` is an ordinary task).
-If what is left names a global through which an evaluation can observe
-something the file bytes do not capture, the config is refused the
-cache and evaluated live every run. The list is
-`process`, `Bun`, `globalThis`, `global`, `self`, `fetch`, `Date`,
-`Temporal`, `Intl`, `crypto`, `performance`, `navigator`, `require`,
-`eval`, `Function`, `constructor`, `localeCompare`, `await`, any
-`toLocale*` method, the reflective primitives that reach `Function`
-without naming it (`Reflect`, `getPrototypeOf`, `setPrototypeOf`,
-`getOwnPropertyNames`, `getOwnPropertyDescriptor`,
-`getOwnPropertyDescriptors`, `__proto__`, `prototype`,
-`__defineGetter__`, `__defineSetter__`, `__lookupGetter__`,
-`__lookupSetter__`), `import.meta`, `random` (as a word, so a
-destructured `Math.random` too), `prompt`, `confirm` and `alert` (they
-read the terminal), `arguments` (a CommonJS config's `arguments[1]` is
-`require`), `Worker` (it runs a file outside the hashed closure) and a
-dynamic `import()` — the aliases and the property-name routes to each
-(`global['proc' + 'ess']`, `({}).constructor.constructor`) included.
-A string literal naming `constructor`, `__proto__` or `prototype`
-evaluates live too. The list stops accidental impurity; a config built
-to defeat it can assemble a key at run time.
-Five of those names were listed only after a config using them had
-been cached as pure. An identifier
-escape is the one spelling a name list cannot see, so a backslash in
-code position is refused on sight, and a bare import of anything but
-`@vzn/vx/config` (the entry `vx init` writes) and `@vzn/vx`'s pure
-helpers is refused too: a pure closure is relative files.
-
-A config that passes is keyed by the git blob ids of its **whole
-import closure** — so an edit to the preset invalidates the cached
-evaluation of every importer — together with the workspace
-fingerprint and the Bun and vx versions that evaluated it. A closure
-of more than 32 files evaluates live: a preset tree that big is not
-the case this serves.
-
-What the gate buys: `load configs` is 16–25 ms per 1,000 configs
-served from the cache, against ~200 ms of evaluations. The refusal is
-what makes having it at all sound.
+Evaluating a hundred TypeScript files per run is not free, and caching
+the evaluation is unsound for a program that reads the environment or
+the clock. A run evaluates no config: it reads the resolved objects
+from `.vx/lock.json`, and only `vx lock` evaluates them.
 
 ## Freezing the evaluation: `vx lock`
 

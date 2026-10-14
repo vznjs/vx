@@ -66,7 +66,7 @@ export async function computeWorkspaceFingerprint(
 const NONE: ReadonlySet<string> = new Set()
 
 export interface WorkspaceFingerprints {
-  /** Every file folded — what the config-evaluation cache keys on. */
+  /** Every file folded. */
   readonly all: string
   /**
    * The same fold minus the files a plugin claims (`VxPlugin.fingerprint`)

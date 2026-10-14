@@ -25,9 +25,6 @@ and key derivation logic live here.
 - `file-hashes.ts` — `FileHashStore`: the per-file blob-OID memo over
   `file_hashes` (a symlink hashes as its target string) and the repo's
   object format.
-- `config-evals.ts` — `ConfigEvalTable`: the `config_evals` /
-  `config_closures` tables behind the `ConfigEvalStore` contract, with
-  their retention (a daily sweep: no index covers `created_at`).
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
   and the two proofs a hit runs before skipping a restore.
 - `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
@@ -308,7 +305,7 @@ export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v34'
+export const SCHEMA_VERSION = 'v35'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -631,7 +628,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v43'`; `SCHEMA_VERSION` is
-`'v34'`. Bump `CACHE_VERSION` when:
+`'v35'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

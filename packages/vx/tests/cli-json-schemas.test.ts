@@ -433,7 +433,6 @@ describe('each schema object is its source type', () => {
         workspaceRoot: true,
         projects: true,
         tasks: true,
-        configErrors: true,
         plugins: true,
         workers: true,
         memory: true,

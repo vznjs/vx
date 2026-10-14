@@ -12,14 +12,7 @@ import {
   thrownValueMessage,
   WATCHED_BUILTIN_NAMES,
 } from './config-eval.js'
-import { hasEsmExport, unprovidedBareImports } from './config-imports.js'
-import {
-  configEvalKey,
-  configEvalKeyFromClosure,
-  configEvalKeyFromIdentities,
-  configImports,
-  type ConfigEvalStore,
-} from './config-cache.js'
+import { configImports, hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import { readOnce, unreadable } from './load-reads.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
@@ -52,9 +45,9 @@ function assertDefaultObject(mod: unknown, kind: string, configPath: string): vo
  * The source a load already holds, by the specifier it imports it under.
  * Bun's loader would open and read a project config a second time; the
  * `vx-config-bytes` plugin hands it this instead, so the evaluation runs
- * exactly the bytes the eval-cache key and the import gate saw. It is also
- * the cheaper load: 1,000 configs imported this way took 80–100 ms against
- * 180 ms read by Bun (measured 2026-09-24).
+ * exactly the bytes the import gate saw. It is also the cheaper load:
+ * 1,000 configs imported this way took 80–100 ms against 180 ms read by
+ * Bun (measured 2026-09-24).
  *
  * Handed over as a string: `onLoad` reads a byte array as Latin-1, and a
  * `ü` in a description came back as `Ã¼`. So only UTF-8 is served, and
@@ -358,142 +351,23 @@ function loadFailure(err: unknown, configPath: string, kind: string): unknown {
   return new UserError(thrownValueMessage(kind, configPath, Bun.inspect(err, { compact: true })))
 }
 
-export interface LoadProjectConfigOptions {
-  /** Observe the CURRENT environment: no eval cache, even when `evalCache` is passed. */
-  fresh?: boolean
-  /**
-   * Serve a provably-pure config from its cached evaluation (see
-   * config-cache.ts) and store a fresh one for next time. Off for `fresh`.
-   */
-  evalCache?: { store: ConfigEvalStore; workspaceRoot?: string; workspaceFingerprint: string }
-}
-
 /**
- * Load many configs at once: every file's bytes and cache key in parallel,
- * ONE store lookup for all keys, then only the misses are evaluated (in the
- * order given, so a failure names the first broken file the way a
- * one-by-one load did). A single-path load is the one-element case.
+ * Evaluate many configs at once: every file's bytes in parallel, then each
+ * one evaluated (in the order given, so a failure names the first broken
+ * file the way a one-by-one load did). A single-path load is the
+ * one-element case. Only `vx lock` evaluates; every run reads the lock.
  */
 const LOAD_WIDTH = 128
 
-export async function loadProjectConfigs(
-  configPaths: readonly string[],
-  opts?: LoadProjectConfigOptions,
-): Promise<ProjectConfig[]> {
-  const evalCache = opts?.fresh === true ? undefined : opts?.evalCache
-  const store = evalCache?.store
-  const hashFile = store?.hashFile?.bind(store)
-  const hashBytes = store?.hashBytes?.bind(store)
-  // The slow path keys from the bytes it already holds; `hashFile` there
-  // memoised every closure file one autocommit upsert at a time (item 615).
-  const slowKeyHash =
-    hashBytes !== undefined ? { hashBytes } : hashFile !== undefined ? { hashFile } : {}
-  // The warm fast path: a config whose ordered closure the store remembers
-  // is keyed from per-file identities (a stat each, no read, no scan); the
-  // slow path below reads, gates and scans, and indexes the closure for
-  // next time when every import is explicit.
-  const closures =
-    hashFile !== undefined && store?.getConfigClosures !== undefined
-      ? store.getConfigClosures(configPaths)
-      : new Map<string, string[]>()
-  // Every indexed closure's files identified in ONE batch, then keyed from
-  // the map; a file the batch could not stat has no identity, which makes
-  // that config's fast key miss and sends it down the slow path exactly as
-  // a throwing per-file `hashFile` did.
-  let identities: Map<string, string> | undefined
-  if (closures.size > 0 && store?.hashFiles !== undefined) {
-    const files = new Set<string>()
-    for (const closure of closures.values()) for (const f of closure) files.add(f)
-    identities = await store.hashFiles([...files])
-  }
-  // With the batch in hand a fast key is synchronous: an async key per
-  // config, awaiting identities already in the map, was ~5 ms of a
-  // 1,000-config warm load. Only a config off the fast path is awaited.
-  const fastKeyOf = (configPath: string): string | null => {
-    const closure = closures.get(configPath)
-    if (closure === undefined || evalCache === undefined || identities === undefined) return null
-    return configEvalKeyFromIdentities({
-      closure,
-      identities,
-      workspaceFingerprint: evalCache.workspaceFingerprint,
-    })
-  }
-  const fastHashFile = identities === undefined ? hashFile : undefined
-  interface Prepared {
-    configPath: string
-    bytes: Uint8Array | null
-    cacheKey: string | null
-    indexed: boolean
-    closure?: string[] | undefined
-  }
+export async function loadProjectConfigs(configPaths: readonly string[]): Promise<ProjectConfig[]> {
   const prepared = await Promise.all(
-    configPaths.map((configPath): Prepared | Promise<Prepared> => {
-      const fastKey = fastKeyOf(configPath)
-      return fastKey !== null
-        ? { configPath, bytes: null, cacheKey: fastKey, indexed: true }
-        : slowPrepared(configPath)
-    }),
-  )
-  async function slowPrepared(configPath: string): Promise<Prepared> {
-    const closure = closures.get(configPath)
-    if (closure !== undefined && evalCache !== undefined && fastHashFile !== undefined) {
-      const fastKey = await configEvalKeyFromClosure({
-        closure,
-        hashFile: fastHashFile,
-        workspaceFingerprint: evalCache.workspaceFingerprint,
-      })
-      if (fastKey !== null) return { configPath, bytes: null, cacheKey: fastKey, indexed: true }
-    }
-    const bytes = await Bun.file(configPath)
-      .bytes()
-      .catch((err: unknown) => unreadable(err, configPath))
-    const keyed =
-      evalCache === undefined
-        ? null
-        : await configEvalKey({
-            configPath,
-            bytes,
-            workspaceRoot: evalCache.workspaceRoot,
-            workspaceFingerprint: evalCache.workspaceFingerprint,
-            ...slowKeyHash,
-          })
-    return {
+    configPaths.map(async (configPath) => ({
       configPath,
-      bytes,
-      cacheKey: keyed?.key ?? null,
-      indexed: false,
-      closure: keyed !== null && keyed.indexable ? keyed.closure : undefined,
-    }
-  }
-  let hits = new Map<string, string>()
-  if (evalCache !== undefined) {
-    const keys = prepared.map((p) => p.cacheKey).filter((k): k is string => k !== null)
-    if (keys.length > 0) {
-      if (evalCache.store.getConfigEvals !== undefined) {
-        hits = evalCache.store.getConfigEvals(keys)
-      } else {
-        for (const k of keys) {
-          const hit = evalCache.store.getConfigEval(k)
-          if (hit !== null) hits.set(k, hit)
-        }
-      }
-    }
-  }
-  // What the round learned, written ONCE at the end: one transaction per
-  // table where each evaluation was its own (1,000 configs cold: 100 ms of
-  // autocommit inserts against 5, item 615). Written in `finally`, so a
-  // config that fails validation costs the next attempt only its own
-  // evaluation.
-  const evals: Array<readonly [string, string]> = []
-  const learnedClosures: Array<readonly [string, readonly string[]]> = []
-  interface Loaded {
-    config: ProjectConfig
-    evaluated?: readonly [string, string]
-    closure?: readonly [string, readonly string[]]
-  }
-  // Taken only when a config is evaluated in this process: reading every
-  // descriptor of `Bun` makes Bun build its lazy members (`bun:sql`,
-  // `node:stream`), ~7 ms of a two-config warm run where every load hit.
+      bytes: await Bun.file(configPath)
+        .bytes()
+        .catch((err: unknown) => unreadable(err, configPath)),
+    })),
+  )
   let builtins: BuiltinSnapshot | undefined
   let env: Readonly<Record<string, string | undefined>> = {}
   let cwd = ''
@@ -502,47 +376,19 @@ export async function loadProjectConfigs(
   // More than one evaluation in flight: a change seen after one load may
   // be another's.
   let overlapping = false
-  let tainted = false
-  const loadOne = async (entry: (typeof prepared)[number]): Promise<Loaded> => {
-    const { configPath, cacheKey } = entry
-    // A fast key that missed: the closure is stale or the file changed.
-    // Take the slow path for this one config, which re-indexes it.
-    let bytes = entry.bytes
-    let closure = entry.closure
-    let key = cacheKey
-    if (entry.indexed) {
-      bytes = await Bun.file(configPath)
-        .bytes()
-        .catch((err: unknown) => unreadable(err, configPath))
-      const keyed = await configEvalKey({
-        configPath,
-        bytes,
-        workspaceRoot: evalCache!.workspaceRoot,
-        workspaceFingerprint: evalCache!.workspaceFingerprint,
-        ...slowKeyHash,
-      })
-      key = keyed?.key ?? null
-      closure = keyed !== null && keyed.indexable ? keyed.closure : undefined
-      const slowRow = key === null ? null : (store!.getConfigEval(key) ?? null)
-      const slowHit = slowRow === null ? undefined : storedConfig(slowRow)
-      if (slowHit !== undefined) {
-        return closure === undefined
-          ? { config: slowHit }
-          : { config: slowHit, closure: [configPath, closure] }
-      }
-    }
+  const loadOne = async (entry: (typeof prepared)[number]): Promise<ProjectConfig> => {
+    const { configPath, bytes } = entry
     // A REPEAT load in this process re-evaluates in a worker, because the
     // bust above cannot reach the config's import closure — see
-    // config-eval.ts. A FIRST load keeps the in-process import, so the
-    // single `vx run` hot path never pays for a worker.
+    // config-eval.ts. A FIRST load keeps the in-process import.
     const repeat = loadedConfigs.has(configPath)
     loadedConfigs.add(configPath)
-    if (repeat) refuseUnprovidedImports(bytes!, configPath, 'Project')
+    if (repeat) refuseUnprovidedImports(bytes, configPath, 'Project')
     const mod = repeat
       ? await evaluateConfigFresh(configPath).catch((err: unknown) => {
           throw loadFailure(err, configPath, 'Project')
         })
-      : await loadDefaultExport(configPath, 'Project', bytes!)
+      : await loadDefaultExport(configPath, 'Project', bytes)
     // Before anything reads through them: a replaced `Array.prototype.includes`
     // turned the JSON-data walk's own check into "a cyclic reference".
     const changed = repeat
@@ -570,18 +416,12 @@ export async function loadProjectConfigs(
     // malformed config reports the identical UserError whether it was
     // evaluated in-process or in a worker.
     validateProjectConfig(mod as ProjectConfig, configPath)
-    const json = JSON.stringify(mod)
-    // A tree of its own, as a hit and the lock hand out. The module object
-    // shares what the config shares: one preset's task in two configs, one
-    // `exec` in two tasks. A `project` hook that edits in place then edited
-    // them all, so a cold run ran `echo P +plug +plug` where the warm run
-    // and a locked run ran `echo P +plug`, under another key (item 967). A
-    // config is JSON data (config-schema.ts), so the copy loses nothing.
-    const config = JSON.parse(json) as ProjectConfig
-    if (key === null) return { config }
-    return closure === undefined
-      ? { config, evaluated: [key, json] }
-      : { config, evaluated: [key, json], closure: [configPath, closure] }
+    // A tree of its own, as the lock hands out. The module object shares
+    // what the config shares: one preset's task in two configs, one `exec`
+    // in two tasks. A `project` hook that edits in place then edited them
+    // all (item 967). A config is JSON data (config-schema.ts), so the copy
+    // loses nothing.
+    return JSON.parse(JSON.stringify(mod)) as ProjectConfig
   }
   // One worker for every repeat load in this round, however many there are.
   const endRound = beginEvalRound()
@@ -590,49 +430,29 @@ export async function loadProjectConfigs(
     // configs at ~160 ms of imports where 64 at once take ~60 (D-68), and
     // 128 took `load configs` from 432 to 411 ms more; the width bounds the
     // files a module load may hold open, so it stays under macOS's default
-    // 256-descriptor limit. A failure
-    // stops nothing (the rest are evaluated and stored for the next
-    // attempt); the error thrown is the first in order, as the serial
-    // loop's was.
-    const results: Array<Loaded | { failed: unknown }> = []
-    // A hit is taken here, synchronously as before: through the lanes each
-    // cost the warm path a call and an await.
-    const misses: number[] = []
-    for (let i = 0; i < prepared.length; i++) {
-      const key = prepared[i]!.cacheKey
-      const hit = key === null ? undefined : hits.get(key)
-      // Stored AFTER validation, so a hit needs none; the key covers every
-      // byte the evaluation could have read.
-      const cached = hit === undefined ? undefined : storedConfig(hit)
-      if (cached !== undefined) results[i] = { config: cached }
-      else misses.push(i)
-    }
-    if (misses.length > 0) {
+    // 256-descriptor limit. A failure stops nothing; the error thrown is
+    // the first in order, as the serial loop's was.
+    const results: Array<ProjectConfig | { failed: unknown }> = []
+    if (prepared.length > 0) {
       unredirect = stdoutToStderr()
       builtins = builtinSnapshot()
       env = { ...process.env }
       cwd = process.cwd()
       umask = currentUmask()
     }
-    overlapping = misses.length > 1
+    overlapping = prepared.length > 1
     let next = 0
     const lane = async (): Promise<void> => {
-      while (next < misses.length) {
-        const i = misses[next++]!
+      while (next < prepared.length) {
+        const i = next++
         results[i] = await loadOne(prepared[i]!).catch((err: unknown) => ({ failed: err }))
       }
     }
-    await Promise.all(Array.from({ length: Math.min(LOAD_WIDTH, misses.length) }, lane))
+    await Promise.all(Array.from({ length: Math.min(LOAD_WIDTH, prepared.length) }, lane))
     let first: { failed: unknown } | undefined
-    for (const r of results) {
-      if ('failed' in r) first ??= r
-      else {
-        if (r.evaluated !== undefined) evals.push(r.evaluated)
-        if (r.closure !== undefined) learnedClosures.push(r.closure)
-      }
-    }
+    for (const r of results) if ('failed' in r) first ??= r
     const changed =
-      misses.length > 0
+      prepared.length > 0
         ? [
             ...restoreBuiltins(builtins),
             ...restoreEnv(env),
@@ -640,9 +460,9 @@ export async function loadProjectConfigs(
             ...restoreUmask(umask),
           ]
         : []
-    // Overlapping loads check most built-ins and the env only here, so a change one
-    // config made may have broken another's load: it is refused first, and
-    // nothing the round evaluated is stored.
+    // Overlapping loads check most built-ins and the env only here, so a
+    // change one config made may have broken another's load: it is refused
+    // first.
     const changedInRound =
       first?.failed instanceof ChangedInRound
         ? first.failed.changed
@@ -650,9 +470,7 @@ export async function loadProjectConfigs(
           ? changed
           : undefined
     if (changedInRound !== undefined) {
-      tainted = true
-      for (const i of misses) {
-        const configPath = prepared[i]!.configPath
+      for (const { configPath } of prepared) {
         const own = await builtinsChangedBy(configPath)
         // The blaming worker is gone, so this thread reads alone; and a
         // worker that outlived its budget was ended before it could put
@@ -666,24 +484,11 @@ export async function loadProjectConfigs(
     // One load in the round, in the worker (a repeat load), is the one
     // that moved it: the worker no longer reads the umask to say so.
     if (changed.length > 0)
-      throw builtinsChanged(
-        changed,
-        misses.length === 1 ? prepared[misses[0]!]!.configPath : undefined,
-      )
-    return results.map((r) => (r as Loaded).config)
+      throw builtinsChanged(changed, prepared.length === 1 ? prepared[0]!.configPath : undefined)
+    return results as ProjectConfig[]
   } finally {
     unredirect?.()
     endRound()
-    if (store !== undefined && !tainted) {
-      if (evals.length > 0) {
-        if (store.putConfigEvals !== undefined) store.putConfigEvals(evals)
-        else for (const [k, json] of evals) store.putConfigEval(k, json)
-      }
-      if (learnedClosures.length > 0 && store.putConfigClosure !== undefined) {
-        if (store.putConfigClosures !== undefined) store.putConfigClosures(learnedClosures)
-        else for (const [p, files] of learnedClosures) store.putConfigClosure(p, files)
-      }
-    }
   }
 }
 
@@ -1068,11 +873,8 @@ function sameDescriptor(p: Primitives, a: PropertyDescriptor, b: PropertyDescrip
   )
 }
 
-export async function loadProjectConfig(
-  configPath: string,
-  opts?: LoadProjectConfigOptions,
-): Promise<ProjectConfig> {
-  const [config] = await loadProjectConfigs([configPath], opts)
+export async function loadProjectConfig(configPath: string): Promise<ProjectConfig> {
+  const [config] = await loadProjectConfigs([configPath])
   return config!
 }
 
@@ -1183,21 +985,4 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     return mod
   }
   return null
-}
-
-/**
- * A stored evaluation, or undefined when the row is not one: a row cut
- * short (a crash mid-write, a bad disk) failed every later run with a
- * `SyntaxError` stack from this loader until the cache was wiped
- * (fuzzed, L-17). As a miss it is evaluated again and the row replaced.
- */
-function storedConfig(json: string): ProjectConfig | undefined {
-  try {
-    const v: unknown = JSON.parse(json)
-    return typeof v === 'object' && v !== null && !Array.isArray(v)
-      ? (v as ProjectConfig)
-      : undefined
-  } catch {
-    return undefined
-  }
 }

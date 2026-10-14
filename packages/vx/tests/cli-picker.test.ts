@@ -7,9 +7,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { pickTask } from '../src/cli/select.js'
+import { lock } from './helpers/orchestrator.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 let root: string
+
+/** The picker over the configs as they are now: it reads them from the lock. */
+async function pick(...args: Parameters<typeof pickTask>): ReturnType<typeof pickTask> {
+  await lock(args[0])
+  return pickTask(...args)
+}
 
 describe('vx run interactive picker', () => {
   beforeEach(async () => {
@@ -45,7 +52,7 @@ describe('vx run interactive picker', () => {
       const input = new PassThrough()
       const output = new PassThrough()
       output.on('data', () => undefined)
-      const picking = pickTask(root, { input, output })
+      const picking = pick(root, { input, output })
       await Bun.sleep(50)
       input.write(`${answer}\n`)
       expect(await picking).toBeNull()
@@ -67,7 +74,7 @@ describe('vx run interactive picker', () => {
     })
     const output = new PassThrough()
     output.on('data', () => undefined)
-    expect(await pickTask(root, { input: new PassThrough(), output })).toBeNull()
+    expect(await pick(root, { input: new PassThrough(), output })).toBeNull()
     expect(stderr).toBe(
       'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts\n',
     )
@@ -80,7 +87,7 @@ describe('vx run interactive picker', () => {
     output.on('data', (c: Buffer) => {
       printed += c.toString()
     })
-    const picking = pickTask(root, { input, output })
+    const picking = pick(root, { input, output })
     // Give the listing a tick to render, then answer.
     await Bun.sleep(50)
     input.write('2\n')
@@ -111,7 +118,7 @@ describe('vx run interactive picker', () => {
     output.on('data', (c: Buffer) => {
       printed += c.toString()
     })
-    const picking = pickTask(root, { input, output })
+    const picking = pick(root, { input, output })
     await Bun.sleep(50)
     input.write('3\n')
     expect(await picking).toEqual({ project: 'gamma', task: 'gen', description: 'from plugin' })
@@ -133,7 +140,7 @@ describe('vx run interactive picker', () => {
       const input = new PassThrough()
       const output = Object.assign(new PassThrough(), { isTTY: true })
       output.on('data', () => undefined)
-      const picking = pickTask(root, { input, output })
+      const picking = pick(root, { input, output })
       await Bun.sleep(50)
       input.write(key)
       picked.push(await picking)
@@ -156,7 +163,7 @@ describe('vx run interactive picker', () => {
     output.on('data', (c: Buffer) => {
       printed += c.toString()
     })
-    const picking = pickTask(root, { input, output })
+    const picking = pick(root, { input, output })
     await Bun.sleep(50)
     input.write('2\n')
     expect(await picking).toEqual({ project: 'alpha', task: 'zed' })
@@ -170,7 +177,7 @@ describe('vx run interactive picker', () => {
     output.on('data', (c: Buffer) => {
       printed += c.toString()
     })
-    const picking = pickTask(root, { input, output }, {}, new Set(['beta']))
+    const picking = pick(root, { input, output }, {}, new Set(['beta']))
     await Bun.sleep(50)
     input.write('1\n')
     expect(await picking).toEqual({ project: 'beta', task: 'build', description: 'beta build' })
@@ -187,16 +194,14 @@ describe('vx run interactive picker', () => {
       stderr += String(chunk)
       return true
     })
-    expect(
-      await pickTask(root, { input: new PassThrough(), output }, {}, new Set(['beta'])),
-    ).toBeNull()
+    expect(await pick(root, { input: new PassThrough(), output }, {}, new Set(['beta']))).toBeNull()
     expect(stderr).toBe('vx run: no tasks declared in the selected projects (beta)\n')
   })
 
   it('rejects an out-of-range selection with null', async () => {
     const input = new PassThrough()
     const output = new PassThrough()
-    const picking = pickTask(root, { input, output })
+    const picking = pick(root, { input, output })
     await Bun.sleep(50)
     input.write('99\n')
     expect(await picking).toBeNull()

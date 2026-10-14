@@ -335,13 +335,6 @@ prune` policy at the end of every run,
   capabilities, `commands` (new verbs) and the `setup` / `teardown`
   pair. Core applies no plugin by default; a workspace declares all
   of them.
-- **A config evaluation cache** for provably pure configs
-  (`src/workspace/config-cache.ts`): a lexer-backed purity GATE, not a
-  heuristic — with string literals and comments stripped, any BACKSLASH
-  in code position (an identifier escape: `\u0070rocess` IS `process`,
-  the one spelling a deny-list cannot see), any bare import but
-  `@vzn/vx` (its pure values) and `@vzn/vx/config`, or a closure past 32 files opts a config out. Warm 1000-project run
-  ~400 → 237 ms with the rest of the perf waves.
 - `vx init` (scripts → configs), `vx why`, `vx last`,
   `--cache-download`, remote execution through `@vzn/vx-reapi`,
   `@vzn/vx-ci` (job summary + check run), the `schedule-history` plugin (critical-path
@@ -363,7 +356,7 @@ deliberate design pass.
 
 - **Daemon / persistent project-graph process.** Re-discovery is fast
   enough on Bun (a warm 1000-project run is ~170 ms end to end, with
-  config loading scoped and pure configs served from the eval cache);
+  config loading scoped and every config read from the lock);
   the operational cost of a daemon doesn't pay for itself. Turbo
   reached the same conclusion: from 2.9 its docs say the daemon is no
   longer used for `turbo run`.

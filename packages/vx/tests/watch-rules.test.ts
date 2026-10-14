@@ -28,6 +28,7 @@ import {
 import { listProjects, loadWorkspace, WORKSPACE_FINGERPRINT_FILES } from '../src/workspace/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { lock } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
 
@@ -290,6 +291,7 @@ describe('the sweep sees what a run sees', () => {
     // Read raw, the config-less package had no config to sweep: its
     // `dist/**` was not ignored, so the run's own write re-triggered the
     // loop, and its workspace input did not widen the watch.
+    await lock(root)
     const metas = await listProjects(await loadWorkspace(root))
     const swept = await sweepConfigs(metas, root)
     expect(swept.workspaceWide).toBe(true)
@@ -314,13 +316,15 @@ describe('sweepConfigs: which projects read what they like', () => {
       const configs: Record<string, string> = {
         tool: `export default { tasks: { gen: { exec: { command: 'true' } } } }\n`,
         svc: `export default { tasks: { dev: { exec: { command: 'true', persistent: { readyWhen: 'up' } } } } }\n`,
-        lib: `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] } } } } }\n`,
+        lib: `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n`,
       }
       for (const [name, config] of Object.entries(configs)) {
         await mkdir(path.join(root, 'packages', name), { recursive: true })
         await writeFile(path.join(root, 'packages', name, 'package.json'), JSON.stringify({ name }))
         await writeFile(path.join(root, 'packages', name, 'vx.config.mjs'), config)
       }
+      await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+      await lock(root)
       const metas = await listProjects(await loadWorkspace(root))
       const swept = await sweepConfigs(metas, root)
       expect([...swept.uncached]).toEqual([path.join(root, 'packages', 'tool')])
@@ -355,6 +359,12 @@ describe('sweepConfigs: only the tasks the run reaches are judged', () => {
           'lint.x': ${task('x/**')},
         } }\n`,
       )
+      // lint's `**/*` reading build's `dist/` is the case under test.
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        'export default { run: { rules: { upfrontKeys: false } } }\n',
+      )
+      await lock(root)
       const metas = await listProjects(await loadWorkspace(root))
       const ui = path.join(root, 'packages', 'ui')
       const inputs = async (tasks?: string[]): Promise<unknown> =>
@@ -518,6 +528,8 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
           `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'], workspaceFiles: ${globs} }, outputs: { files: [] } } } } }\n`,
         )
       }
+      await Bun.write(path.join(wsRoot, '.vx/workspace.mjs'), 'export default {}\n')
+      await lock(wsRoot)
       const projects = await listProjects(await loadWorkspace(wsRoot))
       const swept = await sweepConfigs(projects, wsRoot)
       expect(swept.workspaceWide).toBe(true)

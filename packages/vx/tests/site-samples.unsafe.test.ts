@@ -384,7 +384,6 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
       '9,603 tasks',
       '74 ms',
       '172 ms',
-      '16–25 ms',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
@@ -705,54 +704,6 @@ describe('the keys-from-git post counts the parts the key folds', () => {
       expect(spawned.some((s) => s.startsWith(named))).toBe(true)
       expect(page).toContain('`' + named)
     }
-  })
-})
-
-describe('the resolved-config-hashing post names every global the gate denies', () => {
-  const src = readFileSync(
-    path.resolve(import.meta.dir, '..', 'src', 'workspace', 'config-cache.ts'),
-    'utf8',
-  )
-  const page = readFileSync(path.join(DOCS, 'blog', 'resolved-config-hashing.md'), 'utf8')
-  it('the bare imports it lets through are the two the gate passes', () => {
-    // It said "anything but `@vzn/vx`"; every config vx init writes imports
-    // `@vzn/vx/config`, which the gate passes whole.
-    const entry = /const PURE_CONFIG_ENTRY = '([^']+)'/.exec(src)
-    expect(entry).not.toBeNull()
-    expect(src).toContain('if (spec === PURE_CONFIG_ENTRY) continue')
-    const flat = page.split(/\s+/).join(' ')
-    expect(flat).toContain(`a bare import of anything but \`${entry![1]}\``)
-  })
-  it('each identifier in IMPURE_RE is a name in its list', () => {
-    const re = /const IMPURE_RE =\n\s+\/\\b\(\?:([^)]*)\)\\b/.exec(src)
-    expect(re).not.toBeNull()
-    const names = re![1]!.split('|')
-    expect(names.length).toBeGreaterThan(15)
-    for (const name of names) {
-      // `toLocale\w*` is a family, written `toLocale*` in prose.
-      expect(page).toContain('`' + name.replace('\\w*', '*') + '`')
-    }
-    for (const form of ['`import.meta`', '`Math.random`', '`import()`'])
-      expect(page).toContain(form)
-  })
-  it('its closure-size bound is MAX_CLOSURE_FILES', () => {
-    const m = /const MAX_CLOSURE_FILES = (\d+)/.exec(src)
-    expect(m).not.toBeNull()
-    expect(page.replace(/\s+/g, ' ')).toContain(`more than ${m![1]} files evaluates live`)
-  })
-  it('its config-eval figures are the ones benchmarks.md measured, as the concept page states them', () => {
-    // The post said the gate is "worth about 20 ms", the fault item 334
-    // fixed on the concept page: 16-25 ms is what the cached stage COSTS,
-    // against the ~200 ms of evaluations it replaces.
-    const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    const concept = readFileSync(path.join(DOCS, 'concepts', 'why-vx-is-fast.md'), 'utf8')
-    const flat = (s: string) => s.replace(/\s+/g, ' ')
-    for (const claim of ['16–25 ms per 1,000 configs', 'against ~200 ms of evaluations']) {
-      expect(flat(page)).toContain(claim)
-      expect(flat(concept)).toContain(claim)
-    }
-    expect(bench).toContain('16–25 ms per')
-    expect(bench).toContain('~199 ms')
   })
 })
 

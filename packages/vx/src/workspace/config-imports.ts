@@ -27,12 +27,15 @@
 //     too, so an edit there moves the site's key. The walk stopped at the
 //     first file of another project, and containment selected core alone
 //     while the site's key moved (X-128).
+//
+// `configImports` walks one config's relative closure forward, for the
+// files `vx watch` watches.
 
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { builtinModules } from 'node:module'
 import path from 'node:path'
-import { isOutOfFds } from '../util/index.js'
+import { isOutOfFds, realPath } from '../util/index.js'
 import type { ProjectMeta } from './workspace.js'
 
 const BUILTINS = new Set(builtinModules)
@@ -466,4 +469,76 @@ export async function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set
     for (const importer of importedBy.get(file) ?? []) walk.push(importer)
   }
   return selected
+}
+
+/**
+ * The canonical directory Bun resolves `file`'s imports from: its REAL
+ * path's, so a config linked in from elsewhere imports its neighbours
+ * there, not beside the link (item 950).
+ */
+function realDirOf(file: string): string {
+  if (lstatSync(file).isSymbolicLink()) return path.dirname(realPath(file))
+  return realPath(path.dirname(file))
+}
+
+/**
+ * Every file a config imports by relative specifier, transitively, outside
+ * `node_modules`, the config itself excluded. `vx watch` watches these: a
+ * shared preset outside the project (`../../shared/preset.mjs`, the way
+ * configs compose) changed what a run evaluates and no watcher saw it
+ * (item 949). A file that cannot be read ends its branch; an import that
+ * cannot be resolved is still listed, by the names it would have.
+ */
+export async function configImports(configPath: string): Promise<string[]> {
+  const seen = new Set<string>([configPath])
+  const out: string[] = []
+  const queue = [configPath]
+  while (queue.length > 0) {
+    const file = queue.shift()!
+    let source: string
+    try {
+      source = await Bun.file(file).text()
+    } catch {
+      continue
+    }
+    let specs: string[]
+    try {
+      specs = scanner(TS_EXT.has(path.extname(file)) ? 'ts' : 'js')
+        .scanImports(source)
+        .map((i) => i.path)
+    } catch {
+      // A source the parser refuses (mid-edit) keeps the imports a plain
+      // match sees: watching too few files is what this list exists to
+      // prevent.
+      specs = [...source.matchAll(/\bfrom\s*['"]([^'"]+)['"]|\bimport\s*['"]([^'"]+)['"]/g)].map(
+        (m) => (m[1] ?? m[2])!,
+      )
+    }
+    let dir: string | undefined
+    for (const spec of specs) {
+      if (!spec.startsWith('./') && !spec.startsWith('../')) continue
+      let resolved: string
+      try {
+        dir ??= realDirOf(file)
+        resolved = realPath(Bun.resolveSync(spec, dir))
+      } catch {
+        // Missing for now, still imported: the config that names it fails
+        // to load until it is back, and a list without it left `vx watch`
+        // deaf to its return. Named as written, and not walked.
+        if (dir === undefined) continue
+        for (const ext of path.extname(spec) === '' ? RESOLVED_EXTENSIONS : ['']) {
+          const missing = path.resolve(dir, spec + ext)
+          if (seen.has(missing)) continue
+          seen.add(missing)
+          out.push(missing)
+        }
+        continue
+      }
+      if (seen.has(resolved) || resolved.split(path.sep).includes('node_modules')) continue
+      seen.add(resolved)
+      out.push(resolved)
+      queue.push(resolved)
+    }
+  }
+  return out
 }

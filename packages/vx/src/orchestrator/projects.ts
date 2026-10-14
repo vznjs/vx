@@ -10,8 +10,9 @@ import {
   frozenProjectConfigs,
   loadProjectConfigs,
   LOCKFILE_NAME,
+  NO_LOCK,
+  readLockfile,
   validateProjectConfig,
-  type LoadProjectConfigOptions,
   type LoadReads,
   type Lockfile,
   type PackageGraph,
@@ -20,10 +21,9 @@ import {
   type Workspace,
 } from '../workspace/index.js'
 import type { WorkspaceConfig } from '../config.js'
-import { Cache, lazyGitEnumeration, type LazyGitEnumeration } from '../cache/index.js'
+import { lazyGitEnumeration, type LazyGitEnumeration } from '../cache/index.js'
 import { UserError } from '../util/index.js'
 import {
-  computeWorkspaceFingerprint,
   listProjects,
   loadWorkspace,
   loadWorkspaceConfig,
@@ -142,12 +142,11 @@ interface LoadProjectsBase {
    */
   seeds: 'all' | Iterable<string>
   /**
-   * Read configs from the lock instead of evaluating them (every run;
-   * null for `vx lock` and the reading verbs), asked only when a config is to be read: a run whose every config the
-   * CLI's selection pass staged never parses it again.
+   * Where configs come from: the lock, asked only when a config is to be
+   * read (a run whose every config the CLI's selection pass staged never
+   * parses it), or `'evaluate'`, which only `vx lock` passes.
    */
-  lock: (() => Promise<Lockfile>) | null
-  evalCache: LoadProjectConfigOptions['evalCache']
+  configs: (() => Promise<Lockfile>) | 'evaluate'
   warn: (message: string) => void
   /**
    * Entries a load in this same process already produced with the same
@@ -180,7 +179,8 @@ export interface LoadedProjects {
  * enters scope.
  */
 export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjects> {
-  const { plugins, lock, workspaceRoot } = args
+  const { plugins, workspaceRoot } = args
+  const lock = args.configs === 'evaluate' ? null : args.configs
   const graph = args.closure ? args.packageGraph : null
   // A package with no config file declares no tasks — unless a plugin
   // fills the `project` stage, in which case it is a project the stage may
@@ -266,14 +266,12 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
       (m): m is ProjectMeta & { configPath: string } =>
         typeof m.configPath === 'string' && args.staged?.get(m.name) === undefined,
     )
-    const loaded = lock
-      ? withFile.length === 0
+    const loaded =
+      withFile.length === 0
         ? []
-        : frozenProjectConfigs(await lock(), withFile, workspaceRoot)
-      : await loadProjectConfigs(
-          withFile.map((m) => m.configPath),
-          args.evalCache !== undefined ? { evalCache: args.evalCache } : {},
-        )
+        : lock
+          ? frozenProjectConfigs(await lock(), withFile, workspaceRoot)
+          : await loadProjectConfigs(withFile.map((m) => m.configPath))
     let next = 0
     for (const meta of round) {
       const pre = args.staged?.get(meta.name)
@@ -398,12 +396,10 @@ function crossDepProjects(config: ProjectConfig): string[] {
 }
 
 /**
- * The run path's view of a workspace's projects for a reader — `vx show`,
- * a plugin's verb, an embedder: discovery, the plugin `config` and
- * `project` stages, and the local cache opened only to serve cached
- * evaluations, so a pure config costs a stat, not an evaluation. `scope`
- * is every project or a list of names; no closure, no lock (a reader
- * reads live, as a default run does). Plugin warnings go to `warn`.
+ * The run path's view of a workspace's projects for a reader — a plugin's
+ * verb, an embedder: discovery, the lock and the plugin `config` and
+ * `project` stages. `scope` is every project or a list of names; no
+ * closure. No lock is `NO_LOCK`. Plugin warnings go to `warn`.
  */
 export async function loadResolvedProjects(
   workspaceRoot: string,
@@ -419,36 +415,25 @@ export async function loadResolvedProjects(
     cacheDir,
     warn,
   )
-  // Opened as `vx last` opens it: a reader makes no index where there is
-  // none and never resets an earlier schema's (C-5). One it cannot read
-  // serves nothing; the configs evaluate live.
-  let cache: Cache | undefined
-  try {
-    cache = Cache.inspect(cacheDir)
-  } catch (err) {
-    if (!(err instanceof UserError)) throw err
-  }
-  try {
-    const loaded = await loadProjects({
-      workspaceRoot,
-      cacheDir,
-      plugins,
-      projectMetas: metas,
-      seeds: opts.scope ?? 'all',
-      closure: false,
-      lock: null,
-      evalCache:
-        cache === undefined
-          ? undefined
-          : {
-              store: cache,
-              workspaceRoot,
-              workspaceFingerprint: await computeWorkspaceFingerprint(workspaceRoot, reads),
-            },
-      warn,
-    })
-    return loaded.projects
-  } finally {
-    cache?.close()
-  }
+  const loaded = await loadProjects({
+    workspaceRoot,
+    cacheDir,
+    plugins,
+    projectMetas: metas,
+    seeds: opts.scope ?? 'all',
+    closure: false,
+    configs: lockReader(workspaceRoot),
+    warn,
+  })
+  return loaded.projects
+}
+
+/** The lock, read once on first ask; no lock is `NO_LOCK`. */
+export function lockReader(workspaceRoot: string): () => Promise<Lockfile> {
+  let read: Promise<Lockfile> | undefined
+  return () =>
+    (read ??= readLockfile(workspaceRoot).then((lock) => {
+      if (lock === null) throw new UserError(NO_LOCK)
+      return lock
+    }))
 }

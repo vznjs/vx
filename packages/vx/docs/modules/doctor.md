@@ -16,7 +16,6 @@ handed it the call, `handoff.md`), `bun`, `bunSupported` (false below `MIN_BUN` 
 bare version because this is a machine surface, and the prose goes in
 the rendered row only), `git`, `gitStatusCache`, `workspaceRoot`,
 `projects`, `tasks`,
-`configErrors` (`[{ path, message }]`, the configs that did not load),
 `plugins` (`[{ name, seams }]`, the seams in `PLUGIN_HOOKS` order),
 `workers` (`{ count, source, cores, cpuQuota }`), `memory`
 (`{ usableBytes, totalBytes, cgroupLimitBytes }`), `cacheDir`,
@@ -40,12 +39,10 @@ denies, else null). See
   runs: 113.8 → 107.3 ms median for `vx info` at 100 projects.
 
 - **The task count is the run's.** It comes from the same staged load a
-  run uses (`loadProjects`, plugin `project` stage applied); a config
-  that fails to load counts as zero and never fails the doctor — the
-  rest then load one project at a time through the same `loadProjects`,
-  so a plugin's tasks still count — and is named in `configErrors`, with
-  the message `vx run` stops on, because a `0
-tasks` that hides a typo is the fact a bug report needs.
+  run uses (`loadProjects` over the lock, plugin `project` stage
+  applied). The doctor evaluates no config: with no lock, or one a run
+  would refuse, the task and sandbox counts are zero and `lockfile` is
+  the answer — a broken config is `vx lock`'s to report.
 - **The machine as the process may use it.** `workers` and `memory` read
   `util/cgroup.ts`, so inside a container they say what the cgroup
   allows and name it as the source.
@@ -55,4 +52,5 @@ tasks` that hides a typo is the fact a bug report needs.
 ## Tests
 
 `tests/show-info.test.ts` (the rows and the JSON facts end to end, the
-`--cache-dir` override, the orphans row).
+`--cache-dir` override, the orphans row); `tests/info-lock.test.ts` (no
+lock, and a config edited after the lock, are never evaluated).

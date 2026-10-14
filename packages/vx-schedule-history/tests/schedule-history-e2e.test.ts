@@ -446,6 +446,10 @@ describe('schedule-history plugin end to end', () => {
         `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           'export default { run: { concurrency: 1 }, plugins: [scheduleHistoryPlugin()] }\n',
       )
+      // `vx history` reads configs from the lock, as a run does.
+      expect(Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root }).exitCode).toBe(
+        0,
+      )
       const json = Bun.spawnSync({
         cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
         cwd: root,

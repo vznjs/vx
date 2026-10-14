@@ -86,12 +86,10 @@ allowed:
 - **Reading another project.** Globs are resolved inside the project
   directory. `../shared/**` is an error, and `cache.inputs.workspaceFiles`
   is the one named exception for files at the workspace root.
-- **Being impure without saying so.** A config that names `process`,
-  `Date`, `fetch`, `import.meta`, a dynamic `import()` or any of the
-  other globals on the
-  [purity gate's list](../resolved-config-hashing/) is evaluated live
-  every run and never served from the evaluation cache. That is the
-  correct behaviour, not a penalty; it just means a config that reads
+- **Being impure without saying so.** A config that reads
+  `process.env`, the clock or the network freezes that answer into
+  `.vx/lock.json` when `vx lock` evaluates it, and `vx lock --check`
+  re-evaluates it and reports the drift. A config that reads
   `process.env` should be one that has to.
 
 ## Freezing it

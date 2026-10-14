@@ -35,6 +35,10 @@ export interface ConfigImportOwnersArgs {
   skip: ReadonlySet<string> // already-selected projects
 }
 export function configImportOwners(a: ConfigImportOwnersArgs): Promise<Set<string>>
+
+/** Every file a config imports by relative specifier, transitively, outside
+ *  `node_modules`, the config excluded; an unresolved one by the names it would have. */
+export async function configImports(configPath: string): Promise<string[]>
 ```
 
 ## How it works
@@ -168,3 +172,14 @@ through `paths` or `baseUrl` with a relative string `extends` followed (Bun
 follows no array `extends`, D-30), to a file on
 disk: Bun loads that file and never reaches the registry (D-26).
 `tests/config-missing-import.test.ts`.
+
+## `configImports`
+
+The files `vx watch` watches beside each config, and the files a repeat
+load checks before it evaluates the workspace config again (item 1046):
+a shared preset outside the project changed what a run evaluates and no
+watcher saw it (item 949). The walk scans each file with
+`Bun.Transpiler.scanImports` (a plain match when the parser refuses the
+source mid-edit), resolves relative specifiers from the file's real
+directory (item 950), and lists an unresolvable one by the paths it
+names, so `vx watch` sees it come back.

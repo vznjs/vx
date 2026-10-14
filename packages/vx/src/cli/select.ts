@@ -17,7 +17,6 @@ import {
   type LoadReads,
   type FingerprintClaims,
   NO_LOCK,
-  loadProjectConfig,
   loadWorkspace,
   parseFilter,
   type ProjectMeta,
@@ -56,8 +55,8 @@ import { resolveSetting } from '../settings.js'
  * matching a changed path, one inside another project included (item
  * 954): `--affected` selects them, since the glob is that task's input. Through the run
  * path's staged load, so a glob a `project` plugin gave a config-less
- * package counts; read from the lock as a run does. A load that fails drops to the config files that
- * do load, one by one — a broken out-of-scope config does not fail a
+ * package counts; read from the lock as a run does. A load that fails drops to the lock's
+ * entries, one by one — a project the lock does not hold does not fail a
  * scoped run, and must not fail its selection either.
  */
 export async function workspaceGlobOwners(
@@ -85,30 +84,22 @@ export async function workspaceGlobOwners(
   } catch {
     // Fall through to the per-file sweep.
   }
-  // A run with no lock is refused here, before the tolerant sweep below
-  // could answer "nothing affected" and exit 0 without ever reaching the
-  // run's own refusal. A run's sweep reads each entry from the lock: it
-  // never evaluates a config.
-  const lock = load.fromLock === true ? await readLockfile(root) : undefined
+  // No lock is refused here, before the tolerant sweep below could answer
+  // "nothing affected" and exit 0 without ever reaching the run's own
+  // refusal. The sweep reads each entry from the lock: it never evaluates.
+  const lock = await readLockfile(root)
   if (lock === null) throw new UserError(NO_LOCK)
   const owners: string[] = []
-  await Promise.all(
-    projects.map(async (meta) => {
-      if (meta.configPath === null || meta.configPath === '') return
-      try {
-        const config =
-          lock === undefined
-            ? await loadProjectConfig(meta.configPath)
-            : Object.hasOwn(lock.projects, meta.name)
-              ? lock.projects[meta.name]
-              : undefined
-        if (config !== undefined && declaresMatch(config)) owners.push(meta.name)
-      } catch {
-        // A config that will not load cannot be shown to declare a matching
-        // glob; surfacing it here would fail a run the loader itself tolerates.
-      }
-    }),
-  )
+  for (const meta of projects) {
+    if (meta.configPath === null || meta.configPath === '') continue
+    if (!Object.hasOwn(lock.projects, meta.name)) continue
+    try {
+      if (declaresMatch(lock.projects[meta.name]!)) owners.push(meta.name)
+    } catch {
+      // A hand-edited entry that will not read cannot be shown to declare a
+      // matching glob; surfacing it here would fail a run the load tolerates.
+    }
+  }
   return owners
 }
 

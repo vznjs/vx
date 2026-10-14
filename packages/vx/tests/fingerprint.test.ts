@@ -312,9 +312,8 @@ describe('degenerate roots', () => {
 
 describe('a claimed file — `VxPlugin.fingerprint` takes it out of the key digest', () => {
   // A plugin that keys a lockfile per project claims it; the digest every
-  // task key folds must then not move on that file, while the digest the
-  // config-evaluation cache keys on still must (a config may import a
-  // dependency the lockfile resolved).
+  // task key folds must then not move on that file, while `all`, every
+  // file folded, still must.
   it('leaves `unclaimed` alone and moves `all` when the claimed file changes', async () => {
     const claimed = new Set(['pnpm-lock.yaml'])
     const v1 = await computeWorkspaceFingerprints(

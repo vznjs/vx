@@ -1,10 +1,10 @@
-// `vx show [target]` — introspect the workspace's LIVE resolved configs:
-// what a run would see here, now. Configs load through the same path a
-// run uses (`loadProjects`): the plugin `config` and `project` stages
-// apply, so a package a plugin gives tasks to shows them. No target: one
-// line per project. `<project>`: every task's resolved config. `<pkg>#
-// <task>`: one task. `<task>`: that task in every project declaring it.
-// Deliberately NOT the lock — .vx/projects.lock.json is already the frozen JSON.
+// `vx show [target]` — introspect the workspace's resolved configs: what a
+// run would see here, now. Configs load through the same path a run uses
+// (`loadProjects`): from the lock, with the plugin `config` and `project`
+// stages applied, so a package a plugin gives tasks to shows them. No lock
+// is `NO_LOCK`. No target: one line per project. `<project>`: every task's
+// resolved config. `<pkg>#<task>`: one task. `<task>`: that task in every
+// project declaring it.
 
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
@@ -150,7 +150,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       affected = f
       raw.unshift(f)
     }
-    const r = await resolveFilters(process.cwd(), raw, { noCreate: true }, affected)
+    const r = await resolveFilters(process.cwd(), raw, {}, affected)
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
     if ('empty' in r) process.stderr.write(`vx show: ${r.empty}\n`)
     selected = new Set('empty' in r ? [] : r.names)
@@ -159,7 +159,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   }
   const inSelection = (name: string): boolean => selected === undefined || selected.has(name)
 
-  const projects = await loadCliProjects(root, metas, scope, { noCreate: true, closure: true })
+  const projects = await loadCliProjects(root, metas, scope, { closure: true })
 
   if (parsed.target === undefined) {
     const shown = metas.filter((m) => inSelection(m.name))

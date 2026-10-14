@@ -79,12 +79,7 @@ async function workspaceProjects(
 ): Promise<Awaited<ReturnType<typeof loadCliProjects>> | null> {
   try {
     const root = await findWorkspaceRoot(cwd)
-    return await loadCliProjects(
-      root,
-      await discoverCliProjects(await loadWorkspace(root)),
-      'all',
-      { noCreate: true, fromLock: true },
-    )
+    return await loadCliProjects(root, await discoverCliProjects(await loadWorkspace(root)))
   } catch {
     // No workspace, or a config that does not load: the caller's plain line stands.
     return null

@@ -112,13 +112,6 @@ export class Cache implements CacheLayer {
     mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
   )
-  getConfigEval(key: string): string | null
-  getConfigClosures(configPaths: readonly string[]): Map<string, string[]>
-  putConfigClosure(configPath: string, files: readonly string[]): void
-  getConfigEvals(keys: readonly string[]): Map<string, string>
-  putConfigEval(key: string, json: string): void
-  putConfigEvals(entries: ReadonlyArray<readonly [string, string]>): void
-  putConfigClosures(entries: ReadonlyArray<readonly [string, readonly string[]]>): void
   hashFile(filePath: string): Promise<string>
   hashBytes(bytes: Uint8Array, nearPath: string): string
   hashFiles(paths: readonly string[]): Promise<Map<string, string>>
@@ -312,8 +305,7 @@ toggled on its own so `--force` (re-execute but still refresh the
 cache) is distinct from `--no-cache` (disable everything).
 
 The task-artifact get/save path is gated, and the local axes also gate
-the local store's config-evaluation reads and writes and its file-hash
-writes (`cache.ts`). `recordRun`, `stats`, `prune`, key derivation, and
+the local store's file-hash writes (`cache.ts`). `recordRun`, `stats`, `prune`, key derivation, and
 prefetch-ingest are never affected — they are bookkeeping/analytics
 that a run policy has no business disabling.
 
@@ -976,22 +968,17 @@ export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
 function · `src/workspace/project-loader.ts`
 
 ```ts
-export async function loadProjectConfig(
-  configPath: string,
-  opts?: LoadProjectConfigOptions,
-): Promise<ProjectConfig>
+export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 ```
 
 ## `loadResolvedProjects`
 
 function · `src/orchestrator/projects.ts`
 
-The run path's view of a workspace's projects for a reader — `vx show`,
-a plugin's verb, an embedder: discovery, the plugin `config` and
-`project` stages, and the local cache opened only to serve cached
-evaluations, so a pure config costs a stat, not an evaluation. `scope`
-is every project or a list of names; no closure, no lock (a reader
-reads live, as a default run does). Plugin warnings go to `warn`.
+The run path's view of a workspace's projects for a reader — a plugin's
+verb, an embedder: discovery, the lock and the plugin `config` and
+`project` stages. `scope` is every project or a list of names; no
+closure. No lock is `NO_LOCK`. Plugin warnings go to `warn`.
 
 ```ts
 export async function loadResolvedProjects(

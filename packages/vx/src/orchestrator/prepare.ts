@@ -35,9 +35,6 @@ import {
   isCacheScope,
   type LoadReads,
   loadWorkspace,
-  NO_LOCK,
-  type Lockfile,
-  readLockfile,
   resolveCacheDir,
   resolveStoreRoot,
   type ProjectEntry,
@@ -67,6 +64,7 @@ import {
   isDefaultBuild,
   loadProjects,
   loadWorkspacePlugins,
+  lockReader,
   type LoadedProjects,
 } from './projects.js'
 import { keptByAffected } from './affected-tasks.js'
@@ -201,12 +199,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // parse) starts here and overlaps discovery's I/O instead of following
   // the cache open (X-181). A missing or malformed lock still refuses at
   // the config load, after any earlier refusal.
-  let lockRead: Promise<Lockfile> | undefined
-  const readLock = (): Promise<Lockfile> =>
-    (lockRead ??= readLockfile(workspaceRoot).then((read) => {
-      if (read === null) throw new UserError(NO_LOCK)
-      return read
-    }))
+  const readLock = lockReader(workspaceRoot)
   if (options.staged === undefined) void readLock().catch(() => {})
   // An UNSCOPED run (no explicit scope, at least one bare task name)
   // enumerates the whole tree whatever the configs say, so git starts
@@ -290,8 +283,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // so a reader profiling that stage was sent to the wrong code.
   mark('package graph')
 
-  // The local cache opens BEFORE the configs load: it is also where their
-  // cached evaluations live.
   // `--cache-scope`, then `VX_CACHE_SCOPE`, win over the workspace (and `github()`'s guess):
   // a CI job that knows its trust level says so without editing config.
   const envScope = process.env['VX_CACHE_SCOPE'] || undefined
@@ -317,9 +308,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     await storeRoot,
   )
   localCache.assertWritable()
-  // Two digests from one read: the config-evaluation cache keys on every
-  // file (a config may import a dependency), the task keys on the files no
-  // plugin claims (`VxPlugin.fingerprint`).
+  // The task keys fold the files no plugin claims (`VxPlugin.fingerprint`).
   const fingerprintsAt = Date.now()
   const fingerprints = await computeWorkspaceFingerprints(
     workspaceRoot,
@@ -345,7 +334,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       (m) => typeof m.configPath !== 'string' || m.configPath === '' || staged.has(m.name),
     )
   if (!allStaged) await readLock()
-  const lock = readLock
 
   const loadArgs = {
     workspaceRoot,
@@ -353,8 +341,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     plugins,
     projectMetas,
     packageGraph,
-    lock,
-    evalCache: { store: localCache, workspaceRoot, workspaceFingerprint: fingerprints.all },
+    configs: readLock,
     warn: (m: string) => log.status(m),
   }
   let loaded: LoadedProjects
@@ -366,8 +353,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       ...(options.staged !== undefined ? { staged: options.staged } : {}),
     })
   } catch (err) {
-    // The cache opened before the configs loaded (it holds their cached
-    // evaluations); a config error must not leak the handle.
+    // The cache opened before the configs loaded; a config error must not
+    // leak the handle.
     localCache.close()
     throw err
   }
@@ -786,7 +773,7 @@ function undeclaredIn(
 
 /**
  * Refuses the first `^name` in `unproven` that no project in the whole
- * workspace declares. `load` evaluates the configs a scoped run left out;
+ * workspace declares. `load` reads the locked configs a scoped run left out;
  * it is reached only when a `^name` found no holder and nothing loaded
  * declares it, so a run that names only declared tasks never pays for it.
  * The rest failing to load leaves the names unjudged: an out-of-scope
