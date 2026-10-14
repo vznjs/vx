@@ -29,10 +29,35 @@ npx @vzn/vx init              # native vx.config.ts files, .vx/workspace.ts, the
 npx @vzn/vx run build --all   # what nx run-many -t build did, under vx's cache
 ```
 
-Executor targets keep running as executors at first. Each becomes an
-`nx-exec` line that runs the executor in its own Node process through
-Nx's public `runExecutor`, with the executor and its options on the
-command line, so vx's key sees them and `vx show` prints what runs.
+Executor targets keep running as executors at first. Each becomes an `nx-exec`
+line that runs the executor in its own Node process through Nx's public
+`runExecutor`, with the executor and its options on the command line,
+so vx's key sees them and `vx show` prints what runs.
+
+## Read the graph Nx actually uses
+
+Nx's real configuration is not `nx.json`; it is the resolved project
+graph, after every plugin has inferred its targets. `vx init` reads
+that: it asks your installed `nx` for the graph (`nx graph`) rather
+than guessing at plugin-inferred targets from `nx.json`, so those
+targets come along. The files it writes freeze that snapshot as static
+config: review them and fill the TODOs.
+
+To check the mapping before any config exists, `npx @vzn/vx init --keep`
+writes only a `.vx/workspace.ts` that runs the graph through `nx()` from
+`@vzn/vx-migrate`, and its `next:` line installs it and builds once:
+
+```ts
+import type { WorkspaceConfig } from '@vzn/vx/config'
+import { nx } from '@vzn/vx-migrate'
+import { npm } from '@vzn/vx-lockfile'
+
+export default { plugins: [nx(), npm()] } satisfies WorkspaceConfig
+```
+
+It is a check, not a way to keep Nx's config: vx's benchmarks measure
+only native config. `bunx @vzn/vx-migrate --dry` then previews the
+files, and `bunx @vzn/vx-migrate` writes them and drops `nx()`.
 
 ## The one real shift: executors become commands
 
@@ -65,31 +90,6 @@ were, and the server executors — `@nx/vite:dev-server`,
 — come through as persistent tasks, whatever the target is called, as
 does any target Nx itself marks `continuous`.
 Nothing is silently wrong.
-
-## Read the graph Nx actually uses
-
-Nx's real configuration is not `nx.json`; it is the resolved project
-graph, after every plugin has inferred its targets. `vx init` reads
-that: it asks your installed `nx` for the graph (`nx graph`) rather
-than guessing at plugin-inferred targets from `nx.json`, so those
-targets come along. The files it writes freeze that snapshot as static
-config: review them and fill the TODOs.
-
-To check the mapping before any config exists, `npx @vzn/vx init --keep`
-writes only a `.vx/workspace.ts` that runs the graph through `nx()` from
-`@vzn/vx-migrate`, and its `next:` line installs it and builds once:
-
-```ts
-import type { WorkspaceConfig } from '@vzn/vx/config'
-import { nx } from '@vzn/vx-migrate'
-import { npm } from '@vzn/vx-lockfile'
-
-export default { plugins: [nx(), npm()] } satisfies WorkspaceConfig
-```
-
-It is a check, not a way to keep Nx's config: vx's benchmarks measure
-only native config. `bunx @vzn/vx-migrate --dry` then previews the
-files, and `bunx @vzn/vx-migrate` writes them and drops `nx()`.
 
 ## What maps
 
