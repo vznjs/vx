@@ -159,6 +159,13 @@ export function wildcardTodo(glob: string): string {
   )
 }
 
+export function wildcardCleanTodo(glob: string): string {
+  return (
+    `output ${JSON.stringify(glob)}: vx cleans outputs before a run and a restore, so every ` +
+    'untracked file this glob reaches is deleted; committed files are kept'
+  )
+}
+
 const TSBUILDINFO = /(?:^|\/)[^/]*tsbuildinfo[^/]*$/i
 
 interface Cached {

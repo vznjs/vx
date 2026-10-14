@@ -31,6 +31,7 @@ import {
   resolveSharedWorkspaceOutputs,
   takingBack,
   literalTailMatches,
+  wildcardCleanTodo,
   wildcardOutput,
   wildcardTodo,
 } from '../shared-outputs.js'
@@ -2165,11 +2166,16 @@ function buildTask(
       if (hits !== null && hits.length <= MAX_SPARED)
         for (const h of hits) if (!outFiles.includes(`!${h}`)) outFiles.push(`!${h}`)
     }
+    // With git's file list known, a wildcard-first output stays cached as
+    // nx() keeps it (owner, 2026-10-03; turbo() 2026-10-14): each committed
+    // file it reaches is taken back after mapping (`spareTrackedOutputs`).
+    // Turbo never cleans, so the untracked files it reaches are named.
     const wild = wildcardOutput(outFiles, opts.tracked?.(pkgDir), true)
-    if (wild !== undefined) {
+    if (wild !== undefined && opts.tracked === undefined) {
       todos.push(wildcardTodo(wild))
       return { name, todos, task, uses }
     }
+    if (wild !== undefined) todos.push(wildcardCleanTodo(wild))
     // An output over the project's own package.json (trpc's builds list
     // it: tsdown rewrites `exports`) is taken back and keeps the cache, as
     // nx() does (owner, 2026-10-03). The build rewrites an input the key
