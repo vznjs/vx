@@ -81,6 +81,26 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     ])
   })
 
+  it('keeps the cache on build, over a sibling with a ^ edge', () => {
+    // typescript-eslint types: typecheck needs build and writes declarations
+    // into build's dist; build was the one left uncached.
+    const tasks = resolveSharedOutputs([
+      task('build', [
+        'dist/**/*.{js,cjs,mjs,jsx,json,d.ts,d.cts,d.mts}{,.map}',
+        'dist/tsconfig.build.tsbuildinfo',
+      ]),
+      task(
+        'typecheck',
+        ['dist/**/*.{d.ts,d.cts,d.mts}', 'dist/*.tsbuildinfo'],
+        ['build', '^typecheck'],
+      ),
+    ])
+    expect(tasks.map((t) => [t.name, t.task!['cache'] !== undefined, t.todos.length])).toEqual([
+      ['build', true, 0],
+      ['typecheck', false, 1],
+    ])
+  })
+
   it('keeps the first declared when no task has a ^ edge', () => {
     const tasks = resolveSharedOutputs([task('a', ['out/**']), task('b', ['out/**'])])
     expect(tasks[0]!.task!['cache']).toBeDefined()
