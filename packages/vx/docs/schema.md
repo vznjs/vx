@@ -866,9 +866,9 @@ files: ['app/[id]/**'] // a bracket is literal: the route dir `[id]`
 ```
 
 Empty array is valid — the cache key still incorporates command, env,
-upstream hashes, workspace fingerprint, and the project's
-package.json. A task with no _file_ inputs (e.g. a pure
-"download-and-verify") still cache-misses on a lockfile change.
+upstream hashes and any plugin's key material. A task with no _file_
+inputs (e.g. a pure "download-and-verify") still cache-misses on a
+lockfile change when a lockfile plugin (`@vzn/vx-lockfile`) is declared.
 
 Always applied to every glob pass (regardless of what you wrote):
 
@@ -2293,7 +2293,7 @@ a user meets most:
 | `cache.inputs.files: every entry is a negation, which selects NOTHING`                                                                | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
 | `cache.inputs.files: "<file>" is taken back by "!<glob>"`                                                                             | A literal input a `!` entry covers: the negation subtracts wherever it sits, so the file never entered the key.                                                                                                                |
 | `cache.outputs.files: every entry is a negation, which selects NOTHING`                                                               | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
-| `cache.outputs.files: "<glob>" covers the project's own <file>`                                                                       | An output glob that matches the project's `package.json` or its own `vx.config.*` (`**`, `*.json`): the clean before a run would delete them. A `!` entry that takes the file back (`!package.json`) lets it load.             |
+| `cache.outputs.files: "<glob>" covers the project's own <file>`                                                                       | An output glob that matches the project's own `vx.config.*` (`**`, `*.ts`): the clean before a run would delete it. A `!` entry that takes the file back (`!vx.config.ts`) lets it load.                                       |
 | `cache.outputs.files: "<glob>" is under workspace-outputs/`                                                                           | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                               |
 | `cache.inputs.files: '!!' is not a double negation`                                                                                   | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout of <value> exceeds the maximum timer delay`                                                                             | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |

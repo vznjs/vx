@@ -25,7 +25,6 @@ import {
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { grantPrefix, relPosix, UserError } from '../util/index.js'
-import { WORKSPACE_FINGERPRINT_FILES } from '../workspace/index.js'
 
 /**
  * Arm the sandbox runtime for a run, lazily: only when at least one task
@@ -764,7 +763,7 @@ export type WriteReach = 'none' | 'project' | 'workspace'
 /**
  * Where a task that ran a command may have written files no declaration
  * names — the files whose run-start facts (the git snapshot, its index
- * OIDs, the `package.json` digest) a later key must not reuse (item 743).
+ * OIDs) a later key must not reuse (item 743).
  *
  * A cached task declares its outputs and is held to them. A task with no
  * `cache` block can declare none, so it may have written anywhere
@@ -799,20 +798,25 @@ export function commandWriteReach(node: TaskNode, workspaceRoot: string): WriteR
 }
 
 /**
- * May this task's command rewrite a file the workspace fingerprint folds
- * (a lockfile, `pnpm-workspace.yaml`)? Those sit at the workspace root, so
+ * May this task's command rewrite a root file a plugin claims (`claimed`:
+ * a lockfile, `pnpm-workspace.yaml`)? Those sit at the workspace root, so
  * an unsandboxed task may only when the root is its own project (`pnpm
  * install` without `--frozen-lockfile` in a root task); a sandboxed one
  * when a write grant covers one. Anyone else writing there crosses a
- * project boundary, out of contract.
+ * project boundary, out of contract. With nothing claimed, no key folds a
+ * root file this way.
  */
-export function mayWriteFingerprint(node: TaskNode, workspaceRoot: string): boolean {
+export function mayWriteFingerprint(
+  node: TaskNode,
+  workspaceRoot: string,
+  claimed: readonly string[],
+): boolean {
   const exec = node.config.exec
-  if (exec === undefined) return false
+  if (exec === undefined || claimed.length === 0) return false
   if (exec.sandbox === undefined) return node.projectDir === workspaceRoot
   for (const grant of exec.sandbox.allow?.write ?? []) {
     const abs = path.resolve(node.projectDir, expandHome(grantPrefix(grant)))
-    for (const f of WORKSPACE_FINGERPRINT_FILES) {
+    for (const f of claimed) {
       if (atOrUnder(path.join(workspaceRoot, f), abs)) return true
     }
   }

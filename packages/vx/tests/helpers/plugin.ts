@@ -159,3 +159,37 @@ export async function writeEdges(
     `${PLUGIN_IMPORT}export default { plugins: [${edgesSource(deps, reach)}] }\n`,
   )
 }
+
+/**
+ * Source text for a test plugin that claims `files` at the root and folds
+ * each one's bytes whole into every key, as a lockfile plugin's `workspace`
+ * scope does: core keys no root file, so a fixture whose keys must move
+ * with a lockfile declares this. Pair it with `PLUGIN_IMPORT`.
+ */
+function lockClaimSource(files: readonly string[] = ['pnpm-lock.yaml']): string {
+  return pluginSource(
+    'vx-test-lock',
+    `{
+  fingerprint: { files: ${JSON.stringify(files)}, affected: () => undefined },
+  async key(task, ctx) {
+    const out = {}
+    for (const f of ${JSON.stringify(files)}) {
+      const file = Bun.file(ctx.workspaceRoot + '/' + f)
+      if (await file.exists()) out[f] = Bun.hash.xxHash3(await file.bytes()).toString(16)
+    }
+    return out
+  },
+}`,
+  )
+}
+
+/** Rewrites `root`'s `.vx/workspace.mjs` to declare `lockClaimSource(files)` and nothing else. */
+export async function writeLockClaim(
+  root: string,
+  files: readonly string[] = ['pnpm-lock.yaml'],
+): Promise<void> {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    `${PLUGIN_IMPORT}export default { plugins: [${lockClaimSource(files)}] }\n`,
+  )
+}

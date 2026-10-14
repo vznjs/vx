@@ -111,7 +111,6 @@ function baseArgs(b: Bench, n: TaskNode, log: Logger) {
     node: n,
     upstream: [] as TaskOutcome[],
     workspaceRoot: b.root,
-    workspaceFingerprint: 'fixture-fingerprint',
     cache: b.cache,
     log,
     executor: localExecutor(),

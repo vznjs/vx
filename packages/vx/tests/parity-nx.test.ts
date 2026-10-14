@@ -247,7 +247,7 @@ describe('Nx parity — target defaults, `dependsOn` forms, inputs and outputs',
   )
 
   it(
-    "`outputs` are restored on a cache hit, and the project's own manifest is an implicit input",
+    "`outputs` are restored on a cache hit; the project's manifest is no core input",
     async () => {
       const first = await summarized(root, ['ui#build'])
       expect(first.code).toBe(0)
@@ -260,8 +260,10 @@ describe('Nx parity — target defaults, `dependsOn` forms, inputs and outputs',
       const pkgPath = path.join(root, 'packages', 'ui', 'package.json')
       const pkg = JSON.parse(await readFile(pkgPath, 'utf8'))
       await writeFile(pkgPath, JSON.stringify({ ...pkg, description: 'changed' }))
+      // Nx keys the manifest; vx core keys no package file (2026-10-14), and
+      // `@vzn/vx-lockfile` lists it as an input (its own suite pins that).
       const third = await summarized(root, ['ui#build'])
-      expect(third.tasks.get('ui#build')?.['status']).toBe('success')
+      expect(third.tasks.get('ui#build')?.['status']).toBe('cache-hit')
     },
     TIMEOUT,
   )

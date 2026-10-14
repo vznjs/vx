@@ -692,7 +692,7 @@ export interface FingerprintChange {
 
 type · `src/orchestrator/plugin.ts`
 
-A plugin's claim on workspace fingerprint files — see `VxPlugin.fingerprint`.
+A plugin's claim on workspace-root files — see `VxPlugin.fingerprint`.
 
 ```ts
 export interface FingerprintClaim {
@@ -1528,7 +1528,6 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry>
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
-  workspaceFingerprint: string
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

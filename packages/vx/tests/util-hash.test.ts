@@ -251,7 +251,7 @@ describe('xxh3 seed chaining — the Cache.key fold', () => {
   })
 
   it('mixed string / Uint8Array parts chain interchangeably', () => {
-    // computeWorkspaceFingerprint chains a string label then raw file
+    // A lockfile claim chains a string label then raw file
     // BYTES into the same running digest. Both part types must feed
     // one chain identically.
     expect(fold(['bun.lock\0', utf8('contents')])).toBe(fold(['bun.lock\0', 'contents']))
@@ -314,7 +314,7 @@ describe('xxh3 chaining — the v18 delimiter invariant', () => {
 describe('xxh3 — input domain', () => {
   it('a string and its UTF-8 bytes hash identically', () => {
     // Load-bearing: Cache.key folds STRINGS (`${rel}\0${oid}`) while
-    // computeWorkspaceFingerprint and verify.ts fold raw file BYTES.
+    // a lockfile claim and verify.ts fold raw file BYTES.
     // If Bun encoded strings as latin1 the two would live in different
     // domains and a "hash of the same content" claim would be false.
     for (const s of ['', 'abc', 'é', 'naïve', '日本語', '\u{1F389}', 'a\0b', ' \t\n']) {

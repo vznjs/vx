@@ -16,7 +16,7 @@ lockfile is a parser and nothing else.
 
 ```ts
 export interface LockfileClaimOptions {
-  readonly file: string // one of WORKSPACE_FINGERPRINT_FILES
+  readonly file: string // the lockfile's name at the workspace root
   // importer dir → digest; `files` is extraFiles' content hashes ('' when absent)
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   // root-relative files the lockfile names but does not pin (bun.lock's patches)
@@ -94,7 +94,7 @@ All are on the `@vzn/vx` façade.
   moved; a side that is absent (the file appeared or went) answers
   `undefined`, and so does `scope: 'workspace'`.
 - **`scope: 'workspace'`** folds the file's hash into every task and
-  never digests: the coarse key core would fold, through the plugin. With
+  never digests: the whole file, the coarsest key there is. With
   `importers` it still parses once per content, for the edges.
 
 `reachDigests` is the digest the parsers share: one hash per node over
@@ -124,9 +124,9 @@ project owns): the key does.
 
 - Know any lockfile format. The parser is the plugin's; the shell hands
   it text and stores what it returns.
-- Fold a project's own `package.json`: core hashes that per project
-  already (`projectPackageJsonHash`), and `@vzn/vx-lockfile` adds it to
-  each importer's cached tasks as an input.
+- Fold a project's own `package.json`: core keys no package file
+  (2026-10-14), and `@vzn/vx-lockfile` adds it to each importer's
+  cached tasks as an input.
 - Decide edges. `importers` records what the lockfile links; turning that
   into `discover` entries (which peers order, which are reach) is the
   plugin's.

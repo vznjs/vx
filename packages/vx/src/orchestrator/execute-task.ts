@@ -107,7 +107,6 @@ export interface ExecuteArgs {
   node: TaskNode
   upstream: TaskOutcome[]
   workspaceRoot: string
-  workspaceFingerprint: string
   cache: CacheLayer
   /** Granular cache read/write policy. Undefined → everything on. */
   cachePolicy?: CachePolicy
@@ -191,7 +190,7 @@ export interface ExecuteArgs {
   inputStability?: { run: InputStability; workspace?: InputStability }
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: GitFilesCache
-  /** Per-run memo for derived hashes (package.json bytes + task config). */
+  /** Per-run memo for derived hashes (task config, file lists). */
   hashCache?: HashCache
   /** The run's `probesAfterWrites`, handed to every key this task takes. */
   probesAfterWrites?: ReadonlySet<string>
@@ -256,8 +255,8 @@ export interface ExecuteArgs {
    */
   taintedUpstream?: boolean
   /**
-   * Whether a task has rewritten a file the workspace fingerprint folded
-   * since the run read it (fingerprint-watch.ts): past that, no key taken
+   * Whether a task has rewritten a root file a plugin claims (whose bytes
+   * the claimant folded) since the run read it (fingerprint-watch.ts): past that, no key taken
    * on the old digest is probed or saved.
    */
   fingerprintWatch?: FingerprintWatch
@@ -371,9 +370,14 @@ function inputStabilityOf(
   }
 }
 
+/** The root files the plugins claim, as the run's watch holds them. */
+function claimedFiles(args: ExecuteArgs): readonly string[] {
+  return args.fingerprintWatch?.names ?? []
+}
+
 /**
- * The workspace fingerprint every key here folded has moved (a task
- * rewrote the lockfile), said once per run.
+ * A claimed file every key here folded through its claimant has moved (a
+ * task rewrote the lockfile), said once per run.
  */
 function fingerprintMoved(args: ExecuteArgs): boolean {
   if (args.fingerprintWatch?.moved() === undefined) return false
@@ -401,7 +405,6 @@ async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
     node: args.node,
     upstream: args.upstream,
     workspaceRoot: args.workspaceRoot,
-    workspaceFingerprint: args.workspaceFingerprint,
     cache: args.cache,
     forwardArgs: args.forwardArgs,
     nestedProjectDirs: args.nestedProjectDirs,
@@ -497,7 +500,6 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
           node,
           upstream: args.upstream,
           workspaceRoot: args.workspaceRoot,
-          workspaceFingerprint: args.workspaceFingerprint,
           cache: args.cache,
           forwardArgs: args.forwardArgs,
           nestedProjectDirs: args.nestedProjectDirs,
@@ -738,7 +740,9 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
   args.persistentRegistry?.set(node.id, spawn.child)
   forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
-  if (mayWriteFingerprint(node, args.workspaceRoot)) args.fingerprintWatch?.wrote()
+  if (mayWriteFingerprint(node, args.workspaceRoot, claimedFiles(args))) {
+    args.fingerprintWatch?.wrote()
+  }
   return {
     node,
     status: 'success',
@@ -923,7 +927,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       node,
       upstream,
       workspaceRoot: args.workspaceRoot,
-      workspaceFingerprint: args.workspaceFingerprint,
       cache,
       forwardArgs: args.forwardArgs,
       nestedProjectDirs: args.nestedProjectDirs,
@@ -1008,7 +1011,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         node,
         upstream,
         workspaceRoot: args.workspaceRoot,
-        workspaceFingerprint: args.workspaceFingerprint,
         cache,
         forwardArgs: args.forwardArgs,
         nestedProjectDirs: args.nestedProjectDirs,
@@ -1374,7 +1376,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const writeReach =
     args.executor.remote === true ? 'none' : undeclaredWriteReach(node, args.workspaceRoot)
   const writesFingerprint =
-    args.executor.remote !== true && mayWriteFingerprint(node, args.workspaceRoot)
+    args.executor.remote !== true &&
+    mayWriteFingerprint(node, args.workspaceRoot, claimedFiles(args))
   // A stop that landed during the awaits above (the key, the probe, the
   // input description): the first attempt would wipe the last build and
   // hand the executor a request after the run had stopped. Through a call,
@@ -1682,9 +1685,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // A task that regenerates its own input (TanStack Router's committed
     // `routeTree.gen.ts`, rewritten to the same bytes by every build) is
     // never saved (item 1015), and the line said so without the way out.
-    // Not for `package.json`, which an output may not cover.
     const hint =
-      moved === null || rewroteBy !== undefined || path.basename(moved) === 'package.json'
+      moved === null || rewroteBy !== undefined
         ? ''
         : '; if the task writes it, declare it in cache.outputs'
     if (stability.severity === 'error') {
@@ -1764,7 +1766,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 /**
  * Drop the run's facts about files a task may have written without
  * declaring them (`undeclaredWriteReach`): the project's git snapshot and
- * its index OIDs, and its `package.json` digest. The next reader
+ * its index OIDs. The next reader
  * re-enumerates the project (one `git ls-files`) and hashes its files by
  * content; the per-declaration file-list memos are keyed on the snapshot
  * array, so they miss with it (item 743).
@@ -1773,12 +1775,10 @@ function forgetUndeclaredWrites(args: ExecuteArgs, reach: 'none' | 'project' | '
   if (reach === 'none') return
   if (reach === 'workspace') {
     args.gitFilesCache?.clear()
-    args.hashCache?.packageJson.clear()
     return
   }
   args.gitFilesCache?.delete(args.node.projectDir)
   args.gitFilesCache?.invalidateWorkspacePartition()
-  args.hashCache?.packageJson.delete(args.node.projectDir)
 }
 
 /** The two bin directories a task's PATH starts with: its own, then the root's (once when they coincide). */

@@ -73,12 +73,8 @@ export interface TaskInputs {
     readonly hash: string
     readonly outputs: readonly string[]
   }>
-  /** Digest of the project's own `package.json` (folded even when no glob lists it). */
-  readonly packageJsonDigest: string
   /** Digest of the resolved task config. */
   readonly configDigest: string
-  /** The workspace fingerprint (root manifests + lockfile). */
-  readonly workspaceFingerprint: string
 }
 
 export interface ExecuteRequest {

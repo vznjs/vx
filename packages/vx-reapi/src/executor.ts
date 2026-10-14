@@ -802,14 +802,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         symlinkGrafts.push(...(g.symlinks ?? []))
       }
 
-      // The key folds the project's package.json whether or not a glob
-      // lists it, so the worker sees it too: a `"type": "module"` changes
-      // what a bundler emits, and a tree without it ran as another task.
       const expected = new Map(req.inputs.files.map((f) => [f.path, f.digest]))
-      const packageJson = projectRel === '' ? 'package.json' : `${projectRel}/package.json`
-      if (req.inputs.packageJsonDigest !== '' && !expected.has(packageJson)) {
-        expected.set(packageJson, req.inputs.packageJsonDigest)
-      }
       const inputPaths = [...expected.keys(), ...localUpstreamPaths]
       const tree = await buildInputTree({
         expected,

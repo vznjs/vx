@@ -124,7 +124,7 @@ here, itself or in a brace group.
 | [`affected.md`](./affected.md)             | `src/workspace/affected.ts` — git-relative project selection.                                                                                   |
 | [`config-imports.md`](./config-imports.md) | `src/workspace/config-imports.ts` — the config-import selection channel; the files `vx watch` watches.                                          |
 | [`nested-dirs.md`](./nested-dirs.md)       | `src/workspace/nested-dirs.ts` — boundary set (other projects rooted under each).                                                               |
-| [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — workspace fingerprint (lockfile + workspace yaml).                                                             |
+| [`fingerprint.md`](./fingerprint.md)       | `src/workspace/fingerprint.ts` — reads the root files a plugin claims (a lockfile, install settings); folds none.                               |
 | [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `.vx/projects.lock.json` freeze / trust / audit.                                                                  |
 | [`migration.md`](./migration.md)           | `src/workspace/{migration,migrate-scripts}.ts` — the plan → files seam `vx init` and `@vzn/vx-migrate` share; the scripts mapper.               |
 |                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md).                                                       |

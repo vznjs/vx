@@ -27,24 +27,25 @@ restore. Everything else lines up with Turbo or Nx by design.
 
 ### Cache key composition
 
-The set of bytes fed into the hash mirrors Turbo's key recipe with one
-Nx-borrowed extension.
+The set of bytes fed into the hash mirrors Turbo's key recipe; the
+package-manager parts come from a plugin.
 
-| Component                              | Turbo        | Nx                     | vx         | vx source                                     |
-| -------------------------------------- | ------------ | ---------------------- | ---------- | --------------------------------------------- |
-| Task identity (`project#task`)         | yes          | yes                    | yes        | `src/cache/layer.ts` (`CacheKeyInput.taskId`) |
-| Resolved command + env declarations    | yes          | yes                    | yes        | `src/cache/layer.ts` (`taskConfigHash`)       |
-| Declared input file contents           | yes          | yes                    | yes        | `src/cache/layer.ts` (`inputFiles`)           |
-| Declared env-var **values** at runtime | yes          | yes                    | yes        | `src/cache/layer.ts` (`envValues`)            |
-| Upstream task hashes (cascade)         | yes          | yes                    | yes        | `src/cache/layer.ts` (`upstreamHashes`)       |
-| Workspace lockfile fingerprint         | yes          | yes                    | yes        | `src/cache/layer.ts` (`workspaceFingerprint`) |
-| Forwarded CLI args (after `--`)        | yes          | yes                    | yes        | `src/cache/layer.ts` (`forwardArgs`)          |
-| Project `package.json` bytes (direct)  | via lockfile | `externalDependencies` | **direct** | `src/cache/layer.ts` ("Turbo / Nx parity")    |
+| Component                              | Turbo        | Nx                     | vx     | vx source                                     |
+| -------------------------------------- | ------------ | ---------------------- | ------ | --------------------------------------------- |
+| Task identity (`project#task`)         | yes          | yes                    | yes    | `src/cache/layer.ts` (`CacheKeyInput.taskId`) |
+| Resolved command + env declarations    | yes          | yes                    | yes    | `src/cache/layer.ts` (`taskConfigHash`)       |
+| Declared input file contents           | yes          | yes                    | yes    | `src/cache/layer.ts` (`inputFiles`)           |
+| Declared env-var **values** at runtime | yes          | yes                    | yes    | `src/cache/layer.ts` (`envValues`)            |
+| Upstream task hashes (cascade)         | yes          | yes                    | yes    | `src/cache/layer.ts` (`upstreamHashes`)       |
+| Workspace lockfile                     | yes          | yes                    | plugin | `@vzn/vx-lockfile` (`VxPlugin.fingerprint`)   |
+| Forwarded CLI args (after `--`)        | yes          | yes                    | yes    | `src/cache/layer.ts` (`forwardArgs`)          |
+| Project `package.json` bytes           | via lockfile | `externalDependencies` | plugin | `@vzn/vx-lockfile` (an input file)            |
 
-The `package.json` fold is the Nx-borrowed move (Turbo gets it
-transitively through the lockfile; Nx's `externalDependencies` does it
-explicitly). We fold the bytes directly so narrow `cache.inputs.files`
-like `['src/**']` doesn't miss a `package.json` dep bump.
+Core keys no package file (2026-10-14): the lockfile and each
+project's `package.json` key a task through `@vzn/vx-lockfile`, which
+claims the lockfile and adds `package.json` to every cached task's
+inputs, so narrow `cache.inputs.files` like `['src/**']` doesn't miss a
+`package.json` dep bump.
 
 The two **divergences** from Turbo's recipe — TypeScript-resolved
 config hash and per-task forwarded-args fold — are documented in
@@ -140,7 +141,7 @@ Turbo-aware cache server can transit our blobs unchanged.
 | Independent siblings continue past failure                    | Turbo `--continue=dependencies-successful`         | `src/graph/scheduler.ts`                                                    |
 | Persistent / long-running tasks (dev servers)                 | Turbo `persistent`, Nx `continuous`                | `src/exec/runner.ts` (`runPersistent`) + `src/orchestrator/execute-task.ts` |
 | Project-local `node_modules/.bin` on PATH                     | Turbo + pnpm                                       | `src/exec/env.ts` (`binPaths`)                                              |
-| Implicit project-`package.json` invalidation                  | Turbo (via lockfile) + Nx (`externalDependencies`) | `src/orchestrator/task-hash.ts` ("Matches Turbo and Nx")                    |
+| Project-`package.json` invalidation, by a plugin              | Turbo (via lockfile) + Nx (`externalDependencies`) | `@vzn/vx-lockfile` (its `project` stage lists it as an input)               |
 
 ### Output handling
 

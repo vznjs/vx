@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: core keys no package file
+
+core folds neither the project's package.json nor the root lockfiles and install settings into a key, so without a lockfile plugin an install re-keys nothing (declare pnpm(), bun(), npm() or yarn() from @vzn/vx-lockfile). TaskInputs drops packageJsonDigest and workspaceFingerprint. npm() reads npm-shrinkwrap.json first; bun() refuses a lone bun.lockb (run `bun install --save-text-lockfile`).
+
 ## graph: project edges come only from plugins
 
 no package edges without a plugin that returns `deps` (add pnpm(), bun(), npm() or yarn() from @vzn/vx-lockfile to .vx/workspace.ts); a `^task` with no edge source is refused (VX_E_DEPENDS_ON), the default build's `^build` included; --affected no longer diffs manifests at the base, a dependency change reaches it as the lockfile's; catalogs and workspace:/npm:/file: range resolution are gone. Removed exports: buildPackageGraph, the Catalogs type.

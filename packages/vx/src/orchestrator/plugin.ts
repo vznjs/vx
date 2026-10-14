@@ -112,21 +112,14 @@ export interface VxPlugin {
     | Promise<Readonly<Record<string, string>> | undefined>
 
   /**
-   * Workspace-root files this plugin keys on its own, taken OUT of the
-   * workspace fingerprint. Core folds every lockfile it knows into every
-   * task's key, so one `pnpm install` re-keys the whole workspace. A plugin
-   * that reads the lockfile and folds each project's own dependency
-   * closure through `key` claims the file here: core leaves it out of the
-   * fingerprint every key sees, and `--affected` asks
-   * `affected` which projects a change to it touches instead of selecting
-   * every project. A file has one claimant.
-   *
-   * A root file core does NOT fold is claimed the same way when the
-   * plugin's stages read it: `turbo()` shapes every task from
-   * `turbo.json`, so an edit to it re-keys tasks through their resolved
-   * configs while no project owns the path. Nothing is taken out;
-   * `--affected` asks `affected` (undefined: every project) and `vx watch`
-   * re-runs on an edit (item 961). A claim is a bare name at the root.
+   * Workspace-root files this plugin keys on: core folds no root file into
+   * any key, so a plugin that reads one (a lockfile it folds per project
+   * through `key`, `turbo.json` that shapes every task through its
+   * `project` stage) claims it here. `--affected` asks `affected` which
+   * projects a change to it touches (undefined: every project), `vx watch`
+   * re-runs on an edit (item 961), and a task that rewrites one during the
+   * run withholds every later save. A claim is a bare name at the root; a
+   * file has one claimant.
    */
   readonly fingerprint?: FingerprintClaim
 
@@ -343,16 +336,16 @@ export interface GraphHookContext extends BaseContext {
 
 export interface KeyHookContext extends BaseContext {}
 
-/** A plugin's claim on workspace fingerprint files — see `VxPlugin.fingerprint`. */
+/** A plugin's claim on workspace-root files — see `VxPlugin.fingerprint`. */
 export interface FingerprintClaim {
-  /** Bare names at the workspace root: a lockfile core folds (`pnpm-lock.yaml`) or a file the plugin reads (`turbo.json`). */
+  /** Bare names at the workspace root the plugin reads: a lockfile (`pnpm-lock.yaml`), a settings file, `turbo.json`. */
   readonly files: readonly string[]
   /**
    * The projects (package names) a change to a claimed file affects. Called
    * by `--affected` with the file's bytes at the base ref and in the
    * working tree (`null` where it does not exist). Return `undefined` to
    * select every project — the answer a claimant gives when it cannot
-   * tell, and what core does for an unclaimed file.
+   * tell.
    */
   affected(
     change: FingerprintChange,

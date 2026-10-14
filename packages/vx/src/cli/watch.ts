@@ -38,7 +38,7 @@ import {
   isIgnoredWatchPath,
   isWorkspaceConfigFile,
   gitFiles,
-  isWorkspaceFingerprintFile,
+  shapesMembers,
   makeFence,
   makeRootEventFilter,
   makeWatchIgnore,
@@ -627,9 +627,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       rootArm = workspaceWide
         ? // workspaceFiles inputs in play: a root-relative glob can name a
           // file anywhere, so one recursive root watcher replaces the
-          // per-project ones (it also covers lockfile / pnpm-workspace.yaml
-          // edits). `matters` keeps the events a key can see — project
-          // trees, root fingerprint files, the declared globs — and drops
+          // per-project ones (it also covers claimed root files and
+          // pnpm-workspace.yaml). `matters` keeps the events a key can see —
+          // project trees, claimed root files, the declared globs — and drops
           // the rest of the tree; the ignore filter then keeps node_modules
           // / .git / .vx and declared outputs out of what remains.
           arm(workspaceRoot, true, (filename) => {
@@ -638,23 +638,30 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             if (
               shapesWatchedSet(filename) ||
               filename === LOCKFILE_NAME ||
+              claimedRootFiles.has(filename) ||
               configImportFiles.includes(abs)
             )
               reread = true
             trigger(`root ${filename}`, abs)
           })
         : // The root itself, non-recursive, beside the per-project arms, so
-          // lockfile + pnpm-workspace.yaml edits trigger re-runs even when
-          // no project dir saw the change.
+          // claimed root files (a lockfile) and pnpm-workspace.yaml trigger
+          // re-runs even when no project dir saw the change.
           arm(workspaceRoot, false, (filename) => {
             if (
-              isWorkspaceFingerprintFile(filename) ||
+              shapesMembers(filename) ||
               isWorkspaceConfigFile(filename) ||
               filename === 'package.json' ||
               filename === '.gitignore' ||
               claimedRootFiles.has(filename)
             ) {
-              if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME) reread = true
+              if (
+                shapesWatchedSet(filename) ||
+                filename === LOCKFILE_NAME ||
+                claimedRootFiles.has(filename)
+              ) {
+                reread = true
+              }
               trigger(`root ${filename}`, path.join(workspaceRoot, filename))
             }
           })

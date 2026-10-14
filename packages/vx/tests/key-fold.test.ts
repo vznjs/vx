@@ -5,7 +5,9 @@
 // `Cache.key` before the fold left the class (item 691): the move is
 // behaviour-neutral only if both stay exactly these. The digest folds
 // `CACHE_VERSION` first, so a bump re-pins it (v31, item 726) and the
-// capture's first row, which records the version (X-142).
+// capture's first row, which records the version (X-142). Re-pinned when
+// the `workspace:` and `pkg:` parts left the fold (core keys no package
+// file, 2026-10-14).
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -34,9 +36,7 @@ function input(captureInto?: Array<{ kind: string; name: string; hash: string }>
     workspaceRoot: root,
     upstreamHashes: ['ffff000011112222', '0000aaaabbbbcccc'],
     upstreamIds: new Map([['ffff000011112222', 'dep#build']]),
-    workspaceFingerprint: 'fp00112233445566',
     forwardArgs: ['--watch', 'x y'],
-    projectPackageJsonHash: 'pkgjson0123456789',
     fileHashes: new Map([[path.join(root, 'b.ts'), '1111111111111111111111111111111111111111']]),
     pluginParts: [['org/p:mode', 'strict']] as const,
     ...(captureInto === undefined ? {} : { captureInto }),
@@ -49,7 +49,7 @@ describe('the key fold (item 691)', () => {
     try {
       const captured: Array<{ kind: string; name: string; hash: string }> = []
       const key = await cache.key(input(captured))
-      expect(key).toBe('dc204f0139033cd4')
+      expect(key).toBe('e43f75bd0d406263')
       // A value-bearing row is a digest under the store's salt (L-4); the
       // Cache-less fold below pins its unsalted default byte for byte.
       // @ts-expect-error: private member access for testing
@@ -62,8 +62,6 @@ describe('the key fold (item 691)', () => {
       const salted = (v: string): string => xxh3hex(`${salt}\0${v}`)
       expect(captured.map((c) => `${c.kind} ${c.name} ${c.hash}`)).toEqual([
         'format cache-version vx-cache-v43',
-        'workspace fingerprint fp00112233445566',
-        'package package.json pkgjson0123456789',
         'config config cfg0123456789abc',
         `forward argv ${salted(JSON.stringify(['--watch', 'x y']))}`,
         `env NODE_ENV ${salted('production')}`,
@@ -97,7 +95,7 @@ describe('the key fold (item 691)', () => {
       },
       (f) => relPosix(root, f),
     )
-    expect(key).toBe('dc204f0139033cd4')
+    expect(key).toBe('e43f75bd0d406263')
     expect(asked).toEqual(['a.ts'])
     expect(
       captured

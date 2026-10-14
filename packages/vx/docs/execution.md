@@ -52,12 +52,10 @@ terminal and a task succeeding or failing. Read it alongside
  │    5. buildPackageGraph — project edges the `discover` plugins gave.
  │    6. Local cache open: new Cache(cacheDir, { read, write }, root)
  │       with the policy's local slice. Then
- │       computeWorkspaceFingerprints: one read of every supported
- │       lockfile + pnpm-workspace.yaml + .yarnrc.yml + .npmrc + bunfig.toml at the root
- │       yields `all` (every file), `unclaimed` (minus the files a `fingerprint` plugin claims —
- │       `@vzn/vx-lockfile` keys those per project; reused for every
- │       task's cache key) and `files` (the bytes, for the mid-run
- │       fingerprint check).
+ │       readClaimedFiles: one read of each root file a `fingerprint`
+ │       plugin claims (`@vzn/vx-lockfile`: its lockfile and install
+ │       settings; nothing without one), the bytes for the mid-run
+ │       check. Core folds none of them into a key.
  │    7. SCOPED config loading — only in-scope projects plus their
  │       transitive dependency closure load ('^task' frontier
  │       expansion never escapes the closure); one staged load,
@@ -248,11 +246,9 @@ terminal and a task succeeding or failing. Read it alongside
  │              output (deduped per run; a non-zero exit throws a
  │              UserError that fails this task — its dependents skip,
  │              independent tasks continue)
- │       2. hashTaskConfig + project package.json hash (both memoized
- │          per run via HashCache)
+ │       2. hashTaskConfig (memoized per run via HashCache)
  │       3. filterUpstreamHashes (apply cache.inputs.tasks filter)
- │       4. cache.key({ taskId, workspaceFingerprint,
- │                      projectPackageJsonHash, taskConfigHash,
+ │       4. cache.key({ taskId, taskConfigHash,
  │                      forwardArgs, envValues, runtimeValues,
  │                      workspaceRuntimeValues, upstreamHashes,
  │                      pluginParts, inputFiles }) → 16-hex xxh3
@@ -283,7 +279,7 @@ terminal and a task succeeding or failing. Read it alongside
  │          (Ctrl-C teardown) classifies as `aborted` instead, whatever
  │          its exit — not counted, not recorded, not retried.
  │       8. On exit 0 + willSave (willWrite, no tainted upstream):
- │            keyStillTrue() — if the workspace fingerprint or an
+ │            keyStillTrue() — if a claimed root file or an
  │              input moved since the key was taken, the result stands
  │              but the save is withheld (said on the status line).
  │            saveMiss — in the slot: resolveOutputs(outputs) +

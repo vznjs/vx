@@ -24,7 +24,7 @@ sequenceDiagram
     S->>X: execute(node, upstream)
     X->>I: resolveFiles(inputs.files)
     Note over I: git ls-files + git status (workspace-root snapshot,<br/>partitioned per project) + Bun.Glob match,<br/>nested projects + declared outputs excluded
-    X->>X: hashTaskConfig + hashProjectPackageJson<br/>+ filterUpstreamHashes + env values
+    X->>X: hashTaskConfig<br/>+ filterUpstreamHashes + env values
     X->>C: key(...) → 16-hex xxh3 (the per-component<br/>input fingerprint is captured on a miss: describeTaskInputs)
     X->>C: get(hash)
     C-->>X: null (miss)
@@ -145,7 +145,7 @@ still counts): tasks declaring outputs, uncached tasks that may write
 into their project or elsewhere in the workspace
 (`undeclaredWriteReach`), cached tasks that may rewrite their own
 inputs in place when this key does not fold theirs, and tasks that may
-write a file the workspace fingerprint folds. Such a task stays
+write a root file a plugin claims (a lockfile). Such a task stays
 dep-gated with the always-correct lazy read-through. Restore-tier
 tasks also bypass the failed-dep→skip check (their key is
 dep-success-independent). Any error in classification degrades to the
@@ -182,8 +182,8 @@ Owners: `cli/watch.ts`, `cli/watch-set.ts` (what is watched),
 settled paths are changes), `cli/watch-fs.ts` (watchers,
 and the stat poller where they fail). One recursive `fs.watch` per project dir plus a
 non-recursive watch of the workspace root, which fires for the
-workspace fingerprint files (lockfiles), `.vx/workspace.*`, the root
-`package.json` and root files a plugin claims. When any task declares
+root files a plugin claims (a lockfile), `pnpm-workspace.yaml`,
+`.vx/workspace.*` and the root `package.json`. When any task declares
 `cache.inputs.workspaceFiles`, one recursive root watcher replaces them
 all. Path filter drops the segments `node_modules`, `.git` and `.vx/cache`,
 the suffixes `.tsbuildinfo` and a trailing `~`, the run's resolved

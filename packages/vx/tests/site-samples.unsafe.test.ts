@@ -515,8 +515,8 @@ describe('the why pages name every component kind the key records', () => {
     'utf8',
   )
   const kinds = [...new Set([...src.matchAll(/kind: '([\w-]+)'/g)].map((m) => m[1]!))]
-  it('key-fold.ts records eleven kinds', () => {
-    expect(kinds.length).toBe(11)
+  it('key-fold.ts records nine kinds', () => {
+    expect(kinds.length).toBe(9)
   })
   for (const [label, file] of [
     ['the why-did-this-rerun post', path.join(DOCS, 'blog', 'why-did-this-rerun.md')],
@@ -663,9 +663,9 @@ describe('the keys-from-git post counts the parts the key folds', () => {
   const key = src.slice(src.indexOf('export async function foldKey('))
   const labels = [...new Set([...key.matchAll(/h = xxh3\(`([a-z-]+):/g)].map((m) => m[1]!))]
   const page = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8')
-  it('"twelve parts" is CACHE_VERSION plus every labelled fold, and the list has twelve items', () => {
-    expect(labels.length + 1).toBe(12)
-    expect(page).toContain('seed-chained across twelve parts')
+  it('"ten parts" is CACHE_VERSION plus every labelled fold, and the list has ten items', () => {
+    expect(labels.length + 1).toBe(10)
+    expect(page).toContain('seed-chained across ten parts')
     // Anchored on the paragraph, not on the number it cites: the old
     // anchor was the literal `Part 11`, which is the cross-reference item
     // 397 had to move when it fixed the 11/12 inversion — a pin that
@@ -674,7 +674,7 @@ describe('the keys-from-git post counts the parts the key folds', () => {
       /\n1\. The key-derivation sentinel([\s\S]*?)\n\nPart \d+ is where the money is/.exec(page)
     expect(list).not.toBeNull()
     const items = [...list![1]!.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]))
-    expect([1, ...items]).toEqual([...Array(12)].map((_, i) => i + 1))
+    expect([1, ...items]).toEqual([...Array(10)].map((_, i) => i + 1))
   })
   it('every label it quotes is one the key folds under', () => {
     const quoted = [...page.matchAll(/`([a-z-]+):`/g)].map((m) => m[1]!)
@@ -2187,15 +2187,12 @@ describe("the Turbo pages say where a script-less package's task comes from", ()
 
 describe('the git-index claim names what a clean key still reads', () => {
   // The README said "no file is read" and the no-daemon post "no file reads
-  // at all", but a warm key reads each project's package.json and the
-  // lockfile (strace of a warm `vx run`, J-99). What the index spares is the
-  // sources.
-  it('the key folds package.json bytes, and both pages say "source"', () => {
-    const hash = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'task-hash.ts'),
-      'utf8',
-    )
-    expect(hash).toContain("path: path.join(args.node.projectDir, 'package.json')")
+  // at all", but a warm key read each project's package.json and the
+  // lockfile (strace of a warm `vx run`, J-99). Core keys no package file
+  // now (2026-10-14), but a lockfile plugin still reads its lockfile and
+  // settings, and a listed package.json is an input. What the index spares
+  // is the sources.
+  it('both pages say "source"', () => {
     const readme = readFileSync(
       path.resolve(import.meta.dir, '..', '..', '..', 'README.md'),
       'utf8',

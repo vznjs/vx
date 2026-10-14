@@ -400,3 +400,54 @@ describe('vx run with bun() declared', () => {
     expect(await once()).toEqual([['b#build', 'cache-hit']])
   })
 })
+
+// Core keys no package file: `package.json` reaches a key only as the
+// input bun() adds. The same edit, the same workspace, with and without it.
+describe('a package.json edit re-keys a cached task only through the plugin', () => {
+  const setup = async (plugins: string[]): Promise<void> => {
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
+    )
+    for (const name of ['a', 'b', 'c', 'd', 'e']) {
+      const dir = path.join(root, 'packages', name)
+      await mkdir(path.join(dir, 'src'), { recursive: true })
+      await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
+      await writeFile(path.join(dir, 'src', 'index.js'), `// ${name}\n`)
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        `export default { tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n`,
+      )
+    }
+    await writeFile(path.join(root, 'bun.lock'), BUN)
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource(plugins, `import { bun } from ${JSON.stringify(PLUGIN_INDEX)}\n`),
+    )
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  }
+  const bKey = async (): Promise<string | undefined> =>
+    (await planRun({ cwd: root, tasks: ['build'], log: silent() })).tasks.find(
+      (t) => t.node.id === 'b#build',
+    )?.hash
+  const bump = () =>
+    writeFile(
+      path.join(root, 'packages', 'b', 'package.json'),
+      JSON.stringify({ name: 'b', version: '1.0.1' }),
+    )
+
+  it('with bun() declared, the edit moves the key', async () => {
+    await setup(['bun()'])
+    const before = await bKey()
+    await bump()
+    expect(await bKey()).not.toBe(before)
+  })
+
+  it('with no plugin declared, the edit moves no key', async () => {
+    await setup([])
+    const before = await bKey()
+    expect(before).toBeDefined()
+    await bump()
+    expect(await bKey()).toBe(before)
+  })
+})

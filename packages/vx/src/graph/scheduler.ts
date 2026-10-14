@@ -121,7 +121,7 @@ export interface TaskOutcome {
   groupUpstream?: readonly TaskOutcome[]
   /**
    * This task RAN over inputs its key no longer describes: one moved while
-   * it ran, the workspace fingerprint moved, or an upstream carried this
+   * it ran, a claimed root file moved, or an upstream carried this
    * mark. Its save was withheld, and its outputs are not what `hash` names,
    * so a dependant that folds `hash` saves nothing either (A-12).
    */

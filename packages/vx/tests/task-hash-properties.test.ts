@@ -71,8 +71,6 @@ function draw(r: Rand, size = 3): Drawn {
   const input: CacheKeyInput = {
     taskId: s(VALUE_CHARS),
     taskConfigHash: s(VALUE_CHARS),
-    projectPackageJsonHash: s(VALUE_CHARS),
-    workspaceFingerprint: s(VALUE_CHARS),
     envValues: l(2, () => [s(NAME_CHARS), r() < 0.25 ? undefined : s(VALUE_CHARS)]),
     upstreamHashes: l(3, () => s(VALUE_CHARS)),
     inputFiles: [...digests.keys()].map((rel) => `${W}/${rel}`),
@@ -101,8 +99,6 @@ function canonical(i: CacheKeyInput, digests: ReadonlyMap<string, string>): stri
   return JSON.stringify([
     i.taskId,
     i.taskConfigHash,
-    i.projectPackageJsonHash,
-    i.workspaceFingerprint,
     i.forwardArgs ?? [],
     i.envValues.map(([n, v]) => (v === undefined ? [n] : [n, v])),
     i.runtimeValues ?? [],
@@ -210,14 +206,8 @@ describe('the fold keys exactly what the key means', () => {
     })
     const cases: Case[] = [
       {
-        read: (i) => [i.taskId, i.workspaceFingerprint, i.projectPackageJsonHash, i.taskConfigHash],
-        write: (i, [t, w, p, c]) => ({
-          ...i,
-          taskId: t!,
-          workspaceFingerprint: w!,
-          projectPackageJsonHash: p!,
-          taskConfigHash: c!,
-        }),
+        read: (i) => [i.taskId, i.taskConfigHash],
+        write: (i, [t, c]) => ({ ...i, taskId: t!, taskConfigHash: c! }),
       },
       {
         read: (i) => [...(i.forwardArgs ?? [])],
@@ -358,7 +348,6 @@ describe('computeTaskHash over random resolved configs', () => {
       node,
       upstream: upstream(c.up),
       workspaceRoot: root,
-      workspaceFingerprint: 'fp',
       cache: opts.c ?? cache,
       nestedProjectDirs: [],
       forwardArgs: c.forward,
@@ -464,27 +453,19 @@ describe('computeTaskHash over random resolved configs', () => {
     }
   })
 
-  it('package.json bytes move the key; the same bytes again restore it', async () => {
+  it('package.json bytes no glob names never move the key: core keys no package file', async () => {
     const r = rng(0x9a9)
     const c = draws(0x9a9, 1)[0]!.c
-    let prev: string | undefined
-    let prevBody: string | undefined
+    const keys = new Set<string>()
     for (let n = 0; n < 12; n++) {
-      // Same length every time: the change is in the bytes, not the size.
       const body = `{"name":"pkg","v":"${pick(r, ['ab', 'ba', 'aa', 'bb'])}"}`
       writeFileSync(path.join(root, 'package.json'), body)
-      // A fresh store per read: `hashFile` memoizes on stat, and a same-size
-      // rewrite inside one stamp is the memo's question, not this one's.
+      // A fresh store per read: `hashFile` memoizes on stat.
       const c2 = new Cache(path.join(root, `.vx-cache-${n}`))
-      const k = await key(c, { c: c2 })
+      keys.add(await key(c, { c: c2 }))
       c2.close()
-      if (prevBody !== undefined) {
-        if (body === prevBody) expect(k).toBe(prev!)
-        else expect(k).not.toBe(prev!)
-      }
-      prev = k
-      prevBody = body
     }
+    expect(keys.size).toBe(1)
   })
 })
 
@@ -517,8 +498,6 @@ describe('input file bytes, read from disk', () => {
           await cache.key({
             taskId: 'p#t',
             taskConfigHash: 'cfg',
-            projectPackageJsonHash: 'pkg',
-            workspaceFingerprint: 'fp',
             envValues: [],
             upstreamHashes: [],
             workspaceRoot: dir,

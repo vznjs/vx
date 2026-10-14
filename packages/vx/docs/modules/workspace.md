@@ -145,7 +145,7 @@ export function readOnce(reads: LoadReads | undefined, file: string): Promise<Ui
 ```
 
 A run reads the root manifest once. `findManifestRoot`, `loadWorkspace`
-and `computeWorkspaceFingerprints` each read `pnpm-workspace.yaml` for
+and the workspace fingerprint each read `pnpm-workspace.yaml` for
 themselves until 2026-09-24 — three probes and three reads per run;
 `prepareRun` now hands all three one `LoadReads`, and so do the verbs
 that pair the first two (`show`, `lock`, `init`, `watch`, the

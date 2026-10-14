@@ -66,9 +66,7 @@ const request = (over: Record<string, unknown> = {}): ExecuteRequest =>
       runtime: [],
       workspaceRuntime: [],
       upstream: [],
-      packageJsonDigest: '',
       configDigest: 'y',
-      workspaceFingerprint: 'z',
     },
     ...over,
   }) as unknown as ExecuteRequest

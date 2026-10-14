@@ -139,8 +139,9 @@ held to the git blob id the key folded for it. A file edited or removed
 in between (an edit mid-run under `vx watch`) still runs, but the
 execution is not recorded under a key that no longer describes it; the
 record once replayed the edited outputs on every machine after the file
-was restored. The project's own `package.json`, which the key folds
-whether or not a glob lists it, is always in the input root.
+was restored. The input root holds exactly the files the key folded: core
+keys no package file, so a project's `package.json` is in it only as a
+listed input (`@vzn/vx-lockfile` lists it on every cached task).
 
 This matters most under `--cache-download=none`, where deferral leaves no
 local cache entry behind, so vx's own probe misses on every later run
@@ -415,8 +416,7 @@ A cache-only server (bazel-remote advertises `exec_enabled: false`) makes the
 plugin **decline the executor with a warning** rather than submit work that
 will never be answered. Only cacheable tasks are eligible — a task with no
 `cache` block has no described inputs, so a worker would run it against an
-empty input root. A cacheable task's root holds its declared input files
-and its project's `package.json`.
+empty input root. A cacheable task's root holds its declared input files.
 
 Verified end-to-end against a live NativeLink scheduler + worker: input tree
 uploaded, QUEUED → EXECUTING → COMPLETED streamed, stdout returned inline,

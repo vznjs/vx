@@ -1,129 +1,23 @@
 import path from 'node:path'
-import { xxh3 } from '../util/index.js'
 import { type LoadReads, readOnce } from './load-reads.js'
 
-// Every package-manager lockfile we know about, plus the workspace
-// definition files. Whichever ones exist get folded into the
-// fingerprint; missing ones are skipped. Hashed in declaration order
-// for determinism — adding a new entry here changes the fingerprint
-// for projects that have that file present, which is fine: that's the
-// whole point of bumping CACHE_VERSION when the fingerprint surface
-// expands.
-// Exported so `--affected` can consult the SAME list. A change to any of
-// these re-keys every task in the workspace, so selection has to widen to
-// match — two copies of this list would silently drift into a run that
-// rebuilds everything while selecting nothing.
-export const WORKSPACE_FINGERPRINT_FILES = [
-  // Lockfiles
-  'pnpm-lock.yaml',
-  'package-lock.json',
-  'npm-shrinkwrap.json',
-  'yarn.lock',
-  'bun.lock',
-  'bun.lockb',
-  // Workspace definition (pnpm); package.json is hashed per-project
-  // via projectPackageJsonHash, not here.
-  'pnpm-workspace.yaml',
-  // Yarn 4 catalogs: yarn.lock records a `catalog:` dependency as that
-  // literal, so a catalog flip to a range the file already resolves
-  // leaves it byte-identical while the workspace's install moves
-  // (turborepo#12635). pnpm's catalogs live in pnpm-workspace.yaml, and
-  // its lockfile records each importer's resolved version besides.
-  '.yarnrc.yml',
-  // Install settings no lockfile records: bun's `linker = "isolated"` and
-  // pnpm's `node-linker` / hoisting lay `node_modules` out anew under a
-  // byte-identical lockfile, and a build that imported an undeclared
-  // hoisted package kept its green hit where it now fails (D-7).
-  '.npmrc',
-  'bunfig.toml',
-]
-
-// DELIBERATELY ABSENT: `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`. Everything it can
-// declare — `concurrency`, `cacheDir`, `timeout`, and the
-// plugin list — is placement, storage or observability, never what a
-// command produces; core's three seams may change WHERE a task runs, not
-// WHAT it runs (architecture principle #3). Folding it in would also do
-// active harm: a laptop declaring only the local plugins and a CI runner
-// declaring `reapi()` would compute different fingerprints and share not
-// one cache entry — the same split the rejected `NODE_OPTIONS` non-goal
-// describes. A per-task input that genuinely varies belongs in
-// `cache.inputs`, which is the surface built for it.
-
 /**
- * One hash for the workspace as a whole, derived from whichever
- * lockfile + workspace-definition files exist at the root. Folded
- * into every task's cache key so any lockfile bump (`pnpm update`,
- * `npm install`, `bun install`, …) or a workspace-shape change
- * invalidates every cached entry. Coarse but correct.
+ * The bytes of each named root file that exists: the files the plugins
+ * claim (`VxPlugin.fingerprint`), read once at run start so a task that
+ * rewrites one is caught (orchestrator/fingerprint-watch.ts). Core folds
+ * none of them into a key; the claimant does.
  */
-export async function computeWorkspaceFingerprint(
+export async function readClaimedFiles(
   workspaceRoot: string,
+  names: Iterable<string>,
   reads?: LoadReads,
-): Promise<string> {
-  return (await computeWorkspaceFingerprints(workspaceRoot, NONE, reads)).all
-}
-
-const NONE: ReadonlySet<string> = new Set()
-
-export interface WorkspaceFingerprints {
-  /** Every file folded. */
-  readonly all: string
-  /**
-   * The same fold minus the files a plugin claims (`VxPlugin.fingerprint`)
-   * — what every task key folds. Identical to `all` with nothing claimed.
-   */
-  readonly unclaimed: string
-  /**
-   * The bytes folded, by file name — what a mid-run check compares against
-   * when a task may have rewritten one (orchestrator/fingerprint-watch.ts).
-   * Already in memory for the fold; kept, not copied.
-   */
-  readonly files: ReadonlyMap<string, Uint8Array>
-}
-
-/**
- * Both digests from one read of each file — none at all for the
- * `pnpm-workspace.yaml` discovery already read into the load's `reads`. A
- * claimed file leaves the key digest entirely (its name too): the claimant
- * folds what it means per project, and a fold of "present" would still
- * re-key the workspace when the file appeared.
- */
-export async function computeWorkspaceFingerprints(
-  workspaceRoot: string,
-  claimed: ReadonlySet<string>,
-  reads?: LoadReads,
-): Promise<WorkspaceFingerprints> {
-  let all = 0n
-  let unclaimed = 0n
+): Promise<ReadonlyMap<string, Uint8Array>> {
   const files = new Map<string, Uint8Array>()
-  for (const f of WORKSPACE_FINGERPRINT_FILES) {
+  for (const f of names) {
     const bytes = await readOnce(reads, path.join(workspaceRoot, f))
-    if (bytes === null) continue
-    files.set(f, bytes)
-    all = xxh3(`${f}\0`, all)
-    all = xxh3(bytes, all)
-    if (claimed.has(f)) continue
-    unclaimed = xxh3(`${f}\0`, unclaimed)
-    unclaimed = xxh3(bytes, unclaimed)
+    if (bytes !== null) files.set(f, bytes)
   }
-  // bun.lock names a patch by PATH, never by its content: an edited patch
-  // left the lockfile byte-identical and every key unmoved while the
-  // install applied the new one (item 1014, where only `bun()`'s claim
-  // learned it). Each file it names folds here; a claimed bun.lock's
-  // plugin folds them itself.
-  const bunLock = files.get('bun.lock')
-  if (bunLock !== undefined) {
-    for (const rel of bunPatchFiles(bunLock)) {
-      const bytes = await readOnce(reads, path.join(workspaceRoot, rel))
-      const mark = `patch\0${rel}\0${bytes === null ? 'gone' : 'present'}`
-      all = xxh3(mark, all)
-      if (bytes !== null) all = xxh3(bytes, all)
-      if (claimed.has('bun.lock')) continue
-      unclaimed = xxh3(mark, unclaimed)
-      if (bytes !== null) unclaimed = xxh3(bytes, unclaimed)
-    }
-  }
-  return { all: hex(all), unclaimed: hex(unclaimed), files }
+  return files
 }
 
 const PATCHED = new TextEncoder().encode('"patchedDependencies"')
@@ -132,7 +26,7 @@ const PATCHED = new TextEncoder().encode('"patchedDependencies"')
  * The workspace-relative patch files a `bun.lock` names, sorted; none
  * outside the workspace. A lockfile without the key is not parsed (the
  * common case costs one byte search), and one that will not parse names
- * none: its bytes still fold whole.
+ * none.
  */
 export function bunPatchFiles(bytes: Uint8Array): string[] {
   if (Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).indexOf(PATCHED) < 0) return []
@@ -152,8 +46,4 @@ export function bunPatchFiles(bytes: Uint8Array): string[] {
     out.add(rel)
   }
   return [...out].sort()
-}
-
-function hex(h: bigint): string {
-  return h.toString(16).padStart(16, '0')
 }

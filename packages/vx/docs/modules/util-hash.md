@@ -3,7 +3,7 @@
 ## Purpose
 
 Thin wrappers over `Bun.hash.xxHash3` shared by every cache-key
-derivation site (`Cache.key`, `task-hash.ts`, workspace fingerprint,
+derivation site (`Cache.key`, `task-hash.ts`, lockfile claims,
 config-load cache busting). xxHash3 has no streaming hasher API in
 Bun, so multi-part keys chain digests via the seed parameter. Bun reads
 only the low 32 bits of that seed, so `xxh3` XORs the seed back into the

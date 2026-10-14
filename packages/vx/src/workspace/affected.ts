@@ -21,7 +21,7 @@ import {
 import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
-import { bunPatchFiles, WORKSPACE_FINGERPRINT_FILES } from './fingerprint.js'
+import { bunPatchFiles } from './fingerprint.js'
 import type { PackageJson, ProjectMeta } from './workspace.js'
 
 /**
@@ -96,8 +96,8 @@ export interface AffectedArgs {
   /**
    * The fingerprint files a plugin claims (`VxPlugin.fingerprint`) and its
    * answer for a change to one. Resolved lazily: loading the workspace
-   * file costs an evaluation, and a diff that touches no fingerprint file
-   * — the common one — never needs it.
+   * file costs an evaluation, and a diff that touches no root file — the
+   * common one — never needs it.
    */
   fingerprintClaims?: () => Promise<FingerprintClaims>
   /**
@@ -256,62 +256,54 @@ export async function affectedChanges(
   const nested = new Set(diffed.gitlinks)
   for (const rel of untracked) if (rel.endsWith('/')) nested.add(rel)
 
-  // A lockfile or workspace-definition change re-keys EVERY task, because the
-  // workspace fingerprint folds those files into every cache key. Mapping
-  // changed paths to project directories cannot see that — they sit at the
-  // root and belong to no project — so `--affected` selected ZERO projects for
-  // a change that invalidates the entire cache. `vx run test --affected` after
-  // a `pnpm update` exited 0 having run nothing, which is precisely the
-  // failure `docs/cli.md` warns against in the sentence it states as a
-  // principle: "input hashing sees it, so `--affected` must too."
+  // A root file a plugin CLAIMS (`VxPlugin.fingerprint`: a lockfile, an
+  // install setting) re-keys tasks through what its claimant folds, and it
+  // sits at the root, owned by no project or by the root alone: mapping
+  // paths to directories selected ZERO projects for a lockfile bump that
+  // re-keyed them all, and `vx run test --affected` after a `pnpm update`
+  // exited 0 having run nothing — the failure `docs/cli.md` warns against:
+  // "input hashing sees it, so `--affected` must too." So selection asks the
+  // claimant the question its key answers, with the bytes at the base ref
+  // and in the working tree; the answer is unioned with the path-owned
+  // projects below, and only "cannot tell" widens. Core keys no root file
+  // itself, so an unclaimed one is a path like any other.
   //
   // Selection is not hashed, so widening it here changes no cache key.
-  //
-  // A file a plugin CLAIMS is the exception: the key folds what the plugin
-  // says per project, so selection asks the plugin the same question, with
-  // the bytes at the base ref and in the working tree. Its answer is
-  // unioned with the path-owned projects below; only "cannot tell" widens.
   const everything = (): AffectedChanges => {
     const all = new Set(args.projects.map((p) => p.name))
     return { projects: all, changed, paths: new Map(), whole: all }
   }
   if (workspaceConfigChanged(changed)) return everything()
-  const fingerprintChanged = changed.filter((p) => FINGERPRINT_SET.has(p))
-  // A patch bun.lock names folds into every key, core's fingerprint and
-  // `bun()`'s claim alike, so its edit widens as a lockfile edit does. A
-  // patch the lockfile no longer names moved bun.lock itself.
+  // Loading the workspace file costs an evaluation; only a changed ROOT
+  // name can be claimed, so a diff inside the projects never loads it.
+  let claims: FingerprintClaims | undefined
+  const loadClaims = async (): Promise<FingerprintClaims | undefined> =>
+    (claims ??= await args.fingerprintClaims?.())
+  // A patch bun.lock names folds into the key of the plugin that claims
+  // bun.lock (`bun()`; the lockfile records no hash of it), so its edit
+  // widens as a lockfile edit does. A patch the lockfile no longer names
+  // moved bun.lock itself.
   if (changed.length > 0) {
     const lock = await bytesOrNull(path.join(args.workspaceRoot, 'bun.lock'))
     if (lock !== null) {
       const patches = new Set(bunPatchFiles(lock))
-      if (changed.some((p) => patches.has(p))) return everything()
+      if (changed.some((p) => patches.has(p)) && (await loadClaims())?.files.has('bun.lock')) {
+        return everything()
+      }
     }
   }
   const claimedOwned = new Set<string>()
-  // A claim may also name a root file core does not fold (`turbo.json`,
-  // read by `turbo()`'s stages): it re-keys tasks through their resolved
-  // configs and belongs to no project (item 961). Only a changed ROOT name
-  // can be one, so a diff inside the projects never loads the claims.
-  const rootNamesChanged = changed.filter((p) => !p.includes('/') && !FINGERPRINT_SET.has(p))
-  let claims: FingerprintClaims | undefined
-  if (
-    (fingerprintChanged.length > 0 || rootNamesChanged.length > 0) &&
-    args.fingerprintClaims !== undefined
-  ) {
-    claims = await args.fingerprintClaims()
-    for (const file of rootNamesChanged) if (claims.files.has(file)) fingerprintChanged.push(file)
-  }
-  if (fingerprintChanged.length > 0) {
-    for (const file of fingerprintChanged) {
-      if (claims === undefined || !claims.files.has(file)) return everything()
-      const answer = await claims.affected({
-        file,
-        before: await gitBytesAt(args.workspaceRoot, base, file),
-        after: await bytesOrNull(path.join(args.workspaceRoot, file)),
-      })
-      if (answer === undefined) return everything()
-      for (const name of answer) claimedOwned.add(name)
-    }
+  const rootNamesChanged = changed.filter((p) => !p.includes('/'))
+  const claimed = rootNamesChanged.length > 0 ? await loadClaims() : undefined
+  for (const file of rootNamesChanged) {
+    if (claimed === undefined || !claimed.files.has(file)) continue
+    const answer = await claimed.affected({
+      file,
+      before: await gitBytesAt(args.workspaceRoot, base, file),
+      after: await bytesOrNull(path.join(args.workspaceRoot, file)),
+    })
+    if (answer === undefined) return everything()
+    for (const name of answer) claimedOwned.add(name)
   }
 
   const realDirs = new Map(
@@ -479,21 +471,14 @@ async function gitBlobsAt(
  * Whether `changed` holds the workspace config. Its plugins' `config` and
  * `project` stages shape every project's resolved config, so such an edit
  * can re-key any task, and selection cannot tell which: an edit that
- * changed every key selected nothing (item 953). The fingerprint leaves
- * the file out (its placement plugins must not split a cache between
- * machines); a stage it installs re-keys through the resolved configs
- * instead. Selection is not hashed, so widening here changes no key.
+ * changed every key selected nothing (item 953). No key folds the file
+ * (its placement plugins must not split a cache between machines); a
+ * stage it installs re-keys through the resolved configs instead.
+ * Selection is not hashed, so widening here changes no key.
  */
 function workspaceConfigChanged(changed: readonly string[]): boolean {
   return WORKSPACE_CONFIG_FILENAMES.some((n) => changed.includes(n))
 }
-
-/**
- * The fingerprint files as workspace-root-relative paths. Read from the same
- * constant the fingerprint itself walks, so a new lockfile format cannot be
- * taught to one surface and not the other.
- */
-const FINGERPRINT_SET: ReadonlySet<string> = new Set(WORKSPACE_FINGERPRINT_FILES)
 
 /**
  * A root file's bytes at `ref`, or null when the ref has no such file.

@@ -26,13 +26,15 @@ import { isLiteralPattern, outputsOverlap, type GeneratedTask } from '@vzn/vx'
 import { relPosix } from './paths.js'
 import type { TrackedKinds } from './tracked-outputs.js'
 
-// Core refuses an output glob that covers the project's own package.json
-// or vx.config (config-schema's `ownFilesCovered`): vx cleans outputs before
-// a run and restores them on a hit, so the manifest would go. Turbo caches
-// it: trpc's client build lists `package.json` (it rewrites `exports`), and
-// the one task made core refuse the whole run (2026-09-28). The façade does
-// not export the check; tests/own-file-outputs.test.ts holds this copy to
-// the loader in both directions.
+// vx cleans outputs before a run and restores them on a hit, so an output
+// glob that covers the project's own package.json or vx.config would delete
+// it. Core refuses the config file (config-schema's `ownFilesCovered`); the
+// manifest it no longer guards (core keys no package file, 2026-10-14), but
+// a mapped task still must not delete it. Turbo caches it: trpc's client
+// build lists `package.json` (it rewrites `exports`), and the one task made
+// core refuse the whole run (2026-09-28). The façade does not export the
+// check; tests/own-file-outputs.test.ts holds the config half of this copy
+// to the loader in both directions.
 const OWN_FILES = ['package.json', 'vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
 
 /**

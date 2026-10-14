@@ -53,9 +53,7 @@ const request = (cacheKey: string): ExecuteRequest =>
       runtime: [],
       workspaceRuntime: [],
       upstream: [],
-      packageJsonDigest: '',
       configDigest: 'y',
-      workspaceFingerprint: 'z',
     },
   }) as unknown as ExecuteRequest
 

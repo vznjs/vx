@@ -79,7 +79,8 @@ export class Cache implements CacheLayer {
 export class FingerprintWatch {
   constructor(
     private readonly workspaceRoot: string,
-    private readonly read: WorkspaceFingerprints,
+    readonly names: readonly string[],
+    private readonly read: ReadonlyMap<string, Uint8Array>,
     private readonly at: number,
   ) {}
   wrote(): void
@@ -391,9 +392,7 @@ export interface CacheKeyInput {
     readonly hash: string
     readonly projectDir: string
   }>
-  workspaceFingerprint: string
   forwardArgs?: readonly string[]
-  projectPackageJsonHash: string
   fileHashes?: ReadonlyMap<string, string>
   pluginParts?: ReadonlyArray<readonly [name: string, value: string]>
   captureInto?: Array<{ kind: string; name: string; hash: string }>
@@ -667,7 +666,6 @@ export interface GraphHookContext extends BaseContext {
 }
 == type HashCache (src/orchestrator/task-hash.ts)
 export interface HashCache {
-  packageJson: Map<string, Promise<string>>
   taskConfig: WeakMap<TaskConfig, string>
   runtime: Map<string, Promise<string>>
   workspaceRuntime: Map<string, Promise<string>>
@@ -1010,7 +1008,6 @@ export interface PreparedRun {
   projects: ReadonlyMap<string, ProjectEntry>
   hintProjects: ReadonlyMap<string, ProjectEntry>
   anyProjectConfig: boolean
-  workspaceFingerprint: string
   fingerprintWatch: FingerprintWatch
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache
@@ -1454,9 +1451,7 @@ export interface TaskInputs {
     readonly hash: string
     readonly outputs: readonly string[]
   }>
-  readonly packageJsonDigest: string
   readonly configDigest: string
-  readonly workspaceFingerprint: string
 }
 == type TaskLogBundle (src/orchestrator/task-log-buffer.ts)
 export interface TaskLogBundle {
@@ -1723,12 +1718,6 @@ export interface WorkspaceConfig {
 export type WorkspaceFilesCache = Map<
   string,
   { snapshot: readonly string[]; result: Promise<string[]> }
-== type WorkspaceFingerprints (src/workspace/fingerprint.ts)
-export interface WorkspaceFingerprints {
-  readonly all: string
-  readonly unclaimed: string
-  readonly files: ReadonlyMap<string, Uint8Array>
-}
 == type WorkspaceHookContext (src/orchestrator/plugin.ts)
 export interface WorkspaceHookContext {
   readonly workspaceRoot: string

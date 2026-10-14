@@ -84,8 +84,9 @@ would run every such project on a README edit.
 ## The rule that bounds it
 
 **Relative specifiers only.** A bare specifier is a package; it moves
-when the lockfile moves, and the workspace fingerprint already selects
-everything on a lockfile change. The exception is a bare specifier the
+when the lockfile moves, and the lockfile's claimant
+(`@vzn/vx-lockfile`) already selects the projects a lockfile change
+reaches. The exception is a bare specifier the
 nearest tsconfig maps through `paths` or `baseUrl`: Bun loads its target
 from disk, so it is an edge like a relative one, a deleted target
 included (D-27). A config quoting no bare specifier such a tsconfig

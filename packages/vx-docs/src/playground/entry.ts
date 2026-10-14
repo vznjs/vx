@@ -5,7 +5,7 @@
 // Everything below the shim is core's own source, bundled unchanged:
 // discovery (`loadWorkspace`, `listProjects`), the package graph over the
 // page's edges (edges.ts), the staged-config load (`loadProjects`), config
-// validation, the task graph, the workspace fingerprint, the
+// validation, the task graph, the
 // git-enumeration partition, `plan()` with the real key fold (`foldKey`)
 // and the scheduler. What this
 // file supplies is what `prepareRun` gets from the machine: the git
@@ -24,7 +24,6 @@ import { relPosix } from '../../../vx/src/util/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
-  computeWorkspaceFingerprints,
   linkDiscoveredEdges,
   listProjects,
   loadWorkspace,
@@ -227,7 +226,6 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
     workspaceRoot: root,
   })
 
-  const fingerprints = await computeWorkspaceFingerprints(root, new Set())
   const gitFilesCache = new GitFilesCache()
   const usesWorkspaceInputs = [...projects.values()].some((p) =>
     Object.values(p.config.tasks ?? {}).some(
@@ -273,7 +271,6 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
   const planned = await plan({
     nodes,
     workspaceRoot: root,
-    workspaceFingerprint: fingerprints.unclaimed,
     cache,
     forwardArgs: [],
     nestedDirsByProject,

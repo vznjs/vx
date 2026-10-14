@@ -110,7 +110,8 @@ export default defineProject({
 
 | The key                | Holds                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------- |
-| Always in it           | the package's `package.json`, the lockfile, the keys of the tasks it depends on, the task's config, arguments after `--` |
+| Always in it           | the keys of the tasks it depends on, the task's config, arguments after `--` |
+| In, with a lockfile plugin | the package's `package.json` and its own dependencies from the lockfile ([Lockfiles](#lockfiles)) |
 | Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `*.tsbuildinfo`, `.vx/projects.lock.json`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
 | In, when you say so    | a tool's version: `cache.inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
@@ -276,9 +277,10 @@ cache key. There is no `globalInputs`: import a shared array instead.
 
 ## Lockfiles
 
-Without a plugin, the lockfile is in every task's key, so one install
-re-runs everything, and `^build` has no package edges: vx reads none
-from a `package.json`, so it refuses a `^` and names the plugin to add.
+Without a plugin, no lockfile or `package.json` is in any task's key,
+so an install re-keys nothing (an old build replays), and `^build` has no package edges: vx
+reads none from a `package.json`, so it refuses a `^` and names the
+plugin to add.
 With `@vzn/vx-lockfile` (`bun add -d @vzn/vx-lockfile`), each package is
 keyed on its own dependencies, `^build` follows what the manager
 installed, and `--affected` follows both.
@@ -297,7 +299,7 @@ export default defineWorkspace({
 | -------- | ------------------------------------------------------------------------------------- | ------------------------------- |
 | `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs` and `overrides` (`settings`, `onlyBuiltDependencies`, …) |
 | `bun()`  | the same, through Bun's hoisted layout                                                | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs`, `overrides` and `patchedDependencies` (`trustedDependencies`, …) |
-| `npm()`  | the same, from `package-lock.json` versions 2 and 3                                   | the `lockfileVersion`; root `overrides` reach a package through the entries they force |
+| `npm()`  | the same, from `npm-shrinkwrap.json` or `package-lock.json` versions 2 and 3                                | the `lockfileVersion`; root `overrides` reach a package through the entries they force |
 | `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package folds the whole file | `__metadata`'s `version` and `cacheKey`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
 
 Every package's key also folds the root package's own dependencies:

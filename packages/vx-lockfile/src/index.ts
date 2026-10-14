@@ -3,13 +3,12 @@
 // lockfile instead of the whole file, and giving core the project edges
 // the lockfile records (`discover`).
 //
-// Core folds every lockfile at the root into the workspace fingerprint
-// that every task key sees, so one install re-keys the workspace and
-// `--affected` selects every project. Each plugin here CLAIMS its file
-// (`VxPlugin.fingerprint`) through core's `lockfileClaim`: the file leaves
-// the key digest, each task folds one digest per project — what that
-// project can reach through its dependencies, by resolved identity — and
-// `--affected` names the projects whose digest moved. This package is the
+// Core keys no package file: without a plugin here, no lockfile, install
+// setting or `package.json` reaches any key. Each plugin CLAIMS its
+// lockfile (`VxPlugin.fingerprint`) through core's `lockfileClaim`: each
+// task folds one digest per project — what that project can reach through
+// its dependencies, by resolved identity — and `--affected` names the
+// projects whose digest moved. This package is the
 // parsers; the claim, the per-project key (which folds the root
 // importer's digest into every project: the root's tools are on every
 // task's PATH), the memo (one parse per file content, edges included),
@@ -24,6 +23,7 @@ import {
   refuseUnknownOptions,
   UserError,
   type DiscoveredProject,
+  type LockfileClaimHooks,
   type LockfileImporter,
   type PluginOptionKinds,
   type ProjectMeta,
@@ -46,9 +46,9 @@ export interface LockfileOptions {
   /**
    * `'project'` (default): each task folds its own project's dependency
    * closure — a lockfile change re-keys only the projects it reaches.
-   * `'workspace'`: the whole file, as core folds it — the coarse key,
-   * through the plugin, for a workspace that wants the claim but not yet
-   * the precision (`vx why` names it either way).
+   * `'workspace'`: the whole file into every task — the coarse key, for a
+   * workspace that wants the claim but not yet the precision (`vx why`
+   * names it either way).
    */
   readonly scope?: 'project' | 'workspace'
 }
@@ -58,7 +58,10 @@ const DIGEST_VERSION = 15
 
 interface Manager {
   readonly name: string
-  readonly file: string
+  /** The lockfiles the manager reads, the one it prefers first: it reads the first present. */
+  readonly files: readonly [string, ...string[]]
+  /** A lockfile vx cannot parse, refused when none of `files` is present beside it. */
+  readonly unreadable?: { readonly file: string; readonly fix: string }
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   readonly importers: (text: string) => ReadonlyMap<string, LockfileImporter>
   readonly extraFiles?: (text: string) => readonly string[]
@@ -90,7 +93,7 @@ const yarnParse = lastParse((t: string) => yarnLock().parseLockfile(t))
 const MANAGERS = {
   pnpm: {
     name: 'pnpm',
-    file: 'pnpm-lock.yaml',
+    files: ['pnpm-lock.yaml'],
     digest: (t) => pnpmLock().importerDigests(pnpmParse(t)),
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
     settings: ['pnpm-workspace.yaml', '.npmrc'],
@@ -98,7 +101,13 @@ const MANAGERS = {
   },
   bun: {
     name: 'bun',
-    file: 'bun.lock',
+    files: ['bun.lock'],
+    // Bun's binary lockfile: core folded it whole until it keyed no
+    // package file, and nothing here parses it.
+    unreadable: {
+      file: 'bun.lockb',
+      fix: 'run `bun install --save-text-lockfile` to write bun.lock',
+    },
     digest: (t, files) => bunLock().importerDigests(bunParse(t), files),
     importers: (t) => bunLock().importerLinks(bunParse(t)),
     extraFiles: (t) => bunLock().patchFiles(t),
@@ -106,14 +115,15 @@ const MANAGERS = {
   },
   npm: {
     name: 'npm',
-    file: 'package-lock.json',
+    // npm reads npm-shrinkwrap.json over package-lock.json when both exist.
+    files: ['npm-shrinkwrap.json', 'package-lock.json'],
     digest: (t) => npmLock().importerDigests(npmParse(t)),
     importers: (t) => npmLock().importerLinks(npmParse(t)),
     settings: ['.npmrc'],
   },
   yarn: {
     name: 'yarn',
-    file: 'yarn.lock',
+    files: ['yarn.lock'],
     digest: (t) => yarnLock().importerDigests(yarnParse(t)),
     importers: (t) => yarnLock().importerLinks(yarnParse(t)),
     settings: ['.yarnrc.yml'],
@@ -130,59 +140,86 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       `${manager.name}() scope must be 'project' or 'workspace', not ${JSON.stringify(scope)}`,
     )
   }
-  // The parsers name their own file, so prefixing unconditionally said it
-  // twice — "bun.lock: bun.lock: Failed to parse JSONC" (2026-09-20).
-  // Prefix only what does not already name it, and say what fixes it: a
-  // lockfile vx cannot read is an install away from readable, and the
-  // alternative to reading it is a WRONG key, so the run refuses rather
-  // than guessing.
-  const refused = (err: unknown): Error => {
-    const message = err instanceof Error ? err.message : String(err)
-    const named = message.startsWith(`${manager.file}:`) ? message : `${manager.file}: ${message}`
-    return new Error(`${named} — regenerate it with \`${manager.name} install\``)
-  }
   const extraFiles = manager.extraFiles
-  const guarded =
-    <A extends unknown[], R>(f: (...args: A) => R) =>
-    (...args: A): R => {
-      try {
-        return f(...args)
-      } catch (err) {
-        throw refused(err)
-      }
+  const claimOf = (file: string): LockfileClaimHooks => {
+    // The parsers name their own file, so prefixing unconditionally said it
+    // twice — "bun.lock: bun.lock: Failed to parse JSONC" (2026-09-20).
+    // Prefix only what does not already name it, and say what fixes it: a
+    // lockfile vx cannot read is an install away from readable, and the
+    // alternative to reading it is a WRONG key, so the run refuses rather
+    // than guessing.
+    const refused = (err: unknown): Error => {
+      const message = err instanceof Error ? err.message : String(err)
+      const named = message.startsWith(`${file}:`) ? message : `${file}: ${message}`
+      return new Error(`${named} — regenerate it with \`${manager.name} install\``)
     }
-  const claim = lockfileClaim({
-    file: manager.file,
-    part: manager.name,
-    version: DIGEST_VERSION,
-    scope,
-    importers: guarded((text: string) => {
-      if (CONFLICT.test(text)) throw new Error(`${manager.file}: holds git merge conflict markers`)
-      return manager.importers(text)
-    }),
-    // Read before `digest` on the key path: a malformed bun.lock refused
-    // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
-    ...(extraFiles !== undefined ? { extraFiles: guarded(extraFiles) } : {}),
-    digest: guarded((text: string, files: ReadonlyMap<string, string>) => {
-      // A conflicted lockfile names two installs at once. Yarn classic's
-      // line parser took the second side without a word, so the key named
-      // an install that may not be the one on disk.
-      if (CONFLICT.test(text)) throw new Error(`${manager.file}: holds git merge conflict markers`)
-      return manager.digest(text, files)
-    }),
-  })
+    const guarded =
+      <A extends unknown[], R>(f: (...args: A) => R) =>
+      (...args: A): R => {
+        try {
+          return f(...args)
+        } catch (err) {
+          throw refused(err)
+        }
+      }
+    return lockfileClaim({
+      file,
+      part: manager.name,
+      version: DIGEST_VERSION,
+      scope,
+      importers: guarded((text: string) => {
+        if (CONFLICT.test(text)) throw new Error(`${file}: holds git merge conflict markers`)
+        return manager.importers(text)
+      }),
+      // Read before `digest` on the key path: a malformed bun.lock refused
+      // there as a bare "JSONC Parse error", no file named (fuzzed, L-16).
+      ...(extraFiles !== undefined ? { extraFiles: guarded(extraFiles) } : {}),
+      digest: guarded((text: string, files: ReadonlyMap<string, string>) => {
+        // A conflicted lockfile names two installs at once. Yarn classic's
+        // line parser took the second side without a word, so the key named
+        // an install that may not be the one on disk.
+        if (CONFLICT.test(text)) throw new Error(`${file}: holds git merge conflict markers`)
+        return manager.digest(text, files)
+      }),
+    })
+  }
+  // One part name for every file: `npm shrinkwrap` renames the lockfile,
+  // and the same install keys the same.
+  const claims = manager.files.map((file) => ({ file, claim: claimOf(file) }))
+  const unreadable = manager.unreadable
+  // With no lockfile it reads, a lockfile it cannot: the key would name no
+  // install at all, so the run refuses rather than guessing.
+  const refuseUnreadable = async (workspaceRoot: string): Promise<void> => {
+    if (unreadable === undefined) return
+    if (!(await Bun.file(path.join(workspaceRoot, unreadable.file)).exists())) return
+    throw new UserError(
+      `${unreadable.file}: ${manager.name}() reads ${manager.files.join(' or ')} and finds none — ${unreadable.fix}`,
+    )
+  }
+  const importersOf = async (ctx: {
+    readonly workspaceRoot: string
+    readonly cacheDir: string
+  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined> => {
+    for (const { claim } of claims) {
+      const importers = await claim.importers(ctx)
+      if (importers !== undefined) return importers
+    }
+    await refuseUnreadable(ctx.workspaceRoot)
+    return undefined
+  }
   // Per run: core hands every `project` visit of one run the same array.
   const perRun = new WeakMap<
     readonly ProjectMeta[],
     Promise<ReadonlyMap<string, LockfileImporter> | undefined>
   >()
   const settingsPerRun = new WeakMap<object, Promise<Record<string, string>>>()
+  const refusedPerRun = new WeakMap<object, Promise<void>>()
   return definePlugin(import.meta, {
     fingerprint: {
-      files: [manager.file, ...manager.settings],
+      files: [...manager.files, ...manager.settings],
       // A settings file lays out every project's install: every project.
       affected: (change, ctx) =>
-        change.file === manager.file ? claim.fingerprint.affected(change, ctx) : undefined,
+        claims.find((c) => c.file === change.file)?.claim.fingerprint.affected(change, ctx),
     },
     async key(task, ctx) {
       let settings = settingsPerRun.get(ctx)
@@ -190,13 +227,26 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         settings = readSettings(ctx.workspaceRoot, manager.settings)
         settingsPerRun.set(ctx, settings)
       }
-      const [deps, folded] = await Promise.all([claim.key(task, ctx), settings])
+      let deps: Readonly<Record<string, string>> | undefined
+      for (const { claim } of claims) {
+        deps = await claim.key(task, ctx)
+        if (deps !== undefined) break
+      }
+      if (deps === undefined) {
+        let refused = refusedPerRun.get(ctx)
+        if (refused === undefined) {
+          refused = refuseUnreadable(ctx.workspaceRoot)
+          refusedPerRun.set(ctx, refused)
+        }
+        await refused
+      }
+      const folded = await settings
       return deps === undefined && Object.keys(folded).length === 0
         ? undefined
         : { ...deps, ...folded }
     },
     async discover(ctx) {
-      const importers = await claim.importers(ctx)
+      const importers = await importersOf(ctx)
       if (importers === undefined) return []
       if (importers.size === 0 && manager.noImporters !== undefined) ctx.warn(manager.noImporters())
       return discovered(
@@ -209,7 +259,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     async project(config, ctx) {
       let importers = perRun.get(ctx.projects)
       if (importers === undefined) {
-        importers = claim.importers(ctx)
+        importers = importersOf(ctx)
         perRun.set(ctx.projects, importers)
       }
       if ((await importers)?.has(importerOf(ctx.workspaceRoot, ctx.dir)) !== true) return

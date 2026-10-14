@@ -166,16 +166,13 @@ export function diffRuns(
 }
 
 // What each component kind the key fold records (cache/key-fold.ts) is
-// called. `config`, `package`, `workspace` and `forward` are one per key,
-// so their names ("config", "package.json", "fingerprint", "argv") say
-// nothing the kind does not.
+// called. `config` and `forward` are one per key, so their names
+// ("config", "argv") say nothing the kind does not.
 const SUBJECT: Record<string, (name: string) => string> = {
   file: (n) => n,
   upstream: (n) => `upstream ${n}`,
   env: (n) => `env ${n}`,
   config: () => 'config',
-  package: () => 'package.json',
-  workspace: () => 'workspace fingerprint',
   forward: () => 'args after --',
   runtime: (n) => `output of ${n}`,
   'ws-runtime': (n) => `workspace output of ${n}`,

@@ -16,7 +16,7 @@ export interface PrefetchArgs {
   nodes: Map<string, TaskNode>
   cache: CacheLayer
   workspaceRoot: string
-  workspaceFingerprint: string
+  claimedFiles: readonly string[] // the root files the plugins claim
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

@@ -30,7 +30,8 @@ export interface PrefetchArgs {
   /** A layer whose `hasRemote` is true — the caller's gate. */
   cache: CacheLayer
   workspaceRoot: string
-  workspaceFingerprint: string
+  /** The root files the plugins claim (`DeriveStableKeysArgs.claimedFiles`). */
+  claimedFiles: readonly string[]
   forwardArgs?: readonly string[] | undefined
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache

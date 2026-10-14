@@ -34,9 +34,9 @@ daemon, the plugin surface, Nx's language plugins) were corrected on
   execution, which is why it has no remote cache). _Reference repo:_
   `voidzero-dev/vite-task`.
 - **`@vzn/vx`** — one thing, built to be built on. TypeScript-native
-  config, opt-in caching, Turbo-shape cache key with two extensions
-  (project package.json folded in; resolved-config hash captures TS
-  imports). One self-contained binary per platform (Linux and macOS,
+  config, opt-in caching, Turbo-shape cache key with one extension
+  (resolved-config hash captures TS imports); package files key a task
+  only through a plugin (`@vzn/vx-lockfile`). One self-contained binary per platform (Linux and macOS,
   x64 and arm64; Windows under WSL) — no Node or Bun to run it.
   Smallest CLI surface; deliberately no daemon, no cloud, no account
   and no JS-function tasks. The core is a Vite-style pipeline: plugins
@@ -120,7 +120,7 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Workspace-level env inputs                                                  | `globalEnv`, `globalPassThroughEnv`                  | workspace `namedInputs` + `inputs`                       | (no)                               | rejected by design — TS presets compose                                                                 |
 | Output declarations                                                         | `outputs: [...]`                                     | `outputs: [...]`                                         | `output: glob` or `{pattern,base}` | `cache.outputs.files: string[]`                                                                         |
 | Output cleaning before exec / restore                                       | (no — additive)                                      | (no — additive)                                          | (via materialized artifacts)       | **yes** — strict                                                                                        |
-| Implicit-dependency hash (project `package.json`)                           | yes — `package.json` is a default input              | `externalDependencies`                                   | (via lockfile)                     | **yes** — folded directly (v12)                                                                         |
+| Implicit-dependency hash (project `package.json`)                           | yes — `package.json` is a default input              | `externalDependencies`                                   | (via lockfile)                     | via `@vzn/vx-lockfile` — an input of every cached task                                                  |
 | Lockfile-aware invalidation (only the projects a dependency change reaches) | per package: the lockfile changes that affect it     | yes — pruned lockfile per project, in the daemon's graph | (whole lockfile)                   | **`@vzn/vx-lockfile`** — per-project closure digest, memoised by lockfile hash; `--affected` follows it |
 | Resolved-config hash (captures TS imports)                                  | —                                                    | —                                                        | —                                  | **yes** — `node.config` JSON hashed                                                                     |
 | Persistent / long-running tasks (dev servers)                               | `persistent`, `interruptible`, `interactive`, `with` | `continuous`                                             | (handled outside graph)            | `exec.persistent.readyWhen`, `exec.interactive`                                                         |
@@ -405,10 +405,10 @@ Things `@vzn/vx` does that the others don't:
   into the cache key because the post-evaluation object is what we
   serialize. Turbo and Nx hash the static JSON file and miss anything
   computed at config-load time.
-- **Project `package.json` hash folded in automatically.** Turbo and
-  Nx get this transitively via the lockfile; vx folds the per-project
-  bytes directly, so narrow `inputs.files` like `['src/**']` doesn't
-  miss dep / version-bump invalidation.
+- **Project `package.json` as a plugin's input.** Core keys no package
+  file (2026-10-14); `@vzn/vx-lockfile` adds each project's
+  `package.json` to its cached tasks' inputs, so narrow `inputs.files`
+  like `['src/**']` doesn't miss dep / version-bump invalidation.
 - **Lockfile-aware invalidation as a plugin.** `@vzn/vx-lockfile` claims
   the lockfile (pnpm, bun, npm, yarn) and keys each project on its own resolved closure
   (name, version, peers, integrity, patches, `link:` reach), so
@@ -520,11 +520,10 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
 ### Affected detection
 
 - **Project removal does NOT invalidate every project's cache.** Nx
-  invalidates everything when a project is removed. vx already folds
-  each project's `package.json` bytes into every task's cache key
-  (PR #42, CACHE_VERSION → v12), which catches "project gone" at
-  finer granularity — only tasks that actually consumed the gone
-  project's bytes are busted.
+  invalidates everything when a project is removed. A dependent's key
+  folds its upstreams' keys and, under `@vzn/vx-lockfile`, its own
+  `package.json`, which catches "project gone" at finer granularity —
+  only tasks that actually consumed the gone project are busted.
 - **`git diff --no-renames` for affected.** vx flips rename
   detection OFF so cross-project `git mv` flags BOTH source and
   destination projects. Turbo's default rename-on would surface only

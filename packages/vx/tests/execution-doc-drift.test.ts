@@ -70,7 +70,7 @@ describe('execution.md follows the source it traces', () => {
     // and `captureInto` is the `vx why` capture sink.
     const PLUMBING = ['workspaceRoot', 'fileHashes', 'upstreamIds', 'upstreamGraft', 'captureInto']
     const folded = fields.filter((f) => !PLUMBING.includes(f))
-    expect(folded.length).toBeGreaterThan(9)
+    expect(folded.length).toBeGreaterThan(8)
 
     const call = /cache\.key\(\{([\s\S]*?)\}\)/.exec(doc)
     expect(call).not.toBeNull()

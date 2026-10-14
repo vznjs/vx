@@ -17,7 +17,7 @@
 // affordable at all:
 //
 //   - RELATIVE specifiers only. A bare specifier is a package; it moves when
-//     the lockfile moves, which the workspace fingerprint already covers.
+//     the lockfile moves, which a lockfile plugin's key covers.
 //     A tsconfig `paths` / `baseUrl` alias is the exception: Bun loads it
 //     from disk (D-27).
 //   - One reversed BFS from every config at once, each file read once

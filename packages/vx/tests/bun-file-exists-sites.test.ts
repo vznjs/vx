@@ -17,7 +17,6 @@ const FILE_PATH_SITES: Record<string, number> = {
   'cli/plugin-templates.ts': 2, // the cache example's has() and get(): artifact file paths
   'handoff.ts': 4, // a package.json, .git/HEAD, a worktree's .git file, a .vx/workspace.*
   'orchestrator/doctor.ts': 1, // the lockfile
-  'orchestrator/task-hash.ts': 1, // a file to hash
   'workspace/affected.ts': 1, // a file to read bytes from
   'workspace/load-reads.ts': 1, // a root file: manifest, fingerprint file, workspace config
   'workspace/lockfile.ts': 1, // the lockfile

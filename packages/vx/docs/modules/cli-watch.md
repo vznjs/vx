@@ -90,8 +90,8 @@ export function makeRootEventFilter(
   fenced?: (ownDir: string, abs: string) => boolean,
 ): (filename: string) => boolean
 export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean // inside a configured project nested under ownDir, its own config aside
-export function shapesWatchedSet(filename: string): boolean // a manifest, a config or a fingerprint file: re-read the watched set
-export function isWorkspaceFingerprintFile(name: string): boolean
+export function shapesWatchedSet(filename: string): boolean // a manifest, a config or pnpm-workspace.yaml: re-read the watched set
+export function shapesMembers(name: string): boolean // pnpm-workspace.yaml: discovery reads the member globs from it
 export function isWorkspaceConfigFile(name: string): boolean
 
 // watch-fs.ts — the file-system side, which knows nothing of tasks or cycles:
@@ -187,7 +187,8 @@ are refused too: they format one run's result.
      project, config or not (X-57). The nested project's own config
      still passes, since it may give the project tasks.
    - For the workspace root, `fs.watch(root, { recursive: false })`
-     — only fingerprint files (`pnpm-lock.yaml` / `bun.lock` / …) and
+     — only a file a plugin claims (a lockfile, an install setting),
+     `pnpm-workspace.yaml`, the root `package.json`, `.gitignore` and
      the workspace config (`.vx/workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)
      trigger: the config is no task's input, and it shapes every cycle
      (plugins, `config` stage, concurrency); a cycle re-evaluates it
@@ -196,7 +197,7 @@ are refused too: they format one run's result.
      `fs.watch(root, { recursive: true })` replaces all of the above,
      and `makeRootEventFilter` keeps the events a key can see — a path
      inside any watched project's directory and outside the projects
-     fenced off under it, a fingerprint file or the
+     fenced off under it, a claimed file, `pnpm-workspace.yaml` or the
      workspace config at the root, a
      match of a declared `workspaceFiles` glob (negations not
      consulted: a `!` only narrows, and a spurious event is one
@@ -225,7 +226,8 @@ are refused too: they format one run's result.
      the cycle it triggers, item 1018), a project
      config (a task that starts or stops declaring `workspaceFiles`
      swaps the arm between per-project and root, `dropMode` /
-     `armMode`) or the workspace config. And a directory under a
+     `armMode`), the workspace config or a file a plugin claims (a
+     lockfile plugin's `discover` edges come from it). And a directory under a
      member base with no package in it yet gets a non-recursive arm
      of its own (`armPending`): the base's watcher never hears the
      `package.json` written inside it, so a directory made before its

@@ -12,6 +12,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { planned } from './helpers/parity.js'
 import { makeWorkspace } from './helpers/workspace.js'
+import { writeLockClaim } from './helpers/plugin.js'
 import { editDistance, nearest } from '../src/util/index.js'
 
 describe('cli run()', () => {
@@ -1453,10 +1454,12 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
   )
 
   it(
-    'workspace-root lockfile changes trigger a cycle (workspace fingerprint)',
+    'a workspace-root lockfile a plugin claims triggers a cycle',
     async () => {
       const path = await import('node:path')
       const { writeFile } = await import('node:fs/promises')
+      // Core keys no root file: the lockfile is an event as a plugin's claim.
+      await writeLockClaim(workspaceRoot, ['bun.lock'])
 
       let stdout = ''
       watchOut = () => stdout
@@ -1472,8 +1475,8 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
 
-      // Touch a lockfile at the root. Should trigger a cycle even
-      // though no project dir saw the change.
+      // Touch the claimed lockfile at the root. Should trigger a cycle
+      // even though no project dir saw the change.
       await writeFile(path.join(workspaceRoot, 'bun.lock'), '# lockfile bump')
       await waitFor(() => stdout.includes('re-running'))
 

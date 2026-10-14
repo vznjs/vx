@@ -75,7 +75,6 @@
   "executor.test.ts": 112,
   "failure-mode.test.ts": 364,
   "filter.test.ts": 278,
-  "fingerprint.test.ts": 39,
   "fixture-helpers.test.ts": 768,
   "flaky.test.ts": 1388,
   "framed-output.test.ts": 21,

@@ -448,7 +448,7 @@ describe('the other moves', () => {
   )
 
   it(
-    "the project's package.json, which every key folds: the entry is withheld",
+    "the project's package.json, unlisted, is no input: the entry is saved",
     async () => {
       await addProject(root, 'app', {
         config: `
@@ -468,12 +468,12 @@ describe('the other moves', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/cache/\n')
       commit()
+      // Core keys no package file (2026-10-14), so a rewrite of one the
+      // task does not list moves nothing it keyed.
       await runTask('bump')
-      expect(status.filter((l) => MOVED.test(l))).toEqual([
-        '[vx] app#bump: `packages/app/package.json` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it',
-      ])
+      expect(status.filter((l) => MOVED.test(l))).toEqual([])
       gitIn(root)('checkout', '--', 'packages/app/package.json')
-      expect(statusOf(await runTask('bump'), 'app#bump')).toBe('success')
+      expect(statusOf(await runTask('bump'), 'app#bump')).toBe('cache-hit')
     },
     TIMEOUT,
   )
@@ -936,7 +936,7 @@ describe('movedInput — which files the re-check hashes again', () => {
 
 describe('describeTaskInputs dates each fact from where it was learned', () => {
   it(
-    'an index OID from the enumeration start, a hashed file from the describe, package.json from the enumeration',
+    'an index OID from the enumeration start, a hashed file from the describe',
     async () => {
       const dir = await addProject(root, 'app', { files: { 'tracked.txt': 't' } })
       commit()
@@ -966,7 +966,6 @@ describe('describeTaskInputs dates each fact from where it was learned', () => {
           } as TaskNode,
           upstream: [],
           workspaceRoot: root,
-          workspaceFingerprint: 'fp',
           cache,
           nestedProjectDirs: [],
           gitFilesCache: git,
@@ -974,9 +973,8 @@ describe('describeTaskInputs dates each fact from where it was learned', () => {
         const since = Object.fromEntries(
           described.facts.map((f) => [path.relative(dir, f.path), f.since]),
         )
-        expect(Object.keys(since).sort()).toEqual(['package.json', 'tracked.txt', 'untracked.txt'])
+        expect(Object.keys(since).sort()).toEqual(['tracked.txt', 'untracked.txt'])
         expect(since['tracked.txt']).toBe(git.enumeratedAtMs!)
-        expect(since['package.json']).toBe(git.enumeratedAtMs!)
         expect(since['untracked.txt']).toBeGreaterThan(git.enumeratedAtMs!)
       } finally {
         cache.close()

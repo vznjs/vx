@@ -577,7 +577,7 @@ describe('the empty-run reason both callers branch on', () => {
       const p = await prepare({ tasks: ['totallybogus'] })
       expect(p.cache).toBeDefined()
       expect(p.localCache).toBeInstanceOf(Cache)
-      expect(p.workspaceFingerprint).toMatch(/^[0-9a-f]{16}$/)
+      expect(p.fingerprintWatch.names).toEqual([])
       p.cache.close()
     },
     TIMEOUT,

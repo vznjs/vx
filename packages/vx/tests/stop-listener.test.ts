@@ -65,7 +65,6 @@ describe("an attempt's listener on the run's stop signal", () => {
       node: n,
       upstream: [] as TaskOutcome[],
       workspaceRoot: root,
-      workspaceFingerprint: 'fixture-fingerprint',
       cache,
       log: quiet,
       executor,

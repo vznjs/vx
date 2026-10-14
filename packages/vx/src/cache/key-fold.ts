@@ -107,6 +107,9 @@ import type { CacheKeyInput } from './layer.js'
 // a v41 entry holds stdout alone and replays no stderr.
 // v43: a scoped run stores under the scope's key locally too (F4,
 // 2026-10-14); a v42 entry a scoped run left locally sits under the default key.
+// v43 stays when core stopped folding package files (2026-10-14): the
+// `workspace:` and `pkg:` parts left the chain, so every key moved and no
+// unchanged key holds wrong bytes.
 export const CACHE_VERSION = 'vx-cache-v43'
 
 /**
@@ -153,16 +156,12 @@ export async function foldKey(
   const cap = input.captureInto
   let h = xxh3(CACHE_VERSION)
   h = xxh3(`task:${input.taskId}`, h)
-  h = xxh3(`workspace:${input.workspaceFingerprint}`, h)
-  h = xxh3(`pkg:${input.projectPackageJsonHash}`, h)
   h = xxh3(`config:${input.taskConfigHash}`, h)
   if (cap) {
     // Recorded so `vx why` can name a key that moved only because vx
     // keys differently now (an upgrade): unrecorded, every task's miss
     // read as "inputs differ" with no input changed (X-142).
     cap.push({ kind: 'format', name: 'cache-version', hash: CACHE_VERSION })
-    cap.push({ kind: 'workspace', name: 'fingerprint', hash: input.workspaceFingerprint })
-    cap.push({ kind: 'package', name: 'package.json', hash: input.projectPackageJsonHash })
     cap.push({ kind: 'config', name: 'config', hash: input.taskConfigHash })
   }
 

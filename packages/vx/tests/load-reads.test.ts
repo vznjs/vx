@@ -102,23 +102,15 @@ async function prepare(): Promise<string[]> {
 
 describe('a run reads each root file once', () => {
   it(
-    'pnpm-workspace.yaml is probed and read once across the root, the globs and the fingerprint',
+    'pnpm-workspace.yaml is probed and read once across the root and the globs; no lockfile is probed',
     async () => {
       const ops = await fileOps(async () => {
         expect(await prepare()).toEqual(['a#build'])
       })
       expect(ops).toEqual({
         'pnpm-workspace.yaml': ['exists', 'bytes'],
-        // The fingerprint's other files: absent, one probe each.
-        'pnpm-lock.yaml': ['exists'],
-        'package-lock.json': ['exists'],
-        'npm-shrinkwrap.json': ['exists'],
-        'yarn.lock': ['exists'],
-        'bun.lock': ['exists'],
-        'bun.lockb': ['exists'],
-        '.yarnrc.yml': ['exists'],
-        '.npmrc': ['exists'],
-        'bunfig.toml': ['exists'],
+        // Core keys no package file: no plugin claims one here, so no
+        // lockfile or install setting is probed.
         // The root lookup's git bound: the fixture is the top-level.
         '.git/HEAD': ['exists'],
         // The root lookup probes by precedence (three absent names, then the

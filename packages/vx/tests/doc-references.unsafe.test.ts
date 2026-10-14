@@ -354,7 +354,7 @@ describe('the repo-root files quote the cache constants as they are', () => {
 // package compared to itself, and neither helper named (item 358,
 // 2026-09-19). Tie the sentence to the exports it is about.
 describe('caching.md names the lockfile plugin by the helpers it exports', () => {
-  it('step 3 names `pnpm()` and `bun()`, and the one this repo declares', async () => {
+  it('step 9 names `pnpm()` and `bun()`, and the one this repo declares', async () => {
     const exported = new Set(
       [
         ...(
@@ -366,8 +366,9 @@ describe('caching.md names the lockfile plugin by the helpers it exports', () =>
     )
     expect([...exported].sort()).toEqual(['bun', 'npm', 'pnpm', 'yarn'])
     const doc = await Bun.file(path.join(import.meta.dir, '..', 'docs', 'caching.md')).text()
-    const start = doc.indexOf('3. **Workspace fingerprint**')
-    const step = doc.slice(start, doc.indexOf('\n4. **', start))
+    const start = doc.indexOf('9. **Plugin key material**')
+    expect(start).toBeGreaterThan(-1)
+    const step = doc.slice(start, doc.indexOf('\n10. **', start))
     expect(step).toContain('`pnpm()`')
     expect(step).toContain('`bun()`')
     // The workspace file decides which one "this repo declares".
@@ -376,7 +377,7 @@ describe('caching.md names the lockfile plugin by the helpers it exports', () =>
     ).text()
     const declared = [...exported].filter((f) => new RegExp(`\\b${f}\\(\\)`).test(ws))
     expect(declared).toEqual(['bun'])
-    expect(step).toContain('its `bun()` is the same')
+    expect(step).toContain('this repo declares `bun()`')
   })
 })
 

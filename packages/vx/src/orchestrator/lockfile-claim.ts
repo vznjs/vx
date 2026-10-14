@@ -25,7 +25,7 @@ import type {
 } from './plugin.js'
 
 export interface LockfileClaimOptions {
-  /** The root-relative lockfile name, one of `WORKSPACE_FINGERPRINT_FILES`. */
+  /** The lockfile's name at the workspace root. */
   readonly file: string
   /**
    * Every project's digest from the file's text: importer directory
@@ -46,8 +46,7 @@ export interface LockfileClaimOptions {
   readonly version: number
   /**
    * `'project'` (default): each task folds its own project's digest.
-   * `'workspace'`: the whole file's hash into every task — the coarse key
-   * core would fold, through the plugin.
+   * `'workspace'`: the whole file's hash into every task — the coarse key.
    */
   readonly scope?: 'project' | 'workspace'
   /**
@@ -256,7 +255,7 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
       files: [file],
       affected(change: FingerprintChange, ctx: FingerprintContext) {
         // One side absent: the file appeared or went — every project's
-        // installed tree is in question, and core's answer (all) is right.
+        // installed tree is in question.
         if (change.before === null || change.after === null) return undefined
         if (scope === 'workspace') return undefined
         // WHICH side failed is the whole difference between "your
