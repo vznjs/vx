@@ -2245,7 +2245,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
 
     beforeEach(async () => {
       // The edge a lockfile plugin gives: core reads no manifest edge.
-      fixture = await makeWorkspace({ '@x/app': ['@x/ui'] })
+      fixture = await makeWorkspace({ '@x/app': ['@x/ui'], '@x/ui': ['@x/core'] })
     })
     afterEach(async () => {
       await rm(fixture.root, { recursive: true, force: true })
