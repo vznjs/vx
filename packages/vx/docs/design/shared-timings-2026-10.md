@@ -29,9 +29,9 @@ declares. No new wire, no mutable entry.
   and used from the NEXT run, so a run never waits on the network and an
   offline run is unchanged.
 - **Forecast order** (M 2026-10-14 20:54), per task: this machine's
-  default-branch runs (median of the last 5), then the remote file, then
-  this machine's current-branch runs, then `assume`. On CI the history is
-  empty, so the remote file comes first.
+  current-branch runs (median of the last 5), then its default-branch
+  runs, then the remote file, then `assume`. On CI the history is empty,
+  so the remote file comes first.
 
 ## Core seam
 
