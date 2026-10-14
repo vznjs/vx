@@ -116,7 +116,7 @@ export class RunHistory {
   /**
    * Retention: the runs table grows by one row per executed task per
    * invocation — a 2000-task repo accretes ~20k rows in days. 30 days
-   * covers `vx stats` (24 h windows) and CI-side consumers. The
+   * covers `vx info` (24 h windows) and CI-side consumers. The
    * `invocations` header is pruned on the SAME window, or a header would
    * outlive its rows and `vx last` would list a run whose detail is gone.
    */

@@ -128,5 +128,5 @@ export function delegatedScript(command: string): string | null
 ## Tests
 
 `tests/init.test.ts` (scripts → files, the empty workspace, the
-overwrite guard, the `vx migrate` pointer, `delegatedScript`);
+overwrite guard, the @vzn/vx-migrate pointer, `delegatedScript`);
 `packages/vx-migrate/tests/` (Turbo and Nx end to end through the seam).

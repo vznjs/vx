@@ -6,7 +6,7 @@
 // `import './preset.js'` inside a config resolves to the same key no
 // matter what query the entry carries — a busted entry re-evaluates
 // against a STALE preset. Shared presets are the documented composition
-// mechanism (`vx migrate` generates one), so through a whole `vx watch`
+// mechanism (`bunx @vzn/vx-migrate` generates one), so through a whole `vx watch`
 // session a preset edit was invisible; and because the resolved config
 // feeds the cache key, vx answered `up-to-date` for a command that had
 // changed on disk.

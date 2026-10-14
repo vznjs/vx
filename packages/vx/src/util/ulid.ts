@@ -1,6 +1,6 @@
 // Run-id generator. Thin wrapper over `Bun.randomUUIDv7()` so the
 // `runId` column on `runs` carries a timestamp-ordered identifier —
-// `vx stats --since` queries can range-scan without an index on the
+// time-range queries can range-scan without an index on the
 // time column, and the IDs lexicographically sort by creation time
 // for grouping.
 //

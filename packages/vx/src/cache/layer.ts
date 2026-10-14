@@ -190,7 +190,7 @@ export interface RunRecord {
   endedAt: number // ms-epoch wall clock
   /**
    * Optional analytics columns. Populated by the orchestrator/runner;
-   * stored as NULL on rows from older runs. Surfaced via `vx stats`
+   * stored as NULL on rows from older runs. Surfaced via `vx info`
    * and consumable from CI by reading cache.db directly.
    */
   runId?: string // ULID shared across every task in one `vx run` invocation
