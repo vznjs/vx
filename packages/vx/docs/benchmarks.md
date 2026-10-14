@@ -632,12 +632,12 @@ projects, 8,002 run tasks (9,603 graph nodes), 4 cores, concurrency 10,
 main process. The post:
 [Where a task run spends its time](https://vznjs.github.io/vx/blog/where-a-run-spends-its-time/).
 
-| Run                          | vx                 | Turborepo 2.11.8 |
-| ---------------------------- | ------------------ | ---------------- |
-| Cold                         | 120.2 s            | 127.3 s          |
-| Warm                         | 892 ms             | 2,496 ms first, 909 ms second |
-| One source file changed      | 100.1 s (6,607 run) | 105.8 s (6,607 run) |
-| That edit reverted           | 3.6 s (1,321 tasks restored, the rest left in place) | 5.2 s (all 8,002 replayed) |
+| Run                     | vx                                                   | Turborepo 2.11.8              |
+| ----------------------- | ---------------------------------------------------- | ----------------------------- |
+| Cold                    | 120.2 s                                              | 127.3 s                       |
+| Warm                    | 892 ms                                               | 2,496 ms first, 909 ms second |
+| One source file changed | 100.1 s (6,607 run)                                  | 105.8 s (6,607 run)           |
+| That edit reverted      | 3.6 s (1,321 tasks restored, the rest left in place) | 5.2 s (all 8,002 replayed)    |
 
 Nx 23.3.0, warm (21 to 24 s, 9,603 of 9,603 hit), self time:
 
