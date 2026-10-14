@@ -114,6 +114,7 @@ export class LocalHistoryProvider implements HistoryProvider {
   constructor(
     private readonly db: Database,
     readonly recent: number
+    private readonly branch?: string | null,
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   async loadAll(): Promise<HistoryTable>
@@ -166,6 +167,13 @@ export const TELEMETRY_SCHEMA_VERSION = 3
 export const VERSION: string = pkg.version
 == function applyMigration (src/workspace/migration.ts)
 export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
+== function currentBranch (src/orchestrator/run-context.ts)
+export function currentBranch(
+  workspaceRoot: string,
+  workspace?: unknown,
+  flag?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null
 == function definePlugin (src/orchestrator/plugin.ts)
 export function definePlugin(origin: PluginOrigin, hooks: PluginHooks): VxPlugin
 == function defineProject (src/config.ts)
@@ -1001,6 +1009,7 @@ export interface PreparedRun {
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
   priorities: () => Promise<ReadonlyMap<string, number>>
+  branch: () => string | null
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]
@@ -1172,6 +1181,7 @@ export interface RunOptions {
   retries?: number
   timeout?: number
   continueMode?: ContinueMode
+  branch?: string
   schedule?: NonNullable<RunSettings['schedule']>
   killGrace?: number
   teardownTimeout?: number
@@ -1362,6 +1372,7 @@ export type SaveArgs = Parameters<CacheLayer['save']>[0]
 == type ScheduleHookContext (src/orchestrator/plugin.ts)
 export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
+  readonly branch: string | null
 }
 == type SchemaReset (src/cache/cache.ts)
 export interface SchemaReset {

@@ -127,6 +127,7 @@ describe('package boundaries', () => {
       'UserError',
       'VERSION',
       'applyMigration',
+      'currentBranch',
       'definePlugin',
       'defineProject',
       'defineWorkspace',

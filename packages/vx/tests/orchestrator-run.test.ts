@@ -1374,6 +1374,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         flow: 'broad',
         command: 'vx run build --all',
         tags: { team: 'core', env: 'ci' },
+        branch: 'feature/named',
         log: silentLogger(fixture),
       })
       expect(first.outcomes[0]?.status).toBe('success')
@@ -1393,6 +1394,8 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         // Tags round-trip; committed fixture repo gives a real sha/branch.
         expect(JSON.parse(inv.tags as string)).toEqual({ team: 'core', env: 'ci' })
         expect(inv.vx_version).toBeTruthy()
+        // `--branch` names the branch the history records, over git's.
+        expect(inv.branch).toBe('feature/named')
 
         // The miss saved an entry with its input fingerprint rows. They're
         // keyed by the entry hash — reachable via runs.hash for this task.

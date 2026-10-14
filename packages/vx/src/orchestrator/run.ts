@@ -768,7 +768,11 @@ async function runOnBus(
     // fails a run). `dirty` reuses the `git status --porcelain` the
     // GitFilesCache populate already ran for input enumeration — no
     // second status spawn.
-    const gitContext = captureGitContext(workspaceRoot, gitFilesCache.worktreeDirty)
+    // `run.branch` names the branch over git's (`prepared.branch`).
+    const gitContext = {
+      ...captureGitContext(workspaceRoot, gitFilesCache.worktreeDirty),
+      branch: prepared.branch(),
+    }
     const ciContext = detectCi(process.env)
     const hostContext = captureHostContext()
 
@@ -942,7 +946,11 @@ async function runOnBus(
     terminal?.forecast(async () => {
       const ids: string[] = []
       for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
-      const p50s = await new LocalHistoryProvider(prepared.localCache.dbHandle()).p50sFor(ids)
+      const p50s = await new LocalHistoryProvider(
+        prepared.localCache.dbHandle(),
+        undefined,
+        prepared.branch(),
+      ).p50sFor(ids)
       return createForecast(nodes, p50s, concurrency)
     })
 
@@ -1786,7 +1794,11 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // per-task p50s + a predicted wall-clock. `--dry` is an explicit
       // inspection command, so the history read's cost is fine here even
       // though it stays OFF the default run path.
-      history: new LocalHistoryProvider(prepared.localCache.dbHandle()),
+      history: new LocalHistoryProvider(
+        prepared.localCache.dbHandle(),
+        undefined,
+        prepared.branch(),
+      ),
       // Placement, by the same rules the run applies. Only worth showing
       // when there is a choice to show — with one declared executor every
       // line would carry the same label. Resolving the executors here is

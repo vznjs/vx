@@ -2,66 +2,66 @@
   "linux-x64": {
     "counts": {
       "cold run @25": {
-        "hash xxh3": 1823,
+        "hash xxh3": 1619,
         "spawn git": 5,
         "spawn sh": 51,
-        "sqlite statement": 698
+        "sqlite statement": 694
       },
       "up-to-date run @25": {
-        "hash xxh3": 940,
+        "hash xxh3": 836,
         "spawn git": 3,
-        "sqlite statement": 22
+        "sqlite statement": 21
       },
       "restore run @25": {
-        "hash xxh3": 940,
+        "hash xxh3": 836,
         "spawn git": 3,
-        "sqlite statement": 73
+        "sqlite statement": 72
       },
       "plan @25": {
-        "hash xxh3": 939,
+        "hash xxh3": 835,
         "spawn git": 3,
-        "sqlite statement": 68
+        "sqlite statement": 115
       },
       "one-edit run @25": {
         "hash blob update": 2,
-        "hash xxh3": 1258,
+        "hash xxh3": 1118,
         "spawn git": 3,
         "spawn sh": 18,
         "sqlite statement": 192
       },
       "cold run @100": {
-        "hash xxh3": 7373,
+        "hash xxh3": 6569,
         "spawn git": 5,
         "spawn sh": 200,
-        "sqlite statement": 2651
+        "sqlite statement": 2648
       },
       "up-to-date run @100": {
-        "hash xxh3": 3790,
+        "hash xxh3": 3386,
         "spawn git": 3,
-        "sqlite statement": 25
+        "sqlite statement": 24
       },
       "restore run @100": {
-        "hash xxh3": 3790,
+        "hash xxh3": 3386,
         "spawn git": 3,
-        "sqlite statement": 226
+        "sqlite statement": 225
       },
       "plan @100": {
-        "hash xxh3": 3789,
+        "hash xxh3": 3385,
         "spawn git": 3,
-        "sqlite statement": 218
+        "sqlite statement": 415
       },
       "one-edit run @100": {
         "hash blob update": 2,
-        "hash xxh3": 5008,
+        "hash xxh3": 4468,
         "spawn git": 3,
         "spawn sh": 68,
         "sqlite statement": 645
       }
     },
     "time": {
-      "plan @100": 0.972,
-      "restore run @100": 3.329,
-      "up-to-date run @100": 1.873
+      "plan @100": 4.918,
+      "restore run @100": 8.821,
+      "up-to-date run @100": 5.72
     }
   }
 }

@@ -160,6 +160,8 @@ export interface RunOptions {
    * `--continue[=never|deps-ok|always]`; bare `--continue` = 'always'.
    */
   continueMode?: ContinueMode
+  /** `--branch`; unset, `VX_RUN_BRANCH`, then git's, then the CI provider's. */
+  branch?: string
   /** `run.schedule` from its flag; unset, `VX_RUN_SCHEDULE`, then the workspace's. */
   schedule?: NonNullable<RunSettings['schedule']>
   /** `run.killGrace` in ms from its flag; unset, `VX_RUN_KILL_GRACE`, then the workspace's. */

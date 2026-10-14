@@ -12,6 +12,7 @@
 // if everything ran", which is exactly the case where order matters.
 
 import {
+  currentBranch,
   definePlugin,
   LocalHistoryProvider,
   machineMemoryBytes,
@@ -163,8 +164,9 @@ const readHistory = (
   cache: Cache,
   ids: readonly string[],
   options: ScheduleHistoryOptions,
+  branch: string | null,
 ): Promise<ReadonlyMap<string, TaskResources>> =>
-  new LocalHistoryProvider(cache.dbHandle(), windowOf(options)).resourcesFor(ids)
+  new LocalHistoryProvider(cache.dbHandle(), windowOf(options), branch).resourcesFor(ids)
 
 /** What each task reserves: learned from the history unless `resources: false`, a declared reservation over either. */
 const reservationsFor = (
@@ -247,10 +249,16 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
       const carried =
         file === undefined ? {} : (await import('./timings-file.js')).readTimings(file, ctx.warn)
       if (file !== undefined)
-        scheduled = { file, carried, cache: ctx.localCache, ids: [...nodes.keys()] }
+        scheduled = {
+          file,
+          carried,
+          cache: ctx.localCache,
+          ids: [...nodes.keys()],
+          branch: ctx.branch,
+        }
       let table: ReadonlyMap<string, TaskResources>
       try {
-        table = await readHistory(ctx.localCache, [...nodes.keys()], options)
+        table = await readHistory(ctx.localCache, [...nodes.keys()], options, ctx.branch)
       } catch (err) {
         // Failing open: a broken history read costs the ordering and the
         // learned reservations, never the run.
@@ -269,7 +277,13 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   // The timings file is written for a run only: `schedule` also orders a
   // `--dry` plan, which has no `setup` and records nothing.
   let scheduled:
-    | { file: string; carried: Readonly<Record<string, number>>; cache: Cache; ids: string[] }
+    | {
+        file: string
+        carried: Readonly<Record<string, number>>
+        cache: Cache
+        ids: string[]
+        branch: string | null
+      }
     | undefined
   let inRun = false
   // A run that executed nothing and restored only tasks the file already
@@ -295,7 +309,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
       scheduled = undefined
       inRun = false
       if (!wrote || done === undefined) return
-      const table = await readHistory(done.cache, done.ids, options)
+      const table = await readHistory(done.cache, done.ids, options, done.branch)
       ;(await import('./timings-file.js')).writeTimings(done.file, done.carried, table)
     }
   }
@@ -462,7 +476,11 @@ async function historyCmd(
   const cache = new Cache(ctx.cacheDir)
   let table: HistoryTable
   try {
-    table = await new LocalHistoryProvider(cache.dbHandle(), window).loadFor(ids)
+    table = await new LocalHistoryProvider(
+      cache.dbHandle(),
+      window,
+      currentBranch(ctx.workspaceRoot),
+    ).loadFor(ids)
   } finally {
     cache.close()
   }

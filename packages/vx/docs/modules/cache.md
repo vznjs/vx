@@ -303,7 +303,7 @@ export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v35'
+export const SCHEMA_VERSION = 'v36'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -313,6 +313,7 @@ export function vxCacheEntries(cacheDir: string): string[]
 // history.ts and failure-mode.ts.
 export const EXECUTED_RUNS_SQL = "status <> 'skipped'"
 export const KEYED_RUNS_SQL = "hash <> ''"
+export function branchSource(branch: string | null): string // task_durations.source: 'branch:<name>'
 
 // The four independent cache axes, and the `--cache-policy=<spec>` parser over
 // them. `FULL_CACHE_POLICY` is every axis on — the default a run starts
@@ -577,7 +578,10 @@ Reads via `get()` are non-blocking thanks to WAL.
 `recordRunBundle()` is the one run-history write: one `runs` row for
 every task — cache hits and misses, successes and failures — and one
 `invocations` header row (command, git/CI/host context, tags, run-level
-counts) **atomically in one transaction**. The per-row `recordRun` /
+counts) **atomically in one transaction**, with one shared-store
+`task_durations` row per executed success, tagged `branchSource(branch)`
+(`'branch:<name>'`, `'branch:'` with none) and the commit: what a
+duration forecast reads (`history.md`). The per-row `recordRun` /
 `recordRuns` forms left the contract on 2026-09-10; no caller took them. The Tier-3
 input-fingerprint rows (`entry_inputs`) are NOT written here — they
 ride each entry's save transaction (`save`/`ingest`, miss path only)
@@ -624,7 +628,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v43'`; `SCHEMA_VERSION` is
-`'v35'`. Bump `CACHE_VERSION` when:
+`'v36'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

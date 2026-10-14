@@ -4,6 +4,8 @@ Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/
 
 History-based scheduling for [`@vzn/vx`](https://vznjs.github.io/vx/): a `schedule` plugin that orders ready tasks by their expected REMAINING critical-path duration — a task's own p50 plus the longest chain of dependents behind it — learned from the workspace's local run history. Zero dependencies.
 
+A task's p50 is the median of its last five timings on the current branch, else on any branch, else unknown. The timings are shared by every worktree of the repo, so a new worktree orders by them on its first run.
+
 ## Usage
 
 ```sh

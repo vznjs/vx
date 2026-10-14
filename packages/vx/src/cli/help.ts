@@ -138,6 +138,8 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                                  50% means half of them.',
     '      --schedule <rule>           most-work (default) | critical-path |',
     '                                  direct-dependents | ready-order.',
+    '      --branch <name>             The branch history records and forecasts read',
+    "                                  (default: git's, else the CI provider's).",
     '      --exclude-dependencies[=names]  Skip dependsOn edges: all with no value,',
     '                                  or a comma list of names.',
     '      --no-cache                  No cache reads or writes; outputs are left',

@@ -353,6 +353,23 @@ export interface CommandContext extends BaseContext {
 }
 ```
 
+## `currentBranch`
+
+function · `src/orchestrator/run-context.ts`
+
+The run's branch: `run.branch` (the flag given, else `VX_RUN_BRANCH`,
+else the workspace's), else HEAD's, else the CI provider's for a
+detached checkout. What run history records and a forecast reads first.
+
+```ts
+export function currentBranch(
+  workspaceRoot: string,
+  workspace?: unknown,
+  flag?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null
+```
+
 ## `definePlugin`
 
 function · `src/orchestrator/plugin.ts`
@@ -1011,6 +1028,7 @@ export class LocalHistoryProvider implements HistoryProvider {
   constructor(
     private readonly db: Database,
     readonly recent: number
+    private readonly branch?: string | null,
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   async loadAll(): Promise<HistoryTable>
@@ -1521,6 +1539,7 @@ export interface PreparedRun {
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
   priorities: () => Promise<ReadonlyMap<string, number>>
+  branch: () => string | null
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]
@@ -1840,6 +1859,7 @@ export interface RunOptions {
   retries?: number
   timeout?: number
   continueMode?: ContinueMode
+  branch?: string
   schedule?: NonNullable<RunSettings['schedule']>
   killGrace?: number
   teardownTimeout?: number
@@ -2098,6 +2118,7 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
+  readonly branch: string | null
 }
 ```
 

@@ -301,7 +301,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //   v35: config_evals and config_closures are gone: runs read configs from
 //        the lock, and `vx lock` evaluates every one. The cache KEY is
 //        unchanged.
-export const SCHEMA_VERSION = 'v35'
+//   v36: the store's task_durations: each executed success's time, tagged
+//        by branch, read by the forecast. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v36'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -326,7 +328,14 @@ function encodeEntryInputs(
 }
 
 /** The tables a store holds: dropped from a workspace index that held them itself. */
-const STORE_TABLES = ['entry_inputs', 'output_files', 'entry_stdout', 'store_meta', 'entries']
+const STORE_TABLES = [
+  'entry_inputs',
+  'output_files',
+  'entry_stdout',
+  'task_durations',
+  'store_meta',
+  'entries',
+]
 
 /**
  * The inline artifacts' tables (schema.ts): dropped from a workspace index
@@ -1013,7 +1022,7 @@ export class Cache implements CacheLayer {
             // keeps it so).
             if (found !== undefined) {
               this.db.exec(
-                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.store_meta;',
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.store_meta;',
               )
             }
             // The tables land under the same write lock as the stamp: made

@@ -31,8 +31,13 @@ function insertRunsSql(n: number): string {
  */
 const RUNS_PER_INSERT = 40
 
+/** Rows per `task_durations` INSERT: 6 variables each, under 999. */
+const DURATIONS_PER_INSERT = 160
+
+/** A local run's `task_durations.source`: its branch, `''` when it had none. */
+export const branchSource = (branch: string | null): string => `branch:${branch ?? ''}`
+
 export class RunHistory {
-  private readonly insertRun: ReturnType<Database['prepare']>
   private readonly insertInvocation: ReturnType<Database['prepare']>
 
   constructor(
@@ -40,7 +45,6 @@ export class RunHistory {
     /** The store's salted value digest (L-4). */
     private readonly digestValue: (value: string) => string,
   ) {
-    this.insertRun = lazyStatement(this.db, insertRunsSql(1))
     this.insertInvocation = lazyStatement(
       this.db,
       `
@@ -60,18 +64,34 @@ export class RunHistory {
   }
 
   recordRun(run: RunRecord): void {
-    this.insertRun.run(...bindRun(run, this.digestValue))
+    this.recordRuns([run])
   }
 
   recordRuns(runs: readonly RunRecord[]): void {
     if (runs.length === 0) return
-    if (runs.length === 1) {
-      this.insertRun.run(...bindRun(runs[0]!, this.digestValue))
-      return
-    }
     // One transaction, one fsync: for a 200-task run, one instead of 200.
     // IMMEDIATE, as `recordRunBundle` explains.
-    this.db.transaction(() => this.insertRuns(runs)).immediate()
+    this.db
+      .transaction(() => {
+        this.insertRuns(runs)
+        this.insertDurations(runs, branchSource(null), null)
+      })
+      .immediate()
+  }
+
+  /** One `task_durations` row per executed success: what a forecast reads. */
+  private insertDurations(runs: readonly RunRecord[], source: string, sha: string | null): void {
+    const done = runs.filter((r) => r.status === 'success' && r.cacheHit !== true)
+    for (let i = 0; i < done.length; i += DURATIONS_PER_INSERT) {
+      const block = done.slice(i, i + DURATIONS_PER_INSERT)
+      const params: SQLQueryBindings[] = []
+      for (const r of block) params.push(r.project, r.task, source, sha, r.durationMs, r.endedAt)
+      this.db
+        .query(
+          `INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at) VALUES ${Array(block.length).fill('(?, ?, ?, ?, ?, ?)').join(', ')}`,
+        )
+        .run(...params)
+    }
   }
 
   /** `runs` as few INSERTs; each distinct forward-args list digested once. */
@@ -109,6 +129,11 @@ export class RunHistory {
       .transaction(() => {
         this.insertRuns(bundle.runs)
         this.insertInvocation.run(...bindInvocation(bundle.invocation))
+        this.insertDurations(
+          bundle.runs,
+          branchSource(bundle.invocation.branch),
+          bundle.invocation.commitSha,
+        )
       })
       .immediate()
   }
@@ -123,14 +148,11 @@ export class RunHistory {
   pruneOlderThan(cutoff: number): void {
     this.db.prepare('DELETE FROM runs WHERE started_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM invocations WHERE started_at < ?').run(cutoff)
+    this.db.prepare('DELETE FROM task_durations WHERE recorded_at < ?').run(cutoff)
   }
 }
 
-/**
- * Bind a RunRecord to the positional parameters expected by the
- * `insertRun` prepared statement (22 columns). Shared between the
- * single and batched record paths.
- */
+/** Bind a RunRecord to one `RUN_TUPLE`'s 22 positional parameters. */
 function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBindings[] {
   return [
     // The ONE place the no-key sentinel is applied, so the column's

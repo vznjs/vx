@@ -43,6 +43,7 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--retries': ['1'],
   '--timeout': ['10ms'],
   '--schedule': ['most-work'],
+  '--branch': ['main'],
   '--cache-policy': ['local:rw'],
   '--cache-download': ['all'],
   '--kill-grace': ['1s'],

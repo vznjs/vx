@@ -1727,6 +1727,7 @@ describe('parseRunArgs', () => {
     expect([...documentedFlags('run')].sort()).toEqual([
       '--affected',
       '--all',
+      '--branch',
       '--cache-dir',
       '--cache-download',
       '--cache-policy',
