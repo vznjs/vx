@@ -103,12 +103,6 @@ export function createEventBus(): EventBus {
 }
 
 /**
- * A `Logger`-shaped facade that turns every call into a RunEvent. The
- * orchestrator holds one of these as its `log`, so every existing
- * `log.X(...)` call site emits through the bus unchanged — the concrete
- * renderer subscribes via `terminalSubscriber`.
- */
-/**
  * Warnings the lock a frozen run wrote first already printed (`settleFrozen`):
  * that lock loads every plugin and config the run then loads again, so each
  * would print twice. A run prints each such line once less, then forgets it.
@@ -138,6 +132,12 @@ export function skipPrintedByLock(log: Logger): Logger {
   })
 }
 
+/**
+ * A `Logger`-shaped facade that turns every call into a RunEvent. The
+ * orchestrator holds one of these as its `log`, so every existing
+ * `log.X(...)` call site emits through the bus unchanged — the concrete
+ * renderer subscribes via `terminalSubscriber`.
+ */
 export function busLogger(bus: EventBus): Logger {
   // run() reaches runEnd on its success path, in its finally and from a
   // signal; a plugin's onRunEnd hears the first only.
