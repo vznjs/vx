@@ -343,7 +343,7 @@ function renderProject(
     // Round-trip so the printed object is exactly the JSON form of the
     // resolved config (drops `undefined` fields).
     const shown = shownConfig(config)
-    return `${JSON.stringify(JSON.parse(JSON.stringify({ name, dir, config: shown })), null, 2)}\n`
+    return `${JSON.stringify({ name, dir, config: shown })}\n`
   }
   const tags = config?.tags ?? []
   const tasks = Object.entries(config?.tasks ?? {})
@@ -366,7 +366,7 @@ function renderTask(
 ): string {
   if (format === 'json') {
     const obj = { name, dir, task: taskName, config: shownTask(task) }
-    return `${JSON.stringify(JSON.parse(JSON.stringify(obj)), null, 2)}\n`
+    return `${JSON.stringify(obj)}\n`
   }
   return `${name} — ${dir}\n\n${taskBlock(taskName, task)}`
 }
@@ -384,7 +384,7 @@ function renderTaskAcross(
       task: taskName,
       config: shownTask(p.config.tasks![taskName]!),
     }))
-    return `${JSON.stringify(JSON.parse(JSON.stringify(list)), null, 2)}\n`
+    return `${JSON.stringify(list)}\n`
   }
   return declaring
     .map(
