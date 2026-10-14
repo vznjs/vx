@@ -6,6 +6,7 @@
 // but only by judging the link by its target, which failed every link to
 // a file the task could read too (`ln -s ../src/a.ts dist/a`).
 import { readFile, rm } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -47,7 +48,7 @@ describe.skipIf(!available)('a sandboxed task linking an output to a file it can
         const r = await summarized(root, ['denied#build', 'granted#build'])
         expect(r.code).toBe(0)
         expect(r.text).toContain(
-          `output dist/x is a symlink to ${path.join(root, 'packages', 'denied', '.env')}, which the task's sandbox does not let it read`,
+          `output dist/x is a symlink to ${path.join(realpathSync(root), 'packages', 'denied', '.env')}, which the task's sandbox does not let it read`,
         )
         expect(r.text).not.toContain(
           'output dist/x is a symlink to ' + path.join(root, 'packages', 'granted'),
