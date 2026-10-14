@@ -733,10 +733,10 @@ export default defineProject({
     slug: 'plugins',
     title: 'A pipeline with seams',
     category: 'extend',
-    hook: 'Fourteen seams, and core applies no plugin by default.',
+    hook: 'Fifteen seams, and core applies no plugin by default.',
     body: [
-      'vx is a pipeline: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, setup, teardown and commands. Each is a seam a plugin can fill.',
-      'Plugins decide where a task runs, where artifacts live, who observes and which CLI verbs exist. Running and caching on this machine are core’s floor, so a workspace with no plugin still runs and caches.',
+      'vx is a pipeline: config, discover, project, graph, key, fingerprint, schedule, admit, executor, cache, telemetry, output, setup, teardown and commands. Each is a seam a plugin can fill.',
+      'Plugins decide where a task runs, where artifacts live, who observes, who draws the terminal and which CLI verbs exist. Running and caching on this machine are core’s floor, so a workspace with no plugin still runs and caches.',
     ],
     example: {
       lang: 'ts',
