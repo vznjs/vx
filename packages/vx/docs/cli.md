@@ -2872,8 +2872,8 @@ on every run, so the miss is right and only moving the write ends it.
 `writers`); an edit made outside a run names none.
 
 ```
-  written during a run:
-    packages/lib/src/gen.txt  by app#build
+  changed during a run:
+    packages/lib/src/gen.txt  while app#build ran
 ```
 
 A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status

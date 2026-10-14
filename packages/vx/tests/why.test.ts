@@ -931,9 +931,9 @@ describe('vx why — an input a task wrote (Growth funnel F5)', () => {
         const r = await vx(root, ['why', 'app#build'])
         expect(r.code).toBe(0)
         expect(r.out).toContain(
-          '  written during a run:\n    packages/lib/src/gen.txt  by app#build\n',
+          '  changed during a run:\n    packages/lib/src/gen.txt  while app#build ran\n',
         )
-        expect(r.out).toContain('a task wrote a file this key reads')
+        expect(r.out).toContain('a task that writes a file a key reads re-keys it every run')
         const j = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out)
         expect(j.writers).toEqual([
           { taskId: 'lib#check', file: 'packages/lib/src/gen.txt', writers: ['app#build'] },

@@ -323,9 +323,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
         if (roots.length > ROOTS_SHOWN) lines.push(`    and ${roots.length - ROOTS_SHOWN} more`)
       }
       if (writers.length > 0) {
-        lines.push('', '  written during a run:')
+        lines.push('', '  changed during a run:')
         for (const w of writers) {
-          lines.push(`    ${printable(w.file)}  by ${w.writers.join(', ')}`)
+          lines.push(`    ${printable(w.file)}  while ${w.writers.join(', ')} ran`)
         }
       }
       const rootKinds = roots.flatMap((r) => r.entries.map((e) => e.kind))
@@ -368,4 +368,4 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 const ROOTS_SHOWN = 5
 
 const WRITTEN_TODO =
-  'a task wrote a file this key reads, so each run re-keys it; give that write its own task with the file as an output, or keep the file out of cache.inputs.files'
+  'a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of cache.inputs.files'
