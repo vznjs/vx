@@ -447,6 +447,21 @@ export interface DiscoverContext extends WorkspaceHookContext {
 }
 ```
 
+## `DiscoveredProject`
+
+type · `src/orchestrator/plugin.ts`
+
+What a `discover` hook returns per directory — see `VxPlugin.discover`.
+
+```ts
+export interface DiscoveredProject {
+  readonly dir: string
+  readonly name?: string
+  readonly deps?: readonly string[]
+  readonly reach?: readonly string[]
+}
+```
+
 ## `Duration`
 
 type · `src/config.ts`
@@ -1147,17 +1162,6 @@ export interface MigrationPlan {
 }
 ```
 
-## `NamedProject`
-
-type · `src/orchestrator/plugin.ts`
-
-```ts
-export interface NamedProject {
-  readonly dir: string
-  readonly name: string
-}
-```
-
 ## `normalizeGlob`
 
 function · `src/util/paths.ts`
@@ -1599,6 +1603,8 @@ export interface ProjectMeta {
   packageJson: PackageJson
   configPath: string | null
   catalogs?: Catalogs
+  deps?: readonly string[]
+  reach?: readonly string[]
 }
 ```
 
@@ -2531,7 +2537,9 @@ under the list, taking what every plugin declines.
 export interface VxPlugin {
   readonly name: string
   config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
-  discover?(ctx: DiscoverContext): readonly NamedProject[] | Promise<readonly NamedProject[]>
+  discover?(
+    ctx: DiscoverContext,
+  ): readonly DiscoveredProject[] | Promise<readonly DiscoveredProject[]>
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
   graph?(nodes: Map<string, TaskNode>, ctx: GraphHookContext): void | Promise<void>
   key?(

@@ -27,7 +27,8 @@ import {
   listProjects,
   loadWorkspace,
   loadWorkspaceConfig,
-  namedProject,
+  discoveredProject,
+  linkDiscoveredEdges,
   resolveCacheDir,
   validateWorkspace,
 } from '../workspace/index.js'
@@ -114,12 +115,13 @@ export async function discoverProjects(
       (e) => e.changed,
       () => null,
     )
-  await applyDiscoverHooks(
+  const edges = await applyDiscoverHooks(
     plugins,
     projects,
     { workspaceRoot: workspace.root, cacheDir, warn, worktreeChanges },
-    (named, plugin) => namedProject(workspace, projects, named, plugin.name),
+    (entry, plugin) => discoveredProject(workspace, projects, entry, plugin.name),
   )
+  linkDiscoveredEdges(workspace.root, projects, edges)
   return projects.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
 }
 

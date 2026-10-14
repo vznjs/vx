@@ -70,6 +70,8 @@ export interface ProjectMeta {
   packageJson: PackageJson
   configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs,cts,cjs}
   catalogs?: Catalogs // the workspace's, set by discovery for the package graph
+  deps?: readonly string[] // project names a `discover` plugin orders this one after
+  reach?: readonly string[] // project names a `discover` plugin reaches it through, no order
 }
 
 // the directory of the nearest .vx/workspace.* up to the git top-level
@@ -82,13 +84,28 @@ export function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspac
 export function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
 // listProjects, collecting each nameless member's dir into `nameless` (vx init)
 export function discoverProjects(workspace: Workspace, nameless?: string[]): Promise<ProjectMeta[]>
-// A `discover` hook's `{ dir, name }` as a meta; null when already found
-export function namedProject(
+// The project a `discover` entry names: new (`added`) or the one already
+// at its dir (a nameless entry must name one). `deps` / `reach` are
+// checked to be string arrays here and resolved by linkDiscoveredEdges
+export function discoveredProject(
   workspace: Workspace,
   known: readonly ProjectMeta[],
-  named: { readonly dir: string; readonly name: string },
+  entry: { dir: string; name?: string; deps?: readonly string[]; reach?: readonly string[] },
   by: string,
-): Promise<ProjectMeta | null>
+): Promise<{ meta: ProjectMeta; added: boolean }>
+// After the stage: each edge dir to the project there, as ProjectMeta
+// `deps` / `reach` (sorted names); a target outside the root or no project
+// is refused naming the plugin
+export function linkDiscoveredEdges(
+  root: string,
+  projects: readonly ProjectMeta[],
+  edges: readonly {
+    by: string
+    meta: ProjectMeta
+    deps: readonly string[]
+    reach: readonly string[]
+  }[],
+): void
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string
 export function resolveStoreRoot(
   root: string,

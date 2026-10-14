@@ -545,6 +545,13 @@ export interface DiscoverContext extends WorkspaceHookContext {
   readonly projects: readonly ProjectMeta[]
   worktreeChanges(): Promise<readonly string[] | null>
 }
+== type DiscoveredProject (src/orchestrator/plugin.ts)
+export interface DiscoveredProject {
+  readonly dir: string
+  readonly name?: string
+  readonly deps?: readonly string[]
+  readonly reach?: readonly string[]
+}
 == type Duration (src/config.ts)
 export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
 == type EventBus (src/orchestrator/events.ts)
@@ -821,11 +828,6 @@ export interface MigrationPlan {
   extraFiles: { relPath: string; contents: string }[]
   notes: string[]
 }
-== type NamedProject (src/orchestrator/plugin.ts)
-export interface NamedProject {
-  readonly dir: string
-  readonly name: string
-}
 == type OptionKind (src/orchestrator/plugin.ts)
 type OptionKind<V> = [V] extends [string]
   ? 'string'
@@ -1048,6 +1050,8 @@ export interface ProjectMeta {
   packageJson: PackageJson
   configPath: string | null
   catalogs?: Catalogs
+  deps?: readonly string[]
+  reach?: readonly string[]
 }
 == type PruneOptions (src/cache/layer.ts)
 export interface PruneOptions {
@@ -1670,7 +1674,9 @@ export interface UploadTally {
 export interface VxPlugin {
   readonly name: string
   config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
-  discover?(ctx: DiscoverContext): readonly NamedProject[] | Promise<readonly NamedProject[]>
+  discover?(
+    ctx: DiscoverContext,
+  ): readonly DiscoveredProject[] | Promise<readonly DiscoveredProject[]>
   project?(config: ProjectConfig, ctx: ProjectHookContext): void | Promise<void>
   graph?(nodes: Map<string, TaskNode>, ctx: GraphHookContext): void | Promise<void>
   key?(

@@ -194,6 +194,35 @@ describe('config stage', () => {
   )
 })
 
+describe('discover stage', () => {
+  it(
+    "a plugin's deps order ^build with no manifest dependency; reach adds no order",
+    async () => {
+      await pkg('lib', build)
+      await pkg('tool', build)
+      await pkg(
+        'app',
+        "export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'echo app' } } } }\n",
+      )
+      const plan = async (): Promise<string[]> =>
+        (await planRun({ cwd: root, tasks: ['app#build'], log: silent() })).tasks
+          .map((t) => `${t.node.id} <- ${t.deps.join(',')}`)
+          .sort()
+      // CONTROL: no manifest dependency, no plugin edge, no order.
+      await workspace([])
+      expect(await plan()).toEqual(['app#build <- '])
+      await workspace([
+        pluginSource(
+          'org/edges',
+          `{ discover: () => [{ dir: 'packages/app', deps: ['packages/lib'], reach: ['packages/tool'] }] }`,
+        ),
+      ])
+      expect(await plan()).toEqual(['app#build <- lib#build', 'lib#build <- '])
+    },
+    TIMEOUT,
+  )
+})
+
 describe('project stage', () => {
   it(
     'an injected task runs, and keys exactly like the same task written by hand',

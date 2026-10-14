@@ -60,15 +60,22 @@ export interface VxPlugin {
   config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
 
   /**
-   * Directories to make projects beyond the package manager's members, as
-   * `{ dir, name }` (`dir` absolute or relative to the workspace root): a
-   * runner's root tasks, a project no member glob lists. Runs once per
-   * discovery, before any project config loads; each plugin sees core's
-   * projects and the ones earlier plugins named. A named directory keeps
-   * a `package.json` of the same name, if it has one; a name or directory
-   * already taken otherwise, or one outside the root, is refused.
+   * Projects beyond the package manager's members, and edges between
+   * projects, as `DiscoveredProject`s (each directory absolute or relative
+   * to the workspace root): a runner's root tasks, a project no member glob
+   * lists, the dependencies a lockfile records. Runs once per discovery,
+   * before any project config loads; each plugin sees core's projects and
+   * the ones earlier plugins named, without their edges. A directory that
+   * is not a project becomes one by `name` (keeping a `package.json` of the
+   * same name, if it has one); one that is a project keeps its name, and a
+   * different `name` is refused, as is a name taken by another directory
+   * or a directory outside the root. `deps` and `reach` from every plugin
+   * union with core's manifest edges once the stage ends; a target that is
+   * then no project is refused.
    */
-  discover?(ctx: DiscoverContext): readonly NamedProject[] | Promise<readonly NamedProject[]>
+  discover?(
+    ctx: DiscoverContext,
+  ): readonly DiscoveredProject[] | Promise<readonly DiscoveredProject[]>
 
   /**
    * One project's validated config, right after it loaded and before the
@@ -293,9 +300,16 @@ export interface DiscoverContext extends WorkspaceHookContext {
   worktreeChanges(): Promise<readonly string[] | null>
 }
 
-export interface NamedProject {
+/** What a `discover` hook returns per directory — see `VxPlugin.discover`. */
+export interface DiscoveredProject {
+  /** Absolute or relative to the workspace root. */
   readonly dir: string
-  readonly name: string
+  /** Required when `dir` is not a project yet; otherwise must match its name. */
+  readonly name?: string
+  /** Directories this project builds after: `^task` order, and reach for `--filter` and `--affected`. */
+  readonly deps?: readonly string[]
+  /** Directories a change reaches this project through (`--filter`, `--affected`), with no order. */
+  readonly reach?: readonly string[]
 }
 
 export interface ProjectHookContext extends BaseContext {

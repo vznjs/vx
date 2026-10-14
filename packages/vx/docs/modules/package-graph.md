@@ -51,13 +51,15 @@ link another workspace project (skipping self-references; which
 entries link is the next section). Two adjacencies come out of it:
 
 - **order** (`directDeps`, what `'^name'` walks): `dependencies`,
-  `devDependencies`, `optionalDependencies`, the task edges, and a
+  `devDependencies`, `optionalDependencies`, the task edges, a
+  `discover` plugin's `deps` (`ProjectMeta.deps`), and a
   `peerDependencies` entry on a workspace sibling unless that edge
   would close a cycle through the order edges so far — what the
   package imports at build time.
 - **reach** (`transitiveDeps` / `transitiveDependents`, what
   `--filter pkg...` and `--affected` read): order plus every
-  workspace peer.
+  workspace peer and a plugin's `reach` (`ProjectMeta.reach`), which
+  is never promoted to order.
 
 A peer on a sibling is an import that resolves to the sibling's build:
 every package manager links or hoists it (pnpm's

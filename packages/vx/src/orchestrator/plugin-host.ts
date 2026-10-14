@@ -27,7 +27,7 @@ import type {
   FingerprintContext,
   GraphHookContext,
   KeyHookContext,
-  NamedProject,
+  DiscoveredProject,
   ProjectHookContext,
   ScheduleHookContext,
   VxPlugin,
@@ -148,15 +148,21 @@ export async function applyConfigHooks(
 
 /**
  * `discover` stage: each plugin names directories to add to `projects`,
- * seeing the ones earlier plugins added. `add` turns one name into a meta
- * (null: already there) or refuses it.
+ * seeing the ones earlier plugins added. `add` turns one entry into the
+ * project it names, `added` when it is new, or refuses it. Returns every
+ * entry's edges with the project and plugin they came from, for the caller
+ * to resolve once every plugin has run.
  */
 export async function applyDiscoverHooks(
   plugins: readonly VxPlugin[],
   projects: ProjectMeta[],
   ctx: Omit<DiscoverContext, 'projects'>,
-  add: (named: NamedProject, plugin: VxPlugin) => Promise<ProjectMeta | null>,
-): Promise<void> {
+  add: (
+    entry: DiscoveredProject,
+    plugin: VxPlugin,
+  ) => Promise<{ meta: ProjectMeta; added: boolean }>,
+): Promise<DiscoveredEdges[]> {
+  const edges: DiscoveredEdges[] = []
   for (const plugin of plugins) {
     if (plugin.discover === undefined) continue
     const named = await safe(plugin, 'discover', () => plugin.discover!({ ...ctx, projects }))
@@ -165,11 +171,22 @@ export async function applyDiscoverHooks(
         `plugin '${plugin.name}' failed in discover: expected an array, got ${describeValue(named)}`,
       )
     }
-    for (const n of named as readonly NamedProject[]) {
-      const meta = await add(n, plugin)
-      if (meta !== null) projects.push(meta)
+    for (const entry of named as readonly DiscoveredProject[]) {
+      const { meta, added } = await add(entry, plugin)
+      if (added) projects.push(meta)
+      if (entry.deps !== undefined || entry.reach !== undefined) {
+        edges.push({ by: plugin.name, meta, deps: entry.deps ?? [], reach: entry.reach ?? [] })
+      }
     }
   }
+  return edges
+}
+
+export interface DiscoveredEdges {
+  readonly by: string
+  readonly meta: ProjectMeta
+  readonly deps: readonly string[]
+  readonly reach: readonly string[]
 }
 
 /** `project` stage: every plugin edits one project's config in place. */

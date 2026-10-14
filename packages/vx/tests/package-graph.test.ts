@@ -66,6 +66,16 @@ describe('buildPackageGraph', () => {
     expect(g.transitiveDependents('self')).toEqual([])
   })
 
+  it("a discover plugin's deps and reach skip the project itself and names not in the graph", () => {
+    const g = buildPackageGraph([
+      { ...meta('self'), deps: ['self', 'other', 'gone'], reach: ['self', 'gone'] },
+      meta('other'),
+    ])
+    expect(g.directDeps('self')).toEqual(['other'])
+    expect(g.transitiveDeps('self')).toEqual(['other'])
+    expect(g.transitiveDependents('self')).toEqual([])
+  })
+
   it('builds an empty graph from no projects', () => {
     const g = buildPackageGraph([])
     // No-projects graph still answers queries — they just return [].

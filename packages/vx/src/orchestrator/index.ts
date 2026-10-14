@@ -86,7 +86,7 @@ export {
   type AdmitContext,
   type WorkspaceHookContext,
   type DiscoverContext,
-  type NamedProject,
+  type DiscoveredProject,
   type InstallPluginsArgs,
   type Plugin,
   type PluginContext,
