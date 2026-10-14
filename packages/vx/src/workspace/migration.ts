@@ -5,7 +5,7 @@
 // tool wrote it. Core knows no source format here: a mapper returns a
 // `MigrationPlan` and this file does the rest.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { executablePath, gitEnv, relPosix, UserError } from '../util/index.js'
@@ -323,9 +323,10 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     )
   }
 
+  const names = new Map(projects.map((p) => [p.dir, projectConfigName(p.dir, metas, format)]))
   const files: { relPath: string; abs: string; contents: string }[] = []
   for (const p of projects) {
-    const abs = path.join(p.dir, configName)
+    const abs = path.join(p.dir, names.get(p.dir)!)
     files.push({
       relPath: relPosix(root, abs),
       abs,
@@ -378,7 +379,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const replaced: string[] = []
   for (const p of projects) {
     const existing = metas.find((m) => m.dir === p.dir)?.configPath
-    if (existing && existing !== path.join(p.dir, configName)) replaced.push(existing)
+    if (existing && existing !== path.join(p.dir, names.get(p.dir)!)) replaced.push(existing)
   }
   if (dry && args.json !== true) {
     for (const f of files) {
@@ -388,6 +389,12 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     for (const f of files) await Bun.write(f.abs, f.contents)
     for (const f of replaced) await unlink(f)
   }
+  const formatted = dry
+    ? []
+    : formatWritten(
+        root,
+        files.map((f) => f.relPath),
+      )
 
   // One reason, its tasks: on a Turbo template the same two-line cache TODO
   // printed five times and the persistent one eight (the first-five-minutes
@@ -464,8 +471,8 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
         .map((l) => `  ${l}`),
     )
   } else {
-    report.push(`${verb}: ${source} → ${configName}`)
-    for (const n of [...(args.notes ?? []), ...ignoredNote]) report.push(`note: ${n}`)
+    report.push(`${verb}: ${source} → ${[...new Set(names.values())].join(', ') || configName}`)
+    for (const n of [...(args.notes ?? []), ...ignoredNote, ...formatted]) report.push(`note: ${n}`)
     for (const n of plan.headerNotes) report.push(`note: ${n}`)
     report.push(
       '',
@@ -746,4 +753,63 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
   if (p.tasks.length > 0) lines.push('  },')
   lines.push(format === 'ts' ? '} satisfies ProjectConfig' : '}', '')
   return lines.join('\n')
+}
+
+/**
+ * `vx.config.mts` in a TypeScript package that is CommonJS: tsc (node16 /
+ * nodenext) reads a `.ts` there as CommonJS, and its type-only import of
+ * the ESM `@vzn/vx/config` fails (TS1479, TS1541: medusa's plugin builds).
+ */
+function projectConfigName(
+  dir: string,
+  metas: readonly ProjectMeta[],
+  format: MigrationFormat,
+): string {
+  if (format !== 'ts' || !existsSync(path.join(dir, 'tsconfig.json'))) return `vx.config.${format}`
+  const meta = metas.find((m) => m.dir === dir)
+  const manifest = meta ? (meta.packageJson as { type?: unknown }) : readManifest(dir)
+  return manifest?.type === 'module' ? 'vx.config.ts' : 'vx.config.mts'
+}
+
+function readManifest(dir: string): { type?: unknown } | undefined {
+  try {
+    return JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as { type?: unknown }
+  } catch {
+    return undefined
+  }
+}
+
+/** The formatters a repo installs at its root, each with its write command. */
+const FORMATTERS: readonly (readonly [string, readonly string[]])[] = [
+  ['prettier', ['--write']],
+  ['biome', ['format', '--write']],
+  ['oxfmt', []],
+  ['dprint', ['fmt']],
+]
+
+/**
+ * Runs the repo's own formatter over the files just written, as Nx's
+ * generators do: create-t3-turbo's `prettier --check` failed on the quotes
+ * of a config vx wrote. Returns the report's note.
+ */
+function formatWritten(root: string, relPaths: readonly string[]): string[] {
+  if (relPaths.length === 0) return []
+  for (const [name, args] of FORMATTERS) {
+    const bin = path.join(root, 'node_modules', '.bin', name)
+    if (!existsSync(bin)) continue
+    const r = Bun.spawnSync({
+      cmd: [bin, ...args, ...relPaths],
+      cwd: root,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: 60_000,
+    })
+    if (r.exitCode === 0) {
+      return [`formatted ${relPaths.length} file${relPaths.length === 1 ? '' : 's'} with ${name}`]
+    }
+    const why = (r.stderr.toString() || r.stdout.toString()).trim().split('\n')[0] ?? ''
+    return [`${name} did not format the written files (exit ${r.exitCode ?? 'signal'}): ${why}`]
+  }
+  return []
 }

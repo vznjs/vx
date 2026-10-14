@@ -3,7 +3,15 @@
 // task object renders. `vx init` and `@vzn/vx-migrate` reach it through
 // their mappers; these rows hold the seam itself.
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
@@ -323,6 +331,74 @@ describe('applyMigration', () => {
 // Item 905: npm runs `pre<x>`, `x` and `post<x>` as three scripts. The fold
 // is one sh command, run the way the runner runs a task: `sh -c` over the
 // command with the forwarded args appended, quoted (runner.ts).
+// Growth's parity run, 2026-10-14: the written config broke the repo's own
+// checks. medusa's plugin builds run tsc (node16) over a CommonJS package,
+// where a `.ts` type-imports the ESM `@vzn/vx/config` and fails (TS1479 /
+// TS1541); create-t3-turbo's `prettier --check` flagged the file's quotes.
+describe('a written config passes the repo’s own checks', () => {
+  const pkg = (name: string, manifest: Record<string, unknown>, tsconfig = true) => {
+    const dir = path.join(root, name)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name, ...manifest }))
+    if (tsconfig) writeFileSync(path.join(dir, 'tsconfig.json'), '{}')
+    return { name, dir, packageJson: { name, ...manifest }, configPath: null }
+  }
+
+  it('a TypeScript CommonJS package gets vx.config.mts, which tsc reads as ESM', async () => {
+    const metas = [pkg('cjs', {}), pkg('esm', { type: 'module' }), pkg('plain', {}, false)]
+    expect(
+      await apply(
+        plan([
+          ['cjs', []],
+          ['esm', []],
+          ['plain', []],
+        ]),
+        { metas },
+      ),
+    ).toBe(0)
+    expect(
+      ['cjs/vx.config.mts', 'esm/vx.config.ts', 'plain/vx.config.ts'].map((f) =>
+        existsSync(path.join(root, f)),
+      ),
+    ).toEqual([true, true, true])
+    expect(existsSync(path.join(root, 'cjs', 'vx.config.ts'))).toBe(false)
+    expect(stdout).toContain('turbo.json → vx.config.mts, vx.config.ts')
+  })
+
+  it('runs the repo’s formatter over what it wrote, and says so', async () => {
+    const bin = path.join(root, 'node_modules', '.bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(path.join(bin, 'prettier'), `#!/bin/sh\necho "$@" > "${root}/.prettier-args"\n`)
+    chmodSync(path.join(bin, 'prettier'), 0o755)
+    expect(await apply(plan([['a', [task('build', { exec: { command: 'x' } })]]]))).toBe(0)
+    expect(readFileSync(path.join(root, '.prettier-args'), 'utf8').trim()).toBe(
+      '--write a/vx.config.ts vx.workspace.ts',
+    )
+    expect(stdout).toContain('note: formatted 2 files with prettier\n')
+  })
+
+  it('a dry run formats nothing', async () => {
+    const bin = path.join(root, 'node_modules', '.bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(path.join(bin, 'prettier'), `#!/bin/sh\ntouch "${root}/.prettier-ran"\n`)
+    chmodSync(path.join(bin, 'prettier'), 0o755)
+    expect(await apply(plan([['a', [task('build', null)]]]), { dry: true })).toBe(0)
+    expect(existsSync(path.join(root, '.prettier-ran'))).toBe(false)
+  })
+
+  it('a formatter that fails leaves the files as written and names the error', async () => {
+    const bin = path.join(root, 'node_modules', '.bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(path.join(bin, 'prettier'), '#!/bin/sh\necho "no parser" >&2\nexit 2\n')
+    chmodSync(path.join(bin, 'prettier'), 0o755)
+    expect(await apply(plan([['a', [task('build', null)]]]))).toBe(0)
+    expect(existsSync(path.join(root, 'a', 'vx.config.ts'))).toBe(true)
+    expect(stdout).toContain(
+      'note: prettier did not format the written files (exit 2): no parser\n',
+    )
+  })
+})
+
 describe('foldScriptHooks runs the hooks as npm does', () => {
   const run = async (command: string, args: string[] = []) => {
     const full = withForwardArgs(command, args)

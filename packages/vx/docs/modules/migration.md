@@ -96,6 +96,13 @@ export function delegatedScript(command: string): string | null
   runs the binary without the package installed. `format: 'mjs'`
   (`--mjs`) writes the same object untyped as `vx.config.mjs`, for a
   package whose `tsconfig` `include` would not cover a `.ts` config.
+- A `ts` config is `vx.config.mts` in a package with a `tsconfig.json`
+  and no `"type": "module"`: tsc reads a `.ts` there as CommonJS and its
+  type import of the ESM `@vzn/vx/config` fails (TS1479, TS1541).
+- After the write, the files go through the first formatter the root's
+  `node_modules/.bin` holds (prettier, biome, oxfmt, dprint), as Nx's
+  generators do, so the repo's own format check passes them; a `note:`
+  says which, or the error a failing one printed. Not under `dry`.
 - An empty plan in a single-project workspace whose root `package.json`
   has no `workspaces` field, while packages with scripts sit beneath it,
   is reported as such: the report names the packages the missing field
