@@ -222,7 +222,7 @@ limit" — the platform silently reduces it to **1 ms**, so the task would
 be killed the moment it spawns and reported `failed`. vx refuses it at
 load rather than let that happen. **Omit `timeout` entirely for no
 limit.** The same bound applies to `--timeout` and to the workspace-level
-`timeout`; the `VX_TASK_TIMEOUT` env rung is clamped to it instead of
+`run.timeout`; the `VX_RUN_TIMEOUT` env rung is clamped to it instead of
 refused, since that rung never fails a run.
 
 A task with **no** `exec.timeout` falls back to a run-level default, if
@@ -361,7 +361,7 @@ for it to exit. Instead it considers the task "ready":
   The trailing partial line is tested too, so prompt-style banners
   without a newline (`printf 'Listening on :3000'`) count, and so does
   output read up to 250 ms after the shell exits. A server
-  not ready after 10 s (`VX_READY_NOTICE_MS`) is said once, naming
+  not ready after 10 s (`run.readyNotice`) is said once, naming
   the pattern it waits for, and whether `exec.timeout` bounds the wait.
 
 ```ts
@@ -748,8 +748,8 @@ moved file as an input withholds its own.
 
 Each field is resolved on its own, highest first:
 
-1. `VX_INPUT_STABILITY` (`immutable`, `mutable`, `unchecked`) and
-   `VX_INPUT_STABILITY_SEVERITY` (`warn`, `error`), for the whole run
+1. `VX_CACHE_INPUT_STABILITY_STRATEGY` (`immutable`, `mutable`,
+   `unchecked`) and `VX_CACHE_INPUT_STABILITY_SEVERITY` (`warn`, `error`), for the whole run
    (a CI job that wants `error` sets it without editing configs); any
    other value is refused before a task runs;
 2. the task's own `cache.inputStability`;
