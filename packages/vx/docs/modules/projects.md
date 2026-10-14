@@ -30,7 +30,8 @@ export function loadWorkspacePlugins(
   warn: (m: string) => void,
 ): Promise<{ workspaceConfig: WorkspaceConfig | null; plugins: readonly VxPlugin[] }>
 
-// listProjects, then the plugin `discover` stage (skipped when no plugin has it)
+// listProjects, then the plugin `discover` stage (skipped when no plugin has
+// it), then its edges onto the metas (linkDiscoveredEdges)
 export function discoverProjects(
   workspace: Workspace,
   plugins: readonly VxPlugin[],

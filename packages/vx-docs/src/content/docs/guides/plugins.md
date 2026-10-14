@@ -45,7 +45,7 @@ runs and is stored on this machine.
 | Stage       | Hook                   | Decides                                                   |
 | ----------- | ---------------------- | --------------------------------------------------------- |
 | config      | `config(ws, ctx)`      | the workspace config, before it is used                   |
-| discover | `discover(ctx)` | which directories are projects beyond the members |
+| discover | `discover(ctx)` | which directories are projects, and their edges |
 | project     | `project(config, ctx)` | a project's tasks: add, remove, rewrite                   |
 | graph       | `graph(nodes, ctx)`    | the run's edges                                           |
 | key         | `key(task, ctx)`       | extra cache-key material, named in `vx why`               |
@@ -66,7 +66,7 @@ import type { VxPlugin } from '@vzn/vx'
 interface VxPlugin {
   readonly name: string // your package's name: definePlugin reads it
   config?(workspace, ctx): void
-  discover?(ctx): { dir; name }[] // directories to make projects
+  discover?(ctx): { dir; name?; deps?; reach? }[] // projects and their edges
   project?(config, ctx): void
   graph?(nodes, ctx): void
   key?(task, ctx): Record<string, string>
@@ -111,6 +111,14 @@ export function scriptsProject(): VxPlugin {
     discover: () => [{ dir: 'scripts', name: 'scripts' }],
   })
 }
+```
+
+An entry can also give a project edges, as directories. `deps` orders
+`^build` and reaches `--filter app...` and `--affected`; `reach` only
+reaches. An entry for an existing project needs no `name`:
+
+```ts
+discover: () => [{ dir: 'apps/web', deps: ['packages/ui'], reach: ['packages/config'] }]
 ```
 
 `fingerprint` claims a root file the plugin reads. An edit to it makes

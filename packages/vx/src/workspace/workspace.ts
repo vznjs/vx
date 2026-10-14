@@ -55,6 +55,10 @@ export interface ProjectMeta {
   configPath: string | null
   /** The workspace's catalogs, which the package graph resolves `catalog:` specs through. */
   catalogs?: Catalogs
+  /** Projects a `discover` plugin says this one builds after (order and reach). */
+  deps?: readonly string[]
+  /** Projects a `discover` plugin says a change reaches this one through, with no order. */
+  reach?: readonly string[]
 }
 
 /** A discovered project joined with its loaded vx config. */
@@ -1014,48 +1018,69 @@ async function oneEntryPerPackage<T extends { dir: string }>(
 }
 
 /**
- * A directory a plugin's `discover` hook names, as a project meta; null
- * when `known` already holds it under that name. `by` names the plugin in
- * a refusal. A directory without a `package.json` is a project by the
- * plugin's name alone.
+ * The project a plugin's `discover` entry names: a new meta (`added`) for a
+ * directory that is not a project yet, else the project already there.
+ * `by` names the plugin in a refusal. A directory without a `package.json`
+ * is a project by the plugin's name alone.
  */
-export async function namedProject(
+export async function discoveredProject(
   workspace: Workspace,
   known: readonly ProjectMeta[],
-  named: { readonly dir: string; readonly name: string },
+  entry: {
+    readonly dir: string
+    readonly name?: string
+    readonly deps?: readonly string[]
+    readonly reach?: readonly string[]
+  },
   by: string,
-): Promise<ProjectMeta | null> {
+): Promise<{ meta: ProjectMeta; added: boolean }> {
   const where = `plugin '${by}' named project`
-  if (typeof named?.name !== 'string' || named.name === '' || typeof named.dir !== 'string') {
-    throw new UserError(`${where} ${JSON.stringify(named)}: expected { dir: string, name: string }`)
+  const dirList = (v: unknown): boolean =>
+    v === undefined || (Array.isArray(v) && v.every((d) => typeof d === 'string'))
+  if (
+    typeof entry?.dir !== 'string' ||
+    (entry.name !== undefined && (typeof entry.name !== 'string' || entry.name === '')) ||
+    !dirList(entry.deps) ||
+    !dirList(entry.reach)
+  ) {
+    throw new UserError(
+      `${where} ${JSON.stringify(entry)}: expected { dir: string, name?: string, deps?: string[], reach?: string[] }`,
+    )
   }
+  const name = entry.name
   // The rules `parsePackageJson` holds a manifest's name to: a plugin's name
   // for a directory with no `name` of its own skipped them, and `a#b` planned
   // under `--all` while no run spec or dependsOn could reach it.
-  if (named.name.trim() !== named.name) {
+  if (name !== undefined && name.trim() !== name) {
+    throw new UserError(`${where} ${JSON.stringify(name)}: the name has surrounding whitespace`)
+  }
+  if (name?.includes('#')) {
     throw new UserError(
-      `${where} ${JSON.stringify(named.name)}: the name has surrounding whitespace`,
+      `${where} "${name}": the name holds "#" — vx addresses a task as <name>#<task>`,
     )
   }
-  if (named.name.includes('#')) {
-    throw new UserError(
-      `${where} "${named.name}": the name holds "#" — vx addresses a task as <name>#<task>`,
-    )
-  }
-  const dir = path.resolve(workspace.root, named.dir)
+  const dir = path.resolve(workspace.root, entry.dir)
   const rel = relPosix(workspace.root, dir)
+  const named = name === undefined ? '' : ` "${name}"`
   if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
-    throw new UserError(`${where} "${named.name}" at ${dir}: outside the workspace root`)
+    throw new UserError(`${where}${named} at ${dir}: outside the workspace root`)
   }
   const shown = rel === '' ? '.' : rel
-  for (const p of known) {
-    if (p.dir === dir && p.name === named.name) return null
-    if (p.dir === dir) {
-      throw new UserError(`${where} "${named.name}" at ${shown}: already the project "${p.name}"`)
+  if (name === undefined) {
+    const meta = known.find((p) => p.dir === dir)
+    if (meta === undefined) {
+      throw new UserError(`${where} at ${shown}: not a project yet — give it a name`)
     }
-    if (p.name === named.name) {
+    return { meta, added: false }
+  }
+  for (const p of known) {
+    if (p.dir === dir && p.name === name) return { meta: p, added: false }
+    if (p.dir === dir) {
+      throw new UserError(`${where} "${name}" at ${shown}: already the project "${p.name}"`)
+    }
+    if (p.name === name) {
       throw new UserError(
-        `${where} "${named.name}" at ${shown}: the name is taken by ${relPosix(workspace.root, p.dir) || '.'}`,
+        `${where} "${name}" at ${shown}: the name is taken by ${relPosix(workspace.root, p.dir) || '.'}`,
       )
     }
   }
@@ -1071,17 +1096,63 @@ export async function namedProject(
       () => false,
     ))
   ) {
-    throw new UserError(`${where} "${named.name}" at ${shown}: no such directory`)
+    throw new UserError(`${where} "${name}" at ${shown}: no such directory`)
   }
   const parsed: Partial<PackageJson> = text === null ? {} : parsePackageJson(text, pkgJsonPath)
   // A nameless manifest names nothing to disagree with (Nx's own projects).
-  const pkg: PackageJson = { ...parsed, name: parsed.name ?? named.name }
-  if (pkg.name !== named.name) {
+  const pkg: PackageJson = { ...parsed, name: parsed.name ?? name }
+  if (pkg.name !== name) {
     throw new UserError(
-      `${where} "${named.name}" at ${shown}: its package.json names it "${pkg.name ?? ''}"`,
+      `${where} "${name}" at ${shown}: its package.json names it "${pkg.name ?? ''}"`,
     )
   }
-  return withCatalogs({ name: named.name, dir, packageJson: pkg, configPath }, workspace)
+  return {
+    meta: withCatalogs({ name, dir, packageJson: pkg, configPath }, workspace),
+    added: true,
+  }
+}
+
+/**
+ * Sets each project's `deps` / `reach` from the `discover` entries' edge
+ * directories, resolved against every project the stage left. A target
+ * outside the root or that is no project is refused naming the plugin.
+ */
+export function linkDiscoveredEdges(
+  root: string,
+  projects: readonly ProjectMeta[],
+  edges: ReadonlyArray<{
+    readonly by: string
+    readonly meta: ProjectMeta
+    readonly deps: readonly string[]
+    readonly reach: readonly string[]
+  }>,
+): void {
+  if (edges.length === 0) return
+  const byDir = new Map(projects.map((p) => [p.dir, p.name]))
+  const deps = new Map<ProjectMeta, Set<string>>()
+  const reach = new Map<ProjectMeta, Set<string>>()
+  for (const edge of edges) {
+    for (const [kind, into] of [
+      [edge.deps, deps],
+      [edge.reach, reach],
+    ] as const) {
+      for (const target of kind) {
+        const dir = path.resolve(root, target)
+        const rel = relPosix(root, dir)
+        const where = `plugin '${edge.by}' gave project "${edge.meta.name}" an edge to ${target}`
+        if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
+          throw new UserError(`${where}: outside the workspace root`)
+        }
+        const name = byDir.get(dir)
+        if (name === undefined) throw new UserError(`${where}: not a project`)
+        let set = into.get(edge.meta)
+        if (set === undefined) into.set(edge.meta, (set = new Set()))
+        set.add(name)
+      }
+    }
+  }
+  for (const [meta, names] of deps) meta.deps = [...names].sort()
+  for (const [meta, names] of reach) meta.reach = [...names].sort()
 }
 
 function withCatalogs(meta: ProjectMeta, workspace: Workspace): ProjectMeta {

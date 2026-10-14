@@ -167,7 +167,7 @@ export type {
   AdmitContext,
   WorkspaceHookContext,
   DiscoverContext,
-  NamedProject,
+  DiscoveredProject,
   PluginSetupContext,
   PluginHookName,
   PluginHookHandlers,

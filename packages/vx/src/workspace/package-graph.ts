@@ -2,11 +2,11 @@ import path from 'node:path'
 import type { ProjectMeta } from './workspace.js'
 
 export interface PackageGraph {
-  /** Immediate workspace deps the package builds AFTER (sorted): every bucket but peers. */
+  /** Immediate workspace deps the package builds AFTER (sorted): every bucket but peers, plus a `discover` plugin's `deps`. */
   directDeps: (name: string) => string[]
-  /** All transitive workspace deps a change can reach the package through — peers included. */
+  /** All transitive workspace deps a change can reach the package through — peers and a plugin's `reach` included. */
   transitiveDeps: (name: string) => string[]
-  /** All transitive workspace dependents (packages a change here can reach) — peers included. */
+  /** All transitive workspace dependents (packages a change here can reach) — peers and plugin `reach` included. */
   transitiveDependents: (name: string) => string[]
 }
 
@@ -62,11 +62,23 @@ export function buildPackageGraph(
   const directDeps = new Map<string, string[]>()
   const order = new Map<string, Set<string>>()
   const peers = new Map<string, Set<string>>()
+  // A `discover` plugin's reach-only edges: never promoted to order, as a
+  // peer is when it closes no cycle.
+  const reachOnly = new Map<string, readonly string[]>()
   const sorted = [...projects].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   for (const p of sorted) {
     const own = new Set<string>()
     for (const name of taskEdges?.get(p.name) ?? []) {
       if (name !== p.name && byName.has(name)) own.add(name)
+    }
+    for (const name of p.deps ?? []) {
+      if (name !== p.name && byName.has(name)) own.add(name)
+    }
+    if (p.reach !== undefined) {
+      reachOnly.set(
+        p.name,
+        p.reach.filter((name) => name !== p.name && byName.has(name)),
+      )
     }
     const optional = bucket(p.packageJson.optionalDependencies)
     const prod = bucket(p.packageJson.dependencies)
@@ -140,7 +152,7 @@ export function buildPackageGraph(
     if (reach === undefined) {
       const own = order.get(name)
       if (own === undefined) return []
-      reach = [...new Set([...own, ...peers.get(name)!])].sort()
+      reach = [...new Set([...own, ...peers.get(name)!, ...(reachOnly.get(name) ?? [])])].sort()
       reachDeps.set(name, reach)
     }
     return reach
@@ -151,7 +163,10 @@ export function buildPackageGraph(
     reachBuilt = true
     for (const p of sorted) {
       const own = order.get(p.name)!
-      reachDeps.set(p.name, [...new Set([...own, ...peers.get(p.name)!])].sort())
+      reachDeps.set(
+        p.name,
+        [...new Set([...own, ...peers.get(p.name)!, ...(reachOnly.get(p.name) ?? [])])].sort(),
+      )
     }
     for (const [name, deps] of reachDeps) {
       for (const d of deps) {
