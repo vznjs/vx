@@ -823,7 +823,9 @@ then the clean deleted a committed file under an output, and a reader
 with no edge to its producer failed naming only the file (A-48,
 vueuse's `metadata/index.json`). An artifact saved before still holding
 one may write it on a restore, with the bytes its key was saved under.
-Untracked files under the glob are cleaned as before.
+Untracked files under the glob are cleaned as before. Paths compare as
+git compares them: case-folded under `core.ignorecase` (macOS), and a
+file inside a submodule counts as committed.
 Workspace outputs take the same rules, and a path an output `!` entry
 takes back (A-44) is off the wipe, the artifact and the restore alike.
 Skipped when:

@@ -228,9 +228,24 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    */
   private tracked = new Set<string>()
   private trackedScopes: string[] = []
+  /**
+   * Under `core.ignorecase` (macOS's default volume) git's `Foo.txt` is the
+   * disk's `foo.txt` after a rename git never saw, so paths are compared
+   * case-folded. Decided at the first note: the run's `git var -l`, else
+   * the platform.
+   */
+  private foldCase: boolean | undefined
+
+  private trackedKey(abs: string): string {
+    this.foldCase ??=
+      this.vars === null
+        ? process.platform === 'darwin'
+        : this.vars.get('core.ignorecase')?.trim().toLowerCase() === 'true'
+    return this.foldCase ? abs.toLowerCase() : abs
+  }
 
   noteTracked(scopes: readonly string[], absPaths: readonly string[]): void {
-    for (const p of absPaths) this.tracked.add(p)
+    for (const p of absPaths) this.tracked.add(this.trackedKey(p))
     this.trackedScopes.push(...scopes)
   }
 
@@ -251,7 +266,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
         if (!covered) this.noteTracked([dir], listTracked(dir))
       }
       for (let p = abs; p.length > dir.length; p = path.dirname(p))
-        if (this.tracked.has(p)) return true
+        if (this.tracked.has(this.trackedKey(p))) return true
       return false
     }
   }
