@@ -12,10 +12,6 @@ import {
   type CachePolicy,
   cachesNothing,
   formatCachePolicy,
-  packRunOutputs,
-  resolveOutputs,
-  resolveWorkspaceOutputs,
-  runEntryName,
   stopRuntimeProbes,
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
@@ -54,7 +50,6 @@ import {
   isFsRefusal,
   isUserError,
   detectColors,
-  relPosix,
   type ColorSupport,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
@@ -80,8 +75,8 @@ import {
   resolveOutputView,
   terminalSubscriber,
 } from '../report/index.js'
-import { installPlugins, PluginSetupError, type RunReport, type RunReportTask } from './plugin.js'
-import { decodeOutputLog } from './output-log.js'
+import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
+import { keepRunBytes } from './run-report.js'
 import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
@@ -153,21 +148,6 @@ const emptyShortCircuit = (): ShortCircuit => ({
   uncachedKeys: new Map(),
   groupKeys: new Map(),
 })
-
-/** The files `node`'s declared outputs match on disk now, workspace-relative and sorted. */
-async function outputsLeft(
-  node: TaskNode,
-  workspaceRoot: string,
-  nestedProjectDirs: string[],
-): Promise<string[]> {
-  const declared = node.config.cache?.outputs
-  if (declared === undefined) return []
-  const [own, ws] = await Promise.all([
-    resolveOutputs({ projectDir: node.projectDir, outputs: declared.files, nestedProjectDirs }),
-    resolveWorkspaceOutputs({ workspaceRoot, outputs: declared.workspaceFiles ?? [] }),
-  ])
-  return [...new Set([...own, ...ws].map((p) => relPosix(workspaceRoot, p)))].sort()
-}
 
 /**
  * The policy that will actually govern the run. The remote axes are inert
@@ -1338,55 +1318,6 @@ async function runOnBus(
     // change the run's exit code — the run already happened.
     // Written again after the keep-alive wait: a kept server's crash or a
     // Ctrl-C there is the process's exit, and the first write said ok.
-    // The run's own bytes, kept in a remote that takes its writes (owner
-    // 2026-10-15): a failed task's log and the files its outputs left, an
-    // uncached task's log. Then the report every plugin's teardown reads.
-    const keepRunBytes = async (final: readonly TaskOutcome[]): Promise<RunReport> => {
-      const keep = prepared.keepRunEntry
-      const tasks: RunReportTask[] = []
-      const work: (() => Promise<void>)[] = []
-      for (const o of final) {
-        if (isGroupTask(o.node)) continue
-        const task: { -readonly [K in keyof RunReportTask]: RunReportTask[K] } = {
-          id: o.node.id,
-          status: o.status,
-          durationMs: Math.round(o.durationMs),
-          ...(o.hash !== undefined ? { key: o.hash } : {}),
-        }
-        tasks.push(task)
-        if (keep === undefined) continue
-        const runLog = o.runLog
-        if (runLog !== undefined) {
-          work.push(async () => {
-            const text = decodeOutputLog(runLog)
-              .map((c) => c.text)
-              .join('')
-            if (text.length === 0) return
-            const name = runEntryName(runId, o.node.id, 'log')
-            if (await keep(name, new TextEncoder().encode(text))) task.log = name
-          })
-        }
-        if (o.status === 'failed' && o.where === undefined) {
-          work.push(async () => {
-            const bytes = await packRunOutputs(
-              prepared.workspaceRoot,
-              await outputsLeft(
-                o.node,
-                prepared.workspaceRoot,
-                prepared.nestedDirsByProject.get(o.node.projectName) ?? [],
-              ),
-            )
-            if (bytes === null) return
-            const name = runEntryName(runId, o.node.id, 'outputs')
-            if (await keep(name, bytes)) task.outputs = name
-          })
-        }
-      }
-      for (let i = 0; i < work.length; i += 8) {
-        await Promise.all(work.slice(i, i + 8).map((w) => w()))
-      }
-      return { runId, commit: head.commitSha, ciRun: ciContext, ok, tasks }
-    }
     if (options.profile !== undefined) {
       try {
         const wrote = await writeRunProfile({
@@ -1485,7 +1416,15 @@ async function runOnBus(
     // drain of the lane stood here until item 634; deleting it changed
     // nothing the suite could see, because this gate is the rule.
     await cache.drainUploads?.()
-    const report = await keepRunBytes(list)
+    const report = await keepRunBytes(list, {
+      runId,
+      commit: head.commitSha,
+      ciRun: ciContext,
+      ok,
+      workspaceRoot: prepared.workspaceRoot,
+      nestedDirsByProject: prepared.nestedDirsByProject,
+      keep: prepared.keepRunEntry,
+    })
     // Hand the per-run summary to the telemetry sinks + drain them. Only
     // when a sink is active (telemetry !== undefined) — otherwise this
     // whole block is skipped and the run is byte-identical to before.

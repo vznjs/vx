@@ -157,7 +157,7 @@ export interface RunSummary {
     then `formatRunSummary(list, totalMs, colors, runContext)` — the
     footer carries the run banner (wordmark rule + projects/tasks/
     cache meters + info + time).
-12. **Optional artifacts.** `writeRunSummary` / `writeRunProfile`.
+12. **Optional artifacts.** `writeRunProfile` (`--profile`).
     Errors logged, exit code unchanged.
 13. **`assembleRunRecords` → `cache.recordRunBundle`**
     (`run-records.ts`). One pass over the outcomes builds the `runs`
@@ -168,8 +168,10 @@ export interface RunSummary {
     construction. Written in one transaction.
 14. **Telemetry summary.** When a sink is active: build + emit the
     `RunSummaryRecord`, await `flush()` (crash-isolated).
-15. **Drain + close.** Await background prefetches/uploads,
-    `cache.close()`, sandbox teardown.
+15. **Drain + close.** Await background prefetches/uploads, then
+    `keepRunBytes` (`run-report.ts`) builds the `RunReport` plugin
+    teardowns read and keeps the run's bytes in a remote that takes
+    its writes; `cache.close()`, sandbox teardown.
 16. **Keep-alive block.** If the user requested a persistent task,
     block on its exit AFTER everything above — Ctrl-C reaps the
     process group; the run stays in the foreground on purpose.
