@@ -1542,8 +1542,9 @@ export async function startGitEnumeration(
     // any other, and the filter gate below must see it (A-19).
     // `--no-renames`: a deletion paired as an unmerged path's rename source
     // prints only as `UU <path>`, and the deleted file stayed trusted (A-59).
-    statusIndex.then((index) =>
-      spawnGit(
+    statusIndex.then((index) => {
+      const env = index === undefined ? undefined : { GIT_INDEX_FILE: index }
+      return spawnGit(
         [
           'status',
           '--porcelain',
@@ -1555,9 +1556,9 @@ export async function startGitEnumeration(
           ...pathspecs,
         ],
         undefined,
-        index === undefined ? undefined : { GIT_INDEX_FILE: index },
-      ),
-    ),
+        env,
+      )
+    }),
     varsRun,
   ])
   const gitPrefix = facts?.prefix ?? ''
