@@ -362,7 +362,13 @@ export function nice(): VxPlugin {
 ## Your own cache
 
 Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
-`put`, plus an optional `hasMany`. Core owns the rest: the local cache is
+`put`, plus an optional `hasMany`. Write `hasMany` only when your wire
+answers many keys in one call: its presence tells core to ask it once
+per run (and once for `--dry` and `--force`); without it core GETs each
+key directly and asks `has` per key only for `--dry` and `--force`. An
+entry is immutable: core never asks `has` before a `put`, so a `put` of
+a key the remote holds must keep the stored bytes (check inside when
+your server would overwrite). Core owns the rest: the local cache is
 asked first, then each plugin's remote in the order `plugins` lists them;
 `--cache-policy`, `VX_CACHE_POLICY` and `cache.policy` gate every remote, and
 `--cache-scope` keeps writes apart. The hook's `ctx.scope` is that scope
@@ -394,6 +400,7 @@ class AcmeRemote implements RemoteCacheLayer {
     return { body: res, durationMs: undefined } // streamed to disk
   }
   async put(hash: string, body: Blob) {
+    if (await this.has(hash)) return // an entry is immutable; this server would overwrite
     const res = await fetch(`${this.endpoint}/${hash}`, { method: 'PUT', body, signal: deadline() })
     if (!res.ok) throw new Error(`HTTP ${res.status}`) // fetch resolves on a 500
   }

@@ -16,6 +16,7 @@ import {
 import { mkdtemp } from 'node:fs/promises'
 import os from 'node:os'
 import { Cache, FULL_CACHE_POLICY, type RemoteCacheLayer, ScopedCache } from '../src/cache/index.js'
+import { scopedKey } from '../src/cache/scoped-cache.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run } from './helpers/orchestrator.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
@@ -89,6 +90,59 @@ async function runScoped(
 }
 
 describe('cache.scope', () => {
+  for (const batches of [true, false]) {
+    it(
+      `a forced scoped run asks for the scope keys ${batches ? 'in one hasMany' : 'per key with has'} and sends none the remote holds`,
+      async () => {
+        const fixture = await makeWorkspace('vx-cache-scope-force-')
+        try {
+          await addProject(fixture.root, 'app', {
+            files: { 'src/in.txt': 'v1' },
+            config: BUILD_CONFIG,
+          })
+          const remote = memoryRemote()
+          const seeded = await runScoped(fixture, remote.layer, 'pr-1', 'v1')
+          expect([...remote.store.keys()]).toEqual([scopedKey('pr-1', seeded.hash)])
+          const batched: string[] = []
+          const single: string[] = []
+          const puts: string[] = []
+          const layer: RemoteCacheLayer = {
+            get: remote.layer.get,
+            async has(hash) {
+              single.push(hash)
+              return remote.layer.has(hash)
+            },
+            async put(hash, body, meta) {
+              puts.push(hash)
+              return remote.layer.put(hash, body, meta)
+            },
+          }
+          if (batches)
+            layer.hasMany = async (hashes) => {
+              batched.push(hashes.join(','))
+              return remote.layer.hasMany!(hashes)
+            }
+          const forced = await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: layer,
+            cacheFlags: { force: true },
+          })
+          expect(forced.outcomes[0]!.status).toBe('success')
+          expect(puts).toEqual([])
+          const key = scopedKey('pr-1', seeded.hash)
+          expect({ batched, single }).toEqual(
+            batches ? { batched: [key], single: [] } : { batched: [], single: [key] },
+          )
+        } finally {
+          await rm(fixture.root, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  }
+
   it(
     'the footer says what each layer restored and saved (M, 2026-10-15)',
     async () => {

@@ -69,8 +69,9 @@ the run's policy (a read-only remote is never written) and scope (read
 the default entry, then the scope's; write only the scope's). Core
 derives each key from the plugin's name and the entry's
 (`xxh3('vx-plugin\0' + plugin + '\0' + name)`), so a plugin reaches no
-other plugin's entries and no task's. A `put` never replaces an entry: a
-remote that `has` it is skipped. An entry is at most 1 MiB; a remote
+other plugin's entries and no task's. A `put` never replaces an entry:
+the local store keeps the first, and core sends each remote the `put`
+alone, asking no `has` first; a remote keeps what it holds. An entry is at most 1 MiB; a remote
 body over that is a miss, read no further. Every failure is an absent
 answer, never a throw or a warning; `hasMany` is `null` when a readable
 remote has no batch probe. With no remote, `get` is a local lookup.

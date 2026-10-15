@@ -109,6 +109,7 @@ describe('startRemotePrefetch', () => {
         hashCache: prepared.hashCache,
         concurrency,
         remoteRead: true,
+        remoteWrite: true,
       }),
     )
     // Settled before the close, whatever the handle does.

@@ -100,6 +100,15 @@ export class RemoteLane {
    * remote without a round-trip. Same point-in-time staleness as the probe.
    */
   private readonly absent = new Set<string>()
+  /** What a `hasMany` said this remote holds, as `absent` records the rest. */
+  private readonly held = new Set<string>()
+
+  /**
+   * A remote the run writes but does not read (`--force`): which of the
+   * run's up-front keys it already holds, from one `hasMany`. `found` is
+   * null when the probe failed.
+   */
+  private presence: Promise<{ asked: Set<string>; found: Set<string> | null } | null> | undefined
 
   private readonly uploadQueue: Array<() => Promise<void>> = []
   private activeUploads = 0
@@ -124,8 +133,13 @@ export class RemoteLane {
     this.endpoint = printableEndpoint(resolved.remote.endpoint)
   }
 
-  /** Existence probe; a failure is a miss. */
+  /**
+   * Existence probe; a failure is a miss. A key a `hasMany` this run
+   * answered for is not asked again: `--dry` batches its keys first.
+   */
   async has(hash: string): Promise<boolean> {
+    if (this.held.has(hash)) return true
+    if (this.absent.has(hash)) return false
     try {
       return Boolean(await this.remote.has(hash))
     } catch (err) {
@@ -160,7 +174,7 @@ export class RemoteLane {
       return null
     }
     const set = found as Set<string>
-    for (const h of hashes) if (!set.has(h)) this.absent.add(h)
+    for (const h of hashes) (set.has(h) ? this.held : this.absent).add(h)
     return set
   }
 
@@ -192,6 +206,34 @@ export class RemoteLane {
     return result as { body: Blob | Response; durationMs?: number }
   }
 
+  /**
+   * Start the batch probe `presence` reads. A lane that reads, never
+   * writes, or cannot batch (no `hasMany`) ignores it: each upload then
+   * asks `has` for its own key.
+   */
+  probeBeforeUpload(hashes: Promise<readonly string[]>): void {
+    if (this.read || !this.write || this.remote.hasMany === undefined) return
+    this.presence = hashes.then(
+      async (asked) =>
+        asked.length === 0 ? null : { asked: new Set(asked), found: await this.hasMany(asked) },
+      () => null,
+    )
+  }
+
+  /**
+   * Whether this remote already holds `hash`, asked only by a lane the run
+   * does not read: an entry is immutable, so a key it holds is the same
+   * bytes and is not sent again. Answered from the batch probe when it
+   * covered the key, else by one `has`; a failure reads as absent, and the
+   * upload goes as before.
+   */
+  private async holds(hash: string): Promise<boolean> {
+    const probed = await this.presence
+    if (probed !== undefined && probed !== null && probed.found !== null && probed.asked.has(hash))
+      return probed.found.has(hash)
+    return this.has(hash)
+  }
+
   /** Queue a PUT in this remote's bounded pool; `body` is asked for when the job starts. */
   upload(
     hash: string,
@@ -203,9 +245,10 @@ export class RemoteLane {
     key.uploading++
     this.traffic.inFlight++
     this.uploadQueue.push(async () => {
-      const start = performance.now()
       let release: (() => Promise<void>) | undefined
       try {
+        if (!this.read && (await this.holds(hash))) return
+        const start = performance.now()
         const got = body()
         release = got.release
         await this.remote.put(hash, got.body, { durationMs })
@@ -227,6 +270,9 @@ export class RemoteLane {
 
   /** Resolves once every queued and in-flight upload has settled. */
   async drain(): Promise<void> {
+    // A probe no upload waited on still runs: settled before the run tears
+    // the plugin down.
+    await this.presence
     if (this.activeUploads === 0 && this.uploadQueue.length === 0) return
     await new Promise<void>((resolve) => this.drainWaiters.push(resolve))
   }

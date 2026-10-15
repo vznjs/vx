@@ -2210,6 +2210,54 @@ describe('Cache storage (v10)', () => {
     expect(stored).toBe('second-version-longer')
   })
 
+  it('save() in a cache that does not read (--force) keeps a prior entry at the same hash', async () => {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    await mkdir(projectDir, { recursive: true })
+    const outFile = path.join(projectDir, 'dist', 'out.txt')
+    await mkdir(path.dirname(outFile), { recursive: true })
+
+    await writeFile(outFile, 'first')
+    await cache.save({
+      hash: 'h-overwrite',
+      projectDir,
+      outputFiles: [outFile],
+      entry: {
+        taskId: 'pkg#build',
+        command: 'first',
+        durationMs: 1,
+        stdout: '',
+      },
+    })
+
+    // Second save at the same hash with different content: it succeeds and
+    // writes nothing, so a read still sees the first.
+    await writeFile(outFile, 'second-version-longer')
+    const forced = new Cache(cacheDir, { read: false, write: true })
+    await forced.save({
+      hash: 'h-overwrite',
+      projectDir,
+      outputFiles: [outFile],
+      entry: {
+        taskId: 'pkg#build',
+        command: 'second',
+        durationMs: 2,
+        stdout: 'replaced',
+      },
+    })
+
+    forced.close()
+    const got = await cache.get('h-overwrite')
+    expect(got?.command).toBe('first')
+    expect(got?.durationMs).toBe(1)
+    expect(got?.stdout).toBe('')
+    // The stored payload is the first write's. Restore into a sibling dir
+    // and read the materialized file.
+    const restoreDir = path.join(workspaceRoot, 'restore-target')
+    await cache.restoreOutputs('h-overwrite', restoreDir)
+    const stored = await readFile(path.join(restoreDir, 'dist', 'out.txt'), 'utf8')
+    expect(stored).toBe('first')
+  })
+
   it('recordRun() persists cache-hit-remote with cache_hit=1', async () => {
     cache.recordRun({
       hash: 'h-remote',

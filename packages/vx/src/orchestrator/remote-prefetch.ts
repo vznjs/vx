@@ -41,6 +41,11 @@ export interface PrefetchArgs {
   concurrency: number
   /** When false (remote reads disabled), no prefetch fires. */
   remoteRead: boolean
+  /**
+   * With reads off and writes on (`--force`), the keys go to
+   * `probeBeforeUpload` instead, so a key a remote holds is not re-sent.
+   */
+  remoteWrite: boolean
 }
 
 /**
@@ -55,7 +60,15 @@ export interface PrefetchArgs {
  * is always correct.
  */
 export function startRemotePrefetch(args: PrefetchArgs): Promise<void> {
-  if (!args.remoteRead) return Promise.resolve()
+  if (!args.remoteRead) {
+    if (!args.remoteWrite || args.cache.probeBeforeUpload === undefined) return Promise.resolve()
+    const hashes = deriveStableKeys(args).then((keys) => [...new Set(keys.map((k) => k.hash))])
+    args.cache.probeBeforeUpload(hashes)
+    return hashes.then(
+      () => {},
+      () => {},
+    )
+  }
   // Detached from EXECUTION: the caller does NOT await this before
   // scheduling, so prefetch network latency overlaps the run. But the
   // caller DOES await the returned handle before closing the cache, so

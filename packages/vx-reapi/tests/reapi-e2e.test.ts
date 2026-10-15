@@ -107,19 +107,18 @@ describe.if(run)('REAPI round-trip against a live server', () => {
     }
   })
 
-  it('re-putting the same artifact refreshes the entry', async () => {
+  it('re-putting the same artifact keeps the stored entry', async () => {
     const cache = new ReapiRemoteCache({ endpoint })
     const client = new ReapiClient({ endpoint })
     try {
       const key = `vx-dup-${nonce()}`
       const body = new TextEncoder().encode(`dup-${nonce()}`)
       await cache.put(key, new Blob([body]), { durationMs: 1 })
-      // Second put: a small artifact is re-sent without a probe (F-26), which
-      // is harmless for content-addressed bytes — the entry must still read.
+      // An entry is immutable: a second put of the key keeps the first result.
       await cache.put(key, new Blob([body]), { durationMs: 2 })
       expect((await client.findMissingBlobs([digestOf(body)])).length).toBe(0)
       const got = await cache.get(key)
-      expect(got!.durationMs).toBe(2)
+      expect(got!.durationMs).toBe(1)
     } finally {
       cache.close()
       client.close()

@@ -139,6 +139,9 @@ export interface PlanArgs {
  */
 export async function plan(args: PlanArgs): Promise<RunPlan> {
   const cacheStatusById = new Map<string, CacheStatus>()
+  // Keyed first, probed after: a remote that can batch (`hasMany`) is
+  // asked once for every key, one that cannot is asked per key.
+  const probed = new Map<string, string>()
 
   const outcomes = await runGraph({
     nodes: args.nodes,
@@ -176,13 +179,23 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       } else if (!reads) {
         status = 'miss'
       } else {
-        const where = await args.cache.has(hash)
-        status = where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local'
+        probed.set(node.id, hash)
+        return keyedOutcome(node, hash)
       }
       cacheStatusById.set(node.id, status)
       return keyedOutcome(node, hash)
     },
   })
+  if (probed.size > 0) {
+    await args.cache.remoteHasMany?.([...new Set(probed.values())])
+    for (const [id, hash] of probed) {
+      const where = await args.cache.has(hash)
+      cacheStatusById.set(
+        id,
+        where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local',
+      )
+    }
+  }
 
   if (args.restorable !== undefined) {
     const restoreTier = new Set(

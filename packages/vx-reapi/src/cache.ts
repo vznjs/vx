@@ -165,6 +165,15 @@ export class ReapiRemoteCache {
    * stream.
    */
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
+    // An entry is immutable, and UpdateActionResult replaces one: the
+    // lookup runs beside the upload (CAS writes are idempotent), so a key
+    // stored already costs no round trip of its own and keeps its result.
+    // A lookup that fails writes, as before.
+    const action = actionDigestFor(hash)
+    const stored = this.client.getActionResult(action).then(
+      (r) => r?.output_files?.some((f) => f.path === ARTIFACT_PATH) === true,
+      () => false,
+    )
     // Read once, and those bytes hashed and sent, wherever `writeBlob` would
     // read the Blob whole anyway: a second writer of the key renames its
     // artifact over the file, and two reads sent its bytes under this one's
@@ -186,7 +195,8 @@ export class ReapiRemoteCache {
       const missing = await this.client.findMissingBlobs([digest])
       if (missing.length > 0) await this.client.writeBlob(digest, data ?? body)
     }
-    await this.client.updateActionResult(actionDigestFor(hash), {
+    if (await stored) return
+    await this.client.updateActionResult(action, {
       exit_code: 0,
       output_files: [{ path: ARTIFACT_PATH, digest, is_executable: false }],
       stdout_raw: encodeDuration(meta.durationMs),

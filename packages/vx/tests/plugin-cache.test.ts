@@ -50,10 +50,11 @@ function wire(opts: { batch?: boolean; fail?: boolean } = {}): Wire {
       const b = store.get(h)
       return b === undefined ? null : { body: new Blob([b]), durationMs: undefined }
     },
+    // The seam's contract: a put of a stored key keeps the stored bytes.
     async put(h, body) {
       calls.push(`put ${h}`)
       boom()
-      store.set(h, new Uint8Array(await body.arrayBuffer()))
+      if (!store.has(h)) store.set(h, new Uint8Array(await body.arrayBuffer()))
     },
   }
   if (opts.batch) {
@@ -138,7 +139,12 @@ describe('ctx.cache', () => {
     await c.put('x', bytes('first'))
     await c.put('x', bytes('second'))
     expect(text(await c.get('x'))).toBe('first')
-    expect(remote.calls.filter((k) => k.startsWith('put'))).toHaveLength(1)
+    // Core asks no `has` before a put (M, 2026-10-15): the remote keeps
+    // what it holds.
+    expect(remote.calls.filter((k) => !k.startsWith('get'))).toEqual([
+      `put ${[...remote.store.keys()][0]}`,
+      `put ${[...remote.store.keys()][0]}`,
+    ])
     expect(text([...remote.store.values()][0]!)).toBe('first')
   })
 

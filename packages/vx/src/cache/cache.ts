@@ -1780,9 +1780,14 @@ export class Cache implements CacheLayer {
 
   private async hasEntry(hash: string): Promise<'local' | 'remote' | null> {
     if (!this.read) return null
+    return this.storedHere(hash) ? 'local' : null
+  }
+
+  /** The index row and its artifact are both here, whatever the run may read. */
+  private storedHere(hash: string): boolean {
     const row = this.entryExists.get(hash) as { inline_at: number | null } | null
-    if (row === null) return null
-    return row.inline_at !== null || existsSync(this.tarPath(hash)) ? 'local' : null
+    if (row === null) return false
+    return row.inline_at !== null || existsSync(this.tarPath(hash))
   }
 
   // Local cache has no slower layer to warm from — prefetch is a no-op.
@@ -2100,6 +2105,9 @@ export class Cache implements CacheLayer {
     // still uploads to remote — it calls `packArtifact` itself to get
     // the bytes, since there's no local artifact to read off disk.
     if (!this.write) return
+    // A cache that reads saves only on a miss. One that does not (`--force`)
+    // re-executes a key it may hold: that entry is kept as it is.
+    if (!this.read && this.guard(() => this.storedHere(args.hash))) return
     // The cache directory is the constructor's (`mkdirSync`, with a
     // refusal recorded for `assertWritable`); re-creating it here and
     // again in `writeArtifactAndIndex` cost every save two thread-pool

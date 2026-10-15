@@ -228,6 +228,7 @@ export interface CacheLayer {
   remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   markRemoteAbsent?(hashes: Iterable<string>): void
+  probeBeforeUpload?(hashes: Promise<readonly string[]>): void
   drainUploads?(): Promise<void>
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>

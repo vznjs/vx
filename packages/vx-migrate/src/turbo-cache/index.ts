@@ -385,6 +385,12 @@ export class TurboRemoteCache implements RemoteCacheLayer {
    * the reads off too, and every task after the first upload missed.
    */
   private writesRefused = false
+  /**
+   * Keys this process saw the server lack (a 404, a batch answer): `put`
+   * asks no HEAD for them. Turbo's PUT replaces a stored artifact and an
+   * entry is immutable, so any other key is asked first.
+   */
+  private readonly absent = new Set<string>()
   private readonly key: Uint8Array | undefined
   readonly endpoint: string
   /** What `TURBO_REMOTE_CACHE_READ_ONLY` and friends leave this run (`turboRemoteAccess`). */
@@ -517,7 +523,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const res = await this.request('HEAD', `/${hash}`)
     if (res === undefined) return false
     if (res.status === 200) return true
-    if (res.status === 404) return false
+    if (res.status === 404) {
+      this.absent.add(hash)
+      return false
+    }
     throw new Error(`HTTP ${res.status}`)
   }
 
@@ -538,12 +547,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     // Each hash answers ArtifactInfo, null, or `{ error: { message } }`; an
     // error entry is not a stored artifact, and it was counted as one (a GET
     // spent on a 404, item 929).
-    return new Set(
+    const held = new Set(
       hashes.filter((h) => {
         const v = info[h]
         return typeof v === 'object' && v !== null && !('error' in v)
       }),
     )
+    for (const h of hashes) if (!held.has(h)) this.absent.add(h)
+    return held
   }
 
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
@@ -556,7 +567,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     if (res === undefined) return null
     if (res.status !== 200) {
       await res.body?.cancel()
-      if (res.status === 404) return null
+      if (res.status === 404) {
+        this.absent.add(hash)
+        return null
+      }
       throw new Error(`HTTP ${res.status}`)
     }
     const duration = Number(res.headers.get('x-artifact-duration'))
@@ -608,6 +622,16 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
     if (this.disabled || this.writesRefused) return
+    if (!this.absent.has(hash)) {
+      // Part of the upload, so under its deadline. Any answer but 200 or 404
+      // uploads: a lost store costs more. A server the HEAD cannot reach
+      // fails the put, as the PUT would.
+      const head = await this.request('HEAD', `/${hash}`, {
+        timeoutMs: this.config.uploadTimeoutMs,
+      })
+      if (head === undefined || head.status === 200) return
+      if (head.status === 404) this.absent.add(hash)
+    }
     const headers: Record<string, string> = {
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(body.size),
@@ -625,6 +649,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     // Turbo's client takes any 2xx (`error_for_status`); a server's 201 or
     // 204 stored the artifact and was counted a failed upload.
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    this.absent.delete(hash)
   }
 }
 

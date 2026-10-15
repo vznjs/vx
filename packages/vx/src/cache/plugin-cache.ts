@@ -167,7 +167,6 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       if (policy.localWrite) localPut(key, bytes)
       for (const { remote } of writers) {
         try {
-          if (await remote.has(key)) continue
           await remote.put(key, new Blob([bytes]), { durationMs: 0 })
         } catch {
           // the other layers still keep it

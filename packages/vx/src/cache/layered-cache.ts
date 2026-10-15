@@ -66,15 +66,15 @@ export interface RemoteCacheLayer {
    * token): core clears the run's remote axis it lacks. Omitted → both.
    */
   readonly access?: { readonly read?: boolean; readonly write?: boolean }
-  /** Existence probe (drives the plan path's `--dry` remote prediction). */
+  /** Existence probe: `--dry` and `--force` ask it per key when the remote cannot batch. */
   has(hash: string): Promise<boolean>
   /**
    * Optional batch existence probe: given N hashes, return the subset stored
-   * remotely in ONE round-trip. Lets the prefetch pass collapse N per-hash
-   * network probes into one, then fetch only the hits. A remote that can't
-   * batch omits this method (or returns `null`) and the layer falls back to
-   * the per-hash path. Never throws for control flow — `null` means "no batch
-   * info; use per-hash".
+   * remotely in ONE round-trip. Its presence says the wire can batch: a run
+   * asks it once for its keys, `--dry` before its per-key answers, and
+   * `--force` in the background to skip uploads of held keys. Without it a
+   * run GETs each key directly (no `has`). Never throws for control flow:
+   * `null` means "no batch info; use per-hash".
    */
   hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   /**
@@ -91,7 +91,9 @@ export interface RemoteCacheLayer {
    * Store an artifact (fire-and-forget from LayeredCache's perspective).
    * `body` is file-backed (`Bun.file`) when the local store holds the
    * artifact, so a plugin that streams it never holds it whole, and every
-   * read of it sees the same bytes.
+   * read of it sees the same bytes. An entry is immutable: a `put` of a
+   * key the remote holds keeps the stored bytes. Core never asks `has`
+   * first; a wire that would overwrite checks inside.
    */
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
@@ -187,6 +189,10 @@ export class LayeredCache implements CacheLayer {
     for (const hash of hashes) {
       if (!this.inflight.has(hash)) this.inflight.set(hash, Promise.resolve(false))
     }
+  }
+
+  probeBeforeUpload(hashes: Promise<readonly string[]>): void {
+    for (const lane of this.lanes) lane.probeBeforeUpload(hashes)
   }
 
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
