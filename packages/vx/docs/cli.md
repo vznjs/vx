@@ -2507,22 +2507,24 @@ Nx's spellings name these: `vx show projects` (when no project or task
 has that name) and `vx show project <name>` say `vx show` and
 `vx show <name>`.
 
-No target: one line per project — name, root-relative dir, task count,
-and a `(no vx config)` marker for config-less packages; one whose
-tasks all come from plugins reads `N tasks (no vx config; from
-plugins)`, and one a configured project depends on reads `1 task (no
-vx config; default build)`: a run loads it for that dependant's
-`^build` (X-48). A project's `tags` follow in brackets. With `--format json`
+No target: a table, one row per project — name, root-relative dir,
+task count, and `no vx config` for config-less packages; one whose
+tasks all come from plugins reads `N tasks from plugins (no vx
+config)`, and one a configured project depends on reads `1 task,
+default build (no vx config)`: a run loads it for that dependant's
+`^build` (X-48). A `tags` column appears when any project has tags. With `--format json`
 it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 
 ```
 $ vx show
-app   packages/app   3 tasks  [scope:web]
-bare  packages/bare  (no vx config)
+  project  dir            tasks         tags
+  app      packages/app   3 tasks       scope:web
+  bare     packages/bare  no vx config
 ```
 
-Under its header `vx show <project>` prints its `tags`.
-`vx show <project>` prints a block per task with every field the run
+`vx show <project>` opens with a report naming the project: its `dir`,
+its `tags`, and `config  none` for a package with no config file. Then
+it prints a block per task, headed by its `project#task`, with every field the run
 reads: description, command (`(group)` for group tasks), `dependsOn`,
 `timeout`, `retries`, `env.passThrough` / `env.define` / `env.secret`,
 `remote`, `sandbox`, `persistent`, `interactive` (`yes` / `no`), and the
@@ -2541,15 +2543,15 @@ list and `vx show <project>`, but `vx show build`, like
 
 ```
 $ vx show app#build
-app — packages/app
 
-build
-  description:   compile the app
-  command:       tsc -b
-  dependsOn:     ^build
-  inputs.files:  src/**
-  inputs.env:    NODE_ENV
-  outputs.files: dist/**
+─ app#build ──────────────────────────────────────────────────
+  dir            packages/app
+  description    compile the app
+  command        tsc -b
+  dependsOn      ^build
+  inputs.files   src/**
+  inputs.env     NODE_ENV
+  outputs.files  dist/**
 ```
 
 Unknown project / task names exit `1` with the same near-miss hint

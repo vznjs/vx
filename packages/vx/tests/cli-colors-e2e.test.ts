@@ -91,8 +91,6 @@ describe('vx paints only a run, and only as the env asks', () => {
     'every other verb is plain under FORCE_COLOR=1',
     () => {
       const verbs = [
-        ['show'],
-        ['show', 'app#build'],
         ['why', 'app#build'],
         ['last'],
         ['last', '--list'],
@@ -109,6 +107,8 @@ describe('vx paints only a run, and only as the env asks', () => {
       // forced, plain into a pipe (log-design).
       const clean = ['cache', 'clean', '--max-size', '1G', '--dry-run']
       expect([painted(clean, {}), painted(clean, { FORCE_COLOR: '1' })]).toEqual([false, true])
+      for (const verb of [['show'], ['show', 'app#build']])
+        expect([painted(verb, {}), painted(verb, { FORCE_COLOR: '1' })]).toEqual([false, true])
       expect([painted(['info'], {}), painted(['info'], { FORCE_COLOR: '1' })]).toEqual([
         false,
         true,

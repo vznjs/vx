@@ -9,32 +9,11 @@
       "--max-size",
       "--older-than"
     ],
-    "completions": [
-      "--help"
-    ],
-    "docs": [
-      "--format",
-      "--help",
-      "--limit"
-    ],
-    "help": [
-      "--help"
-    ],
-    "info": [
-      "--cache-dir",
-      "--format",
-      "--help"
-    ],
-    "init": [
-      "--dry",
-      "--force",
-      "--format",
-      "--help",
-      "--keep",
-      "--mjs",
-      "--native",
-      "--plugin"
-    ],
+    "completions": ["--help"],
+    "docs": ["--format", "--help", "--limit"],
+    "help": ["--help"],
+    "info": ["--cache-dir", "--format", "--help"],
+    "init": ["--dry", "--force", "--format", "--help", "--keep", "--mjs", "--native", "--plugin"],
     "last": [
       "--branch",
       "--cache-dir",
@@ -45,11 +24,7 @@
       "--log",
       "--stats"
     ],
-    "lock": [
-      "--check",
-      "--format",
-      "--help"
-    ],
+    "lock": ["--check", "--format", "--help"],
     "run": [
       "--affected",
       "--all",
@@ -82,18 +57,9 @@
       "--timeout",
       "--verbosity"
     ],
-    "show": [
-      "--affected",
-      "--filter",
-      "--format",
-      "--help"
-    ],
-    "upgrade": [
-      "--help"
-    ],
-    "version": [
-      "--help"
-    ],
+    "show": ["--affected", "--filter", "--format", "--help"],
+    "upgrade": ["--help"],
+    "version": ["--help"],
     "watch": [
       "--affected",
       "--all",
@@ -119,47 +85,17 @@
       "--teardown-timeout",
       "--timeout"
     ],
-    "why": [
-      "--cache-dir",
-      "--format",
-      "--help",
-      "--run"
-    ]
+    "why": ["--cache-dir", "--format", "--help", "--run"]
   },
   "values": {
-    "cache --cache-dir": [
-      "*"
-    ],
-    "cache --format": [
-      "json",
-      "pretty"
-    ],
+    "cache --cache-dir": ["*"],
+    "cache --format": ["json", "pretty"],
     "cache --global": [],
-    "cache --max-size": [
-      "10K",
-      "1G",
-      "2T",
-      "30m",
-      "500M"
-    ],
-    "cache --older-than": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
-    "info --cache-dir": [
-      "*"
-    ],
-    "info --format": [
-      "json",
-      "pretty"
-    ],
-    "init --format": [
-      "json",
-      "pretty"
-    ],
+    "cache --max-size": ["10K", "1G", "2T", "30m", "500M"],
+    "cache --older-than": ["12h", "1d", "30m", "30s", "500M"],
+    "info --cache-dir": ["*"],
+    "info --format": ["json", "pretty"],
+    "init --format": ["json", "pretty"],
     "init --plugin": [
       "admit",
       "cache",
@@ -172,254 +108,63 @@
       "telemetry"
     ],
     "last --branch": [],
-    "last --cache-dir": [
-      "*"
-    ],
-    "last --format": [
-      "json",
-      "pretty"
-    ],
-    "last --list": [
-      "1",
-      "10",
-      "2"
-    ],
-    "last --log": [
-      "*"
-    ],
-    "lock --format": [
-      "json",
-      "pretty"
-    ],
-    "run --affected": [
-      "*"
-    ],
-    "run --branch": [
-      "*"
-    ],
-    "run --cache-dir": [
-      "*"
-    ],
-    "run --cache-download": [
-      "all",
-      "none",
-      "toplevel"
-    ],
-    "run --cache-policy": [
-      "local:r",
-      "local:rw",
-      "local:w",
-      "remote:r",
-      "remote:rw",
-      "remote:w"
-    ],
-    "run --cache-scope": [
-      "*"
-    ],
-    "run --concurrency": [
-      "1",
-      "10",
-      "2"
-    ],
-    "run --continue": [
-      "always",
-      "dependencies-successful",
-      "deps-ok",
-      "never"
-    ],
-    "run --dry": [
-      "json",
-      "text"
-    ],
-    "run --exclude-dependencies": [
-      "*"
-    ],
-    "run --filter": [
-      "*"
-    ],
-    "run --force": [
-      "false",
-      "true"
-    ],
-    "run --format": [
-      "json",
-      "pretty"
-    ],
-    "run --graph": [
-      "*"
-    ],
-    "run --kill-grace": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
-    "run --output-logs": [
-      "errors-only",
-      "full",
-      "hash-only",
-      "none"
-    ],
-    "run --profile": [
-      "*"
-    ],
-    "run --ready-notice": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
-    "run --report": [
-      "markdown"
-    ],
-    "run --report-file": [
-      "*"
-    ],
-    "run --retries": [
-      "0",
-      "1",
-      "10",
-      "2"
-    ],
+    "last --cache-dir": ["*"],
+    "last --format": ["json", "pretty"],
+    "last --list": ["1", "10", "2"],
+    "last --log": ["*"],
+    "lock --format": ["json", "pretty"],
+    "run --affected": ["*"],
+    "run --branch": ["*"],
+    "run --cache-dir": ["*"],
+    "run --cache-download": ["all", "none", "toplevel"],
+    "run --cache-policy": ["local:r", "local:rw", "local:w", "remote:r", "remote:rw", "remote:w"],
+    "run --cache-scope": ["*"],
+    "run --concurrency": ["1", "10", "2"],
+    "run --continue": ["always", "dependencies-successful", "deps-ok", "never"],
+    "run --dry": ["json", "text"],
+    "run --exclude-dependencies": ["*"],
+    "run --filter": ["*"],
+    "run --force": ["false", "true"],
+    "run --format": ["json", "pretty"],
+    "run --graph": ["*"],
+    "run --kill-grace": ["12h", "1d", "30m", "30s", "500M"],
+    "run --output-logs": ["errors-only", "full", "hash-only", "none"],
+    "run --profile": ["*"],
+    "run --ready-notice": ["12h", "1d", "30m", "30s", "500M"],
+    "run --report": ["markdown"],
+    "run --report-file": ["*"],
+    "run --retries": ["0", "1", "10", "2"],
     "run --schedule": [],
-    "run --summarize": [
-      "*"
-    ],
-    "run --tag": [
-      "k=v"
-    ],
-    "run --teardown-timeout": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
-    "run --timeout": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
-    "run --verbosity": [
-      "0",
-      "1",
-      "10",
-      "2"
-    ],
-    "show --affected": [
-      "*"
-    ],
-    "show --filter": [
-      "*"
-    ],
-    "show --format": [
-      "json",
-      "pretty"
-    ],
-    "watch --affected": [
-      "*"
-    ],
-    "watch --branch": [
-      "*"
-    ],
-    "watch --cache-dir": [
-      "*"
-    ],
-    "watch --cache-download": [
-      "all",
-      "none",
-      "toplevel"
-    ],
-    "watch --cache-policy": [
-      "local:r",
-      "local:rw",
-      "local:w",
-      "remote:r",
-      "remote:rw",
-      "remote:w"
-    ],
-    "watch --cache-scope": [
-      "*"
-    ],
-    "watch --concurrency": [
-      "1",
-      "10",
-      "2"
-    ],
-    "watch --continue": [
-      "always",
-      "dependencies-successful",
-      "deps-ok",
-      "never"
-    ],
-    "watch --exclude-dependencies": [
-      "*"
-    ],
-    "watch --filter": [
-      "*"
-    ],
-    "watch --force": [
-      "false",
-      "true"
-    ],
-    "watch --kill-grace": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
-    "watch --output-logs": [
-      "errors-only",
-      "full",
-      "hash-only",
-      "none"
-    ],
-    "watch --ready-notice": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
-    "watch --retries": [
-      "0",
-      "1",
-      "10",
-      "2"
-    ],
+    "run --summarize": ["*"],
+    "run --tag": ["k=v"],
+    "run --teardown-timeout": ["12h", "1d", "30m", "30s", "500M"],
+    "run --timeout": ["12h", "1d", "30m", "30s", "500M"],
+    "run --verbosity": ["0", "1", "10", "2"],
+    "show --affected": ["*"],
+    "show --filter": ["*"],
+    "show --format": ["json", "pretty"],
+    "watch --affected": ["*"],
+    "watch --branch": ["*"],
+    "watch --cache-dir": ["*"],
+    "watch --cache-download": ["all", "none", "toplevel"],
+    "watch --cache-policy": ["local:r", "local:rw", "local:w", "remote:r", "remote:rw", "remote:w"],
+    "watch --cache-scope": ["*"],
+    "watch --concurrency": ["1", "10", "2"],
+    "watch --continue": ["always", "dependencies-successful", "deps-ok", "never"],
+    "watch --exclude-dependencies": ["*"],
+    "watch --filter": ["*"],
+    "watch --force": ["false", "true"],
+    "watch --kill-grace": ["12h", "1d", "30m", "30s", "500M"],
+    "watch --output-logs": ["errors-only", "full", "hash-only", "none"],
+    "watch --ready-notice": ["12h", "1d", "30m", "30s", "500M"],
+    "watch --retries": ["0", "1", "10", "2"],
     "watch --schedule": [],
-    "watch --tag": [
-      "k=v"
-    ],
-    "watch --teardown-timeout": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
-    "watch --timeout": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
-    "why --cache-dir": [
-      "*"
-    ],
-    "why --format": [
-      "json",
-      "pretty"
-    ],
-    "why --run": [
-      "*"
-    ]
+    "watch --tag": ["k=v"],
+    "watch --teardown-timeout": ["12h", "1d", "30m", "30s", "500M"],
+    "watch --timeout": ["12h", "1d", "30m", "30s", "500M"],
+    "why --cache-dir": ["*"],
+    "why --format": ["json", "pretty"],
+    "why --run": ["*"]
   },
   "env": [
     "VX_CACHE_DIR",

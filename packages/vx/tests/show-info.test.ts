@@ -151,7 +151,7 @@ describe('vx show (e2e)', () => {
       expect(r.out).toContain('packages/app')
       expect(r.out).toContain('4 tasks')
       expect(r.out).toContain('bare')
-      expect(r.out).toContain('(no vx config)')
+      expect(r.out).toContain('no vx config')
     },
     TIMEOUT,
   )
@@ -195,7 +195,7 @@ describe('vx show (e2e)', () => {
       expect(r.out).toContain('(group)')
       // Persistent fields surface.
       expect(r.out).toContain('ready')
-      expect(r.out).toContain('timeout:    5s')
+      expect(r.out).toContain('timeout     5s')
     },
     TIMEOUT,
   )
@@ -238,8 +238,9 @@ describe('vx show (e2e)', () => {
       const rows = r.out
         .split('\n')
         .filter((l) => l.startsWith('  '))
-        .map((l) => l.trim().replace(/:\s+/, ': '))
+        .map((l) => l.trim().replace(/ {2,}/, ': '))
       expect(rows).toEqual([
+        'dir: packages/app',
         'command: echo lint',
         'retries: 2',
         'env.passThrough: HOME',
@@ -248,7 +249,7 @@ describe('vx show (e2e)', () => {
         'inputs.files: src/**/*.ts',
         'inputs.workspaceFiles: tsconfig.base.json',
         'inputs.runtime: node -v',
-        'outputs.files:',
+        'outputs.files',
       ])
     },
     TIMEOUT,
@@ -259,7 +260,7 @@ describe('vx show (e2e)', () => {
     async () => {
       const r = await vx(root, ['show', 'build'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('app — packages/app')
+      expect(r.out).toContain('─ app#build ')
       expect(r.out).toContain('echo build')
       const j = await vx(root, ['show', 'build', '--format=json'])
       expect(j.code).toBe(0)
@@ -381,8 +382,8 @@ describe('vx show (e2e)', () => {
       // and no config at all. The list view distinguishes them; so does this.
       const r = await vx(root, ['show', 'bare'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('(no vx config)')
-      expect(r.out).not.toContain('(no tasks declared)')
+      expect(r.out).toMatch(/^ {2}config +none$/m)
+      expect(r.out).not.toContain('none declared')
     },
     TIMEOUT,
   )
@@ -394,7 +395,7 @@ describe('vx show (e2e)', () => {
       // value prints as written, unit and all.
       const r = await vx(root, ['show', 'app#dev'])
       expect(r.code).toBe(0)
-      expect(r.out).toMatch(/timeout:\s+5s/)
+      expect(r.out).toMatch(/timeout\s+5s/)
     },
     TIMEOUT,
   )
@@ -416,8 +417,8 @@ describe('vx show under a `project` plugin (e2e)', () => {
       // `(no vx config)` for a package `vx run` would happily run.
       const r = await vx(root, ['show'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('2 tasks (no vx config; from plugins)')
-      expect(r.out).not.toContain('(no vx config)\n')
+      expect(r.out).toContain('2 tasks from plugins (no vx config)')
+      expect(r.out).not.toMatch(/ {2}no vx config$/m)
       const one = await vx(root, ['show', 'one#gen'])
       expect(one.code).toBe(0)
       expect(one.out).toContain('echo gen one')

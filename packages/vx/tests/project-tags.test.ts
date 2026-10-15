@@ -118,11 +118,11 @@ describe('vx show lists tags', () => {
         ui: ['scope:web', 'type:lib'],
       })
       const pretty = await vx(root, ['show'])
-      expect(pretty.out).toMatch(/^app\s+packages\/app\s+1 task {2}\[scope:web, type:app\]$/m)
+      expect(pretty.out).toMatch(/^ {2}app\s+packages\/app\s+1 task {2}scope:web, type:app$/m)
       const one = await vx(root, ['show', 'ui'])
-      expect(one.out.split('\n').slice(0, 2)).toEqual([
-        'ui — packages/ui',
-        '  tags: scope:web, type:lib',
+      expect(one.out.split('\n').slice(2, 4)).toEqual([
+        '  dir       packages/ui',
+        '  tags      scope:web, type:lib',
       ])
     },
     PARITY_TIMEOUT,

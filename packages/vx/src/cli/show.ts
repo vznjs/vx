@@ -11,7 +11,17 @@ import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { affectedTaskProjects, isDefaultBuild } from '../orchestrator/index.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
-import { listed, nearMatches, relPosix, secretMask, UserError, sayNotice } from '../util/index.js'
+import {
+  type ColorSupport,
+  detectColors,
+  listed,
+  nearMatches,
+  relPosix,
+  secretMask,
+  UserError,
+  sayNotice,
+  ui,
+} from '../util/index.js'
 import { affectedFilterFor, resolveFilters } from './select.js'
 import {
   discoverCliProjects,
@@ -160,7 +170,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
 
   if (parsed.target === undefined) {
     const shown = metas.filter((m) => inSelection(m.name))
-    process.stdout.write(renderList(root, shown, projects, parsed.format))
+    process.stdout.write(renderList(root, shown, projects, parsed.format, colorsOut()))
     return 0
   }
 
@@ -204,7 +214,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       )
       shown = shown.filter((p) => kept.has(p.name))
     }
-    process.stdout.write(renderTaskAcross(root, shown, projectName!, parsed.format))
+    process.stdout.write(renderTaskAcross(root, shown, projectName!, parsed.format, colorsOut()))
     return 0
   }
 
@@ -215,7 +225,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
 
   if (taskName === undefined) {
     process.stdout.write(
-      renderProject(meta.name, dir, config, meta.configPath !== null, parsed.format),
+      renderProject(meta.name, dir, config, meta.configPath !== null, parsed.format, colorsOut()),
     )
     return 0
   }
@@ -227,7 +237,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
       'VX_E_UNKNOWN_TASK',
     )
   }
-  process.stdout.write(renderTask(meta.name, dir, taskName, task, parsed.format))
+  process.stdout.write(renderTask(meta.name, dir, taskName, task, parsed.format, colorsOut()))
   return 0
 }
 
@@ -284,11 +294,20 @@ function shownConfig(config: ProjectConfig | null): ProjectConfig | null {
   }
 }
 
+const colorsOut = (): ColorSupport => detectColors(process.stdout)
+const PLAIN: ColorSupport = { enabled: false }
+
+/** One block of several, with no blank line between them. */
+const joined = (blocks: readonly ui.Block[]): ui.Block => ({
+  lines: (c) => blocks.flatMap((b) => b.lines(c)),
+})
+
 function renderList(
   root: string,
   metas: readonly ProjectMeta[],
   projects: ReadonlyMap<string, ProjectEntry>,
   format: 'pretty' | 'json',
+  colors: ColorSupport = PLAIN,
 ): string {
   const rows = metas.map((meta) => {
     const tasks = projects.get(meta.name)?.config.tasks ?? {}
@@ -309,9 +328,8 @@ function renderList(
     )}\n`
   }
   if (rows.length === 0) return ''
-  const nameW = Math.max(...rows.map((r) => r.name.length))
-  const dirW = Math.max(...rows.map((r) => r.dir.length))
-  const lines = rows.map((r) => {
+  const anyTags = rows.some((r) => r.tags.length > 0)
+  const cells = rows.map((r) => {
     const n = r.tasks.length
     const count = `${n} task${n === 1 ? '' : 's'}`
     // A package with no config file has only tasks a plugin gave it, or the
@@ -319,14 +337,14 @@ function renderList(
     const tasks = r.configured
       ? count
       : n === 0
-        ? '(no vx config)'
+        ? 'no vx config'
         : r.onlyDefault
-          ? `${count} (no vx config; default build)`
-          : `${count} (no vx config; from plugins)`
-    const tags = r.tags.length > 0 ? `  [${r.tags.join(', ')}]` : ''
-    return `${r.name.padEnd(nameW)}  ${r.dir.padEnd(dirW)}  ${tasks}${tags}`
+          ? `${count}, default build (no vx config)`
+          : `${count} from plugins (no vx config)`
+    return [ui.id(r.name), r.dir, tasks, ...(anyTags ? [r.tags.join(', ')] : [])]
   })
-  return `${lines.join('\n')}\n`
+  const columns = ['project', 'dir', 'tasks', ...(anyTags ? ['tags'] : [])]
+  return ui.render([ui.table(columns, cells)], colors)
 }
 
 function renderProject(
@@ -335,6 +353,7 @@ function renderProject(
   config: ProjectConfig | null,
   hasConfigFile: boolean,
   format: 'pretty' | 'json',
+  colors: ColorSupport = PLAIN,
 ): string {
   if (format === 'json') {
     // Round-trip so the printed object is exactly the JSON form of the
@@ -344,14 +363,17 @@ function renderProject(
   }
   const tags = config?.tags ?? []
   const tasks = Object.entries(config?.tasks ?? {})
-  const head = `${name} — ${dir}${tags.length > 0 ? `\n  tags: ${tags.join(', ')}` : ''}${
+  const head: ui.FieldRow[] = [
+    ['dir', dir],
+    ...(tags.length > 0 ? [['tags', tags.join(', ')] as const] : []),
     // A config-less package a dependant reaches has the default `build` (X-9).
-    hasConfigFile || tasks.length === 0 ? '' : '\n  (no vx config)'
-  }`
-  if (tasks.length === 0)
-    return `${head}\n  ${hasConfigFile ? '(no tasks declared)' : '(no vx config)'}\n`
-  const blocks = tasks.map(([taskName, task]) => taskBlock(taskName, task))
-  return `${head}\n\n${blocks.join('\n')}`
+    ...(hasConfigFile ? [] : [['config', 'none'] as const]),
+    ...(tasks.length === 0 && hasConfigFile ? [['tasks', 'none declared'] as const] : []),
+  ]
+  const blocks = tasks.map(([taskName, task]) =>
+    joined([ui.text(ui.id(`${name}#${taskName}`)), ui.fields(taskRows(task))]),
+  )
+  return ui.render([ui.report(name, head), ...blocks], colors)
 }
 
 function renderTask(
@@ -360,12 +382,13 @@ function renderTask(
   taskName: string,
   task: TaskConfig,
   format: 'pretty' | 'json',
+  colors: ColorSupport = PLAIN,
 ): string {
   if (format === 'json') {
     const obj = { name, dir, task: taskName, config: shownTask(task) }
     return `${JSON.stringify(obj)}\n`
   }
-  return `${name} — ${dir}\n\n${taskBlock(taskName, task)}`
+  return ui.render([taskReport(name, dir, taskName, task)], colors)
 }
 
 function renderTaskAcross(
@@ -373,6 +396,7 @@ function renderTaskAcross(
   declaring: readonly ProjectEntry[],
   taskName: string,
   format: 'pretty' | 'json',
+  colors: ColorSupport,
 ): string {
   if (format === 'json') {
     const list = declaring.map((p) => ({
@@ -383,18 +407,28 @@ function renderTaskAcross(
     }))
     return `${JSON.stringify(list)}\n`
   }
-  return declaring
-    .map(
-      (p) =>
-        `${p.name} — ${relPosix(root, p.dir) || '.'}\n\n${taskBlock(taskName, p.config.tasks![taskName]!)}`,
-    )
-    .join('\n')
+  if (declaring.length === 0) return ''
+  return ui.render(
+    [
+      joined(
+        declaring.map((p) =>
+          taskReport(p.name, relPosix(root, p.dir) || '.', taskName, p.config.tasks![taskName]!),
+        ),
+      ),
+    ],
+    colors,
+  )
+}
+
+/** `─ app#build ───`, the project's dir, then every field the run reads. */
+function taskReport(name: string, dir: string, taskName: string, task: TaskConfig): ui.Block {
+  return ui.report(`${name}#${taskName}`, [['dir', dir], ...taskRows(task)])
 }
 
 /** Every field the run reads, in the order the schema declares them. */
-function taskBlock(taskName: string, raw: TaskConfig): string {
+function taskRows(raw: TaskConfig): ui.FieldRow[] {
   const task = shownTask(raw)
-  const rows: [string, string][] = []
+  const rows: ui.FieldRow[] = []
   const list = (xs: readonly string[] | undefined): string | undefined =>
     xs === undefined ? undefined : xs.join(', ')
   const add = (label: string, value: string | number | boolean | undefined): void => {
@@ -437,13 +471,5 @@ function taskBlock(taskName: string, raw: TaskConfig): string {
     add('outputs.files', list(cache.outputs.files))
     add('outputs.workspaceFiles', list(cache.outputs.workspaceFiles))
   }
-  const labelW = Math.max(...rows.map(([label]) => label.length))
-  // A multi-line value (a generated `vx_script` wrapper, a heredoc)
-  // continues under its first line, not at column 0 where it reads as
-  // the next task's header.
-  const indent = `\n${' '.repeat(labelW + 4)}`
-  const body = rows.map(
-    ([label, value]) => `  ${`${label}:`.padEnd(labelW + 1)} ${value.replaceAll('\n', indent)}`,
-  )
-  return `${taskName}\n${body.join('\n')}\n`
+  return rows
 }

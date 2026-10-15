@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { writeEdges } from './helpers/plugin.js'
+import { gradientRule } from '../src/util/index.js'
 
 // `vx lock`, then `vx show`: show reads the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -56,15 +57,15 @@ describe('vx show — a multi-line value continues under its first line', () => 
       expect({ code, err }).toEqual({ code: 0, err: '' })
       expect(out).toBe(
         [
-          'app — packages/app',
           '',
-          'build',
-          '  command:    a() {',
+          gradientRule({ enabled: false }, 'app#build'),
+          '  dir         packages/app',
+          '  command     a() {',
           '                echo one',
           '              }',
           '              a',
-          '  dependsOn:  ^build',
-          '  env.define: X=p',
+          '  dependsOn   ^build',
+          '  env.define  X=p',
           '              q',
           '',
         ].join('\n'),
