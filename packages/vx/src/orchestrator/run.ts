@@ -146,16 +146,6 @@ const emptyShortCircuit = (): ShortCircuit => ({
   groupKeys: new Map(),
 })
 
-/**
- * The policy that will actually govern the run. The remote axes are inert
- * without a remote layer to serve them: a `remote:w` policy over a bare
- * local cache writes NOWHERE, yet the write axis reads as on. Normalising
- * here — the ONE place both `run()` and `planRun()` derive it from — is
- * what keeps `--dry` describing the run you are about to get: reading the
- * raw request made the plan label `--cache-policy=local:,remote:rw` "cache miss —
- * would exec" (a result that will be stored) for a run in which caching is
- * entirely off.
- */
 /** The files `node`'s declared outputs match on disk now, workspace-relative and sorted. */
 async function outputsLeft(
   node: TaskNode,
@@ -171,6 +161,16 @@ async function outputsLeft(
   return [...new Set([...own, ...ws].map((p) => relPosix(workspaceRoot, p)))].sort()
 }
 
+/**
+ * The policy that will actually govern the run. The remote axes are inert
+ * without a remote layer to serve them: a `remote:w` policy over a bare
+ * local cache writes NOWHERE, yet the write axis reads as on. Normalising
+ * here — the ONE place both `run()` and `planRun()` derive it from — is
+ * what keeps `--dry` describing the run you are about to get: reading the
+ * raw request made the plan label `--cache-policy=local:,remote:rw` "cache miss —
+ * would exec" (a result that will be stored) for a run in which caching is
+ * entirely off.
+ */
 function effectiveCachePolicy(requested: CachePolicy, hasRemoteLayer: boolean): CachePolicy {
   return hasRemoteLayer ? requested : { ...requested, remoteRead: false, remoteWrite: false }
 }
