@@ -1,0 +1,313 @@
+// A plugin's `ctx.cache` (design docs/design/shared-timings-2026-10.md):
+// its own entries in the cache the workspace declares, the local store
+// first, then each remote, under the run's policy and scope; written once,
+// every failure an absent answer.
+
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'bun:test'
+import {
+  Cache,
+  pluginCache,
+  PLUGIN_ENTRY_MAX_BYTES,
+  type PluginCacheRemote,
+  type RemoteCacheLayer,
+} from '../src/cache/index.js'
+import { xxh3hex } from '../src/util/index.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { gitInitCommit } from './helpers/workspace.js'
+import { run } from './helpers/orchestrator.js'
+import { pluginSource } from './helpers/plugin.js'
+
+const FULL = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
+const bytes = (s: string): Uint8Array => new TextEncoder().encode(s)
+const text = (b: Uint8Array | null): string | null =>
+  b === null ? null : new TextDecoder().decode(b)
+
+interface Wire extends RemoteCacheLayer {
+  store: Map<string, Uint8Array>
+  calls: string[]
+}
+
+function wire(opts: { batch?: boolean; fail?: boolean } = {}): Wire {
+  const store = new Map<string, Uint8Array>()
+  const calls: string[] = []
+  const boom = (): void => {
+    if (opts.fail) throw new Error('remote down')
+  }
+  const w: Wire = {
+    store,
+    calls,
+    async has(h) {
+      calls.push(`has ${h}`)
+      boom()
+      return store.has(h)
+    },
+    async get(h) {
+      calls.push(`get ${h}`)
+      boom()
+      const b = store.get(h)
+      return b === undefined ? null : { body: new Blob([b]), durationMs: undefined }
+    },
+    async put(h, body) {
+      calls.push(`put ${h}`)
+      boom()
+      store.set(h, new Uint8Array(await body.arrayBuffer()))
+    },
+  }
+  if (opts.batch) {
+    w.hasMany = async (hs) => {
+      calls.push(`hasMany ${hs.length}`)
+      boom()
+      return new Set(hs.filter((h) => store.has(h)))
+    }
+  }
+  return w
+}
+
+const dirs: string[] = []
+const caches: Cache[] = []
+afterEach(() => {
+  for (const c of caches.splice(0)) c.close()
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+})
+
+function localStore(): Cache {
+  const dir = mkdtempSync(path.join(tmpdir(), 'vx-plugin-cache-'))
+  dirs.push(dir)
+  const c = new Cache(dir, { read: true, write: true })
+  caches.push(c)
+  return c
+}
+
+const remoteOf = (remote: RemoteCacheLayer, read = true, write = true): PluginCacheRemote => ({
+  remote,
+  read,
+  write,
+})
+
+describe('ctx.cache', () => {
+  it('has answers true after a put and false for an absent key, through the local store', async () => {
+    const c = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [],
+      scope: undefined,
+    })
+    expect(await c.has('x')).toBe(false)
+    await c.put('x', bytes('one'))
+    expect(await c.has('x')).toBe(true)
+    expect(text(await c.get('x'))).toBe('one')
+    expect(await c.get('y')).toBeNull()
+  })
+
+  it('has answers through a remote layer, and a remote hit is kept locally', async () => {
+    const remote = wire()
+    const db = localStore().dbHandle()
+    const writer = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    })
+    await writer.put('x', bytes('one'))
+    expect(remote.store.size).toBe(1)
+    const reader = pluginCache('org/a', {
+      db,
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    })
+    expect(await reader.has('x')).toBe(true)
+    expect(await reader.has('nope')).toBe(false)
+    expect(text(await reader.get('x'))).toBe('one')
+    remote.calls.length = 0
+    expect(text(await reader.get('x'))).toBe('one')
+    expect(remote.calls).toEqual([])
+  })
+
+  it('a put never replaces an entry, locally or remotely', async () => {
+    const remote = wire()
+    const c = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    })
+    await c.put('x', bytes('first'))
+    await c.put('x', bytes('second'))
+    expect(text(await c.get('x'))).toBe('first')
+    expect(remote.calls.filter((k) => k.startsWith('put'))).toHaveLength(1)
+    expect(text([...remote.store.values()][0]!)).toBe('first')
+  })
+
+  it('a read-only policy keeps a put out of the remote', async () => {
+    const remote = wire()
+    const c = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: { ...FULL, remoteWrite: false },
+      remotes: [remoteOf(remote, true, false)],
+      scope: undefined,
+    })
+    await c.put('x', bytes('one'))
+    expect(remote.store.size).toBe(0)
+    expect(await c.has('x')).toBe(true)
+  })
+
+  it('names are the plugin own: another plugin reads none of them', async () => {
+    const db = localStore().dbHandle()
+    const remote = wire()
+    await pluginCache('org/a', {
+      db,
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    }).put('x', bytes('a'))
+    const b = pluginCache('org/b', {
+      db,
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    })
+    expect(await b.get('x')).toBeNull()
+    expect(await b.has('x')).toBe(false)
+    expect([...remote.store.keys()]).toEqual([xxh3hex('vx-plugin\0org/a\0x')])
+  })
+
+  it('a scoped run reads the default entry and writes only its own', async () => {
+    const remote = wire()
+    const plain = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    })
+    await plain.put('shared', bytes('main'))
+    const scoped = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: 'pr-1',
+    })
+    expect(text(await scoped.get('shared'))).toBe('main')
+    await scoped.put('mine', bytes('pr'))
+    const other = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    })
+    expect(await other.get('mine')).toBeNull()
+  })
+
+  it('hasMany is one probe per layer, and null when a remote cannot batch', async () => {
+    const remote = wire({ batch: true })
+    const c = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    })
+    await c.put('b', bytes('2'))
+    const fresh = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    })
+    remote.calls.length = 0
+    expect(await fresh.hasMany(['a', 'b', 'c'])).toEqual(new Set(['b']))
+    expect(remote.calls).toEqual(['hasMany 3'])
+    const noBatch = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(wire())],
+      scope: undefined,
+    })
+    expect(await noBatch.hasMany(['a'])).toBeNull()
+  })
+
+  it('a failing remote is an absent answer, never a throw', async () => {
+    const c = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(wire({ fail: true, batch: true }))],
+      scope: undefined,
+    })
+    expect(await c.get('x')).toBeNull()
+    expect(await c.has('x')).toBe(false)
+    expect(await c.hasMany(['x'])).toBeNull()
+    await c.put('x', bytes('kept here'))
+    expect(text(await c.get('x'))).toBe('kept here')
+  })
+
+  it('a remote body over the cap is a miss, and a put over it stores nothing', async () => {
+    const remote = wire()
+    const key = xxh3hex('vx-plugin\0org/a\0big')
+    remote.store.set(key, new Uint8Array(PLUGIN_ENTRY_MAX_BYTES + 1))
+    const c = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: FULL,
+      remotes: [remoteOf(remote)],
+      scope: undefined,
+    })
+    expect(await c.get('big')).toBeNull()
+    await c.put('huge', new Uint8Array(PLUGIN_ENTRY_MAX_BYTES + 1))
+    expect(await c.has('huge')).toBe(false)
+  })
+
+  it('a run hands schedule and setup the cache, behind a declared remote', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'vx-plugin-cache-run-'))
+    dirs.push(root)
+    await Bun.write(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'root', workspaces: ['pkg-a'] }),
+    )
+    await Bun.write(path.join(root, 'pkg-a/package.json'), JSON.stringify({ name: 'pkg-a' }))
+    await Bun.write(
+      path.join(root, 'pkg-a/vx.config.mjs'),
+      `export default { tasks: { hello: { exec: { command: 'echo hi' } } } }`,
+    )
+    const box = globalThis as unknown as { __vxWire: Map<string, Uint8Array>; __vxSeen: string[] }
+    box.__vxWire = new Map([[xxh3hex('vx-plugin\0org/user\0seed'), bytes('from-remote')]])
+    box.__vxSeen = []
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/wire',
+          `{ cache: () => ({
+              has: async (h) => globalThis.__vxWire.has(h),
+              get: async (h) => globalThis.__vxWire.has(h) ? { body: new Blob([globalThis.__vxWire.get(h)]), durationMs: undefined } : null,
+              put: async (h, b) => { globalThis.__vxWire.set(h, new Uint8Array(await b.arrayBuffer())) },
+            }) }`,
+        ),
+        pluginSource(
+          'org/user',
+          `{ async schedule(nodes, ctx) {
+               const got = await ctx.cache.get('seed')
+               globalThis.__vxSeen.push('schedule:' + (got && new TextDecoder().decode(got)))
+               return undefined
+             },
+             async setup(ctx) {
+               await ctx.cache.put('written', new TextEncoder().encode('w'))
+               globalThis.__vxSeen.push('setup:' + (await ctx.cache.has('written')) + ':' + typeof ctx.ci)
+             } }`,
+        ),
+      ]),
+    )
+    gitInitCommit(root)
+    const summary = await run({
+      cwd: root,
+      projects: ['pkg-a'],
+      tasks: ['hello'],
+      handleSignals: false,
+      cache: { ...FULL, remoteWrite: false },
+    })
+    expect(summary.ok).toBe(true)
+    expect(box.__vxSeen.toSorted()).toEqual(['schedule:from-remote', 'setup:true:boolean'])
+    // A read-only policy reads the remote and never writes it.
+    expect(box.__vxWire.has(xxh3hex('vx-plugin\0org/user\0written'))).toBe(false)
+  })
+})

@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## orchestrator: give plugins ctx.cache over the workspace cache
+
+SCHEMA_VERSION v37 (plugin_blobs, unique remote task_durations rows): the local index resets once.
+
 ## cli: vx init writes no package.json-derived config
 
 vx init hands any repo with a package.json, pnpm-workspace.yaml, turbo.json or nx.json to @vzn/vx-migrate (its report says vx-migrate:, --keep installs what it declares, both runners need bunx @vzn/vx-migrate --from); with none it writes .vx/workspace.ts declaring no plugin and an empty root vx.config.ts. @vzn/vx drops findManifestRoot, listPackages, PackageMeta and LoadReads; ApplyMigrationArgs.metas is MigrationMember[]. Run bunx @vzn/vx-migrate (--from scripts beside another source) to map scripts.

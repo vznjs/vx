@@ -19,6 +19,10 @@ import {
   parseCachePolicy,
   GitFilesCache,
   LayeredCache,
+  absentPluginCache,
+  pluginCache,
+  type PluginCache,
+  type PluginCacheRemote,
   ScopedCache,
   applyGitEnumeration,
   gitPathspecs,
@@ -116,6 +120,8 @@ export interface PreparedRun {
    * Learned on first ask, once per run.
    */
   branch: () => string | null
+  /** Each plugin's `ctx.cache`: the run's local store and remotes, under its policy and scope. */
+  cacheFor: (plugin: string) => PluginCache
   nodes: Map<string, TaskNode>
   /**
    * The tasks `--exclude-dependencies` took out of the schedule: keyed as a
@@ -451,6 +457,11 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // winning prevents double-wrapping when the workspace also declares a
   // cache plugin.
   let cache: CacheLayer
+  const remotes: PluginCacheRemote[] = []
+  if (options.remoteCache) {
+    const { remoteCache } = options
+    remotes.push({ remote: remoteCache, read: policy.remoteRead, write: policy.remoteWrite })
+  }
   try {
     cache = options.remoteCache
       ? new LayeredCache(localCache, options.remoteCache, {
@@ -464,6 +475,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
           scope: cacheScope,
           localCache,
           policy,
+          remotes,
         })
   } catch (err) {
     // A cache plugin that throws or returns something off-contract is
@@ -511,6 +523,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cachePolicy: policy,
       priorities: () => Promise.resolve(new Map()),
       branch,
+      cacheFor: () => absentPluginCache,
       nodes: new Map(),
       keyOnly: new Map(),
       unresolvedTasks,
@@ -708,16 +721,35 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         })
       }
     }
+    const pluginCaches = new Map<string, PluginCache>()
+    const cacheFor = (plugin: string): PluginCache => {
+      let own = pluginCaches.get(plugin)
+      if (own === undefined) {
+        own = pluginCache(plugin, {
+          db: localCache.dbHandle(),
+          policy,
+          remotes,
+          scope: cacheScope,
+        })
+        pluginCaches.set(plugin, own)
+      }
+      return own
+    }
     let scheduled: Promise<ReadonlyMap<string, number>> | undefined
     const priorities = (): Promise<ReadonlyMap<string, number>> =>
       (scheduled ??= hasHook(plugins, 'schedule')
-        ? applyScheduleHooks(plugins, nodes, {
-            workspaceRoot,
-            cacheDir,
-            warn: (m) => log.status(m),
-            localCache,
-            branch: branch(),
-          })
+        ? applyScheduleHooks(
+            plugins,
+            nodes,
+            {
+              workspaceRoot,
+              cacheDir,
+              warn: (m) => log.status(m),
+              localCache,
+              branch: branch(),
+            },
+            cacheFor,
+          )
         : Promise.resolve(new Map()))
 
     return {
@@ -731,6 +763,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cachePolicy: policy,
       priorities,
       branch,
+      cacheFor,
       nodes,
       keyOnly,
       unresolvedTasks,

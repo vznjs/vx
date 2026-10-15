@@ -203,3 +203,38 @@ cache.close()
     holder.close()
   }
 }, 60_000)
+
+it("reads the default branch's imported timing between this branch and any branch", async () => {
+  for (const ms of [40, 50, 60]) record('other', 't', ms)
+  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  await provider.p50sFor(['p#t'])
+  expect(provider.lackedBranchHistory).toBe(true)
+  expect(provider.hasImported('abc')).toBe(false)
+  provider.importTimings('abc', new Map([['p#t', 7]]))
+  expect(provider.hasImported('abc')).toBe(true)
+  expect(await forecast('feature')).toBe(7)
+  for (const ms of [1, 2, 3]) record('feature', 't', ms)
+  await provider.p50sFor(['p#t'])
+  expect(provider.lackedBranchHistory).toBe(false)
+  expect(await forecast('feature')).toBe(2)
+})
+
+it('a repeat import of one commit adds no row, from any worktree', async () => {
+  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  provider.importTimings('abc', new Map([['p#t', 7]]))
+  const other = new Cache(path.join(dir, 'cache-2'), undefined, undefined, undefined, 'open', store)
+  try {
+    new LocalHistoryProvider(other.dbHandle(), undefined, 'x').importTimings(
+      'abc',
+      new Map([['p#t', 9]]),
+    )
+    const n = cache
+      .dbHandle()
+      .query("SELECT COUNT(*) AS n FROM task_durations WHERE source = 'remote'")
+      .get() as { n: number }
+    expect(n.n).toBe(1)
+    expect(await forecast('feature')).toBe(7)
+  } finally {
+    other.close()
+  }
+})

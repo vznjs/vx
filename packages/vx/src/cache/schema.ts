@@ -23,7 +23,7 @@ export function lazyStatement(db: Database, sql: string): ReturnType<Database['p
 /**
  * Create every table. `store` names the schema holding the ENTRY tables
  * (`entries`, `entry_stdout`, `output_files`, `entry_inputs`, `store_meta`)
- * and the task timings (`task_durations`):
+ * the task timings (`task_durations`) and the plugins' blobs (`plugin_blobs`):
  * `main` when one `cache.db` holds everything (a `cacheDir`), `store` when
  * they live in the shared store attached beside it (v32). The rest is the
  * workspace's own: its history, its memos, and what its disk looked like
@@ -275,6 +275,19 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     );
     CREATE INDEX IF NOT EXISTS ${store}.task_durations_task
       ON task_durations(project, task, source, id);
+    -- v37: a 'remote' row is a default-branch commit's timing a plugin
+    -- imported (\`sha\` that commit): one per task, so a repeat import is a
+    -- no-op under INSERT OR IGNORE.
+    CREATE UNIQUE INDEX IF NOT EXISTS ${store}.task_durations_remote
+      ON task_durations(sha, project, task) WHERE source = 'remote';
+    -- v37: what a plugin keeps through \`ctx.cache\` (plugin-cache.ts), by
+    -- its namespaced key. Written once, never updated; pruned by age with
+    -- the run history.
+    CREATE TABLE IF NOT EXISTS ${store}.plugin_blobs (
+      key   TEXT PRIMARY KEY,
+      bytes BLOB NOT NULL,
+      at    INTEGER NOT NULL
+    );
     ${artifactTables(store)}
   `)
 }

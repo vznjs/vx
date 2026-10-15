@@ -119,6 +119,9 @@ export class LocalHistoryProvider implements HistoryProvider {
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   async loadAll(): Promise<HistoryTable>
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
+  lackedBranchHistory
+  hasImported(sha: string): boolean
+  importTimings(sha: string, timings: ReadonlyMap<string, number>): void
   async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
 == class TaskLogBuffer (src/orchestrator/task-log-buffer.ts)
@@ -957,6 +960,13 @@ export interface Plugin {
   teardown?(): void | Promise<void>
   readonly fingerprint?: unknown
 }
+== type PluginCache (src/cache/plugin-cache.ts)
+export interface PluginCache {
+  get(key: string): Promise<Uint8Array | null>
+  put(key: string, bytes: Uint8Array): Promise<void>
+  has(key: string): Promise<boolean | null>
+  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+}
 == type PluginCommand (src/orchestrator/plugin.ts)
 export interface PluginCommand {
   readonly description: string
@@ -996,6 +1006,9 @@ export interface PluginOrigin {
 }
 == type PluginSetupContext (src/orchestrator/plugin.ts)
 export interface PluginSetupContext extends BaseContext {
+  readonly cache: PluginCache
+  readonly ci: boolean
+  readonly branch: string | null
   on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
 }
 == type PreparedRun (src/orchestrator/prepare.ts)
@@ -1010,6 +1023,7 @@ export interface PreparedRun {
   cachePolicy: CachePolicy
   priorities: () => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
+  cacheFor: (plugin: string) => PluginCache
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]
@@ -1373,6 +1387,7 @@ export type SaveArgs = Parameters<CacheLayer['save']>[0]
 export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
   readonly branch: string | null
+  readonly cache: PluginCache
 }
 == type SchemaReset (src/cache/cache.ts)
 export interface SchemaReset {

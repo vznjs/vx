@@ -41,6 +41,7 @@ const CLASS_PAGES = {
     'layered-cache.md',
     'options.md',
     'patterns.md',
+    'plugin-cache.md',
     'plugin-host.md',
     'plugin.md',
     // The remote-caching guide merged into ci.md (the short site), which

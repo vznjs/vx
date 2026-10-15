@@ -915,6 +915,7 @@ describe('LocalHistoryProvider', () => {
       expect(bound).toEqual([
         ['get', 49],
         ['all', 0],
+        ['get'],
         ['all', 'pkg', 'broke'],
         ['all', 'pkg', 'green'],
         ['all', 'pkg', 'retried'],

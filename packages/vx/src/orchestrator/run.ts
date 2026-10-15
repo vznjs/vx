@@ -474,6 +474,9 @@ async function runOnBus(
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
       warn: (m) => log.status(m),
+      cache: prepared.cacheFor,
+      ci: detectCi(process.env).ci,
+      branch: prepared.branch(),
     })
   } catch (err) {
     disposePlugins?.()
