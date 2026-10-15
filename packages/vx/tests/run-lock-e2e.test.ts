@@ -108,7 +108,7 @@ describe('two runs on one workspace', () => {
       )
       expect(a.out + a.err).not.toContain('waiting for another vx run')
       // The second run found the first's outputs current: a hit, no rebuild.
-      expect(b.out + b.err).toMatch(/local 1●/)
+      expect(b.out + b.err).toMatch(/local 1✓/)
     },
     TIMEOUT,
   )

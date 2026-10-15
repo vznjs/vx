@@ -214,23 +214,23 @@ describe('formatRunSummary', () => {
     }
 
     it('fresh and no-cache count under local; ↑ is what landed', () => {
-      expect(legend({})).toBe('local 2● 1○ 1↓ 2↑ · remote 1↓ 2↑ · 1 not saved')
+      expect(legend({})).toBe('local 2✓ 1∅ 1↓ 2↑ · remote 1↓ 2↑ · 1 not saved')
     })
 
     it('a failed upload and outputs left remote are counted apart', () => {
       expect(legend({}, { count: 1, failed: 1 }, 3)).toBe(
-        'local 2● 1○ 1↓ 2↑ · remote 1↓ 1↑ · 1 ↑ failed · 1 not saved · 3 not downloaded',
+        'local 2✓ 1∅ 1↓ 2↑ · remote 1↓ 1↑ · 1 ↑ failed · 1 not saved · 3 not downloaded',
       )
     })
 
     it('a layer the run did not use is not shown', () => {
       expect(legend({ remote: false }, { count: 0, failed: 0 })).toBe(
-        'local 2● 1○ 1↓ 2↑ · 1 not saved',
+        'local 2✓ 1∅ 1↓ 2↑ · 1 not saved',
       )
     })
 
     it('local ↑ shows only when the policy writes the local layer', () => {
-      expect(legend({ localWrite: false })).toBe('local 2● 1○ 1↓ · remote 1↓ 2↑ · 1 not saved')
+      expect(legend({ localWrite: false })).toBe('local 2✓ 1∅ 1↓ · remote 1↓ 2↑ · 1 not saved')
     })
 
     it('CONTROL: with no run context the legend is the plain one', () => {

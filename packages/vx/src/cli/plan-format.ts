@@ -9,7 +9,7 @@ import { formatElapsed, maskedCommand } from '../util/index.js'
  * task with recorded history also shows its typical duration (~p50).
  *
  *   would run:
- *     ◉  @vzn/vx#lint       cache hit (local)        abc12345
+ *     ✓  @vzn/vx#lint       cache hit (local)        abc12345
  *     ↓  @vzn/vx#test       cache hit (remote)       def67890
  *     ▶  @vzn/vx#build      cache miss — would exec  fedcba98  ~1.20s
  *
@@ -33,7 +33,7 @@ export function formatPlanText(plan: RunPlan): string {
   for (const t of real) {
     // `@noop`: the run succeeds it without running, whatever its key says.
     const skipped = t.executor === 'noop'
-    const sym = skipped ? '∅' : symbolFor(t.cacheStatus)
+    const sym = skipped ? '·' : symbolFor(t.cacheStatus)
     const desc = skipped ? 'noop — would not run' : describe(t.cacheStatus)
     const shortHash = t.hash ? t.hash.slice(0, 8) : ''
     const executes = !skipped && (t.cacheStatus === 'miss' || t.cacheStatus === 'no-cache')
@@ -189,13 +189,13 @@ export function formatPlanJson(plan: RunPlan, affectedBase?: string): string {
 function symbolFor(s: CacheStatus): string {
   switch (s) {
     case 'hit-local':
-      return '◉'
+      return '✓'
     case 'hit-remote':
       return '↓'
     case 'miss':
       return '▶'
     case 'no-cache':
-      return '·'
+      return '∅'
     case 'group':
       return '○'
     case 'not-started':

@@ -168,13 +168,13 @@ the goal. Each line and its comment is what a test runs and sees on each commit
 ```sh
 npm install && git init && git add -A && git commit -m init
 npx @vzn/vx run test --all      # local 3↑: lib#build, app#build, app#test
-npx @vzn/vx run test --all      # local 3●
+npx @vzn/vx run test --all      # local 3✓
 bunx @vzn/vx-migrate       # tasks 3 clean
 git add -A && git commit -m migrate
-npx @vzn/vx run test --all      # local 3●: the written configs derive the same keys
+npx @vzn/vx run test --all      # local 3✓: the written configs derive the same keys
 echo "import { npm } from '@vzn/vx-lockfile'; export default { plugins: [npm()] }" > .vx/workspace.ts   # drop turbo(); npm() keeps the edges
 git add -A && git commit -m done
-npx @vzn/vx run test --all      # local 3●
+npx @vzn/vx run test --all      # local 3✓
 ```
 
 | Turborepo (`turbo.json`)                                    | vx (`vx.config.ts`)                                                      |

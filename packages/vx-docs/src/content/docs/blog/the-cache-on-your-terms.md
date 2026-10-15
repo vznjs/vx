@@ -24,7 +24,7 @@ $ vx run build --all --force
   time      658ms
 
 $ vx run build --all --no-cache
-  cache     local 4○
+  cache     local 4∅
   time      638ms
 ```
 

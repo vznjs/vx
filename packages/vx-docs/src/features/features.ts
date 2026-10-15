@@ -351,7 +351,7 @@ export default defineProject({
       lang: 'text',
       code: `$ vx run ci --dry
 would run:
-  ◉  web#lint   cache hit (local)         d66cfed2
+  ✓  web#lint   cache hit (local)         d66cfed2
   ▶  web#test   cache miss — would exec   68595e49  ~72.64s
 
 2 task(s) planned, 1 cache hit (1 local), 1 would run.`,

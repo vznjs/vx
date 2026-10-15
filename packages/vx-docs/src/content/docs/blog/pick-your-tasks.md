@@ -58,9 +58,9 @@ The demo workspace has four packages, and `web` and `docs` both use `ui`.
 ```sh frame="terminal"
 $ vx run build --filter '...@demo/ui' --dry
 would run:
-  ◉  @demo/docs#build  cache hit (local)         1f858edb
-  ◉  @demo/ui#build    cache hit (local)         46046abb
-  ◉  @demo/web#build   cache hit (local)         b25e5bf4
+  ✓  @demo/docs#build  cache hit (local)         1f858edb
+  ✓  @demo/ui#build    cache hit (local)         46046abb
+  ✓  @demo/web#build   cache hit (local)         b25e5bf4
 
 3 task(s) planned, 3 cache hits (3 local).
 ```

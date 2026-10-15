@@ -46,7 +46,7 @@ export interface RunContext {
     remote: boolean
     uploads: { count: number; failed: number }
     notDownloaded: () => number
-  } // the layers the run used: the legend's `local 1● 1○ 2↓ 4↑ · remote 3↓ 4↑`
+  } // the layers the run used: the legend's `local 1✓ 1∅ 2↓ 4↑ · remote 3↓ 4↑`
   workspaceProjectCount?: number // total projects → the bar's denominator
 }
 

@@ -30,9 +30,9 @@ vx watch test --all                    # re-run whenever its files change
 
 ```text
 would run:
-  ◉  @acme/api#build  cache hit (local)         8625b603
-  ◉  @acme/ui#build   cache hit (local)         71e5d9a0
-  ◉  @acme/web#build  cache hit (local)         42e9b39d
+  ✓  @acme/api#build  cache hit (local)         8625b603
+  ✓  @acme/ui#build   cache hit (local)         71e5d9a0
+  ✓  @acme/web#build  cache hit (local)         42e9b39d
 
 3 task(s) planned, 3 cache hits (3 local).
 ```

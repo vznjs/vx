@@ -896,8 +896,8 @@ existence check — planning never downloads or ingests artifacts.
 ```
 $ vx run ci --dry
 would run:
-  ◉  @vzn/vx#format-check  cache hit (local)         02bfe8a9
-  ◉  @vzn/vx#lint          cache hit (local)         d66cfed2
+  ✓  @vzn/vx#format-check  cache hit (local)         02bfe8a9
+  ✓  @vzn/vx#lint          cache hit (local)         d66cfed2
   ▶  @vzn/vx#test          cache miss — would exec   68595e49  ~72.64s
 
 3 task(s) planned, 2 cache hits (2 local), 1 would run.
@@ -930,11 +930,11 @@ Status legend:
 
 | Symbol | Meaning                                                                                    |
 | ------ | ------------------------------------------------------------------------------------------ |
-| `◉`    | cache hit (local) — entry already in `<cacheDir>/`                                         |
+| `✓`    | cache hit (local) — entry already in `<cacheDir>/`                                         |
 | `↓`    | cache hit (remote) — entry would be fetched from the layer                                 |
 | `▶`    | cache miss — task would execute (under `--force` too: nothing is read, what runs is saved) |
-| `·`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
-| `∅`    | `@noop` — task would not run anywhere                                                      |
+| `∅`    | no-cache — task opts out (no `cache` block, or `--no-cache`)                               |
+| `·`    | `@noop` — task would not run anywhere                                                      |
 | `−`    | not started — a server you did not request whose every dependant restores a local hit      |
 | `○`    | group task (suppressed in human view; in DOT + JSON)                                       |
 
@@ -2977,9 +2977,9 @@ The three bars are meters: `projects` is what the run covered against
 the workspace, `tasks` is failed / success / skipped, `cache` is miss /
 no-cache / up-to-date / local / remote (a skipped task rides it too, so
 the two bars fill alike; its count is on the tasks legend only). Its
-legend reads per layer: `local 1● 1○ 2↓ 4↑ · remote 3↓ 4↑`.
-`●` is a fresh hit (outputs already on disk, whichever layer answered,
-so it counts under local), `○` a task with no cache, `↓` is restored
+legend reads per layer: `local 1✓ 1∅ 2↓ 4↑ · remote 3↓ 4↑`.
+`✓` is a fresh hit (outputs already on disk, whichever layer answered,
+so it counts under local), `∅` a task with no cache, `↓` is restored
 from that layer and `↑` saved to it (local `↑` counts only tasks that ran here; remote `↑` counts
 uploads that landed). A layer shows only when the run's
 `--cache-policy` uses it. `N not saved` (ran, succeeded, saved nothing),

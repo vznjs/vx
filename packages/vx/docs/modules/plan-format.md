@@ -38,11 +38,11 @@ renders on a second indented line under its row:
 
 ```
 would run:
-  ◉  @vzn/vx#format-check  cache hit (local)         02bfe8a9
+  ✓  @vzn/vx#format-check  cache hit (local)         02bfe8a9
   ↓  @vzn/vx#lint          cache hit (remote)        d66cfed2
                            oxlint with tsgolint-backed type-aware checks
   ▶  @vzn/vx#test          cache miss — would exec   68595e49  ~4.20s
-  ·  @vzn/vx#dev           no-cache (would exec)     c0ffee00
+  ∅  @vzn/vx#dev           no-cache (would exec)     c0ffee00
 
 4 task(s) planned, 2 cache hits (1 local, 1 remote), 1 would run, 1 no-cache.
 predicted: ~4.20s wall · ~4.20s total execution · 1 task without history (+?)
@@ -52,11 +52,11 @@ Status symbols:
 
 | Symbol | Status       |
 | ------ | ------------ |
-| `◉`    | `hit-local`  |
+| `✓`    | `hit-local`  |
 | `↓`    | `hit-remote` |
 | `▶`    | `miss`       |
-| `·`    | `no-cache`   |
-| `∅`    | `@noop`      |
+| `∅`    | `no-cache`   |
+| `·`    | `@noop`      |
 | `○`    | `group`      |
 
 The `predicted:` footer prints only when history gave the plan
@@ -85,7 +85,7 @@ remote)"), and the name is what a reader can act on. One label is not an
 executor: `@noop` marks a `remote: 'only'` task no remote executor took —
 it will not run ANYWHERE this run (dependents use the machine's ambient
 state), and showing the local executor's name there would promise an
-execution that never happens. Its line reads `∅ … noop — would not run`
+execution that never happens. Its line reads `· … noop — would not run`
 and the summary counts it as `noop`, never as would-run. See
 [`schema.md` § `remote`](../schema.md#remote-optional) for what pins a task
 locally and what `'only'` means.

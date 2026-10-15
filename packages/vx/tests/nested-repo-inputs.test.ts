@@ -255,7 +255,7 @@ describe('a nested repository inside a project', () => {
         return new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
       }
       expect(run()).toMatch(/local 1↑/)
-      expect(run()).toMatch(/local 1●/)
+      expect(run()).toMatch(/local 1✓/)
       for (const [sub, file] of [
         ['vendor/lib', 'x.txt'],
         ['vendor/loose', 'y.txt'],

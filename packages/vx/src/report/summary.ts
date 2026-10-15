@@ -245,13 +245,13 @@ export function formatSummarySection(
     const cacheParts: string[] = []
     const layers = context?.cache
     if (layers !== undefined) {
-      // Per layer (M, 2026-10-15): `●` fresh (outputs already on disk, from
-      // either layer) and `○` no cache, both local; `↓` restored from a
+      // Per layer (M, 2026-10-15): `✓` fresh (outputs already on disk, from
+      // either layer) and `∅` no cache, both local; `↓` restored from a
       // layer, `↑` saved to it.
       const n = (count: number, glyph: string): string[] => (count > 0 ? [`${count}${glyph}`] : [])
       const local = [
-        ...(layers.local ? n(stats.upToDate, '\u25cf') : []),
-        ...n(noCache, '\u25cb'),
+        ...(layers.local ? n(stats.upToDate, '\u2713') : []),
+        ...n(noCache, '\u2205'),
         ...(layers.local ? n(stats.restoredLocal, '\u2193') : []),
         ...(layers.localWrite ? n(stats.saved ?? 0, '\u2191') : []),
       ]

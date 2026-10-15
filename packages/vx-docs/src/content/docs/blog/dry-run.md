@@ -18,12 +18,12 @@ $ vx run test --all --dry
 would run:
   ▶  @demo/api#test    cache miss — would exec   62269624  ~213ms
   ▶  @demo/api#build   cache miss — would exec   10361de3  ~326ms
-  ◉  @demo/docs#test   cache hit (local)         067839a7
-  ◉  @demo/docs#build  cache hit (local)         b5134b6e
-  ◉  @demo/ui#build    cache hit (local)         6a36fb4c
-  ◉  @demo/ui#test     cache hit (local)         d5097182
-  ◉  @demo/web#test    cache hit (local)         a5787dc7
-  ◉  @demo/web#build   cache hit (local)         731116aa
+  ✓  @demo/docs#test   cache hit (local)         067839a7
+  ✓  @demo/docs#build  cache hit (local)         b5134b6e
+  ✓  @demo/ui#build    cache hit (local)         6a36fb4c
+  ✓  @demo/ui#test     cache hit (local)         d5097182
+  ✓  @demo/web#test    cache hit (local)         a5787dc7
+  ✓  @demo/web#build   cache hit (local)         731116aa
 
 8 task(s) planned, 6 cache hits (6 local), 2 would run.
 predicted: ~539ms wall · ~539ms total execution

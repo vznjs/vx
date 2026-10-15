@@ -6,7 +6,7 @@ Two packages: `app` uses `lib`. Copy it, then:
 npm install
 git init && git add -A && git commit -m init   # vx reads the tree from git
 npx @vzn/vx run ci --all      # lib#build, app#build, app#test: local 3↑
-npx @vzn/vx run ci --all      # nothing changed: local 3●
+npx @vzn/vx run ci --all      # nothing changed: local 3✓
 ```
 
 Edit `packages/lib/src/greet.js` and run again: all three re-run, since
