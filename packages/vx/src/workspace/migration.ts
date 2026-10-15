@@ -136,6 +136,8 @@ export interface GeneratedProject {
   importLines: string[]
   /** The project's `tags` (an Nx project's); none written when empty. */
   tags?: readonly string[]
+  /** Writes `name`: no manifest names the project, so its path would. */
+  writeName?: boolean
   tasks: GeneratedTask[]
 }
 
@@ -691,6 +693,7 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
   if (p.importLines.length > 0) lines.push(...p.importLines)
   if (lines.length > 0) lines.push('')
   lines.push('export default {')
+  if (p.writeName === true) lines.push(`  name: ${quoteTsLiteral(p.name)},`)
   if (p.tags !== undefined && p.tags.length > 0) lines.push(`  tags: ${renderValue(p.tags, '  ')},`)
   lines.push(p.tasks.length === 0 ? '  tasks: {},' : '  tasks: {')
   for (const t of p.tasks) {

@@ -727,6 +727,7 @@ export interface GeneratedProject {
   dir: string
   importLines: string[]
   tags?: readonly string[]
+  writeName?: boolean
   tasks: GeneratedTask[]
 }
 ```

@@ -3,7 +3,7 @@
 
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import { type MigrationFormat, type MigrationPlan } from '@vzn/vx'
+import { type GeneratedProject, type MigrationFormat, type MigrationPlan } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
 import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
@@ -23,6 +23,8 @@ export async function migrateNx(
   snapshot = path.join(root, NX_GRAPH_REL),
   /** This run writes `.vx/workspace.ts`, with nx.json's run settings as fields. */
   writesWorkspace = false,
+  /** No package.json anywhere: each config names its project and holds every edge. */
+  bare = false,
 ): Promise<MigrationPlan> {
   const graph = parseNxGraph(await Bun.file(snapshot).text(), path.relative(root, snapshot))
   const tracked = await trackedFiles(root)
@@ -48,14 +50,20 @@ export async function migrateNx(
     runner: 'nx',
     keys: (lock) => `Nx keys each project on the npm packages it depends on in ${lock}`,
   })
-  const unlisted = await unlistedProjects(root, metas, mapped.projects)
+  const unlisted = bare
+    ? { manifests: [], notes: bareNotes(mapped.projects) }
+    : await unlistedProjects(root, metas, mapped.projects)
+  if (bare) for (const p of mapped.projects) explicitOnly(p)
   return {
     headerNotes: [
-      'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
-        'are frozen as static config; `nx:run-commands` targets are their shell lines, and ' +
-        'every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate ' +
-        'installed until those targets are rewritten as commands); targets with `.env` files ' +
-        'run through `nx-env`',
+      bare
+        ? 'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
+          'are frozen as static config; `nx:run-commands` targets are their shell lines'
+        : 'migrating from the resolved project-graph snapshot — plugin-inferred targets ' +
+          'are frozen as static config; `nx:run-commands` targets are their shell lines, and ' +
+          'every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate ' +
+          'installed until those targets are rewritten as commands); targets with `.env` files ' +
+          'run through `nx-env`',
       ...adopted,
     ],
     projects: mapped.projects.map((p) =>
@@ -72,6 +80,38 @@ export async function migrateNx(
         .map((f) => f.note),
     ],
   }
+}
+
+/**
+ * A project with no manifest is named by its path unless its config names
+ * it, and a `^` edge follows the lockfile plugin's package edges, which a
+ * repo with no package.json has none of: the config keeps Nx's name, and
+ * the explicit edges the mapper drew from Nx's graph are every edge.
+ */
+function explicitOnly(p: GeneratedProject): void {
+  p.writeName = true
+  for (const t of p.tasks) {
+    const deps = t.task?.['dependsOn']
+    if (!Array.isArray(deps)) continue
+    const kept = deps.filter((d) => typeof d !== 'string' || !d.startsWith('^'))
+    // A group keeps its list, as `dropUnheldDeps` keeps one.
+    if (kept.length > 0 || t.task!['exec'] === undefined) t.task!['dependsOn'] = kept
+    else delete t.task!['dependsOn']
+  }
+}
+
+/** `nx-exec` and `nx-env` are this package's bins, and a repo with no package.json cannot install it. */
+function bareNotes(projects: readonly GeneratedProject[]): string[] {
+  const ids = projects.flatMap((p) =>
+    p.tasks.flatMap((t) => {
+      const cmd = (t.task?.['exec'] as { command?: unknown } | undefined)?.command
+      return typeof cmd === 'string' && /^nx-(exec|env) /.test(cmd) ? [`${p.name}#${t.name}`] : []
+    }),
+  )
+  if (ids.length === 0) return []
+  return [
+    `${ids.join(', ')} run${ids.length === 1 ? 's' : ''} through nx-exec or nx-env, @vzn/vx-migrate's bins, which a repo with no package.json cannot install: rewrite ${ids.length === 1 ? 'it' : 'them'} as commands`,
+  ]
 }
 
 /**
