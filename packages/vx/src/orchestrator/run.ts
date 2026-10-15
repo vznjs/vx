@@ -1322,7 +1322,7 @@ async function runOnBus(
     const stillDeferred = deferredOutputs.pending()
     if (stillDeferred.length > 0) {
       log.status(
-        `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--cache-download=none): ${stillDeferred.join(', ')}`,
+        `  Deferred: left outputs remote (--cache-download=none): ${stillDeferred.join(', ')}`,
       )
     }
 
