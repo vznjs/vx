@@ -6,7 +6,8 @@
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { killGraceMs } from '../util/index.js'
 import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
-import type { HeldServer } from './options.js'
+import type { HeldPersistent, HeldServer } from './options.js'
+import { terminateChildren } from './signals.js'
 
 type Child = ReturnType<typeof Bun.spawn>
 
@@ -151,4 +152,66 @@ export function takeHeldServers(
     }
   }
   return { kept, stale }
+}
+
+/**
+ * The kept server whose exit ends a foreground session, and its code. A
+ * server kept only as a dependency that exits 0 is a daemon that forked
+ * and returned (schema.md), not the end of the session: a
+ * `db: 'docker compose up -d'` under `app#dev` stopped the dev server
+ * right after the summary (WD-3). It ends the wait only as the last.
+ */
+export function sessionEnd(keepAlive: KeepAlive): Promise<{ code: number; i: number }> {
+  return new Promise((resolve) => {
+    let left = keepAlive.children.length
+    keepAlive.children.forEach((c, i) => {
+      void c.exited.then((code) => {
+        left--
+        const n = keepAlive.nodes[i]!
+        if (code !== 0 || n.requested || n.surfaced === true || left === 0) resolve({ code, i })
+      })
+    })
+  })
+}
+
+export interface HoldArgs {
+  forwardArgs: readonly string[] | undefined
+  /** Where a held server's output goes. */
+  outOf: (id: string) => HeldServer['out']
+  warn: (message: string) => void
+}
+
+/** The kept servers handed to the caller (`RunOptions.hold`) instead of waited on. */
+export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersistent {
+  const held = keepAlive.children
+  // A held server that dies on its own is said, as the foreground's
+  // keep-alive says it: `vx watch` sat on "watching" over a dead dev
+  // server. The holder's own stop() is not such a death.
+  let stopping = false
+  // Taken by a later run (`RunOptions.keep`): kept or stopped there.
+  const handed = new Set<Child>()
+  const servers = new Map<string, HeldServer>()
+  keepAlive.nodes.forEach((n, i) => {
+    const child = held[i]!
+    servers.set(n.id, {
+      child,
+      config: serverConfig(n, args.forwardArgs),
+      out: args.outOf(n.id),
+      handOver: () => void handed.add(child),
+    })
+    // One that died during the graph was said then.
+    if (hasEnded(child)) return
+    void child.exited.then((code) => {
+      if (!stopping && !handed.has(child) && code !== 0)
+        args.warn(`vx: ${n.id} exited with code ${code}`)
+    })
+  })
+  return {
+    ids: keepAlive.nodes.map((n) => n.id),
+    servers,
+    stop: (signal) => {
+      stopping = true
+      return terminateChildren(() => held.filter((c) => !handed.has(c)), signal)
+    },
+  }
 }
