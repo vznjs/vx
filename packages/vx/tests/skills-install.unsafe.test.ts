@@ -7,6 +7,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
+import { relPosix } from '../src/util/index.js'
 
 const ROOT = path.resolve(import.meta.dir, '..', '..', '..')
 
@@ -35,6 +36,6 @@ it('npx skills add vznjs/vx offers only the vx skill', () => {
       const front = /^---\n([\s\S]*?)\n---\n/.exec(readFileSync(f, 'utf8'))?.[1] ?? ''
       return !/^metadata:\n(?: {2}.*\n)*? {2}internal: true$/m.test(front)
     })
-    .map((f) => path.relative(ROOT, f))
+    .map((f) => relPosix(ROOT, f))
   expect(offered).toEqual(['skills/vx/SKILL.md'])
 })
