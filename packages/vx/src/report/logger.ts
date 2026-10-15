@@ -724,6 +724,7 @@ export function defaultLogger(
       if (!draining && !statusDead && uploading()) {
         draining = true
         slots = []
+        blocked = undefined
         shownSlots = 0
         slotQueue.length = 0
         refresh(true)
