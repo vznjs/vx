@@ -1,7 +1,9 @@
 # Task timings through the remote cache (2026-10)
 
-Status: proposed. Owner call M 2026-10-14 20:51 (via EA). Builds after DX's
-local forecast PR (median of the last 5 runs on the current branch).
+**Status:** built (EA go 2026-10-15). Owner call M 2026-10-14 20:51 (via EA).
+Built as designed, except: no `VX_DEBUG` output (core has no such
+setting; every refusal is silent), and only CI on `defaultBranch` writes
+(M 22:19).
 
 ## Problem
 

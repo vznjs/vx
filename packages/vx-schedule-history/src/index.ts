@@ -25,6 +25,7 @@ import {
   UserError,
   refuseUnknownOptions,
   type PluginOptionKinds,
+  type PluginCache,
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
 import path from 'node:path'
@@ -77,11 +78,20 @@ export interface ScheduleHistoryOptions {
    * `assume`, it never feeds the workspace median.
    */
   readonly file?: string
+  /**
+   * The branch whose CI runs share their timings through the workspace's
+   * cache: on CI on this branch, each task's p50 is written under the
+   * commit after the run; a run whose tasks have no timings on its own
+   * branch first imports those of its merge-base with this branch (at
+   * most 500 ms). Default `'main'`.
+   */
+  readonly defaultBranch?: string
 }
 
 // The provider's own default (50) serves `--dry` predictions; an ordering
 // hint needs less and reads a 2.5× smaller slice of the run history.
 const DEFAULT_WINDOW = 20
+const DEFAULT_BRANCH = 'main'
 
 // Each option is read in ONE place that a run's hooks and `vx history`
 // share: two copies of each let either drift unseen (item 805).
@@ -215,6 +225,7 @@ const SCHEDULE_HISTORY_KEYS: PluginOptionKinds<ScheduleHistoryOptions> = {
   reservations: 'object',
   assume: 'object',
   file: 'string',
+  defaultBranch: 'string',
 }
 
 export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin {
@@ -256,9 +267,34 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
           ids: [...nodes.keys()],
           branch: ctx.branch,
         }
+      const ids = [...nodes.keys()]
+      shared = { cache: ctx.localCache, ids, branch: ctx.branch }
       let table: ReadonlyMap<string, TaskResources>
       try {
-        table = await readHistory(ctx.localCache, [...nodes.keys()], options, ctx.branch)
+        const provider = new LocalHistoryProvider(
+          ctx.localCache.dbHandle(),
+          windowOf(options),
+          ctx.branch,
+        )
+        table = await provider.resourcesFor(ids)
+        // Only a run missing some timing on its branch asks: the rest pay nothing.
+        if (provider.lackedBranchHistory) {
+          let imported = false
+          try {
+            imported = await (
+              await import('./shared-timings.js')
+            ).importTimings({
+              root: ctx.workspaceRoot,
+              defaultBranch: options.defaultBranch ?? DEFAULT_BRANCH,
+              cache: ctx.cache,
+              provider,
+              ids,
+            })
+          } catch {
+            // A hint: a failed import orders the run without it.
+          }
+          if (imported) table = await provider.resourcesFor(ids)
+        }
       } catch (err) {
         // Failing open: a broken history read costs the ordering and the
         // learned reservations, never the run.
@@ -289,29 +325,54 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   // A run that executed nothing and restored only tasks the file already
   // times leaves it as it was: an all-cached CI run re-reads no history.
   let changed = false
-  if (options.file !== undefined) {
-    hooks.setup = (ctx) => {
-      inRun = true
-      changed = false
-      ctx.on('onTaskComplete', (node, outcome) => {
-        // A group runs nothing and is never timed: counting it rewrote the
-        // file on every all-cached run that went through one.
-        if (node.config.exec?.command === undefined) return
-        if (outcome.status === 'success' || !(node.id in (scheduled?.carried ?? {}))) {
-          changed = true
-        }
-      })
+  // What the run's export needs, from `schedule` (which a run that starts
+  // no task never calls) and `setup` (which a plan never calls).
+  let shared: { cache: Cache; ids: string[]; branch: string | null } | undefined
+  let exporting: { cache: PluginCache; root: string } | undefined
+  hooks.setup = (ctx) => {
+    exporting =
+      ctx.ci && ctx.branch === (options.defaultBranch ?? DEFAULT_BRANCH)
+        ? { cache: ctx.cache, root: ctx.workspaceRoot }
+        : undefined
+    if (options.file === undefined) return
+    inRun = true
+    changed = false
+    ctx.on('onTaskComplete', (node, outcome) => {
+      // A group runs nothing and is never timed: counting it rewrote the
+      // file on every all-cached run that went through one.
+      if (node.config.exec?.command === undefined) return
+      if (outcome.status === 'success' || !(node.id in (scheduled?.carried ?? {}))) {
+        changed = true
+      }
+    })
+  }
+  // After the run's history is recorded and before its cache closes.
+  hooks.teardown = async () => {
+    const run = shared
+    const out = exporting
+    shared = undefined
+    exporting = undefined
+    if (run !== undefined && out !== undefined) {
+      try {
+        await (
+          await import('./shared-timings.js')
+        ).exportTimings({
+          root: out.root,
+          cache: out.cache,
+          provider: new LocalHistoryProvider(run.cache.dbHandle(), windowOf(options), run.branch),
+          ids: run.ids,
+        })
+      } catch {
+        // A hint: the next commit's runs walk back to an older blob.
+      }
     }
-    // After the run's history is recorded and before its cache closes.
-    hooks.teardown = async () => {
-      const done = scheduled
-      const wrote = inRun && changed
-      scheduled = undefined
-      inRun = false
-      if (!wrote || done === undefined) return
-      const table = await readHistory(done.cache, done.ids, options, done.branch)
-      ;(await import('./timings-file.js')).writeTimings(done.file, done.carried, table)
-    }
+    const done = scheduled
+    const wrote = inRun && changed
+    scheduled = undefined
+    inRun = false
+    if (!wrote || done === undefined) return
+    const table = await readHistory(done.cache, done.ids, options, done.branch)
+    ;(await import('./timings-file.js')).writeTimings(done.file, done.carried, table)
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
   // serves both) and declared in the options; asked at every dispatch.

@@ -792,7 +792,7 @@ export default defineWorkspace({
     hook: 'The slow task stops starting last.',
     body: [
       '`@vzn/vx-schedule-history` learns task durations from your local run history and starts the longest remaining chain first. Short tasks fill the gaps.',
-      'A fresh CI runner has no history, so `assume` names durations up front for the tasks it has not seen.',
+      'A fresh CI runner or a new branch reads the default branch\'s timings from your remote cache. `assume` names durations for the tasks nothing has timed yet.',
     ],
     example: {
       lang: 'ts',

@@ -19,7 +19,7 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 export default { plugins: [scheduleHistoryPlugin()] }
 ```
 
-`scheduleHistoryPlugin({ window?, assume?, file?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
+`scheduleHistoryPlugin({ window?, assume?, file?, defaultBranch?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
 
 `assume` is for the run that has no history: a fresh CI runner. It names durations (task id → ms) for tasks the history has not seen, so a long leaf task — a docs build, a cross-compile — starts first instead of last:
 
@@ -31,7 +31,32 @@ export default {
 
 A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a finite non-negative number (`Number()` of an unset variable is NaN) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares four, this one among them — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
 
-## Timings between CI runners
+## Timings through the cache
+
+A fresh CI runner or a new branch has no timings of its own. With a
+remote cache declared, the plugin carries them there, with nothing to
+configure:
+
+- **Write.** A CI run on `defaultBranch` (default `'main'`) writes each
+  task's p50 under its commit after the run. A commit's timings are
+  written once and never replaced; a read-only cache policy keeps them
+  local. A local run never writes.
+- **Read.** When some task has no timing on this branch, the plugin
+  takes the merge-base of HEAD with `defaultBranch` (or
+  `origin/<defaultBranch>`) and imports the newest timings at it or its
+  4 first-parent ancestors, once per repo for all its worktrees. It
+  waits at most 500 ms; a slow or missing remote orders the run without
+  them. A run whose tasks all have timings on its branch spawns no git
+  and asks no cache.
+- **Order.** A forecast reads this branch's last five timings first,
+  then the default branch's imported one, then any branch's, then
+  `assume`.
+- **Untrusted.** A blob over 1 MiB, not `{ version: 1, tasks }`, with
+  more than 50 000 tasks, or with a time outside 0 to 24 h, is dropped,
+  silently; ids not in the run's graph are dropped. It can only order a
+  run, never change what runs.
+
+## Timings between CI runners, without a remote cache
 
 A fresh CI runner has no history. `file` names a JSON file, from the
 workspace root, that carries it: read before ordering, rewritten after

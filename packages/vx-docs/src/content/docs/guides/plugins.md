@@ -184,7 +184,9 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
 ```
 
-A CI runner starts with no history; `scheduleHistoryPlugin({ file: '.vx-timings.json' })`
+A CI runner starts with no history. With a remote cache declared, CI on
+`main` writes its timings there and a fresh runner or a new branch reads
+its merge-base's. Without one, `scheduleHistoryPlugin({ file: '.vx-timings.json' })`
 keeps what it learned in one file your CI cache carries
 ([post](../../blog/ci-timings-file/)).
 
@@ -212,6 +214,14 @@ export function taskLog(): VxPlugin {
   })
 }
 ```
+
+`ctx.cache` keeps your plugin's own small entries in the workspace's
+cache: `get(name)`, `put(name, bytes)`, `has(name)`, `hasMany(names)`.
+The local cache answers first, then each remote, under the run's cache
+policy and scope. Names are yours alone; an entry is written once, never
+replaced, and at most 1 MiB. A failure is an empty answer, never an
+error. `schedule` gets it too. `ctx.ci` and `ctx.branch` say where the
+run is.
 
 ## A verb and a sink
 
