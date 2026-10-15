@@ -100,13 +100,14 @@ function bareProjects(all: readonly ProjectMeta[], tasked: ReadonlySet<string>):
 export async function lockWorkspace(
   root: string,
   warn: (message: string) => void = warnToStderr,
+  say: (line: string) => void = (line) => process.stdout.write(`vx lock: ${line}\n`),
 ): Promise<number> {
   const check = await audit(root, warn)
   if (check.broken !== null) {
     process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${framed(check.broken)}\n`)
     return 1
   }
-  return await writeLock(root, check)
+  return await writeLock(root, check, say)
 }
 
 /**
@@ -220,17 +221,19 @@ function configured(all: readonly ProjectMeta[]): ConfiguredMeta[] {
 }
 
 /**
- * `vx init`'s last step: the lock, as `vx lock` writes it. A refusal (a
- * graph rule, a config that does not load) is printed and leaves the
- * written configs in place.
+ * `vx init`'s last step: the lock, as `vx lock` writes it, its line
+ * returned for the report's `lock` row. A refusal (a graph rule, a config
+ * that does not load) is printed and leaves the written configs in place.
  */
-export async function lockAfterMigration(root: string): Promise<number> {
+export async function lockAfterMigration(root: string): Promise<{ code: number; said: string }> {
+  let said = ''
   try {
-    return await lockWorkspace(root)
+    const code = await lockWorkspace(root, warnToStderr, (line) => (said = line))
+    return { code, said }
   } catch (err) {
     if (!isUserError(err)) throw err
     process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${framed(err.message)}\n`)
-    return 1
+    return { code: 1, said }
   }
 }
 
@@ -296,7 +299,11 @@ async function writeIfMissing(file: string, text: string): Promise<void> {
   }
 }
 
-async function writeLock(root: string, check: GraphCheck): Promise<number> {
+async function writeLock(
+  root: string,
+  check: GraphCheck,
+  say: (line: string) => void,
+): Promise<number> {
   const metas = configured(check.all)
   const bare = bareProjects(check.all, check.tasked)
   // By project name, as the refusal names them.
@@ -324,9 +331,7 @@ async function writeLock(root: string, check: GraphCheck): Promise<number> {
     writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES),
   ])
   const n = metas.length
-  process.stdout.write(
-    `vx lock: locked ${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}\n`,
-  )
+  say(`locked ${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
   return 0
 }
 

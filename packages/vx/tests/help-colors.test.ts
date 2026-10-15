@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { helpColors, helpText, paintHelp, verbHelpText } from '../src/cli/help.js'
-import { detectColors, paint } from '../src/orchestrator/colors.js'
+import { detectColors, paint } from '../src/util/colors.js'
 
 const ON = { enabled: true }
 const ESC = '\x1b['

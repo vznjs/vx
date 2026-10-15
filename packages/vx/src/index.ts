@@ -124,6 +124,8 @@ export {
   quoteTsLiteral,
   taskNameProblem,
 } from './workspace/index.js'
+// A report in the run summary's shape, for an adoption tool's own lines.
+export { formatReport, type ReportRow } from './util/index.js'
 export type {
   ApplyMigrationArgs,
   MigrationFormat,

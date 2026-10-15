@@ -7,6 +7,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
+import { formatReport } from '../src/util/index.js'
+import { VERSION } from '../src/version.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
@@ -58,10 +60,17 @@ describe('vx init with no package.json', () => {
       existsSync(path.join(root, 'package.json')),
     ]).toEqual([WORKSPACE, PROJECT, true, true, false])
     expect(r.out).toBe(
-      'vx init: no package.json, so no scripts to map: a workspace with one project, the root.\n' +
-        'wrote .vx/workspace.ts, vx.config.ts, .vx/.gitignore, .vx/.gitattributes.\n\n' +
-        'vx lock: locked 1 project config → .vx/projects.lock.json\n\n' +
-        'next: declare a task in vx.config.ts, then vx lock && vx run <task>\n',
+      formatReport(
+        `vx init ${VERSION}`,
+        [
+          ['from', 'no package.json: one project, the root'],
+          ['files', '.vx/workspace.ts', 'vx.config.ts', '.vx/.gitignore', '.vx/.gitattributes'],
+          ['lock', '1 project config → .vx/projects.lock.json'],
+          null,
+          ['next', 'declare a task in vx.config.ts, then vx lock && vx run <task>'],
+        ],
+        { enabled: false },
+      ),
     )
     // The written workspace runs: the root is the one project, `//`.
     const show = await vx(root, ['show', '--format', 'json'])
@@ -78,7 +87,11 @@ describe('vx init with no package.json', () => {
     expect(r.out).toContain(`── .vx/workspace.mjs ──\n${WORKSPACE}`)
     expect(r.out).toContain(`── vx.config.mjs ──\n${PROJECT}`)
     expect(r.out).toContain(
-      'would write .vx/workspace.mjs, vx.config.mjs, .vx/.gitignore, .vx/.gitattributes (dry run, nothing written).',
+      '  dry run   nothing written\n' +
+        '  files     .vx/workspace.mjs\n' +
+        '            vx.config.mjs\n' +
+        '            .vx/.gitignore\n' +
+        '            .vx/.gitattributes\n',
     )
   })
 
@@ -90,7 +103,7 @@ describe('vx init with no package.json', () => {
     expect([kept.code, kept.err, await readFile(path.join(root, 'vx.config.mjs'), 'utf8')]).toEqual(
       [0, '', mine],
     )
-    expect(kept.out).toContain('kept vx.config.mjs.')
+    expect(kept.out).toContain('  kept      vx.config.mjs\n')
     const forced = await vx(root, ['init', '--force'])
     expect([
       forced.code,

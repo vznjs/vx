@@ -88,7 +88,7 @@ async function carried(runner: 'turbo' | 'nx', files: Record<string, string>) {
           r.out
             .split('\n')
             .filter((l) => /remote cache|Nx Cloud/.test(l))
-            .map((l) => l.replace(/^note: /, '')),
+            .map((l) => l.slice(12)),
         ]
       } finally {
         await rm(root, { recursive: true, force: true })

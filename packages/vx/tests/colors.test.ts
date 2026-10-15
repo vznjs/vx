@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { detectColors, paint } from '../src/orchestrator/colors.js'
+import { detectColors, paint } from '../src/util/colors.js'
+import { formatReport } from '../src/util/report.js'
 import { restoreEnv } from './helpers/env.js'
 
 describe('paint', () => {
@@ -110,5 +111,30 @@ describe('detectColors', () => {
       ['', true, true],
       ['(unset)', true, false],
     ])
+  })
+})
+
+// vx init and vx-migrate print in the run summary's shape (M, 2026-10-15).
+describe('formatReport', () => {
+  it('opens with a blank line and the rule, aligns every value, and bolds next', () => {
+    const rows = [
+      ['from', 'turbo.json'],
+      ['files', 'a/vx.config.ts\nb/vx.config.ts'],
+      null,
+      ['next', 'vx run build --all'],
+    ] as const
+    expect(formatReport('vx-migrate 1.2.3', rows, { enabled: false })).toBe(
+      '\n─ vx-migrate 1.2.3 ' +
+        '─'.repeat(43) +
+        '\n' +
+        '  from      turbo.json\n' +
+        '  files     a/vx.config.ts\n' +
+        '            b/vx.config.ts\n' +
+        '\n' +
+        '  next      vx run build --all\n',
+    )
+    const painted = formatReport('vx', rows, { enabled: true })
+    expect(painted).toContain('\x1b[2mfrom    \x1b[0m  turbo.json')
+    expect(painted).toContain('\x1b[1mvx run build --all\x1b[0m')
   })
 })

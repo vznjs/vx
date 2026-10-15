@@ -9,7 +9,21 @@ import { existsSync, readFileSync } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
-import { DOT_VX_GITIGNORE, executablePath, gitEnv, relPosix, UserError } from '../util/index.js'
+import {
+  detectColors,
+  DOT_VX_GITIGNORE,
+  ERROR,
+  executablePath,
+  formatReport,
+  gitEnv,
+  paint,
+  relPosix,
+  SUCCESS,
+  UserError,
+  WARN,
+  type ReportRow,
+} from '../util/index.js'
+import { VERSION } from '../version.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
 /**
@@ -179,7 +193,7 @@ export interface ApplyMigrationArgs {
    * migration with nothing to convert is an error. Default false.
    */
   init?: boolean
-  /** Report lines printed under the source line (e.g. "turbo.json found and not read"). */
+  /** The report's `note` lines (e.g. "turbo.json found and not read"). */
   notes?: readonly string[]
   /**
    * Scripts exist but no project can carry them (a member without a
@@ -207,11 +221,14 @@ export interface ApplyMigrationArgs {
   /**
    * Run after the files are written (not under `dry`): `vx lock`'s step, so
    * the migrated workspace has its .vx/projects.lock.json and its graph rules checked
-   * (owner, 2026-10-14). Prints its own line. A refusal (a graph rule, a
-   * plugin not installed yet) is printed and the migration still succeeds:
-   * its files are written, and `vx lock` is the step to re-run.
+   * (owner, 2026-10-14). On success `said` is its line, shown as the
+   * report's `lock` row; a refusal (a graph rule, a plugin not installed
+   * yet) prints above the report and the migration still succeeds: its
+   * files are written, and `vx lock` is the step to re-run.
    */
-  lock?: (root: string) => Promise<number>
+  lock?: (root: string) => Promise<{ code: number; said: string }>
+  /** Rows of what the tool did before the write, e.g. `['ran', 'bun add -d …']`. */
+  steps?: readonly (readonly [label: string, value: string])[]
   /** What the written workspace file declares, e.g. `pnpm()` from `@vzn/vx-lockfile`. */
   plugins?: readonly WorkspacePlugin[]
 }
@@ -365,89 +382,20 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   )
   const ignoredNote = ignored.length === 0 ? [] : [ignoreAdvice(root, ignored, dry)]
   const todos = new Map<string, string[]>()
-  let todoCount = 0
   let clean = 0
-  let cached = false
+  let todo = 0
   for (const p of projects) {
     for (const t of p.tasks) {
       if (t.todos.length === 0 && t.task !== null) clean++
-      if (t.task !== null && 'cache' in t.task) cached = true
+      if (t.todos.length > 0) todo++
       for (const reason of t.todos) {
-        todoCount++
         const ids = todos.get(reason) ?? []
         ids.push(`${p.name}#${t.name}`)
         todos.set(reason, ids)
       }
     }
   }
-  const report: string[] = []
-  const emptyReason = empty ? args.emptyReason : undefined
-  if (emptyReason !== undefined) {
-    report.push(
-      `${verb}: ${emptyReason}`,
-      hasWorkspaceFile
-        ? `${workspaceName} already exists.`
-        : dry
-          ? `would write ${workspaceName} (dry run, nothing written).`
-          : `wrote ${workspaceName}.`,
-    )
-  } else if (empty) {
-    report.push(
-      args.unmapped === true
-        ? `${verb}: no package.json scripts became tasks.`
-        : `${verb}: no package.json scripts to turn into tasks.`,
-      ...[...(args.notes ?? []), ...ignoredNote].map((n) => `note: ${n}`),
-      hasWorkspaceFile
-        ? `${workspaceName} already exists.`
-        : dry
-          ? `would write ${workspaceName} (dry run, nothing written).`
-          : `wrote ${workspaceName}.`,
-      `Declare tasks in a ${configName} beside a package.json — your own command, for example:`,
-      '',
-      ...exampleConfig(format)
-        .trimEnd()
-        .split('\n')
-        .map((l) => `  ${l}`),
-    )
-  } else {
-    report.push(`${verb}: ${source} → ${[...new Set(names.values())].join(', ') || configName}`)
-    for (const n of [...(args.notes ?? []), ...ignoredNote, ...formatted]) report.push(`note: ${n}`)
-    for (const n of plan.headerNotes) report.push(`note: ${n}`)
-    report.push(
-      '',
-      `${clean} task${clean === 1 ? '' : 's'} migrated clean, ` +
-        `${todoCount} TODO${todoCount === 1 ? '' : 's'}${todoCount > 0 ? ':' : ''}`,
-    )
-    for (const [reason, ids] of todos) {
-      if (ids.length === 1) report.push(`  ${ids[0]}: ${reason}`)
-      else {
-        const shown = ids.slice(0, TODO_IDS_SHOWN).join(', ')
-        const more = ids.length - TODO_IDS_SHOWN
-        report.push(`  ${shown}${more > 0 ? ` and ${more} more` : ''}:`, `    ${reason}`)
-      }
-    }
-    report.push(...plan.notes)
-    if (files.length === 0) report.push(dry ? 'no files (dry run)' : 'no files written')
-    else report.push(dry ? 'files (dry run, nothing written):' : 'files written:')
-    report.push(...fileLines(files.map((f) => f.relPath)))
-    if (kept.length > 0) {
-      report.push('kept (each already has a vx config):')
-      for (const f of kept) report.push(`  ${f}`)
-    }
-    if (replaced.length > 0) {
-      report.push(dry ? 'would replace (dry run):' : 'replaced:')
-      for (const f of replaced) report.push(`  ${relPosix(root, f)}`)
-    }
-  }
   const firstTask = nextTask(plan.projects.flatMap((p) => p.tasks))
-  // A run of tasks none of which caches is never a hit, and a first try
-  // that runs twice to see the cache work saw it run twice.
-  if (!cached && [...todos.keys()].some(isCacheTodo)) {
-    report.push(
-      '',
-      'no task caches yet: uncomment the cache line in each TODO task with its real globs, and a second run hits',
-    )
-  }
   const installed = existsSync(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'))
   // The line is the next thing to type, so it names what that run would
   // refuse without: a git work tree (vx keys inputs on git's view) and,
@@ -462,6 +410,14 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     ...(!dry && args.lock === undefined ? [`${vx} lock`] : []),
   ]
   const next = steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`
+  const emptyReason = empty ? args.emptyReason : undefined
+  const notes = [
+    ...(args.notes ?? []),
+    ...ignoredNote,
+    ...formatted,
+    ...plan.headerNotes,
+    ...plan.notes,
+  ]
   if (args.json === true) {
     process.stdout.write(
       `${JSON.stringify({
@@ -473,24 +429,76 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
         todos: [...todos].map(([reason, tasks]) => ({ reason, tasks })),
         notes: [
           ...(emptyReason === undefined ? [] : [emptyReason]),
-          ...(args.notes ?? []),
-          ...ignoredNote,
-          ...plan.headerNotes,
-          ...plan.notes,
+          ...(args.steps ?? []).map(([label, value]) => `${label}: ${value}`),
+          ...notes,
         ],
         next,
       })}\n`,
     )
     return 0
   }
-  if (dry || args.lock === undefined) {
-    report.push('', `next: ${next}`)
-    process.stdout.write(`${report.join('\n')}\n`)
-    return 0
+
+  // The lock's own words become a row; a refusal prints above the report.
+  const lock = dry || args.lock === undefined ? undefined : await args.lock(root)
+  if (lock !== undefined && lock.code !== 0) process.stderr.write(lock.said)
+
+  const colors = detectColors()
+  const rows: ReportRow[] = [['from', source]]
+  if (dry) rows.push(['dry run', 'nothing written'])
+  for (const [label, value] of args.steps ?? []) rows.push([label, value])
+  if (empty) {
+    const why =
+      emptyReason ??
+      (args.unmapped === true
+        ? 'no package.json script became a task'
+        : 'no package.json scripts to turn into tasks')
+    rows.push(['tasks', `${paint('', 'none', colors, { dim: true })}: ${why}`])
+  } else {
+    const parts = [
+      ...(clean > 0 ? [paint(SUCCESS, `${clean} clean`, colors)] : []),
+      ...(todo > 0 ? [paint(WARN, `${todo} todo`, colors)] : []),
+    ]
+    if (parts.length > 0)
+      rows.push(['tasks', parts.join(` ${paint('', '·', colors, { dim: true })} `)])
+    const todoLines: string[] = []
+    for (const [reason, ids] of todos) {
+      if (ids.length === 1) todoLines.push(`${ids[0]}: ${reason}`)
+      else {
+        const shown = ids.slice(0, TODO_IDS_SHOWN).join(', ')
+        const more = ids.length - TODO_IDS_SHOWN
+        todoLines.push(`${shown}${more > 0 ? ` and ${more} more` : ''}:`, `  ${reason}`)
+      }
+    }
+    if (todoLines.length > 0) rows.push(['todo', ...todoLines])
   }
-  process.stdout.write(`${report.join('\n')}\n\n`)
-  const locked = (await args.lock(root)) === 0
-  process.stdout.write(`\nnext: ${locked ? next : `fix the above and run vx lock, then ${next}`}\n`)
+  if (files.length > 0) rows.push(['files', ...fileLines(files.map((f) => f.relPath))])
+  const keptLines = [
+    ...kept.map((f) => `${f} (has a vx config)`),
+    ...(empty && hasWorkspaceFile ? [workspaceName] : []),
+  ]
+  if (keptLines.length > 0) rows.push(['kept', ...keptLines])
+  if (replaced.length > 0) rows.push(['replaced', ...replaced.map((f) => relPosix(root, f))])
+  if (lock !== undefined) {
+    rows.push([
+      'lock',
+      lock.code === 0
+        ? lock.said.trim().replace(/^vx lock: locked /, '')
+        : paint(ERROR, 'not written', colors),
+    ])
+  }
+  if (notes.length > 0) rows.push(['note', ...notes])
+  if (empty && emptyReason === undefined) {
+    rows.push([
+      'example',
+      `a ${configName} beside a package.json, with your own command:`,
+      '',
+      exampleConfig(format).trimEnd(),
+    ])
+  }
+  const said =
+    lock === undefined || lock.code === 0 ? next : `fix the above, then vx lock and ${next}`
+  rows.push(null, ['next', said])
+  process.stdout.write(formatReport(`${verb} ${VERSION}`, rows, colors))
   return 0
 }
 
@@ -617,10 +625,9 @@ export function vxInvocation(userAgent: string | undefined, installed: boolean):
 const FILES_SHOWN = 10
 
 function fileLines(paths: readonly string[]): string[] {
-  if (paths.length <= FILES_SHOWN) return paths.map((p) => `  ${p}`)
+  if (paths.length <= FILES_SHOWN) return [...paths]
   const root = paths.filter((p) => !p.includes('/') || p.startsWith('.vx/'))
-  const more = paths.length - root.length
-  return [...root.map((p) => `  ${p}`), `  and ${more} more in package directories`]
+  return [...root, `and ${paths.length - root.length} more in package directories`]
 }
 
 /** Ids named per shared TODO; the files carry each one (sveltejs/kit: 92 persistent tasks). */

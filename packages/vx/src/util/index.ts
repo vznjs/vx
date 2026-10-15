@@ -22,6 +22,8 @@ export {
   wantsJson,
 } from './errors.js'
 export { configErrorFrame } from './config-frame.js'
+export { detectColors, ERROR, paint, SUCCESS, WARN, type ColorSupport } from './colors.js'
+export { formatReport, gradientRule, type ReportRow } from './report.js'
 export { xxh3, xxh3hex } from './hash.js'
 export {
   beginRun,

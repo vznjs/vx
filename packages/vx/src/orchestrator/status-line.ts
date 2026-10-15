@@ -5,7 +5,7 @@
 // ordinary write erases the status display first, writes its content,
 // then redraws, so the display can never interleave with task output.
 
-import { paint, type ColorSupport } from './colors.js'
+import { paint, type ColorSupport } from '../util/index.js'
 import { formatTaskRow, paintIdParts, TIME_COL } from './framed-output.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }

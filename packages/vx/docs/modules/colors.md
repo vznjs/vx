@@ -1,4 +1,4 @@
-# `src/orchestrator/colors.ts` — ANSI color gate
+# `src/util/colors.ts` — ANSI color gate
 
 ## Purpose
 
@@ -10,6 +10,11 @@ gets plain text, regardless of TTY / env.
 ## Public surface
 
 ```ts
+// State hues the run summary and every report share.
+export const SUCCESS = '#22c55e'
+export const WARN = '#eab308'
+export const ERROR = '#ef4444'
+
 export interface ColorSupport {
   enabled: boolean
 }
@@ -25,6 +30,15 @@ export function paint(
   text: string,
   colors: ColorSupport,
   opts?: PaintOptions,
+): string
+
+// util/report.ts
+export function gradientRule(colors: ColorSupport, mark?: string): string
+export type ReportRow = readonly [label: string, ...values: string[]] | null
+export function formatReport(
+  mark: string,
+  rows: readonly ReportRow[],
+  colors?: ColorSupport,
 ): string
 ```
 
@@ -72,6 +86,16 @@ hex codes, etc.). We use `'ansi-16m'` (24-bit truecolor) deliberately:
 modern terminal supports truecolor. We don't downgrade for legacy
 terminals — accents are the only UI use case, and "no color" is the
 safe fallback.
+
+## `formatReport(mark, rows, colors?)` (`util/report.ts`)
+
+A verb's report in the run summary's shape: a blank line, the gradient
+rule (`gradientRule`, shared with the summary) naming `mark`, then one
+row per `[label, ...values]`: the label dim in an 8-column field, each
+value line aligned under the first; `null` is a blank line, and the
+`next` row is bold. `vx init` and `@vzn/vx-migrate` print every report
+through it (the façade exports it with its `ReportRow` type), so a
+migration reads like a run's footer (M, 2026-10-15).
 
 ## Tests
 

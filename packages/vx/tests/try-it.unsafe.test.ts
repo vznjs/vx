@@ -249,7 +249,12 @@ describe('vx init in a Turbo or Nx repo: the first run builds, the second hits',
 /** A `$ <command>` sample's command and the output below it. */
 function transcript(fence: string): [string, string] {
   const [first, ...rest] = fence.split('\n')
-  return [first!.replace(/^\$ /, ''), rest.join('\n')]
+  return [first!.replace(/^\$ /, ''), versionless(rest.join('\n'))]
+}
+
+/** A report's rule names the version: a checkout's is 0.0.0, the guide's a release. */
+function versionless(out: string): string {
+  return out.replace(/^─ (vx-migrate|vx init) \S+ ─+$/m, '─ $1 ─')
 }
 
 // The migrate guide shows what `vx init` and `bunx @vzn/vx-migrate` write
@@ -265,13 +270,13 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [initCmd, initOut] = transcript(initFence!)
     expect(initCmd).toBe('npx @vzn/vx init --keep')
     const init = step(root, initCmd)
-    expect([init.code, init.out]).toEqual([0, initOut])
+    expect([init.code, versionless(init.out)]).toEqual([0, initOut])
     expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(file!)
 
     mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true })
     writeFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'env:\n  TURBO_TOKEN: x\n')
     const cached = step(root, 'npx @vzn/vx init --keep --dry --force')
-    expect(cached.out.split('\n')).toContain(cacheLine!.trimEnd())
+    expect(cached.out.split('\n').map((l) => l.trim())).toContain(cacheLine!.trim())
     rmSync(path.join(root, '.github'), { recursive: true })
 
     const [migrateCmd, migrateOut] = transcript(migrateFence!)
@@ -294,7 +299,7 @@ describe('the migrate guide shows what vx init and vx-migrate write, and the nat
     const [initCmd, initOut] = transcript(initFence!)
     expect(initCmd).toBe('npx @vzn/vx init --keep')
     const init = step(root, initCmd)
-    expect([init.code, init.out]).toEqual([0, initOut])
+    expect([init.code, versionless(init.out)]).toEqual([0, initOut])
     expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(file!)
     const [migrateCmd, migrateOut] = transcript(migrateFence!)
     expect(migrateCmd).toBe('bunx @vzn/vx-migrate')
@@ -326,7 +331,7 @@ function migrate(root: string): [number | null, string] {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  return [r.exitCode, r.stdout.toString()]
+  return [r.exitCode, versionless(r.stdout.toString())]
 }
 
 /** The guide's last step: vx-migrate already took the plugin out of
