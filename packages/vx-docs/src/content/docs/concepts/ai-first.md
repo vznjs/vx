@@ -11,7 +11,7 @@ get the same answers, formatted for reading.
 ## Teach the agent the CLI
 
 vx ships an agent skill that teaches any coding agent the CLI it already
-has: `npx skills add vznjs/vx/packages/vx/skills/vx`. Every question has a command:
+has: `npx skills add vznjs/vx`. Every question has a command:
 
 | Question                                      | Command                                              |
 | --------------------------------------------- | ---------------------------------------------------- |

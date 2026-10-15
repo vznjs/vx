@@ -25,7 +25,7 @@ features) and prints the matching sections whole; `--format json` gives
 run tasks, read failures and query the workspace as JSON. Install it:
 
 ```sh
-npx skills add vznjs/vx/packages/vx/skills/vx
+npx skills add vznjs/vx
 ```
 
 Or copy the one that matches the vx you installed where your agent

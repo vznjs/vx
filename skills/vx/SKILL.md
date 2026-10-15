@@ -105,6 +105,6 @@ vx info --format json   # vx and Bun versions, projects, config errors, plugins,
 
 ## Install
 
-`npx skills add vznjs/vx/packages/vx/skills/vx` installs this skill. To match the vx a workspace
+`npx skills add vznjs/vx` installs this skill. To match the vx a workspace
 has installed, copy it from there instead:
 `cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/`.

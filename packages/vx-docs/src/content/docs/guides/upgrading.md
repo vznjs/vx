@@ -75,7 +75,7 @@ vx.workspace.* and vx-lock.json are no longer read. Move the workspace config to
 
 ## retire @vzn/vx-mcp for the agent skill and vx last --stats
 
-@vzn/vx-mcp and `vx mcp` are gone; install the agent skill (`npx skills add vznjs/vx/packages/vx/skills/vx`) and read the CLI's `--format json` (`vx last --stats` for run history). `@vzn/vx` no longer exports clampInt, collectInfo, maskedCommand, maskedLine or the run-history queries (cacheKeyDiff, latestRunId, resolveRunId, inputWriters, rootCauses, runFailures, taskLog, whyDidThisRerunQuery).
+@vzn/vx-mcp and `vx mcp` are gone; install the agent skill (`npx skills add vznjs/vx`) and read the CLI's `--format json` (`vx last --stats` for run history). `@vzn/vx` no longer exports clampInt, collectInfo, maskedCommand, maskedLine or the run-history queries (cacheKeyDiff, latestRunId, resolveRunId, inputWriters, rootCauses, runFailures, taskLog, whyDidThisRerunQuery).
 
 ## drop rename shims, flag aliases and lock path fields
 
