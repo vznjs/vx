@@ -77,7 +77,7 @@ import {
 } from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
 import { keepRunBytes } from './run-report.js'
-import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from './plugin-host.js'
+import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
 import { assembleRunSummary } from './telemetry.js'
@@ -539,48 +539,8 @@ async function runOnBus(
       log.status(`[vx] ${id}: exec.remote is 'only' and ${why} — nothing ran`)
     }
   }
-  // Demand: what each executor still has left to run. An executor that
-  // provisions per task (a container, an allocation, a pod) otherwise has to
-  // guess from `capacity` alone and hold everything until teardown. Built
-  // ONLY for executors that asked — with none declared there is no map, no
-  // set, and no call in the completion path.
-  const demandOf = new Map<TaskExecutor, Set<string>>()
-  for (const [id, executor] of placements.executors) {
-    if (executor.demand === undefined) continue
-    let remaining = demandOf.get(executor)
-    if (remaining === undefined) demandOf.set(executor, (remaining = new Set()))
-    remaining.add(id)
-  }
-  // The SAME set is handed back every time, narrowed in place: a consumer
-  // reading it later sees the truth rather than a stale snapshot. A hint,
-  // as `admit` is: one that throws is named once and asked no more, where
-  // it surfaced as a bare stack, or mid-run from the completion path
-  // (item 1022).
-  const tellDemand = (executor: TaskExecutor, remaining: ReadonlySet<string>): void => {
-    const failed = (err: unknown): void => {
-      if (!demandOf.delete(executor)) return
-      const m = err instanceof Error ? err.message : String(err)
-      log.status(`[vx] ${executorLabel(executor)} failed in demand: ${m}; not asked again this run`)
-    }
-    try {
-      // An `async demand` that rejects did so where no one listened: an
-      // unhandled rejection, a stack, the run killed. Its rejection is a
-      // throw like any other.
-      const ret: unknown = executor.demand!(remaining)
-      if (ret instanceof Promise) ret.catch(failed)
-    } catch (err) {
-      failed(err)
-    }
-  }
-  for (const [executor, remaining] of demandOf) tellDemand(executor, remaining)
-  const narrowDemand =
-    demandOf.size === 0
-      ? (): void => {}
-      : (id: string): void => {
-          for (const [executor, remaining] of demandOf) {
-            if (remaining.delete(id)) tellDemand(executor, remaining)
-          }
-        }
+  // Demand: what each executor still has left to run (`executorDemand`).
+  const narrowDemand = executorDemand(placements.executors, (m) => log.status(m))
 
   // `cache.download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home.
