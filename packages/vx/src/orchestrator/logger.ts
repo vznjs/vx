@@ -32,7 +32,7 @@ import {
   detectColors,
   type ColorSupport,
 } from '../util/index.js'
-import { isCacheHit } from './telemetry.js'
+import { isCacheHit } from '../graph/index.js'
 import { failedLabel, outcomeWord, ranNoCache } from './events.js'
 import type { Forecast } from './forecast.js'
 import {

@@ -16,8 +16,15 @@ export {
   RestoreDemoted,
   runGraph,
   type TaskOutcome,
-  type TaskStatus,
 } from './scheduler.js'
+export {
+  type CacheSource,
+  deriveCacheSource,
+  isCacheHit,
+  isPassStatus,
+  TASK_STATUSES,
+  type TaskStatus,
+} from './task-status.js'
 export {
   buildTaskGraph,
   checkGraph,

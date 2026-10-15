@@ -133,7 +133,7 @@ describe('no page says a failed task aborts its dependents', () => {
     // `aborted` is what teardown sets, `skipped` is what a failed upstream
     // leaves behind, and the pages must not swap them.
     const src = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'graph', 'scheduler.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'graph', 'task-status.ts'),
       'utf8',
     )
     expect(src).toContain("| 'skipped'")

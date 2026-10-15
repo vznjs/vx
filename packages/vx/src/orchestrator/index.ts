@@ -132,17 +132,8 @@ export { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 // module header for why one implementation, not one per sink.
 export { LOG_WIRE_VERSION, TaskLogBuffer } from './task-log-buffer.js'
 export type { TaskLogBundle, TaskLogEntry } from './task-log-buffer.js'
-export {
-  assembleRunSummary,
-  createTelemetrySource,
-  deriveCacheSource,
-  isCacheHit,
-  isPassStatus,
-  TASK_STATUSES,
-  TELEMETRY_SCHEMA_VERSION,
-} from './telemetry.js'
+export { assembleRunSummary, createTelemetrySource, TELEMETRY_SCHEMA_VERSION } from './telemetry.js'
 export type {
-  CacheSource,
   RunContextRecord,
   RunSummaryRecord,
   TaskTelemetry,

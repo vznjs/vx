@@ -211,7 +211,8 @@ export type {
 // consumer rolls its own Set of status literals — and a Set has no
 // compile-time tripwire when the union gains a member, so it silently answers
 // "no" for the new one.
-export { TELEMETRY_SCHEMA_VERSION, isCacheHit, isPassStatus } from './orchestrator/index.js'
+export { type CacheSource, isCacheHit, isPassStatus } from './graph/index.js'
+export { TELEMETRY_SCHEMA_VERSION } from './orchestrator/index.js'
 // `TaskLogBuffer` is on the façade on the same demonstrated need: EVERY
 // telemetry sink that ships build output has to bound it, and the retention
 // rules (per-task tail, per-run budget, failures never evicted by successes,
@@ -223,7 +224,6 @@ export { LOG_WIRE_VERSION, TaskLogBuffer } from './orchestrator/index.js'
 // say `128 + SIGKILL`; the decode is the runner's convention, one copy.
 export { exitSignal } from './orchestrator/index.js'
 export type {
-  CacheSource,
   RunContextRecord,
   RunSummaryRecord,
   TaskLogBundle,

@@ -5,7 +5,7 @@
 
 import type { TaskOutcome } from '../graph/index.js'
 import { tallyOutcomes } from './tally.js'
-import { isCacheHit } from './telemetry.js'
+import { isCacheHit } from '../graph/index.js'
 import { outcomeLabel, projectOutcome, ranNoCache } from './events.js'
 import { isGroupTask } from '../graph/index.js'
 import {

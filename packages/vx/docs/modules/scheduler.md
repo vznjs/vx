@@ -126,6 +126,16 @@ export class RestoreDemoted extends Error {
 }
 ```
 
+`task-status.ts` holds `TaskStatus` and what each status means, so no
+reader re-lists the statuses:
+
+- `deriveCacheSource(status)` — the `CacheSource`
+  (`'miss' | 'local' | 'remote' | 'none'`): `'local'` / `'remote'` for the
+  two hits, `'miss'` for `success` / `failed`, `'none'` for `skipped` /
+  `aborted`; never null.
+- `TASK_STATUSES`, `isPassStatus(status)`, `isCacheHit(status)` — every
+  status at runtime and the two predicates every surface shares.
+
 A restore-tier task whose `execute` rejects with `RestoreDemoted` (its
 artifact vanished after the up-front probe) records no outcome: the
 scheduler releases its restore slot and dispatches it again as an

@@ -10,7 +10,8 @@ import type { InvocationRecord, RunRecord } from '../cache/index.js'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { VERSION } from '../version.js'
 import type { CiContext, GitContext, HostContext } from './run-context.js'
-import { isCacheHit, taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
+import { taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
+import { isCacheHit } from '../graph/index.js'
 
 export interface RunRecordsInput {
   outcomes: readonly TaskOutcome[]

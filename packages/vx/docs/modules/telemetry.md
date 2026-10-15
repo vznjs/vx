@@ -22,9 +22,6 @@ is pre-folded, bigint wallclock spans are decimal strings.
   from the context and the `TaskTelemetry[]`, the per-task tallies
   derived from `tasks`, so a distributed run and a local one produce
   the same summary.
-- `deriveCacheSource(status)` — the `CacheSource`: `'local'` / `'remote'`
-  for the two hits, `'miss'` for `success` / `failed`, `'none'` for
-  `skipped` / `aborted`; never null.
 - `taskTelemetryOf(outcome)` — the one projection of a `TaskOutcome` into
   `TaskTelemetry`, used by the streaming `task.end` record and the
   summary's `tasks[]` alike, so the two cannot drift (item 660).
@@ -45,10 +42,9 @@ is pre-folded, bigint wallclock spans are decimal strings.
   cache) and `warn`.
 - `TelemetrySource` — the live projection: a bus `subscriber`,
   `emitSummary` and `flush`.
-- `CacheSource` — `'miss' | 'local' | 'remote' | 'none'`, the cache axis
-  every record carries.
-- `TASK_STATUSES`, `isPassStatus(status)`, `isCacheHit(status)` — the
-  task axis and the two predicates every surface shares.
+- The status vocabulary every record carries (`TaskStatus`,
+  `CacheSource`, `isPassStatus`, `isCacheHit`) is graph's
+  (`graph/task-status.ts`, scheduler.md).
 - `TELEMETRY_SCHEMA_VERSION` — bumped when a record's shape changes, so a
   receiver can refuse what it cannot read.
 

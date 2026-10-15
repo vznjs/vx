@@ -13,6 +13,7 @@ import {
   type ScheduleStrategy,
 } from './priorities.js'
 import { isGroupTask, type TaskNode } from './task-graph.js'
+import type { TaskStatus } from './task-status.js'
 
 /**
  * Thrown by `execute` for a restore-tier task that turned out to have
@@ -28,19 +29,6 @@ export class RestoreDemoted extends Error {
     this.name = 'RestoreDemoted'
   }
 }
-
-export type TaskStatus =
-  | 'success'
-  | 'cache-hit'
-  | 'cache-hit-remote'
-  | 'failed'
-  | 'skipped'
-  // A child killed by a shutdown signal (SIGINT/SIGTERM — e.g. Ctrl-C):
-  // the task never finished on its own terms, so it reverts to aborted —
-  // excluded from the tally and the run history. It still PROPAGATES like
-  // a failure (see `willSkip`): the child died mid-write, so its outputs
-  // are partial.
-  | 'aborted'
 
 /** What moved in a missed task's key since the last entry saved for it. */
 export interface InputChanges {
