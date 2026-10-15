@@ -55,7 +55,7 @@ describe('a cache hit on a task with no outputs', () => {
     await vx(root, ['check', 'build', '--all'])
     const hit = await vx(root, ['check', '--all'])
     // A hit (the default flow prints a hit silently; the footer counts it).
-    expect(hit).toContain('1 up-to-date')
+    expect(hit).toContain('1●')
     expect(hit).not.toContain('restore: extract')
     // Control: wipe the build's outputs and hit it — the extract span shows.
     await rm(path.join(root, 'packages', 'app', 'dist'), { recursive: true, force: true })

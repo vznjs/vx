@@ -168,6 +168,79 @@ describe('formatRunSummary', () => {
     expect(lines).toContain('  info      8 workers · local + remote cache')
   })
 
+  describe('the cache legend reads per layer: = fresh, ↓ restored, ↑ saved (M, 2026-10-15)', () => {
+    const cached = (
+      id: string,
+      status: TaskOutcome['status'],
+      extra: Partial<TaskOutcome> = {},
+    ): TaskOutcome => ({
+      ...outcome(id, status),
+      node: { id, config: { exec: { command: 'noop' }, cache: {} } } as unknown as TaskNode,
+      ...extra,
+    })
+    const run = [
+      cached('a#build', 'success', { saved: true }),
+      cached('b#build', 'success', { saved: true }),
+      cached('c#build', 'success'),
+      cached('d#build', 'cache-hit-remote', { restored: true }),
+      cached('e#build', 'cache-hit-remote', { restored: false }),
+      cached('f#build', 'cache-hit', { restored: true }),
+      cached('g#build', 'cache-hit', { restored: false }),
+      outcome('h#dev', 'success'),
+    ]
+    const legend = (
+      layers: { local?: boolean; localWrite?: boolean; remote?: boolean },
+      uploads = { count: 2, failed: 0 },
+      notDownloaded = 0,
+    ): string => {
+      const lines = formatRunSummary(
+        run,
+        10,
+        { enabled: false },
+        {
+          version: '0.0.0',
+          packageCount: 1,
+          remoteCacheEnabled: layers.remote === true,
+          cache: {
+            local: layers.local ?? true,
+            localWrite: layers.localWrite ?? true,
+            remote: layers.remote ?? true,
+            uploads,
+            notDownloaded: () => notDownloaded,
+          },
+        },
+      )
+      return lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
+    }
+
+    it('fresh and no-cache count under local; ↑ is what landed', () => {
+      expect(legend({})).toBe('local 2● 1○ 1↓ 2↑ · remote 1↓ 2↑ · 1 not saved')
+    })
+
+    it('a failed upload and outputs left remote are counted apart', () => {
+      expect(legend({}, { count: 1, failed: 1 }, 3)).toBe(
+        'local 2● 1○ 1↓ 2↑ · remote 1↓ 1↑ · 1 ↑ failed · 1 not saved · 3 not downloaded',
+      )
+    })
+
+    it('a layer the run did not use is not shown', () => {
+      expect(legend({ remote: false }, { count: 0, failed: 0 })).toBe(
+        'local 2● 1○ 1↓ 2↑ · 1 not saved',
+      )
+    })
+
+    it('local ↑ shows only when the policy writes the local layer', () => {
+      expect(legend({ localWrite: false })).toBe('local 2● 1○ 1↓ · remote 1↓ 2↑ · 1 not saved')
+    })
+
+    it('CONTROL: with no run context the legend is the plain one', () => {
+      const lines = formatRunSummary(run, 10)
+      expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe(
+        '3 miss · 1 no-cache · 2 up-to-date · 1 local · 1 remote',
+      )
+    })
+  })
+
   it('the info row sums what an admit policy held; no hold, no words', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false, concurrency: 4 }
     const held = { ...outcome('a#x', 'success'), admissionHeldMs: 1200 }
@@ -384,11 +457,12 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
     )
     const block = /## Format\n\n```\n([\s\S]*?)```/.exec(doc)
     expect(block).not.toBeNull()
-    // A cached task (a `cache` block) that ran: the page's "4 miss" row.
+    // A cached task (a `cache` block) that ran and saved: the page's "local 4↑" row.
     const timed = (id: string, durationMs: number): TaskOutcome => ({
       ...outcome(id, 'success'),
       node: { id, config: { exec: { command: 'noop' }, cache: {} } } as TaskNode,
       durationMs,
+      saved: true,
     })
     const lines = formatRunSummary(
       [timed('a#build', 239), timed('a#test', 190), timed('a#lint', 215), timed('a#fmt', 216)],
@@ -400,6 +474,13 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
         concurrency: 10,
         remoteCacheEnabled: false,
         workspaceProjectCount: 2,
+        cache: {
+          local: true,
+          localWrite: true,
+          remote: false,
+          uploads: { count: 0, failed: 0 },
+          notDownloaded: () => 0,
+        },
       },
     )
     // The leading blank line stands the footer apart from the last frame;

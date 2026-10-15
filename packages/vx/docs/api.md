@@ -2300,6 +2300,7 @@ export interface TaskOutcome {
   inputMoved?: string
   where?: string
   outputs?: 'deferred'
+  saved?: true
   wallclockStartNs?: bigint
   wallclockEndNs?: bigint
   restored?: boolean

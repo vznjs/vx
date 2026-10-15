@@ -95,6 +95,30 @@ async function runScoped(
 
 describe('cache.scope', () => {
   it(
+    'the footer says what each layer restored and saved (M, 2026-10-15)',
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-footer-uploads-')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const { layer } = memoryRemote()
+        await runScoped(fixture, layer, undefined, 'v1')
+        const legend = (): string =>
+          fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
+        expect(legend()).toBe('local 1↑ · remote 1↑')
+        fixture.log.length = 0
+        await runScoped(fixture, layer, undefined, 'v1')
+        expect(legend()).toBe('remote 1↓')
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a scope reads the default keys, then its own, and writes only its own',
     async () => {
       const fixture = await makeWorkspace('vx-cache-scope-')

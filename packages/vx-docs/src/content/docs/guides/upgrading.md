@@ -11,7 +11,7 @@ first; its text is that footer: what changed and what to do.
 
 ## cli: lay out every refusal as a notice
 
-refusals on stderr read `✗ vx <verb> <problem>` with facts, `see …` and `fix …` lines under it, not `vx <verb>: <message>`. Read --format json or the exit code, not stderr text.
+refusals on stderr no longer read `vx <verb>: <message>`; scripts should read --format json or the exit code.
 
 ## util: output components for every verb and plugin
 

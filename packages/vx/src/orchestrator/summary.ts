@@ -85,6 +85,10 @@ export interface SummaryStats {
   upToDate: number
   restoredLocal: number
   restoredRemote: number
+  /** Ran here and saved to the cache: the legend's `↑`. */
+  saved?: number
+  /** Ran here with a `cache` block, succeeded, and saved nothing. */
+  notSaved?: number
   /** Tasks that executed (success + failed) with a `cache` block — the misses. */
   miss: number
   /** Executed with no `cache` block: never consulted the cache, not a miss. */
@@ -117,6 +121,21 @@ export interface RunContext {
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
   remoteCacheEnabled: boolean
+  /**
+   * The cache layers the run used, so the legend reads `local 1= 2↓ 4↑ ·
+   * remote 3↓ 4↑`. Absent: the plain `N miss` legend.
+   */
+  cache?: {
+    /** The run's policy reads or writes the local layer. */
+    local: boolean
+    localWrite: boolean
+    /** A remote layer exists and the policy reads or writes it. */
+    remote: boolean
+    /** The run's uploads, filled as each lands (a live ref). */
+    uploads: { count: number; failed: number }
+    /** Tasks whose outputs are still in the remote store. */
+    notDownloaded: () => number
+  }
   /** Total projects discovery found — the bar's denominator. */
   workspaceProjectCount?: number
 }
@@ -208,8 +227,8 @@ export function formatSummarySection(
     if (taskParts.length > 0) lines.push(legend(taskParts))
   }
 
-  // Cache meter + numbers, fixed order: miss · up-to-date · local ·
-  // remote.
+  // Cache meter + numbers: per layer when the run context names its
+  // layers, else miss · no-cache · up-to-date · local · remote.
   if (miss + noCache + hits + left + stats.skipped > 0) {
     const cacheBar = segmentBar(
       [
@@ -224,13 +243,38 @@ export function formatSummarySection(
       colors,
     )
     const cacheParts: string[] = []
-    if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
-    if (noCache > 0) cacheParts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
-    if (stats.upToDate > 0) cacheParts.push(paint(SUCCESS, `${stats.upToDate} up-to-date`, colors))
-    if (stats.restoredLocal > 0)
-      cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local`, colors))
-    if (stats.restoredRemote > 0)
-      cacheParts.push(paint(REMOTE, `${stats.restoredRemote} remote`, colors))
+    const layers = context?.cache
+    if (layers !== undefined) {
+      // Per layer (M, 2026-10-15): `●` fresh (outputs already on disk, from
+      // either layer) and `○` no cache, both local; `↓` restored from a
+      // layer, `↑` saved to it.
+      const n = (count: number, glyph: string): string[] => (count > 0 ? [`${count}${glyph}`] : [])
+      const local = [
+        ...(layers.local ? n(stats.upToDate, '\u25cf') : []),
+        ...n(noCache, '\u25cb'),
+        ...(layers.local ? n(stats.restoredLocal, '\u2193') : []),
+        ...(layers.localWrite ? n(stats.saved ?? 0, '\u2191') : []),
+      ]
+      if (local.length > 0) cacheParts.push(paint(LOCAL, `local ${local.join(' ')}`, colors))
+      const remote = [...n(stats.restoredRemote, '\u2193'), ...n(layers.uploads.count, '\u2191')]
+      if (layers.remote && remote.length > 0)
+        cacheParts.push(paint(REMOTE, `remote ${remote.join(' ')}`, colors))
+      if (layers.uploads.failed > 0)
+        cacheParts.push(paint(ERROR, `${layers.uploads.failed} \u2191 failed`, colors))
+      if ((stats.notSaved ?? 0) > 0)
+        cacheParts.push(paint(WARN, `${stats.notSaved} not saved`, colors))
+      const notDownloaded = layers.notDownloaded()
+      if (notDownloaded > 0) cacheParts.push(paint(WARN, `${notDownloaded} not downloaded`, colors))
+    } else {
+      if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
+      if (noCache > 0) cacheParts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
+      if (stats.upToDate > 0)
+        cacheParts.push(paint(SUCCESS, `${stats.upToDate} up-to-date`, colors))
+      if (stats.restoredLocal > 0)
+        cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local`, colors))
+      if (stats.restoredRemote > 0)
+        cacheParts.push(paint(REMOTE, `${stats.restoredRemote} remote`, colors))
+    }
     // Skipped tasks ride the bar, yellow like the tasks meter, so the two
     // bars fill alike; their count is the tasks legend's alone (the footer
     // never says a fact twice, M, 2026-10-14).
@@ -338,6 +382,11 @@ export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[] {
 
 // Local byte formatter — the orchestrator can't import cli/format.ts
 // (module boundary), and the footer only needs one compact form.
+/** Ran here with a `cache` block, succeeded, and its result was not saved. */
+export function ranUnsaved(o: TaskOutcome): boolean {
+  return o.status === 'success' && !ranNoCache(o) && o.saved !== true && o.where === undefined
+}
+
 export function formatRunSummary(
   outcomes: readonly TaskOutcome[],
   totalMs: number,
@@ -376,6 +425,8 @@ export function formatRunSummary(
       upToDate: t.upToDate,
       restoredLocal: t.restoredLocal,
       restoredRemote: t.restoredRemote,
+      saved: outcomes.filter((o) => o.saved === true && !isGroupTask(o.node)).length,
+      notSaved: outcomes.filter((o) => !isGroupTask(o.node) && ranUnsaved(o)).length,
       miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote) - noCache,
       noCache,
       savedMs,

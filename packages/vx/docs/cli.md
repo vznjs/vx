@@ -3180,7 +3180,7 @@ A broad run looks like:
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 success · 2 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            1 miss · 1 local
+            local 1↓ 1↑
 
   info      8 workers · local cache
   time      5.34s · 900ms saved
@@ -3189,7 +3189,15 @@ A broad run looks like:
 The three bars are meters: `projects` is what the run covered against
 the workspace, `tasks` is failed / success / skipped, `cache` is miss /
 no-cache / up-to-date / local / remote (a skipped task rides it too, so
-the two bars fill alike; its count is on the tasks legend only). The
+the two bars fill alike; its count is on the tasks legend only). Its
+legend reads per layer: `local 1● 1○ 2↓ 4↑ · remote 3↓ 4↑`.
+`●` is a fresh hit (outputs already on disk, whichever layer answered,
+so it counts under local), `○` a task with no cache, `↓` is restored
+from that layer and `↑` saved to it (local `↑` counts only tasks that ran here; remote `↑` counts
+uploads that landed). A layer shows only when the run's
+`--cache-policy` uses it. `N not saved` (ran, succeeded, saved nothing),
+`N not downloaded` (outputs left in the remote store) and `N ↑ failed`
+show only when non-zero. The
 `time` row is the wall time, then what the cache saved (the hits' stored
 exec times, never the restore), then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a

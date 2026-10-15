@@ -900,7 +900,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       const legends = fixture.log.filter((l) => /^ {12}\S/.test(l) && !l.includes(' affected · '))
       // Only the executable `build` task counts — the `ci` group is hidden.
       expect(legends[0]).toBe('            1 success · 1 total')
-      expect(legends[1]).toBe('            1 miss')
+      expect(legends[1]).toBe('            local 1↑')
     },
     TIMEOUT,
   )

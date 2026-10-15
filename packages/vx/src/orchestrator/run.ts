@@ -903,6 +903,13 @@ async function runOnBus(
       version: VERSION,
       packageCount: packagesInScope.size,
       remoteCacheEnabled,
+      cache: {
+        local: policy.localRead || policy.localWrite,
+        localWrite: policy.localWrite,
+        remote: remoteCacheEnabled && (policy.remoteRead || policy.remoteWrite),
+        uploads: prepared.localCache.uploads,
+        notDownloaded: () => deferredOutputs.pending().length,
+      },
       concurrency,
       workspaceProjectCount,
     }
@@ -1315,7 +1322,7 @@ async function runOnBus(
     const stillDeferred = deferredOutputs.pending()
     if (stillDeferred.length > 0) {
       log.status(
-        `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--cache-download=none): ${stillDeferred.join(', ')}`,
+        `  Deferred: left outputs remote (--cache-download=none): ${stillDeferred.join(', ')}`,
       )
     }
 

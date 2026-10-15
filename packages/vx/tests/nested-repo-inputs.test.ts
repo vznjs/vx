@@ -148,10 +148,10 @@ describe('a project inside a nested repository', () => {
       }
       const cold = run()
       expect(cold).not.toContain('matched no files')
-      expect(cold).toMatch(/3 miss/)
+      expect(cold).toMatch(/local 3↑/)
       for (const dir of Object.values(dirs)) await write(path.join(dir, 'src/x.txt'), 'two')
       const warm = run()
-      expect(warm).toMatch(/3 miss/)
+      expect(warm).toMatch(/local 3↑/)
       for (const dir of Object.values(dirs)) {
         expect(await readFile(path.join(dir, 'dist/out.txt'), 'utf8')).toBe('two')
       }
@@ -254,14 +254,14 @@ describe('a nested repository inside a project', () => {
         })
         return new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr)
       }
-      expect(run()).toMatch(/1 miss/)
-      expect(run()).toMatch(/1 up-to-date/)
+      expect(run()).toMatch(/local 1↑/)
+      expect(run()).toMatch(/local 1●/)
       for (const [sub, file] of [
         ['vendor/lib', 'x.txt'],
         ['vendor/loose', 'y.txt'],
       ] as const) {
         await write(path.join(a, sub, file), `two ${sub}`)
-        expect(run()).toMatch(/1 miss/)
+        expect(run()).toMatch(/local 1↑/)
       }
       expect(await readFile(path.join(a, 'dist/out.txt'), 'utf8')).toBe(
         'two vendor/libtwo vendor/loose',

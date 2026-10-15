@@ -7,8 +7,8 @@ temporary start until the repo has native config:
 ```sh
 npm install
 git init && git add -A && git commit -m init
-npx @vzn/vx run test --all    # lib#build, app#build, app#test: 3 miss
-npx @vzn/vx run test --all    # 3 up-to-date
+npx @vzn/vx run test --all    # lib#build, app#build, app#test: local 3↑
+npx @vzn/vx run test --all    # local 3●
 ```
 
 The goal is configs of your own: `bunx @vzn/vx-migrate` writes a

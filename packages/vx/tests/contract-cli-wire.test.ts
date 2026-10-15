@@ -131,6 +131,7 @@ async function summarizeJson(): Promise<unknown> {
     notReady: 'timeout',
     where: 'remote',
     outputs: 'deferred',
+    saved: true,
     wallclockStartNs: 1n,
     wallclockEndNs: 2n,
     restored: false,

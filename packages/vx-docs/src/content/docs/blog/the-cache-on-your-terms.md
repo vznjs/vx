@@ -20,11 +20,11 @@ $ vx run build --all
   time      18ms · 1.27s saved
 
 $ vx run build --all --force
-  cache     4 miss
+  cache     local 4↑
   time      658ms
 
 $ vx run build --all --no-cache
-  cache     4 no-cache
+  cache     local 4○
   time      638ms
 ```
 
@@ -69,7 +69,7 @@ or a fresh `git worktree` hits what the first one built:
 $ git worktree add ../demo-wt && cd ../demo-wt
 $ vx run build --all
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            4 local
+            local 4↓
   time      22ms · 1.24s saved
 ```
 

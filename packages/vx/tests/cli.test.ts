@@ -595,7 +595,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       const args = ['run', '--all', 'hello', flag, '--report=markdown', '--summarize=s.json']
       expect(await run(args)).toBe(0)
       expect(stdout).toContain('| one#hello | success | no-cache |')
-      expect(stdout).toMatch(/\n {12}1 no-cache\n/)
+      expect(stdout).toMatch(/\n {12}local 1○\n/)
       expect(stdout).not.toContain('miss')
       const row = JSON.parse(await readFile('s.json', 'utf8')).tasks[0]
       expect([row.id, row.noCache]).toEqual(['one#hello', true])
