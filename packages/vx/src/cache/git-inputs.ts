@@ -6,7 +6,18 @@
 // task declared. Nothing here reads a config or applies a boundary.
 
 import path from 'node:path'
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+  type Stats,
+} from 'node:fs'
 import {
   executablePath,
   gitEnv,
@@ -1324,6 +1335,91 @@ export function gitPathspecs(
 }
 
 /**
+ * Whether the index holds a racily clean entry: a file stamped no earlier
+ * than the second the index was written. git cannot trust its stat and
+ * re-hashes the file on every `status` until something rewrites the index,
+ * and a fresh checkout is all such entries. A layout this does not read
+ * answers false.
+ */
+function hasRacyEntry(index: Uint8Array, mtimeSec: number, oidBytes: number): boolean {
+  const view = new DataView(index.buffer, index.byteOffset, index.byteLength)
+  if (index.length < 12 || view.getUint32(0) !== 0x44495243) return false
+  const version = view.getUint32(4)
+  if (version < 2 || version > 4) return false
+  const count = view.getUint32(8)
+  let at = 12
+  for (let i = 0; i < count; i++) {
+    const flagsAt = at + 40 + oidBytes
+    if (flagsAt + 2 > index.length) return false
+    if (view.getUint32(at + 8) >= mtimeSec) return true
+    let pathAt = flagsAt + 2
+    if (version >= 3 && (view.getUint16(flagsAt) & 0x4000) !== 0) pathAt += 2
+    // v4 opens the path with a varint (bytes of the previous path to drop).
+    if (version === 4) while ((index[pathAt++] ?? 0) & 0x80);
+    const end = index.indexOf(0, pathAt)
+    if (end < 0) return false
+    at = version === 4 ? end + 1 : at + ((end - at + 8) & ~7)
+  }
+  return false
+}
+
+/** A private copy a run older than this may still have handed to `status`. */
+const STALE_INDEX_MS = 60_000
+
+/**
+ * The index `status` reads when the real one holds a racily clean entry: a
+ * copy refreshed once and kept beside it, named by the real index's bytes.
+ * `status` reads the real index without writing it (item 880), so in a
+ * checkout nothing else had refreshed, every run re-hashed every racy file:
+ * 347 against 8 ms on 1,800 files. The copy keeps the real mtime until git
+ * refreshes it, so git's own racy rule holds for it; only stats move, the
+ * entries are the real index's. Undefined: read the real index.
+ */
+async function refreshedIndex(
+  indexFile: string,
+  read: { bytes: Uint8Array; hash: string; st: Stats },
+  objectFormat: 'sha1' | 'sha256',
+  spawnGit: (
+    args: string[],
+    stdin?: string,
+    env?: Record<string, string>,
+  ) => Promise<GitRun | null>,
+): Promise<string | undefined> {
+  if (GIT_LOCATION_ENV.some((name) => process.env[name] !== undefined)) return undefined
+  const { bytes, hash, st } = read
+  if (!hasRacyEntry(bytes, Math.floor(st.mtimeMs / 1000), objectFormat === 'sha256' ? 32 : 20)) {
+    return undefined
+  }
+  const dir = path.dirname(indexFile)
+  const name = `vx-index-${hash}`
+  const copy = path.join(dir, name)
+  if (existsSync(copy)) return copy
+  const tmp = `${copy}.${process.pid}`
+  try {
+    writeFileSync(tmp, bytes)
+    utimesSync(tmp, st.atime, st.mtime)
+    const run = await spawnGit(['update-index', '-q', '--refresh'], undefined, {
+      GIT_INDEX_FILE: tmp,
+    })
+    if (run === null || run.exitCode !== 0) throw new Error('refresh failed')
+    renameSync(tmp, copy)
+  } catch {
+    rmSync(tmp, { force: true })
+    return undefined
+  }
+  const stale = Date.now() - STALE_INDEX_MS
+  for (const other of readdirSync(dir)) {
+    if (!other.startsWith('vx-index-') || other === name) continue
+    try {
+      if (lstatSync(path.join(dir, other)).mtimeMs < stale) rmSync(path.join(dir, other))
+    } catch {
+      // another run swept it
+    }
+  }
+  return copy
+}
+
+/**
  * The spawn half of `populateGitFilesCache`, separated so an UNSCOPED run
  * can start it before the configs are evaluated — the enumeration needs
  * only the pathspecs, and `['.']` is right for every unscoped run — and
@@ -1378,33 +1474,15 @@ export async function startGitEnumeration(
   // `ls-files --others` for the untracked set walked the same tree a second
   // time (~50 ms of CPU, concurrent with status but contending with it).
   const listing = spawnGit(['ls-files', '-s', '-v', '-z', '--', ...pathspecs])
-  const running = Promise.all([
-    listing,
-    // `--ignored=matching` names an ignored path without descending into an
-    // ignored directory: git applies an ignored `.gitattributes` as it does
-    // any other, and the filter gate below must see it (A-19).
-    // `--no-renames`: a deletion paired as an unmerged path's rename source
-    // prints only as `UU <path>`, and the deleted file stayed trusted (A-59).
-    spawnGit([
-      'status',
-      '--porcelain',
-      '-z',
-      '-uall',
-      '--ignored=matching',
-      '--no-renames',
-      '--',
-      ...pathspecs,
-    ]),
-    // The gate for whether a clean filter can rewrite bytes between the
-    // index and the worktree: git's merged config (`core.autocrlf`) and,
-    // from git 2.42, the attributes files it reads outside the tree
-    // (`attributeFilesOutsideTree`). No tree scan. It replaced a
-    // `config --get-regexp` of three keys at the same cost (1.29 against
-    // 1.32 ms, min of 30), which could not name the default global file.
-    // Not foldable into the rev-parse below: rev-parse prints no config.
-    spawnGit(['var', '-l']),
-  ])
-  // Asked while the three above run, from the memo the file hasher reads
+  // The gate for whether a clean filter can rewrite bytes between the
+  // index and the worktree: git's merged config (`core.autocrlf`) and,
+  // from git 2.42, the attributes files it reads outside the tree
+  // (`attributeFilesOutsideTree`). No tree scan. It replaced a
+  // `config --get-regexp` of three keys at the same cost (1.29 against
+  // 1.32 ms, min of 30), which could not name the default global file.
+  // Not foldable into the rev-parse below: rev-parse prints no config.
+  const varsRun = spawnGit(['var', '-l'])
+  // Asked while the two above run, from the memo the file hasher reads
   // too (`repoFacts`). `prefix` is the repo→workspace path (empty when the
   // workspace root IS the git root): `ls-files` prints cwd(workspace)-
   // relative paths but `status` prints repo-root-relative ones, so when the
@@ -1430,23 +1508,58 @@ export async function startGitEnumeration(
     facts === null || facts.indexFile === ''
       ? undefined
       : path.resolve(workspaceRoot, facts.indexFile)
-  const readIndexKey = async (): Promise<
-    { key: string; stamp: string; ctimeMs: number } | undefined
+  const readIndex = async (): Promise<
+    { bytes: Uint8Array; hash: string; st: Stats; key: string; stamp: string } | undefined
   > => {
     if (indexFile === undefined) return undefined
     try {
+      // Stat before the read: a write between them leaves an mtime older
+      // than the bytes, which only makes more entries racy.
       const st = lstatSync(indexFile)
       const bytes = await Bun.file(indexFile).bytes()
+      const hash = xxh3hex(bytes)
       return {
-        key: `${xxh3hex(bytes)}:${pathspecKey}`,
+        bytes,
+        hash,
+        st,
+        key: `${hash}:${pathspecKey}`,
         stamp: `${st.ino}:${st.ctimeMs}:${st.size}`,
-        ctimeMs: st.ctimeMs,
       }
     } catch {
       return undefined
     }
   }
-  const indexKeyRead = readIndexKey()
+  const indexKeyRead = readIndex()
+  const statusIndex = indexKeyRead.then((read) =>
+    read === undefined || indexFile === undefined
+      ? undefined
+      : refreshedIndex(indexFile, read, facts!.objectFormat, spawnGit),
+  )
+  const running = Promise.all([
+    listing,
+    // `--ignored=matching` names an ignored path without descending into an
+    // ignored directory: git applies an ignored `.gitattributes` as it does
+    // any other, and the filter gate below must see it (A-19).
+    // `--no-renames`: a deletion paired as an unmerged path's rename source
+    // prints only as `UU <path>`, and the deleted file stayed trusted (A-59).
+    statusIndex.then((index) =>
+      spawnGit(
+        [
+          'status',
+          '--porcelain',
+          '-z',
+          '-uall',
+          '--ignored=matching',
+          '--no-renames',
+          '--',
+          ...pathspecs,
+        ],
+        undefined,
+        index === undefined ? undefined : { GIT_INDEX_FILE: index },
+      ),
+    ),
+    varsRun,
+  ])
   const gitPrefix = facts?.prefix ?? ''
   const gitDir = facts?.commonDir ?? ''
   const ls = await listing
@@ -1470,7 +1583,7 @@ export async function startGitEnumeration(
   let indexKey: string | undefined
   if (
     read !== undefined &&
-    read.ctimeMs < startedAtMs - racyWindowMs(read.ctimeMs, FILE_HASH_RACY_MS)
+    read.st.ctimeMs < startedAtMs - racyWindowMs(read.st.ctimeMs, FILE_HASH_RACY_MS)
   ) {
     try {
       const st = lstatSync(indexFile!)
@@ -1589,7 +1702,7 @@ export async function startGitEnumeration(
         }
         return blobs
       },
-      rekey: async () => (await readIndexKey())?.key,
+      rekey: async () => (await readIndex())?.key,
     },
     // A missing blob is an answer ("missing"), never a fetch from a partial
     // clone's promisor remote.
