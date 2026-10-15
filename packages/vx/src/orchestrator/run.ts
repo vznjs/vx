@@ -111,7 +111,7 @@ import {
 import { deriveStableKeys, probesAfterWrites } from './stable-keys.js'
 
 import { writeRunFailures } from './run-failures.js'
-import { assembleRunRecords } from './run-records.js'
+import { assembleRunRecords, recordLateRemoteErrors } from './run-records.js'
 import {
   hasEnded,
   disposeServers,
@@ -759,7 +759,7 @@ async function runOnBus(
         local: policy.localRead || policy.localWrite,
         localWrite: policy.localWrite,
         remote: remoteCacheEnabled && (policy.remoteRead || policy.remoteWrite),
-        uploads: prepared.localCache.uploads,
+        traffic: prepared.localCache.traffic,
         notDownloaded: () => deferredOutputs.pending().length,
       },
       concurrency,
@@ -1177,6 +1177,7 @@ async function runOnBus(
         ci: ciContext,
         host: hostContext,
         withTelemetry: telemetry !== undefined,
+        remoteTraffic: prepared.localCache.traffic.keys,
       })
     const records = recordsOf(list, ok)
     const recordHistory = (write: () => void): void => {
@@ -1225,6 +1226,9 @@ async function runOnBus(
     // drain of the lane stood here until item 634; deleting it changed
     // nothing the suite could see, because this gate is the rule.
     await cache.drainUploads?.()
+    // An upload that failed after the rows went in: its row says so too.
+    if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
+      recordHistory(() => recordLateRemoteErrors(prepared.localCache, records.runs, runId))
     const report = await keepRunBytes(list, {
       runId,
       commit: head.commitSha,

@@ -97,7 +97,7 @@ config key or an environment variable is missing here.
 - **Hits replay both streams** — stdout and stderr come back in the order the run printed them. [page](https://vznjs.github.io/vx/features/both-streams/) · post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Restore lane** — cache restores run on their own lane, up to twice `--concurrency`. [page](https://vznjs.github.io/vx/features/restore-lane/) · post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Line-ending-correct keys** — files git filters (`eol`, `core.autocrlf`) key on the bytes the build sees. [page](https://vznjs.github.io/vx/features/line-endings/) · post: [Your cache key is already in git's index](https://vznjs.github.io/vx/blog/keys-from-git/)
-- **Background remote uploads** — remote writes drain at the end of the run and never fail the build. [page](https://vznjs.github.io/vx/features/background-uploads/) · post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
+- **Background remote uploads** — remote writes drain at the end of the run and never fail the build; the footer counts them running (`⇡`) and failed (`✗`). [page](https://vznjs.github.io/vx/features/background-uploads/) · post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Bring your own remote cache** (plugin `cache`) — plug any cache server in through one interface. [page](https://vznjs.github.io/vx/features/custom-remote-cache/) · post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 
 ## Correctness

@@ -531,6 +531,7 @@ describe('formatTaskRows', () => {
       sandboxViolations: null,
       notReady: null,
       forwarded: false,
+      remoteError: null,
       ...over,
     }) as RunSummaryRow
   const hit = (n: number, ms: number) =>
@@ -581,6 +582,16 @@ describe('formatTaskRows', () => {
     // CONTROL: the row is otherwise intact, so none of the above can pass
     // on a formatter that dropped the line.
     expect(line).toContain('failed (exit 1)')
+  })
+
+  it('names what a remote read or write of the key met (the footer counts it ✗)', () => {
+    const line = formatTaskRows([
+      row('t', { remoteError: 'download: connection refused; upload: 503' }),
+    ])[1]!
+    expect(line.slice(line.indexOf('h') + 1).trim()).toBe(
+      'remote ✗ download: connection refused; upload: 503',
+    )
+    expect(formatTaskRows([row('t')])[1]).not.toContain('remote')
   })
 
   it('orders failed, then executed and skipped, then hits, and folds the hits past sixteen', () => {

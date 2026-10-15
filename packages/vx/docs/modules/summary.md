@@ -33,7 +33,14 @@ export interface SummaryStats {
   etaMs?: number // live section only: the forecast of what is left (`~3s left` on the time row)
   savedMs?: number // the hits' stored exec times summed: what the cache skipped
   emptyGroups?: readonly string[] // a run of command-less groups: their names, after `0 tasks`
+  buckets?: ReadonlyMap<string, CacheBucket> // each finished task's cache bucket by its key
 }
+
+// The cache bar segment a finished task fills before its remote traffic is weighed.
+export type CacheBucket =
+  'miss' | 'noCache' | 'upToDate' | 'restoredLocal' | 'restoredRemote' | 'saved'
+// A finished task's own bucket; none for a group, a skip or an abort.
+export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 
 export interface RunContext {
   version: string
@@ -44,9 +51,12 @@ export interface RunContext {
     local: boolean
     localWrite: boolean
     remote: boolean
-    uploads: { count: number; failed: number }
+    traffic: {
+      readonly inFlight: number // uploads queued or running
+      readonly keys: ReadonlyMap<string, { uploading: number; failures: readonly string[] }>
+    } // `Cache.traffic`, a live ref: each key's uploads and remote failures
     notDownloaded: () => number
-  } // the layers the run used: the legend's `local 1✓ 1∅ 2↓ 4↑ · remote 3↓ 4↑`
+  } // the layers the run used: the legend's `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`
   workspaceProjectCount?: number // total projects → the bar's denominator
 }
 
@@ -126,6 +136,30 @@ footer both pass one). The block above is
 `formatRunSummary` on four successes of 239, 190, 215 and 216 ms with
 that context, pinned in `tests/summary.test.ts`.
 
+### The cache bar: one segment per state, each task once
+
+With a `RunContext.cache`, the cache bar has a segment per legend state
+and each task fills one (M, 2026-10-15), in bar order: miss (ran, saved
+nothing; red), `∅` no cache (dim), `✓` fresh (green), local `↓` and
+`↑` (local blue), remote `↓` and `↑` (remote dark blue), `⇡` uploading
+(cyan), `✗` a remote read or write failed (red), skipped (yellow), and
+the live gray remainder. A task counts under its strongest state:
+`✗`, then `⇡`, then remote `↑`, then local `↑`, then its own (`↓`,
+`✓`, `∅` or miss). The task's own bucket is `cacheBucketOf`; its remote
+state is its key's entry in `traffic.keys` (failures, then uploads
+running, then one landed), which moves it. A task still running is
+counted once it ends. The legend's numbers are the segments', each in
+its segment's colour; the `local` and `remote` words are their layer's.
+A state that shares a colour gets no new one: `↓` and `↑` of a layer
+are its colour. Under `NO_COLOR` the glyphs carry the meaning. An empty
+segment paints nothing. With no run context, the plain legend's
+buckets stand (`3 miss · 1 no-cache · …`; a saved task is a miss there).
+
+`⇡` is live only: the final footer prints after the run's drain, when
+none is running. A run that ends with uploads still running keeps the
+region, footer only, until `traffic.inFlight` reaches 0 (the logger's
+`draining`, logger.md); the drain the run already does is the wait.
+
 Colors:
 
 - `successful` is green.
@@ -144,7 +178,8 @@ Duration:
 - Mixed-status row (success + failed + skipped + cache).
 - All-success rendering.
 - Empty outcomes (zero-task summary).
-- Stacked state meters (50 cells, largest-remainder allocation, every non-zero bucket gets >= 1 cell): tasks bar = failed/success/skipped, cache bar = miss/no-cache (dim: a task with no `cache` block never consulted it)/up-to-date/local/remote; color-coded legends below each bar.
+- Stacked state meters (50 cells, largest-remainder allocation, every non-zero bucket gets >= 1 cell): tasks bar = failed/success/skipped, cache bar = a segment per legend state (`the bar has a segment per state, each legend count painted in its colour`); color-coded legends below each bar.
+- The cache legend per layer: each task once, `✗` over `⇡` over `↑`, a task still running not counted (`the cache legend reads per layer`).
 - Gradient wordmark rule (violet -> pink across the dashes).
 - Failed task ids are never listed — the count lives in the legend
   (the frames above carry the names; a run can fail hundreds).

@@ -55,6 +55,8 @@ export interface RunSummaryRow {
   notReady: 'timeout' | 'exited' | 'spawn' | null
   /** The task ran with the run's forwarded args (`-- …`): a requested one under a run that had some. */
   forwarded: boolean
+  /** Each remote read or write of its key that failed, `upload: <message>`, `; `-joined (v40). */
+  remoteError: string | null
 }
 
 export interface ListRunsArgs {
@@ -115,7 +117,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
               wallclock_start_ns AS wallclockStartNs, wallclock_end_ns AS wallclockEndNs,
               blocked_by AS blockedBy, timed_out AS timedOut,
               sandbox_violations AS sandboxViolations, not_ready AS notReady,
-              forward_args IS NOT NULL AS forwarded
+              forward_args IS NOT NULL AS forwarded, remote_error AS remoteError
        FROM runs ${clause} ORDER BY id DESC LIMIT ?`,
     )
     .all(...params, limit) as RawRow[]

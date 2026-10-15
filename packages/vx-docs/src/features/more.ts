@@ -1092,11 +1092,11 @@ export const MORE: readonly Feature[] = [
     hook: 'Remote cache writes drain at the end of the run and never turn a green build red.',
     body: [
       'A slow or broken cache server should not slow down or break your build. vx uploads in the background while tasks keep running.',
-      'Whatever is left drains at the end, within a deadline. An upload error is a warning, never a failed run.',
+      'Whatever is left drains at the end, within a deadline. The footer counts uploads still running as `⇡` and a task whose remote read or write failed as `✗`; `vx last` names the error. A failure is never a failed run.',
     ],
     example: {
       lang: 'text',
-      code: '[vx] remote cache: connection reset\n  result    4 tasks · 4 success\n(exit 0)',
+      code: '[vx] remote cache: upload 3f9a… failed: connection reset\n  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰\n            remote 3↑ 1✗\n(exit 0)',
     },
     image: 'background-uploads.png',
     imageAlt: 'Remote uploads finishing after the run, errors as warnings.',

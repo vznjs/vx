@@ -1293,6 +1293,48 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
     TIMEOUT,
   )
 
+  // M, 2026-10-15: a remote read's failure counts with a write's, as one
+  // `N✗` in the footer, and `vx last` names each, though the upload's
+  // failure lands after the run's rows went in.
+  it(
+    'a failed read and a failed upload are one ✗ in the footer, and the run row names both',
+    async () => {
+      const fixture = await makeFixture('vx-remote-e2e-')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const result = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: {
+            has: async () => false,
+            get: async () => {
+              throw new Error('GET down')
+            },
+            put: async () => {
+              throw new Error('PUT down')
+            },
+          },
+        })
+        expect(result.outcomes[0]!.status).toBe('success')
+        const legend = fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]
+        expect(legend?.trim()).toBe('remote 1✗')
+        const db = new Database(path.join(fixture.root, '.vx', 'cache', 'cache.db'), {
+          readonly: true,
+        })
+        const rows = db.query<{ e: string | null }, []>('SELECT remote_error AS e FROM runs').all()
+        db.close()
+        expect(rows).toEqual([{ e: 'download: GET down; upload: PUT down' }])
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     "a sink hears each artifact's size, a save's and a fetch's time, and the run's uploads",
     async () => {
