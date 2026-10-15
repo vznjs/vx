@@ -113,6 +113,12 @@ export class RemoteLane {
   private readonly uploadQueue: Array<() => Promise<void>> = []
   private activeUploads = 0
   private drainWaiters: Array<() => void> = []
+  /** Set by `stop()`: the run was stopped, so no upload starts and the drain waits on none. */
+  private stopped = false
+  private onStop: () => void = () => {}
+  private readonly stopping = new Promise<void>((resolve) => {
+    this.onStop = resolve
+  })
 
   /**
    * One entry per failure class said: its first line went out, `repeats`
@@ -247,7 +253,9 @@ export class RemoteLane {
     this.uploadQueue.push(async () => {
       let release: (() => Promise<void>) | undefined
       try {
+        if (this.stopped) return
         if (!this.read && (await this.holds(hash))) return
+        if (this.stopped) return
         const start = performance.now()
         const got = body()
         release = got.release
@@ -268,13 +276,25 @@ export class RemoteLane {
     this.pump()
   }
 
-  /** Resolves once every queued and in-flight upload has settled. */
+  /** Resolves once every queued and in-flight upload has settled, or the run was stopped. */
   async drain(): Promise<void> {
     // A probe no upload waited on still runs: settled before the run tears
     // the plugin down.
-    await this.presence
-    if (this.activeUploads === 0 && this.uploadQueue.length === 0) return
+    await Promise.race([this.presence, this.stopping])
+    if (this.stopped || (this.activeUploads === 0 && this.uploadQueue.length === 0)) return
     await new Promise<void>((resolve) => this.drainWaiters.push(resolve))
+  }
+
+  /**
+   * The run was stopped (Ctrl-C, SIGTERM, an embedder's abort): queued
+   * uploads never start and the drain stops waiting on the ones in flight,
+   * which a plugin cannot be asked to cancel. A slow remote held a stopped
+   * run past the signal's exit bound, which then exited with no footer.
+   */
+  stop(): void {
+    this.stopped = true
+    this.onStop()
+    for (const resolve of this.drainWaiters.splice(0)) resolve()
   }
 
   /** Say the held-back repeats; the run drained first, so the counts are final. */

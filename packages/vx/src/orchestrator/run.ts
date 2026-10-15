@@ -576,7 +576,10 @@ async function runOnBus(
     handleSignals: options.handleSignals ?? true,
     handsTerminal: holders.size > 0,
     teardowns: prepared.plugins.filter((p) => p.teardown).length,
-    onStop: () => stopRuntimeProbes(hashCache.runtime, hashCache.workspaceRuntime),
+    onStop: () => {
+      stopRuntimeProbes(hashCache.runtime, hashCache.workspaceRuntime)
+      cache.stopUploads?.()
+    },
   })
   const { liveChildren, persistentRegistry } = stop
   // The cache handle must be released on EVERY exit path, not just the

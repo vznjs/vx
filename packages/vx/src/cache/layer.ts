@@ -582,6 +582,8 @@ export interface CacheLayer {
    * uploads synchronously (or not at all) omits it.
    */
   drainUploads?(): Promise<void>
+  /** The run was stopped: start no more uploads, and let `drainUploads` resolve now. */
+  stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**

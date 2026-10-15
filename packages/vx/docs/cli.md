@@ -137,7 +137,8 @@ Exit codes:
 | `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
-and each task hears it once: from vx, as SIGINT.
+and each task hears it once: from vx, as SIGINT. A stop starts no more remote
+cache uploads and does not wait on one in flight.
 
 Installed from npm, `vx` is a sh launcher that execs the platform
 binary, so every signal reaches vx directly and no Node starts first

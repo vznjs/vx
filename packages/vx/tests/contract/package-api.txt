@@ -461,6 +461,7 @@ export interface CacheLayer {
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
   drainUploads?(): Promise<void>
+  stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getMany?(
