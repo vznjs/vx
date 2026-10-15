@@ -1,0 +1,38 @@
+name: Release notes
+
+# A release post rewritten on main rewrites its GitHub release's body, so
+# GitHub and the site tell the same story (scripts/release-sync.ts).
+# auto-release.yml writes the body when it creates the release; this keeps
+# it current after.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/vx-docs/src/content/docs/releases/**'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-notes
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # editing a release's body
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+      # `release.sync` declares `exec.sandbox`; see ci.yml.
+      - uses: ./.github/actions/vx-runner
+
+      - name: Sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun packages/vx/src/bin.ts run release.sync --filter @vzn/vx

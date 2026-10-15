@@ -8,9 +8,9 @@ name: Release assets
 # to a draft, so the release arrives as one and the last upload publishes
 # it (scripts/release-assets.ts). A `release: published` trigger would
 # fire only once the release can no longer take assets.
-# A manual release's body is the maintainer's; an auto-release's is
-# written by packages/vx/scripts/release-notes.ts from the Conventional
-# Commits since the last tag.
+# A manual release's body is the maintainer's; an auto-release's is its
+# release post (packages/vx/scripts/release-notes.ts), kept current by
+# release-notes.yml.
 
 on:
   workflow_dispatch:

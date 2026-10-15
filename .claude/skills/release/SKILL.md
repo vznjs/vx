@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut a vx release on demand. Use when asked to release, and for the daily release routine. Writes the release note, merges it, dispatches auto-release.yml, and shares the post on Bluesky.
+description: Cut a vx release on demand. Use when asked to release, and for the daily release routine. Writes the release story, merges it, dispatches auto-release.yml, and shares the post on Bluesky.
 metadata:
   internal: true
 ---
@@ -26,30 +26,61 @@ always a patch: `v0.0.N` → `v0.0.N+1` (`scripts/release-notes.ts`,
 ## 2. Write the post
 
 Read `packages/vx-docs/README.md` § Release posts and the newest
-`packages/vx-docs/src/content/docs/releases/vx-0-0-*.md` (the model). Write
-`releases/vx-0-0-<N+1>.md` from `git log $last..origin/main`:
+`packages/vx-docs/src/content/docs/releases/vx-0-0-*.md` (the model).
 
-- Feature posts first (owner, 2026-10-08): every user-facing feature
-  in the range gets its own short visual essay in `blog/` before the
-  release (cover, terminal frames, a chart or diagram), and its row in
-  `packages/vx/docs/features.md` links it. The release note is the
-  summary: one `##` per change, a line or two, linking that post.
-- At most ten changes a user would notice; skip internals, tests,
-  refactors, docs, CI. Verify every command, flag and config key in an
-  example against current source; prefer real output from a fixture
-  run of `bun packages/vx/src/bin.ts …` in the scratchpad.
-- Title = the story headline: the cover's `head` without its
-  `[brackets]` (`Runs that explain themselves`). The version is not in
-  the title; the Releases page shows it as a `v0.0.<N+1>` chip, read from the
-  slug. Date today,
-  tag `release`, an excerpt, an intro, `**In this release**` links,
-  one `##` per change with one example and its PR links,
-  `## Breaking changes` when any, then How to update and Learn more as
-  the last post has them.
-- Breaking changes is a list of every `old → new` rename and removal
-  in the range, taken from the `org/changes/` files (owner,
-  2026-10-14): until 1.0 the code keeps no aliases or rename notices,
-  so an old name just stops working and this list is the only notice.
+The post is built from the change files, not from PR titles (owner,
+2026-10-15: "each PR should be like a real release doc. So later on docs
+should just combine them into 1 doc and merge what's common"). Every
+user-facing PR in `git log $last..origin/main` has a file in
+`/mnt/project-files/org/changes/` written to `TEMPLATE.md` there: a
+capability heading, why it exists, how it works now, an example with
+its real output, breaking changes, and what it was verified against.
+
+1. List the range's PRs and match each user-facing one to its change
+   file. A missing file, or one lacking any template part, blocks the
+   release: send it back to its owner (through the EA) and wait.
+2. Verify every claim yourself against the source, `cli.md` or
+   `schema.md` at the commit you release (`git show <sha>:<path>`).
+   PR titles and change files are leads, not facts (a PR title is how
+   "p50" got into v0.0.637's forecast). Re-run each example on that
+   commit in the scratchpad (`git worktree add <dir> <sha>`, then
+   `bun <dir>/packages/vx/src/bin.ts …` in a fixture repo) and paste
+   the output it prints. Use only commands a user would type; flag any
+   example command longer than a short line to the EA.
+3. Merge: change files that share a capability become one section;
+   smaller ones become Other noteworthy changes; every Breaking changes
+   list joins into one, last.
+4. List the doc line or test behind each section in the PR body
+   (`Verified against`).
+
+The post is a release story, not a changelog (owner, 2026-10-15:
+"not a changelog but explaining reasons and presenting the feature,
+like Home Assistant releases"). Fewest words; no speed claims; never
+"best". Its shape:
+
+- Title = what vx can now do overall, not one feature (owner,
+  2026-10-15: "not focusing one particular feature but the new overall
+  capabilities"): `Any language, one lock, a cache PRs share`. It is
+  the cover's `head` without its `[brackets]`. The version is not in
+  the title; the Releases page shows it as a `v0.0.<N+1>` chip, read
+  from the slug. Date today, tag `release`, an excerpt naming the same
+  capabilities.
+- Intro: a few sentences on what vx can now do and why, a pointer to
+  Breaking changes when there are any, then `**In this release**` links.
+- One `##` per capability, at most five, each titled by what the user
+  gets (`Pull requests reuse main's cache`, not a flag name): the
+  problem it solves, how it works now, an example with its real output,
+  then a link to its guide or blog post. No PR numbers: the GitHub
+  release links the commits.
+- A feature big enough to show gets its own blog post first (owner,
+  2026-10-08), and its row in `packages/vx/docs/features.md` links it.
+- `## Other noteworthy changes`: one bullet each for the smaller
+  user-visible changes. Skip internals, tests, refactors, docs, CI.
+- `## Breaking changes`, short, at the end: one bullet per `old → new`
+  rename or removal in the range (owner, 2026-10-14; until 1.0 the code
+  keeps no aliases or rename notices, so this list is the only notice),
+  and a link to [Upgrading](../../guides/upgrading/).
+- `## How to update` as the last post has it.
 - Rules the site tests hold: speed as "N× faster" or "from X to Y",
   never percentages; no benchmark tables; no `--` at the start of a
   heading; never say vx runs or works in a Turbo or Nx repo (it maps
@@ -57,9 +88,8 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   import from `@vzn/vx/config`.
 
 - Show, don't tell (owner: "viz is better than words"): every
-  example in a `frame="terminal"` block, every before/after number as
-  a `vx-charts` bar figure (copy the markup from the last post), a
-  mermaid flowchart where a change has a shape. No tables.
+  example in a `frame="terminal"` block, a mermaid flowchart where a
+  change has a shape. No tables.
 - Cover: add the version to
   `/mnt/project-files/org/docs-site/release-covers/covers.json` (date,
   headline with one `[accented]` phrase, up to 8 terminal lines), run
@@ -72,15 +102,19 @@ Read `packages/vx-docs/README.md` § Release posts and the newest
   `tests/og-image.test.ts` fails the gate when a post or release has none.
 
 Gate the docs (`bun packages/vx/src/bin.ts run @vzn/vx-docs#ci`), then
-open a PR `docs(vx-docs): release post for v0.0.<N+1>` and squash-merge
-it once CI is green.
+open a PR `docs(vx-docs): release post for v0.0.<N+1>`. No release post
+publishes unreviewed (owner, 2026-10-15: "ensure this won't happen
+again"): send the PR to Marketing for sign-off and to the EA to read,
+and squash-merge only with Marketing's ✓, the EA's go and CI green.
 
 ## 3. Release
 
 Wait for `main`'s CI to go green on the merge commit, then dispatch
 `auto-release.yml` on `main` with `sha` = that commit (GitHub MCP
 `actions_run_trigger`).
-It refuses a commit CI did not pass. Confirm the tag is the version the
+It refuses a commit CI did not pass. The GitHub release's body is the
+post (`scripts/release-notes.ts`, `postNotes`); a later edit of the post
+on main rewrites it (`release-notes.yml`). Confirm the tag is the version the
 post names; if another release landed first and the number moved, rename
 the post in a follow-up PR before sharing it.
 

@@ -63,6 +63,7 @@ describe('a Linux CI job that runs a vx task', () => {
       'ci.yml#binary-linux-arm64',
       'docs.yml#build',
       'npm.yml#publish',
+      'release-notes.yml#sync',
       'release.yml#assets',
     ])
   })
@@ -103,7 +104,9 @@ describe('a workflow `run:` step', () => {
   })
 
   it('in a release workflow, is the install or one vx task', () => {
-    const release = steps.filter(({ at }) => /^(?:npm|release|auto-release)\.yml#/.test(at))
+    const release = steps.filter(({ at }) =>
+      /^(?:npm|release|release-notes|auto-release)\.yml#/.test(at),
+    )
     expect(release.length).toBeGreaterThan(10)
     const custom = release
       .filter(

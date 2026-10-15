@@ -271,6 +271,22 @@ const releaseTasks = {
       },
     },
   },
+  'release.sync': {
+    description: 'give each GitHub release the body of its release post on the site',
+    exec: {
+      command: 'bun scripts/release-sync.ts',
+      env: {
+        passThrough: ['GITHUB_REPOSITORY', 'GH_TOKEN'],
+        secret: ['GH_TOKEN'],
+      },
+      sandbox: {
+        allow: {
+          read: ['.', '../vx-docs/src/content/docs/releases'],
+          network: ['api.github.com'],
+        },
+      },
+    },
+  },
 }
 
 export default defineProject({
