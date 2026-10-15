@@ -85,7 +85,7 @@ sets up: `ctx.runId` (the `run_id` of its history rows and telemetry),
 provider, run URL, change, pipeline, job, attempt). `ctx.outputsOf(node)`
 globs a task's declared outputs on disk when called, workspace-relative
 and sorted; a failed task's are what it left, which core saves nowhere.
-`tests/plugin-run-facts.test.ts`.
+`tests/plugin-run-facts.test.ts`; `tests/plugin-run-record.test.ts` builds a run record (logs, failed outputs, a manifest by run id) on this API and reads it back through a verb.
 
 ## Invariants
 
