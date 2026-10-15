@@ -882,6 +882,9 @@ export interface Logger {
   }): void
   taskStart?(node: TaskNode): void
   runEnd?(): void
+  stepStart?(id: string): void
+  stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
+  runDone?(): void
 }
 == type MigrationFormat (src/workspace/migration.ts)
 export type MigrationFormat = 'ts' | 'mjs'
@@ -1256,7 +1259,10 @@ export type RunEvent =
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
   | { kind: 'run:status'; line: string }
+  | { kind: 'step:start'; id: string }
+  | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
+  | { kind: 'run:done' }
 == type RunEventSubscriber (src/report/events.ts)
 export type RunEventSubscriber = (event: RunEvent) => void
 == type RunOptions (src/orchestrator/options.ts)

@@ -14,6 +14,7 @@ const NO_COLOR: ColorSupport = { enabled: false }
 const ACCENT = '#06b6d4'
 const ERROR = '#ef4444'
 const WARN = '#eab308' // yellow-500, as the summary's
+const SUCCESS = '#22c55e'
 
 /** Erase the current line and return the cursor to column 0. */
 const CLEAR = '\x1b[2K\r'
@@ -288,6 +289,11 @@ export interface StatusRegionState {
   blocked?: readonly (BlockedTask | null)[]
   /** Running tasks beyond the displayed slots. */
   overflow: number
+  /**
+   * vx's own steps still running, shown below the worker rows: no worker
+   * slot or `--concurrency` bounds them (M, 2026-10-15).
+   */
+  steps?: readonly WorkerSlot[]
   /** Clock value used for per-slot elapsed (injectable for tests). */
   nowMs: number
   /**
@@ -302,8 +308,12 @@ export interface StatusRegionState {
 /** Identity-colored id, full (never truncated) — name is the last column. */
 function paintPinnedId(id: string, colors: ColorSupport): string {
   const sep = id.indexOf('#')
-  if (sep < 0) return id
-  return paintIdParts(id.slice(0, sep), id.slice(0, sep), id.slice(sep + 1), colors)
+  if (sep >= 0) return paintIdParts(id.slice(0, sep), id.slice(0, sep), id.slice(sep + 1), colors)
+  // One of vx's own steps: `<owner>:<step>`, painted as a task id is.
+  const step = id.lastIndexOf(':')
+  if (step < 0) return id
+  const owner = id.slice(0, step)
+  return paintIdParts(owner, owner, id.slice(step + 1), colors, { sep: ':' })
 }
 
 /**
@@ -324,6 +334,28 @@ export function formatFailureLine(
     'failed',
     ERROR,
     cacheWord,
+    '',
+    paintPinnedId(id, colors),
+    colors,
+  )
+}
+
+/**
+ * The list row of one of vx's own steps (`vx:uploads`), on the task grid
+ * with no cache column: a step is no task and caches nothing.
+ */
+export function formatStepLine(
+  id: string,
+  durationMs: number,
+  ok: boolean,
+  colors: ColorSupport = NO_COLOR,
+): string {
+  return formatTaskRow(
+    ok ? paint(SUCCESS, '\u23fa\uFE0E', colors) : paint(ERROR, '\u25fc\uFE0E', colors),
+    durationMs,
+    ok ? 'success' : 'failed',
+    ok ? SUCCESS : ERROR,
+    '',
     '',
     paintPinnedId(id, colors),
     colors,
@@ -403,6 +435,20 @@ export function formatStatusRegion(
   }
   if (s.overflow > 0) {
     lines.push(dim(`\u2026 +${s.overflow} more running`))
+  }
+  for (const step of s.steps ?? []) {
+    lines.push(
+      formatTaskRow(
+        ' ',
+        Math.max(0, s.nowMs - step.startedMs),
+        'running',
+        ACCENT,
+        '',
+        '',
+        paintPinnedId(step.id, colors),
+        colors,
+      ),
+    )
   }
   // The live summary section — identical shape to the final printout,
   // so the region visually BECOMES the summary when the run ends.

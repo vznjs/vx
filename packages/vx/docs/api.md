@@ -1053,6 +1053,9 @@ export interface Logger {
   }): void
   taskStart?(node: TaskNode): void
   runEnd?(): void
+  stepStart?(id: string): void
+  stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
+  runDone?(): void
 }
 ```
 

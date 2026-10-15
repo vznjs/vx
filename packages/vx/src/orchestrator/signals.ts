@@ -156,6 +156,7 @@ export function forwardSignals(args: {
     // and a no-op for non-TTY loggers.
     try {
       args.log.runEnd?.()
+      args.log.runDone?.()
     } catch {
       // teardown must not throw on the way out
     }

@@ -326,6 +326,7 @@ describe('defaultLogger status line integration', () => {
     expect(after).toContain('▱')
     expect(after).toContain('  time  ')
     log.runEnd?.()
+    log.runDone?.()
     log.status(' Tasks:    1 successful, 1 total')
     const text = s.text()
     // The run-end erase is permanent: the summary is written plainly

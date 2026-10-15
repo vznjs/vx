@@ -26,7 +26,10 @@ export interface Logger {
     startedAtMs?: number
   }): void
   taskStart?(node: TaskNode): void
-  runEnd?(): void
+  runEnd?(): void // the graph is done; vx's closing steps follow
+  stepStart?(id: string): void // one of vx's own steps (`vx:keys`) began; never a task
+  stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
+  runDone?(): void // the run's work is done; the footer follows
 }
 
 export interface OutputView {
@@ -46,6 +49,7 @@ export function resolveOutputView(
 // What run() builds when no logger is passed.
 export interface DefaultLogger extends Logger {
   settle(): void // hand over coalesced output; write straight through from now on
+  readonly showsSteps: boolean // only where the live region draws; else run() times no step
   forecast(load: () => Promise<Forecast | undefined>): void // `load` runs only if the live region is still up 1 s in
 }
 
@@ -147,7 +151,8 @@ under `errors-only`, `hash-only` or `none` (#2054).
 
 The default logger owns a `createOutputWriter` from `status-line.ts`
 wrapping its output stream. Enabled only when the stream is a TTY and
-`view.ci` is not set. The optional `runStart` / `taskStart` / `runEnd`
+`view.ci` is not set. The optional `runStart` / `taskStart` / `runEnd` /
+`stepStart` / `stepEnd` / `runDone`
 hooks (wired by `run()`) drive a live region at the bottom
 (`formatStatusRegion`): a blank line separating it from the completed
 list above; one row per ready persistent task (`▸`, `running`, the id,
@@ -161,13 +166,18 @@ as the run proceeds so the region becomes the summary when the run
 ends. A failure logs a permanent one-liner the moment it lands
 (`formatFailureLine`) and the full frame replays at `runEnd`. The
 region is rewritten in place, throttled with forced redraws on task
-events, and removed permanently at `runEnd` (and on the first
-requested-task start in focused mode). A run that ends with uploads
-still running (`RunContext.cache.traffic.inFlight`) keeps the region,
-footer only, its worker rows gone, until they settle (`draining`): the
-ticker or the next line removes it then, so the final footer prints
-under no region (M, 2026-10-15; `tests/upload-region.test.ts`). Every ordinary write clears it
-first, writes, then redraws, so it never interleaves with content.
+events. At `runEnd` (the graph is done) its worker rows go and it
+keeps the footer and vx's own step rows (`tail`) until `runDone`, just
+before the final footer prints, removes it for good; the first
+requested-task start in focused mode removes it too. A step
+(`stepStart` / `stepEnd`, ids `<owner>:<step>`) shows as a row below
+the worker rows once it has run `STEP_SHOWN_MS` (150 ms), bounded by
+no worker slot, and ends as a list row (`formatStepLine`); a step can
+draw the region before `runStart`, with no footer. No step touches a
+counter. `showsSteps` is true only where the region can draw, and
+`run()` times no step otherwise (M, 2026-10-15;
+`tests/run-tail.test.ts`, `tests/steps.test.ts`). Every ordinary write
+clears it first, writes, then redraws, so it never interleaves with content.
 
 ## Programmatic logger
 

@@ -55,6 +55,7 @@ config key or an environment variable is missing here.
 - **GitHub Actions log groups** — on Actions, each task's block folds in a `::group::` with its outcome and time. [page](https://vznjs.github.io/vx/features/actions-log-groups/) · post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
 - **Colors** (`NO_COLOR`, `FORCE_COLOR`) — truecolor output, forced on or off by env. [page](https://vznjs.github.io/vx/features/colors/) · post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
 - **Signal-named exits** — a failure reads `exit 137, 128 + SIGKILL`. [page](https://vznjs.github.io/vx/features/signal-exits/) · post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
+- **vx's own steps as rows** — on a terminal, what vx does around the tasks (`vx:uploads`, `<plugin>:teardown`) shows as a running row once it passes 150 ms, then a list row; never counted as a task. no post
 - **Plain output off a TTY** — no live region, and a missing task lists tasks instead of opening the picker. [page](https://vznjs.github.io/vx/features/plain-off-tty/) · post: [The basics, done carefully](https://vznjs.github.io/vx/blog/the-basics/)
 
 ## Plan and explain
