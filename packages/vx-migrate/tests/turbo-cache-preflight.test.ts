@@ -132,7 +132,10 @@ describe('TurboRemoteCache with preflight', () => {
     expect(await c.has(HASH)).toBe(true)
     const got = await c.get(HASH)
     expect(await got!.body.text()).toBe('own bytes')
+    // The put asks first: Turbo's PUT would replace a stored artifact.
     expect(apiSeen.map((s) => `${s.method} ${s.url.pathname}`)).toEqual([
+      `OPTIONS /api/v8/artifacts/${HASH}`,
+      `HEAD /own/${HASH}`,
       `OPTIONS /api/v8/artifacts/${HASH}`,
       `PUT /own/${HASH}`,
       `OPTIONS /api/v8/artifacts/${HASH}`,
@@ -140,7 +143,7 @@ describe('TurboRemoteCache with preflight', () => {
       `OPTIONS /api/v8/artifacts/${HASH}`,
       `GET /own/${HASH}`,
     ])
-    const [put, , head] = apiSeen
+    const [, , put, , head] = apiSeen
     expect(put!.headers.get('access-control-request-method')).toBe('PUT')
     expect(head!.headers.get('access-control-request-method')).toBe('GET')
     expect(put!.headers.get('access-control-request-headers')).toContain('x-artifact-duration')
@@ -154,6 +157,7 @@ describe('TurboRemoteCache with preflight', () => {
     const got = await c.get(HASH)
     expect(await got!.body.text()).toBe('bucket bytes')
     expect(storeSeen.map((s) => `${s.method} ${s.url.pathname}${s.url.search}`)).toEqual([
+      `HEAD /b/${HASH}?sig=ok`,
       `PUT /b/${HASH}?sig=ok`,
       `GET /b/${HASH}?sig=ok`,
     ])

@@ -57,21 +57,21 @@ describe('a save whose index transaction cannot commit', () => {
     await saveBuild(first, 'chunk-aaaa.js')
     first.close()
 
-    // A `--force` run rebuilds the key with a differently named chunk while
-    // another writer holds the lock past this handle's busy timeout.
-    const forced = new Cache(cacheDir, { read: false, write: true })
-    forced.dbHandle().exec('PRAGMA busy_timeout = 50')
+    // A second writer that also missed rebuilds the key with a differently
+    // named chunk while another holds the lock past this handle's busy timeout.
+    const second = new Cache(cacheDir)
+    second.dbHandle().exec('PRAGMA busy_timeout = 50')
     const holder = new Database(path.join(cacheDir, 'cache.db'))
     holder.exec('BEGIN IMMEDIATE')
     let refused: unknown
     try {
-      await saveBuild(forced, 'chunk-bbbb.js')
+      await saveBuild(second, 'chunk-bbbb.js')
     } catch (err) {
       refused = err
     } finally {
       holder.exec('ROLLBACK')
       holder.close()
-      forced.close()
+      second.close()
     }
     expect(String(refused)).toContain('database is locked')
     expect(readdirSync(cacheDir).filter((n) => n.includes('.tmp-'))).toEqual([])
@@ -100,14 +100,14 @@ describe('a save whose index transaction cannot commit', () => {
       "CREATE TRIGGER refuse BEFORE INSERT ON entries BEGIN SELECT RAISE(ABORT, 'refused'); END",
     )
     db.close()
-    const forced = new Cache(cacheDir, { read: false, write: true })
+    const second = new Cache(cacheDir)
     let refused: unknown
     try {
-      await saveBuild(forced, 'chunk-bbbb.js', true)
+      await saveBuild(second, 'chunk-bbbb.js', true)
     } catch (err) {
       refused = err
     } finally {
-      forced.close()
+      second.close()
     }
     expect(String(refused)).toContain('refused')
     expect(readdirSync(cacheDir).filter((n) => n.includes('.tar.zst'))).toEqual([])
@@ -157,9 +157,9 @@ describe('a save whose index transaction cannot commit', () => {
       "CREATE TRIGGER refuse BEFORE UPDATE ON entries BEGIN SELECT RAISE(ABORT, 'refused'); END",
     )
     db.close()
-    const forced = new Cache(cacheDir, { read: false, write: true })
-    const refused = await saveBuild(forced, 'chunk-bbbb.js').catch((e: unknown) => e)
-    forced.close()
+    const second = new Cache(cacheDir)
+    const refused = await saveBuild(second, 'chunk-bbbb.js').catch((e: unknown) => e)
+    second.close()
     expect(String(refused)).toContain('refused')
     const reader = new Cache(cacheDir)
     try {
@@ -176,9 +176,9 @@ describe('a save whose index transaction cannot commit', () => {
     const first = new Cache(cacheDir)
     await saveBuild(first, 'chunk-aaaa.js')
     first.close()
-    const forced = new Cache(cacheDir, { read: false, write: true })
-    await saveBuild(forced, 'chunk-bbbb.js')
-    forced.close()
+    const second = new Cache(cacheDir)
+    await saveBuild(second, 'chunk-bbbb.js')
+    second.close()
     const reader = new Cache(cacheDir)
     try {
       expect((await reader.get('h1'))?.stdout).toBe('chunk-bbbb.js')

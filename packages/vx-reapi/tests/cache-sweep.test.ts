@@ -129,7 +129,10 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
     const methods = async (key: string, size: number) => {
       const mark = fake.calls.length
       await cache.put(key, new Blob([new Uint8Array(size).fill(size % 251)]), { durationMs: 1 })
-      return fake.calls.slice(mark).map((c) => c.method)
+      // The lookup that keeps a stored entry runs beside the upload.
+      const all = fake.calls.slice(mark).map((c) => c.method)
+      expect(all.filter((m) => m === 'GetActionResult')).toHaveLength(1)
+      return all.filter((m) => m !== 'GetActionResult')
     }
     const small = await methods('k-small', 1024)
     const large = await methods('k-large', 300 * 1024)
@@ -147,5 +150,18 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
       'UpdateActionResult',
     ])
     expect(await restored('k-refused')).toEqual([String.fromCharCode(2048 % 251).repeat(2048), 1])
+  })
+
+  // M, 2026-10-15: an entry is immutable and core asks no `has` before a
+  // put, so the wire keeps a stored result: UpdateActionResult replaces one.
+  it('a put of a stored key keeps its result', async () => {
+    entry('k-kept', 'first')
+    const mark = fake.calls.length
+    await cache.put('k-kept', new Blob([bytes('second')]), { durationMs: 1 })
+    const methods = fake.calls.slice(mark).map((c) => c.method)
+    expect([methods.includes('UpdateActionResult'), await restored('k-kept')]).toEqual([
+      false,
+      ['first', undefined],
+    ])
   })
 })

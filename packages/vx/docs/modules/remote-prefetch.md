@@ -23,6 +23,7 @@ export interface PrefetchArgs {
   hashCache: HashCache
   concurrency: number // the GET pump's width
   remoteRead: boolean // the policy's remote-read axis; false returns at once
+  remoteWrite: boolean // with reads off: hand the keys to probeBeforeUpload
 }
 
 export function startRemotePrefetch(args: PrefetchArgs): Promise<void>
@@ -52,7 +53,11 @@ export function getContext(node: TaskNode, command: string): CacheGetContext
 
 - **Remote-only**: gated on the policy's `remoteRead` axis (the run
   passes it only when a remote layer is present); local runs never
-  derive keys or probe anything here.
+  derive keys or probe anything here. With reads off and `remoteWrite`
+  on (`--force`), the keys go to the layer's `probeBeforeUpload`
+  instead: one `hasMany` per remote the run only writes that can
+  batch (others ask `has` per upload), so an upload of a key it holds
+  is skipped.
 - Stability gate via `deriveStableKeys` — unstable (codegen-consumer)
   tasks stay on the lazy path.
 - Never-fail: every path degrades to a miss.

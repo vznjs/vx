@@ -160,12 +160,16 @@ describe('what a status means', () => {
 
 describe('the upload', () => {
   it('declares its length and a whole, non-negative duration', async () => {
-    const { fetchImpl, calls } = stub(() => new Response(null, { status: 200 }))
+    const { fetchImpl, calls } = stub(
+      (method) => new Response(null, { status: method === 'HEAD' ? 404 : 200 }),
+    )
     const c = cacheWith(fetchImpl)
     await c.put('aa', new Blob(['12345']), { durationMs: 12.6 })
     await c.put('bb', new Blob(['1']), { durationMs: -5 })
     expect(
-      calls.map((x) => [x.headers['Content-Length'], x.headers['x-artifact-duration']]),
+      calls
+        .filter((x) => x.method === 'PUT')
+        .map((x) => [x.headers['Content-Length'], x.headers['x-artifact-duration']]),
     ).toEqual([
       ['5', '13'],
       ['1', '0'],
@@ -176,7 +180,9 @@ describe('the upload', () => {
     // Turbo's client takes any 2xx (`error_for_status`); a server answering
     // 201 or 204 stored the artifact and vx counted a failed upload.
     const verdict = async (status: number) => {
-      const { fetchImpl } = stub(() => new Response(null, { status }))
+      const { fetchImpl } = stub(
+        (method) => new Response(null, { status: method === 'HEAD' ? 404 : status }),
+      )
       return cacheWith(fetchImpl)
         .put('aa', new Blob(['x']), { durationMs: 1 })
         .then(
@@ -270,20 +276,60 @@ describe('the signed download', () => {
   })
 })
 
+describe('a put never replaces a stored artifact (M, 2026-10-15)', () => {
+  // Turbo's PUT overwrites; an entry is immutable, and core asks no `has`
+  // before a put, so the wire asks.
+  it('asks HEAD first and sends nothing for a key the server holds', async () => {
+    const { fetchImpl, calls } = stub((method) =>
+      method === 'HEAD' ? new Response(null, { status: 200 }) : new Response(null),
+    )
+    await cacheWith(fetchImpl).put('aa', new Blob(['x']), { durationMs: 1 })
+    expect(calls.map((r) => r.method)).toEqual(['HEAD'])
+  })
+
+  it('asks nothing first for a key a 404 or a batch answer said is absent', async () => {
+    const { fetchImpl, calls } = stub((method) =>
+      method === 'POST'
+        ? new Response(JSON.stringify({ bb: null }))
+        : new Response(null, { status: method === 'PUT' ? 200 : 404 }),
+    )
+    const c = cacheWith(fetchImpl)
+    expect(await c.get('aa')).toBeNull()
+    expect(await c.hasMany(['bb'])).toEqual(new Set())
+    await c.put('aa', new Blob(['x']), { durationMs: 1 })
+    await c.put('bb', new Blob(['x']), { durationMs: 1 })
+    expect(calls.map((r) => r.method)).toEqual(['GET', 'POST', 'PUT', 'PUT'])
+  })
+
+  it('a HEAD that fails uploads, as before', async () => {
+    const { fetchImpl, calls } = stub((method) =>
+      method === 'HEAD' ? new Response(null, { status: 500 }) : new Response(null),
+    )
+    await cacheWith(fetchImpl).put('aa', new Blob(['x']), { durationMs: 1 })
+    expect(calls.map((r) => r.method)).toEqual(['HEAD', 'PUT'])
+  })
+})
+
 describe('a read-only token or server', () => {
   // turborepo-remote-cache under READ_ONLY (or a JWT without the write
   // scope) answers an upload 403 and still serves reads.
   it("an upload's 403 turns off uploads alone, said once; reads go on", async () => {
+    let stored = false
     const { fetchImpl, calls } = stub((method) =>
-      method === 'PUT' ? new Response(null, { status: 403 }) : new Response('bytes'),
+      method === 'PUT'
+        ? new Response(null, { status: 403 })
+        : stored
+          ? new Response('bytes')
+          : new Response(null, { status: 404 }),
     )
     const c = cacheWith(fetchImpl)
     await expect(c.put('aa', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
       'HTTP 403: the upload was refused (a read-only token or server); uploads off for this run, reads go on',
     )
     expect(await c.put('bb', new Blob(['x']), { durationMs: 1 })).toBeUndefined()
+    stored = true
     expect(await c.has('aa')).toBe(true)
     expect(await (await c.get('aa'))!.body.text()).toBe('bytes')
-    expect(calls.map((r) => r.method)).toEqual(['PUT', 'HEAD', 'GET'])
+    expect(calls.map((r) => r.method)).toEqual(['HEAD', 'PUT', 'HEAD', 'GET'])
   })
 })
