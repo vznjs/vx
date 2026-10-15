@@ -968,6 +968,9 @@ export class LocalHistoryProvider implements HistoryProvider {
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   async loadAll(): Promise<HistoryTable>
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
+  lackedBranchHistory
+  hasImported(sha: string): boolean
+  importTimings(sha: string, timings: ReadonlyMap<string, number>): void
   async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
 ```
@@ -1373,6 +1376,21 @@ export const PLUGIN_HOOKS = [
 ] as const
 ```
 
+## `PluginCache`
+
+type · `src/cache/plugin-cache.ts`
+
+What a plugin's `ctx.cache` offers. Keys are the plugin's own names.
+
+```ts
+export interface PluginCache {
+  get(key: string): Promise<Uint8Array | null>
+  put(key: string, bytes: Uint8Array): Promise<void>
+  has(key: string): Promise<boolean | null>
+  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+}
+```
+
 ## `PluginCommand`
 
 type · `src/orchestrator/plugin.ts`
@@ -1472,6 +1490,9 @@ What `setup` receives: the run's lifecycle, observe-only.
 
 ```ts
 export interface PluginSetupContext extends BaseContext {
+  readonly cache: PluginCache
+  readonly ci: boolean
+  readonly branch: string | null
   on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
 }
 ```
@@ -1492,6 +1513,7 @@ export interface PreparedRun {
   cachePolicy: CachePolicy
   priorities: () => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
+  cacheFor: (plugin: string) => PluginCache
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]
@@ -2086,6 +2108,7 @@ type · `src/orchestrator/plugin.ts`
 export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
   readonly branch: string | null
+  readonly cache: PluginCache
 }
 ```
 

@@ -149,6 +149,7 @@ export class RunHistory {
     this.db.prepare('DELETE FROM runs WHERE started_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM invocations WHERE started_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM task_durations WHERE recorded_at < ?').run(cutoff)
+    this.db.prepare('DELETE FROM plugin_blobs WHERE at < ?').run(cutoff)
   }
 }
 

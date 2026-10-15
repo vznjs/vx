@@ -21,6 +21,7 @@ export interface PreparedRun {
   cachePolicy: CachePolicy // `--cache-policy`, `VX_CACHE_POLICY` or the workspace's `cache.policy`, with its `cache.scope` applied
   priorities: ReadonlyMap<string, number> // the `schedule` stage's weights; empty without one
   branch: () => string | null // the run's branch: history records it, a forecast reads it first; learned once on first ask
+  cacheFor: (plugin: string) => PluginCache // each plugin's `ctx.cache`: the run's layers under its policy and scope
   nodes: Map<string, TaskNode> // empty if `empty !== null`
   keyOnly: ReadonlyMap<string, TaskNode> // what --exclude-dependencies keyed but did not schedule
   /**

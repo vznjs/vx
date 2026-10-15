@@ -171,6 +171,7 @@ here, itself or in a brace group.
 | [`plugins.md`](./plugins.md)             | Core ships no plugin: the floor (run here, cache here) and where plugins live (`packages/vx-*`). |
 | [`chained-cache.md`](./chained-cache.md) | `src/cache/chained-cache.ts` — several declared cache layers, chained in order.                  |
 | [`scoped-cache.md`](./scoped-cache.md)   | `src/cache/scoped-cache.ts` — the run's `cache.scope` over every layer.                          |
+| [`plugin-cache.md`](./plugin-cache.md)   | `src/cache/plugin-cache.ts` — a plugin's own entries in the cache (`ctx.cache`).                 |
 
 ## Utilities
 

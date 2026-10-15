@@ -11,7 +11,12 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Cache, RemoteCacheLayer } from '../cache/index.js'
+import {
+  absentPluginCache,
+  type Cache,
+  type PluginCache,
+  type RemoteCacheLayer,
+} from '../cache/index.js'
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
@@ -221,10 +226,10 @@ export interface VxPlugin {
    * Optional one-time setup per run (validate the workspace, open a
    * connection, read a token). Throwing aborts the run with a clean
    * UserError naming the plugin. It is not a guard over the pipeline: the
-   * config, project, cache, graph, key and schedule stages have run by the
-   * time it is called, and a plan (`--dry`, `planRun`) never calls it. It
-   * precedes the executors, the telemetry sinks, admission and the first
-   * task (tests/plugin-e2e.test.ts).
+   * config, project, cache, graph and key stages have run by the time it
+   * is called, and a plan (`--dry`, `planRun`) never calls it. It
+   * precedes the schedule stage, the executors, the telemetry sinks,
+   * admission and the first task (tests/plugin-e2e.test.ts).
    */
   setup?(ctx: PluginSetupContext): void | Promise<void>
 
@@ -242,6 +247,12 @@ interface BaseContext {
 
 /** What `setup` receives: the run's lifecycle, observe-only. */
 export interface PluginSetupContext extends BaseContext {
+  /** This plugin's entries in the workspace's cache (`PluginCache`). */
+  readonly cache: PluginCache
+  /** The run is on CI (`CI` set, or a provider core detects). */
+  readonly ci: boolean
+  /** The run's branch (`currentBranch`): `run.branch`, else git's, else the CI provider's. */
+  readonly branch: string | null
   /**
    * Subscribe a lifecycle handler; it leaves with the run. A throw or a
    * rejection warns once and switches the plugin's handlers off for the run.
@@ -386,6 +397,8 @@ export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
   /** The run's branch (`currentBranch`), the timings a forecast reads first: pass it to `LocalHistoryProvider`. */
   readonly branch: string | null
+  /** This plugin's entries in the workspace's cache, as `setup` has them. */
+  readonly cache: PluginCache
 }
 
 /** A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns. */
@@ -619,6 +632,12 @@ export interface InstallPluginsArgs {
    * `run:status` channel.
    */
   warn?: (message: string) => void
+  /** Each plugin's `ctx.cache`, by plugin name. Default: a cache with no layer. */
+  cache?: (plugin: string) => PluginCache
+  /** Default false. */
+  ci?: boolean
+  /** Default null. */
+  branch?: string | null
 }
 
 /**
@@ -675,6 +694,9 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       workspaceRoot,
       cacheDir,
       warn,
+      cache: args.cache?.(plugin.name) ?? absentPluginCache,
+      ci: args.ci ?? false,
+      branch: args.branch ?? null,
       // A subscription made past the hooks leaves with the run like a
       // hook's does: the bus can outlive the run (`RunOptions.bus`), and
       // one left behind hears every later run on it (item 635).

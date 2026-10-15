@@ -51,15 +51,26 @@ export class LocalHistoryProvider implements HistoryProvider {
   constructor(db: Database, recent?: number, branch?: string | null) // the window; defaults to 50 invocations
   /** `loadFor`'s p50 and resource maxima, without its rates. */
   resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+  /** The last forecast read found a task with no timing on this branch. */
+  lackedBranchHistory: boolean
+  hasImported(sha: string): boolean // rows of default-branch commit `sha` exist
+  importTimings(sha: string, timings: ReadonlyMap<string, number>): void // one 'remote' row per task
 }
 ```
 
 ## The forecast
 
 Every `p50DurationMs` (and `p50sFor`) is a forecast (owner, 2026-10-14):
-the median of the task's last five timings on this run's branch, else on
-any branch, else none. The remote cache's default-branch timings
-(#3563) slot in between. The timings are
+the median of the task's last five timings on this run's branch, else
+the default branch's newest imported timing, else the median of the last
+five on any branch, else none. An import (`importTimings`, by
+`@vzn/vx-schedule-history` from the workspace's cache, design
+`design/shared-timings-2026-10.md`) is rows tagged `remote` with the
+commit, unique per (commit, task), so a repeat import from any worktree
+adds nothing; a store with no import pays one probe of that partial
+index, never a query per task. The read learns whether some task lacked
+a timing on its branch (`lackedBranchHistory`), so a caller deciding to
+import asks no second question. The timings are
 `task_durations` in the shared store (`schema.ts`), one row per executed
 success appended in the run's history transaction and tagged
 `branch:<name>` with the commit, so every worktree of the repo reads them

@@ -220,9 +220,48 @@ export class LocalHistoryProvider implements HistoryProvider {
   }
 
   /**
+   * Whether the last forecast read found some task with no timing on this
+   * branch (on any branch when the provider has none): what a
+   * default-branch import is for. Learned by the read itself, so asking
+   * costs nothing (a query per task was 70 ms at 8,002 tasks).
+   */
+  lackedBranchHistory = false
+
+  /** Whether timings of default-branch commit `sha` were imported. */
+  hasImported(sha: string): boolean {
+    return (
+      this.db
+        .query(`SELECT 1 FROM task_durations WHERE source = 'remote' AND sha = ? LIMIT 1`)
+        .get(sha) !== null
+    )
+  }
+
+  /**
+   * Keep default-branch commit `sha`'s timings (task id → ms) as forecast
+   * rows: one per task, so a repeat import, by this worktree or another
+   * at once, adds nothing.
+   */
+  importTimings(sha: string, timings: ReadonlyMap<string, number>): void {
+    const insert = this.db.query(
+      `INSERT OR IGNORE INTO task_durations(project, task, source, sha, duration_ms, recorded_at)
+       VALUES (?, ?, 'remote', ?, ?, ?)`,
+    )
+    const now = Date.now()
+    this.db
+      .transaction(() => {
+        for (const [id, ms] of timings) {
+          const [project, task] = splitTaskId(id)
+          insert.run(project, task, sha, Math.round(ms), now)
+        }
+      })
+      .immediate()
+  }
+
+  /**
    * Each task's duration forecast (owner, 2026-10-14): the median of its
-   * last `FORECAST_RUNS` timings on this branch, else on any branch, else
-   * none. The timings are the shared store's `task_durations`, so every
+   * last `FORECAST_RUNS` timings on this branch, else the default branch's
+   * newest imported timing (`importTimings`), else the median on any
+   * branch, else none. The timings are the shared store's `task_durations`, so every
    * worktree of the repo reads them and a new one forecasts on its first
    * run. A point read per task on `(project, task, source, id)`: exact
    * however old the rows, where the runs window holds only the newest
@@ -230,9 +269,9 @@ export class LocalHistoryProvider implements HistoryProvider {
    */
   private forecasts(wanted: ReadonlySet<string>): Map<string, number> {
     const out = new Map<string, number>()
+    this.lackedBranchHistory = false
     if (wanted.size === 0) return out
-    // Tiers, first answer wins. The remote cache's default-branch timings
-    // (#3563) slot in between the two.
+    // Tiers, first answer wins.
     type Tier = (project: string, task: string) => Array<{ ms: number }>
     const tiers: Tier[] = []
     const newest = (where: string) =>
@@ -245,18 +284,35 @@ export class LocalHistoryProvider implements HistoryProvider {
       const q = newest('source = ?')
       tiers.push((p, t) => q.all(p, t, source) as Array<{ ms: number }>)
     }
+    // One probe on the partial index first: a store with no import costs
+    // no query per task.
+    if (
+      this.db.query(`SELECT 1 FROM task_durations WHERE source = 'remote' LIMIT 1`).get() !== null
+    ) {
+      const remote = this.db.query(
+        `SELECT duration_ms AS ms FROM task_durations WHERE project = ? AND task = ? AND source = 'remote'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      tiers.push((p, t) => remote.all(p, t) as Array<{ ms: number }>)
+    }
     const any = newest(`source LIKE 'branch:%'`)
     tiers.push((p, t) => any.all(p, t) as Array<{ ms: number }>)
+    const own = this.branch !== undefined ? tiers[0] : tiers.at(-1)
+    let lacked = false
     for (const id of wanted) {
       const [project, task] = splitTaskId(id)
+      let answered: Tier | undefined
       for (const tier of tiers) {
         const rows = tier(project, task)
         if (rows.length === 0) continue
         const durations = rows.map((r) => r.ms).sort((x, y) => x - y)
         out.set(id, pickPercentile(durations, 0.5))
+        answered = tier
         break
       }
+      if (answered !== own) lacked = true
     }
+    this.lackedBranchHistory = lacked
     return out
   }
 

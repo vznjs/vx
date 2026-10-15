@@ -14,6 +14,9 @@ import {
   type CacheLayer,
   type CachePolicy,
   LayeredCache,
+  absentPluginCache,
+  type PluginCache,
+  type PluginCacheRemote,
 } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
@@ -385,12 +388,14 @@ export async function claimedAffected(
 export async function applyScheduleHooks(
   plugins: readonly VxPlugin[],
   nodes: ReadonlyMap<string, TaskNode>,
-  ctx: ScheduleHookContext,
+  ctx: Omit<ScheduleHookContext, 'cache'>,
+  cacheFor: (plugin: string) => PluginCache = () => absentPluginCache,
 ): Promise<ReadonlyMap<string, number>> {
   const merged = new Map<string, number>()
   for (const plugin of plugins) {
     if (plugin.schedule === undefined) continue
-    const weights = await safe(plugin, 'schedule', () => plugin.schedule!(nodes, ctx))
+    const own = { ...ctx, cache: cacheFor(plugin.name) }
+    const weights = await safe(plugin, 'schedule', () => plugin.schedule!(nodes, own))
     if (weights === undefined) continue
     // Iterating a string destructures its characters into `[id, w]` pairs
     // that match no task — a plugin returning `'fast'` used to be a no-op
@@ -478,6 +483,8 @@ export function buildAdmission(
 export interface CacheHost extends CacheContext {
   readonly localCache: Cache
   readonly policy: CachePolicy
+  /** Filled with each remote and what its policy lets it do, for the plugins' `ctx.cache`. */
+  readonly remotes?: PluginCacheRemote[]
 }
 
 /**
@@ -492,7 +499,7 @@ export async function resolveCache(
   plugins: readonly VxPlugin[],
   host: CacheHost,
 ): Promise<CacheLayer> {
-  const { localCache, policy, ...ctx } = host
+  const { localCache, policy, remotes, ...ctx } = host
   const layers: CacheLayer[] = []
   const owners: string[] = []
   for (const plugin of plugins) {
@@ -515,6 +522,7 @@ export async function resolveCache(
       remoteRead: policy.remoteRead && access?.read !== false,
       remoteWrite: policy.remoteWrite && access?.write !== false,
     }
+    remotes?.push({ remote, read: own.remoteRead, write: own.remoteWrite })
     layers.push(
       new LayeredCache(localCache, remote, {
         policy: own,

@@ -16,7 +16,7 @@ import type {
 } from './layer.js'
 
 /** The key a scope stores `hash` under: task-key shaped, 16 hex, so every wire stores it unchanged. */
-function scopedKey(scope: string, hash: string): string {
+export function scopedKey(scope: string, hash: string): string {
   return xxh3hex(`vx-cache-scope\0${scope}\0${hash}`)
 }
 

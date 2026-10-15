@@ -303,7 +303,10 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        unchanged.
 //   v36: the store's task_durations: each executed success's time, tagged
 //        by branch, read by the forecast. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v36'
+//   v37: the store's plugin_blobs (a plugin's `ctx.cache`) and one
+//        'remote' task_durations row per (sha, task). The cache KEY is
+//        unchanged.
+export const SCHEMA_VERSION = 'v37'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -333,6 +336,7 @@ const STORE_TABLES = [
   'output_files',
   'entry_stdout',
   'task_durations',
+  'plugin_blobs',
   'store_meta',
   'entries',
 ]
@@ -1030,7 +1034,7 @@ export class Cache implements CacheLayer {
             // keeps it so).
             if (found !== undefined) {
               this.db.exec(
-                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.store_meta;',
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.store_meta;',
               )
             }
             // The tables land under the same write lock as the stamp: made

@@ -1192,7 +1192,8 @@ in `~/.vx/<id>/cache`, and each workspace keeps only its own index in
 its `.vx/cache`: every checkout of the repository hits what another
 saved (a second clone, a worktree), and none reads another's history.
 Task timings are shared too: `task_durations`, what a duration forecast
-reads, so a new worktree has one on its first run.
+reads, so a new worktree has one on its first run. So are plugins' own
+entries (`plugin_blobs`, a plugin's `ctx.cache`).
 The id is Nx 23's: 16 hex of a sha256 of the remote (`origin`, then
 `upstream`, `base`, the first; `host/owner/repo` in lower case, so ssh
 and https agree) and the workspace's path in the repository; with no
@@ -1204,7 +1205,7 @@ owner-only; vx closes one of yours that others can read (chmod 700), and one oth
 ~/.vx/<id>/cache/                           the shared store
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, task_durations,
-│                                           store_meta; artifacts
+│                                           plugin_blobs, store_meta; artifacts
 │                                           of at most 32 KiB compressed (v33)
 └── <hash>.tar.zst                          the larger artifacts (below)
 
@@ -1469,9 +1470,9 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v36', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v37', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
--- store_meta and task_durations live in its store.db, attached as `store`; the rest is
+-- store_meta, task_durations and plugin_blobs live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
@@ -1696,6 +1697,8 @@ CREATE TABLE store_meta (
 -- v36: each executed success's duration, appended in the run's history
 -- transaction, in the store so every worktree forecasts from it.
 -- source: 'branch:<name>'; the forecast reads the newest five per task.
+-- v37: 'remote' rows are a default-branch commit's timings a plugin
+-- imported, one per (sha, task).
 CREATE TABLE task_durations (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   project     TEXT NOT NULL,
@@ -1706,6 +1709,16 @@ CREATE TABLE task_durations (
   recorded_at INTEGER NOT NULL
 );
 CREATE INDEX task_durations_task ON task_durations(project, task, source, id);
+CREATE UNIQUE INDEX task_durations_remote
+  ON task_durations(sha, project, task) WHERE source = 'remote';
+
+-- v37: a plugin's own entries (`ctx.cache`), by core's key for its
+-- name; written once, pruned by age with the run history.
+CREATE TABLE plugin_blobs (
+  key   TEXT PRIMARY KEY,
+  bytes BLOB NOT NULL,
+  at    INTEGER NOT NULL
+);
 
 -- v33: an artifact of at most 32 KiB compressed, its exact <hash>.tar.zst
 -- bytes, written in the transaction that writes its entry rows. In the

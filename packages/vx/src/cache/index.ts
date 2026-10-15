@@ -70,5 +70,12 @@ export {
 } from './git-inputs.js'
 export { LayeredCache, type RemoteCacheLayer } from './layered-cache.js'
 export { ScopedCache } from './scoped-cache.js'
+export {
+  absentPluginCache,
+  pluginCache,
+  PLUGIN_ENTRY_MAX_BYTES,
+  type PluginCache,
+  type PluginCacheRemote,
+} from './plugin-cache.js'
 export { ChainedCache } from './chained-cache.js'
 export { branchSource } from './run-history.js'
