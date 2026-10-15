@@ -114,7 +114,7 @@ describe('--affected sees a workspaceFiles change', () => {
     async () => {
       // Warm the cache at v1.
       expect(vx(root, 'run', 'build', '--all').exitCode).toBe(0)
-      expect(vx(root, 'run', 'build', '--all').stdout).toMatch(/ \d+●/)
+      expect(vx(root, 'run', 'build', '--all').stdout).toMatch(/ \d+✓/)
 
       // Change the SHARED file — inside no project, but folded into app#build's
       // key by its `workspaceFiles` glob.
@@ -126,11 +126,11 @@ describe('--affected sees a workspaceFiles change', () => {
       // nothing" would be the CORRECT answer and the test would prove nothing.
       const unscoped = vx(root, 'run', 'build', '--all')
       expect(unscoped.exitCode).toBe(0)
-      expect(unscoped.stdout).not.toMatch(/ \d+●/)
+      expect(unscoped.stdout).not.toMatch(/ \d+✓/)
 
       // Half two: --affected must select it. Re-warm first so a miss here can
       // only come from selection, not from the key still being cold.
-      expect(vx(root, 'run', 'build', '--all').stdout).toMatch(/ \d+●/)
+      expect(vx(root, 'run', 'build', '--all').stdout).toMatch(/ \d+✓/)
       await write(path.join(root, 'shared/schema.txt'), 'v3')
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'bump again')

@@ -60,7 +60,7 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
     expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
     expect(r.out).toMatch(/success miss {5}cached#build/)
     expect(r.out).toMatch(/success no-cache plain#build/)
-    expect(r.out).toContain('local 1○ 1↑')
+    expect(r.out).toContain('local 1∅ 1↑')
   })
 
   it('a verb typo gets the same hint a task or flag typo gets', () => {

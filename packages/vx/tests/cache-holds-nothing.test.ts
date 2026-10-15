@@ -122,7 +122,7 @@ describe('a run on an empty local cache', () => {
         first: false,
         second: true,
       })
-      expect(second).toContain('1●')
+      expect(second).toContain('1✓')
     } finally {
       await rm(ws, { recursive: true, force: true })
     }

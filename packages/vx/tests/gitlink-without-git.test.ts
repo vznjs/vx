@@ -94,7 +94,7 @@ it(
       return p.stdout.toString() + p.stderr.toString()
     }
     expect(run()).toMatch(/local 1↑/)
-    expect(run()).toMatch(/local 1●/)
+    expect(run()).toMatch(/local 1✓/)
     await write(path.join(lib, 'x.txt'), 'two')
     expect(run()).toMatch(/local 1↑/)
     expect(await readFile(path.join(a, 'dist/out.txt'), 'utf8')).toBe('two')

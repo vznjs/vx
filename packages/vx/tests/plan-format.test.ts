@@ -61,7 +61,7 @@ describe('formatPlanText', () => {
         task('a#build', 'miss', '22222222', ['a#install'], undefined, 1000),
       ],
     })
-    expect(out).toMatch(/∅ {2}a#install {2}noop — would not run +11111111 {2}@noop\n/)
+    expect(out).toMatch(/· {2}a#install {2}noop — would not run +11111111 {2}@noop\n/)
     expect(out).toContain('2 task(s) planned, 1 would run, 1 noop.\n')
   })
 
