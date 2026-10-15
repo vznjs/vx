@@ -2,7 +2,7 @@
 // p50 in local history. A display aid for the live region only: it never
 // steers the scheduler and never reaches the final summary.
 
-import { isGroupTask, type TaskNode } from '../graph/index.js'
+import { computeReverseDepCount, isGroupTask, type TaskNode } from '../graph/index.js'
 
 /** What the live region says about the rest of a run. */
 export interface LiveForecast {
@@ -14,6 +14,18 @@ export interface LiveForecast {
   blocks: ReadonlyMap<string, number>
   /** Each running task's p50, where history knows it: the row's expected duration. */
   expected?: ReadonlyMap<string, number>
+  /**
+   * Tasks not started because a dependency has not finished, in the order
+   * the scheduler would start them, at most one per worker: what an idle
+   * worker row holds (M, 2026-10-15).
+   */
+  blocked?: readonly BlockedTask[]
+}
+
+/** A task an unfinished dependency holds back, and what holds it: the running task its longest chain waits on, else that dependency. */
+export interface BlockedTask {
+  id: string
+  by: string
 }
 
 export type Forecast = (
@@ -68,6 +80,14 @@ export function createForecast(
     if (p !== undefined) cost.set(n.id, p)
   }
   const workers = Math.max(1, concurrency)
+  // The scheduler's own baseline ranking, most dependents first, ties in
+  // graph order: once per run, as the scheduler computes it.
+  const rank = computeReverseDepCount(nodes)
+  const position = new Map(order.map((n, i) => [n.id, i]))
+  const before = (a: string, b: string): boolean => {
+    const d = (rank.get(a) ?? 0) - (rank.get(b) ?? 0)
+    return d !== 0 ? d > 0 : position.get(a)! < position.get(b)!
+  }
 
   const dependents = new Map<string, string[]>()
   for (const n of order)
@@ -106,6 +126,8 @@ export function createForecast(
     let work = 0
     let known = false
     let overrun = false
+    // The best `workers` blocked tasks, kept sorted as the pass meets them.
+    const held: BlockedTask[] = []
     for (const n of order) {
       if (finished.has(n.id)) continue
       let start = 0
@@ -120,6 +142,16 @@ export function createForecast(
       const since = running.get(n.id)
       if (since !== undefined) head.set(n.id, n.id)
       else if (via !== undefined && head.has(via)) head.set(n.id, head.get(via)!)
+      const by =
+        since === undefined ? (head.get(n.id) ?? n.deps.find((d) => end.has(d))) : undefined
+      if (by !== undefined && !isGroupTask(n)) {
+        let at = held.length
+        while (at > 0 && before(n.id, held[at - 1]!.id)) at--
+        if (at < workers) {
+          held.splice(at, 0, { id: n.id, by })
+          if (held.length > workers) held.pop()
+        }
+      }
       const p = cost.get(n.id)
       let own = 0
       if (p !== undefined) {
@@ -135,13 +167,14 @@ export function createForecast(
       }
       work += own
     }
-    if (!known || overrun) return { blocks, expected }
+    if (!known || overrun) return { blocks, expected, blocked: held }
     const critical = chainEnd === undefined ? undefined : head.get(chainEnd)
     return {
       etaMs: Math.max(chain, work / workers),
       ...(critical !== undefined ? { critical } : {}),
       blocks,
       expected,
+      blocked: held,
     }
   }
 }

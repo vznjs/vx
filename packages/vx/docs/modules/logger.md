@@ -79,7 +79,15 @@ export function fileLocations(
 export function fileMemo(): (abs: string) => boolean
 
 // forecast.ts: the live ETA from history p50s; the later of the longest
-// unfinished chain and the unfinished work spread over the workers.
+// unfinished chain and the unfinished work spread over the workers. The
+// same pass lists `blocked`: up to one task per worker that an unfinished
+// dependency holds back, ranked as the scheduler ranks
+// (computeReverseDepCount, once per run), each `by` the running task its
+// longest chain waits on, else that dependency.
+export interface BlockedTask {
+  id: string
+  by: string
+}
 export function createForecast(
   nodes: ReadonlyMap<string, TaskNode>,
   p50s: ReadonlyMap<string, number>,
