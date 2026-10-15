@@ -32,7 +32,10 @@ describe.skipIf(!available)('the empty-outputs warning for a sandboxed task', ()
     const lines: string[] = []
     const log = new Proxy(
       {},
-      { get: (_, k) => (k === 'status' ? (l: string) => lines.push(l) : () => undefined) },
+      {
+        get: (_, k) =>
+          k === 'status' || k === 'warn' ? (l: string) => lines.push(l) : () => undefined,
+      },
     ) as Logger
     expect((await run({ cwd: root, tasks: ['build'], log, handleSignals: false })).ok).toBe(true)
     return lines.filter((l) => l.includes('matched no files'))
