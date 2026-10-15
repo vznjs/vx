@@ -27,10 +27,21 @@ A refusal under `--format json` is one line on stdout,
 Without a TTY a missing task name never prompts: vx exits 1 and lists the
 tasks it found.
 
+## After editing a config
+
+```sh
+vx lock   # after any edit to a vx.config.ts or .vx/workspace.ts
+```
+
+A run reads every config from `.vx/projects.lock.json`, never the files:
+a task you add, or an edit to one, does nothing until `vx lock`. Commit
+the lock with the config.
+
 ## Look before running
 
 ```sh
-vx show --format json                          # projects, their tasks and dependencies
+vx show --format json                          # projects and their tasks
+vx show app --format json                      # one project's tasks as a run reads them
 vx run test --affected=origin/main --dry=json  # what would run, cache hit or miss, and why
 ```
 

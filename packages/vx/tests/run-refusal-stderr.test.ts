@@ -35,3 +35,32 @@ it('a run and its --dry refuse an undeclared task alike: one stderr line, exit 1
   expect(vx('run', 'biuld', '--all')).toEqual([1, '', line])
   expect(vx('run', 'biuld', '--all', '--dry')).toEqual([1, '', line])
 }, 30_000)
+
+// Agent trial 3: an agent added a task to a vx.config and ran it. The run
+// reads the lock, so it refused with no word that the lock was the cause.
+it('a task the lock does not hold yet names `vx lock` as the fix', async () => {
+  const lock = Bun.spawnSync({
+    cmd: [process.execPath, path.resolve(import.meta.dir, '..', 'src', 'bin.ts'), 'lock'],
+    cwd: root,
+    env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
+  })
+  expect(lock.exitCode).toBe(0)
+  await writeFile(
+    path.join(root, 'packages', 'app', 'vx.config.mjs'),
+    "export default { tasks: { build: { exec: { command: 'true' } }, lint: { exec: { command: 'true' } } } }\n",
+  )
+  const p = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      path.resolve(import.meta.dir, '..', 'src', 'bin.ts'),
+      'run',
+      'lint',
+      '--all',
+    ],
+    cwd: root,
+  })
+  expect(p.exitCode).toBe(1)
+  expect(p.stderr.toString()).toBe(
+    'vx run: no projects declare task(s): lint. Tasks: build. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+  )
+}, 30_000)

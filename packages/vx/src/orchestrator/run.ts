@@ -437,7 +437,7 @@ async function runOnBus(
   // A refusal is the caller's to print (on stderr, as `vx run:`): as a
   // status line it went to stdout, into whatever a script piped there.
   if (prepared.unresolvedTasks.length > 0) {
-    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects, prepared.declaredElsewhere)}${await initHint(prepared)}`
+    const refused = `no projects declare task(s): ${prepared.unresolvedTasks.join(', ')}.${await unresolvedHint(prepared)}`
     await teardown()
     prepared.cache.close()
     return { ok: false, outcomes: [], refused }
@@ -1764,7 +1764,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       return {
         tasks: [],
         unresolvedTasks: prepared.unresolvedTasks,
-        unresolvedHint: `${elsewhereHint(prepared.declaredElsewhere)}${didYouMean(prepared.unresolvedTasks, prepared.hintProjects, prepared.declaredElsewhere)}${await initHint(prepared)}`,
+        unresolvedHint: await unresolvedHint(prepared),
       }
     }
     if (prepared.empty === 'no-tasks-declared' && prepared.declaredElsewhere.length > 0) {
@@ -1866,6 +1866,31 @@ async function planRestorable(
 function elsewhereHint(names: readonly string[]): string {
   if (names.length === 0) return ''
   return ` Only projects outside the selection declare ${names.join(', ')} — pass --all, or --filter to pick them.`
+}
+
+/**
+ * What follows "no projects declare task(s): …": where the name is, its
+ * nearest spelling, and, with neither, the lock a run reads its configs
+ * from: a task just added to a vx.config is not in it until `vx lock`.
+ */
+async function unresolvedHint(prepared: {
+  unresolvedTasks: readonly string[]
+  hintProjects: ReadonlyMap<string, ProjectEntry>
+  declaredElsewhere: readonly string[]
+  anyProjectConfig: boolean
+}): Promise<string> {
+  const elsewhere = elsewhereHint(prepared.declaredElsewhere)
+  const near = didYouMean(
+    prepared.unresolvedTasks,
+    prepared.hintProjects,
+    prepared.declaredElsewhere,
+  )
+  const init = await initHint(prepared)
+  const lock =
+    init === '' && elsewhere === '' && !near.startsWith(' Did you mean')
+      ? ' A run reads the lock: after editing a vx.config, run `vx lock`.'
+      : ''
+  return `${elsewhere}${near}${init}${lock}`
 }
 
 /**
