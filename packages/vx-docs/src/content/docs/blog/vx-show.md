@@ -20,23 +20,24 @@ vx show @demo/web#build
 
 ```sh frame="terminal"
 $ vx show
-@demo/api   packages/api   2 tasks
-@demo/docs  packages/docs  2 tasks
-@demo/ui    packages/ui    2 tasks
-@demo/web   packages/web   2 tasks
+  project     dir            tasks
+  @demo/api   packages/api   2 tasks
+  @demo/docs  packages/docs  2 tasks
+  @demo/ui    packages/ui    2 tasks
+  @demo/web   packages/web   2 tasks
 ```
 
 ## One task, resolved
 
 ```sh frame="terminal"
 $ vx show @demo/web#build
-@demo/web — packages/web
 
-build
-  command:       mkdir -p dist && sleep 0.3 && cp src/index.ts dist/index.js
-  dependsOn:     ^build
-  inputs.files:  src/**
-  outputs.files: dist/**
+─ @demo/web#build ────────────────────────────────────────────
+  dir            packages/web
+  command        mkdir -p dist && sleep 0.3 && cp src/index.ts dist/index.js
+  dependsOn      ^build
+  inputs.files   src/**
+  outputs.files  dist/**
 ```
 
 This is the config the cache key sees, not the source text. When a

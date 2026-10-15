@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { gradientRule } from '../src/util/index.js'
 
 // `vx lock`, then `vx show`: show reads the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -47,13 +48,18 @@ function show(cwd: string, target: string): { code: number | null; out: string; 
 describe('vx show //', () => {
   it('shows the root project, as `//#task` shows its task', async () => {
     const root = await workspace(true)
-    const check = 'check\n  command: true\n'
+    const rule = (mark: string): string => gradientRule({ enabled: false }, mark)
+    const check = '  top#check\n  command   true\n'
     // The project lists its default build too (a group keyed on its files).
     const build =
-      'build\n  command:       (group)\n  dependsOn:     ^build\n  inputs.files:  **\n  outputs.files: \n'
+      '  top#build\n  command        (group)\n  dependsOn      ^build\n  inputs.files   **\n  outputs.files\n'
     expect([show(root, '//'), show(root, '//#check')]).toEqual([
-      { code: 0, out: `top — .\n\n${check}\n${build}`, err: '' },
-      { code: 0, out: `top — .\n\n${check}`, err: '' },
+      { code: 0, out: `\n${rule('top')}\n  dir       .\n\n${check}\n${build}`, err: '' },
+      {
+        code: 0,
+        out: `\n${rule('top#check')}\n  dir       .\n  command   true\n`,
+        err: '',
+      },
     ])
   })
 

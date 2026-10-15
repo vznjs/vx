@@ -12,6 +12,7 @@ import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { pickTask } from '../src/cli/select.js'
 import { type Logger, run } from '../src/orchestrator/index.js'
+import { gradientRule } from '../src/util/index.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const TOKEN = 'tokenvalue123'
@@ -80,25 +81,25 @@ const leaks = (text: string): boolean => text.includes(TOKEN) || text.includes(P
 it('vx show masks every string of the task', () => {
   expect(vx(['show', 'app#t'])).toBe(
     [
-      'app — packages/app',
       '',
-      't',
-      '  description:    deploys *** ***',
-      '  command:        true',
-      '  env.secret:     GH_PAT',
-      '  inputs.files:   package.json',
-      '  inputs.runtime: echo *** $STAMP, echo *** $STAMP',
-      '  outputs.files:  ',
+      gradientRule({ enabled: false }, 'app#t'),
+      '  dir             packages/app',
+      '  description     deploys *** ***',
+      '  command         true',
+      '  env.secret      GH_PAT',
+      '  inputs.files    package.json',
+      '  inputs.runtime  echo *** $STAMP, echo *** $STAMP',
+      '  outputs.files',
       '',
     ].join('\n'),
   )
   expect(vx(['show', 'app#srv'])).toBe(
     [
-      'app — packages/app',
       '',
-      'srv',
-      '  command:    true',
-      '  persistent: readyWhen: up ***',
+      gradientRule({ enabled: false }, 'app#srv'),
+      '  dir         packages/app',
+      '  command     true',
+      '  persistent  readyWhen: up ***',
       '',
     ].join('\n'),
   )

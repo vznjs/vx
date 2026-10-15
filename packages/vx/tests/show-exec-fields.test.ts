@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { gradientRule } from '../src/util/index.js'
 
 // `vx lock`, then `vx show`: show reads the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -52,16 +53,23 @@ export default {
       }).stdout.toString()
     expect([show('a#repl'), show('a#quiet')]).toEqual([
       [
-        'a — packages/a',
         '',
-        'repl',
-        '  command:         node',
-        '  env.passThrough: GH_PAT',
-        '  env.secret:      GH_PAT',
-        '  interactive:     yes',
+        gradientRule({ enabled: false }, 'a#repl'),
+        '  dir              packages/a',
+        '  command          node',
+        '  env.passThrough  GH_PAT',
+        '  env.secret       GH_PAT',
+        '  interactive      yes',
         '',
       ].join('\n'),
-      ['a — packages/a', '', 'quiet', '  command:     true', '  interactive: no', ''].join('\n'),
+      [
+        '',
+        gradientRule({ enabled: false }, 'a#quiet'),
+        '  dir          packages/a',
+        '  command      true',
+        '  interactive  no',
+        '',
+      ].join('\n'),
     ])
   })
 })

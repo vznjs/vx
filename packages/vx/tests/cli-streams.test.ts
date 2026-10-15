@@ -61,7 +61,7 @@ const json = (out: string): boolean => {
 describe('a verb prints its product alone on stdout over an aged index', () => {
   const PRODUCTS: [string[], (out: string) => boolean][] = [
     [['show', '--format', 'json'], json],
-    [['show'], (o) => o.startsWith('app ')],
+    [['show'], (o) => o.startsWith('  project  ')],
     [['run', 'build', '--all', '--dry=json'], json],
     [['run', 'build', '--all', '--dry'], (o) => o.includes('app#build') && !o.includes(NOTICE)],
     [['run', 'build', '--all', '--graph'], (o) => o.startsWith('digraph ')],

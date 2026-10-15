@@ -60,9 +60,10 @@ describe('vx show and the default build of a dependency', () => {
       expect(r.code).toBe(0)
       expect(r.out).toBe(
         [
-          'app   packages/app   2 tasks',
-          'lib   packages/lib   1 task (no vx config; default build)',
-          'lone  packages/lone  (no vx config)',
+          '  project  dir            tasks',
+          '  app      packages/app   2 tasks',
+          '  lib      packages/lib   1 task, default build (no vx config)',
+          '  lone     packages/lone  no vx config',
           '',
         ].join('\n'),
       )
