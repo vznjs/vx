@@ -116,7 +116,7 @@ describe('module pages state what their file does since the fix', () => {
   })
 
   it('orchestrator.md: a crashed server is named mid-run and after the summary (#2152)', () => {
-    const run = src('orchestrator/run.ts')
+    const run = src('orchestrator/run.ts') + src('orchestrator/run-stop.ts')
     expect(run).toContain('exited with code ${code} while the run went on`')
     expect(run).toContain('exited with code ${code} before the run stopped it`')
     const page_ = page('modules/orchestrator.md').replace(/\s+/g, ' ')
