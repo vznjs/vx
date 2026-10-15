@@ -16,7 +16,7 @@
 // made no phase slower, and a local gate on four cores runs it beside
 // twelve shards, so no limit both holds and stays quiet.
 import { Database } from 'bun:sqlite'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { planRun, run, type Logger } from '@vzn/vx'
@@ -147,6 +147,10 @@ async function workspace(n: number, settled: boolean): Promise<string> {
   sh(root, 'git', 'init', '-q')
   sh(root, 'git', 'add', '-A')
   sh(root, 'git', ...ID, 'commit', '-qm', 'fixture')
+  // Racily clean, as a fresh checkout's index is, whatever second the
+  // commit landed in: the cold run refreshes a private copy on every box.
+  const past = new Date(Date.now() - 100_000)
+  await utimes(path.join(root, '.git', 'index'), past, past)
   return root
 }
 
