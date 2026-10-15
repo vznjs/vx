@@ -15,7 +15,12 @@ settleWithin(p: Promise<unknown>, ms): Promise<boolean>
 killGraceMs(defaultMs: number): number            // run.killGrace, else defaultMs
 claimExitForSignal(): void                        // a signal's handler will end the process
 exitClaimedBySignal(): boolean
+testTimerMs(name, defaultMs): number              // VX_TEST_<name>, else defaultMs
 ```
+
+- `testTimerMs` is how a test shortens a fixed timer (the ready notice):
+  `VX_TEST_<name>`, a duration, read per call; undocumented and in no
+  settings table.
 
 - `setSettleBounds` takes the run's `run.teardownTimeout` and
   `run.killGrace` from its flag or `.vx/workspace`, resolved by the
