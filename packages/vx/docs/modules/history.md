@@ -1,4 +1,4 @@
-# `src/orchestrator/history.ts` — per-task duration history
+# `src/history/history.ts` — per-task duration history
 
 ## Purpose
 
@@ -46,6 +46,25 @@ export interface FlakyTask {
   failures: number
 }
 export function flakyTasks(db: Database): FlakyTask[]
+/** An executed, keyed outcome of the run in progress, what `detectFlaky` judges. */
+export interface FlakyCandidate {
+  project: string
+  task: string
+  hash: string
+  status: 'success' | 'failed'
+  attempts: number // > 1 is a within-run retry
+}
+/** One task the run just proved nondeterministic; `passes`/`failures` fold this run in. */
+export interface FlakyFinding extends FlakyCandidate {
+  taskId: string
+  passes: number
+  failures: number
+}
+// judged before the run's own rows are recorded; no candidate, no query
+export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[]): FlakyFinding[]
+
+// history.ts again:
+export const PASS_STATUSES: string // the pass set as SQL `(…)`, derived from `isPassStatus`
 export class LocalHistoryProvider implements HistoryProvider {
   // without branch a forecast reads every branch
   constructor(db: Database, recent?: number, branch?: string | null) // the window; defaults to 50 invocations

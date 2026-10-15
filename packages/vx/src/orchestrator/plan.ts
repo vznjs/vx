@@ -16,7 +16,7 @@ import { cachesNothing, FULL_CACHE_POLICY } from '../cache/index.js'
 import { ranNoCache } from './events.js'
 import { idleServers, isGroupTask, runGraph, type TaskNode } from '../graph/index.js'
 import type { AffectedReason } from './affected-tasks.js'
-import type { HistoryProvider } from './history.js'
+import type { HistoryProvider } from '../history/index.js'
 import { computeGroupKey, computeTaskHash } from './task-hash.js'
 import { keyedOutcome, keyUpstream } from './upstream.js'
 

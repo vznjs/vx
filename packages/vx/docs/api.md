@@ -747,7 +747,7 @@ export interface GraphHookContext extends BaseContext {
 
 ## `HistoryProvider`
 
-type · `src/orchestrator/history.ts`
+type · `src/history/history.ts`
 
 ```ts
 export interface HistoryProvider {
@@ -758,7 +758,7 @@ export interface HistoryProvider {
 
 ## `HistoryTable`
 
-type · `src/orchestrator/history.ts`
+type · `src/history/history.ts`
 
 Map keyed by `project#task`.
 
@@ -932,7 +932,7 @@ export async function loadResolvedProjects(
 
 ## `LocalHistoryProvider`
 
-class · `src/orchestrator/history.ts`
+class · `src/history/history.ts`
 
 Reads from the orchestrator's local SQLite cache.db.
 
@@ -2154,7 +2154,7 @@ export interface TaskExecutor {
 
 ## `TaskHistory`
 
-type · `src/orchestrator/history.ts`
+type · `src/history/history.ts`
 
 Per (project#task) — last RECENT runs collapsed into a summary.
 
@@ -2325,7 +2325,7 @@ export interface TaskPlacement {
 
 ## `TaskResources`
 
-type · `src/orchestrator/history.ts`
+type · `src/history/history.ts`
 
 What a scheduler learns from a task's history: its p50 and its resource maxima.
 

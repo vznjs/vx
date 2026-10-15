@@ -85,7 +85,7 @@ import {
 import { markUnsaved, saveMiss, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
 import { restoreHit } from './hit-restore.js'
-import type { MissExplainer } from './miss-reason.js'
+import type { MissExplainer } from '../history/index.js'
 import { shellVerdict } from './shell-verdict.js'
 import { sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).

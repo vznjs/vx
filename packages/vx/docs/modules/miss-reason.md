@@ -1,4 +1,4 @@
-# `src/orchestrator/miss-reason.ts` — what a miss's key changed
+# `src/history/miss-reason.ts` — what a miss's key changed
 
 ## Purpose
 

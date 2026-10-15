@@ -48,7 +48,7 @@ import { manifestEdges } from './edges.js'
 
 export { evaluateConfig } from './config-eval.js'
 // The page names what moved a key by the rule `vx why` does (item 703).
-export { diffKeyComponents, type InputDiffEntry } from '../../../vx/src/orchestrator/metrics.js'
+export { diffKeyComponents, type InputDiffEntry } from '../../../vx/src/history/metrics.js'
 
 export interface PlaygroundInput {
   /** Absolute posix path the workspace lives at inside the VFS. */

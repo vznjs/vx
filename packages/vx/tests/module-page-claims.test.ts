@@ -76,7 +76,7 @@ describe('module pages state what their file does since the fix', () => {
   })
 
   it('metrics.md: an unchanged key names the continue-taint before --no-cache (#1928)', () => {
-    expect(src('orchestrator/metrics.ts')).toContain('each ran beside a failed task')
+    expect(src('history/metrics.ts')).toContain('each ran beside a failed task')
     const why = blocks('modules/metrics.md', '`whyDidThisRerun` compares')
     expect(why.length).toBe(1)
     expect(why[0]).toMatch(/beside a failed task.*Only when none applies/)

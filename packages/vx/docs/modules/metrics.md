@@ -1,4 +1,4 @@
-# `src/orchestrator/metrics.ts` — run-history queries
+# `src/history/metrics.ts` — run-history queries
 
 ## Purpose
 

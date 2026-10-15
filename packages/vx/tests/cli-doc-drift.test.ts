@@ -157,13 +157,13 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     // An interface's body, doc comments dropped: `FlakyTask` is the
     // element type `flakyTasks` names, declared in failure-mode.ts.
     const body = async (file: string, name: string): Promise<string> => {
-      const src = await Bun.file(new URL(`../src/orchestrator/${file}`, import.meta.url)).text()
+      const src = await Bun.file(new URL(`../src/${file}`, import.meta.url)).text()
       const open = src.indexOf(`export interface ${name} {`)
       expect(open).toBeGreaterThan(-1)
       return src.slice(open, src.indexOf('\n}\n', open)).replace(/\/\*\*[\s\S]*?\*\//g, '')
     }
-    const code = await body('doctor.ts', 'InfoFacts')
-    const nested = code + (await body('failure-mode.ts', 'FlakyTask'))
+    const code = await body('orchestrator/doctor.ts', 'InfoFacts')
+    const nested = code + (await body('history/failure-mode.ts', 'FlakyTask'))
     const topLevel = new Set(Array.from(code.matchAll(/^ {2}(\w+)\??:/gm), (m) => m[1] as string))
     // Nested keys and literal members are what the bullet's parentheses
     // describe (`workers.source` one of `workspace` / `cgroup` / `cores`).
@@ -193,9 +193,9 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
   it('gives each object field the keys the object carries', async () => {
     const strip = (s: string): string => s.replace(/\/\*\*[\s\S]*?\*\//g, '')
     const read = (file: string): Promise<string> =>
-      Bun.file(new URL(`../src/orchestrator/${file}`, import.meta.url)).text()
-    const doctor = strip(await read('doctor.ts'))
-    const flaky = strip(await read('failure-mode.ts'))
+      Bun.file(new URL(`../src/${file}`, import.meta.url)).text()
+    const doctor = strip(await read('orchestrator/doctor.ts'))
+    const flaky = strip(await read('history/failure-mode.ts'))
     const info = doctor.slice(doctor.indexOf('export interface InfoFacts {'))
     const keysOf = (body: string): string =>
       Array.from(body.matchAll(/(\w+)\??:/g), (m) => m[1]!)

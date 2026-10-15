@@ -34,8 +34,8 @@ import type { Logger } from '../src/orchestrator/index.js'
 import {
   cacheKeyDiff,
   LocalHistoryProvider,
-  whyDidThisRerunQuery,
-} from '../src/orchestrator/index.js'
+  whyDidThisRerun as whyDidThisRerunQuery,
+} from '../src/history/index.js'
 import { run } from './helpers/orchestrator.js'
 
 const TIMEOUT = 20_000

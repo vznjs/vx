@@ -31,7 +31,7 @@ import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/worksp
 import { Database } from 'bun:sqlite'
 import { type CacheLayer, type CachePolicy, GitFilesCache } from '../src/cache/index.js'
 import type { TaskNode } from '../src/graph/index.js'
-import type { HistoryProvider, HistoryTable, TaskHistory } from '../src/orchestrator/history.js'
+import type { HistoryProvider, HistoryTable, TaskHistory } from '../src/history/history.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { planRun, run } from './helpers/orchestrator.js'
 import { plan, type CacheStatus, type RunPlan } from '../src/orchestrator/plan.js'

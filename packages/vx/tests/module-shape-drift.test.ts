@@ -87,7 +87,7 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['migration', 'workspace/migration.ts', 'GeneratedTask'],
   ['migration', 'workspace/migration.ts', 'ApplyMigrationArgs'],
   ['remote-prefetch', 'orchestrator/remote-prefetch.ts', 'PrefetchArgs'],
-  ['history', 'orchestrator/history.ts', 'TaskHistory'],
+  ['history', 'history/history.ts', 'TaskHistory'],
   ['run-context', 'orchestrator/run-context.ts', 'GitContext'],
   ['run-context', 'orchestrator/run-context.ts', 'CiContext'],
   ['run-context', 'orchestrator/run-context.ts', 'HostContext'],
@@ -179,7 +179,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
   })
 
   it("history.md's default window is DEFAULT_RECENT", () => {
-    const recent = /const DEFAULT_RECENT = (\d+)/.exec(read('src/orchestrator/history.ts'))
+    const recent = /const DEFAULT_RECENT = (\d+)/.exec(read('src/history/history.ts'))
     expect(recent).not.toBeNull()
     expect(read('docs/modules/history.md')).toContain(
       `// the window; defaults to ${recent![1]} invocations`,
@@ -263,7 +263,7 @@ describe('a module page quotes a constant or a regex the module has', () => {
 
 describe('a module page lists the functions the module exports', () => {
   it("metrics.md's signature block names every exported function, and counts them", () => {
-    const src = read('src/orchestrator/metrics.ts')
+    const src = read('src/history/metrics.ts')
     const exported = [...src.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1]!)
     // What "a reader over another store" reimplements: the functions over
     // the Database. `diffKeyComponents` (item 703) is the join alone.

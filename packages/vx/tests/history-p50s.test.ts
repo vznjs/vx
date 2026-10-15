@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
-import { LocalHistoryProvider, type TaskResources } from '../src/orchestrator/index.js'
+import { LocalHistoryProvider, type TaskResources } from '../src/history/index.js'
 
 const STATUSES: RunRecord['status'][] = ['success', 'cache-hit', 'failed', 'skipped', 'success']
 

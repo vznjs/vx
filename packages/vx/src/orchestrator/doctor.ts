@@ -30,7 +30,7 @@ import {
   resolveCacheDir,
   resolveStoreRoot,
 } from '../workspace/index.js'
-import { flakyTasks, type FlakyTask } from './failure-mode.js'
+import { flakyTasks, type FlakyTask } from '../history/index.js'
 import type { VxPlugin } from './plugin.js'
 import { discoverProjects, loadProjects, loadWorkspacePlugins, lockReader } from './projects.js'
 import { atPath, envName, resolveSetting, SETTINGS, type SettingSource } from '../settings.js'

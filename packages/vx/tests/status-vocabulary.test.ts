@@ -117,7 +117,7 @@ describe('the tripwire that makes one definition stay one definition', () => {
       'PRODUCES the status — the hit path picks local vs remote, so it must name both (the line moved here from execute-task.ts on 2026-09-10).',
     ],
     [
-      'src/orchestrator/metrics.ts',
+      'src/history/metrics.ts',
       'SQL text. One survivor, and it is a DIFFERENT list (it includes `failed` — the latest-state filter, not the pass set).',
     ],
     [
@@ -170,7 +170,7 @@ describe('the tripwire that makes one definition stay one definition', () => {
     // SQL automatically. (This used to be pinned in two packages; the cloud
     // half went with the 2026-08-23 removal, and the reason the pin exists —
     // a centralisation that misses a call site — is unchanged.)
-    const file = 'src/orchestrator/metrics.ts'
+    const file = 'src/history/metrics.ts'
     const src = await read(file)
     // The HIT and PASS lists both left with the analytics queries (2026-08-26
     // and 2026-09-02) — the guard is about lists that EXIST being derived,
@@ -201,7 +201,7 @@ describe('the callers that used to hand-roll it', () => {
     // mirrored a second one in another package, with nothing enforcing it.
     // That package is gone; the rule it encodes is not — a comment claiming a
     // guarantee the code does not have is its own defect class.
-    const src = await read('src/orchestrator/metrics.ts')
+    const src = await read('src/history/metrics.ts')
     expect(src).not.toContain('Mirrors `MAX_WINDOW_DAYS`')
   })
 })

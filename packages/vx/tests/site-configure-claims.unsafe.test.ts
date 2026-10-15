@@ -14,7 +14,7 @@ const PAGE = readFileSync(
 
 describe('the configure guide', () => {
   it('lists every "cache key unchanged" verdict vx why prints', () => {
-    const metrics = readFileSync(path.join(SRC, 'orchestrator', 'metrics.ts'), 'utf8')
+    const metrics = readFileSync(path.join(SRC, 'history', 'metrics.ts'), 'utf8')
     const verdicts = [...metrics.matchAll(/return [`'](cache key unchanged — [^`'$]*)/g)].map(
       (m) => m[1]!,
     )

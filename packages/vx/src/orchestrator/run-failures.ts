@@ -8,7 +8,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync
 import path from 'node:path'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
-import { PASS_STATUSES } from './history.js'
+import { PASS_STATUSES } from '../history/index.js'
 import { splitTaskId } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from './path-links.js'
 

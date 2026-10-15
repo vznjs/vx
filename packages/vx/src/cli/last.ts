@@ -9,16 +9,18 @@ import { Cache } from '../cache/index.js'
 import { formatBytes } from './format.js'
 import { flagHint, formatValue, seeHelp } from './help.js'
 import {
-  currentBranch,
-  exitSignal,
   type FailureMode,
   getInvocation,
   getRun,
   type InvocationDetail,
   listInvocations,
   LocalHistoryProvider,
-  outcomeWord,
   type RunSummaryRow,
+} from '../history/index.js'
+import {
+  currentBranch,
+  exitSignal,
+  outcomeWord,
   resolveRunId,
   runFailures,
   shortRunId,

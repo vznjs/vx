@@ -4,7 +4,8 @@
 // from the orchestrator's `collectInfo` (doctor.ts); this file parses the flags and renders the rows.
 
 import os from 'node:os'
-import { collectInfo, type FlakyTask, type InfoFacts } from '../orchestrator/index.js'
+import { collectInfo, type InfoFacts } from '../orchestrator/index.js'
+import { type FlakyTask } from '../history/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'

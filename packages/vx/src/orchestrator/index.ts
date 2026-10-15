@@ -57,22 +57,6 @@ export type {
   OutcomeView,
 } from './events.js'
 export {
-  EmptyHistoryProvider,
-  type HistoryProvider,
-  type HistoryTable,
-  LocalHistoryProvider,
-  type TaskHistory,
-  type TaskResources,
-} from './history.js'
-export {
-  detectFlaky,
-  type FailureMode,
-  type FlakyCandidate,
-  type FlakyFinding,
-  type FlakyTask,
-  flakyTasks,
-} from './failure-mode.js'
-export {
   installPlugins,
   type CacheContext,
   type ExecutorContext,
@@ -154,18 +138,6 @@ export {
 } from './run-context.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './run-context.js'
 export {
-  cacheKeyDiff,
-  explainCacheKey as explainCacheKeyQuery,
-  getInvocation,
-  getRun,
-  latestRunId,
-  listInvocations,
-  listRuns,
-  inputWriters,
-  rootCauses,
-  whyDidThisRerun as whyDidThisRerunQuery,
-} from './metrics.js'
-export {
   runFailures,
   type RunFailures,
   type TaskFailure,
@@ -174,18 +146,4 @@ export {
 } from './run-failures.js'
 export type { OutputLocation } from './path-links.js'
 export { resolveRunId, shortRunId } from './run-id.js'
-export type {
-  CacheEntryRow,
-  CacheKeyDiff,
-  InputWriter,
-  RootCause,
-  CacheKeyExplanation,
-  InputDiffEntry,
-  InvocationDetail,
-  ListInvocationsArgs,
-  ListRunsArgs,
-  RunDetail,
-  RunSummaryRow,
-  WhyDidThisRerun,
-} from './metrics.js'
 export { collectInfo, type CollectInfoOptions, type InfoFacts } from './doctor.js'
