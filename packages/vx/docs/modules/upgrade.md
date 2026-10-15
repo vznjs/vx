@@ -13,6 +13,11 @@ make it (owner, 2026-10-13; pnpm/get checks the same). A vx a package
 manager installed is upgraded by that manager (`managedInstall`,
 `upgradeArgv`); vx never installs Node or a package manager.
 
+Handed off by a global vx (`VX_HANDED_OFF` names it), the project's vx
+moves both to one version: its own install first, then the global
+(`upgradeGlobal`), each its own way; a refusal names the install that
+failed (owner, 2026-10-15).
+
 ## Public surface
 
 ```ts
@@ -41,6 +46,7 @@ export async function releaseBinary(
   spec: string,
   announce: (version: string) => void,
   key?: SigningKey,
+  current?: string, // the version being replaced; default this vx's
 ): Promise<Uint8Array | null>
 export async function replaceBinary(
   dest: string,
@@ -55,6 +61,8 @@ export interface ManagedInstall {
 }
 export function managedInstall(execPath: string, cwd: string): ManagedInstall | null
 export function upgradeArgv(install: ManagedInstall, version: string): string[]
+// the global vx at `from` to `version`: replaced, or updated by its manager; refusals name it
+export async function upgradeGlobal(from: string, version: string, key?: SigningKey): Promise<void>
 export async function upgradeCmd(args: readonly string[]): Promise<number>
 // `bin --version` when it answers as vx within the bound, else null: what `starts` asks
 export function startedVersion(bin: string, timeoutMs?: number): string | null // default 10 s

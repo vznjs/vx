@@ -15,7 +15,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { generateKeyPairSync, sign } from 'node:crypto'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -30,6 +30,7 @@ import {
   replaceBinary,
   startedVersion,
   upgradeArgv,
+  upgradeGlobal,
   verifiedRelease,
   versionSpec,
   type SigningKey,
@@ -635,6 +636,82 @@ describe('npmOwnedBinary', () => {
 
   it('a node_modules with nothing under it still counts as npm-owned', () => {
     expect(npmOwnedBinary('/home/me/app/node_modules')).toBe('node_modules')
+  })
+})
+
+describe('upgradeGlobal: the global vx that handed the run to the project', () => {
+  // A global vx run inside a project hands `vx upgrade` to the project's
+  // own; the global that started the run moves to the same version
+  // (owner, 2026-10-15), the way it was installed.
+  const HOST = `@vzn/vx-${process.platform}-${process.arch}`
+  const answering = async (file: string, version: string): Promise<string> => {
+    await mkdir(path.dirname(file), { recursive: true })
+    await writeFile(file, `#!/bin/sh\necho "vx ${version} (handed off from somewhere)"\n`)
+    await chmod(file, 0o755)
+    return file
+  }
+
+  it('replaces a binary installed by hand with the verified release', async () => {
+    const bin = await answering(path.join(mkdtempSync(path.join(dir, 'g-')), 'vx'), '0.0.1')
+    const tgz = tarball({ 'package/vx': '#!/bin/sh\necho "vx 9.9.9"\n' })
+    const integrity = integrityOf(tgz)
+    const url = `https://registry.npmjs.org/${HOST}/-/vx-9.9.9.tgz`
+    const doc = {
+      version: '9.9.9',
+      dist: {
+        tarball: url,
+        integrity,
+        signatures: [{ keyid: TEST_KEY.id, sig: signed(`${HOST}@9.9.9:${integrity}`) }],
+      },
+    }
+    await withFetch(
+      {
+        [`https://registry.npmjs.org/${HOST}/9.9.9`]: () => Response.json(doc),
+        [url]: () => new Response(tgz),
+      },
+      () => upgradeGlobal(bin, '9.9.9', TEST_KEY),
+    )
+    expect(startedVersion(bin)).toBe('vx 9.9.9')
+  })
+
+  it('one already at the version downloads nothing', async () => {
+    const bin = await answering(path.join(mkdtempSync(path.join(dir, 'g-')), 'vx'), '9.9.9')
+    const asked = await withFetch({}, async (asked) => {
+      await upgradeGlobal(bin, '9.9.9', TEST_KEY)
+      return asked
+    })
+    expect(asked).toEqual([])
+  })
+
+  it("updates a package manager's global install through that manager", async () => {
+    const prefix = mkdtempSync(path.join(dir, 'g-'))
+    const launcher = await answering(
+      path.join(prefix, 'lib/node_modules/@vzn/vx/launcher.sh'),
+      '0.0.1',
+    )
+    const tools = path.join(prefix, 'tools')
+    const said = path.join(prefix, 'npm-said')
+    await answering(path.join(tools, 'npm'), '')
+    await writeFile(path.join(tools, 'npm'), `#!/bin/sh\necho "$PWD $*" > ${said}\n`)
+    const PATH = process.env['PATH']
+    process.env['PATH'] = `${tools}:${PATH}`
+    try {
+      await upgradeGlobal(launcher, '9.9.9', TEST_KEY)
+    } finally {
+      process.env['PATH'] = PATH
+    }
+    expect(await readFile(said, 'utf8')).toBe(
+      `${realpathSync(path.join(prefix, 'lib'))} install -g @vzn/vx@9.9.9\n`,
+    )
+  })
+
+  it('a refusal names the global vx, and one that does not start is left as it is', async () => {
+    const bin = path.join(mkdtempSync(path.join(dir, 'g-')), 'vx')
+    await writeFile(bin, '#!/bin/sh\nexit 1\n')
+    await chmod(bin, 0o755)
+    await expect(upgradeGlobal(bin, '9.9.9', TEST_KEY)).rejects.toThrow(
+      `vx upgrade: global vx ${bin}: it did not answer \`--version\`, so it is left as it is`,
+    )
   })
 })
 

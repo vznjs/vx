@@ -10,6 +10,8 @@
 // package manager (npm, pnpm, bun, yarn; global or a project's
 // dependency) is upgraded by that package manager, never by a rename over
 // a file it owns. vx never installs Node or a package manager.
+// Handed a call by a global vx, the project's vx moves that global too,
+// to the same version (`upgradeGlobal`).
 // Named `upgrade` (not `update`) per CLI convention: bun upgrade,
 // deno upgrade — "update" is what package managers do to indexes.
 
@@ -290,17 +292,19 @@ export function binaryFromTarball(tgz: Uint8Array): Uint8Array {
 /**
  * The binary of `pkg@spec`, verified: the registry document's signature,
  * then the tarball's integrity, then the extraction, each refusing before
- * the next step runs. Null when the release is this vx's own version;
- * `announce` hears the version before the download starts.
+ * the next step runs. Null when the release is `current`, the version of
+ * the vx being replaced; `announce` hears the version before the download
+ * starts.
  */
 export async function releaseBinary(
   pkg: string,
   spec: string,
   announce: (version: string) => void,
   key: SigningKey = NPM_SIGNING_KEY,
+  current = VERSION,
 ): Promise<Uint8Array | null> {
   const release = verifiedRelease(await fetchManifest(pkg, spec), pkg, key)
-  if (release.version === VERSION) return null
+  if (release.version === current) return null
   announce(release.version)
   return binaryFromTarball(await downloadVerified(release))
 }
@@ -518,15 +522,24 @@ async function targetVersion(tag: string | undefined): Promise<string> {
   return v
 }
 
-/** Run the package manager that owns this vx; vx never installs one. */
-async function upgradeManaged(install: ManagedInstall, tag: string | undefined): Promise<number> {
-  const version = await targetVersion(tag)
-  if (version === VERSION) {
-    ui.print('out', ui.status('info', 'vx upgrade', `already at ${VERSION}`))
-    return 0
+/**
+ * Run the package manager that owns a vx at `current` to bring it to
+ * `version`; vx never installs one. `step` names the install when a run
+ * moves two (`project `, `global `).
+ */
+async function upgradeManaged(
+  install: ManagedInstall,
+  version: string,
+  current = VERSION,
+  step = '',
+): Promise<void> {
+  if (version === current) {
+    ui.print('out', ui.status('info', 'vx upgrade', `${step}already at ${current}`))
+    return
   }
   const argv = upgradeArgv(install, version)
-  const bin = Bun.which(argv[0]!)
+  // PATH as it is now: `Bun.which` alone reads the one the process started with.
+  const bin = Bun.which(argv[0]!, { PATH: process.env['PATH'] ?? '' })
   if (bin === null) {
     throw new UserError(
       `vx upgrade: this vx was installed by ${argv[0]}, which is not on PATH — vx does not install package managers; run it yourself: ${argv.join(' ')} (in ${install.cwd})`,
@@ -534,7 +547,7 @@ async function upgradeManaged(install: ManagedInstall, tag: string | undefined):
   }
   ui.print(
     'out',
-    ui.status('info', 'vx upgrade', `${VERSION} → ${version}`),
+    ui.status('info', 'vx upgrade', `${step}${current} → ${version}`),
     ui.text([ui.cmd(argv.join(' ')), ui.dim(` in ${install.cwd}`)]),
   )
   const proc = Bun.spawnSync({
@@ -547,7 +560,90 @@ async function upgradeManaged(install: ManagedInstall, tag: string | undefined):
       `vx upgrade: ${argv.join(' ')} failed (exit ${proc.exitCode}) — vx changed nothing itself`,
     )
   }
-  return 0
+}
+
+/**
+ * Replace the binary at `dest`, at `current`, with the verified release
+ * `spec` names (`latest` or a version). `step` as in `upgradeManaged`.
+ */
+async function upgradeBinary(
+  dest: string,
+  spec: string,
+  current = VERSION,
+  step = '',
+  key: SigningKey = NPM_SIGNING_KEY,
+): Promise<void> {
+  const pkg = platformPackage()
+  let installed: string | undefined
+  const replaced = await replaceBinary(
+    dest,
+    () =>
+      releaseBinary(
+        pkg,
+        spec,
+        (version) =>
+          ui.print(
+            'out',
+            ui.status('info', 'vx upgrade', `${step}${current} → ${version}`),
+            ui.text(ui.dim(dest)),
+          ),
+        key,
+        current,
+      ),
+    // The replaced binary's own version: the new build speaks for itself
+    // rather than this process guessing, and one that cannot is rolled back.
+    (bin) => {
+      installed = answeredVersion(bin)
+      return installed !== undefined
+    },
+  )
+  ui.print(
+    'out',
+    replaced
+      ? ui.status('ok', 'vx upgrade', `${step}installed ${installed}`)
+      : ui.status('info', 'vx upgrade', `${step}already at ${current}`),
+  )
+}
+
+/** The version `bin --version` answers, without the hand-off note a handed-off run adds. */
+function answeredVersion(bin: string): string | undefined {
+  return startedVersion(bin)?.split(' ')[1]
+}
+
+/**
+ * Bring `from`, the global vx that handed this run to the project's own
+ * (`VX_HANDED_OFF`), to `version`, the way it was installed: a binary
+ * installed by hand is replaced, a package manager's global install is
+ * updated by that manager. A refusal names it.
+ */
+export async function upgradeGlobal(
+  from: string,
+  version: string,
+  key: SigningKey = NPM_SIGNING_KEY,
+): Promise<void> {
+  await named(`global vx ${from}`, async () => {
+    const current = answeredVersion(from)
+    if (current === undefined) {
+      throw new UserError('vx upgrade: it did not answer `--version`, so it is left as it is')
+    }
+    if (current === version) {
+      ui.print('out', ui.status('info', 'vx upgrade', `global already at ${current}`))
+      return
+    }
+    const install = managedInstall(from, path.dirname(from))
+    if (install === null) await upgradeBinary(from, version, current, 'global ', key)
+    else await upgradeManaged(install, version, current, 'global ')
+  })
+}
+
+/** `run`, its refusal naming `what` after the verb: a run that moves two installs says which failed. */
+async function named(what: string, run: () => Promise<void>): Promise<void> {
+  try {
+    await run()
+  } catch (err) {
+    if (!(err instanceof UserError)) throw err
+    throw new UserError(err.message.replace(/^vx upgrade: /, `vx upgrade: ${what}: `), err.code)
+  }
 }
 
 export async function upgradeCmd(args: readonly string[]): Promise<number> {
@@ -575,33 +671,21 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
   }
   const dest = process.execPath
   const install = managedInstall(dest, process.cwd())
-  if (install !== null) return await upgradeManaged(install, tag)
-  const pkg = platformPackage()
-  const spec = versionSpec(tag)
-  let installed = ''
-  const replaced = await replaceBinary(
-    dest,
-    () =>
-      releaseBinary(pkg, spec, (version) =>
-        ui.print(
-          'out',
-          ui.status('info', 'vx upgrade', `${VERSION} → ${version}`),
-          ui.text(ui.dim(dest)),
-        ),
-      ),
-    // The replaced binary's own version: the new build speaks for itself
-    // rather than this process guessing, and one that cannot is rolled back.
-    (bin) => {
-      installed = startedVersion(bin) ?? ''
-      return installed !== ''
-    },
-  )
-  ui.print(
-    'out',
-    replaced
-      ? ui.status('ok', 'vx upgrade', `installed ${installed.replace(/^vx /, '')}`)
-      : ui.status('info', 'vx upgrade', `already at ${VERSION}`),
-  )
+  // A global vx handed this run to the project's own: both move, to one
+  // version, the project first (owner, 2026-10-15).
+  const from = process.env['VX_HANDED_OFF']
+  if (from !== undefined) {
+    const version = await targetVersion(tag)
+    await named('project vx', () =>
+      install === null
+        ? upgradeBinary(dest, version, VERSION, 'project ')
+        : upgradeManaged(install, version, VERSION, 'project '),
+    )
+    await upgradeGlobal(from, version)
+    return 0
+  }
+  if (install !== null) await upgradeManaged(install, await targetVersion(tag))
+  else await upgradeBinary(dest, versionSpec(tag))
   return 0
 }
 

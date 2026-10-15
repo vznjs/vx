@@ -1835,9 +1835,6 @@ manager is its lockfile (`pnpm-lock.yaml`, `bun.lock`, `yarn.lock`,
 `package-lock.json`), else `packageManager`, else npm; the field it is
 listed in is kept (`--save-dev`, `--dev`, …), and pnpm at a workspace
 root adds `--workspace-root`. The lockfile is updated by that manager.
-Run inside a project that installs `@vzn/vx`, a global vx hands
-`vx upgrade` to the project's own (§ Which vx runs), so the project's
-dependency is what moves.
 vx prints what it runs, runs it there, and exits with an error if it
 fails:
 
@@ -1845,6 +1842,28 @@ fails:
 › vx upgrade  0.0.1 → 0.0.2
 
   bun add @vzn/vx@0.0.2 in /repo
+```
+
+**Inside a project with its own vx**, a global vx hands `vx upgrade` to
+the project's (§ Which vx runs), and one run moves both to the same
+version (`TAG`, or latest): first the project's dependency, then the
+global vx that started the run, each the way it was installed. Each
+line names its install, and a refusal names the one that failed
+(`vx upgrade: global vx /usr/local/bin/vx: cannot write to …`); a
+project that fails leaves the global as it was. The project's vx run
+directly (a package script, `node_modules/.bin/vx`) has no global behind it, so only
+the project moves.
+
+```
+› vx upgrade  project 0.0.1 → 0.0.2
+
+  bun add @vzn/vx@0.0.2 in /repo
+
+› vx upgrade  global 0.0.1 → 0.0.2
+
+  /usr/local/bin/vx
+
+✓ vx upgrade  global installed 0.0.2
 ```
 
 vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from an npx or

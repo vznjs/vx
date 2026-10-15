@@ -75,6 +75,10 @@ repo runs the version its lockfile pins, whatever version is on your
 `PATH`. Upgrading a project is then one lockfile change that the whole
 team and CI pick up together.
 
+(Since vx 0.0.639, `vx upgrade` run there moves both: the project's
+dependency first, then the global vx that handed it the call, to the
+same version.)
+
 ```sh frame="terminal"
 $ vx --version
 vx 0.0.640 (/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from /usr/local/bin/vx)
