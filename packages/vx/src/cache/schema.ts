@@ -23,7 +23,8 @@ export function lazyStatement(db: Database, sql: string): ReturnType<Database['p
 /**
  * Create every table. `store` names the schema holding the ENTRY tables
  * (`entries`, `entry_stdout`, `output_files`, `entry_inputs`, `store_meta`)
- * the task timings (`task_durations`) and the plugins' blobs (`plugin_blobs`):
+ * the task timings (`task_durations`), the flaky record (`task_outcomes`),
+ * the blob sizes (`blob_sizes`) and the plugins' blobs (`plugin_blobs`):
  * `main` when one `cache.db` holds everything (a `cacheDir`), `store` when
  * they live in the shared store attached beside it (v32). The rest is the
  * workspace's own: its history, its memos, and what its disk looked like
@@ -114,17 +115,13 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     --   runs_ended (2026-09-09) served only the retention DELETE, which
     --     prunes on started_at now (a row ends after it starts, so the
     --     30-day window moves by at most one task's duration).
+    --   runs_failed (v38) served the flakiness probe, which reads the
+    --     store's task_outcomes now; the v38 reset drops it with runs.
     DROP INDEX IF EXISTS main.runs_hash;
     DROP INDEX IF EXISTS main.runs_project;
     DROP INDEX IF EXISTS main.runs_ended;
     CREATE INDEX IF NOT EXISTS main.runs_started_at ON runs(started_at);
     CREATE INDEX IF NOT EXISTS main.runs_run_id     ON runs(run_id);
-    -- The one keyed index, PARTIAL over failed rows: a green run's
-    -- inserts only evaluate its predicate, so the append-only cost above
-    -- holds, and the flakiness probe after a miss (failure-mode.ts,
-    -- "did this key ever fail?") reads a handful of leaves instead of
-    -- scanning the table (2026-09-10: 10–95 ms at 170k rows without it).
-    CREATE INDEX IF NOT EXISTS main.runs_failed ON runs(hash) WHERE status = 'failed';
     -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()
     -- skip the content-hash on inputs whose stat hasn't changed
     -- since the last run. Pure performance optimization; the stored
@@ -142,8 +139,9 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     -- The size of each index blob the enumeration checked against the
     -- worktree size git recorded (A-60). Fixed for its OID, so a warm
     -- run asks git for none; swept with file_hashes by seen_at, the
-    -- time the row was written.
-    CREATE TABLE IF NOT EXISTS main.blob_sizes (
+    -- time the row was written. v38: in the store, so a worktree reads
+    -- what another learned (owner, 2026-10-14).
+    CREATE TABLE IF NOT EXISTS ${store}.blob_sizes (
       oid     TEXT PRIMARY KEY,
       size    INTEGER NOT NULL,
       seen_at INTEGER NOT NULL
@@ -280,6 +278,23 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     -- no-op under INSERT OR IGNORE.
     CREATE UNIQUE INDEX IF NOT EXISTS ${store}.task_durations_remote
       ON task_durations(sha, project, task) WHERE source = 'remote';
+    -- v38: the flaky record (orchestrator/failure-mode.ts): each keyed,
+    -- cached, unblocked outcome that observed its key, shared by every
+    -- worktree so a key that passed in one and failed in another is flaky
+    -- in both (owner, 2026-10-14). Every executed success or failure, and
+    -- a key's first hit (run-history.ts): a later hit replays a pass the
+    -- record holds, so a warm run on keys that passed writes no row.
+    -- Append-only, ordered by id, pruned by age with the run history.
+    CREATE TABLE IF NOT EXISTS ${store}.task_outcomes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      project     TEXT NOT NULL,
+      task        TEXT NOT NULL,
+      hash        TEXT NOT NULL,
+      status      TEXT NOT NULL,
+      attempts    INTEGER,
+      recorded_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ${store}.task_outcomes_hash ON task_outcomes(hash, status);
     -- v37: what a plugin keeps through \`ctx.cache\` (plugin-cache.ts), by
     -- its namespaced key. Written once, never updated; pruned by age with
     -- the run history.

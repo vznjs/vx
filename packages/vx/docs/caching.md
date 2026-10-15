@@ -1470,9 +1470,9 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v37', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v38', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
--- store_meta, task_durations and plugin_blobs live in its store.db, attached as `store`; the rest is
+-- store_meta, task_durations, task_outcomes, blob_sizes and plugin_blobs live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
@@ -1538,10 +1538,6 @@ CREATE TABLE runs (
 -- the history reader bounds its scan by rowid instead (see history.md).
 CREATE INDEX runs_started_at ON runs(started_at);
 CREATE INDEX runs_run_id     ON runs(run_id);
--- The one keyed index, PARTIAL over failed rows: a green run's inserts only
--- evaluate its predicate, and the flakiness probe after a miss
--- (failure-mode.ts, "did this key ever fail?") reads a few leaves.
-CREATE INDEX runs_failed ON runs(hash) WHERE status = 'failed';
 
 -- Every non-group, non-aborted outcome of a run gets a row, so
 -- `invocations.task_count` always equals `COUNT(*)` here for that run_id
@@ -1576,7 +1572,8 @@ CREATE TABLE file_hashes (
 -- The size of each index blob the enumeration checked against the
 -- worktree size git recorded (§ Cache key derivation, A-60): fixed for
 -- its OID, so a warm run asks git for none. Swept with file_hashes by
--- seen_at, the time the row was written.
+-- seen_at, the time the row was written. v38: in the store, so a worktree
+-- reads what another learned.
 CREATE TABLE blob_sizes (
   oid     TEXT PRIMARY KEY,
   size    INTEGER NOT NULL,
@@ -1711,6 +1708,23 @@ CREATE TABLE task_durations (
 CREATE INDEX task_durations_task ON task_durations(project, task, source, id);
 CREATE UNIQUE INDEX task_durations_remote
   ON task_durations(sha, project, task) WHERE source = 'remote';
+
+-- v38: the flaky record (failure-mode.ts), in the store so a key that
+-- passed in one worktree and failed in another is flaky in both. Every
+-- executed success or failure that names its key (keyed, cached, not run
+-- behind a failure), and a key's first hit: a later hit replays a pass on
+-- record, so a warm run on passed keys writes no row (one index probe,
+-- ~1 ms per 1,000 hits). Pruned by age with the run history.
+CREATE TABLE task_outcomes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  project     TEXT NOT NULL,
+  task        TEXT NOT NULL,
+  hash        TEXT NOT NULL,
+  status      TEXT NOT NULL,
+  attempts    INTEGER,
+  recorded_at INTEGER NOT NULL
+);
+CREATE INDEX task_outcomes_hash ON task_outcomes(hash, status);
 
 -- v37: a plugin's own entries (`ctx.cache`), by core's key for its
 -- name; written once, pruned by age with the run history.
