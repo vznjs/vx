@@ -582,16 +582,16 @@ The remote cache is **plugin-driven** — core keeps the seams only:
    A plugin never sees the local cache or the policy.
 2. `LayeredCache` owns everything wire-independent: policy gating, the
    in-flight de-dup, remote provenance, and the never-fail contract
-   (implementations THROW; every throw degrades to a cache miss via
-   `onRemoteError`).
+   (implementations THROW; every throw degrades to a cache miss and a
+   warning naming the remote's plugin).
 
 Reads try local first, then remote (hydrating local on remote hit);
 `run()` also fires a background **prefetch** pass over every
 stable-key task so remote latency overlaps execution — at most one
 GET per key. Writes go to local synchronously; the remote PUT is a
 fire-and-forget background upload drained before `cache.close()`, so
-upload latency never blocks the next task. Remote errors fire
-`onRemoteError` (logged) but never throw — no remote failure of any
+upload latency never blocks the next task. Remote errors are warned
+but never thrown — no remote failure of any
 kind may fail the run. `--dry` use a lightweight remote
 existence probe (`RemoteCacheLayer.has`) instead of `get` — planning
 never downloads or ingests artifacts.

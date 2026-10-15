@@ -98,15 +98,15 @@ sequenceDiagram
 ```
 
 On any remote error (timeout, non-404 failure, corrupt body) the
-layered cache reports through `onRemoteError` and the task degrades
+layered cache warns once per failure class, naming the remote, and the task degrades
 to a miss — remote problems never fail a run.
 
 The write side is the mirror image: `LayeredCache.save` writes the
 local artifact synchronously, then uploads the same bytes verbatim
 (`RemoteCacheLayer.put`) as a **fire-and-forget background task**
 — the task's outcome never waits on upload latency; `run()` drains
-all in-flight uploads before closing the cache. Errors route to
-`onRemoteError`.
+all in-flight uploads before closing the cache. Errors warn the same
+way.
 
 In practice most remote hits never reach the lazy path above: the
 **prefetch** pass (flow 3b) has already ingested them by the time

@@ -573,7 +573,7 @@ fire-and-forget background upload**. The task's outcome (and its
 dependents) never wait on upload latency — the uploads race alongside
 the rest of the run and are drained before `cache.close()`, so a
 short run still ships every artifact before the process exits. Upload
-failures log via `onRemoteError` and are otherwise ignored (the task
+failures are warned once per failure class and are otherwise ignored (the task
 already succeeded; the only loss is the remote entry).
 
 An upload is the outputs as the task wrote them; secret masking does
