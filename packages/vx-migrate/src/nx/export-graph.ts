@@ -1,7 +1,7 @@
 // The resolved Nx graph, exported by the workspace's own nx: `nx()` keys and
 // keeps it, `vx-migrate --from nx` maps it once.
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -11,10 +11,9 @@ import path from 'node:path'
  * daemon up the export is served from memory, without it Nx computes.
  */
 export async function exportGraph(root: string, snapshot: string): Promise<string | null> {
-  const linked = path.join(root, 'node_modules', '.bin', 'nx')
-  const bin = (await Bun.file(linked).exists()) ? linked : lernasNx(root)
+  const bin = nxBin(root)
   if (bin === undefined) {
-    return `no ${path.relative(root, linked)} — install nx, or export a graph with \`nx graph --file=<path>\` and pass it as graph: '<path>'`
+    return `no node_modules/.bin/nx — install nx, or export a graph with \`nx graph --file=<path>\` and pass it as graph: '<path>'`
   }
   // `discover` runs before the run opens (and makes) the cache dir.
   await mkdir(path.dirname(snapshot), { recursive: true })
@@ -28,6 +27,18 @@ export async function exportGraph(root: string, snapshot: string): Promise<strin
   if (code === 0 && (await Bun.file(snapshot).exists())) return null
   const tail = err.trim().split('\n').slice(-3).join(' ')
   return `nx graph --file exited ${code}${tail ? `: ${tail}` : ''}`
+}
+
+/**
+ * The workspace's own nx: the linked bin, else where Nx's wrapper installs
+ * it in a repo with no package.json (`.nx/installation`), else Lerna's.
+ */
+export function nxBin(root: string): string | undefined {
+  for (const dir of [root, path.join(root, '.nx', 'installation')]) {
+    const bin = path.join(dir, 'node_modules', '.bin', 'nx')
+    if (existsSync(bin)) return bin
+  }
+  return lernasNx(root)
 }
 
 /**

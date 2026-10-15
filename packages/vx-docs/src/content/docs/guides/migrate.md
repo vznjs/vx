@@ -367,7 +367,7 @@ The field-by-field mapping is in the `@vzn/vx-migrate` README.
 
 ## Common problems
 
-- **A project is missing.** A project is a directory holding a `vx.config.ts`, which `vx lock` finds; `bunx @vzn/vx-migrate` writes one for every project. Mid-migration, `turbo()` and `nx()` make each package in `pnpm-workspace.yaml` or `package.json` `workspaces` a project, and `nx()` adds each Nx project the graph names that no package glob lists (a `project.json` library, the root project). `bunx @vzn/vx-migrate` writes a `package.json` for each such library that lacks one and prints the directories to add to the globs.
+- **A project is missing.** A project is a directory holding a `vx.config.ts`, which `vx lock` finds; `bunx @vzn/vx-migrate` writes one for every project. Mid-migration, `turbo()` and `nx()` make each package in `pnpm-workspace.yaml` or `package.json` `workspaces` a project, and `nx()` adds each Nx project the graph names that no package glob lists (a `project.json` library, the root project). `bunx @vzn/vx-migrate` writes a `package.json` for each such library that lacks one and prints the directories to add to the globs. A repo with no `package.json` (Nx in `.nx/installation`) gets no `package.json` anywhere: each `vx.config.ts` names its project and lists its edges explicitly.
 - **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json` or the Nx graph; a Turbo task with `cache: false` has none.
 - **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough` ([Environment variables](../configure/#environment-variables)).
 - **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.

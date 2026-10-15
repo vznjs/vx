@@ -39,7 +39,7 @@ import {
 import { relPosix } from './paths.js'
 import { REMOTE_CACHE, remoteCacheNote } from './remote-cache.js'
 import { migrateNx, NX_GRAPH_REL, nxWorkspaceFields } from './migrate-nx.js'
-import { exportGraph } from './nx/export-graph.js'
+import { exportGraph, nxBin } from './nx/export-graph.js'
 import { readNxJson } from './nx/nx-map.js'
 import {
   type AdoptionMode,
@@ -148,12 +148,18 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     return 1
   }
   const reads: LoadReads = new Map()
+  // An Nx repo with no package.json (Nx pinned in `.nx/installation`):
+  // nothing is installable, so its configs run on core alone.
+  let bare = false
   const root = await migrationRoot(process.cwd(), reads).catch(async (err: unknown) => {
-    throw isUserError(err) ? await noRootReason(process.cwd(), err) : err
+    const nx = isUserError(err) ? nxRootWithoutManifest(process.cwd()) : undefined
+    if (nx === undefined) throw isUserError(err) ? await noRootReason(process.cwd(), err) : err
+    bare = true
+    return nx
   })
-  const workspace = await loadPackageWorkspace(root, reads)
+  const workspace = bare ? { root, packageGlobs: [] } : await loadPackageWorkspace(root, reads)
   const nameless: string[] = []
-  const metas = await discoverPackages(workspace, nameless)
+  const metas = bare ? [] : await discoverPackages(workspace, nameless)
 
   const turboFile = await turboConfigFile(root)
   const hasTurbo = turboFile !== null
@@ -219,8 +225,13 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     )
     return 0
   }
+  if (bare && parsed.mode === 'keep') {
+    throw new UserError(
+      '--keep: nx() is a plugin to install, and this Nx repo has no package.json to install it in; drop --keep to write vx.config files',
+    )
+  }
   const mode =
-    runner === 'vite-task'
+    runner === 'vite-task' || bare
       ? 'native'
       : (parsed.mode ?? (await askMode(runner, lerna ? 'lerna.json' : undefined, parsed.dry)))
   if (mode === 'keep' && runner !== 'vite-task') return keep(root, runner, runnerFile, parsed)
@@ -248,14 +259,14 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   } else if (runner === 'nx') {
     if (hasGraph) {
       source = NX_GRAPH_REL
-      plan = await migrateNx(root, metas, format, undefined, writesWorkspace)
+      plan = await migrateNx(root, metas, format, undefined, writesWorkspace, bare)
     } else {
       // Modern Nx stores the graph in SQLite, so the JSON snapshot exists only
       // when exported. The workspace's own nx exports it, as `nx()` does, into
       // a temp file; the user ran that step by hand until 2026-10-01.
       // A fresh clone: the export's own reason names the plugin's `graph`
       // option, which the CLI does not take.
-      if (!existsSync(path.join(root, 'node_modules', '.bin', 'nx'))) {
+      if (nxBin(root) === undefined) {
         throw new UserError(
           `nx is not installed here (no node_modules/.bin/nx), and vx-migrate reads the graph it exports — ` +
             `run \`${packageManagerOf(root, process.env['npm_config_user_agent'])} install\`, then vx-migrate again`,
@@ -272,7 +283,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
           )
         }
         source = 'nx graph'
-        plan = await migrateNx(root, metas, format, snapshot, writesWorkspace)
+        plan = await migrateNx(root, metas, format, snapshot, writesWorkspace, bare)
       } finally {
         await rm(tmp, { recursive: true, force: true })
       }
@@ -294,14 +305,15 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     ) ||
       plan.extraFiles.some((f) => existsSync(path.join(root, f.relPath))))
   const kept = (adopted ?? []).filter((p) => !ADOPTION_PLUGINS.has(`${p.pkg}#${p.factory}`))
-  const plugins = writesWorkspace
-    ? [
-        ...kept,
-        ...workspacePlugins(root, runner === 'vite-task' ? undefined : runner).filter(
-          (p) => !kept.some((k) => k.factory === p.factory),
-        ),
-      ]
-    : []
+  const plugins =
+    writesWorkspace && !bare
+      ? [
+          ...kept,
+          ...workspacePlugins(root, runner === 'vite-task' ? undefined : runner).filter(
+            (p) => !kept.some((k) => k.factory === p.factory),
+          ),
+        ]
+      : []
   let workspaceText: string | undefined
   if (writesWorkspace) {
     const fields =
@@ -340,26 +352,27 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     runner === 'vite-task'
       ? undefined
       : remoteCacheNote(root, runner, finalWorkspace.includes(`${REMOTE_CACHE[runner]}(`))
-  const headerNotes = refused
-    ? []
-    : [
-        ...(existingWorkspace !== undefined && workspaceText !== undefined
-          ? await rewriteWorkspace(root, existingWorkspace, workspaceText, adopted!, parsed.dry)
-          : []),
-        ...(await prepareRepo(
-          root,
-          [
-            ...new Set([
-              '@vzn/vx',
-              ...(needsSelf ? ['@vzn/vx-migrate'] : []),
-              ...plugins.map((p) => p.pkg),
-            ]),
-          ],
-          parsed,
-          needsSelf ? [] : ['@vzn/vx-migrate'],
-        )),
-        ...(cacheNote === undefined ? [] : [cacheNote]),
-      ]
+  const headerNotes =
+    refused || bare
+      ? []
+      : [
+          ...(existingWorkspace !== undefined && workspaceText !== undefined
+            ? await rewriteWorkspace(root, existingWorkspace, workspaceText, adopted!, parsed.dry)
+            : []),
+          ...(await prepareRepo(
+            root,
+            [
+              ...new Set([
+                '@vzn/vx',
+                ...(needsSelf ? ['@vzn/vx-migrate'] : []),
+                ...plugins.map((p) => p.pkg),
+              ]),
+            ],
+            parsed,
+            needsSelf ? [] : ['@vzn/vx-migrate'],
+          )),
+          ...(cacheNote === undefined ? [] : [cacheNote]),
+        ]
   return applyMigration({
     root,
     metas,
@@ -774,6 +787,18 @@ async function migrationRoot(cwd: string, reads: LoadReads): Promise<string> {
     if (nested !== undefined && nested.packageGlobs.length > 0) return manifest
   }
   return marked
+}
+
+/**
+ * The nearest directory up to the git top-level holding nx.json, for a
+ * repo with no package.json: Nx's `nx init` outside JS pins Nx in
+ * `.nx/installation` and finds projects by `project.json`.
+ */
+function nxRootWithoutManifest(cwd: string): string | undefined {
+  for (let d = cwd; ; d = path.dirname(d)) {
+    if (existsSync(path.join(d, 'nx.json'))) return d
+    if (existsSync(path.join(d, '.git')) || path.dirname(d) === d) return undefined
+  }
 }
 
 /**

@@ -25,6 +25,7 @@ export interface GeneratedProject {
   dir: string
   importLines: string[]
   tags?: readonly string[] // written as the config's `tags` when non-empty (an Nx project's)
+  writeName?: boolean // writes `name`: no manifest names the project (an Nx repo with no package.json)
   tasks: GeneratedTask[]
 }
 export interface GeneratedTask {
