@@ -1597,6 +1597,7 @@ export interface ProjectHookContext extends BaseContext {
   readonly name: string
   readonly dir: string
   readonly projects: readonly ProjectMeta[]
+  readonly lock: boolean
 }
 ```
 

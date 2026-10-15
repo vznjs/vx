@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { type Logger, type ProjectConfig, type ProjectMeta } from '@vzn/vx'
-import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
+import { lock, planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { turbo } from '../src/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { tamperMapping } from './helpers/tamper-mapping.js'
@@ -48,6 +48,13 @@ function silent(): Logger & { lines: string[] } {
     runEnd() {},
   }
   return log as unknown as Logger & { lines: string[] }
+}
+
+/** What `vx lock` warns here: a mapping's gaps are reported there, never on a run. */
+async function lockWarnings(): Promise<string[]> {
+  const lines: string[] = []
+  await lock(root, (line) => lines.push(line))
+  return lines
 }
 
 async function pkg(name: string, scripts: Record<string, string>, deps?: Record<string, string>) {
@@ -216,9 +223,7 @@ describe('turbo()', () => {
           },
         }),
       )
-      const log = silent()
-      await planRun({ cwd: root, tasks: ['build', 'test', 'lint'], log })
-      const text = log.lines.join('\n')
+      const text = (await lockWarnings()).join('\n')
       expect(text).not.toContain('outputLogs" ("new-only")')
       expect(text).not.toContain('has no vx equivalent')
       expect(text).toContain(
@@ -245,13 +250,13 @@ describe('turbo()', () => {
       )
       const log = silent()
       await planRun({ cwd: root, tasks: ['build', 'test'], log })
-      expect(log.lines.filter((l) => l.includes('interruptible'))).toEqual([])
+      expect((await lockWarnings()).filter((l) => l.includes('interruptible'))).toEqual([])
     },
     TIMEOUT,
   )
 
   it(
-    'every persistent task is one warning per run, not one per task',
+    'every persistent task is one warning at vx lock, not one per task',
     async () => {
       // n8n marks `dev` and `watch` persistent in most of its 84 packages;
       // a line per task was a hundred identical lines before the first frame.
@@ -274,9 +279,7 @@ describe('turbo()', () => {
       }
       // Nothing depends on dev or watch: the readiness note has nothing to
       // gate, so it is not reported at all (item 602).
-      const quiet = silent()
-      await planRun({ cwd: root, tasks: ['build'], log: quiet })
-      expect(quiet.lines.filter((l) => l.includes('persistent'))).toEqual([])
+      expect((await lockWarnings()).filter((l) => l.includes('persistent'))).toEqual([])
       // With a dependent, the note names the tasks it gates — once.
       await writeFile(
         path.join(root, 'turbo.json'),
@@ -288,9 +291,7 @@ describe('turbo()', () => {
           },
         }),
       )
-      const log = silent()
-      await planRun({ cwd: root, tasks: ['build'], log })
-      const lines = log.lines.filter((l) => l.includes('persistent'))
+      const lines = (await lockWarnings()).filter((l) => l.includes('persistent'))
       expect(lines).toEqual([
         '[@vzn/vx-migrate] 2 task(s) (dev across 2 package(s)): persistent in turbo.json — vx runs them as persistent tasks that are ready on spawn; add `exec.persistent.readyWhen` in a vx.config to gate dependents on their output',
       ])
@@ -323,7 +324,7 @@ describe('turbo()', () => {
   )
 
   it(
-    'a gap shared by many tasks is one warning per run, not written',
+    'a gap shared by many tasks is one warning at vx lock, not written',
     async () => {
       // A nameless root stays no project, so its root task is a note.
       await writeFile(path.join(root, 'package.json'), JSON.stringify({ private: true }))
@@ -333,9 +334,7 @@ describe('turbo()', () => {
           tasks: { build: { outputs: ['dist/**'], foo: 1 }, '//#root': {} },
         }),
       )
-      const log = silent()
-      await planRun({ cwd: root, tasks: ['build'], log })
-      const text = log.lines.join('\n')
+      const text = (await lockWarnings()).join('\n')
       // Once for the workspace note, once for the gap — astro's `build`
       // carried one gap in 57 tasks, and a line per task was 57 identical
       // lines before the first frame (2026-09-11).
@@ -487,7 +486,7 @@ describe('root tasks (D-39)', () => {
       const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
       expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#build', 'ws#gen'])
       expect(plan.tasks.find((t) => t.node.id === 'app#build')!.node.deps).toEqual(['ws#gen'])
-      expect(log.lines.join('\n')).not.toContain('root task')
+      expect((await lockWarnings()).join('\n')).not.toContain('root task')
       const result = await run({
         cwd: root,
         tasks: ['app#build'],
@@ -537,7 +536,7 @@ describe('root tasks (D-39)', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
       expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#build', 'ws#gen'])
-      expect(log.lines.join('\n')).not.toContain('root task')
+      expect((await lockWarnings()).join('\n')).not.toContain('root task')
       const result = await run({ cwd: root, tasks: ['gen'], log: silent(), handleSignals: false })
       expect(result.ok).toBe(true)
       expect(await Bun.file(path.join(root, 'out', 'g.txt')).text()).toBe('g\n')
@@ -549,10 +548,9 @@ describe('root tasks (D-39)', () => {
     'CONTROL: a nameless root is no project; the root task is a note and the edge a todo',
     async () => {
       await setUp(false, null)
-      const log = silent()
-      const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
+      const text = (await lockWarnings()).join('\n')
+      const plan = await planRun({ cwd: root, tasks: ['app#build'], log: silent() })
       expect(plan.tasks.map((t) => t.node.id)).toEqual(['app#build'])
-      const text = log.lines.join('\n')
       expect(text).toContain(
         'note: root task //#gen not migrated — the workspace root is no project; a root package.json name no package holds makes it one',
       )
@@ -642,7 +640,7 @@ describe('a committed file under an output', () => {
       const plan = await planRun({ cwd: root, tasks: ['app#build'], log })
       const node = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(node.config.cache!.outputs.files).toEqual(['data/**'])
-      expect(log.lines.join('\n')).not.toContain('committed')
+      expect((await lockWarnings()).join('\n')).not.toContain('committed')
       const opts = { cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false }
       const status = (r: Awaited<ReturnType<typeof run>>) =>
         r.outcomes.find((o) => o.node.id === 'app#build')!.status
@@ -738,8 +736,8 @@ describe('output negation', () => {
           },
         }),
       )
-      const log = silent()
-      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const warned = (await lockWarnings()).join('\n')
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.config.cache?.outputs.files).toEqual([
         '!node_modules/**',
@@ -749,7 +747,7 @@ describe('output negation', () => {
         '.medusa/**',
         '!package.json',
       ])
-      expect(log.lines.join('\n')).toContain(
+      expect(warned).toContain(
         '[@vzn/vx-migrate] 2 task(s) (build across 2 package(s)): output "*/**": vx cleans outputs before a run and a restore, so every untracked file this glob reaches is deleted; committed files are kept',
       )
       const result = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
@@ -960,7 +958,7 @@ describe('output negation', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.config.cache?.outputs.files).toEqual(['[locale]/**', '!**/*.map'])
-      expect(log.lines.join('\n')).not.toContain('reaches the sources')
+      expect((await lockWarnings()).join('\n')).not.toContain('reaches the sources')
     },
     TIMEOUT,
   )
@@ -1013,8 +1011,8 @@ describe('per-package turbo.json', () => {
           },
         }),
       )
-      const log = silent()
-      const plan = await planRun({ cwd: root, tasks: ['build'], log })
+      const warned = (await lockWarnings()).join('\n')
+      const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       const cache = app.config.cache!
       expect(cache.inputs.files).toEqual(['src/**', '!src/gen/**'])
@@ -1025,7 +1023,7 @@ describe('per-package turbo.json', () => {
       ])
       expect(cache.outputs.files).toEqual(['dist/**'])
       expect(cache.outputs.workspaceFiles).toEqual(['packages/lib/generated/**'])
-      expect(log.lines.join('\n')).toContain(
+      expect(warned).toContain(
         'output "../../../elsewhere/**": leaves the workspace — map manually',
       )
     },
@@ -1078,6 +1076,7 @@ describe('the mapping reads the projects the run has', () => {
       name: ghost.name,
       dir: ghost.dir,
       projects: [ghost],
+      lock: false,
     })
     expect(config.tasks?.build?.exec?.command).toBe('echo ghost')
   })
@@ -1260,18 +1259,13 @@ describe('turbo(): the mapping cache', () => {
         tasks: { ...TURBO_JSON.tasks, lint: { cache: false, tagz: ['ci'] }, '//#fmt': {} },
       }),
     )
-    const warned = async (): Promise<string[]> => {
-      const log = silent()
-      await planRun({ cwd: root, tasks: ['lint'], log })
-      return log.lines
-    }
-    const miss = await warned()
+    const miss = await lockWarnings()
     await tamperMapping(root, 'turbo')
     expect({
       hasNote: miss.some((l) => l.includes('//#fmt')),
       hasTodo: miss.some((l) => l.includes('tagz')),
     }).toEqual({ hasNote: true, hasTodo: true })
-    expect(await warned()).toEqual(miss)
+    expect(await lockWarnings()).toEqual(miss)
   })
 
   // Keeping the mapping is best-effort: a cache dir it cannot write to
@@ -1337,6 +1331,35 @@ describe('turbo() under vx lock', () => {
         code: 1,
         out: '',
         err: "vx lock --check: packages/lib/vx.config.mjs is not in the lock — run 'vx lock'\n",
+      })
+    },
+    TIMEOUT,
+  )
+
+  // solid-js (M, 2026-10-15): two tasks on one output path printed the
+  // gap on every run and never at `vx lock`. Runs check nothing; the lock
+  // reports what the mapping could not say, once, as a warning.
+  it(
+    'reports a mapping gap at vx lock and --check, never on a run',
+    async () => {
+      await writeFile(
+        path.join(root, 'turbo.json'),
+        JSON.stringify({
+          tasks: { build: { outputs: ['dist/**'] }, types: { outputs: ['dist/**'] } },
+        }),
+      )
+      await pkg('lib', { build: 'mkdir -p dist && echo lib > dist/lib.js', types: 'true' })
+      const gap = 'lib#types: declares the output'
+      const lock = vx('lock')
+      expect({ code: lock.code, gap: lock.err.includes(gap) }).toEqual({ code: 0, gap: true })
+      expect(lock.err.split(gap).length - 1).toBe(1)
+      const check = vx('lock', '--check')
+      expect({ code: check.code, gap: check.err.includes(gap) }).toEqual({ code: 0, gap: true })
+      const ran = vx('run', 'lib#build')
+      expect({ code: ran.code, err: ran.err, out: ran.out.includes('declares the') }).toEqual({
+        code: 0,
+        err: '',
+        out: false,
       })
     },
     TIMEOUT,

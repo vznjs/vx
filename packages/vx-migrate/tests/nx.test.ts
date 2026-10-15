@@ -103,6 +103,13 @@ function silent(): Logger & { lines: string[] } {
   return log as unknown as Logger & { lines: string[] }
 }
 
+/** What `vx lock` warns here: a mapping's gaps are reported there, never on a run. */
+async function lockWarnings(): Promise<string[]> {
+  const lines: string[] = []
+  await lock(root, (line) => lines.push(line))
+  return lines
+}
+
 async function pkg(name: string, deps?: Record<string, string>): Promise<string> {
   const dir = path.join(root, 'packages', name)
   await mkdir(path.join(dir, 'src'), { recursive: true })
@@ -283,7 +290,9 @@ describe('nx()', () => {
       expect(plan.tasks.find((t) => t.node.id === 'app#all')!.node.deps).toEqual(['app#build'])
       // The graph was exported once, and the root project attached (G-55).
       expect(await nxCalls(root)).toBe(1)
-      expect(log.lines.some((l) => l.includes('have no workspace package'))).toBe(false)
+      expect((await lockWarnings()).some((l) => l.includes('have no workspace package'))).toBe(
+        false,
+      )
     },
     TIMEOUT,
   )
@@ -485,7 +494,7 @@ describe('nx()', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['lint'], log })
       expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['lib#lint', 'tool#gen', 'ws#prep'])
-      expect(log.lines.join('\n')).not.toContain('have no workspace package')
+      expect((await lockWarnings()).join('\n')).not.toContain('have no workspace package')
       const result = await run({
         cwd: root,
         tasks: ['tool#gen'],
@@ -508,11 +517,12 @@ describe('nx()', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'lib', private: true }),
       )
-      const log = silent()
-      const plan = await planRun({ cwd: root, tasks: ['lint'], log })
+      expect((await lockWarnings()).join('\n')).toContain(
+        'Nx project(s) ws have no workspace package',
+      )
+      const plan = await planRun({ cwd: root, tasks: ['lint'], log: silent() })
       expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
       expect(plan.tasks[0]!.node.config.exec?.command).toBe('echo lint-ran > lint.log')
-      expect(log.lines.join('\n')).toContain('Nx project(s) ws have no workspace package')
     },
     TIMEOUT,
   )
@@ -536,7 +546,7 @@ describe('nx()', () => {
       await workspace("nx({ graph: 'graph.json' })")
       const log = silent()
       await planRun({ cwd: root, tasks: ['lib#build'], log })
-      expect(log.lines.filter((l) => l.includes('externalDependencies'))).toEqual([])
+      expect((await lockWarnings()).filter((l) => l.includes('externalDependencies'))).toEqual([])
     },
     TIMEOUT,
   )
@@ -1050,7 +1060,7 @@ describe('nx()', () => {
       expect(serve.config.exec?.command).toBe(
         `nx-exec @nx/vite:dev-server --project lib --target serve --options '{"port":4200}'`,
       )
-      expect(log.lines.filter((l) => l.includes('continuous target'))).toEqual([])
+      expect((await lockWarnings()).filter((l) => l.includes('continuous target'))).toEqual([])
     },
     TIMEOUT,
   )
@@ -1070,15 +1080,14 @@ describe('nx.json is a claimed root file (item 961)', () => {
 
 describe('nx(): what the sweep found unheld', () => {
   it(
-    'nx.json `sync.globalGenerators` is said once per run',
+    'nx.json `sync.globalGenerators` is said once, at vx lock',
     async () => {
       await writeFile(
         path.join(root, 'nx.json'),
         JSON.stringify({ namedInputs: {}, sync: { globalGenerators: ['@acme/tools:sync-env'] } }),
       )
-      const log = silent()
-      await planRun({ cwd: root, tasks: ['lint'], log })
-      expect(log.lines.filter((l) => l.includes('sync.globalGenerators'))).toHaveLength(1)
+      const lines = await lockWarnings()
+      expect(lines.filter((l) => l.includes('sync.globalGenerators'))).toHaveLength(1)
     },
     TIMEOUT,
   )
@@ -1126,7 +1135,7 @@ describe('nx(): what the sweep found unheld', () => {
       )
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['lint'], log })
-      expect(log.lines.filter((l) => l.includes('implicit'))).toEqual([])
+      expect((await lockWarnings()).filter((l) => l.includes('implicit'))).toEqual([])
       expect(plan.tasks.find((t) => t.node.id === 'lib#lint')!.node.config.dependsOn).toEqual([
         '^build',
         'app#build',
@@ -1151,7 +1160,7 @@ describe('nx(): what the sweep found unheld', () => {
       )
       const log = silent()
       await planRun({ cwd: root, tasks: ['lint'], log })
-      expect(log.lines.filter((l) => l.includes('streamOutput'))).toEqual([])
+      expect((await lockWarnings()).filter((l) => l.includes('streamOutput'))).toEqual([])
     },
     TIMEOUT,
   )
@@ -1184,7 +1193,7 @@ describe('nx(): what the sweep found unheld', () => {
       const log = silent()
       const plan = await planRun({ cwd: root, tasks: ['lint'], log })
       expect(plan.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
-      expect(log.lines.filter((l) => /node_modules/.test(l))).toEqual([])
+      expect((await lockWarnings()).filter((l) => /node_modules/.test(l))).toEqual([])
     },
     TIMEOUT,
   )

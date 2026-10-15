@@ -29,7 +29,7 @@ async function spare(
     if (ids === undefined) todos.set(todo, (ids = []))
     ids.push(id)
   }
-  return { byName: mapping.byName, gaps: { notes: mapping.gaps.notes, todos } }
+  return { byName: mapping.byName, gaps: { ...mapping.gaps, todos } }
 }
 
 /**
@@ -97,7 +97,7 @@ export function adoptionPlugin(
       const mapped = await mapping!
       if (!warned) {
         warned = true
-        warnGaps(ctx.warn, plugin.name, mapped.gaps)
+        warnGaps(ctx.warn, plugin.name, mapped.gaps, ctx.lock)
       }
       const project = mapped.byName.get(ctx.name)
       if (project === undefined) return

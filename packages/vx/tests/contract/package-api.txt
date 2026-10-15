@@ -1059,6 +1059,7 @@ export interface ProjectHookContext extends BaseContext {
   readonly name: string
   readonly dir: string
   readonly projects: readonly ProjectMeta[]
+  readonly lock: boolean
 }
 == type ProjectMeta (src/workspace/workspace.ts)
 export interface ProjectMeta {

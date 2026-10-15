@@ -63,6 +63,7 @@ interface LoadProjectsBase {
   seeds: 'all' | Iterable<string> // 'all' is `configured`; unknown names ignored
   configs: (() => Promise<Lockfile>) | 'evaluate' // the lock, asked only when a config is read; 'evaluate' is `vx lock`'s alone
   warn: (m: string) => void
+  lock?: boolean // `vx lock`'s audit: the `project` stage's `ctx.lock`
   staged?: ReadonlyMap<string, ProjectEntry> // entries a load in this process already produced
 }
 export interface LoadedProjects {
