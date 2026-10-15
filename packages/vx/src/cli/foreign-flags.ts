@@ -22,8 +22,7 @@ interface ForeignFlag {
   /**
    * The runner reads `=true` / `=false` on it (Turbo's `--force [FORCE]`,
    * Nx's yargs booleans): `=false` is the flag left out, `=true` the flag
-   * bare. `--skip-nx-cache=false` forced every task, `--summarize=true`
-   * wrote the summary to a file named `true`.
+   * bare: `--skip-nx-cache=false` forced every task.
    */
   bool?: true
   /** For an alias: the vx argv. For a refusal: none. */
@@ -133,9 +132,8 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'turbo',
     names: ['--summarize'],
     value: false,
-    bool: true,
-    outcome: 'same',
-    vx: '`--summarize[=<path>]`',
+    outcome: 'refuse',
+    vx: "use `vx last --format json` for the run's JSON record",
   },
   {
     runner: 'turbo',
@@ -362,14 +360,14 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['--json'],
     value: false,
     outcome: 'refuse',
-    vx: "use `--format json` for the run's result on stdout, `--dry=json` for the plan",
+    vx: "use `vx last --format json` for the run's result, `--dry=json` for the plan",
   },
   {
     runner: 'turbo',
     names: ['--log-file'],
     value: false,
     outcome: 'refuse',
-    vx: "use `--summarize[=<path>]` for the run's JSON record",
+    vx: "use `vx last --format json` for the run's JSON record",
   },
   {
     runner: 'turbo',

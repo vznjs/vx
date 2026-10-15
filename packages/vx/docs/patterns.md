@@ -162,7 +162,6 @@ Turbo-aware cache server can transit our blobs unchanged.
 | `--no-cache` (all off) / `--force` (reads off, writes on) — distinct, not synonyms | Turbo-adjacent | `src/cli/run.ts`                    |
 | `--dry` / `--dry=json` (plan output)                                               | Turbo          | `src/orchestrator/plan.ts`          |
 | `--graph[=<path>]` (DOT)                                                           | Turbo + Nx     | `src/cli/plan-format.ts`            |
-| `--summarize[=<path>]` (per-run JSON)                                              | Turbo          | `src/orchestrator/run-artifacts.ts` |
 | `--profile[=<path>]` (Chrome-trace)                                                | Turbo          | `src/orchestrator/run-artifacts.ts` |
 | `--affected[=<base>]`                                                              | Turbo + Nx     | `src/workspace/affected.ts`         |
 | `watch <task>` subcommand                                                          | Turbo + Nx     | `src/cli/watch.ts`                  |

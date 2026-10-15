@@ -52,7 +52,7 @@ verdict: `0` when every task passed ([exit codes](#branch-on-exit-codes-and-erro
 
 ## Read answers as JSON
 
-`vx run`, `vx show`, `vx info`, `vx why`, `vx last`, `vx cache clean`,
+`vx show`, `vx info`, `vx why`, `vx last`, `vx cache clean`,
 `vx lock --check` and `vx init --dry` take `--format json`. Each prints one JSON document to stdout, and every
 notice goes to stderr, so stdout always parses. Each shape is a JSON
 Schema shipped in the package (`node_modules/@vzn/vx/schemas/`).
@@ -63,7 +63,6 @@ vx why app#build --format json     # why app#build re-ran, down to the root caus
 vx last --failed --format json     # the last failed run, task by task
 vx last --stats --format json      # per task: p50/p99, pass and hit rate, failure mode, peak RSS
 vx run build --all --dry=json      # what a run would do, before it runs
-vx run build --all --format json   # the run's result; task output goes to stderr
 vx init --dry --format json        # what adopting vx would write, file by file
 ```
 
@@ -87,7 +86,7 @@ a stable code, and the exit code stays `1`. Branch on the code, not the
 message:
 
 ```sh frame="terminal"
-$ vx run biuld --all --format json
+$ vx run biuld --all --dry=json
 {"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
 ```
 

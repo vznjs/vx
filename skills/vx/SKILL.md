@@ -15,13 +15,13 @@ dependencies.
 vx run build --all                  # a task in every project that declares it
 vx run test --affected=origin/main  # only what the diff since origin/main reaches
 vx run app#build                    # one project's task (and what it depends on)
-vx run build --all --format json    # the result as JSON on stdout; logs go to stderr
+vx last --format json               # the last run's result as JSON
 ```
 
 The exit code is the verdict: `0` every task passed or hit the cache, `1` a
-task failed or was skipped, or the command was refused. `--format json`
-prints `schemas/summary.json` (`runId`, `ok`, `exitCode`, a row per task).
-A refusal under `--format json` is one line on stdout,
+task failed or was skipped, or the command was refused. `vx last --format
+json` prints the run as JSON afterwards, a row per task. A refusal under
+`--format json` (or `--dry=json`) is one line on stdout,
 `{"ok":false,"error":{"code","message","docs"}}`: branch on `code`;
 `docs` (or `vx docs <code>` offline) says what to do.
 Without a TTY a missing task name never prompts: vx exits 1 and lists the

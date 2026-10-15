@@ -393,9 +393,8 @@ export function formatRunSummary(
   colors: ColorSupport = NO_COLOR,
   context?: RunContext,
 ): string[] {
-  // Counted here, not in the Tally: that object is the `--summarize` payload
-  // (ten documented fields) and a task with no `cache` block is a terminal
-  // distinction — it never consulted the cache, so it is not a miss.
+  // Counted here, not in the Tally: a task with no `cache` block never
+  // consulted the cache, so it is not a miss.
   const noCache = outcomes.filter(
     (o) =>
       !isGroupTask(o.node) && (o.status === 'success' || o.status === 'failed') && ranNoCache(o),

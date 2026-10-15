@@ -1,9 +1,9 @@
 // The machine-readable run outputs are a 1.0 contract surface
-// (docs/design/versioning-1.0.md): a script reads `--dry=json`, the
-// `--summarize` file and `--graph`'s DOT instead of the terminal. The DOT
+// (docs/design/versioning-1.0.md): a script reads `--dry=json` and
+// `--graph`'s DOT instead of the terminal. The DOT
 // is recorded whole, line by line, for the same fixture plan: a renderer
-// keys on the graph's name, the node ids and the edge direction. Both are hand-enumerated wire
-// objects (`formatPlanJson`, `writeRunSummary`), not a serialized type, so
+// keys on the graph's name, the node ids and the edge direction. The plan is a hand-enumerated wire
+// object (`formatPlanJson`), not a serialized type, so
 // the type pin (contract-package-api.test.ts) does not hold them: a renamed
 // key there passed every test. This file renders each from a fixture that
 // sets every field its source type has (`Required<…>`, so a new field must
@@ -15,16 +15,12 @@
 // Regenerate after a deliberate change, then review the diff:
 //   VX_UPDATE_CONTRACT=1 bun test tests/contract-cli-wire.test.ts
 
-import { afterAll, describe, expect, it } from 'bun:test'
+import { describe, expect, it } from 'bun:test'
 import { readFileSync, writeFileSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
 import { formatGraphDot, formatPlanJson } from '../src/cli/plan-format.js'
-import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
-import type { FlakyFinding } from '../src/orchestrator/failure-mode.js'
+import type { TaskNode } from '../src/graph/index.js'
 import type { PlannedTask, PlanPrediction, RunPlan } from '../src/orchestrator/plan.js'
-import { writeRunSummary } from '../src/orchestrator/run-artifacts.js'
 
 const RECORD = path.join(import.meta.dir, 'contract', 'cli-wire.json')
 const CLI_DOC = path.resolve(import.meta.dir, '..', 'docs', 'cli.md')
@@ -103,87 +99,6 @@ function dryJson(): unknown {
   return JSON.parse(formatPlanJson(fixturePlan()))
 }
 
-const scratch: string[] = []
-afterAll(async () => {
-  await Promise.all(scratch.map((d) => rm(d, { recursive: true, force: true })))
-})
-
-async function summarizeJson(): Promise<unknown> {
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-wire-'))
-  scratch.push(dir)
-  const full: Required<TaskOutcome> = {
-    node: { ...node('a#build'), config: { exec: { command: 'true' } } },
-    status: 'failed',
-    exitCode: 1,
-    durationMs: 10,
-    hash: 'h1',
-    storedDurationMs: 9,
-    storedCpuMs: 8,
-    storedPeakRssBytes: 7,
-    admissionHeldMs: 6,
-    cpuMs: 5,
-    peakRssBytes: 4,
-    groupUpstream: [],
-    unkeyed: true,
-    cacheOff: true,
-    blockedBy: 'a#gen',
-    timedOut: true,
-    notReady: 'timeout',
-    where: 'remote',
-    outputs: 'deferred',
-    saved: true,
-    wallclockStartNs: 1n,
-    wallclockEndNs: 2n,
-    restored: false,
-    attempts: 2,
-    failedAttempts: [{ endedAt: 1, exitCode: 1 }],
-    flaky: { passes: 1, failures: 1 },
-    sandboxViolations: 3,
-    sandboxViolationLines: ['deny file-read /x'],
-    sandboxFix: { read: ['x'], inputs: ['x'] },
-    inputMoved: 'src/a.ts',
-    failedOutput: 'boom\n',
-    runLog: 'boom\n',
-    queuedMs: 2,
-    inputFiles: 1,
-    artifactBytes: 3,
-    fetchMs: 2,
-    saveMs: 1,
-    inputChanges: { count: 1, first: [{ kind: 'file', name: 'src/a.ts', change: 'changed' }] },
-  }
-  const flaky: FlakyFinding = {
-    taskId: 'a#build',
-    project: 'a',
-    task: 'build',
-    hash: 'h1',
-    status: 'failed',
-    attempts: 2,
-    passes: 1,
-    failures: 1,
-  }
-  const bare: TaskOutcome = { node: node('a#gen'), status: 'success', exitCode: 0, durationMs: 1 }
-  const aborted = (id: string, hash?: string): TaskOutcome => ({
-    node: node(id),
-    status: 'aborted',
-    exitCode: 130,
-    durationMs: 1,
-    ...(hash !== undefined ? { hash } : {}),
-  })
-  const file = await writeRunSummary({
-    target: path.join(dir, 'summary.json'),
-    cacheDir: dir,
-    cwd: dir,
-    runId: 'r',
-    startedAtMs: 0,
-    endedAtMs: 1,
-    totalMs: 1,
-    ok: false,
-    outcomes: [bare, full, aborted('a#x'), aborted('a#y', 'h2')],
-    flaky: [flaky],
-  })
-  return JSON.parse(readFileSync(file, 'utf8'))
-}
-
 /** The ```json block that follows `marker` in docs/cli.md. */
 function docSample(marker: string): unknown {
   const doc = readFileSync(CLI_DOC, 'utf8')
@@ -197,7 +112,6 @@ describe('the machine-readable run outputs (versioning-1.0.md)', () => {
   it('agree with tests/contract/cli-wire.json', async () => {
     const live = {
       'dry=json': flatten(shapeOf(dryJson())),
-      summarize: flatten(shapeOf(await summarizeJson())),
       graph: formatGraphDot(fixturePlan()).trimEnd().split('\n'),
     }
     if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
@@ -215,11 +129,6 @@ describe('the machine-readable run outputs (versioning-1.0.md)', () => {
         '`--dry=json` emits the same data',
         docSample('`--dry=json` emits the same data'),
         dryJson(),
-      ],
-      [
-        '### `--summarize[=<path>]`',
-        docSample('### `--summarize[=<path>]`'),
-        await summarizeJson(),
       ],
     ]
     for (const [marker, sample, wire] of cases) {

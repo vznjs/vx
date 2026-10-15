@@ -1,106 +1,32 @@
-# `src/orchestrator/run-artifacts.ts` — `--summarize` + `--profile` writers
+# `src/orchestrator/run-artifacts.ts` — `--profile` writer
 
 ## Purpose
 
-Write the two optional run artifacts:
-
-- **`--summarize[=<path>]`** — per-run JSON describing every task's
-  outcome.
-- **`--profile[=<path>]`** — Chrome-trace JSON for `chrome://tracing`
-  / Perfetto visualization.
-
-Both are no-ops when the corresponding `RunOptions` field is
-undefined. The summary's wire is `RunSummaryJson`; `schemas/summary.json`
-states it and `tests/cli-json-schemas.test.ts` holds it.
+Write the optional `--profile[=<path>]` artifact: Chrome-trace JSON for
+`chrome://tracing` / Perfetto. A no-op when `RunOptions.profile` is
+undefined.
 
 ## Public surface
 
 ```ts
-export interface SummarizeArgs {
-  target: string // '' = default; else absolute or cwd-relative
-  cacheDir: string
-  cwd: string
-  runId: string
-  startedAtMs: number
-  endedAtMs: number
-  totalMs: number
-  ok: boolean // the run's verdict, the CLI's exit code
-  exitCode?: number // the exit code where it is not `ok ? 0 : 1`: a stopping signal's
-  outcomes: readonly TaskOutcome[]
-  flaky?: readonly FlakyFinding[] // detectFlaky's findings → per-task `flaky`
-}
-
-export interface SummaryTaskJson {
-  id: string
-  project: string
-  task: string
-  status: TaskOutcome['status']
-  exitCode: number
-  durationMs: number
-  hash: string | null
-  restored?: boolean // on a hit: outputs restored (true) or already up to date (false)
-  noCache?: true
-  flaky?: { passes: number; failures: number; attempts: number }
-  cpuMs?: number
-  peakRssBytes?: number
-  storedDurationMs?: number // on a hit: what it skipped
-  storedCpuMs?: number
-  storedPeakRssBytes?: number
-  admissionHeldMs?: number
-  blockedBy?: string
-  timedOut?: true
-  sandboxViolations?: number
-  notReady?: 'timeout' | 'exited' | 'spawn'
-  wallclockStartNs?: string
-  wallclockEndNs?: string
-}
-
-export interface RunSummaryJson {
-  runId: string
-  ok: boolean
-  exitCode: number
-  startedAt: string
-  endedAt: string
-  totalMs: number
-  savedMs: number // the hits' storedDurationMs, summed
-  tasks: SummaryTaskJson[]
-  aborted: SummaryTaskJson[]
-  summary: Tally
-}
-
 export interface ProfileArgs {
   target: string // 'profile.json' default chosen by CLI parser
   cwd: string
   outcomes: readonly TaskOutcome[]
 }
 
-export function writeRunSummary(args: SummarizeArgs): Promise<string> // returns final path
 export function writeRunProfile(args: ProfileArgs): Promise<string> // returns final path
 ```
 
-Both writers return the absolute path actually written; the
-orchestrator surfaces it via `log.status(`vx: summary written to ${p}`)`.
-
-## `writeRunSummary`
-
-Default path: `<cacheDir>/runs/<runId>.json`. Explicit path is
-resolved against `cwd` (so a relative `--summarize=./summary.json`
-DTRT).
-
-Output shape — see [`cli.md` § `--summarize`](../cli.md#--summarizepath).
-hrtime fields are stringified bigints (preserves ns precision through
-JSON). `summary` block aggregates totals (successful / failed /
-skipped / cachedLocal / restoredLocal / restoredRemote / upToDate /
-cachedRemote / aborted / total). A task the run proved
-flaky carries `flaky: { passes, failures, attempts }` (present only
-then, like `noCache`).
+It returns the absolute path written; the orchestrator prints it above
+the footer.
 
 ## `writeRunProfile`
 
 Chrome-trace format. One `ph: 'X'` event per task with `ts` and
 `dur` in microseconds derived from `wallclockStartNs` /
-`wallclockEndNs`. Tasks with missing hrtime data (legacy outcomes,
-group tasks) are skipped.
+`wallclockEndNs`. Tasks with missing hrtime data (group tasks) are
+skipped.
 
 Each project gets its own `tid` so overlapping tasks across packages
 render on distinct lanes. The shared `pid: 1` is arbitrary.
@@ -110,25 +36,11 @@ so trace viewers can color-code.
 
 ## Errors
 
-Both writers throw on FS failure. The orchestrator catches and surfaces
-via `log.status` but does NOT fail the run — the work already
-happened; an inability to write an audit artifact shouldn't change
-the exit code.
+The writer throws on FS failure. The orchestrator catches and surfaces
+it but does NOT fail the run — the work already happened.
 
 ## Tests
 
-`tests/run-artifacts.test.ts` covers:
-
-- Summary written to default path when `--summarize` has no value.
-- Summary written to explicit path when `--summarize=foo.json`.
-- Profile written and parseable as JSON.
-- Hrtime bigints preserved as strings.
-- Profile writers skip tasks without hrtime spans.
-- Group tasks excluded from both outputs.
-
-## Replacing this module
-
-The two writers are independent. To replace `--profile` output (e.g.
-emit OpenTelemetry instead), swap `writeRunProfile` and keep
-`SummarizeArgs` / `ProfileArgs` shapes. The orchestrator only knows
-about the two `target` fields.
+`tests/run-artifacts.test.ts` (profile written and parseable, tasks
+without hrtime spans skipped) and `tests/contract-profile-wire.test.ts`
+(the trace's shape).

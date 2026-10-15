@@ -100,7 +100,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     it(`a server exiting ${exitCode} tears the other down and vx exits ${expected}`, async () => {
       const dir = await addProject(root, 'app', config(exitCode))
       const proc = track(
-        Bun.spawn([process.execPath, BIN, 'run', 'dev', 'other', '--all', '--summarize=s.json'], {
+        Bun.spawn([process.execPath, BIN, 'run', 'dev', 'other', '--all'], {
           cwd: root,
           stdout: 'pipe',
           stderr: 'pipe',
@@ -122,16 +122,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
       expect(out + err).toContain(
         `vx: app#other exited with code ${exitCode}; stopping 1 other persistent task`,
       )
-      // Written before the wait, it said ok over an exit 1.
-      const summary = JSON.parse(readFileSync(path.join(root, 's.json'), 'utf8'))
-      expect([summary.ok, summary.exitCode]).toEqual([expected === 0, expected])
-      // C-53: and it named no failure: every task `success`, `failed: 0`.
-      const other = summary.tasks.find((t: { id: string }) => t.id === 'app#other')
-      expect([other.status, other.exitCode, summary.summary.failed]).toEqual(
-        exitCode === 0 ? ['success', 0, 0] : ['failed', exitCode, 1],
-      )
-      // X-23: the history, written before the wait, said `ok` over it, and
-      // flaky detection reads the history.
+      // X-23, C-53: the history, written before the wait, said `ok` over
+      // it and named no failure, and flaky detection reads the history.
       const last = await lastRun(root)
       const recorded = last.tasks.find((t) => t.task === 'other')!
       expect([last.invocation.exitOk, recorded.status, recorded.exitCode]).toEqual(
@@ -216,7 +208,7 @@ describe('foreground keep-alive ends when one requested server exits', () => {
   it('SIGINT after the summary exits 130 and takes the server down', async () => {
     const dir = await addProject(root, 'app', config(0))
     const proc = track(
-      Bun.spawn([process.execPath, BIN, 'run', 'app#dev', '--summarize=s.json'], {
+      Bun.spawn([process.execPath, BIN, 'run', 'app#dev'], {
         cwd: root,
         stdout: 'pipe',
         stderr: 'pipe',
@@ -238,11 +230,8 @@ describe('foreground keep-alive ends when one requested server exits', () => {
     await reading
     expect(code).toBe(130)
     expect(await waitForDead(pid, 1_000)).toBe(true)
-    const summary = JSON.parse(readFileSync(path.join(root, 's.json'), 'utf8'))
-    expect([summary.ok, summary.exitCode]).toEqual([false, 130])
-    // The user stopped it: no failure (C-53's guard).
-    expect(summary.tasks.map((t: { status: string }) => t.status)).toEqual(['success'])
-    // The usual end of a dev session still leaves its record.
+    // The user stopped it: no failure (C-53's guard), and the usual end of
+    // a dev session still leaves its record.
     const last = await lastRun(root)
     expect(last.tasks.map((t) => t.status)).toEqual(['success'])
   }, 20_000)

@@ -61,8 +61,6 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
     expect(r.out).toMatch(/success miss {5}cached#build/)
     expect(r.out).toMatch(/success no-cache plain#build/)
     expect(r.out).toContain('local 1○ 1↑')
-    // `--summarize` builds its own rows (a documented payload) and carries no
-    // cache word; changing that shape is a decision, not a relabel.
   })
 
   it('a verb typo gets the same hint a task or flag typo gets', () => {

@@ -1180,7 +1180,6 @@ type · `src/orchestrator/plugin.ts`
 export interface OutputContext extends BaseContext {
   readonly isTTY: boolean
   readonly ci: boolean
-  readonly json: boolean
 }
 ```
 
@@ -1838,8 +1837,6 @@ export interface RunOptions {
   readyNotice?: number
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
-  summarize?: string
-  json?: boolean
   footer?: boolean
   profile?: string
   handleSignals?: boolean
@@ -1988,7 +1985,6 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent
   refused?: string
-  json?: RunSummaryJson
 }
 ```
 

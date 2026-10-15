@@ -28,7 +28,6 @@ const SAME: ReadonlyArray<readonly string[]> = [
   ['--graph'],
   ['--force'],
   ['--affected'],
-  ['--summarize'],
   ['--output-logs', 'errors-only'],
   ['--no-cache'],
   ['--cache-dir', 'x'],
@@ -159,9 +158,10 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
   ],
   [
     ['--json'],
-    "--json (turbo): use `--format json` for the run's result on stdout, `--dry=json` for the plan",
+    "--json (turbo): use `vx last --format json` for the run's result, `--dry=json` for the plan",
   ],
-  [['--log-file'], "--log-file (turbo): use `--summarize[=<path>]` for the run's JSON record"],
+  [['--log-file'], "--log-file (turbo): use `vx last --format json` for the run's JSON record"],
+  [['--summarize'], "--summarize (turbo): use `vx last --format json` for the run's JSON record"],
   [
     ['--preflight'],
     '--preflight (turbo): set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`',
@@ -290,14 +290,11 @@ describe('Turbo and Nx flags on vx run', () => {
   })
 
   // Turbo's clap and Nx's yargs read `=true` / `=false` on these.
-  // `--skip-nx-cache=false` forced every task, and `--summarize=true`
-  // wrote the summary to a file named `true`.
+  // `--skip-nx-cache=false` forced every task.
   it('a boolean flag with =false is left out, with =true is bare', () => {
     for (const [foreign, vx] of [
       [['--force=true'], ['--force']],
       [['--force=false'], []],
-      [['--summarize=true'], ['--summarize']],
-      [['--summarize=false'], []],
       [['--remote-only=false'], []],
       [['--remote-cache-read-only=false'], []],
       [['--skip-nx-cache=false'], []],
@@ -316,7 +313,7 @@ describe('Turbo and Nx flags on vx run', () => {
       '--remote-only (turbo): use `--cache-policy local:,remote:rw`',
     )
     // CONTROL: any other value is vx's own: a path stays a path.
-    expect(parseRunArgs(['build', '--summarize=out.json']).summarize).toBe('out.json')
+    expect(parseRunArgs(['build', '--profile=out.json']).profile).toBe('out.json')
   })
 
   it("arguments after -- are the task's, never translated", () => {

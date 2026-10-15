@@ -1,6 +1,5 @@
-// Shared outcome-tally helper. `summary.ts` (end-of-run terminal block) and
-// `run-artifacts.ts` (`--summarize` JSON) count the same numbers; one copy of
-// the bucket rules keeps them from disagreeing about one run.
+// Outcome tally for the end-of-run footer (`summary.ts`): the bucket rules,
+// group tasks excluded.
 
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 

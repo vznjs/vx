@@ -168,8 +168,7 @@ describe('docs/parity.md names suites that exist and the versions its suites cit
   // The paths resolving is not the claim the column makes: it says the
   // suite PINS the row. Two did not. `"cache": false` cited
   // no-cache-word.test.ts, which holds the WORD `no-cache` in the row,
-  // legend and report and never reads `--summarize` — run-artifacts.test.ts
-  // is where `noCache: true` is asserted. And `nx reset` cited
+  // legend and report and never reads the `noCache` field. And `nx reset` cited
   // cache-hygiene.test.ts, which is about an interrupted run publishing
   // nothing and says `prune` nowhere (item 390, 2026-09-19).
   //
@@ -222,7 +221,7 @@ describe('docs/parity.md names suites that exist and the versions its suites cit
       const blob = files.map(read).join('')
       for (const t of tokens) if (!blob.includes(t)) gaps.push(`${vx.slice(0, 40)} → ${t}`)
     }
-    expect(checked).toBeGreaterThan(13)
+    expect(checked).toBeGreaterThan(12)
     // Both REQUIRED rows must have been reached, or the map is dead weight.
     expect(Object.keys(REQUIRED).every((k) => doc.includes(k))).toBe(true)
     expect(gaps).toEqual([])

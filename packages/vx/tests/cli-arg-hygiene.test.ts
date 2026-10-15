@@ -108,13 +108,6 @@ describe('optional-value artifact flags treat an empty = as "no value"', () => {
     expect(parseRunArgs(['build', '--profile']).profile).toBe('profile.json')
     expect(parseRunArgs(['build', '--profile=trace.json']).profile).toBe('trace.json')
   })
-
-  it('--summarize= keeps degrading to its default (unchanged)', () => {
-    // '' is summarize's documented default sentinel (<cacheDir>/runs/<id>.json).
-    expect(parseRunArgs(['build', '--summarize=']).summarize).toBe('')
-    expect(parseRunArgs(['build', '--summarize']).summarize).toBe('')
-    expect(parseRunArgs(['build', '--summarize=out.json']).summarize).toBe('out.json')
-  })
 })
 
 describe('vx watch rejects flags it cannot honor', () => {
@@ -145,7 +138,7 @@ describe('vx watch rejects flags it cannot honor', () => {
 
   it('rejects --verbosity above 0', async () => {
     expect(await run(['watch', 'build', '--verbosity', '2'])).toBe(1)
-    expect(stderr).toContain('are not supported in watch mode')
+    expect(stderr).toContain('is not supported in watch mode')
     expect(stderr).toContain('--verbosity')
   })
 
@@ -340,9 +333,9 @@ describe('value flags accept the = form', () => {
     expect(affected.affected).toBe('')
     expect(affected.tasks).toEqual(['build'])
 
-    const summarize = parseRunArgs(['--summarize', 'build'])
-    expect(summarize.summarize).toBe('')
-    expect(summarize.tasks).toEqual(['build'])
+    const profile = parseRunArgs(['--profile', 'build'])
+    expect(profile.profile).toBe('profile.json')
+    expect(profile.tasks).toEqual(['build'])
   })
 })
 

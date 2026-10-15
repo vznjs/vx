@@ -29,8 +29,8 @@ run removes on its way out (`orchestrator.md`).
   reason or a skip's blocker), `failedLabel`, `skippedReason`, and
   `ranNoCache` (a task no cache answered for: no
   `cache` block, or `TaskOutcome.cacheOff` — `no-cache`, never a miss;
-  `--dry`'s plan asks it too). The frame footer, the
-  terminal summary and `--summarize` all read these.
+  `--dry`'s plan asks it too). The frame footer and
+  the terminal summary read these.
 
 ## Invariants
 

@@ -101,16 +101,16 @@ async function refusal(
 describe('a refusal under --format json', () => {
   it('names the refusal by its code', async () => {
     expect({
-      unknownTask: await refusal(['run', 'nope', '--all', '--format', 'json']),
-      usage: await refusal(['run', 'build', '--bogus', '--format=json']),
-      noWorkspace: await refusal(['run', 'build', '--format', 'json'], bare),
+      unknownTask: await refusal(['run', 'nope', '--all', '--dry=json']),
+      usage: await refusal(['run', 'build', '--bogus', '--dry=json']),
+      noWorkspace: await refusal(['run', 'build', '--dry=json'], bare),
       affectedBase: await refusal(['run', 'build', '--affected=a..b', '--dry=json']),
       cachePolicy: await refusal(['run', 'build', '--all', '--dry=json'], badPolicy),
       cacheFlag: await refusal(['run', 'build', '--all', '--cache-policy=disk:r', '--dry=json']),
       cacheEnv: await refusal(['run', 'build', '--all', '--dry=json'], root, {
         VX_CACHE_POLICY: 'disk:r',
       }),
-      stabilityEnv: await refusal(['run', 'build', '--all', '--format', 'json'], root, {
+      stabilityEnv: await refusal(['run', 'build', '--all', '--dry=json'], root, {
         VX_CACHE_INPUT_STABILITY_STRATEGY: 'bogus',
       }),
     }).toEqual({
@@ -177,7 +177,7 @@ describe('a refusal under --format json', () => {
         bare,
       ),
       cacheSub: await refusal(['cache', 'bogus', '--format', 'json']),
-      runNoTask: await refusal(['run', '--format', 'json']),
+      runNoTask: await refusal(['run', '--dry=json']),
       verb: await refusal(['bogus', '--format', 'json']),
       taskAsVerb: await refusal(['build', '--format', 'json']),
       topFlag: await refusal(['--bogus', '--format', 'json']),
@@ -201,7 +201,7 @@ describe('a refusal under --format json', () => {
 
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])
-    const forwarded = await vx(['run', 'nope', '--all', '--', '--format', 'json'])
+    const forwarded = await vx(['run', 'nope', '--all', '--', '--dry=json'])
     expect([plain.code, plain.stdout, forwarded.code, forwarded.stdout]).toEqual([1, '', 1, ''])
     expect(plain.stderr).toContain('no projects declare task(s): nope')
   })

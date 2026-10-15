@@ -36,7 +36,7 @@ export class EmptyHistoryProvider implements HistoryProvider {}
 // failure-mode.ts, not history.ts:
 /** A task whose SAME cache key failed after it had passed — the definition
  *  of flaky, answered from local history with no service. Named in a
- *  run's footer, typed by `--summarize`, listed by `vx info`. */
+ *  run's footer, listed by `vx info`. */
 export interface FlakyTask {
   taskId: string
   project: string
@@ -151,8 +151,7 @@ The same rule, applied at the end of every run and by the doctor:
   a key that already failed after a pass, or a within-run retry is a
   `FlakyFinding` (a first pass after only failures is a recovery)
   with the key's outcome counts, this run folded in. `run.ts` judges each
-  task as it finishes, so its row carries the note (`flakyNote`), and
-  `--summarize` types them (`flaky`).
+  task as it finishes, so its row carries the note (`flakyNote`).
 - Both read the shared store's flaky record, `task_outcomes` (v38), not
   this workspace's `runs`: every worktree of a repo judges a key on what
   all of them saw. It keeps every executed outcome that names its key and
@@ -183,5 +182,5 @@ The same rule, applied at the end of every run and by the doctor:
 `tests/run-record-completeness.test.ts`; `tests/failure-mode.test.ts`
 (the rule, `detectFlaky`, `flakyTasks`, the partial index's plan and
 its creation on an older database); `tests/flaky.test.ts` (end to end:
-footer, `--summarize`, `vx info`, with a hit and a changed-key break as
+footer, `vx last`, `vx info`, with a hit and a changed-key break as
 controls).

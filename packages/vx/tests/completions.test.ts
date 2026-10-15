@@ -55,7 +55,6 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--verbosity': ['1'],
   '--dry': [],
   '--graph': [],
-  '--summarize': [],
   '--profile': [],
   '--tag': ['k=v'],
   '--older-than': ['1d'],
@@ -81,8 +80,7 @@ const VERB_ARGV: Readonly<Record<string, readonly string[]>> = {
 
 describe('verbFlags is what each verb accepts', () => {
   it('completes no flag the verb refuses', () => {
-    // `vx watch` completed exactly `--dry --graph --summarize --profile`, the
-    // four its help line says it refuses; `show` offered `--run --list`,
+    // `vx watch` completed exactly the flags its help line says it refuses; `show` offered `--run --list`,
     // `lock` `--frozen`, `run` `--check` — all read from prose that names
     // another verb's flag (2026-09-27).
     const refused: string[] = []

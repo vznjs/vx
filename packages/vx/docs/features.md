@@ -47,7 +47,6 @@ config key or an environment variable is missing here.
 - **Run summary** — one block: projects, tasks, cache, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Per-task table** (`--verbosity`) — a per-task summary after the run. [page](https://vznjs.github.io/vx/features/per-task-table/) · post: [One failure, and exactly what it takes down](https://vznjs.github.io/vx/blog/when-a-build-fails/)
 - **Failed output kept for agents** — a failure's full log is saved and pointed to. [page](https://vznjs.github.io/vx/features/failed-output-kept/) · post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
-- **Run JSON** (`--summarize`) — per-run JSON for scripts, with the time the cache saved (`savedMs`). [page](https://vznjs.github.io/vx/features/run-json/) · post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)
 - **Trace profile** (`--profile`) — Chrome-trace JSON of the run. [page](https://vznjs.github.io/vx/features/profile/) · post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
 - **Run branch** (`--branch`, `VX_RUN_BRANCH`) — name the branch a run records in its history and forecasts from; unset, git's branch, then the CI provider's. no post
 - **Run tags** (`--tag`) — label a run; recorded in history. [page](https://vznjs.github.io/vx/features/run-tags/) · post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)

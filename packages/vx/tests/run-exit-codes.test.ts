@@ -69,7 +69,7 @@ describe('vx run', () => {
   })
 
   it('a JSON answer never opens the picker, even on a terminal', async () => {
-    // An agent on a pty asked `vx run --format json` and waited at the menu.
+    // An agent on a pty asked for JSON and waited at the menu.
     const stdin = Object.assign(new PassThrough(), { isTTY: true })
     const stdout = Object.assign(new PassThrough(), { isTTY: true })
     const stderr = Object.assign(new PassThrough(), { isTTY: true })

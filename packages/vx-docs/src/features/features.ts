@@ -404,7 +404,7 @@ would run:
     example: { lang: 'sh', code: 'vx run build --all --profile=build.json' },
     image: 'profile.png',
     imageAlt: 'A vx run as a timeline of tasks on worker lanes.',
-    docs: { label: '--profile', href: 'cli/#run-artifacts---summarize---profile' },
+    docs: { label: '--profile', href: 'cli/#run-artifacts---profile' },
   },
 
   // ---- Everyday use ----
