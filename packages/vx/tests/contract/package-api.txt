@@ -237,6 +237,12 @@ export function foldScriptHooks(
   body: string,
   post: string | undefined,
 ): string
+== function formatReport (src/util/report.ts)
+export function formatReport(
+  mark: string,
+  rows: readonly ReportRow[],
+  colors: ColorSupport = detectColors(),
+): string
 == function isCacheHit (src/orchestrator/telemetry.ts)
 export function isCacheHit(status: string): boolean
 == function isLiteralPattern (src/util/paths.ts)
@@ -330,7 +336,8 @@ export interface ApplyMigrationArgs {
   emptyReason?: string
   format?: MigrationFormat
   json?: boolean
-  lock?: (root: string) => Promise<number>
+  lock?: (root: string) => Promise<{ code: number; said: string }>
+  steps?: readonly (readonly [label: string, value: string])[]
   plugins?: readonly WorkspacePlugin[]
 }
 == type At (src/config.ts)
@@ -521,6 +528,10 @@ export interface CiContext {
   pipeline?: string
   job?: string
   attempt?: number
+}
+== type ColorSupport (src/util/colors.ts)
+export interface ColorSupport {
+  enabled: boolean
 }
 == type CommandContext (src/orchestrator/plugin.ts)
 export interface CommandContext extends BaseContext {
@@ -1100,6 +1111,8 @@ export interface RemoteCacheLayer {
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
+== type ReportRow (src/util/report.ts)
+export type ReportRow = readonly [label: string, ...values: string[]] | null
 == type ResolvedSandboxConfig (src/exec/sandbox-runtime.ts)
 export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
