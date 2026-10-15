@@ -24,6 +24,12 @@ function tty(): StatusStream & { text(): string } {
 
 const ERASE = '\x1b[J'
 
+// A loaded runner can fire the 100 ms ticker late; wait for the draw itself.
+async function until(drawn: () => boolean): Promise<void> {
+  const deadline = performance.now() + 3000
+  while (!drawn() && performance.now() < deadline) await Bun.sleep(25)
+}
+
 describe('uploads still running at the end of a run', () => {
   const start = () => {
     const out = tty()
@@ -119,7 +125,7 @@ describe("vx's own steps", () => {
     } as unknown as TaskNode
     log.taskStart?.(a)
     log.stepStart?.('vx:uploads')
-    await Bun.sleep(300)
+    await until(() => region(out).includes('vx:uploads'))
     const live = region(out)
     expect(live).toContain('p#a')
     expect(live).toContain('vx:uploads')
@@ -133,7 +139,7 @@ describe("vx's own steps", () => {
   it('one before the run starts draws the region with no footer', async () => {
     const { out, log } = start()
     log.stepStart?.('vx:load')
-    await Bun.sleep(300)
+    await until(() => /running +vx:load/.test(out.text()))
     expect(out.text()).toMatch(/running +vx:load/)
     expect(out.text()).not.toContain('tasks')
     log.stepEnd?.('vx:load', { durationMs: 300, ok: true })
