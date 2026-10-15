@@ -18,7 +18,9 @@ embedder via `RunOptions.remoteCache`. Core builds every
   (packed once however many remotes), then PUT to every writable remote
   in the background (bounded at 4 concurrent per remote;
   `run()` awaits `drainUploads()` before `cache.close()`, and before the
-  telemetry summary, which reports them). Each upload is tallied on the
+  telemetry summary, which reports them). A stopped run (Ctrl-C,
+  SIGTERM, an embedder's abort) calls `stopUploads()`: queued uploads
+  never start and the drain stops waiting on the ones in flight. Each upload is tallied on the
   local `Cache` it wraps (`uploads`: count, bytes, summed ms, failed),
   so every plugin's remote reports without a seam method. Remote
   errors are logged, not thrown — the task already succeeded; failed
@@ -57,6 +59,7 @@ export class LayeredCache implements CacheLayer {
   constructor(local: Cache, remotes: readonly ResolvedRemote[]) // declared order
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   drainUploads(): Promise<void>
+  stopUploads(): void
   // CacheLayer methods — see docs/modules/cache.md.
 }
 ```
@@ -168,7 +171,7 @@ local concerns.
 - No write-batching or retry on transient errors. Fire-and-forget.
 - No deadline of its own. Every call is awaited: a `get` that never
   settles holds its task, and a `put` holds `drainUploads()`, which the
-  run awaits before it closes. The layer bounds its own requests: the
+  run awaits before it closes, unless the run was stopped. The layer bounds its own requests: the
   first-party layers do, and the plugin guide's example shows how
   (item 856).
 

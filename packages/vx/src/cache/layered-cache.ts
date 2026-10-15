@@ -384,6 +384,11 @@ export class LayeredCache implements CacheLayer {
     await Promise.all(this.lanes.map((l) => l.drain()))
   }
 
+  /** A stopped run starts no more uploads and stops waiting on those in flight. */
+  stopUploads(): void {
+    for (const lane of this.lanes) lane.stop()
+  }
+
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
     await this.local.ingest(hash, body, meta)
   }

@@ -56,6 +56,7 @@ export interface CacheLayer {
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void // `--force`: one batch probe per remote written but not read; a key it holds is not uploaded
   drainUploads?(): Promise<void> // await the background write-through uploads
+  stopUploads?(): void // a stopped run: start no more uploads, and let drainUploads resolve now
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getMany?(
