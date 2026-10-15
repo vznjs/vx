@@ -216,7 +216,8 @@ export function taskLog(): VxPlugin {
 ```
 
 `ctx.cache` keeps your plugin's own small entries in the workspace's
-cache: `get(name)`, `put(name, bytes)`, `has(name)`, `hasMany(names)`.
+cache: `get(name)`, `put(name, bytes)` and `has(names)`, which returns the
+names some layer holds.
 The local cache answers first, then each remote, under the run's cache
 policy and scope. Names are yours alone; an entry is written once, never
 replaced, and at most 1 MiB. A failure is an empty answer, never an
@@ -362,7 +363,9 @@ export function nice(): VxPlugin {
 ## Your own cache
 
 Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
-`put`, plus an optional `hasMany`. Core owns the rest: the local cache is
+`put`. `has` takes every key core asks about at once and returns the ones
+the remote holds; your wire decides the calls, one batch request or one per
+key. Core owns the rest: the local cache is
 asked first, then each plugin's remote in the order `plugins` lists them;
 `--cache-policy`, `VX_CACHE_POLICY` and `cache.policy` gate every remote, and
 `--cache-scope` keeps writes apart. The hook's `ctx.scope` is that scope
@@ -383,9 +386,16 @@ const deadline = () => AbortSignal.timeout(30_000) // core bounds no call
 
 class AcmeRemote implements RemoteCacheLayer {
   constructor(readonly endpoint: string) {} // printed in warnings: no credentials in it
-  async has(hash: string) {
-    const res = await fetch(`${this.endpoint}/${hash}`, { method: 'HEAD', signal: deadline() })
-    return res.ok
+  async has(hashes: readonly string[]) {
+    // No batch endpoint here: a HEAD per key (bound how many fly at once
+    // if your runs ask about thousands).
+    const held = await Promise.all(
+      hashes.map(async (h) => {
+        const res = await fetch(`${this.endpoint}/${h}`, { method: 'HEAD', signal: deadline() })
+        return res.ok
+      }),
+    )
+    return hashes.filter((_, i) => held[i])
   }
   async get(hash: string) {
     const res = await fetch(`${this.endpoint}/${hash}`, { signal: deadline() })
@@ -432,7 +442,7 @@ function signed(remote: RemoteCacheLayer, trustedPem: string, signingPem?: strin
   // The key is signed too, so a valid artifact cannot be replayed under another.
   const message = (hash: string, digest: string) => Buffer.from(`${hash}\0${digest}`)
   return {
-    has: (hash) => remote.has(hash),
+    has: (hashes) => remote.has(hashes),
     async get(hash) {
       const [got, sig] = await Promise.all([remote.get(hash), remote.get(`${hash}.sig`)])
       if (got === null || sig === null) return null

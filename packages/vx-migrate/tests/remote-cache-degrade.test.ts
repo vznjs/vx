@@ -534,16 +534,14 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
           statuses: ['success'],
         })
         const hash = next.outcomes[0]!.hash!
-        // Turbo's wire makes three requests (the prefetch pass's batch
-        // probe, the task's download, the upload), and which of the first
-        // two fails first is a race; Nx has no batch probe, so its download
-        // is first and the upload the one repeat.
+        // Each wire makes three requests (the prefetch pass's probe, the
+        // task's download, the upload), and which of the first two fails
+        // first is a race.
         const download = `download ${hash} from ${url}${base}`
-        const firsts =
-          wire === 'turboCache' ? [`probe of 1 artifact at ${url}${base}`, download] : [download]
+        const firsts = [`probe ${hash} at ${url}${base}`, download]
         const cause = r.warnings[0]?.split(' failed: ')[1] ?? ''
         const first = firsts.find((f) => r.warnings[0] === `${prefix} ${f} failed: ${cause}`)
-        const repeats = wire === 'turboCache' ? '2 more requests' : '1 more request'
+        const repeats = '2 more requests'
         // A refusal turns the remote off for the run, so nothing repeats:
         // behind a sandbox's network proxy (CI's plugin job) an unknown
         // host is not a resolver error but the proxy's HTTP 403.

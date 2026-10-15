@@ -43,10 +43,8 @@ export interface RemoteCacheLayer {
   readonly endpoint?: string
   /** What the credential allows when less than both (a read-only token); omitted → both. */
   readonly access?: { readonly read?: boolean; readonly write?: boolean }
-  /** Existence probe (drives the plan path's `--dry` remote prediction). */
-  has(hash: string): Promise<boolean>
-  /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  /** The subset of `hashes` held; one batch request or single probes, the wire's choice. A throw is no answer. */
+  has(hashes: readonly string[]): Promise<readonly string[]>
   /** Fetch an artifact; `null` = miss. Errors THROW. `body` is read once, by core. */
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. */
@@ -92,8 +90,8 @@ corrupt remote body is additionally refused by `Cache.ingest`'s
 validation (zstd checks), which this layer also degrades to a miss. A
 result of the wrong SHAPE — a `get` whose `body` is not a `Blob` or a
 `Response` (the pre-stream `ArrayBuffer` / `Uint8Array` included, named
-as such: "body is a Uint8Array"), a `hasMany` that is not a `Set` or
-`null` — is the plugin's bug, named as such through `onError`
+as such: "body is a Uint8Array"), a `has` that is not an array (the
+single-key boolean included) — is the plugin's bug, named as such through `onError`
 ("download <hash> failed: remote cache layer returned an invalid
 result: get() resolved body is string (expected { body: Blob | Response,
 durationMs } or null) — a plugin bug, degraded to a miss") and degraded
@@ -109,7 +107,7 @@ server, so the line `onError` receives carries all three:
 
 ```
 probe <hash> at <endpoint> failed: <cause>
-probe of <n> artifacts at <endpoint> failed: <cause>   (hasMany)
+probe of <n> artifacts at <endpoint> failed: <cause>   (has of more than one key)
 download <hash> from <endpoint> failed: <cause>        (get, and a body ingest refused)
 upload <hash> to <endpoint> failed: <cause>            (put, and the in-memory pack)
 ```

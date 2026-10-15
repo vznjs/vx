@@ -129,7 +129,7 @@ describe('TurboRemoteCache with preflight', () => {
     apiSeen.length = 0
     const c = cache(true)
     await c.put(HASH, new Blob(['own bytes']), { durationMs: 5 })
-    expect(await c.has(HASH)).toBe(true)
+    expect(await c.has([HASH])).toEqual([HASH])
     const got = await c.get(HASH)
     expect(await got!.body.text()).toBe('own bytes')
     expect(apiSeen.map((s) => `${s.method} ${s.url.pathname}`)).toEqual([
@@ -164,7 +164,7 @@ describe('TurboRemoteCache with preflight', () => {
     redirect = true
     elsewhereSeen.length = 0
     try {
-      expect(await cache(true).has(HASH)).toBe(false)
+      expect(await cache(true).has([HASH])).toEqual([])
     } finally {
       redirect = false
     }
@@ -175,7 +175,7 @@ describe('TurboRemoteCache with preflight', () => {
 
   it('sends no OPTIONS without preflight', async () => {
     apiSeen.length = 0
-    await cache(false).has(HASH)
+    await cache(false).has([HASH])
     expect(apiSeen.map((s) => s.method)).toEqual(['HEAD'])
   })
 })

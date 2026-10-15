@@ -40,11 +40,8 @@ function memoryRemote(): {
   const store = new Map<string, Uint8Array>()
   const gets: string[] = []
   const layer: RemoteCacheLayer = {
-    async has(hash) {
-      return store.has(hash)
-    },
-    async hasMany(hashes) {
-      return new Set(hashes.filter((h) => store.has(h)))
+    async has(hashes) {
+      return hashes.filter((h) => store.has(h))
     },
     async get(hash) {
       gets.push(hash)
@@ -122,7 +119,6 @@ describe('cache.scope', () => {
       const calls: string[] = []
       const counted: RemoteCacheLayer = {
         has: (h) => (calls.push('has'), layer.has(h)),
-        hasMany: (h) => (calls.push('hasMany'), layer.hasMany!(h)),
         get: (h) => (calls.push('get'), layer.get(h)),
         put: (h, b, m) => layer.put(h, b, m),
       }
@@ -355,8 +351,7 @@ describe('cache.scope', () => {
     // Every key but the task key is there: only the scope's key answers.
     // Not an artifact: the ingest refuses it, and only the GETs are counted.
     const remote: RemoteCacheLayer = {
-      has: async (hash) => hash !== key,
-      hasMany: async (hashes) => new Set(hashes.filter((h) => h !== key)),
+      has: async (hashes) => hashes.filter((h) => h !== key),
       async get(hash) {
         gets.push(hash)
         return hash === key
@@ -397,7 +392,7 @@ describe('cache.scope', () => {
           if (hash === pr.hash) throw new Error('default key unavailable')
         }
         const flaky: RemoteCacheLayer = {
-          has: async (hash) => (refuse(hash), layer.has(hash)),
+          has: async (hashes) => (hashes.forEach(refuse), layer.has(hashes)),
           get: async (hash) => (refuse(hash), layer.get(hash)),
           put: layer.put,
         }
@@ -437,9 +432,9 @@ describe('cache.scope', () => {
     const errors: string[] = []
     let scopeDown = false
     const remote: RemoteCacheLayer = {
-      async has(hash) {
-        if (hash === key) throw new Error('default down')
-        return false
+      async has(hashes) {
+        if (hashes.includes(key)) throw new Error('default down')
+        return []
       },
       async get(hash) {
         if (hash === key) throw new Error('default down')

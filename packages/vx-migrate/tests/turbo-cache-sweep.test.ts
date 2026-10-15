@@ -89,23 +89,24 @@ describe('what a status means', () => {
   it('403 is a refused token too: thrown once, then the layer is off', async () => {
     const { fetchImpl, calls } = stub(() => new Response(null, { status: 403 }))
     const c = cacheWith(fetchImpl)
-    await expect(c.has('aa')).rejects.toThrow(
+    await expect(c.has(['aa'])).rejects.toThrow(
       'HTTP 403: the token was refused; remote cache off for this run',
     )
-    expect(await c.has('aa')).toBe(false)
+    expect(await c.has(['aa'])).toEqual([])
     expect(calls.length).toBe(1)
   })
 
   it('HEAD and GET answering 500 are errors, not misses', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 500 }))
     const c = cacheWith(fetchImpl)
-    await expect(c.has('aa')).rejects.toThrow('HTTP 500')
+    await expect(c.has(['aa'])).rejects.toThrow('HTTP 500')
     await expect(c.get('aa')).rejects.toThrow('HTTP 500')
   })
 
   it('a batch query answering other than 200 is no answer, so each hash is asked', async () => {
-    const { fetchImpl } = stub(() => new Response(null, { status: 404 }))
-    expect(await cacheWith(fetchImpl).hasMany(['aa'])).toBeNull()
+    const { fetchImpl, calls } = stub(() => new Response(null, { status: 404 }))
+    expect(await cacheWith(fetchImpl).has(['aa', 'bb'])).toEqual([])
+    expect(calls.map((c) => c.method)).toEqual(['POST', 'HEAD', 'HEAD'])
   })
 
   // Item 929: the batch query answers each hash with ArtifactInfo, null, or
@@ -119,35 +120,37 @@ describe('what a status means', () => {
         dd: 'nonsense',
       }),
     )
-    expect(await cacheWith(fetchImpl).hasMany(['aa', 'bb', 'cc', 'dd', 'ee'])).toEqual(
-      new Set(['aa']),
-    )
+    expect(await cacheWith(fetchImpl).has(['aa', 'bb', 'cc', 'dd', 'ee'])).toEqual(['aa'])
   })
 
   it('a batch reply past its bound is no answer, read no further (L-9)', async () => {
     let pulled = 0
     const chunk = new Uint8Array(64 * 1024).fill(32)
-    const { fetchImpl } = stub(
-      () =>
-        new Response(
-          new ReadableStream<Uint8Array>({
-            pull(c) {
-              if (pulled >= 64 * 1024 * 1024) return c.close()
-              pulled += chunk.byteLength
-              c.enqueue(chunk)
-            },
-          }),
-        ),
+    const { fetchImpl } = stub((method) =>
+      method === 'HEAD'
+        ? new Response(null, { status: 404 })
+        : new Response(
+            new ReadableStream<Uint8Array>({
+              pull(c) {
+                if (pulled >= 64 * 1024 * 1024) return c.close()
+                pulled += chunk.byteLength
+                c.enqueue(chunk)
+              },
+            }),
+          ),
     )
     expect({
-      answer: await cacheWith(fetchImpl).hasMany(['aa']),
+      answer: await cacheWith(fetchImpl).has(['aa', 'bb']),
       stopped: pulled < 1024 * 1024,
-    }).toEqual({ answer: null, stopped: true })
+    }).toEqual({ answer: [], stopped: true })
     // A length header past the bound is not read at all.
-    const { fetchImpl: declared } = stub(
-      () => new Response('{}', { headers: { 'content-length': String(1024 * 1024) } }),
+    const { fetchImpl: declared, calls } = stub((method) =>
+      method === 'HEAD'
+        ? new Response(null, { status: 404 })
+        : new Response('{}', { headers: { 'content-length': String(1024 * 1024) } }),
     )
-    expect(await cacheWith(declared).hasMany(['aa'])).toBeNull()
+    expect(await cacheWith(declared).has(['aa', 'bb'])).toEqual([])
+    expect(calls.map((c) => c.method)).toEqual(['POST', 'HEAD', 'HEAD'])
   })
 
   it('a duration header of 0 or Infinity is no duration', async () => {
@@ -210,7 +213,7 @@ describe('the upload', () => {
         }),
     )
     const c = cacheWith(fetchImpl, { timeoutMs: 50, uploadTimeoutMs: 10_000 })
-    await expect(c.has('aa')).rejects.toThrow()
+    await expect(c.has(['aa'])).rejects.toThrow()
     await c.put('aa', new Blob(['x']), { durationMs: 1 })
   })
 })
@@ -282,7 +285,7 @@ describe('a read-only token or server', () => {
       'HTTP 403: the upload was refused (a read-only token or server); uploads off for this run, reads go on',
     )
     expect(await c.put('bb', new Blob(['x']), { durationMs: 1 })).toBeUndefined()
-    expect(await c.has('aa')).toBe(true)
+    expect(await c.has(['aa'])).toEqual(['aa'])
     expect(await (await c.get('aa'))!.body.text()).toBe('bytes')
     expect(calls.map((r) => r.method)).toEqual(['PUT', 'HEAD', 'GET'])
   })

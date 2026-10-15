@@ -23,8 +23,8 @@ it(
       let duration = 1
       const remote: RemoteCacheLayer = {
         endpoint: 'mem://test',
-        async has() {
-          return stored !== undefined
+        async has(hashes) {
+          return stored === undefined ? [] : [...hashes]
         },
         async get() {
           return stored === undefined ? null : { body: new Blob([stored]), durationMs: duration }

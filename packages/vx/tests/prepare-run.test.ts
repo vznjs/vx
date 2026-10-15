@@ -613,7 +613,7 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
     async () => {
       await pkg('app', cfg(task('build')))
       const remote: RemoteCacheLayer = {
-        has: async () => false,
+        has: async () => [],
         get: async () => null,
         put: async () => undefined,
       }

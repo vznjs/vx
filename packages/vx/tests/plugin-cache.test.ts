@@ -30,7 +30,7 @@ interface Wire extends RemoteCacheLayer {
   calls: string[]
 }
 
-function wire(opts: { batch?: boolean; fail?: boolean } = {}): Wire {
+function wire(opts: { fail?: boolean } = {}): Wire {
   const store = new Map<string, Uint8Array>()
   const calls: string[] = []
   const boom = (): void => {
@@ -39,10 +39,10 @@ function wire(opts: { batch?: boolean; fail?: boolean } = {}): Wire {
   const w: Wire = {
     store,
     calls,
-    async has(h) {
-      calls.push(`has ${h}`)
+    async has(hs) {
+      calls.push(`has ${hs.length}`)
       boom()
-      return store.has(h)
+      return hs.filter((h) => store.has(h))
     },
     async get(h) {
       calls.push(`get ${h}`)
@@ -55,13 +55,6 @@ function wire(opts: { batch?: boolean; fail?: boolean } = {}): Wire {
       boom()
       store.set(h, new Uint8Array(await body.arrayBuffer()))
     },
-  }
-  if (opts.batch) {
-    w.hasMany = async (hs) => {
-      calls.push(`hasMany ${hs.length}`)
-      boom()
-      return new Set(hs.filter((h) => store.has(h)))
-    }
   }
   return w
 }
@@ -95,9 +88,9 @@ describe('ctx.cache', () => {
       remotes: [],
       scope: undefined,
     })
-    expect(await c.has('x')).toBe(false)
+    expect(await c.has(['x'])).toEqual([])
     await c.put('x', bytes('one'))
-    expect(await c.has('x')).toBe(true)
+    expect(await c.has(['x'])).toEqual(['x'])
     expect(text(await c.get('x'))).toBe('one')
     expect(await c.get('y')).toBeNull()
   })
@@ -119,8 +112,8 @@ describe('ctx.cache', () => {
       remotes: [remoteOf(remote)],
       scope: undefined,
     })
-    expect(await reader.has('x')).toBe(true)
-    expect(await reader.has('nope')).toBe(false)
+    expect(await reader.has(['x'])).toEqual(['x'])
+    expect(await reader.has(['nope'])).toEqual([])
     expect(text(await reader.get('x'))).toBe('one')
     remote.calls.length = 0
     expect(text(await reader.get('x'))).toBe('one')
@@ -152,7 +145,7 @@ describe('ctx.cache', () => {
     })
     await c.put('x', bytes('one'))
     expect(remote.store.size).toBe(0)
-    expect(await c.has('x')).toBe(true)
+    expect(await c.has(['x'])).toEqual(['x'])
   })
 
   it('names are the plugin own: another plugin reads none of them', async () => {
@@ -171,7 +164,7 @@ describe('ctx.cache', () => {
       scope: undefined,
     })
     expect(await b.get('x')).toBeNull()
-    expect(await b.has('x')).toBe(false)
+    expect(await b.has(['x'])).toEqual([])
     expect([...remote.store.keys()]).toEqual([xxh3hex('vx-plugin\0org/a\0x')])
   })
 
@@ -201,8 +194,8 @@ describe('ctx.cache', () => {
     expect(await other.get('mine')).toBeNull()
   })
 
-  it('hasMany is one probe per layer, and null when a remote cannot batch', async () => {
-    const remote = wire({ batch: true })
+  it('has is one probe per layer', async () => {
+    const remote = wire()
     const c = pluginCache('org/a', {
       db: localStore().dbHandle(),
       policy: FULL,
@@ -217,27 +210,19 @@ describe('ctx.cache', () => {
       scope: undefined,
     })
     remote.calls.length = 0
-    expect(await fresh.hasMany(['a', 'b', 'c'])).toEqual(new Set(['b']))
-    expect(remote.calls).toEqual(['hasMany 3'])
-    const noBatch = pluginCache('org/a', {
-      db: localStore().dbHandle(),
-      policy: FULL,
-      remotes: [remoteOf(wire())],
-      scope: undefined,
-    })
-    expect(await noBatch.hasMany(['a'])).toBeNull()
+    expect(await fresh.has(['a', 'b', 'c'])).toEqual(['b'])
+    expect(remote.calls).toEqual(['has 3'])
   })
 
   it('a failing remote is an absent answer, never a throw', async () => {
     const c = pluginCache('org/a', {
       db: localStore().dbHandle(),
       policy: FULL,
-      remotes: [remoteOf(wire({ fail: true, batch: true }))],
+      remotes: [remoteOf(wire({ fail: true }))],
       scope: undefined,
     })
     expect(await c.get('x')).toBeNull()
-    expect(await c.has('x')).toBe(false)
-    expect(await c.hasMany(['x'])).toBeNull()
+    expect(await c.has(['x'])).toEqual([])
     await c.put('x', bytes('kept here'))
     expect(text(await c.get('x'))).toBe('kept here')
   })
@@ -254,7 +239,7 @@ describe('ctx.cache', () => {
     })
     expect(await c.get('big')).toBeNull()
     await c.put('huge', new Uint8Array(PLUGIN_ENTRY_MAX_BYTES + 1))
-    expect(await c.has('huge')).toBe(false)
+    expect(await c.has(['huge'])).toEqual([])
   })
 
   it('an empty or odd remote body is a miss and is not kept, so a later good body is read', async () => {
@@ -269,7 +254,7 @@ describe('ctx.cache', () => {
       'not a body' as unknown as Blob,
     ]) {
       const odd: RemoteCacheLayer = {
-        has: async () => true,
+        has: async (hs) => [...hs],
         get: async () => ({ body, durationMs: undefined }),
         put: async () => {},
       }
@@ -291,7 +276,7 @@ describe('ctx.cache', () => {
     })
     expect(text(await c.get('x'))).toBe('one')
     await c.put('empty', new Uint8Array(0))
-    expect(await c.has('empty')).toBe(false)
+    expect(await c.has(['empty'])).toEqual([])
   })
 
   it('a run hands schedule and setup the cache, behind a declared remote', async () => {
@@ -315,7 +300,7 @@ describe('ctx.cache', () => {
         pluginSource(
           'org/wire',
           `{ cache: () => ({
-              has: async (h) => globalThis.__vxWire.has(h),
+              has: async (hs) => hs.filter((h) => globalThis.__vxWire.has(h)),
               get: async (h) => globalThis.__vxWire.has(h) ? { body: new Blob([globalThis.__vxWire.get(h)]), durationMs: undefined } : null,
               put: async (h, b) => { globalThis.__vxWire.set(h, new Uint8Array(await b.arrayBuffer())) },
             }) }`,
@@ -329,7 +314,7 @@ describe('ctx.cache', () => {
              },
              async setup(ctx) {
                await ctx.cache.put('written', new TextEncoder().encode('w'))
-               globalThis.__vxSeen.push('setup:' + (await ctx.cache.has('written')) + ':' + typeof ctx.ci)
+               globalThis.__vxSeen.push('setup:' + ((await ctx.cache.has(['written'])).length === 1) + ':' + typeof ctx.ci)
              } }`,
         ),
       ]),

@@ -7,8 +7,12 @@ import { definePlugin, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
 class DirRemote implements RemoteCacheLayer {
   constructor(readonly endpoint: string) {}
-  async has(hash: string): Promise<boolean> {
-    return Bun.file(path.join(this.endpoint, hash)).exists()
+  // One answer for many keys: a wire with a batch call makes one request.
+  async has(hashes: readonly string[]): Promise<string[]> {
+    const held = await Promise.all(
+      hashes.map((h) => Bun.file(path.join(this.endpoint, h)).exists()),
+    )
+    return hashes.filter((_, i) => held[i])
   }
   async get(hash: string) {
     const file = Bun.file(path.join(this.endpoint, hash))

@@ -44,7 +44,7 @@ describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', 
       const t0 = Date.now()
       let code: number | undefined
       try {
-        await cache.has('deadbeef'.repeat(8))
+        await cache.has(['deadbeef'.repeat(8)])
       } catch (err) {
         code = (err as { code?: number }).code
       }
@@ -89,7 +89,7 @@ describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', 
     try {
       let code: number | undefined
       try {
-        await cache.has('deadbeef'.repeat(8))
+        await cache.has(['deadbeef'.repeat(8)])
       } catch (err) {
         code = (err as { code?: number }).code
       }
@@ -279,7 +279,7 @@ describe.if(CHUNKING_SUPPORTED)(
       })
       try {
         const t0 = Date.now()
-        await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
+        await expect(cache.has(['deadbeef'.repeat(8)])).rejects.toMatchObject({ code: 4 })
         const waited = Date.now() - t0
         expect(waited).toBeGreaterThanOrEqual(600)
         // The point of the split: nowhere near the 60s bulk deadline.
@@ -318,7 +318,7 @@ describe.if(CHUNKING_SUPPORTED)(
       })
       try {
         const t0 = Date.now()
-        await expect(cache.has('deadbeef'.repeat(8))).rejects.toMatchObject({ code: 4 })
+        await expect(cache.has(['deadbeef'.repeat(8)])).rejects.toMatchObject({ code: 4 })
         expect(Date.now() - t0).toBeLessThan(5_000)
       } finally {
         cache.close()

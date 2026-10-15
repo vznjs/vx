@@ -1365,8 +1365,7 @@ What a plugin's `ctx.cache` offers. Keys are the plugin's own names.
 export interface PluginCache {
   get(key: string): Promise<Uint8Array | null>
   put(key: string, bytes: Uint8Array): Promise<void>
-  has(key: string): Promise<boolean | null>
-  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  has(keys: readonly string[]): Promise<string[] | null>
   getRun(name: string): Promise<Uint8Array | null>
 }
 ```
@@ -1715,8 +1714,7 @@ plugin guide's example shows it).
 export interface RemoteCacheLayer {
   readonly endpoint?: string
   readonly access?: { readonly read?: boolean; readonly write?: boolean }
-  has(hash: string): Promise<boolean>
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  has(hashes: readonly string[]): Promise<readonly string[]>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }

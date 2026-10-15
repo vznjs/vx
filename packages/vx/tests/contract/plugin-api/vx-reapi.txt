@@ -2,7 +2,7 @@
 export class ReapiRemoteCache {
   readonly endpoint: string
   constructor(opts: ReapiOptions)
-  async has(hash: string): Promise<boolean>
+  async has(hashes: readonly string[]): Promise<string[]>
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null>
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
   close(): void

@@ -15,8 +15,7 @@ export const PLUGIN_ENTRY_MAX_BYTES = 1048576
 export interface PluginCache {
   get(key: string): Promise<Uint8Array | null>
   put(key: string, bytes: Uint8Array): Promise<void>
-  has(key: string): Promise<boolean | null>
-  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  has(keys: readonly string[]): Promise<string[] | null> // the keys some layer holds, one probe per layer
   getRun(name: string): Promise<Uint8Array | null> // run bytes core kept (run-store.ts), first readable remote, uncapped
 }
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache
@@ -57,8 +56,7 @@ export function packRunOutputs(
   kept: write-once would hide every later good body on this machine.
 - **Silent.** Every failure is an absent answer (`null`, `false`, a
   skipped write), never a throw or a warning. `has` is `null` when no
-  layer could answer; `hasMany` is `null` when a readable remote has no
-  batch probe or its probe fails, so the plugin falls back to `get`.
+  layer could answer, so the plugin falls back to `get`.
 - Entries are pruned by age with the run history (`pruneOlderThan`).
 
 ## Tests

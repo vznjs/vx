@@ -23,8 +23,7 @@ export class RemoteLane {
   constructor(resolved: ResolvedRemote)
   readonly read: boolean
   readonly write: boolean
-  has(hash: string): Promise<boolean> // a failure is false
-  hasMany(hashes: readonly string[]): Promise<Set<string> | null> // records the rest absent
+  has(hashes: readonly string[]): Promise<Set<string> | null> // records the rest absent; a failure is null
   get(hash: string): Promise<{ body: Blob | Response; durationMs?: number } | null>
   upload(hash, durationMs, body: () => { body: Blob; release? }, tally): void
   drain(): Promise<void>
@@ -36,7 +35,7 @@ export class RemoteLane {
 ## Rules
 
 - **Never throws.** A throw, a malformed answer (a `body` that is not a
-  `Blob` or `Response`, a `hasMany` that is not a `Set` or `null`) is a
+  `Blob` or `Response`, a `has` that is not an array) is a
   miss, reported once per failure class (see layered-cache.md, "What a
   failure says").
 - **Absences are its own.** A batch probe records the hashes this remote

@@ -76,14 +76,10 @@ function spyCache(opts: { hang?: boolean } = {}): Spy {
       calls.push('put')
       if (!store.has(k)) store.set(k, b)
     },
-    async has(k) {
+    async has(ks) {
       calls.push('has')
-      return store.has(k)
-    },
-    async hasMany(ks) {
-      calls.push('hasMany')
       if (opts.hang) return never
-      return new Set(ks.filter((k) => store.has(k)))
+      return ks.filter((k) => store.has(k))
     },
     async getRun() {
       return null
@@ -182,7 +178,7 @@ describe('shared timings', () => {
     const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'main')
     await importTimings({ root, defaultBranch: 'main', cache: shared, provider, ids: ['p#x'] })
     expect((await provider.p50sFor(['p#x'])).get('p#x')).toBe(42)
-    expect(shared.calls).toEqual(['hasMany', 'get'])
+    expect(shared.calls).toEqual(['has', 'get'])
   })
 
   it('a remote that never answers costs at most the deadline, and the run orders without it', async () => {

@@ -22,13 +22,8 @@ export interface PluginCache {
   get(key: string): Promise<Uint8Array | null>
   /** Store `bytes` under `key` in every layer the policy writes, where it is not already; empty bytes store nothing. */
   put(key: string, bytes: Uint8Array): Promise<void>
-  /** Whether some layer holds `key`; null when no layer could answer. */
-  has(key: string): Promise<boolean | null>
-  /**
-   * The subset of `keys` some layer holds, in one probe per layer; null
-   * when a readable remote has no batch probe: ask `get` one at a time.
-   */
-  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  /** The subset of `keys` some layer holds, one probe per layer; null when no layer could answer. */
+  has(keys: readonly string[]): Promise<string[] | null>
   /**
    * What core kept of a run under `name` (a `log` or `outputs` name its
    * `RunReport` hands `teardown`), from the first readable remote holding
@@ -167,7 +162,8 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       if (policy.localWrite) localPut(key, bytes)
       for (const { remote } of writers) {
         try {
-          if (await remote.has(key)) continue
+          const held: unknown = await remote.has([key])
+          if (Array.isArray(held) && held.includes(key)) continue
           await remote.put(key, new Blob([bytes]), { durationMs: 0 })
         } catch {
           // the other layers still keep it
@@ -175,42 +171,26 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       }
     },
 
-    async has(name) {
-      const keys = reads(name)
-      if (localHas(keys).size > 0) return true
-      let answered = policy.localRead
-      for (const { remote } of readers) {
-        for (const key of keys) {
-          try {
-            if (await remote.has(key)) return true
-            answered = true
-          } catch {
-            // no answer from this remote
-          }
-        }
-      }
-      return answered ? false : null
-    },
-
-    async hasMany(names) {
+    async has(names) {
       const byKey = new Map<string, string>()
       for (const name of names) for (const key of reads(name)) byKey.set(key, name)
       const keys = [...byKey.keys()]
       const found = new Set<string>()
       for (const key of localHas(keys)) found.add(byKey.get(key)!)
+      let answered = policy.localRead
       for (const { remote } of readers) {
         const ask = keys.filter((k) => !found.has(byKey.get(k)!))
         if (ask.length === 0) break
-        if (remote.hasMany === undefined) return null
         try {
-          const got: unknown = await remote.hasMany(ask)
-          if (!(got instanceof Set)) return null
+          const got: unknown = await remote.has(ask)
+          if (!Array.isArray(got)) continue
           for (const key of got) if (byKey.has(key as string)) found.add(byKey.get(key as string)!)
+          answered = true
         } catch {
-          return null
+          // no answer from this remote
         }
       }
-      return found
+      return answered || found.size > 0 ? names.filter((n) => found.has(n)) : null
     },
 
     async getRun(name) {
@@ -236,6 +216,5 @@ export const absentPluginCache: PluginCache = {
   get: async () => null,
   put: async () => {},
   has: async () => null,
-  hasMany: async () => null,
   getRun: async () => null,
 }

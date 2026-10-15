@@ -56,7 +56,6 @@ interface StubRemote {
   gets: number
   puts: number
   heads: number
-  hasManyCalls: number
   /** Per-call latency for get() — lets a test hold pulls open. */
   getLatencyMs: number
   /** When true every call throws (a fully-broken remote). */
@@ -75,21 +74,15 @@ function stubRemote(): StubRemote {
     gets: 0,
     puts: 0,
     heads: 0,
-    hasManyCalls: 0,
     getLatencyMs: 0,
     failAll: false,
     putStarted: false,
     putFinished: false,
     layer: {
-      async has(hash) {
+      async has(hashes) {
         state.heads++
         if (state.failAll) throw new Error('remote down')
-        return state.store.has(hash)
-      },
-      async hasMany(hashes) {
-        state.hasManyCalls++
-        if (state.failAll) throw new Error('remote down')
-        return new Set(hashes.filter((h) => state.store.has(h)))
+        return hashes.filter((h) => state.store.has(h))
       },
       async get(hash) {
         state.gets++
@@ -278,7 +271,7 @@ describe('LayeredCache', () => {
   it('get() that resolves the wrong shape is named as the plugin bug and degraded to a miss', async () => {
     const errors: Error[] = []
     const shaped = {
-      has: async () => true,
+      has: async () => [],
       get: async () => ({ body: 'abc', durationMs: 1 }),
       put: async () => {},
     } as unknown as RemoteCacheLayer
@@ -298,7 +291,7 @@ describe('LayeredCache', () => {
     await wipeLocal()
     const errors: Error[] = []
     const old = {
-      has: async () => true,
+      has: async () => [],
       get: async () => ({ body: remote.store.get('h-old')!.slice(), durationMs: 1 }),
       put: async () => {},
     } as unknown as RemoteCacheLayer
@@ -337,7 +330,7 @@ describe('LayeredCache', () => {
       await wipeLocal()
       const errors: Error[] = []
       const cutting = {
-        has: async () => true,
+        has: async () => [],
         get: async () => ({
           body: new Response(
             new ReadableStream<Uint8Array>({
@@ -365,18 +358,17 @@ describe('LayeredCache', () => {
     })
   }
 
-  it('hasMany() that resolves an array is named and read as no batch info', async () => {
+  it('has() that resolves the single-key boolean is named and read as no answer', async () => {
     const errors: Error[] = []
     const shaped = {
-      has: async () => false,
-      hasMany: async () => ['h-a'],
+      has: async () => true,
       get: async () => null,
       put: async () => {},
     } as unknown as RemoteCacheLayer
     const layered = layeredOver(local, shaped, { onRemoteError: (e) => errors.push(e) })
     expect(await layered.remoteHasMany(['h-a', 'h-b'])).toBeNull()
     expect(errors.map((e) => e.message)).toEqual([
-      'probe of 2 artifacts failed: remote cache layer returned an invalid result: hasMany() resolved an array (expected a Set of the hashes present, or null) — a plugin bug, degraded to a miss',
+      'probe of 2 artifacts failed: remote cache layer returned an invalid result: has() resolved boolean (expected an array of the hashes it holds) — a plugin bug, degraded to a miss',
     ])
   })
 
@@ -398,16 +390,10 @@ describe('LayeredCache', () => {
     const present = await layered.remoteHasMany(['h-a', 'h-b', 'h-c'])
     expect(present).not.toBeNull()
     expect([...(present ?? [])].sort()).toEqual(['h-a', 'h-c'])
-    expect(remote.hasManyCalls).toBe(1)
+    expect(remote.heads).toBe(1)
   })
 
-  it('remoteHasMany() returns null when the remote layer cannot batch', async () => {
-    delete (remote.layer as { hasMany?: unknown }).hasMany
-    const layered = makeLayered()
-    expect(await layered.remoteHasMany(['h-a'])).toBeNull()
-  })
-
-  it('remoteHasMany() returns null and reports the error when hasMany throws', async () => {
+  it('remoteHasMany() returns null and reports the error when has throws', async () => {
     remote.failAll = true
     const errors: Error[] = []
     const layered = makeLayered({ onRemoteError: (e) => errors.push(e) })
@@ -421,7 +407,7 @@ describe('LayeredCache', () => {
       onRemoteError: () => {},
     })
     expect(await layered.remoteHasMany(['h-a'])).toBeNull()
-    expect(remote.hasManyCalls).toBe(0)
+    expect(remote.heads).toBe(0)
   })
 
   it('prefetch() with remote reads off pulls nothing: no remote GET, false', async () => {
@@ -556,10 +542,10 @@ describe('LayeredCache', () => {
     expect(remote.heads).toBe(0)
   })
 
-  it('remoteHasMany() reads a hasMany() that resolves undefined as no batch info', async () => {
+  it('remoteHasMany() reads a has() that resolves undefined as no answer', async () => {
     const layered = layeredOver(
       local,
-      { ...remote.layer, hasMany: async () => undefined as unknown as Set<string> },
+      { ...remote.layer, has: async () => undefined as unknown as string[] },
       { onRemoteError: () => {} },
     )
     expect(await layered.remoteHasMany(['h1'])).toBeNull()
@@ -1035,16 +1021,13 @@ describe('LayeredCache', () => {
 
     /** A layer whose every call throws what `fail` returns for it. */
     function failing(
-      fail: (call: 'has' | 'hasMany' | 'get' | 'put', hash: string) => Error,
+      fail: (call: 'head' | 'batch' | 'get' | 'put', hash: string) => Error,
       endpoint?: string,
     ): RemoteCacheLayer {
       return {
         ...(endpoint === undefined ? {} : { endpoint }),
-        has: async (h) => {
-          throw fail('has', h)
-        },
-        hasMany: async (hs) => {
-          throw fail('hasMany', hs.join(','))
+        has: async (hs) => {
+          throw fail(hs.length === 1 ? 'head' : 'batch', hs.join(','))
         },
         get: async (h) => {
           throw fail('get', h)
@@ -1064,8 +1047,8 @@ describe('LayeredCache', () => {
     it('each call names its operation, its artifact and the endpoint', async () => {
       const errors: Error[] = []
       const causes = {
-        has: new Error('HEAD said 500'),
-        hasMany: new Error('POST said 502'),
+        head: new Error('HEAD said 500'),
+        batch: new Error('POST said 502'),
         get: new Error('GET said 503'),
         put: new Error('PUT said 504'),
       }
@@ -1086,8 +1069,8 @@ describe('LayeredCache', () => {
         'upload h-up to https://cache.example.com/v8/artifacts failed: PUT said 504',
       ])
       expect(errors.map((e) => e.cause)).toEqual([
-        causes.has,
-        causes.hasMany,
+        causes.head,
+        causes.batch,
         causes.get,
         causes.put,
       ])
@@ -1144,11 +1127,11 @@ describe('LayeredCache', () => {
       await layered.get('h1')
       await saveSample(layered, 'h1')
       expect(errors.map((e) => e.message)).toEqual([
-        'probe of 1 artifact at https://cache.example.com/v8/artifacts failed: Unable to connect',
+        'probe h1 at https://cache.example.com/v8/artifacts failed: Unable to connect',
       ])
       closeAndReopen(layered)
       expect(errors.map((e) => e.message)).toEqual([
-        'probe of 1 artifact at https://cache.example.com/v8/artifacts failed: Unable to connect',
+        'probe h1 at https://cache.example.com/v8/artifacts failed: Unable to connect',
         '2 more requests failed the same way: Unable to connect',
       ])
     })
@@ -1163,9 +1146,9 @@ describe('LayeredCache', () => {
       const layered = layeredOver(
         local,
         failing((call, hash) => {
-          if (call === 'has' && hash === 'h1') return coded(4, '4 DEADLINE_EXCEEDED: after 0.001s')
-          if (call === 'has' && hash === 'h2') return coded(4, '4 DEADLINE_EXCEEDED: after 0.702s')
-          if (call === 'has') return coded(14, '14 UNAVAILABLE: no connection')
+          if (call === 'head' && hash === 'h1') return coded(4, '4 DEADLINE_EXCEEDED: after 0.001s')
+          if (call === 'head' && hash === 'h2') return coded(4, '4 DEADLINE_EXCEEDED: after 0.702s')
+          if (call === 'head') return coded(14, '14 UNAVAILABLE: no connection')
           return new Error(`HTTP 500 for ${hash}`)
         }),
         { onRemoteError: (e) => errors.push(e) },

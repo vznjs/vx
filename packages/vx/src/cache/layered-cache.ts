@@ -66,17 +66,14 @@ export interface RemoteCacheLayer {
    * token): core clears the run's remote axis it lacks. Omitted → both.
    */
   readonly access?: { readonly read?: boolean; readonly write?: boolean }
-  /** Existence probe (drives the plan path's `--dry` remote prediction). */
-  has(hash: string): Promise<boolean>
   /**
-   * Optional batch existence probe: given N hashes, return the subset stored
-   * remotely in ONE round-trip. Lets the prefetch pass collapse N per-hash
-   * network probes into one, then fetch only the hits. A remote that can't
-   * batch omits this method (or returns `null`) and the layer falls back to
-   * the per-hash path. Never throws for control flow — `null` means "no batch
-   * info; use per-hash".
+   * The subset of `hashes` this remote holds, in any order. Core asks once
+   * per batch (the run's up-front keys, a `--dry` prediction); the wire
+   * decides the calls: one batch request, or single probes with a bound on
+   * how many fly at once. A throw is no answer: core then reads each key
+   * with `get`.
    */
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  has(hashes: readonly string[]): Promise<readonly string[]>
   /**
    * Fetch an artifact; `null` = miss. `body` is read once, by core,
    * straight into the local cache — an HTTP wire returns its `fetch`
@@ -155,9 +152,8 @@ export class LayeredCache implements CacheLayer {
 
   /**
    * Batch existence probe over the readable remotes — the subset of
-   * `hashes` some remote holds, one round-trip each, or `null` when any
-   * readable remote can't batch (no `hasMany`, or an error), or none may
-   * be read. The prefetch pass treats a non-null answer as complete: it
+   * `hashes` some remote holds, one `has` each, or `null` when any
+   * readable remote failed to answer, or none may be read. The prefetch pass treats a non-null answer as complete: it
    * fetches only the hits and pre-marks the rest (`markRemoteAbsent`) so
    * their lazy `get` skips the network, which is sound only when every
    * readable remote answered. Each answering remote keeps its own
@@ -168,7 +164,7 @@ export class LayeredCache implements CacheLayer {
     if (this.readable.length === 0) return null
     let out: Set<string> | null = new Set()
     for (const lane of this.readable) {
-      const found = await lane.hasMany(hashes)
+      const found = await lane.has(hashes)
       if (found === null) out = null
       else if (out !== null) for (const h of found) out.add(h)
     }
@@ -239,7 +235,8 @@ export class LayeredCache implements CacheLayer {
   // a remote cache. Remote errors degrade to a miss (never throw).
   async has(hash: string): Promise<'local' | 'remote' | null> {
     if ((await this.local.has(hash)) === 'local') return 'local'
-    for (const lane of this.readable) if (await lane.has(hash)) return 'remote'
+    for (const lane of this.readable)
+      if ((await lane.has([hash]))?.has(hash) === true) return 'remote'
     return null
   }
 

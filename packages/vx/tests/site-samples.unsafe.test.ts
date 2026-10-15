@@ -1135,7 +1135,7 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
 // The remote-caching guide merged into the CI page, which links the
 // plugins page for your own backend; the seam is named there (the short site).
 describe('the plugins guide names the remote seam core defines', () => {
-  it('every RemoteCacheLayer method is named, the optional one as optional', () => {
+  it('every RemoteCacheLayer method is named, and has takes many keys', () => {
     const src = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'cache', 'layered-cache.ts'),
       'utf8',
@@ -1146,11 +1146,14 @@ describe('the plugins guide names the remote seam core defines', () => {
       name: m[1]!,
       optional: m[2] === '?',
     }))
-    expect(methods.map((m) => m.name).sort()).toEqual(['get', 'has', 'hasMany', 'put'])
+    expect(methods.sort((a, b) => a.name.localeCompare(b.name))).toEqual([
+      { name: 'get', optional: false },
+      { name: 'has', optional: false },
+      { name: 'put', optional: false },
+    ])
     const page = section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'Your own cache')
     for (const m of methods) expect(page).toContain('`' + m.name + '`')
-    expect(methods.find((m) => m.name === 'hasMany')!.optional).toBe(true)
-    expect(page.replace(/\s+/g, ' ')).toContain('an optional `hasMany`')
+    expect(page.replace(/\s+/g, ' ')).toContain('`has` takes every key core asks about at once')
   })
 })
 

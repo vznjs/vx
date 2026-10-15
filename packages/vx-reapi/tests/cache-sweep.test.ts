@@ -58,11 +58,10 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
   it('an entry naming another path is no hit for has() or get()', async () => {
     entry('k-other', 'x', {}, 'elsewhere.tar')
     entry('k-here', 'y')
-    expect([
-      await cache.has('k-other'),
-      await cache.get('k-other'),
-      await cache.has('k-here'),
-    ]).toEqual([false, null, true])
+    expect([await cache.has(['k-other', 'k-here']), await cache.get('k-other')]).toEqual([
+      ['k-here'],
+      null,
+    ])
   })
 
   it('put records a success, and get opens the artifact while the duration reads (F-24)', async () => {

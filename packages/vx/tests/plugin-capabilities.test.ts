@@ -177,7 +177,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
     const remote = (): RemoteCacheLayer => ({
-      has: async () => false,
+      has: async () => [],
       get: async () => null,
       put: async () => undefined,
     })

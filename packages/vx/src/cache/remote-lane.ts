@@ -32,8 +32,8 @@ const PREPOSITION: Record<RemoteOp, string> = { probe: 'at', download: 'from', u
  * What a remote layer resolves is a plugin's, so its shape is a boundary
  * (item 252): a `get` that resolved `{ body: 'abc' }` was reported as
  * "corrupt artifact … not a readable archive" — the bytes blamed for the
- * plugin's shape — and a `hasMany` that resolved an array reached the
- * prefetch pass's `.has()`. Named here and degraded to a miss, like every
+ * plugin's shape — and a `has` that resolved a boolean reached the
+ * prefetch pass's set. Named here and degraded to a miss, like every
  * other remote failure.
  */
 function invalidRemoteResult(what: string): Error {
@@ -124,42 +124,32 @@ export class RemoteLane {
     this.endpoint = printableEndpoint(resolved.remote.endpoint)
   }
 
-  /** Existence probe; a failure is a miss. */
-  async has(hash: string): Promise<boolean> {
-    try {
-      return Boolean(await this.remote.has(hash))
-    } catch (err) {
-      this.report('probe', hash, err)
-      return false
-    }
-  }
-
   /**
-   * The subset of `hashes` stored here in one round-trip, recording the
-   * rest as absent; `null` when this remote cannot batch or the probe
-   * failed, which the caller reads as "no batch info".
+   * The subset of `hashes` stored here, recording the rest as absent;
+   * `null` when the probe failed or answered a malformed value, which the
+   * caller reads as "no answer".
    */
-  async hasMany(hashes: readonly string[]): Promise<Set<string> | null> {
-    if (this.remote.hasMany === undefined) return null
+  async has(hashes: readonly string[]): Promise<Set<string> | null> {
+    if (hashes.length === 0) return new Set()
+    const subject = hashes.length === 1 ? hashes[0]! : batchOf(hashes)
     let found: unknown
     try {
-      found = await this.remote.hasMany(hashes)
+      found = await this.remote.has(hashes)
     } catch (err) {
-      this.report('probe', batchOf(hashes), err)
+      this.report('probe', subject, err)
       return null
     }
-    if (found === null || found === undefined) return null
-    if (!(found instanceof Set)) {
+    if (!Array.isArray(found)) {
       this.report(
         'probe',
-        batchOf(hashes),
+        subject,
         invalidRemoteResult(
-          `hasMany() resolved ${describeValue(found)} (expected a Set of the hashes present, or null)`,
+          `has() resolved ${describeValue(found)} (expected an array of the hashes it holds)`,
         ),
       )
       return null
     }
-    const set = found as Set<string>
+    const set = new Set(found as string[])
     for (const h of hashes) if (!set.has(h)) this.absent.add(h)
     return set
   }
@@ -245,7 +235,7 @@ export class RemoteLane {
   }
 
   /**
-   * `subject` is the artifact's hash, or the batch for a `hasMany`. The
+   * `subject` is the artifact's hash, or the batch for a multi-key `has`. The
    * wire's own message says what went wrong but not on what or where: an
    * upload deadline read `The operation timed out.` with no upload, hash or
    * server in it (item 749).

@@ -1115,12 +1115,12 @@ export const MORE: readonly Feature[] = [
     category: 'cache',
     hook: 'Plug any storage in as a remote cache through one small interface.',
     body: [
-      'S3, a team server, a Redis you already run: a cache plugin connects it. The interface is `has`, `get` and `put`, with an optional `hasMany` for batches.',
+      'S3, a team server, a Redis you already run: a cache plugin connects it. The interface is `has`, `get` and `put`; `has` asks about many keys at once.',
       'vx handles keys, integrity and errors; a plugin only moves bytes. A server that fails degrades to a miss.',
     ],
     example: {
       lang: 'text',
-      code: 'cache plugin\n  has(key)      → boolean\n  get(key)      → body | null\n  put(key, body) → void\n  hasMany(keys) → optional batch',
+      code: 'cache plugin\n  has(keys)      → keys held\n  get(key)       → body | null\n  put(key, body) → void',
     },
     image: 'custom-remote-cache.png',
     imageAlt: 'A cache plugin: has, get and put.',

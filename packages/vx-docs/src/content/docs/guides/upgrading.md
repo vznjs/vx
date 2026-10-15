@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: one has(hashes) probe for every cache remote
+
+RemoteCacheLayer.has(hash) and hasMany(hashes) are one has(hashes) that returns the hashes held; ctx.cache.has(name) and hasMany(names) are one has(names). A plugin returns an array of the keys it holds; a test double drops hasMany.
+
 ## report: count remote failures and live uploads in the footer
 
 `RunContext.cache.uploads` is replaced by `RunContext.cache.traffic`: uploads in flight and each key's remote failures. The runs table adds `remote_error` (SCHEMA_VERSION v40).

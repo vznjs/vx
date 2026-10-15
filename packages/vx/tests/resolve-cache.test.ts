@@ -41,7 +41,7 @@ function withTwo(fn: (a: Cache, b: Cache, proj: string) => Promise<void>): () =>
 }
 
 const noRemote: RemoteCacheLayer = {
-  has: async () => false,
+  has: async () => [],
   get: async () => null,
   put: async () => undefined,
 }
@@ -57,7 +57,7 @@ describe('resolveCache — a plugin returns the remote, core layers it', () => {
   /** A remote that records each lookup and upload under `name`. */
   const recording = (name: string, log: string[], hits: Map<string, Uint8Array> = new Map()) =>
     ({
-      has: async (h: string) => hits.has(h),
+      has: async (hs: readonly string[]) => hs.filter((h) => hits.has(h)),
       get: async (h: string) => {
         log.push(`get ${name}`)
         const body = hits.get(h)
@@ -167,7 +167,7 @@ describe('resolveCache — a plugin returns the remote, core layers it', () => {
       await saveEntry(a, 'h1', proj)
       const warned: string[] = []
       const broken: RemoteCacheLayer = {
-        has: async () => false,
+        has: async () => [],
         get: async () => {
           throw new Error('get boom')
         },
@@ -210,7 +210,7 @@ describe('LayeredCache — several remotes over one local store', () => {
     const puts: string[] = []
     return {
       puts,
-      has: async () => false,
+      has: async () => [],
       get: async () => null,
       put: async (hash: string) => {
         puts.push(hash)
@@ -268,7 +268,7 @@ describe('LayeredCache — several remotes over one local store', () => {
       await saveEntry(src.cache, 'h-prov', proj)
       const artifact = storedArtifact(src.cache, 'h-prov')!
       const second: RemoteCacheLayer = {
-        has: async () => true,
+        has: async (hs) => [...hs],
         get: async () => ({ body: new Blob([artifact]), durationMs: 1 }),
         put: async () => undefined,
       }
@@ -290,10 +290,10 @@ describe('LayeredCache — several remotes over one local store', () => {
     }
   })
 
-  it('a batch-probe answer from one remote must not poison a remote that cannot batch', async () => {
+  it('a batch-probe answer from one remote must not poison a remote whose probe failed', async () => {
     // The remote-prefetch caller treats remoteHasMany's result as
     // authoritative: complement = absent, via markRemoteAbsent. If remote
-    // A answers (empty) and remote B cannot batch (no hasMany), A's answer
+    // A answers (empty) and remote B's probe fails, A's answer
     // alone would mark absent a hash B HAS, and the later lazy get()
     // would silently re-execute a task with a real remote hit.
     const { cache: local, dir } = tmpCache('poison')
@@ -302,10 +302,11 @@ describe('LayeredCache — several remotes over one local store', () => {
     try {
       await saveEntry(src.cache, 'h-poison', proj)
       const artifact = storedArtifact(src.cache, 'h-poison')!
-      const remoteA: RemoteCacheLayer = { ...noRemote, hasMany: async () => new Set<string>() }
+      const remoteA = noRemote
       const remoteB: RemoteCacheLayer = {
-        // No hasMany — an older serve / a wire without a batch probe.
-        has: async () => true,
+        has: async () => {
+          throw new Error('probe down')
+        },
         get: async () => ({ body: new Blob([artifact]), durationMs: 1 }),
         put: async () => undefined,
       }
@@ -338,15 +339,13 @@ describe('LayeredCache — several remotes over one local store', () => {
       const gets: string[] = []
       const remoteA: RemoteCacheLayer = {
         ...noRemote,
-        hasMany: async () => new Set<string>(),
         get: async (h) => {
           gets.push(`a ${h}`)
           return null
         },
       }
       const remoteB: RemoteCacheLayer = {
-        has: async () => true,
-        hasMany: async () => new Set(['h-b']),
+        has: async (hs) => hs.filter((h) => h === 'h-b'),
         get: async (h) => {
           gets.push(`b ${h}`)
           return { body: new Blob([artifact]), durationMs: 1 }

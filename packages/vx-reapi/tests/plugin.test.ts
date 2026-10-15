@@ -133,7 +133,7 @@ describe('reapi(): lifecycle and failure messages', () => {
       await withoutReapiEnv(async () => {
         const p = reapi({ endpoint: 'grpc://127.0.0.1:1', callTimeoutMs: 300 })
         const remote = (await p.cache?.(ctx([])))!
-        const err = await remote.has('h1').then(
+        const err = await remote.has(['h1']).then(
           () => undefined,
           (e: unknown) => e as Error,
         )

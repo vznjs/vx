@@ -71,6 +71,9 @@ function decodeDuration(raw: Uint8Array | undefined): number | undefined {
   }
 }
 
+/** GetActionResult calls in flight at once for one `has`. */
+const PROBE_CONCURRENCY = 8
+
 /** Artifacts up to this size are batch-uploaded without a FindMissingBlobs probe. */
 const SMALL_PUT_BYTES = 256 * 1024
 
@@ -85,23 +88,31 @@ export class ReapiRemoteCache {
   }
 
   /**
-   * Existence probe — no artifact bytes, but it does confirm the artifact
+   * Existence probe — no artifact bytes, but it does confirm each artifact
    * still EXISTS rather than trusting the entry that names it.
    *
    * Servers disagree here, measured both ways: bazel-remote validates an
    * ActionResult's referenced blobs and hides a dangling entry, NativeLink
-   * serves it. Without the second call, `has` on a NativeLink-style server
-   * promises a hit that `get` then cannot honour — and the only consumer of
-   * `has` is the `--dry` / `--graph` plan, whose entire job is predicting
-   * hit vs miss. Costs one extra round trip, and only for a PREDICTED HIT:
-   * a miss still answers in one call.
+   * serves it. Without the CAS check, `has` on a NativeLink-style server
+   * promises a hit that `get` then cannot honour. The AC has no batch
+   * lookup, so each key is one GetActionResult, PROBE_CONCURRENCY at a
+   * time over the one channel; the artifacts they name are then checked
+   * in one FindMissingBlobs.
    */
-  async has(hash: string): Promise<boolean> {
-    const result = await this.client.getActionResult(actionDigestFor(hash))
-    if (result === null) return false
-    const file = result.output_files?.find((f) => f.path === ARTIFACT_PATH)
-    if (file === undefined) return false
-    return (await this.client.findMissingBlobs([file.digest])).length === 0
+  async has(hashes: readonly string[]): Promise<string[]> {
+    const digests: Array<Digest | undefined> = []
+    let next = 0
+    const worker = async (): Promise<void> => {
+      while (next < hashes.length) {
+        const i = next++
+        const result = await this.client.getActionResult(actionDigestFor(hashes[i]!))
+        digests[i] = result?.output_files?.find((f) => f.path === ARTIFACT_PATH)?.digest
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(PROBE_CONCURRENCY, hashes.length) }, worker))
+    const named = digests.filter((d): d is Digest => d !== undefined)
+    const missing = new Set((await this.client.findMissingBlobs(named)).map((d) => d.hash))
+    return hashes.filter((_, i) => digests[i] !== undefined && !missing.has(digests[i]!.hash))
   }
 
   /**

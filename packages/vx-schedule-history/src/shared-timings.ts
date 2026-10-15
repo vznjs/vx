@@ -73,9 +73,10 @@ async function mergeBase(root: string, defaultBranch: string): Promise<string | 
   return null
 }
 
-/** The newest blob along `shas`: one batch probe, one fetch; sequential fetches with no batch probe. */
+/** The newest blob along `shas`: one probe, one fetch; sequential fetches when the probe has no answer. */
 async function newestBlob(cache: PluginCache, shas: readonly string[]): Promise<Uint8Array | null> {
-  const present = await cache.hasMany(shas.map(keyOf))
+  const held = await cache.has(shas.map(keyOf))
+  const present = held === null ? null : new Set(held)
   for (const sha of shas) {
     if (present !== null && !present.has(keyOf(sha))) continue
     const got = await cache.get(keyOf(sha))

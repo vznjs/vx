@@ -107,20 +107,22 @@ function startArtifactEndpoint(opts?: {
   const call = (url: string, init?: RequestInit): Promise<Response> =>
     handle(new Request(url, init))
   const layer: RemoteCacheLayer = {
-    async has(hash) {
-      const res = await call(`${baseUrl}/artifacts/${hash}`, { method: 'HEAD' })
-      if (res.status === 404) return false
-      if (!res.ok) throw new Error(`HEAD ${hash} → ${res.status}`)
-      return true
-    },
-    async hasMany(hashes) {
+    // One key is a HEAD, more are one batch call: the wire's choice.
+    async has(hashes) {
+      if (hashes.length === 1) {
+        const hash = hashes[0]!
+        const res = await call(`${baseUrl}/artifacts/${hash}`, { method: 'HEAD' })
+        if (res.status === 404) return []
+        if (!res.ok) throw new Error(`HEAD ${hash} → ${res.status}`)
+        return [hash]
+      }
       const res = await call(`${baseUrl}/artifacts/batch`, {
         method: 'POST',
         body: JSON.stringify({ hashes }),
       })
       if (!res.ok) throw new Error(`batch → ${res.status}`)
       const { present } = (await res.json()) as { present: string[] }
-      return new Set(present)
+      return present
     },
     async get(hash) {
       const res = await call(`${baseUrl}/artifacts/${hash}`)
@@ -441,8 +443,10 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
             remoteCache: remote.layer,
           })
           expect(second.ok).toBe(true)
-          // ONE batch probe covered BOTH stable keys — not two HEADs.
-          expect(remote.batchCalls()).toBe(1)
+          // ONE probe covered every key the local store lacks: one `has`,
+          // which this wire answers with a HEAD for one key, a batch for more.
+          const heads = [...remote.headCounts.values()].reduce((n, c) => n + c, 0)
+          expect(remote.batchCalls() + heads).toBe(1)
           // Exactly one task was served from remote, the other executed.
           expect(second.outcomes.filter((o) => o.status === 'cache-hit-remote')).toHaveLength(1)
           // The hit was fetched exactly once. The miss is never fetched more
@@ -1237,9 +1241,9 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
       puts: 0,
       heads: 0,
       layer: {
-        async has(hash) {
+        async has(hashes) {
           state.heads++
-          return store.has(hash)
+          return hashes.filter((h) => store.has(h))
         },
         async get(hash) {
           state.gets++
@@ -1310,7 +1314,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
           tasks: ['build'],
           log: silentLogger(fixture),
           remoteCache: {
-            has: async () => false,
+            has: async (hashes) => [...hashes],
             get: async () => {
               throw new Error('GET down')
             },
@@ -1457,7 +1461,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
       const local = new Cache(dir)
       const remote: RemoteCacheLayer = {
         async has() {
-          return false
+          return []
         },
         async get() {
           return null
@@ -1528,10 +1532,9 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
               'test/remote',
               `{ cache() {
                   return {
-                    async has() { return false },
-                    async hasMany() {
+                    async has() {
                       globalThis.__vxPrefetched = true
-                      return new Set()
+                      return []
                     },
                     async get() { return null },
                     async put() {

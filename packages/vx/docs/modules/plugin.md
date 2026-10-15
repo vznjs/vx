@@ -63,7 +63,7 @@ type PluginHookName = keyof PluginHookHandlers
 `setup` and `schedule` receive the plugin's own entries in the cache the
 workspace declares (`PluginCache`, `cache/plugin-cache.ts`; design
 `design/shared-timings-2026-10.md`): `get(name)`, `put(name, bytes)`,
-`has(name)`, `hasMany(names)`. The local store (the shared store's
+`has(names)` (the names some layer holds). The local store (the shared store's
 `plugin_blobs`) answers first, then each remote in declared order, under
 the run's policy (a read-only remote is never written) and scope (read
 the default entry, then the scope's; write only the scope's). Core
@@ -72,8 +72,8 @@ derives each key from the plugin's name and the entry's
 other plugin's entries and no task's. A `put` never replaces an entry: a
 remote that `has` it is skipped. An entry is at most 1 MiB; a remote
 body over that is a miss, read no further. Every failure is an absent
-answer, never a throw or a warning; `hasMany` is `null` when a readable
-remote has no batch probe. With no remote, `get` is a local lookup.
+answer, never a throw or a warning; `has` is `null` when no layer could
+answer. With no remote, `get` is a local lookup.
 `schedule` runs after `setup` (only a run that starts a task schedules).
 `tests/plugin-cache.test.ts`.
 

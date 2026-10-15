@@ -259,8 +259,8 @@ describe('a remote artifact carrying a negated output', () => {
       await writeFile(src, 'REMOTE')
       const remote: RemoteCacheLayer = {
         endpoint: 'mem://test',
-        async has() {
-          return true
+        async has(hashes) {
+          return [...hashes]
         },
         async get(hash: string) {
           const outputs = new Map([

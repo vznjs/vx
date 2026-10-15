@@ -19,6 +19,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
+import { heldEach } from '../remote-probe.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
@@ -87,10 +88,8 @@ export function resolveNxCacheConfig(
 
 /**
  * The seam implementation over Nx's two endpoints. The spec has no
- * existence probe, so `has` (core asks it only for a `--dry` prediction;
- * the prefetch pass calls `get`) is a GET whose body is cancelled before
- * it answers, so no probe holds a connection. It kept the response for a
- * `get` of the same hash, which no caller makes. Bodies stream: `get` returns the `fetch` Response and `put`
+ * existence probe, so `has` is a GET per key, a few at once, whose body is
+ * cancelled before it answers, so no probe holds a connection. Bodies stream: `get` returns the `fetch` Response and `put`
  * sends the Blob core hands it. `put` treats `409` as success:
  * the record is immutable and content-addressed, so "already there" is the
  * outcome wanted. An auth failure (401/403) throws ONCE — core
@@ -192,11 +191,13 @@ export class NxRemoteCache implements RemoteCacheLayer {
     return res
   }
 
-  async has(hash: string): Promise<boolean> {
-    const res = await this.fetch(hash)
-    if (res === null) return false
-    await res.body?.cancel()
-    return true
+  async has(hashes: readonly string[]): Promise<string[]> {
+    return heldEach(hashes, async (hash) => {
+      const res = await this.fetch(hash)
+      if (res === null) return false
+      await res.body?.cancel()
+      return true
+    })
   }
 
   // Nx's record carries no duration; the seam's `meta` is accepted and unused.

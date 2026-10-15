@@ -199,7 +199,7 @@ describe('resolveTurboCacheConfig', () => {
     }) as unknown as typeof fetch
     for (const timeoutMs of [0, 1000]) {
       const c = resolveTurboCacheConfig({ apiUrl: 'https://c', token: 't', timeoutMs }, {})!
-      await new TurboRemoteCache(c, seen).has('ab')
+      await new TurboRemoteCache(c, seen).has(['ab'])
     }
     expect(signals.map((s) => s instanceof AbortSignal)).toEqual([false, true])
   })
@@ -337,7 +337,7 @@ describe('TurboRemoteCache against the spec server', () => {
       tempDir,
     )
 
-  it('put → has / hasMany / get round trip with the spec’s headers and query', async () => {
+  it('put → has (HEAD and batch) / get round trip with the spec’s headers and query', async () => {
     const c = cache()
     const body = new TextEncoder().encode('zstd-tar-bytes')
     await c.put('aa11', new Blob([body]), { durationMs: 1234 })
@@ -348,10 +348,11 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(put.headers['x-artifact-duration']).toBe('1234')
     expect(put.headers['content-type']).toBe('application/octet-stream')
     expect(put.headers['x-artifact-client-interactive']).toMatch(/^[01]$/)
-    expect(await c.has('aa11')).toBe(true)
+    expect(await c.has(['aa11'])).toEqual(['aa11'])
     expect(srv.seen.at(-1)!.method).toBe('HEAD')
-    expect(await c.has('bb22')).toBe(false)
-    expect(await c.hasMany(['aa11', 'bb22'])).toEqual(new Set(['aa11']))
+    expect(await c.has(['bb22'])).toEqual([])
+    expect(await c.has(['aa11', 'bb22'])).toEqual(['aa11'])
+    expect(srv.seen.at(-1)!.method).toBe('POST')
     const got = await c.get('aa11')
     expect(srv.seen.at(-1)!.headers['accept']).toBe('application/octet-stream')
     expect(got?.durationMs).toBe(1234)
@@ -363,7 +364,7 @@ describe('TurboRemoteCache against the spec server', () => {
   // personal account's owner id (VERCEL_ARTIFACTS_OWNER) went out as one.
   it('sends teamId only in Vercel’s team_ form; the slug either way', async () => {
     const query = async (teamId: string) => {
-      await cache({ teamId }).has('ab12')
+      await cache({ teamId }).has(['ab12'])
       const u = new URL(srv.seen.at(-1)!.url)
       return [u.searchParams.get('teamId'), u.searchParams.get('slug')]
     }
@@ -498,18 +499,18 @@ describe('TurboRemoteCache against the spec server', () => {
     // value" — never an index.
     const c = cache({ token: 'also-wrong' })
     const miss: Record<string, unknown> = {
-      'has-a': false,
-      'has-b': false,
+      'has-a': [],
+      'has-b': [],
       get: null,
-      hasMany: new Set(),
+      'has-both': [],
       put: undefined,
     }
-    const names = ['has-a', 'has-b', 'get', 'hasMany', 'put']
+    const names = ['has-a', 'has-b', 'get', 'has-both', 'put']
     const settled = await Promise.allSettled([
-      c.has('aa11'),
-      c.has('bb22'),
+      c.has(['aa11']),
+      c.has(['bb22']),
       c.get('aa11'),
-      c.hasMany(['aa11', 'bb22']),
+      c.has(['aa11', 'bb22']),
       c.put('ff66', new Blob(['x']), { durationMs: 1 }),
     ])
     const rejected = settled.flatMap((r, i) =>
@@ -527,12 +528,12 @@ describe('TurboRemoteCache against the spec server', () => {
 
   it('a refused token throws once and turns the layer off', async () => {
     const c = cache({ token: 'wrong' })
-    await expect(c.has('aa11')).rejects.toThrow(/401.*token was refused/)
+    await expect(c.has(['aa11'])).rejects.toThrow(/401.*token was refused/)
     const n = srv.seen.length
-    expect(await c.has('aa11')).toBe(false)
+    expect(await c.has(['aa11'])).toEqual([])
     expect(await c.get('aa11')).toBeNull()
     await c.put('ee55', new Blob(['x']), { durationMs: 1 })
-    expect(await c.hasMany(['aa11'])).toEqual(new Set())
+    expect(await c.has(['aa11', 'bb22'])).toEqual([])
     expect(srv.seen.length).toBe(n) // no further requests
   })
 })

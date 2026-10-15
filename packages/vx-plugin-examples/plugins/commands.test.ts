@@ -14,7 +14,6 @@ const ctx = {
     get: async () => null,
     put: async () => {},
     has: async () => null,
-    hasMany: async () => null,
     getRun: async () => null,
   },
 }

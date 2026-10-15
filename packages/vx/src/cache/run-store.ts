@@ -44,7 +44,9 @@ export async function putRunEntry(
   for (const { remote, write } of remotes) {
     if (!write) continue
     try {
-      if (!(await remote.has(key))) await remote.put(key, new Blob([bytes]), { durationMs: 0 })
+      const held: unknown = await remote.has([key])
+      if (!(Array.isArray(held) && held.includes(key)))
+        await remote.put(key, new Blob([bytes]), { durationMs: 0 })
       kept = true
     } catch {
       // the other remotes still keep it

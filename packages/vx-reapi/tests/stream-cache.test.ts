@@ -38,6 +38,7 @@ let holdWrites: Promise<void> | undefined
 
 let server: grpc.Server
 let endpoint: string
+let findMissingCalls = 0
 
 function hashOf(resource: string): string {
   const m = /blobs\/([0-9a-f]{64})\/\d+$/.exec(resource)
@@ -80,6 +81,7 @@ beforeAll(async () => {
       call: grpc.ServerUnaryCall<{ blob_digests: WireDigest[] }, unknown>,
       cb: grpc.sendUnaryData<unknown>,
     ) => {
+      findMissingCalls++
       cb(null, {
         missing_blob_digests: call.request.blob_digests.filter((d) => !blobs.has(d.hash)),
       })
@@ -373,7 +375,7 @@ describe('the REAPI cache layer, exactly', () => {
       ],
     })
     await withCache(async (c) => {
-      expect(await c.has('k-order')).toBe(true)
+      expect(await c.has(['k-order'])).toEqual(['k-order'])
       store('decoy')
       entry('k-order-get', {
         output_files: [
@@ -385,11 +387,25 @@ describe('the REAPI cache layer, exactly', () => {
     })
   })
 
+  it('has answers many keys with one CAS check: a gone blob or no entry is not held', async () => {
+    entry('k-many-held', {
+      output_files: [{ path: ARTIFACT, digest: store('kept'), is_executable: false }],
+    })
+    entry('k-many-gone', {
+      output_files: [
+        { path: ARTIFACT, digest: digestOf(bytes('evicted too')), is_executable: false },
+      ],
+    })
+    findMissingCalls = 0
+    const held = await withCache((c) => c.has(['k-many-gone', 'k-many-none', 'k-many-held']))
+    expect({ held, findMissingCalls }).toEqual({ held: ['k-many-held'], findMissingCalls: 1 })
+  })
+
   it('has is false for an entry whose blob is gone', async () => {
     entry('k-gone', {
       output_files: [{ path: ARTIFACT, digest: digestOf(bytes('evicted')), is_executable: false }],
     })
-    expect(await withCache((c) => c.has('k-gone'))).toBe(false)
+    expect(await withCache((c) => c.has(['k-gone']))).toEqual([])
   })
 
   it('a duration that is not a number is none; one normalised into CAS is read from there', async () => {
@@ -427,6 +443,6 @@ describe('the REAPI cache layer, exactly', () => {
   it('close ends the client: a call after it fails', async () => {
     const cache = new ReapiRemoteCache({ endpoint })
     cache.close()
-    await expect(cache.has('k-closed')).rejects.toThrow()
+    await expect(cache.has(['k-closed'])).rejects.toThrow()
   })
 })

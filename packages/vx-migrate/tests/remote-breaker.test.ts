@@ -113,7 +113,7 @@ describe('a hung server costs three deadlines, not one per request', () => {
         {},
       )!,
     )
-    expect(await count(() => c.has('abc'))).toEqual([
+    expect(await count(() => c.has(['abc']))).toEqual([
       ...Array(3).fill('no answer within 50 ms'),
       ...Array(3).fill(OPEN),
     ])

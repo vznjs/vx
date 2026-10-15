@@ -1342,7 +1342,7 @@ describe('local cache short-circuit', () => {
     ]) as never
     const local = new Cache(path.join(fixture.root, '.vx', 'cache'))
     const stubRemote: RemoteCacheLayer = {
-      has: () => Promise.resolve(false),
+      has: () => Promise.resolve([]),
       get: () => Promise.resolve(null),
       put: () => Promise.resolve(),
     }

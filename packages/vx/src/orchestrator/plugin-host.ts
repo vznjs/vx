@@ -55,7 +55,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return proto === Object.prototype || proto === null
 }
 
-/** Every method a `cache` hook's `RemoteCacheLayer` requires (`hasMany` is optional). */
+/** Every method a `cache` hook's `RemoteCacheLayer` requires. */
 export const REMOTE_CACHE_METHODS: readonly string[] = ['has', 'get', 'put']
 
 /** What a capability hook handed back must be what the seam runs. */

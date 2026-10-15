@@ -39,8 +39,9 @@ runs, so they cannot rot.
 
 ## Bring your own remote cache
 
-A remote is a `RemoteCacheLayer`: `has`, `get` and `put`, plus an
-optional batched `hasMany`. Here is the whole template, which uses a
+A remote is a `RemoteCacheLayer`: `has`, `get` and `put`. (Since vx
+0.0.639, `has` takes many keys and returns the ones held, in place of a
+single-key probe and an optional batch one.) Here is the whole template, which uses a
 directory as the store:
 
 ```ts
@@ -51,8 +52,9 @@ import { definePlugin, LayeredCache, type RemoteCacheLayer, type VxPlugin } from
 
 class DirRemote implements RemoteCacheLayer {
   constructor(readonly endpoint: string) {}
-  async has(hash: string): Promise<boolean> {
-    return Bun.file(path.join(this.endpoint, hash)).exists()
+  async has(hashes: readonly string[]): Promise<string[]> {
+    const held = await Promise.all(hashes.map((h) => Bun.file(path.join(this.endpoint, h)).exists()))
+    return hashes.filter((_, i) => held[i])
   }
   async get(hash: string) {
     const file = Bun.file(path.join(this.endpoint, hash))

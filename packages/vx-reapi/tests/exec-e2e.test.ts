@@ -812,7 +812,7 @@ describe.if(run)('the remote cache probe does not promise an evicted artifact', 
       const live = `vx-live-${n}`
       const body = new TextEncoder().encode(`artifact-${n}`)
       await cache.put(live, new Blob([body]), { durationMs: 7 })
-      expect(await cache.has(live)).toBe(true)
+      expect(await cache.has([live])).toEqual([live])
       expect((await cache.get(live)) !== null).toBe(true)
 
       // The defect: an entry naming a blob that was never uploaded. `get`
@@ -829,7 +829,7 @@ describe.if(run)('the remote cache probe does not promise an evicted artifact', 
           },
         ],
       })
-      expect(await cache.has(dangling)).toBe(false)
+      expect(await cache.has([dangling])).toEqual([])
       expect(await cache.get(dangling)).toBeNull()
     } finally {
       cache.close()

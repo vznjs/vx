@@ -173,8 +173,8 @@ export interface VxPlugin {
   // --- BEHAVIOR capabilities (change WHAT/HOW work runs — opt-in) -----------
 
   /**
-   * Contribute a remote cache: the wire (`has`, `get`, `put`, optional
-   * `hasMany`), or undefined to decline. Consulted ONCE per prepareRun.
+   * Contribute a remote cache: the wire (`has`, `get`, `put`), or
+   * undefined to decline. Consulted ONCE per prepareRun.
    * Core layers each one behind its own local cache and owns the rest:
    * the local store is asked first, then each remote in declaration order;
    * the run's policy and scope gate every remote; a remote's throw is a

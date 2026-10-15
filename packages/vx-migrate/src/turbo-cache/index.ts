@@ -23,6 +23,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
+import { heldEach } from '../remote-probe.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
@@ -362,7 +363,8 @@ async function boundedText(res: Response, max: number): Promise<string | null> {
 const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
 
 /**
- * The seam implementation: `has` is HEAD, `hasMany` is the batch query,
+ * The seam implementation: `has` is the batch query (a HEAD per key where
+ * the server lacks it, and for one key),
  * `get`/`put` carry `x-artifact-duration` (and the tag when signing). An
  * auth failure (401/403) throws ONCE — core reports it — and then
  * turns the layer off for the rest of the process (an upload's 403 turns off
@@ -512,7 +514,12 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     return res
   }
 
-  async has(hash: string): Promise<boolean> {
+  async has(hashes: readonly string[]): Promise<string[]> {
+    if (this.disabled || hashes.length === 0) return []
+    return (await this.batch(hashes)) ?? heldEach(hashes, (h) => this.head(h))
+  }
+
+  private async head(hash: string): Promise<boolean> {
     if (this.disabled) return false
     const res = await this.request('HEAD', `/${hash}`)
     if (res === undefined) return false
@@ -521,13 +528,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     throw new Error(`HTTP ${res.status}`)
   }
 
-  async hasMany(hashes: readonly string[]): Promise<Set<string> | null> {
-    if (this.disabled || hashes.length === 0) return this.disabled ? new Set() : null
+  /** The batch query's answer; null when the server does not offer it (a HEAD per key then). */
+  private async batch(hashes: readonly string[]): Promise<string[] | null> {
+    if (hashes.length === 1) return null
     const res = await this.request('POST', '', {
       body: JSON.stringify({ hashes }),
       headers: { 'Content-Type': 'application/json' },
     })
-    if (res === undefined) return new Set()
+    if (res === undefined) return []
     if (res.status !== 200) return null
     // An answer per hash is a few hundred bytes of ArtifactInfo; a reply
     // past this bound is no answer, read no further than the bound (L-9).
@@ -538,12 +546,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     // Each hash answers ArtifactInfo, null, or `{ error: { message } }`; an
     // error entry is not a stored artifact, and it was counted as one (a GET
     // spent on a 404, item 929).
-    return new Set(
-      hashes.filter((h) => {
-        const v = info[h]
-        return typeof v === 'object' && v !== null && !('error' in v)
-      }),
-    )
+    return hashes.filter((h) => {
+      const v = info[h]
+      return typeof v === 'object' && v !== null && !('error' in v)
+    })
   }
 
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
