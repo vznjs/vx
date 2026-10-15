@@ -479,30 +479,6 @@ bare number is refused: a unit in the value keeps the name free of one.
 export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
 ```
 
-## `escapeMarkdownCell`
-
-function · `src/orchestrator/run-report.ts`
-
-Make a value safe inside a GFM table cell. Task names are arbitrary TS
-object keys and the loader accepts `|` and newlines, either of which
-silently breaks the table on the consumer (`>> $GITHUB_STEP_SUMMARY`):
-a bare pipe adds a column, a newline splits the row.
-
-Exported because this file is not the only markdown table describing a run:
-the cloud plugin's GitHub job summary renders the same data from the same
-unvalidated names and shipped WITHOUT this escape, so a `|` in a task name
-or an output path shifted its columns. One definition, so the two
-cannot disagree about what a cell may contain.
-
-A pipe splits the row unless an ODD run of backslashes precedes it (GFM
-reads `\\` as one escaped backslash), so a pipe after an odd run is already
-escaped and one more backslash would free it: `a\|b` became `a\\|b`, two
-cells. A lone `\r` ends a line too.
-
-```ts
-export function escapeMarkdownCell(value: string): string
-```
-
 ## `ExecConfig`
 
 type · `src/config.ts`
@@ -1864,7 +1840,6 @@ export interface RunOptions {
   forwardArgs?: readonly string[]
   summarize?: string
   json?: boolean
-  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   footer?: boolean
   profile?: string
   handleSignals?: boolean
@@ -1963,22 +1938,6 @@ export interface RunReportTask {
   readonly key?: string
   readonly log?: string
   readonly outputs?: string
-}
-```
-
-## `RunResult`
-
-type · `src/orchestrator/run-report.ts`
-
-One finished run, reduced to what a report needs. Used to live in
-`protocol.ts` as the return type of the whole-run `backend` seam; that
-seam is gone (a run always executes in-process — see
-`docs/modules/executor.md`), so the shape lives with its only consumer.
-
-```ts
-export interface RunResult {
-  ok: boolean
-  outcomes: OutcomeView[]
 }
 ```
 

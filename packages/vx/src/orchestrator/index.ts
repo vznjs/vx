@@ -56,7 +56,6 @@ export type {
   TaskView,
   OutcomeView,
 } from './events.js'
-export { escapeMarkdownCell, formatRunReportMarkdown, type RunResult } from './run-report.js'
 export {
   EmptyHistoryProvider,
   type HistoryProvider,

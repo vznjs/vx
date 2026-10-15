@@ -23,13 +23,7 @@ export interface Tally {
   /** Group tasks are excluded from `total`. */
   total: number
 }
-export interface TallyItem {
-  status: TaskOutcome['status']
-  restored?: boolean
-}
-
 export function tallyOutcomes(outcomes: readonly TaskOutcome[]): Tally
-export function tallyViews(views: readonly (TallyItem & { isGroup?: boolean })[]): Tally // the same fold over wire views
 ```
 
 ## Rules
@@ -47,9 +41,7 @@ export function tallyViews(views: readonly (TallyItem & { isGroup?: boolean })[]
 - **`skipped`** → +skipped.
 
 The implementation is intentionally simple — one fold, one counter
-record, applied by `tallyOutcomes` to raw outcomes and by `tallyViews`
-to the serializable `OutcomeView`s a run report or a remote reader
-holds. Adding a new outcome status means adding one branch here and
+record. Adding a new outcome status means adding one branch here and
 every consumer stays in sync.
 
 ## Why this lives in `orchestrator/` and not `graph/`

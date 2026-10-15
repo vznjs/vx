@@ -152,8 +152,8 @@ that makes sense for a loop is supported. Rejected with exit 1:
 
 Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
 `--no-cache`, `--exclude-dependencies`, forwarded `--` args) passes
-through unchanged. `--report` / `--report-file` / `--verbosity` above 0
-are refused too: they format one run's result.
+through unchanged. `--verbosity` above 0 and `--format json` are refused
+too: they format one run's result.
 
 ## Algorithm
 

@@ -76,10 +76,6 @@ describe('vx run --format json', () => {
       const cases: [string[], string][] = [
         [['--dry'], '--format json runs the tasks; --dry=json prints the plan'],
         [['--graph'], '--format json and --graph both print on stdout; give --graph a file'],
-        [
-          ['--report'],
-          '--format json and --report=markdown both print on stdout; use --report-file',
-        ],
       ]
       for (const [extra, message] of cases) {
         const [code, out, err] = vx('run', 'build', '--all', '--format', 'json', ...extra)

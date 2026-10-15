@@ -222,7 +222,7 @@ app only when it is in that list:
 
 - **`--affected has no base here … a shallow clone?`** Set `fetch-depth: 0`.
 - **`nothing affected since <ref>` on every push.** `origin/main` on a push to `main` is the commit itself. Use `github.event.before`.
-- **The whole log lands in the job summary.** Use `--report-file="$GITHUB_STEP_SUMMARY"`, not a `>>` redirect.
+- **The whole log lands in the job summary.** Don't redirect vx's output there; declare `github()` from `@vzn/vx-ci`, which writes the summary.
 
 ## Remote cache
 

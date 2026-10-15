@@ -33,13 +33,13 @@ function vx(...args: string[]): { code: number; err: string } {
 
 describe('output paths (item 993)', () => {
   it(
-    '--report-file makes its directory, as --summarize, --profile and --graph do',
+    '--summarize, --profile and --graph make their directories',
     () => {
-      const r = vx('--summarize=ns/s.json', '--profile=np/p.json', '--report-file=nr/r.md')
+      const r = vx('--summarize=ns/s.json', '--profile=np/p.json')
       expect({
         code: r.code,
-        written: ['ns/s.json', 'np/p.json', 'nr/r.md'].map((f) => existsSync(path.join(root, f))),
-      }).toEqual({ code: 0, written: [true, true, true] })
+        written: ['ns/s.json', 'np/p.json'].map((f) => existsSync(path.join(root, f))),
+      }).toEqual({ code: 0, written: [true, true] })
       expect(vx('--graph=ng/g.dot').code).toBe(0)
       expect(existsSync(path.join(root, 'ng/g.dot'))).toBe(true)
     },

@@ -16,7 +16,6 @@ import { SETTINGS } from '../src/settings.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatRunSummary } from '../src/orchestrator/summary.js'
 import { parseInfoArgs } from '../src/cli/info.js'
-import { formatRunReportMarkdown } from '../src/orchestrator/run-report.js'
 import {
   formatTaskBlock,
   formatTaskExecutedLine,
@@ -65,7 +64,7 @@ async function documentedFlags(): Promise<Set<string>> {
 }
 
 describe('vx help names every flag the run parser accepts', () => {
-  // Four flags (--continue, --report, --report-file, --tag) were parsed and
+  // Four flags (--continue, --tag and two since removed) were parsed and
   // documented in cli.md but absent from `vx help` until 2026-09-16 (item
   // 300): the reference was pinned to the parser, the help was not.
   it('every parser flag appears in help.ts', async () => {
@@ -353,50 +352,6 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
     const start = doc.lastIndexOf('```\n', end - 1) + 4
     expect(start).toBeGreaterThan(4)
     expect(doc.slice(start, end)).toBe(rendered)
-  })
-})
-
-// The report sample's "8ms saved" was its hits' restore times, 5 + 3: the
-// sum the paragraph under it says the header does not take. Render it.
-describe('docs/cli.md — the --report sample is what the renderer prints', () => {
-  it('the header and table, with the hits saving what their entries stored', async () => {
-    const rendered = formatRunReportMarkdown({
-      ok: true,
-      outcomes: [
-        { taskId: 'web#build', status: 'success', exitCode: 0, durationMs: 1230 },
-        {
-          taskId: 'web#test',
-          status: 'cache-hit',
-          exitCode: 0,
-          durationMs: 5,
-          restored: true,
-          storedDurationMs: 2010,
-        },
-        {
-          taskId: 'api#test',
-          status: 'cache-hit',
-          exitCode: 0,
-          durationMs: 3,
-          restored: false,
-          storedDurationMs: 640,
-        },
-      ],
-    })
-    const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
-    const start = doc.indexOf('```markdown\n## vx run — passed\n')
-    expect(start).toBeGreaterThan(-1)
-    const sample = doc.slice(start + 12, doc.indexOf('\n```\n', start) + 1)
-    // The page's formatter pads the table; the cells are what is compared.
-    const cells = (md: string): string[] =>
-      md.split('\n').map((l) =>
-        l.startsWith('|')
-          ? l
-              .split('|')
-              .map((c) => (/^\s*-+\s*$/.test(c) ? '---' : c.trim()))
-              .join('|')
-          : l,
-      )
-    expect(cells(sample)).toEqual(cells(rendered))
   })
 })
 

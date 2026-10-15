@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: remove vx run --report and --report-file
+
+`vx run --report` and `--report-file` are gone. For a GitHub job summary declare `github()` from `@vzn/vx-ci` in `.vx/workspace.ts`. `escapeMarkdownCell` and the `RunResult` type left the `@vzn/vx` façade.
+
 ## plugin: keep a CI run's bytes and hand plugins a run report
 
 `teardown` now takes the run's `RunReport` (`teardown(run?)`), and `PluginCache` has a `getRun(name)` method: a test double that implements `PluginCache` adds `getRun: async () => null`.

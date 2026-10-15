@@ -234,8 +234,6 @@ export function defineWorkspace<T extends WorkspaceConfig>(
       watch?: Known<At<T, 'watch'>, WatchSettings>
     },
 ): T
-== function escapeMarkdownCell (src/orchestrator/run-report.ts)
-export function escapeMarkdownCell(value: string): string
 == function executorFallback (src/exec/executor.ts)
 export function executorFallback(reason: string): Error
 == function exitSignal (src/exec/runner.ts)
@@ -1283,7 +1281,6 @@ export interface RunOptions {
   forwardArgs?: readonly string[]
   summarize?: string
   json?: boolean
-  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
   footer?: boolean
   profile?: string
   handleSignals?: boolean
@@ -1363,11 +1360,6 @@ export interface RunResult {
   cpuMs?: number
   peakRssBytes?: number
   spawnFailed?: true
-}
-== type RunResult (src/orchestrator/run-report.ts)
-export interface RunResult {
-  ok: boolean
-  outcomes: OutcomeView[]
 }
 == type RunSettings (src/config.ts)
 export interface RunSettings {

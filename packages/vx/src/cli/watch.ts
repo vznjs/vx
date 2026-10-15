@@ -67,16 +67,11 @@ export function watchRefusal(parsed: RunArgs): string | null {
   if (parsed.summarize !== undefined || parsed.profile !== undefined) {
     return 'vx watch: --summarize / --profile are not supported in watch mode (would overwrite per cycle)'
   }
-  // All three format ONE run's result and are consumed by `runCmd` alone, so
-  // a watch loop silently ignored them. `--verbosity 0` is not rejected: it
+  // Both format ONE run's result and are consumed by `runCmd` alone, so a
+  // watch loop silently ignored them. `--verbosity 0` is not rejected: it
   // asks for the output watch already gives.
-  if (
-    parsed.report !== undefined ||
-    parsed.reportFile !== undefined ||
-    parsed.verbosity > 0 ||
-    parsed.format !== 'pretty'
-  ) {
-    return 'vx watch: --report / --report-file / --verbosity / --format are not supported in watch mode (they report a single run)'
+  if (parsed.verbosity > 0 || parsed.format !== 'pretty') {
+    return 'vx watch: --verbosity / --format are not supported in watch mode (they report a single run)'
   }
   return null
 }

@@ -74,11 +74,6 @@ and renders + appends the markdown in `flush()` — it holds no run handle,
 streams no per-event records (`wants: []`), and a slow or failing write can
 never fail or stall the run (core's crash-isolation + flush deadline).
 
-Core's manual path still exists without this plugin:
-`vx run --report=markdown --report-file "$GITHUB_STEP_SUMMARY"` writes a
-plain table. The plugin's summary is richer (verdict, stats, failure
-callouts) and automatic on every run.
-
 ## The PR check run
 
 With `GITHUB_TOKEN` in the environment (plus `GITHUB_REPOSITORY` /

@@ -109,7 +109,6 @@ here, itself or in a brace group.
 | [`metrics.md`](./metrics.md)                       | `src/orchestrator/{metrics,run-failures,sandbox-fix}.ts` — run-history queries behind `vx last` / `vx why`, a failed run's kept output and the sandbox grants it needed; `src/orchestrator/run-id.ts` — a run id whole or by unique prefix. |
 | [`doctor.md`](./doctor.md)                         | `src/orchestrator/doctor.ts` — the workspace doctor's facts behind `vx info`.                                                                                                                                                               |
 | [`task-log-buffer.md`](./task-log-buffer.md)       | `src/orchestrator/task-log-buffer.ts` — bounded per-task log capture for telemetry sinks.                                                                                                                                                   |
-| [`run-report.md`](./run-report.md)                 | `src/orchestrator/run-report.ts` — `--report=markdown` table.                                                                                                                                                                               |
 
 ## Workspace + discovery
 

@@ -3,16 +3,14 @@
 // interrupted at its prompt. The parser itself held every mutant; these
 // are the paths around it.
 
-import { existsSync, realpathSync } from 'node:fs'
-import { readFile, rm } from 'node:fs/promises'
-import path from 'node:path'
+import { realpathSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { PassThrough } from 'node:stream'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run as cli } from './helpers/cli.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 let root = ''
 
 beforeAll(async () => {
@@ -20,7 +18,6 @@ beforeAll(async () => {
   await addProject(root, 'app', {
     config: `export default { tasks: {
       build: { exec: { command: 'true' } },
-      slow: { exec: { command: 'touch started; exec sleep 30' } },
     } }\n`,
   })
 })
@@ -104,28 +101,4 @@ describe('vx run', () => {
     }
     expect({ codes, docs }).toEqual({ codes: [1, 1], docs: ['VX_E_USAGE', 'VX_E_USAGE'] })
   })
-
-  it('a Ctrl-C mid-run still writes --report and --report-file (E-23)', async () => {
-    // The report was rendered after run() returned, and the signal path
-    // exited first: an interrupted CI job lost its step summary.
-    const file = path.join(root, 'out', 'report.md')
-    const marker = path.join(root, 'packages', 'app', 'started')
-    const proc = Bun.spawn(
-      [process.execPath, BIN, 'run', 'build', 'slow', '--all', '--report', '--report-file', file],
-      {
-        cwd: root,
-        stdout: 'pipe',
-        stderr: 'ignore',
-        env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
-      },
-    )
-    const stdout = new Response(proc.stdout).text()
-    for (let i = 0; i < 400 && !existsSync(marker); i++) await Bun.sleep(25)
-    expect(existsSync(marker)).toBe(true)
-    proc.kill('SIGINT')
-    expect(await proc.exited).toBe(130)
-    const table = '| app#slow | aborted |'
-    expect(await stdout).toContain(table)
-    expect(await readFile(file, 'utf8')).toContain(table)
-  }, 20_000)
 })

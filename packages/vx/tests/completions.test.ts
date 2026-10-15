@@ -57,8 +57,6 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--graph': [],
   '--summarize': [],
   '--profile': [],
-  '--report': [],
-  '--report-file': ['r.md'],
   '--tag': ['k=v'],
   '--older-than': ['1d'],
   '--max-size': ['1G'],
