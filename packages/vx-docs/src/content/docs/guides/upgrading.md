@@ -9,7 +9,15 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## skills: drop the nested skill install path
+## cache: cache everything the outputs hold under clean: false
+
+under cache.outputs.clean: false a leftover output file is now saved and restored on every machine; before, its presence meant nothing was cached.
+
+## cli: stop vx watch re-running on its own run's writes
+
+vx lock refuses a cached task whose inputs read another task's outputs through a glob like `**/*` beside `**/dist/**`.
+
+## skills: install the vx skill with npx skills add vznjs/vx
 
 `npx skills add vznjs/vx/packages/vx/skills/vx` no longer exists; install the agent skill with `npx skills add vznjs/vx`.
 
