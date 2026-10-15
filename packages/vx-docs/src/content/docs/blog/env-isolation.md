@@ -80,7 +80,9 @@ A value whose name holds `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`
 or `CREDENTIAL` is masked without being asked. `GH_PAT` holds none of
 those words, so it is listed in `secret`. Masking covers more than the
 live log: the output the cache keeps and a hit replays, the command a
-remote cache receives, `vx show`, `vx why`, `vx last` and telemetry. A multi-line key is masked line by line,
+remote cache receives, `vx show`, `vx why`, `vx last`, telemetry, and
+the errors `vx mcp` gives an agent (`@vzn/vx-mcp` is retired since vx
+0.0.637). A multi-line key is masked line by line,
 and a value split across two chunks of output is still caught.
 
 ## When a variable changes the output
@@ -95,14 +97,16 @@ cache: { inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files:
 
 ## Hygiene, not a wall
 
-Dropping variables keeps builds the same from machine to machine. It is
-not a wall: an unsandboxed task runs as you and reads any file you can.
-vx does hide its own environment from it: on Linux vx makes itself
-non-dumpable (`VX_DEBUG_DUMPABLE=1` turns that off for strace and debuggers),
-and on macOS it zeroes the values `ps eww` reads, every variable but the
-essentials every task gets. That guards the environment only, not your
-files. To keep a task away from what it was not given, sandbox it with
-`exec.sandbox`.
+Dropping variables keeps builds the same from machine to machine. It
+does not stop a task that goes looking: an unsandboxed task runs as you,
+and on macOS it can still read vx's own environment with `ps eww`. On
+Linux vx makes itself non-dumpable, so a task cannot read it there
+(`VX_DEBUG_DUMPABLE=1` turns that off for strace and debuggers). To keep
+a task away from what it was not given, sandbox it with `exec.sandbox`:
+a sandboxed task cannot read vx's environment on Linux or macOS. (Since
+vx 0.0.637, macOS hides it too: vx zeroes the values `ps eww` reads,
+every variable but the essentials every task gets. That guards the
+environment only, not your files.)
 
 What the task gets and what the key sees are separate on purpose. The
 whole set of rules is in the [schema](../../schema/).

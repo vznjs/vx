@@ -71,26 +71,29 @@ build: {
 },
 ```
 
-Different bytes still withhold the entry, and so does a write made while
-another task that may write the file was running, since it may have
-changed the file and put it back; the line names that task.
+Different bytes still withhold the entry. (Since vx 0.0.637, so does a
+write made while another task that may write the file was running,
+since it may have changed the file and put it back; the line names that
+task.)
 `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
 makes `mutable` the default for every task that does not say. And when
 the file named is not `package.json`, it is usually generated and should
 be declared as an output instead, and the status line says so.
 
-`strategy: 'unchecked'` turns the check off. And `severity: 'error'`
-(or `VX_CACHE_INPUT_STABILITY_SEVERITY=error`) fails the task instead of
-warning, for a pipeline that would rather stop than build twice. The
-task's line then names the file, `failed (src/a.ts changed during the run, exit 1)`,
-and agents read the same as `inputMoved` in `vx last --format json`.
+(Since vx 0.0.636.) `strategy: 'unchecked'` turns the check off. And
+`severity: 'error'` (or `VX_CACHE_INPUT_STABILITY_SEVERITY=error`) fails
+the task instead of warning, for a pipeline that would rather stop than
+build twice. (Since vx 0.0.637, the task's line then names the file,
+`failed (src/a.ts changed during the run, exit 1)`, and agents read the
+same as `inputMoved` in `vx last --format json`.)
 
 ## What runs downstream
 
-A withheld save does not stop at the task. Every task that ran over its
-outputs, down the graph, saves nothing either, and a task of any project
-that declares the moved file as an input withholds its own. Nothing is
-filed on top of a state that was never verified.
+(Since vx 0.0.636.) A withheld save does not stop at the task. Every
+task that ran over its outputs, down the graph, saves nothing either,
+and a task of any project that declares the moved file as an input
+withholds its own. Nothing is filed on top of a state that was never
+verified.
 
 ## The trade
 

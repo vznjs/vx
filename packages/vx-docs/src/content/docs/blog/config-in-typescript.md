@@ -86,19 +86,26 @@ allowed:
 - **Reading another project.** Globs are resolved inside the project
   directory. `../shared/**` is an error, and `cache.inputs.workspaceFiles`
   is the one named exception for files at the workspace root.
-- **Being impure without saying so.** A config that reads
-  `process.env`, the clock or the network freezes that answer into
-  `.vx/projects.lock.json` when `vx lock` evaluates it, and `vx lock --check`
-  re-evaluates it and reports the drift. A config that reads
-  `process.env` should be one that has to.
+- **Being impure without saying so.** A config that names `process`,
+  `Date`, `fetch`, `import.meta`, a dynamic `import()` or any of the
+  other globals on the
+  [purity gate's list](../resolved-config-hashing/) is evaluated live
+  every run and never served from the evaluation cache. That is the
+  correct behaviour, not a penalty; it just means a config that reads
+  `process.env` should be one that has to. (Since vx 0.0.637, a run
+  evaluates no config: a config that reads `process.env`, the clock or
+  the network freezes that answer into `.vx/projects.lock.json` when
+  `vx lock` evaluates it, and `vx lock --check` re-evaluates it and
+  reports the drift.)
 
 ## Freezing it
 
 When "evaluated live" is exactly what a CI pipeline must not do,
 [`vx lock`](../lock-and-frozen/) evaluates every config once and writes
-the resolved objects to `.vx/projects.lock.json`; every `vx run` reads the
-lock with no evaluation at all, and `--check` catches drift a byte hash
-cannot see.
+the resolved objects to `.vx/projects.lock.json`; `vx run --frozen`
+consumes the lock with no evaluation at all, and `--check` catches drift
+a byte hash cannot see. (Since vx 0.0.637, `--frozen` is gone: every
+`vx run` reads the lock.)
 
 ## The migration path
 
