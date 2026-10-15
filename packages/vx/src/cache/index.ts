@@ -69,14 +69,13 @@ export {
   type BlobSizeMemo,
 } from './git-inputs.js'
 export { LayeredCache, type RemoteCacheLayer } from './layered-cache.js'
+export type { ResolvedRemote } from './remote-lane.js'
 export { ScopedCache } from './scoped-cache.js'
 export {
   absentPluginCache,
   pluginCache,
   PLUGIN_ENTRY_MAX_BYTES,
   type PluginCache,
-  type PluginCacheRemote,
 } from './plugin-cache.js'
 export { packRunOutputs, putRunEntry, runEntryName, writesRunStore } from './run-store.js'
-export { ChainedCache } from './chained-cache.js'
 export { branchSource } from './run-history.js'

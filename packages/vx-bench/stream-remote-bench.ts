@@ -49,8 +49,7 @@ const { Cache, LayeredCache } = (await import(
   Cache: new (dir: string) => Local
   LayeredCache: new (
     local: Local,
-    remote: unknown,
-    opts: { onRemoteError: (e: Error) => void },
+    remotes: { remote: unknown; read: boolean; write: boolean; onError: (e: Error) => void }[],
   ) => Layered
 }
 
@@ -112,7 +111,9 @@ Bun.gc(true)
 const baseline = peakMiB()
 
 let local = new Cache(cacheDir)
-const saving = new LayeredCache(local, remote, { onRemoteError })
+const saving = new LayeredCache(local, [
+  { remote: remote, read: true, write: true, onError: onRemoteError },
+])
 await saving.save({
   hash,
   projectDir,
@@ -126,7 +127,9 @@ const afterSave = peakMiB()
 local.close()
 rmSync(cacheDir, { recursive: true, force: true })
 local = new Cache(cacheDir)
-const hit = await new LayeredCache(local, remote, { onRemoteError }).get(hash, {
+const hit = await new LayeredCache(local, [
+  { remote: remote, read: true, write: true, onError: onRemoteError },
+]).get(hash, {
   taskId: 'bench#build',
   command: 'x',
 })

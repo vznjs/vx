@@ -11,7 +11,7 @@ import {
   Cache,
   pluginCache,
   PLUGIN_ENTRY_MAX_BYTES,
-  type PluginCacheRemote,
+  type ResolvedRemote,
   type RemoteCacheLayer,
 } from '../src/cache/index.js'
 import { xxh3hex } from '../src/util/index.js'
@@ -81,7 +81,7 @@ function localStore(): Cache {
   return c
 }
 
-const remoteOf = (remote: RemoteCacheLayer, read = true, write = true): PluginCacheRemote => ({
+const remoteOf = (remote: RemoteCacheLayer, read = true, write = true): ResolvedRemote => ({
   remote,
   read,
   write,

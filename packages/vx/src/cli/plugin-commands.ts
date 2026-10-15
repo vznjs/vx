@@ -7,7 +7,7 @@
 // reports an unknown command as it always did. Core's verbs are matched
 // before this is asked, so a plugin cannot shadow `run`.
 
-import type { CachePolicy, PluginCache, PluginCacheRemote } from '../cache/index.js'
+import type { CachePolicy, PluginCache, ResolvedRemote } from '../cache/index.js'
 import type { WorkspaceConfig } from '../config.js'
 import type { VxPlugin, PluginCommand, CommandContext } from '../orchestrator/index.js'
 import { cacheScopeEnvError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
@@ -151,7 +151,7 @@ async function verbCache(
     'open',
     await ws.storeRoot,
   )
-  const remotes: PluginCacheRemote[] = []
+  const remotes: ResolvedRemote[] = []
   await resolveCache(ws.plugins, {
     workspaceRoot: ws.workspaceRoot,
     cacheDir: ws.cacheDir,

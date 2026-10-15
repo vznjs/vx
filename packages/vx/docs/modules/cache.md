@@ -100,7 +100,6 @@ export type SaveArgs = {
   entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
   projectDir: string
   outputFiles: string[] // absolute paths
-  skipLocalWrite?: boolean // ChainedCache: an earlier layer already wrote it locally
   workspaceOutputFiles?: string[] // absolute paths of outputs.workspaceFiles matches
   workspaceRoot?: string // required alongside workspaceOutputFiles
   inputComponents?: readonly TaskInputRow[] // entry_inputs rows, written in the save's transaction

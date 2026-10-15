@@ -30,6 +30,7 @@ import {
 import { planRun, run } from './helpers/orchestrator.js'
 import { pluginSource, writeEdges } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
+import { layeredOver } from './helpers/layered.js'
 
 /**
  * A stub HTTP artifact ENDPOINT + the RemoteCacheLayer speaking to it —
@@ -1425,7 +1426,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
         async put() {},
       }
       expect(local.hasRemote).toBe(false)
-      expect(new LayeredCache(local, remote).hasRemote).toBe(true)
+      expect(layeredOver(local, remote).hasRemote).toBe(true)
       local.close()
     } finally {
       await rm(dir, { recursive: true, force: true })

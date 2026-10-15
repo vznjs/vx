@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: one LayeredCache over every declared remote
+
+`CacheLayer.save` no longer takes `skipLocalWrite`. Only core's own ChainedCache set it; a caller passing it drops the field.
+
 ## cli: remove --kill-grace and --teardown-timeout
 
 --kill-grace, --teardown-timeout, run.killGrace, run.teardownTimeout, VX_RUN_KILL_GRACE and VX_RUN_TEARDOWN_TIMEOUT are removed; the grace is 2 s and the teardown bound 3 s.

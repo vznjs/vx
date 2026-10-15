@@ -1,20 +1,22 @@
-# `src/cache/layered-cache.ts` — local + remote cache composition
+# `src/cache/layered-cache.ts` — the local cache with the declared remotes behind it
 
 ## Purpose
 
-Wraps the local `Cache` with a **`RemoteCacheLayer`** — the plugin seam
-for remote caching — and
-exposes the same `CacheLayer` interface. The orchestrator doesn't know
+Puts the declared **`RemoteCacheLayer`**s — the plugin seam for remote
+caching — behind the local `Cache`, in declared order, and exposes the
+same `CacheLayer` interface. The orchestrator doesn't know
 which layer it's talking to, and core ships **no wire client**: the
 remote layer comes from a plugin's `cache` capability (e.g. the
 `@vzn/vx-reapi` CAS client), which `resolveCache` wraps here, or from an
 embedder via `RunOptions.remoteCache`. Core builds every
 `LayeredCache`; it is not on the public façade.
 
-- **Read-through**: try local; on miss, fetch from remote, stream the
-  body into local, return with `source: 'remote'`.
-- **Write-through with async upload**: write to local synchronously,
-  then PUT to remote in the background (bounded at 4 concurrent;
+- **Read-through**: try local; on miss, ask each readable remote in
+  declared order, stream the first hit's body into local, return with
+  `source: 'remote'`.
+- **Write-through with async upload**: write to local synchronously
+  (packed once however many remotes), then PUT to every writable remote
+  in the background (bounded at 4 concurrent per remote;
   `run()` awaits `drainUploads()` before `cache.close()`, and before the
   telemetry summary, which reports them). Each upload is tallied on the
   local `Cache` it wraps (`uploads`: count, bytes, summed ms, failed),
@@ -24,8 +26,11 @@ embedder via `RunOptions.remoteCache`. Core builds every
   carries `fetchMs`, its download and ingest.
 - **Prefetch + in-flight dedup**: `prefetch(hash)` warms local from
   remote in the background; an in-flight map shared with `get`
-  guarantees **at most one remote GET per key**, and a settled miss
-  blocks a second lazy probe.
+  guarantees **at most one walk of the remotes per key**, and a settled
+  miss blocks a second lazy probe.
+- **One remote's boundary** is its `RemoteLane` (`remote-lane.ts`): what
+  the run lets it do, its shape checks, its upload pool and its
+  warnings. This layer owns the order, the local store and provenance.
 - **Scopes** are not this layer's: `ScopedCache` (`scoped-cache.ts`)
   sits above every layer and hands it the scope's key as a key like any
   other.
@@ -49,17 +54,10 @@ export interface RemoteCacheLayer {
 }
 
 export class LayeredCache implements CacheLayer {
-  constructor(local: Cache, remote: RemoteCacheLayer, options?: LayeredCacheOptions)
+  constructor(local: Cache, remotes: readonly ResolvedRemote[]) // declared order
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   drainUploads(): Promise<void>
   // CacheLayer methods — see docs/modules/cache.md.
-}
-
-export interface LayeredCacheOptions {
-  /** Once per failure class; the repeats are counted at `close()`. */
-  onRemoteError?: (err: Error) => void
-  /** 4-axis policy; this layer reads remoteRead / remoteWrite. */
-  policy?: CachePolicy
 }
 ```
 
@@ -88,14 +86,14 @@ are packed in memory during `save` and sent as `new Blob([bytes])`.
 
 `RemoteCacheLayer` implementations THROW on every failure (network,
 non-404 status, integrity mismatch, oversize body). `LayeredCache`
-catches **everything** and degrades to a cache miss via
-`onRemoteError` — no remote failure of any kind may fail a run. A
+catches **everything** and degrades to a cache miss, reported to that
+remote's `onError` — no remote failure of any kind may fail a run. A
 corrupt remote body is additionally refused by `Cache.ingest`'s
 validation (zstd checks), which this layer also degrades to a miss. A
 result of the wrong SHAPE — a `get` whose `body` is not a `Blob` or a
 `Response` (the pre-stream `ArrayBuffer` / `Uint8Array` included, named
 as such: "body is a Uint8Array"), a `hasMany` that is not a `Set` or
-`null` — is the plugin's bug, named as such through `onRemoteError`
+`null` — is the plugin's bug, named as such through `onError`
 ("download <hash> failed: remote cache layer returned an invalid
 result: get() resolved body is string (expected { body: Blob | Response,
 durationMs } or null) — a plugin bug, degraded to a miss") and degraded
@@ -107,7 +105,7 @@ A wire's own message names nothing: Bun's abort is "The operation timed
 out.", a refused connection "Unable to connect. Is the computer able to
 access the url?", a gRPC status carries its elapsed time but no server
 or key. The layer knows the call and the artifact, the plugin knows the
-server, so the line `onRemoteError` receives carries all three:
+server, so the line `onError` receives carries all three:
 
 ```
 probe <hash> at <endpoint> failed: <cause>
@@ -122,8 +120,8 @@ before it is printed, since the field is a plugin's and the line is a
 log. The error's `cause` is the layer's original throw.
 
 A run's requests are concurrent, so one fact (an unreachable server)
-fails every request at once. The layer says each failure CLASS once per
-instance, which is once per run: the class is the error's `code` when
+fails every request at once. Each remote says each failure CLASS once
+per run: the class is the error's `code` when
 it carries one (a gRPC status, an errno, Bun's `ConnectionRefused`),
 else its message with the artifact's hash taken out. The operation is
 not part of it. The requests held back are counted, and `close()` says
@@ -136,18 +134,19 @@ any, after `run()` has drained every upload and prefetch.
    was materialized FROM remote earlier this run (prefetch or a
    sibling's read-through), the source flips to `'remote'` so
    provenance stays honest.
-2. If `policy.remoteRead` is off → miss. `prefetch` sits behind the
-   same gate: nothing is warmed from the remote either (item 641).
+2. If no remote may be read → miss. `prefetch` sits behind the
+   same gate: nothing is warmed from a remote either (item 641).
 3. `pullFromRemote(hash)` — shared with `prefetch` through the
-   in-flight map: `remote.get` → `local.ingest(body)` → re-read
-   local. `durationMs` from the wire rides the ingested entry; the
+   in-flight map: each readable remote's `get` in order, skipping one
+   a batch probe found without it, until a body ingests →
+   `local.ingest(body)` → re-read local. `durationMs` from the wire rides the ingested entry; the
    producing execution's `cpuMs` / `peakRssBytes` ride the artifact's
    own sidecar, so no wire needs to carry them.
 
 ## Write path
 
 1. `local.save(args)` — synchronous (honors its own local-write gate).
-2. If `policy.remoteWrite`: queue the PUT in the bounded background
+2. For each writable remote: queue the PUT in its bounded background
    pool with a file-backed `Blob` over the just-written local artifact
    (or, when local writes are disabled — `--cache-policy=local:,remote:rw` —
    bytes packed in memory NOW, while the outputs are still on disk).

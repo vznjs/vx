@@ -1,5 +1,5 @@
 // The cache layer CONTRACT and its records — what every cache implementation
-// honours (`Cache`, `LayeredCache`, `ChainedCache`, a plugin's remote layer) and
+// honours (`Cache`, `LayeredCache`, a plugin's remote layer) and
 // the shapes that cross it: the key input, entries, run-history rows, output
 // fingerprints, stats, prune options. No implementation lives here; the one
 // reference to `Cache` below is a type (the local handle a layer may wrap).
@@ -668,13 +668,6 @@ export interface CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
-    /**
-     * Set only by ChainedCache when an EARLIER layer in the chain already
-     * wrote this artifact to the same local handle: the local pack + write
-     * is skipped and only the layer's remote side acts. A layer with no
-     * remote side treats it as a full no-op.
-     */
-    skipLocalWrite?: boolean
     /**
      * Resolved `outputs.workspaceFiles` (absolute paths) + the root
      * they're relative to. Packed under `workspace-outputs/<rel>`.

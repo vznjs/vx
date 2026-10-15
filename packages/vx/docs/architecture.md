@@ -47,7 +47,7 @@ migration history live in
 | `config`       | single file `src/config.ts` | schema types + `defineProject`/`defineWorkspace`. Root-level: every other module consumes it                                                        |
 | `workspace`    | dir + `index.ts`            | discovery, config loaders, lockfile (`.vx/projects.lock.json`), package graph, filter DSL, affected, `computeNestedProjectDirs`, claimed root files |
 | `graph`        | dir + `index.ts`            | task-graph builder, two-tier scheduler, dependency-spec parser, `TaskNode`/`TaskOutcome`/`TaskStatus`                                               |
-| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `ChainedCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal      |
+| `cache`        | dir + `index.ts`            | `Cache`, `CacheLayer`, `LayeredCache`, `RemoteCacheLayer`, `CachePolicy`, input/output resolution. `archive.ts` stays internal                      |
 | `exec`         | dir + `index.ts`            | `runCommand`, `runPersistent`, sandbox runtime, env composition                                                                                     |
 | `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts, event bus, metrics queries                                                            |
 | `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                  |
@@ -582,16 +582,16 @@ The remote cache is **plugin-driven** — core keeps the seams only:
    A plugin never sees the local cache or the policy.
 2. `LayeredCache` owns everything wire-independent: policy gating, the
    in-flight de-dup, remote provenance, and the never-fail contract
-   (implementations THROW; every throw degrades to a cache miss via
-   `onRemoteError`).
+   (implementations THROW; every throw degrades to a cache miss and a
+   warning naming the remote's plugin).
 
 Reads try local first, then remote (hydrating local on remote hit);
 `run()` also fires a background **prefetch** pass over every
 stable-key task so remote latency overlaps execution — at most one
 GET per key. Writes go to local synchronously; the remote PUT is a
 fire-and-forget background upload drained before `cache.close()`, so
-upload latency never blocks the next task. Remote errors fire
-`onRemoteError` (logged) but never throw — no remote failure of any
+upload latency never blocks the next task. Remote errors are warned
+but never thrown — no remote failure of any
 kind may fail the run. `--dry` use a lightweight remote
 existence probe (`RemoteCacheLayer.has`) instead of `get` — planning
 never downloads or ingests artifacts.

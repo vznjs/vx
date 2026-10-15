@@ -6,7 +6,7 @@
 // the cache is free). Plugins read them by name (`ctx.cache.getRun`).
 
 import { xxh3hex } from '../util/index.js'
-import type { PluginCacheRemote } from './plugin-cache.js'
+import type { ResolvedRemote } from './remote-lane.js'
 import { scopedKey } from './scoped-cache.js'
 import { tarPackInto, tarSize } from './tar-stream.js'
 
@@ -24,7 +24,7 @@ export function runReadKeys(name: string, scope: string | undefined): string[] {
 }
 
 /** Whether some remote takes this run's writes: only then does core keep run bytes. */
-export function writesRunStore(remotes: readonly PluginCacheRemote[]): boolean {
+export function writesRunStore(remotes: readonly ResolvedRemote[]): boolean {
   return remotes.some((r) => r.write)
 }
 
@@ -34,7 +34,7 @@ export function writesRunStore(remotes: readonly PluginCacheRemote[]): boolean {
  * a run keeps here is a record, never its verdict.
  */
 export async function putRunEntry(
-  remotes: readonly PluginCacheRemote[],
+  remotes: readonly ResolvedRemote[],
   scope: string | undefined,
   name: string,
   bytes: Uint8Array,

@@ -4,12 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { edgesSource } from './helpers/plugin.js'
-import {
-  Cache,
-  FULL_CACHE_POLICY,
-  LayeredCache,
-  type RemoteCacheLayer,
-} from '../src/cache/index.js'
+import { Cache, FULL_CACHE_POLICY, type RemoteCacheLayer } from '../src/cache/index.js'
 import type { CacheLayer } from '../src/cache/index.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { prepareRun } from './helpers/orchestrator.js'
@@ -17,6 +12,7 @@ import { run } from './helpers/orchestrator.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
 import { shouldShortCircuit } from '../src/orchestrator/run.js'
 import { createHashCache } from '../src/orchestrator/task-hash.js'
+import { layeredOver } from './helpers/layered.js'
 
 interface Fixture {
   root: string
@@ -1351,7 +1347,7 @@ describe('local cache short-circuit', () => {
       put: () => Promise.resolve(),
     }
     try {
-      const layered = new LayeredCache(local, stubRemote)
+      const layered = layeredOver(local, stubRemote)
       expect(shouldShortCircuit(nodes, FULL_CACHE_POLICY, layered)).toBe(false)
       // Identical graph + policy with a plain local Cache → gate opens.
       expect(shouldShortCircuit(nodes, FULL_CACHE_POLICY, local)).toBe(true)

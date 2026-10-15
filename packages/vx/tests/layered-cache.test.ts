@@ -11,6 +11,7 @@ import { Cache } from '../src/cache/cache.js'
 import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.js'
 import type { InvocationRecord } from '../src/cache/index.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
+import { layeredOver } from './helpers/layered.js'
 
 /** A minimal invocation row: `recordRunBundle` is the only run-history write a layer takes. */
 function invocation(runId: string): InvocationRecord {
@@ -138,7 +139,7 @@ describe('LayeredCache', () => {
   })
 
   function makeLayered(opts?: { onRemoteError?: (e: Error) => void }): LayeredCache {
-    return new LayeredCache(local, remote.layer, {
+    return layeredOver(local, remote.layer, {
       onRemoteError:
         opts?.onRemoteError ??
         (() => {
@@ -281,7 +282,7 @@ describe('LayeredCache', () => {
       get: async () => ({ body: 'abc', durationMs: 1 }),
       put: async () => {},
     } as unknown as RemoteCacheLayer
-    const layered = new LayeredCache(local, shaped, { onRemoteError: (e) => errors.push(e) })
+    const layered = layeredOver(local, shaped, { onRemoteError: (e) => errors.push(e) })
     expect(await layered.get('h-shape', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
     expect(errors.map((e) => e.message)).toEqual([
       'download h-shape failed: remote cache layer returned an invalid result: get() resolved body is string (expected { body: Blob | Response, durationMs } or null) — a plugin bug, degraded to a miss',
@@ -301,7 +302,7 @@ describe('LayeredCache', () => {
       get: async () => ({ body: remote.store.get('h-old')!.slice(), durationMs: 1 }),
       put: async () => {},
     } as unknown as RemoteCacheLayer
-    const layered = new LayeredCache(local, old, { onRemoteError: (e) => errors.push(e) })
+    const layered = layeredOver(local, old, { onRemoteError: (e) => errors.push(e) })
     expect(await layered.get('h-old', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
     expect(errors.map((e) => e.message)).toEqual([
       'download h-old failed: remote cache layer returned an invalid result: get() resolved body is a Uint8Array (expected { body: Blob | Response, durationMs } or null) — a plugin bug, degraded to a miss',
@@ -356,7 +357,7 @@ describe('LayeredCache', () => {
         }),
         put: async () => {},
       } satisfies RemoteCacheLayer
-      const layered = new LayeredCache(local, cutting, { onRemoteError: (e) => errors.push(e) })
+      const layered = layeredOver(local, cutting, { onRemoteError: (e) => errors.push(e) })
       expect(await layered.get('h-cut', { taskId: 'pkg#build', command: 'tsc' })).toBeNull()
       expect(errors).toHaveLength(1)
       expect(await local.has('h-cut')).toBeNull()
@@ -372,7 +373,7 @@ describe('LayeredCache', () => {
       get: async () => null,
       put: async () => {},
     } as unknown as RemoteCacheLayer
-    const layered = new LayeredCache(local, shaped, { onRemoteError: (e) => errors.push(e) })
+    const layered = layeredOver(local, shaped, { onRemoteError: (e) => errors.push(e) })
     expect(await layered.remoteHasMany(['h-a', 'h-b'])).toBeNull()
     expect(errors.map((e) => e.message)).toEqual([
       'probe of 2 artifacts failed: remote cache layer returned an invalid result: hasMany() resolved an array (expected a Set of the hashes present, or null) — a plugin bug, degraded to a miss',
@@ -415,7 +416,7 @@ describe('LayeredCache', () => {
   })
 
   it('remoteHasMany() returns null when remote reads are disabled by policy', async () => {
-    const layered = new LayeredCache(local, remote.layer, {
+    const layered = layeredOver(local, remote.layer, {
       policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: true },
       onRemoteError: () => {},
     })
@@ -430,7 +431,7 @@ describe('LayeredCache', () => {
     // the prefetch pass, not only the lazy get, off the wire.
     await saveSample(makeLayered(), 'h-off')
     await wipeLocal()
-    const layered = new LayeredCache(local, remote.layer, {
+    const layered = layeredOver(local, remote.layer, {
       policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: true },
       onRemoteError: () => {},
     })
@@ -441,7 +442,7 @@ describe('LayeredCache', () => {
   it('get() with remote reads off is a plain local miss: no remote GET, null', async () => {
     await saveSample(makeLayered(), 'h-off')
     await wipeLocal()
-    const layered = new LayeredCache(local, remote.layer, {
+    const layered = layeredOver(local, remote.layer, {
       policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: true },
       onRemoteError: () => {},
     })
@@ -454,7 +455,7 @@ describe('LayeredCache', () => {
     // remote writes off must leave the upload pool idle, and the local
     // save still lands. Deleting the gate survived the whole core suite
     // (item 642).
-    const layered = new LayeredCache(local, remote.layer, {
+    const layered = layeredOver(local, remote.layer, {
       policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: false },
       onRemoteError: () => {},
     })
@@ -475,7 +476,7 @@ describe('LayeredCache', () => {
       read: true,
       write: false,
     })
-    const layered = new LayeredCache(writeless, remote.layer, {
+    const layered = layeredOver(writeless, remote.layer, {
       policy: { localRead: true, localWrite: false, remoteRead: true, remoteWrite: true },
       onRemoteError: (e) => errors.push(e),
     })
@@ -535,7 +536,7 @@ describe('LayeredCache', () => {
         await remote.layer.put(hash, body, meta)
       },
     }
-    const saver = new LayeredCache(local, layer, { onRemoteError: () => {} })
+    const saver = layeredOver(local, layer, { onRemoteError: () => {} })
     await saveSample(saver, 'h-meta')
     expect(metas).toEqual([{ durationMs: 5 }])
     await wipeLocal()
@@ -546,7 +547,7 @@ describe('LayeredCache', () => {
   it('has() with remote reads off never probes the remote', async () => {
     await saveSample(makeLayered(), 'h-probe')
     await wipeLocal()
-    const layered = new LayeredCache(local, remote.layer, {
+    const layered = layeredOver(local, remote.layer, {
       policy: { localRead: true, localWrite: true, remoteRead: false, remoteWrite: true },
       onRemoteError: () => {},
     })
@@ -556,7 +557,7 @@ describe('LayeredCache', () => {
   })
 
   it('remoteHasMany() reads a hasMany() that resolves undefined as no batch info', async () => {
-    const layered = new LayeredCache(
+    const layered = layeredOver(
       local,
       { ...remote.layer, hasMany: async () => undefined as unknown as Set<string> },
       { onRemoteError: () => {} },
@@ -589,7 +590,7 @@ describe('LayeredCache', () => {
   it('drainUploads() waits for an upload still running once the queue is empty', async () => {
     const gates = new Map<string, () => void>()
     const done: string[] = []
-    const layered = new LayeredCache(local, {
+    const layered = layeredOver(local, {
       ...remote.layer,
       async put(hash) {
         await new Promise<void>((r) => gates.set(hash, r))
@@ -873,7 +874,7 @@ describe('LayeredCache', () => {
       })
       const reads: string[] = []
       const errors: Error[] = []
-      const layered = new LayeredCache(
+      const layered = layeredOver(
         local,
         {
           ...remote.layer,
@@ -922,7 +923,7 @@ describe('LayeredCache', () => {
       write: false,
     })
     try {
-      const layered = new LayeredCache(writeless, remote.layer, { onRemoteError: () => {} })
+      const layered = layeredOver(writeless, remote.layer, { onRemoteError: () => {} })
       const outFile = path.join(projectDir, 'dist', 'packed.txt')
       await mkdir(path.dirname(outFile), { recursive: true })
       await writeFile(outFile, 'packed-in-memory')
@@ -967,7 +968,7 @@ describe('LayeredCache', () => {
         return Reflect.get(target, prop, receiver) as unknown
       },
     })
-    const layered = new LayeredCache(racy, remote.layer, { onRemoteError: () => {} })
+    const layered = layeredOver(racy, remote.layer, { onRemoteError: () => {} })
 
     const hit = await layered.get('h-src-race', { taskId: 'pkg#build', command: 'echo produced' })
     expect(hit).not.toBeNull()
@@ -1068,7 +1069,7 @@ describe('LayeredCache', () => {
         get: new Error('GET said 503'),
         put: new Error('PUT said 504'),
       }
-      const layered = new LayeredCache(
+      const layered = layeredOver(
         local,
         failing((call) => causes[call], ENDPOINT),
         { onRemoteError: (e) => errors.push(e) },
@@ -1094,7 +1095,7 @@ describe('LayeredCache', () => {
 
     it('one failure class is said once, and close() counts the requests held back', async () => {
       const errors: Error[] = []
-      const layered = new LayeredCache(
+      const layered = layeredOver(
         local,
         failing(() => new Error('Unable to connect'), ENDPOINT),
         { onRemoteError: (e) => errors.push(e) },
@@ -1119,7 +1120,7 @@ describe('LayeredCache', () => {
       const coded = (code: number, message: string): Error =>
         Object.assign(new Error(message), { code })
       const errors: Error[] = []
-      const layered = new LayeredCache(
+      const layered = layeredOver(
         local,
         failing((call, hash) => {
           if (call === 'has' && hash === 'h1') return coded(4, '4 DEADLINE_EXCEEDED: after 0.001s')
@@ -1143,7 +1144,7 @@ describe('LayeredCache', () => {
 
     it('a body of null is named, a thrown string is its own message, and an empty endpoint is none', async () => {
       const errors: Error[] = []
-      const layered = new LayeredCache(
+      const layered = layeredOver(
         local,
         {
           endpoint: '',
@@ -1170,7 +1171,7 @@ describe('LayeredCache', () => {
         return true
       })
       try {
-        await new LayeredCache(
+        await layeredOver(
           local,
           failing(() => new Error('down'), ENDPOINT),
         ).has('h1')
@@ -1183,7 +1184,7 @@ describe('LayeredCache', () => {
     it('the endpoint is printed without its credentials, query or fragment', async () => {
       const said = async (endpoint: string): Promise<string[]> => {
         const errors: Error[] = []
-        const layered = new LayeredCache(
+        const layered = layeredOver(
           local,
           failing(() => new Error('down'), endpoint),
           { onRemoteError: (e) => errors.push(e) },

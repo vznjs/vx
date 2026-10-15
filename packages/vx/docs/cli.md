@@ -3092,7 +3092,7 @@ Reads try local first, then remote (hydrating local on remote hit),
 with a background prefetch pass overlapping remote GETs with
 execution. Writes go to local immediately; the remote upload is a
 fire-and-forget background task drained at end of run — failures are
-logged via `onRemoteError` but never fail the build.
+warned but never fail the build.
 
 For any OTHER cache server (a Turbo-wire deployment, S3-direct, …),
 implement core's `RemoteCacheLayer` interface in a plugin's `cache`
