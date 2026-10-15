@@ -93,7 +93,7 @@ async function refusal(
   }
   expect(doc.ok).toBe(false)
   expect(doc.error.docs).toBe(`https://vznjs.github.io/vx/cli/#${doc.error.code.toLowerCase()}`)
-  expect(r.stderr).toMatch(/^(✗ )?vx/)
+  expect(r.stderr).toMatch(/^([✗›] )?vx/)
   expect(doc.error.message.length).toBeGreaterThan(0)
   return doc.error.code
 }

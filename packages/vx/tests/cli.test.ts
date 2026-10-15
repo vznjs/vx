@@ -2409,7 +2409,7 @@ describe('vx cache clean command', () => {
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     const code = await run(['cache', 'clean', '--older-than', '1s'])
     expect(code).toBe(0)
-    expect(stdout).toContain('Pruned 0 entries')
+    expect(stdout).toContain('nothing to free')
   })
 
   it('rejects unknown subcommand', async () => {

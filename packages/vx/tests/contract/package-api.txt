@@ -1152,6 +1152,7 @@ export interface ReachGraph {
 }
 == type RefusalParts (src/util/errors.ts)
 export interface RefusalParts {
+  readonly tone?: 'info'
   readonly headline: string
   readonly what?: readonly string[]
   readonly why?: string

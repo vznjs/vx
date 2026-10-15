@@ -483,9 +483,11 @@ describe('repoIdOf', () => {
     const info = vx('info')
     expect(info).toMatch(/cache entries:\s+1 \(/)
     expect(vx('cache', 'clean', '--max-size', '1B', '--dry-run')).toMatch(
-      /^0 Would prune 1 entry \(/,
+      /^0 › vx cache clean {2}would free [^\n]+\n\n {2}1 entry\n/,
     )
-    expect(vx('cache', 'clean', '--max-size', '1B')).toMatch(/^0 Pruned 1 entry \(/)
+    expect(vx('cache', 'clean', '--max-size', '1B')).toMatch(
+      /^0 ✓ vx cache clean {2}freed [^\n]+\n\n {2}1 entry\n/,
+    )
     rmSync(path.join(a.root, '.vx', 'cache'), { recursive: true })
     expect(await build(a)).toEqual({ status: 'success', restored: undefined })
   })

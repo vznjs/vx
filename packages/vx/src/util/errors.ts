@@ -28,6 +28,8 @@ export class UserError extends Error {
 
 /** A refusal in parts, as `ui.notice` draws it: one fact a line, why, and the fix. */
 export interface RefusalParts {
+  /** `info`: nothing is wrong, there is just nothing to show yet. Default `error`. */
+  readonly tone?: 'info'
   readonly headline: string
   readonly what?: readonly string[]
   readonly why?: string

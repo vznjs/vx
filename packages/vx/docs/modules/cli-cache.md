@@ -53,9 +53,8 @@ is refused too: `--max-size 10` would read as ten bytes and evict
 nearly everything; give a unit. Both policies may be combined:
 age-based eviction first, then LRU eviction if the total is still
 over the size cap. The prune also reaps orphaned artifacts (an archive
-with no index row) and stale temps, and says so — `Pruned 12 entries
-(1.4 GB freed), reaped 3 orphaned artifacts (…)`; a dry run prints
-`Would prune …` and `would reap`.
+with no index row) and stale temps, and says so — `✓ vx cache clean  freed 1.4 GB`, then `12 entries · 3
+orphaned artifacts`; a dry run says `would free 1.4 GB (dry run)`.
 
 The directory is the one a run would use — `--cache-dir`,
 `defineWorkspace({ cache: { dir } })` and a `config` plugin's edit of it,

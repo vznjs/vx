@@ -99,7 +99,6 @@ describe('vx paints only a run, and only as the env asks', () => {
         ['last', '--list'],
         ['run', 'build', '--all', '--dry'],
         ['run', 'build', '--all', '--graph'],
-        ['cache', 'clean', '--max-size', '1G', '--dry-run'],
         ['help'],
         ['version'],
       ]
@@ -107,6 +106,10 @@ describe('vx paints only a run, and only as the env asks', () => {
       expect(verbs.filter((v) => painted(v, { FORCE_COLOR: '1' })).map((v) => v.join(' '))).toEqual(
         [],
       )
+      // A verb drawn with the ui components paints as a run does: on when
+      // forced, plain into a pipe (log-design).
+      const clean = ['cache', 'clean', '--max-size', '1G', '--dry-run']
+      expect([painted(clean, {}), painted(clean, { FORCE_COLOR: '1' })]).toEqual([false, true])
     },
     TIMEOUT,
   )

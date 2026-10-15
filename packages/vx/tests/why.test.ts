@@ -743,9 +743,7 @@ describe('vx why in a workspace that never ran (E-39)', () => {
       const r = await vx(root, ['why', 'app#build'])
       expect({ code: r.code, err: r.err }).toEqual({
         code: 1,
-        err: noticed(
-          'vx why: no recorded runs for "app#build"; nothing has run here yet (vx run app#build, then vx why)\n',
-        ),
+        err: '› vx why  no runs of app#build yet\n\n  fix  vx run app#build\n',
       })
     } finally {
       await rm(root, { recursive: true, force: true })

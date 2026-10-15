@@ -79,8 +79,8 @@ describe('a reading verb makes nothing on disk', () => {
       const dry = await vx(root, ['cache', 'clean', '--max-size', '1G', '--dry-run'])
       const real = await vx(root, ['cache', 'clean', '--max-size', '1G'])
       expect([dry, real]).toEqual([
-        { code: 0, out: 'Would prune 0 entries (0 B)\n', err: '' },
-        { code: 0, out: 'Pruned 0 entries (0 B freed)\n', err: '' },
+        { code: 0, out: '› vx cache clean  nothing to free (dry run)\n', err: '' },
+        { code: 0, out: '› vx cache clean  nothing to free\n', err: '' },
       ])
       expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
     },
