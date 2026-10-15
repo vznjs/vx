@@ -143,6 +143,8 @@ export interface AffectedChanges {
   /** Project → its changed paths, relative to the project's directory. */
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  /** A whole project → the workspace-wide file that made it so (a workspace config, a claimed root file). */
+  wholeBy?: ReadonlyMap<string, string>
   /**
    * The changed paths that are nested repositories (a submodule, an
    * embedded repository), workspace-relative: each stands for every file
@@ -269,11 +271,17 @@ export async function affectedChanges(
   // itself, so an unclaimed one is a path like any other.
   //
   // Selection is not hashed, so widening it here changes no cache key.
-  const everything = (): AffectedChanges => {
+  const everything = (file: string): AffectedChanges => {
     const all = new Set(args.projects.map((p) => p.name))
-    return { projects: all, changed, paths: new Map(), whole: all }
+    const wholeBy = new Map([...all].map((n) => [n, file]))
+    return { projects: all, changed, paths: new Map(), whole: all, wholeBy }
   }
-  if (workspaceConfigChanged(changed)) return everything()
+  // The workspace config's plugins shape every project's resolved config,
+  // so its edit can re-key any task and selection cannot tell which (item
+  // 953). No key folds the file; selection is not hashed, so widening here
+  // changes no key.
+  const wsConfig = WORKSPACE_CONFIG_FILENAMES.find((n) => changed.includes(n))
+  if (wsConfig !== undefined) return everything(wsConfig)
   // Loading the workspace file costs an evaluation; only a changed ROOT
   // name can be claimed, so a diff inside the projects never loads it.
   let claims: FingerprintClaims | undefined
@@ -287,12 +295,13 @@ export async function affectedChanges(
     const lock = await bytesOrNull(path.join(args.workspaceRoot, 'bun.lock'))
     if (lock !== null) {
       const patches = new Set(bunPatchFiles(lock))
-      if (changed.some((p) => patches.has(p)) && (await loadClaims())?.files.has('bun.lock')) {
-        return everything()
+      const patch = changed.find((p) => patches.has(p))
+      if (patch !== undefined && (await loadClaims())?.files.has('bun.lock')) {
+        return everything(patch)
       }
     }
   }
-  const claimedOwned = new Set<string>()
+  const claimedOwned = new Map<string, string>()
   const rootNamesChanged = changed.filter((p) => !p.includes('/'))
   const claimed = rootNamesChanged.length > 0 ? await loadClaims() : undefined
   for (const file of rootNamesChanged) {
@@ -302,8 +311,8 @@ export async function affectedChanges(
       before: await gitBytesAt(args.workspaceRoot, base, file),
       after: await bytesOrNull(path.join(args.workspaceRoot, file)),
     })
-    if (answer === undefined) return everything()
-    for (const name of answer) claimedOwned.add(name)
+    if (answer === undefined) return everything(file)
+    for (const name of answer) if (!claimedOwned.has(name)) claimedOwned.set(name, file)
   }
 
   const realDirs = new Map(
@@ -312,7 +321,7 @@ export async function affectedChanges(
     ),
   )
   const paths = new Map<string, string[]>()
-  const whole = new Set<string>(claimedOwned)
+  const whole = new Set<string>(claimedOwned.keys())
   const owned = projectsContaining(
     args.workspaceRoot,
     changed,
@@ -330,7 +339,7 @@ export async function affectedChanges(
         }
       : undefined,
   )
-  for (const name of claimedOwned) owned.add(name)
+  for (const name of claimedOwned.keys()) owned.add(name)
 
   // A config that makes an existing directory a project took files from
   // the project above it.
@@ -367,6 +376,7 @@ export async function affectedChanges(
     changed,
     paths,
     whole,
+    ...(claimedOwned.size > 0 ? { wholeBy: claimedOwned } : {}),
     ...(nestedDirs.length > 0 ? { nested: nestedDirs } : {}),
   })
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
@@ -460,19 +470,6 @@ async function gitBlobsAt(
     at += size + 1
   }
   return blobs
-}
-
-/**
- * Whether `changed` holds the workspace config. Its plugins' `config` and
- * `project` stages shape every project's resolved config, so such an edit
- * can re-key any task, and selection cannot tell which: an edit that
- * changed every key selected nothing (item 953). No key folds the file
- * (its placement plugins must not split a cache between machines); a
- * stage it installs re-keys through the resolved configs instead.
- * Selection is not hashed, so widening here changes no key.
- */
-function workspaceConfigChanged(changed: readonly string[]): boolean {
-  return WORKSPACE_CONFIG_FILENAMES.some((n) => changed.includes(n))
 }
 
 /**

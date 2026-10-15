@@ -35,6 +35,7 @@ export interface AffectedChanges {
   changed: readonly string[] // workspace-relative changed paths
   paths: ReadonlyMap<string, readonly string[]> // project → its changed paths, project-relative
   whole: ReadonlySet<string> // reached whatever inputs say: lockfile claim, config import, nested repo
+  wholeBy?: ReadonlyMap<string, string> // a whole project → the workspace-wide file that made it so
   nested?: readonly string[] // changed nested repositories, workspace-relative: each stands for its files
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only

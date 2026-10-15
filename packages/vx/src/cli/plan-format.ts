@@ -118,9 +118,11 @@ function describeReason(r: AffectedReason): string {
           ? `a ^ edge passes changed package ${r.project}`
           : r.kind === 'input'
             ? `${r.file} changed (an input)`
-            : r.file !== undefined
-              ? `${r.file} changed (in its project)`
-              : 'its project changed as a whole'
+            : r.kind === 'workspace'
+              ? `${r.file} changed (workspace-wide)`
+              : r.file !== undefined
+                ? `${r.file} changed (in its project)`
+                : 'its project changed as a whole'
   return r.via === undefined ? cause : `${cause}, via ${r.via.join(' ← ')}`
 }
 
