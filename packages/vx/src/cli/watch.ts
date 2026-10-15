@@ -621,6 +621,19 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     }
   }
   const stale = (dir: string): boolean => armedAs.get(dir) !== inodeOf(dir)
+  /** The projects the workspace-wide arm names an event by. */
+  let wide: readonly ProjectMeta[] = []
+  // The deepest, as a nested project's file is its own.
+  const ownerOf = (abs: string): ProjectMeta | undefined => {
+    let best: ProjectMeta | undefined
+    for (const proj of wide)
+      if (
+        abs.startsWith(proj.dir + path.sep) &&
+        (best === undefined || proj.dir.length > best.dir.length)
+      )
+        best = proj
+    return best
+  }
   /** The root arm: recursive when workspace-wide or the one stream, else the root's own files only. */
   let rootArm: WatchHandle = CLOSED
   let dotVxArm: WatchHandle = CLOSED
@@ -695,7 +708,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               configImportFiles.includes(abs)
             )
               reread = true
-            trigger(`root ${filename}`, abs)
+            const owner = ownerOf(abs)
+            trigger(
+              owner === undefined
+                ? `root ${filename}`
+                : `${owner.name} ${path.relative(owner.dir, abs)}`,
+              abs,
+            )
           })
         : oneStream
           ? arm(workspaceRoot, true, streamEvent)
@@ -720,6 +739,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // (it would cover every project + node_modules + caches). On macOS one
   // recursive stream at the root stands for all of them (`oneStream`).
   const armMode = (watched: readonly ProjectMeta[]): void => {
+    wide = workspaceWide ? watched : []
     if (!workspaceWide) {
       streamed = oneStream ? toStream(watched) : []
       const inStream = new Set(streamed.map((s) => s.proj))
