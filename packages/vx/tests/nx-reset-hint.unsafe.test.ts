@@ -84,8 +84,8 @@ describe('the advice to drop the whole cache names a bare vx cache clean', () =>
     const line = r.stdout
       .toString()
       .split('\n')
-      .find((l) => l.startsWith('cache store:'))
+      .find((l) => l.startsWith('  cache store '))
     // HOME is the store's parent, so the row names it from `~`.
-    expect(line?.replace(/^cache store:\s+/, '').startsWith('~/.vx/')).toBe(true)
+    expect(line?.replace(/^  cache store\s+/, '').startsWith('~/.vx/')).toBe(true)
   })
 })

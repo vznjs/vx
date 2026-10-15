@@ -481,7 +481,7 @@ describe('repoIdOf', () => {
       return `${p.exitCode} ${p.stdout.toString()}`
     }
     const info = vx('info')
-    expect(info).toMatch(/cache entries:\s+1 \(/)
+    expect(info).toMatch(/cache entries\s+1 \(/)
     expect(vx('cache', 'clean', '--max-size', '1B', '--dry-run')).toMatch(
       /^0 › vx cache clean {2}would free [^\n]+\n\n {2}1 entry\n/,
     )

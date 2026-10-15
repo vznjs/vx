@@ -8,7 +8,7 @@ import { collectInfo, type FlakyTask, type InfoFacts } from '../orchestrator/ind
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 import { namedCacheDir, parseCacheDirFlag, warnToStderr } from './workspace-config.js'
 import { formatBytes } from './format.js'
-import { MIN_BUN } from '../util/index.js'
+import { detectColors, MIN_BUN, ui, type ColorSupport } from '../util/index.js'
 import { envName } from '../settings.js'
 
 interface InfoArgs {
@@ -55,12 +55,14 @@ export async function infoCmd(args: readonly string[]): Promise<number> {
     warn: warnToStderr,
   })
   process.stdout.write(
-    parsed.format === 'json' ? `${JSON.stringify(facts)}\n` : `${renderInfo(facts)}\n`,
+    parsed.format === 'json'
+      ? `${JSON.stringify(facts)}\n`
+      : `${renderInfo(facts, detectColors(process.stdout))}\n`,
   )
   return 0
 }
 
-export function renderInfo(f: InfoFacts): string {
+export function renderInfo(f: InfoFacts, colors: ColorSupport = { enabled: false }): string {
   const rows: [string, string][] = [
     [
       'vx',
@@ -122,8 +124,7 @@ export function renderInfo(f: InfoFacts): string {
     ['sandbox', describeSandbox(f.sandbox)],
     ['projects lock', f.lockfile ? 'yes' : 'no'],
   ]
-  const labelW = Math.max(...rows.map(([label]) => label.length))
-  return rows.map(([label, value]) => `${`${label}:`.padEnd(labelW + 1)} ${value}`).join('\n')
+  return ui.report('vx info', rows).lines(colors).join('\n')
 }
 
 /** `812 (1.2 GB)`, or against `cacheRetention.maxSize`: `812 (1.2 GB of 10 GB, 12%)`. */

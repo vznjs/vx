@@ -429,10 +429,10 @@ describe('vx show under a `project` plugin (e2e)', () => {
       // one a run would see, not the number of config files.
       const info = await vx(root, ['info'])
       expect(info.code).toBe(0)
-      expect(info.out).toMatch(/^projects: +2 \(4 tasks\)/m)
+      expect(info.out).toMatch(/^  projects +2 \(4 tasks\)/m)
       // The doctor names each plugin and the seams it fills, in pipeline
       // order.
-      expect(info.out).toMatch(/^plugins: +2 — vx-test-packages \(discover\); gen \(project\)$/m)
+      expect(info.out).toMatch(/^  plugins +2 — vx-test-packages \(discover\); gen \(project\)$/m)
     },
     TIMEOUT,
   )
@@ -455,30 +455,30 @@ describe('vx info (e2e)', () => {
       // Labels are padded to the widest one; pin the row, not the width.
       const row = (label: string, value: string): RegExp =>
         new RegExp(
-          `^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: +${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+          `^  ${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}  +${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
           'm',
         )
       expect(r.out).toMatch(row('vx', VERSION))
       expect(r.out).toContain(Bun.version)
-      expect(r.out).toContain('git:')
+      expect(r.out).toContain('  git ')
       // The status-cache row names the git settings whichever way they are set.
       expect(r.out).toMatch(
-        /^git status cache: +(fsmonitor \+ untrackedCache on|core\.(fsmonitor|untrackedCache).* off)$/m,
+        /^  git status cache +(fsmonitor \+ untrackedCache on|core\.(fsmonitor|untrackedCache).* off)$/m,
       )
       // macOS realpaths /var → /private/var inside the child; match on
       // the unique tmpdir basename rather than the absolute prefix.
-      expect(r.out).toMatch(/^workspace root: +\S/m)
+      expect(r.out).toMatch(/^  workspace root +\S/m)
       expect(r.out).toContain(path.basename(root))
       expect(r.out).toMatch(row('projects', '2 (4 tasks)'))
       expect(r.out).toMatch(row('plugins', '1 — vx-test-packages (discover)'))
       // The worker count a run defaults to, with its source, and the memory
       // a packing policy budgets — the two numbers a container hides.
-      expect(r.out).toMatch(/^workers: +[1-9]\d* — (the CPU count|cgroup CPU quota )/m)
-      expect(r.out).toMatch(/^memory: +\d/m)
+      expect(r.out).toMatch(/^  workers +[1-9]\d* — (the CPU count|cgroup CPU quota )/m)
+      expect(r.out).toMatch(/^  memory +\d/m)
       // The runtime probe's verdict for this host, with the declared count:
       // the fixture declares none, so an unavailable runtime fails nothing.
       expect(r.out).toMatch(
-        /^sandbox: +(available \(0 tasks declare exec\.sandbox\)|unavailable — .+; 0 tasks declare exec\.sandbox)$/m,
+        /^  sandbox +(available \(0 tasks declare exec\.sandbox\)|unavailable — .+; 0 tasks declare exec\.sandbox)$/m,
       )
       const json = await vx(root, ['info', '--format=json'])
       expect(json.code).toBe(0)
@@ -490,7 +490,7 @@ describe('vx info (e2e)', () => {
       expect(facts.workers.count).toBeLessThanOrEqual(facts.workers.cores)
       expect(['cores', 'cgroup']).toContain(facts.workers.source)
       expect(facts.memory.usableBytes).toBeLessThanOrEqual(facts.memory.totalBytes)
-      expect(r.out).toContain('cache dir:')
+      expect(r.out).toContain('  cache dir ')
       // The constants themselves, not a copy of them: a bump shows up here.
       expect(r.out).toMatch(
         row('cache versions', `keys ${CACHE_VERSION} · index schema ${SCHEMA_VERSION}`),
@@ -501,7 +501,7 @@ describe('vx info (e2e)', () => {
       expect(r.out).toMatch(row('projects lock', 'yes'))
       // Control for the orphans row below: nothing on disk the index does
       // not know, so the doctor says nothing about it.
-      expect(r.out).not.toContain('orphans:')
+      expect(r.out).not.toContain('  orphans ')
     },
     TIMEOUT,
   )
@@ -563,7 +563,7 @@ describe('vx info (e2e)', () => {
         const r = await vx(root, ['info'])
         expect(r.code).toBe(0)
         expect(r.out).toMatch(
-          /^orphans: +1 artifact \(2\.0 KB\) the index does not know — `vx cache clean` reaps them$/m,
+          /^  orphans +1 artifact \(2\.0 KB\) the index does not know — `vx cache clean` reaps them$/m,
         )
       } finally {
         await rm(aged, { force: true })
@@ -612,7 +612,7 @@ describe('vx info (e2e)', () => {
       )
       // Same facts either way: the pretty rows render this object.
       const pretty = await vx(root, ['info'])
-      expect(pretty.out).toContain(`cache entries:`)
+      expect(pretty.out).toContain(`  cache entries `)
       expect(pretty.out).toContain(facts.cacheDir.split(path.sep).slice(-2).join(path.sep))
       // The value forms are checked, not the spelling.
       expect((await vx(root, ['info', '--format=yaml'])).code).toBe(1)
@@ -671,7 +671,7 @@ describe('vx info — counts from the lock, for every number', () => {
       ])
       expect(facts).not.toHaveProperty('configErrors')
       const pretty = await vx(root, ['info'])
-      expect(pretty.out).toMatch(/^projects: +0 \(0 tasks\)$/m)
+      expect(pretty.out).toMatch(/^  projects +0 \(0 tasks\)$/m)
       expect(pretty.out).not.toContain('config errors')
     },
     TIMEOUT,
@@ -800,31 +800,33 @@ describe('vx info — the rendered rows', () => {
         'cache.policy': { value: 'local:rw', source: 'workspace' },
       },
     })
-    expect(out.split('\n').filter((l) => l.startsWith('settings:'))).toEqual([
-      'settings:         run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (.vx/workspace)',
+    expect(out.split('\n').filter((l) => l.startsWith('  settings '))).toEqual([
+      '  settings          run.timeout 30m (VX_RUN_TIMEOUT), cache.policy local:rw (.vx/workspace)',
     ])
   })
 
   it('a healthy workspace: one aligned column, no optional rows', () => {
     expect(renderInfo(healthy)).toBe(
       [
-        'vx:               0.1.0 (/usr/local/bin/vx)',
-        'bun:              1.4.2',
-        'git:              2.43.0',
-        'git status cache: fsmonitor + untrackedCache on',
-        'workspace root:   /w',
-        'projects:         3 (1 task)',
-        'plugins:          none',
-        'workers:          4 — the CPU count',
-        'memory:           16 GB',
-        "cache dir:        /w/.vx (0 B, this workspace's run history)",
-        "cache store:      /home/u/.vx/3f2a9c1e7b4d5a60/cache (0 B, shared by this repo's checkouts)",
-        'cache versions:   keys vx-cache-v39 · index schema v28',
-        'cache entries:    0 (0 B)',
-        'task runs (24h):  5 (2 cache hits: 1 up-to-date, 1 restored)',
-        'flaky tasks:      none',
-        'sandbox:          available (1 task declares exec.sandbox)',
-        'projects lock:    yes',
+        '',
+        '─ vx info ────────────────────────────────────────────────────',
+        '  vx                0.1.0 (/usr/local/bin/vx)',
+        '  bun               1.4.2',
+        '  git               2.43.0',
+        '  git status cache  fsmonitor + untrackedCache on',
+        '  workspace root    /w',
+        '  projects          3 (1 task)',
+        '  plugins           none',
+        '  workers           4 — the CPU count',
+        '  memory            16 GB',
+        "  cache dir         /w/.vx (0 B, this workspace's run history)",
+        "  cache store       /home/u/.vx/3f2a9c1e7b4d5a60/cache (0 B, shared by this repo's checkouts)",
+        '  cache versions    keys vx-cache-v39 · index schema v28',
+        '  cache entries     0 (0 B)',
+        '  task runs (24h)   5 (2 cache hits: 1 up-to-date, 1 restored)',
+        '  flaky tasks       none',
+        '  sandbox           available (1 task declares exec.sandbox)',
+        '  projects lock     yes',
       ].join('\n'),
     )
   })
@@ -861,25 +863,27 @@ describe('vx info — the rendered rows', () => {
     }
     expect(renderInfo(degraded)).toBe(
       [
-        'vx:               0.1.0 (/usr/local/bin/vx)',
-        'bun:              1.3.11 — unsupported, vx needs >= 1.4.0; answers may be wrong',
-        'git:              (not found)',
-        'git status cache: (unknown)',
-        'workspace root:   /w',
-        'projects:         2 (0 tasks)',
-        'plugins:          2 — p (no seams); q (executor, cache)',
-        'workers:          8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
-        'memory:           2.0 GB usable — cgroup limit; the machine has 8.0 GB',
-        "cache dir:        /w/.vx (0 B, the entries and this workspace's run history)",
-        'cache store:      none: the cache dir holds the entries',
-        'cache versions:   keys vx-cache-v39 · index schema v28',
-        'cache entries:    3 (3.0 GB of 10 GB, 30%)',
-        'cache retention:  each run evicts entries unused for 30d, and the oldest entries past 10G',
-        'orphans:          1 artifact (512 B) the index does not know — `vx cache clean` reaps them',
-        'task runs (24h):  0 (0 cache hits)',
-        'flaky tasks:      2 — a#test (3 of 7 runs failed on unchanged inputs); b#e2e (1 of 4 runs failed)',
-        'sandbox:          unavailable — bwrap missing; 2 tasks declare exec.sandbox and will fail',
-        'projects lock:    no',
+        '',
+        '─ vx info ────────────────────────────────────────────────────',
+        '  vx                0.1.0 (/usr/local/bin/vx)',
+        '  bun               1.3.11 — unsupported, vx needs >= 1.4.0; answers may be wrong',
+        '  git               (not found)',
+        '  git status cache  (unknown)',
+        '  workspace root    /w',
+        '  projects          2 (0 tasks)',
+        '  plugins           2 — p (no seams); q (executor, cache)',
+        '  workers           8 — .vx/workspace.ts (4 cores, cgroup CPU quota 2)',
+        '  memory            2.0 GB usable — cgroup limit; the machine has 8.0 GB',
+        "  cache dir         /w/.vx (0 B, the entries and this workspace's run history)",
+        '  cache store       none: the cache dir holds the entries',
+        '  cache versions    keys vx-cache-v39 · index schema v28',
+        '  cache entries     3 (3.0 GB of 10 GB, 30%)',
+        '  cache retention   each run evicts entries unused for 30d, and the oldest entries past 10G',
+        '  orphans           1 artifact (512 B) the index does not know — `vx cache clean` reaps them',
+        '  task runs (24h)   0 (0 cache hits)',
+        '  flaky tasks       2 — a#test (3 of 7 runs failed on unchanged inputs); b#e2e (1 of 4 runs failed)',
+        '  sandbox           unavailable — bwrap missing; 2 tasks declare exec.sandbox and will fail',
+        '  projects lock     no',
       ].join('\n'),
     )
   })
@@ -893,13 +897,13 @@ describe('vx info — the rendered rows', () => {
       cacheStore: path.join(home, '.vx', 'id', 'cache'),
       cacheRetention: { maxSize: '1G', maxBytes: GB },
     }).split('\n')
-    expect(out.filter((l) => /^(workspace root|cache |cache retention)/.test(l))).toEqual([
-      'workspace root:   ~/w',
-      "cache dir:        ~/w/.vx (0 B, this workspace's run history)",
-      "cache store:      ~/.vx/id/cache (0 B, shared by this repo's checkouts)",
-      'cache versions:   keys vx-cache-v39 · index schema v28',
-      'cache entries:    0 (0 B of 1.0 GB, 0%)',
-      'cache retention:  each run evicts the oldest entries past 1G',
+    expect(out.filter((l) => /^ {2}(workspace root|cache |cache retention)/.test(l))).toEqual([
+      '  workspace root    ~/w',
+      "  cache dir         ~/w/.vx (0 B, this workspace's run history)",
+      "  cache store       ~/.vx/id/cache (0 B, shared by this repo's checkouts)",
+      '  cache versions    keys vx-cache-v39 · index schema v28',
+      '  cache entries     0 (0 B of 1.0 GB, 0%)',
+      '  cache retention   each run evicts the oldest entries past 1G',
     ])
   })
 
@@ -910,9 +914,9 @@ describe('vx info — the rendered rows', () => {
       handedOffFrom: '/usr/local/bin/vx',
     })
       .split('\n')
-      .find((l) => l.startsWith('vx:'))
+      .find((l) => l.startsWith('  vx '))
     expect(vx).toBe(
-      'vx:               0.1.0 (/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from /usr/local/bin/vx)',
+      '  vx                0.1.0 (/repo/node_modules/@vzn/vx-linux-x64/vx, handed off from /usr/local/bin/vx)',
     )
   })
 
@@ -920,31 +924,31 @@ describe('vx info — the rendered rows', () => {
     const row = (f: InfoFacts, label: string): string | undefined =>
       renderInfo(f)
         .split('\n')
-        .find((l) => l.startsWith(`${label}:`))
+        .find((l) => l.startsWith(`  ${label} `))
     expect(
       row(
         { ...healthy, gitStatusCache: { fsmonitor: false, untrackedCache: true } },
         'git status cache',
       ),
-    ).toBe('git status cache: core.fsmonitor off')
+    ).toBe('  git status cache  core.fsmonitor off')
     expect(
       row(
         { ...healthy, gitStatusCache: { fsmonitor: true, untrackedCache: false } },
         'git status cache',
       ),
-    ).toBe('git status cache: core.untrackedCache off')
+    ).toBe('  git status cache  core.untrackedCache off')
     expect(
       row(
         { ...healthy, gitStatusCache: { fsmonitor: false, untrackedCache: false } },
         'git status cache',
       ),
-    ).toBe('git status cache: core.fsmonitor, core.untrackedCache off')
+    ).toBe('  git status cache  core.fsmonitor, core.untrackedCache off')
     expect(
       row(
         { ...healthy, sandbox: { available: false, reason: 'root', declared: 0, untraced: null } },
         'sandbox',
       ),
-    ).toBe('sandbox:          unavailable — root; 0 tasks declare exec.sandbox')
+    ).toBe('  sandbox           unavailable — root; 0 tasks declare exec.sandbox')
     // B-51's lead: an available sandbox that cannot report its denied reads
     // says why, beside the count.
     expect(
@@ -956,7 +960,7 @@ describe('vx info — the rendered rows', () => {
         'sandbox',
       ),
     ).toBe(
-      'sandbox:          available (1 task declares exec.sandbox), untraced — strace is not on PATH, so the reads it denies go unreported',
+      '  sandbox           available (1 task declares exec.sandbox), untraced — strace is not on PATH, so the reads it denies go unreported',
     )
   })
 })

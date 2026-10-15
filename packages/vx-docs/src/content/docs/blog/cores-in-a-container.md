@@ -54,8 +54,8 @@ On macOS there are no cgroups, so the machine's numbers stand.
 
 ```sh frame="terminal"
 $ vx info
-workers:          2 — cgroup CPU quota 2 of 32 cores
-memory:           4 GB usable — cgroup limit; the machine has 128 GB
+  workers           2 — cgroup CPU quota 2 of 32 cores
+  memory            4 GB usable — cgroup limit; the machine has 128 GB
 ```
 
 On a laptop the same line reads `8 — the CPU count`.
