@@ -1,7 +1,8 @@
 // A run explorer can be built on the plugin API alone (spec
-// org/product/run-explorer-spec.md): on CI a plugin keeps each task's log
-// and what a failed task left, under its own cache entries, with a manifest
-// named by the run id; its verb reads them back from the remote on a
+// org/product/run-explorer-spec.md): a CI run that writes the remote keeps
+// a failed task's log and outputs and an uncached task's log (core does,
+// under run names), a plugin writes its own manifest from the report its
+// teardown gets, and its verb reads all of it back from the remote on a
 // machine with no local cache.
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -23,49 +24,21 @@ afterEach(() => {
 const RECORDER = pluginSource(
   'org/recorder',
   `(() => {
-    let finish
-    const enc = (s) => new TextEncoder().encode(s)
+    let ctx
     return {
-      setup(ctx) {
-        finish = undefined
-        if (!ctx.ci) return
-        const logs = new Map()
-        const done = []
-        const append = (node, chunk) => logs.set(node.id, (logs.get(node.id) ?? '') + chunk)
-        ctx.on('onTaskStdout', append)
-        ctx.on('onTaskStderr', append)
-        ctx.on('onTaskComplete', (node, outcome) => {
-          done.push({ node, outcome, outputs: outcome.status === 'failed' ? ctx.outputsOf(node) : undefined })
-        })
-        finish = async () => {
-          const tasks = []
-          for (const { node, outcome, outputs } of done) {
-            const task = { id: node.id, status: outcome.status, log: 'log/' + ctx.runId + '/' + node.id }
-            await ctx.cache.put(task.log, enc(logs.get(node.id) ?? ''))
-            if (outputs) {
-              task.outputs = []
-              for (const rel of await outputs) {
-                const name = 'out/' + ctx.runId + '/' + rel
-                await ctx.cache.put(name, await Bun.file(ctx.workspaceRoot + '/' + rel).bytes())
-                task.outputs.push({ path: rel, name })
-              }
-            }
-            tasks.push(task)
-          }
-          const manifest = { runId: ctx.runId, commit: ctx.commit, ci: ctx.ciRun, tasks }
-          await ctx.cache.put('run/' + ctx.runId, enc(JSON.stringify(manifest)))
-          ctx.warn('run ' + ctx.runId)
-        }
+      setup(c) { ctx = c },
+      async teardown(run) {
+        if (run === undefined || !run.tasks.some((t) => t.log || t.outputs)) return
+        await ctx.cache.put('run/' + run.runId, new TextEncoder().encode(JSON.stringify(run)))
+        ctx.warn('run ' + run.runId)
       },
-      async teardown() { await finish?.() },
-      commands: { 'show-run': { description: 'print a run', async run([id], ctx) {
-        const dec = (b) => b && new TextDecoder().decode(b)
-        const manifest = JSON.parse(dec(await ctx.cache.get('run/' + id)))
-        for (const t of manifest.tasks) {
-          t.log = dec(await ctx.cache.get(t.log))
-          for (const o of t.outputs ?? []) o.bytes = dec(await ctx.cache.get(o.name))
+      commands: { 'show-run': { description: 'print a run', async run([id], c) {
+        const run = JSON.parse(new TextDecoder().decode(await c.cache.get('run/' + id)))
+        for (const t of run.tasks) {
+          if (t.log) t.log = new TextDecoder().decode(await c.cache.getRun(t.log))
+          if (t.outputs) t.outputs = await c.cache.getRun(t.outputs)
         }
-        globalThis.__vxShown = manifest
+        globalThis.__vxShown = run
         return 0
       } } },
     }
@@ -81,7 +54,7 @@ const WIRE = pluginSource(
     }) }`,
 )
 
-it("a plugin records a CI run's logs and failed outputs, and its verb reads them from the remote", async () => {
+it("core keeps a CI run's logs and failed outputs, a plugin its manifest, and a verb reads both from the remote", async () => {
   root = realpathSync(mkdtempSync(path.join(tmpdir(), 'vx-run-record-')))
   await Bun.write(
     path.join(root, 'lib/vx.config.mjs'),
@@ -95,6 +68,14 @@ it("a plugin records a CI run's logs and failed outputs, and its verb reads them
     path.join(root, 'docs/vx.config.mjs'),
     `export default { tasks: { test: { exec: { command: 'echo links ok' } } } }`,
   )
+  await Bun.write(
+    path.join(root, 'gen/vx.config.mjs'),
+    `export default { tasks: { build: {
+      exec: { command: 'echo generated' },
+      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+    } } }`,
+  )
+  await Bun.write(path.join(root, 'gen/src/i.js'), 'x')
   await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([WIRE, RECORDER]))
   gitInitCommit(root)
   const box = globalThis as unknown as { __vxWire: Map<string, Uint8Array>; __vxShown?: unknown }
@@ -114,7 +95,13 @@ it("a plugin records a CI run's logs and failed outputs, and its verb reads them
     for (const k of CI_VARS) delete process.env[k]
     if (ci) process.env['CI'] = '1'
     try {
-      return await run({ cwd: root, tasks: ['test'], handleSignals: false, log: quiet })
+      return await run({
+        cwd: root,
+        tasks: ci ? ['test', 'build'] : ['test'],
+        handleSignals: false,
+        log: quiet,
+        ...(ci ? {} : { remoteReadOnlyByDefault: true }),
+      })
     } finally {
       for (const [k, v] of saved) {
         if (v === undefined) delete process.env[k]
@@ -131,23 +118,21 @@ it("a plugin records a CI run's logs and failed outputs, and its verb reads them
   rmSync(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
   process.chdir(root)
   expect(await cli(['show-run', runId])).toBe(0)
-  expect(box.__vxShown).toMatchObject({
-    runId,
-    ci: { ci: true },
-    tasks: expect.arrayContaining([
-      { id: 'docs#test', status: 'success', log: 'links ok\n' },
-      {
-        id: 'lib#test',
-        status: 'failed',
-        log: '1 failing\n',
-        outputs: [
-          {
-            path: 'lib/reports/junit.xml',
-            name: `out/${runId}/lib/reports/junit.xml`,
-            bytes: 'boom\n',
-          },
-        ],
-      },
-    ]),
-  })
+  const shown = box.__vxShown as {
+    runId: string
+    ok: boolean
+    ciRun: { ci: boolean }
+    tasks: { id: string; status: string; key?: string; log?: string; outputs?: Uint8Array }[]
+  }
+  const task = (id: string) => shown.tasks.find((t) => t.id === id)
+  expect([shown.runId, shown.ok, shown.ciRun.ci]).toEqual([runId, false, true])
+  expect(task('docs#test')).toMatchObject({ status: 'success', log: 'links ok\n' })
+  expect(task('lib#test')).toMatchObject({ status: 'failed', log: '1 failing\n' })
+  // A task that saved an entry: its log is the entry's, core keeps no copy.
+  expect(task('gen#build')).toMatchObject({ status: 'success', key: expect.any(String) })
+  expect(task('gen#build')).not.toHaveProperty('log')
+  const tar = path.join(root, 'out.tar')
+  await Bun.write(tar, task('lib#test')!.outputs!)
+  const file = Bun.spawnSync(['tar', '-xOf', tar, 'lib/reports/junit.xml'])
+  expect(file.stdout.toString()).toBe('boom\n')
 }, 30_000)

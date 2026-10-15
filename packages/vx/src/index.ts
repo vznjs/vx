@@ -174,6 +174,8 @@ export type {
   DiscoverContext,
   DiscoveredProject,
   PluginSetupContext,
+  RunReport,
+  RunReportTask,
   PluginHookName,
   PluginHookHandlers,
   RunStartInfo,

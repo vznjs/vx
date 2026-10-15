@@ -142,6 +142,7 @@ async function summarizeJson(): Promise<unknown> {
     sandboxFix: { read: ['x'], inputs: ['x'] },
     inputMoved: 'src/a.ts',
     failedOutput: 'boom\n',
+    runLog: 'boom\n',
     queuedMs: 2,
     inputFiles: 1,
     artifactBytes: 3,

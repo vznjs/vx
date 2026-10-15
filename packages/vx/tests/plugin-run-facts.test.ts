@@ -1,6 +1,7 @@
-// What a plugin learns about its run in `setup`: the run id its history rows
-// carry, the commit, the CI provider's facts, and the files a task's declared
-// outputs match on disk, a failed task's included (core saves none of those).
+// What a finished run hands each plugin's teardown: the run id its history
+// rows carry, the commit, the CI provider's facts and every task with its
+// key. With no remote taking the run's writes core keeps no bytes, so no
+// task names a log or outputs.
 
 import { Database } from 'bun:sqlite'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -17,13 +18,13 @@ afterEach(() => {
   if (root !== '') rmSync(root, { recursive: true, force: true })
 })
 
-it('setup carries the run id, commit, CI facts and a task outputs reader', async () => {
+it('teardown gets the run report: its facts and every task', async () => {
   root = mkdtempSync(path.join(tmpdir(), 'vx-run-facts-'))
   await Bun.write(
     path.join(root, 'app/vx.config.mjs'),
     `export default { tasks: {
       build: {
-        exec: { command: 'mkdir -p dist && echo partial > dist/a.js && echo half > dist/b.js && exit 3' },
+        exec: { command: 'exit 3' },
         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
       },
     } }`,
@@ -34,19 +35,7 @@ it('setup carries the run id, commit, CI facts and a task outputs reader', async
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
     localWorkspaceSource([
-      pluginSource(
-        'org/facts',
-        `{ setup(ctx) {
-             const f = globalThis.__vxFacts
-             f.runId = ctx.runId
-             f.commit = ctx.commit
-             f.provider = ctx.ciRun.provider
-             f.job = ctx.ciRun.job
-             ctx.on('onTaskComplete', (node, outcome) => {
-               f.done = ctx.outputsOf(node).then((files) => { f.outputs = [outcome.status, files] })
-             })
-           } }`,
-      ),
+      pluginSource('org/facts', `{ teardown(run) { globalThis.__vxFacts.run = run } }`),
     ]),
   )
   gitInitCommit(root)
@@ -67,15 +56,21 @@ it('setup carries the run id, commit, CI facts and a task outputs reader', async
     }
   }
   expect(summary.ok).toBe(false)
-  await box.__vxFacts['done']
   const db = new Database(path.join(root, '.vx/cache/cache.db'), { readonly: true })
   const row = db.query('SELECT run_id FROM invocations').get() as { run_id: string }
   db.close()
-  expect(box.__vxFacts).toMatchObject({
+  expect(box.__vxFacts['run']).toEqual({
     runId: row.run_id,
     commit: head,
-    provider: 'github',
-    job: 'test',
-    outputs: ['failed', ['app/dist/a.js', 'app/dist/b.js']],
+    ciRun: expect.objectContaining({ ci: true, provider: 'github', job: 'test' }),
+    ok: false,
+    tasks: [
+      {
+        id: 'app#build',
+        status: 'failed',
+        durationMs: expect.any(Number),
+        key: expect.any(String),
+      },
+    ],
   })
 })

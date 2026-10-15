@@ -19,7 +19,7 @@ import {
 } from '../cache/index.js'
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
-import type { TaskNode, TaskOutcome } from '../graph/index.js'
+import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
 import { maskedLine, nearest, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, RunStartInfo } from './events.js'
@@ -234,8 +234,44 @@ export interface VxPlugin {
    */
   setup?(ctx: PluginSetupContext): void | Promise<void>
 
-  /** Optional teardown at end-of-run (flush a sink, close a socket). Errors are logged, never thrown. */
-  teardown?(): void | Promise<void>
+  /**
+   * Optional teardown at end-of-run (flush a sink, close a socket). Errors
+   * are logged, never thrown. A run that ran to its end passes its
+   * `RunReport`; every other exit (a refused setup, a stop) passes none.
+   */
+  teardown?(run?: RunReport): void | Promise<void>
+}
+
+/**
+ * What a finished run hands each plugin's `teardown`: its facts and every
+ * task, with the names core kept the task's bytes under. Core keeps them
+ * only when a remote takes the run's writes (CI by default): a failed
+ * task's log and the files its outputs left, an uncached task's log. Read
+ * them with `ctx.cache.getRun(name)`. Core keeps no manifest of its own; a
+ * plugin that wants one writes it from here (`ctx.cache.put`).
+ */
+export interface RunReport {
+  /** The `run_id` the run's history rows and telemetry carry. */
+  readonly runId: string
+  /** `HEAD`'s commit, null outside a git worktree. */
+  readonly commit: string | null
+  /** What the CI provider says about this run: provider, run URL, pipeline, job, attempt. */
+  readonly ciRun: CiContext
+  readonly ok: boolean
+  /** Every task the run decided, in completion order; group tasks are left out. */
+  readonly tasks: readonly RunReportTask[]
+}
+
+export interface RunReportTask {
+  readonly id: string
+  readonly status: TaskStatus
+  readonly durationMs: number
+  /** The task's cache key, when one was computed. */
+  readonly key?: string
+  /** Its output (both streams, secrets masked), when core kept it: `ctx.cache.getRun(log)`. */
+  readonly log?: string
+  /** A tar of the files its declared outputs left, when core kept it: `ctx.cache.getRun(outputs)`. */
+  readonly outputs?: string
 }
 
 /** Shared, read-only context every capability factory receives. */
@@ -254,19 +290,6 @@ export interface PluginSetupContext extends BaseContext {
   readonly ci: boolean
   /** The run's branch (`currentBranch`): `run.branch`, else git's, else the CI provider's. */
   readonly branch: string | null
-  /** This run's id: the `run_id` its history rows and telemetry carry. */
-  readonly runId: string
-  /** `HEAD`'s commit, null outside a git worktree. */
-  readonly commit: string | null
-  /** What the CI provider says about this run: provider, run URL, pipeline, job, attempt. */
-  readonly ciRun: CiContext
-  /**
-   * The files a task's declared outputs match on disk now, workspace-relative
-   * and sorted: `outputs.files` in its project, `outputs.workspaceFiles` from
-   * the root. A failed task's are what it left behind; core saves none of
-   * them. Globbed on each call, so call it only for the tasks you need.
-   */
-  outputsOf(node: TaskNode): Promise<readonly string[]>
   /**
    * Subscribe a lifecycle handler; it leaves with the run. A throw or a
    * rejection warns once and switches the plugin's handlers off for the run.
@@ -665,14 +688,6 @@ export interface InstallPluginsArgs {
   ci?: boolean
   /** Default null. */
   branch?: string | null
-  /** Default `''`. */
-  runId?: string
-  /** Default null. */
-  commit?: string | null
-  /** Default: not on CI. */
-  ciRun?: CiContext
-  /** Default: no task has outputs. */
-  outputsOf?: (node: TaskNode) => Promise<readonly string[]>
 }
 
 /**
@@ -732,10 +747,6 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       cache: args.cache?.(plugin.name) ?? absentPluginCache,
       ci: args.ci ?? false,
       branch: args.branch ?? null,
-      runId: args.runId ?? '',
-      commit: args.commit ?? null,
-      ciRun: args.ciRun ?? { ci: false, provider: null },
-      outputsOf: args.outputsOf ?? (async () => []),
       // A subscription made past the hooks leaves with the run like a
       // hook's does: the bus can outlive the run (`RunOptions.bus`), and
       // one left behind hears every later run on it (item 635).

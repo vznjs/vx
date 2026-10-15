@@ -79,7 +79,7 @@ interface VxPlugin {
   output?(ctx): Logger | undefined // draw the run yourself
   commands?: { [verb]: { description: string; run(argv, ctx): number | Promise<number> } }
   setup?(ctx): void | Promise<void>
-  teardown?(): void | Promise<void>
+  teardown?(run?: RunReport): void | Promise<void>
 }
 ```
 
@@ -221,10 +221,16 @@ The local cache answers first, then each remote, under the run's cache
 policy and scope. Names are yours alone; an entry is written once, never
 replaced, and at most 1 MiB. A failure is an empty answer, never an
 error. `schedule` gets it too. `ctx.ci` and `ctx.branch` say where the
-run is; `ctx.runId`, `ctx.commit` and `ctx.ciRun` (provider, run URL,
-pipeline, job) say which run it is. `ctx.outputsOf(task)` lists the files
-a task's declared outputs match on disk, so a plugin can keep what a
-failed task left.
+run is.
+
+A run that writes a remote cache (CI by default) keeps a failed task's
+log and the files its outputs left, and an uncached task's log, there.
+`teardown(run)` then gets the run's report: `runId`, `commit`, `ciRun`
+(provider, run URL, pipeline, job), `ok`, and every task with its
+`status`, `durationMs`, `key` and the `log` / `outputs` names vx kept.
+`ctx.cache.getRun(name)` reads them back; the outputs are a plain tar.
+vx keeps no manifest: write your own from the report with
+`ctx.cache.put`, and a verb can read it all back on any machine.
 
 ## A verb and a sink
 

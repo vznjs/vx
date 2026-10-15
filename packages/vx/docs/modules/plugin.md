@@ -44,8 +44,8 @@ names until 0.0.397; it is the kinds record since.
 | `cache(ctx)`           | run setup                            | return a `RemoteCacheLayer` or decline; core layers each over the local cache, in declared order, under the run policy (plugin-host.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `telemetry(ctx)`       | `telemetry-host.ts`                  | return sink(s) or decline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `output(ctx)`          | `output-host.ts`, before `run:start` | return a `Logger` that draws the run, or decline (`OutputContext`: `ctx.isTTY`, `ctx.ci`, `ctx.json` say where it would draw); first one wins                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `setup(ctx)`           | `installPlugins`                     | validate config; throw `UserError`; `ctx.cache`, `ctx.ci`, `ctx.branch`, run facts (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `teardown()`           | end-of-run                           | flush/close; crash-isolated, 3s-bounded                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `setup(ctx)`           | `installPlugins`                     | validate config; throw `UserError`; `ctx.cache`, `ctx.ci`, `ctx.branch` (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `teardown(run?)`       | end-of-run                           | flush/close; crash-isolated, 3s-bounded; `RunReport` when the run ran to its end                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## The installer
 
@@ -53,7 +53,7 @@ names until 0.0.397; it is the kinds record since.
 installPlugins(args: InstallPluginsArgs): Promise<() => void> // runs each setup; resolves to the uninstall
 interface InstallPluginsArgs { plugins; workspaceRoot; cacheDir; bus: EventBus; warn?; cache?(plugin): PluginCache; ci?; branch? }
 // What setup(ctx) receives: on(hook, handler) subscribes a lifecycle hook.
-interface PluginContext { workspaceRoot; cacheDir; warn(message); bus; cache: PluginCache; ci: boolean; branch: string | null; runId: string; commit: string | null; ciRun: CiContext; outputsOf(node): Promise<readonly string[]>; on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]) }
+interface PluginContext { workspaceRoot; cacheDir; warn(message); bus; cache: PluginCache; ci: boolean; branch: string | null; on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]) }
 type PluginHookName = keyof PluginHookHandlers
 // 'onRunStart' | 'onTaskStart' | 'onTaskStdout' | 'onTaskStderr' | 'onTaskComplete' | 'onRunStatus' | 'onRunEnd'
 ```
@@ -77,15 +77,24 @@ remote has no batch probe. With no remote, `get` is a local lookup.
 `schedule` runs after `setup` (only a run that starts a task schedules).
 `tests/plugin-cache.test.ts`.
 
-## Run facts
+## Run report and run bytes
 
-`setup` also gets the run's facts, read once per run before any plugin
-sets up: `ctx.runId` (the `run_id` of its history rows and telemetry),
-`ctx.commit` (`HEAD`, null outside git) and `ctx.ciRun` (`detectCi`:
-provider, run URL, change, pipeline, job, attempt). `ctx.outputsOf(node)`
-globs a task's declared outputs on disk when called, workspace-relative
-and sorted; a failed task's are what it left, which core saves nowhere.
-`tests/plugin-run-facts.test.ts`; `tests/plugin-run-record.test.ts` builds a run record (logs, failed outputs, a manifest by run id) on this API and reads it back through a verb.
+A run that writes a remote (CI by default) keeps its own bytes there
+(`cache/run-store.ts`): a failed task's log and a tar of the files its
+declared outputs left, an uncached task's log. A task that saved an
+entry keeps its log in the entry; nothing goes to the local cache, where
+`vx last --log` and the tree already hold it. Names are
+`run/<runId>/<taskId>/log|outputs`, each key derived in its own
+namespace (no task key or plugin entry shares it), scoped as tasks are,
+uncapped. A run that ran to its end then calls each `teardown(run)` with
+a `RunReport`: `runId` (its history rows' `run_id`), `commit`, `ciRun`
+(`detectCi`: provider, run URL, change, pipeline, job, attempt), `ok`
+and every task (`id`, `status`, `durationMs`, `key`, and `log` /
+`outputs` names when kept). `ctx.cache.getRun(name)` reads one from the
+first readable remote. Core writes no manifest: a plugin that wants a
+run record writes one from the report with `ctx.cache.put`.
+`tests/plugin-run-facts.test.ts`; `tests/plugin-run-record.test.ts` builds
+a run explorer's record on this API and reads it back through a verb.
 
 ## Invariants
 

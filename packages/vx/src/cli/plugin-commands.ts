@@ -172,6 +172,7 @@ function lazyCache(open: () => Promise<PluginCache>): PluginCache {
     put: async (key, bytes) => (await cache()).put(key, bytes),
     has: async (key) => (await cache()).has(key),
     hasMany: async (keys) => (await cache()).hasMany(keys),
+    getRun: async (name) => (await cache()).getRun(name),
   }
 }
 
