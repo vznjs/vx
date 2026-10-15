@@ -2592,24 +2592,26 @@ counts are zero and `projects lock` says `no` — a broken config is
 
 ```
 $ vx info
-vx:               0.0.0
-bun:              1.4.2
-git:              2.53.0
-git status cache: core.fsmonitor, core.untrackedCache off
-workspace root:   /work/repo
-projects:         12 (34 tasks)
-plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
-workers:          2 — cgroup CPU quota 2 of 8 cores
-memory:           13 GB usable — cgroup limit; the machine has 16 GB
-cache dir:        /work/repo/.vx/cache (8.2 MB, this workspace's run history)
-cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-cache versions:   keys vx-cache-v43 · index schema v38
-cache entries:    42 (1.3 GB)
-orphans:          3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
-task runs (24h):  7 (5 cache hits)
-flaky tasks:      1 — web#test (3 of 11 runs failed on unchanged inputs)
-sandbox:          available (9 tasks declare exec.sandbox)
-projects lock:    yes
+
+─ vx info ────────────────────────────────────────────────────
+  vx                0.0.0
+  bun               1.4.2
+  git               2.53.0
+  git status cache  core.fsmonitor, core.untrackedCache off
+  workspace root    /work/repo
+  projects          12 (34 tasks)
+  plugins           2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
+  workers           2 — cgroup CPU quota 2 of 8 cores
+  memory            13 GB usable — cgroup limit; the machine has 16 GB
+  cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
+  cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
+  cache versions    keys vx-cache-v43 · index schema v38
+  cache entries     42 (1.3 GB)
+  orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
+  task runs (24h)   7 (5 cache hits)
+  flaky tasks       1 — web#test (3 of 11 runs failed on unchanged inputs)
+  sandbox           available (9 tasks declare exec.sandbox)
+  projects lock     yes
 ```
 
 - `git` shows `(not found)` when the binary is missing.

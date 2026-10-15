@@ -133,7 +133,7 @@ describe('flaky-task detection (e2e)', () => {
       const info = await vx(root, ['info'])
       expect(info.code).toBe(0)
       expect(info.text).toMatch(
-        /^flaky tasks: +1 — app#test \(2 of 4 runs failed on unchanged inputs\)$/m,
+        /^  flaky tasks +1 — app#test \(2 of 4 runs failed on unchanged inputs\)$/m,
       )
       const json = JSON.parse((await vx(root, ['info', '--format', 'json'])).text)
       expect(json.flakyTasks).toEqual([
@@ -157,7 +157,7 @@ describe('flaky-task detection (e2e)', () => {
       // success row with attempts 2, and no key held a failed row.
       const info = await vx(root, ['info'])
       expect(info.text).toMatch(
-        /^flaky tasks: .*\bretry#build \(1 of 2 runs failed( on unchanged inputs)?\)/m,
+        /^  flaky tasks .*\bretry#build \(1 of 2 runs failed( on unchanged inputs)?\)/m,
       )
     },
     TIMEOUT,

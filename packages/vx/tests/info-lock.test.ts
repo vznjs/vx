@@ -80,7 +80,7 @@ describe('vx info reads the lock', () => {
       tasks: facts['tasks'],
     }).toEqual({ code: 0, err: '', lockfile: false, tasks: 0 })
     expect(facts).not.toHaveProperty('configErrors')
-    expect(vx(root, 'info').out).toMatch(/^projects lock: +no$/m)
+    expect(vx(root, 'info').out).toMatch(/^  projects lock +no$/m)
   })
 
   it('counts the locked configs and the plugin stage as vx run does', async () => {
