@@ -108,24 +108,23 @@ it("a plugin records a CI run's logs and failed outputs, and its verb reads them
     taskComplete() {},
   }
 
-  const local = await run({
-    cwd: root,
-    tasks: ['test'],
-
-    handleSignals: false,
-    log: quiet,
-  })
-  expect(local.ok).toBe(false)
-  expect(box.__vxWire.size).toBe(0)
-
-  process.env['CI'] = '1'
-  try {
-    expect((await run({ cwd: root, tasks: ['test'], handleSignals: false, log: quiet })).ok).toBe(
-      false,
-    )
-  } finally {
-    delete process.env['CI']
+  const CI_VARS = ['GITHUB_ACTIONS', 'GITLAB_CI', 'BUILDKITE', 'CIRCLECI', 'CI']
+  const saved = CI_VARS.map((k) => [k, process.env[k]] as const)
+  const runAs = async (ci: boolean) => {
+    for (const k of CI_VARS) delete process.env[k]
+    if (ci) process.env['CI'] = '1'
+    try {
+      return await run({ cwd: root, tasks: ['test'], handleSignals: false, log: quiet })
+    } finally {
+      for (const [k, v] of saved) {
+        if (v === undefined) delete process.env[k]
+        else process.env[k] = v
+      }
+    }
   }
+  expect((await runAs(false)).ok).toBe(false)
+  expect(box.__vxWire.size).toBe(0)
+  expect((await runAs(true)).ok).toBe(false)
   const runId = lines.map((l) => /^run (\S+)$/.exec(l)?.[1]).find(Boolean) ?? ''
   expect(runId).not.toBe('')
 
