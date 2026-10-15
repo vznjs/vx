@@ -90,6 +90,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
     ['`**` over a subtree', ['**'], ['dist/**']],
     ['a literal directory output', ['**/*'], ['dist']],
     ['an input under the output', ['dist/types/**'], ['dist']],
+    ['every file over a directory at any depth', ['**/*'], ['**/dist/**']],
   ]
   for (const [what, inputs, outputs] of refused) {
     it(`refuses ${what}: ${inputs.join()} against ${outputs.join()}`, () => {
