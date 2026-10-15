@@ -9,13 +9,13 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## workspace: a project is a directory with a vx.config
-
-a package.json member is no project without a vx.config or a lockfile plugin (pnpm(), bun(), npm(), yarn() add the members); a project is named by its config `name`, else a plugin's, else its path (`//` for the root); two of one name are refused. Lock version 2 is refused: re-run `vx lock`. Plugin contexts drop `packageJson`, and ProjectMeta drops `packageJson` (PackageMeta keeps it for vx init).
-
 ## orchestrator: forecast from shared per-branch task timings
 
 No migration note.
+
+## workspace: a project is a directory with a vx.config
+
+a package.json member is no project without a vx.config or a lockfile plugin (pnpm(), bun(), npm(), yarn() add the members); a project is named by its config `name`, else a plugin's, else its path (`//` for the root); two of one name are refused. Lock version 2 is refused: re-run `vx lock`. Plugin contexts drop `packageJson`, and ProjectMeta drops `packageJson` (PackageMeta keeps it for vx init).
 
 ## cache: core keys no package file
 
