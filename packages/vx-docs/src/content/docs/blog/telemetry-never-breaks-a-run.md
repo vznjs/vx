@@ -45,9 +45,9 @@ absence of a path.
 - `onRecord` must return promptly, so the contract says buffer and do
   not await. `flush()` is the one awaited drain point, at the end of
   the run. All sinks flush at once under one shared bound, three
-  seconds (since vx 0.0.639 fixed; the variable that changed it is
-  gone), so a
-  wedged collector cannot hold the process's exit hostage.
+  seconds, so a wedged collector cannot hold the process's exit
+  hostage. (Since vx 0.0.639, the three seconds are fixed; the
+  variable that changed them is gone.)
 - A sink that lists what it `wants` costs the source nothing for the
   kinds it skips; the large `task.log` stream is off unless asked for.
 

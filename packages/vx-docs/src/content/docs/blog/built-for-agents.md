@@ -24,8 +24,9 @@ flowchart LR
 
 ## The result on stdout, the logs on stderr
 
-(Since vx 0.0.639, `vx run --format json` is gone: `vx last --format
-json` reads the run's result back from run history.)
+(Since vx 0.0.639, `vx run --format json` and its `summary.json`
+schema are gone: `vx last --format json` reads the run's result back
+from run history.)
 
 `vx run --format json` prints one JSON document when the run ends. The
 frame and the tasks' output go to stderr, so a pipe sees only the
