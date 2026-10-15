@@ -85,6 +85,8 @@ export interface SummaryStats {
   upToDate: number
   restoredLocal: number
   restoredRemote: number
+  /** Of `upToDate`, the hits the remote layer answered: the local layer missed them. */
+  upToDateRemote?: number
   /** Tasks that executed (success + failed) with a `cache` block — the misses. */
   miss: number
   /** Executed with no `cache` block: never consulted the cache, not a miss. */
@@ -117,6 +119,17 @@ export interface RunContext {
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
   remoteCacheEnabled: boolean
+  /**
+   * The layers the run's policy asked and wrote, so the cache legend splits
+   * a miss by layer and counts uploads. Absent: one `miss` count.
+   */
+  cache?: {
+    localRead: boolean
+    remoteRead: boolean
+    remoteWrite: boolean
+    /** The run's uploads, filled as each lands (a live ref). */
+    uploads: { count: number; failed: number }
+  }
   /** Total projects discovery found — the bar's denominator. */
   workspaceProjectCount?: number
 }
@@ -208,8 +221,8 @@ export function formatSummarySection(
     if (taskParts.length > 0) lines.push(legend(taskParts))
   }
 
-  // Cache meter + numbers, fixed order: miss · up-to-date · local ·
-  // remote.
+  // Cache meter + numbers, fixed order: misses · uploads · no-cache ·
+  // up-to-date · local hit · remote hit.
   if (miss + noCache + hits + left + stats.skipped > 0) {
     const cacheBar = segmentBar(
       [
@@ -224,13 +237,26 @@ export function formatSummarySection(
       colors,
     )
     const cacheParts: string[] = []
-    if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
+    const layers = context?.cache
+    if (layers?.remoteRead === true) {
+      // Asked local, then remote: a remote hit was a local miss, and every
+      // task that ran missed both (M, 2026-10-15).
+      const localMiss = miss + stats.restoredRemote + (stats.upToDateRemote ?? 0)
+      if (layers.localRead && localMiss > 0)
+        cacheParts.push(paint(ERROR, `${localMiss} local miss`, colors))
+      if (miss > 0) cacheParts.push(paint(ERROR, `${miss} remote miss`, colors))
+    } else if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
+    if (layers?.remoteWrite === true) {
+      const { count, failed } = layers.uploads
+      if (count > 0 || miss > 0) cacheParts.push(paint(REMOTE, `${count} uploaded`, colors))
+      if (failed > 0) cacheParts.push(paint(ERROR, `${failed} upload failed`, colors))
+    }
     if (noCache > 0) cacheParts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
     if (stats.upToDate > 0) cacheParts.push(paint(SUCCESS, `${stats.upToDate} up-to-date`, colors))
     if (stats.restoredLocal > 0)
-      cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local`, colors))
+      cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local hit`, colors))
     if (stats.restoredRemote > 0)
-      cacheParts.push(paint(REMOTE, `${stats.restoredRemote} remote`, colors))
+      cacheParts.push(paint(REMOTE, `${stats.restoredRemote} remote hit`, colors))
     // Skipped tasks ride the bar, yellow like the tasks meter, so the two
     // bars fill alike; their count is the tasks legend's alone (the footer
     // never says a fact twice, M, 2026-10-14).
@@ -376,6 +402,9 @@ export function formatRunSummary(
       upToDate: t.upToDate,
       restoredLocal: t.restoredLocal,
       restoredRemote: t.restoredRemote,
+      upToDateRemote: outcomes.filter(
+        (o) => o.status === 'cache-hit-remote' && o.restored !== true && !isGroupTask(o.node),
+      ).length,
       miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote) - noCache,
       noCache,
       savedMs,

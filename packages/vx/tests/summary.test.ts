@@ -168,6 +168,102 @@ describe('formatRunSummary', () => {
     expect(lines).toContain('  info      8 workers · local + remote cache')
   })
 
+  describe('a remote cache splits the misses by layer and counts uploads (M, 2026-10-15)', () => {
+    const cached = (
+      id: string,
+      status: TaskOutcome['status'],
+      restored?: boolean,
+    ): TaskOutcome => ({
+      ...outcome(id, status),
+      node: { id, config: { exec: { command: 'noop' }, cache: {} } } as unknown as TaskNode,
+      ...(restored !== undefined ? { restored } : {}),
+    })
+    const run = [
+      cached('a#build', 'success'),
+      cached('b#build', 'success'),
+      cached('c#build', 'cache-hit-remote', true),
+      cached('d#build', 'cache-hit-remote', false),
+      cached('e#build', 'cache-hit', true),
+      outcome('f#dev', 'success'),
+    ]
+    const legend = (cache?: {
+      localRead: boolean
+      remoteRead: boolean
+      remoteWrite: boolean
+      uploads: { count: number; failed: number }
+    }): string => {
+      const ctx = {
+        version: '0.0.0',
+        packageCount: 1,
+        remoteCacheEnabled: cache !== undefined,
+        ...(cache !== undefined ? { cache } : {}),
+      }
+      const lines = formatRunSummary(run, 10, { enabled: false }, ctx)
+      return lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
+    }
+
+    it('a remote hit was a local miss; a task that ran missed both', () => {
+      expect(
+        legend({
+          localRead: true,
+          remoteRead: true,
+          remoteWrite: true,
+          uploads: { count: 2, failed: 0 },
+        }),
+      ).toBe(
+        '4 local miss · 2 remote miss · 2 uploaded · 1 no-cache · 1 up-to-date · 1 local hit · 1 remote hit',
+      )
+    })
+
+    it('a failed upload is counted apart', () => {
+      expect(
+        legend({
+          localRead: true,
+          remoteRead: true,
+          remoteWrite: true,
+          uploads: { count: 1, failed: 1 },
+        }),
+      ).toContain('2 remote miss · 1 uploaded · 1 upload failed ·')
+    })
+
+    it('a read-only remote uploads nothing and says nothing of uploads', () => {
+      expect(
+        legend({
+          localRead: true,
+          remoteRead: true,
+          remoteWrite: false,
+          uploads: { count: 0, failed: 0 },
+        }),
+      ).toStartWith('4 local miss · 2 remote miss · 1 no-cache')
+    })
+
+    it('a write-only remote was never asked, so a miss is the local one', () => {
+      expect(
+        legend({
+          localRead: true,
+          remoteRead: false,
+          remoteWrite: true,
+          uploads: { count: 2, failed: 0 },
+        }),
+      ).toStartWith('2 miss · 2 uploaded · 1 no-cache')
+    })
+
+    it('a local layer the policy skips counts no local miss', () => {
+      expect(
+        legend({
+          localRead: false,
+          remoteRead: true,
+          remoteWrite: true,
+          uploads: { count: 2, failed: 0 },
+        }),
+      ).toStartWith('2 remote miss · 2 uploaded')
+    })
+
+    it('CONTROL: no remote keeps one miss count', () => {
+      expect(legend()).toStartWith('2 miss · 1 no-cache')
+    })
+  })
+
   it('the info row sums what an admit policy held; no hold, no words', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false, concurrency: 4 }
     const held = { ...outcome('a#x', 'success'), admissionHeldMs: 1200 }

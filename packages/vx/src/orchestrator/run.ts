@@ -903,6 +903,16 @@ async function runOnBus(
       version: VERSION,
       packageCount: packagesInScope.size,
       remoteCacheEnabled,
+      ...(remoteCacheEnabled
+        ? {
+            cache: {
+              localRead: policy.localRead,
+              remoteRead: policy.remoteRead,
+              remoteWrite: policy.remoteWrite,
+              uploads: prepared.localCache.uploads,
+            },
+          }
+        : {}),
       concurrency,
       workspaceProjectCount,
     }

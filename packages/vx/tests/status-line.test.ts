@@ -388,7 +388,7 @@ describe('defaultLogger status line integration', () => {
     finish('d#x', 'failed')
     const last = s.chunks[s.chunks.length - 1]!
     expect(last).toContain('1 failed · 3 success')
-    expect(last).toContain('1 no-cache · 1 up-to-date · 1 local · 1 remote')
+    expect(last).toContain('1 no-cache · 1 up-to-date · 1 local hit · 1 remote hit')
     log.runEnd?.()
   })
 

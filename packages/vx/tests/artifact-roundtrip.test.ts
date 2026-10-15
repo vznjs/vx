@@ -357,7 +357,7 @@ describe('artifact round-trip — odd names', () => {
       await rm(path.join(root, 'dist'), { recursive: true, force: true })
       const warm = vx(root, 'run', 'build')
       expect(warm.exitCode).toBe(0)
-      expect(warm.out).toContain('1 local')
+      expect(warm.out).toContain('1 local hit')
       const restored = await snapshotTree(path.join(root, 'dist'))
       expect([...restored.keys()].sort()).toEqual([...produced.keys()].sort())
       for (const [rel, want] of produced) expect(restored.get(rel)).toEqual(want)

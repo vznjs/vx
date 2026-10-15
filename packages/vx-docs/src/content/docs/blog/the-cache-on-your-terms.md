@@ -69,7 +69,7 @@ or a fresh `git worktree` hits what the first one built:
 $ git worktree add ../demo-wt && cd ../demo-wt
 $ vx run build --all
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            4 local
+            4 local hit
   time      22ms · 1.24s saved
 ```
 
