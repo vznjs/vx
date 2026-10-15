@@ -17,6 +17,8 @@ export const ERROR = '#ef4444'
 
 export interface ColorSupport {
   enabled: boolean
+  // The terminal's width, read live (detectColors); none off a terminal.
+  readonly columns?: number | undefined
 }
 
 export interface PaintOptions {
@@ -35,7 +37,9 @@ export function paint(
 // that shares no hue with a status colour (tests/framed-output.test.ts).
 export function identityColor(name: string): string
 
-// util/report.ts
+// util/report.ts: a meter is 50 cells, fewer to fit a narrower terminal;
+// the rule ends flush with it.
+export function barWidth(colors: ColorSupport): number
 export function gradientRule(colors: ColorSupport, mark?: string): string
 
 // report/plain-output.ts: `sink` with terminal escapes stripped from task

@@ -3042,6 +3042,11 @@ is done, the `VX_DEBUG_TIMING=1` table included. Cache housekeeping
 (`cache.retention`) prints nothing. Only a kept server's own output
 follows it.
 
+**Narrow terminals.** The footer is 62 columns: its rule and 50-cell
+bars. On a terminal narrower than that the bars shrink and the rule
+with them, as do a frame's section rules, so none wraps onto a second
+row. Off a terminal they keep their width.
+
 **Skipped rows.** A red run lists every task that never started as a
 row naming the failure that blocked it, so the footer's `1 skipped`
 always has a name above it:

@@ -5,16 +5,24 @@ import { paint, type ColorSupport } from './colors.js'
 // are off.
 const GRADIENT_FROM = [0xa7, 0x8b, 0xfa] as const
 const GRADIENT_TO = [0xf4, 0x72, 0xb6] as const
-// Rule ends flush with the bars: 2 indent + 8 label + 2 gap + 50 cells.
-const RULE_DASHES = 57
+// The bars' label column: 2 indent + 8 label + 2 gap.
+const LABEL = 12
 
-/** Total visible rule width: `─ <mark> ` + dashes. Shared by the run summary and every report. */
+/** A meter's cells: 50, or fewer so the bar fits a narrower terminal. */
+export function barWidth(colors: ColorSupport): number {
+  const columns = colors.columns
+  return columns === undefined ? 50 : Math.max(10, Math.min(50, columns - LABEL))
+}
+
+/** `─ <mark> ` + dashes, flush with the bars. Shared by the run summary and every report. */
 export function gradientRule(colors: ColorSupport, mark = 'vx'): string {
   const head = `─ `
-  const dashes = '─'.repeat(Math.max(8, RULE_DASHES + 2 - mark.length))
+  const width = LABEL + barWidth(colors)
+  const dashes = '─'.repeat(Math.max(8, width - 3 - mark.length))
   if (!colors.enabled) return `${head}${mark} ${dashes}`
   const chunks = 8
-  const per = Math.ceil(RULE_DASHES / chunks)
+  // The gradient spans the rule as if its mark were `vx`.
+  const per = Math.ceil((width - 5) / chunks)
   let out = ''
   for (let i = 0; i < chunks; i++) {
     const seg = dashes.slice(i * per, (i + 1) * per)

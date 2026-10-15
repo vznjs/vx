@@ -179,7 +179,7 @@ Duration:
 - Mixed-status row (success + failed + skipped + cache).
 - All-success rendering.
 - Empty outcomes (zero-task summary).
-- Stacked state meters (50 cells, largest-remainder allocation, every non-zero bucket gets >= 1 cell): tasks bar = failed/success/skipped, cache bar = a segment per legend state (`the bar has a segment per state, each legend count painted in its colour`); color-coded legends below each bar.
+- Stacked state meters (50 cells, fewer on a terminal narrower than the 62-column footer so bars and rule fit its width; largest-remainder allocation, every non-zero bucket gets >= 1 cell): tasks bar = failed/success/skipped, cache bar = a segment per legend state (`the bar has a segment per state, each legend count painted in its colour`); color-coded legends below each bar.
 - The cache legend per layer: each task once, `✗` over `⇡` over `↑`, a task still running not counted (`the cache legend reads per layer`).
 - Gradient wordmark rule (violet -> pink across the dashes).
 - Failed task ids are never listed — the count lives in the legend

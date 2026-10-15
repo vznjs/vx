@@ -8,7 +8,8 @@
 // Two invariants carry the whole surface, and both are stated in the source as
 // intent rather than enforced by a type:
 //
-//   WIDTH — a bar is always exactly BAR_WIDTH cells. It sits under a fixed
+//   WIDTH — off a terminal a bar is always exactly BAR_WIDTH cells (a
+//   narrower terminal shrinks it, tests/narrow-terminal.test.ts). It sits under a
 //   62-column footer, so a bar one cell short or long visibly ragged-edges the
 //   summary, and at a terminal narrower than the region it changes how many
 //   physical rows the live region occupies — the class of defect that left
