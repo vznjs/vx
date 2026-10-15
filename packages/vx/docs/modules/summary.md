@@ -23,6 +23,7 @@ export interface SummaryStats {
   upToDate: number
   restoredLocal: number
   restoredRemote: number
+  upToDateRemote?: number // of `upToDate`, the hits the remote answered: local misses
   miss: number
   noCache?: number // a task no cache answered for (`ranNoCache`) never consulted one
   left?: number // still to run: the live section's gray remainder; 0 in the final summary
@@ -38,6 +39,12 @@ export interface RunContext {
   packageCount: number // projects covered → the bar's "affected" half
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
+  cache?: {
+    localRead: boolean
+    remoteRead: boolean
+    remoteWrite: boolean
+    uploads: { count: number; failed: number }
+  } // the policy's layers + the live upload tally: the legend's local / remote miss and uploaded counts
   workspaceProjectCount?: number // total projects → the bar's denominator
 }
 

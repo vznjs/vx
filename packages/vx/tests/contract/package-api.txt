@@ -1195,6 +1195,12 @@ export interface RunContext {
   packageCount: number
   concurrency?: number
   remoteCacheEnabled: boolean
+  cache?: {
+    localRead: boolean
+    remoteRead: boolean
+    remoteWrite: boolean
+    uploads: { count: number; failed: number }
+  }
   workspaceProjectCount?: number
 }
 == type RunContextRecord (src/orchestrator/telemetry.ts)
