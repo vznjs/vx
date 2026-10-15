@@ -1,6 +1,8 @@
 ---
 name: local-ci
 description: Run the same checks CI runs, in the same order. Use before every push to catch failures locally instead of waiting for the GitHub Actions feedback loop.
+metadata:
+  internal: true
 ---
 
 # Run local CI

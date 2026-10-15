@@ -153,19 +153,20 @@ The same rule, applied at the end of every run and by the doctor:
   with the key's outcome counts, this run folded in. `run.ts` judges each
   task as it finishes, so its row carries the note (`flakyNote`), and
   `--summarize` types them (`flaky`).
+- Both read the shared store's flaky record, `task_outcomes` (v38), not
+  this workspace's `runs`: every worktree of a repo judges a key on what
+  all of them saw. It keeps every executed outcome that names its key and
+  a key's first hit; a later hit replays a pass on record and adds none.
 - `flakyTasks(db)` — every task with a key that failed after a pass in the whole
   retained history, most failures first: the `vx info` row. A pass that
   took a retry is one `success` row; its failed attempts count as
   failures, so it counts on its own.
 - Cost follows the run's colour. No candidate: no query. A green miss:
-  one probe of `runs_failed`, a PARTIAL index over failed rows (the
-  rare ones, so a green run's 1,000 inserts only evaluate its
-  predicate: 3.2 ms per 1,000 with and without it), which answers "did
-  this key ever fail?" in microseconds at any history size. Only a key
-  that did fail before, or a task failing now, pays the projection scan
-  over its own keys (~10 ms at 170k rows). Measured 2026-09-10, 170k
-  rows: 1 / 12 / 1,000 green candidates 0.01 / 0.02 / 0.55 ms with the
-  index against 10.4 / 10.3 / 21.6 ms scanning. Judged one task at a time
+  one probe of `task_outcomes_hash` (a key holds a handful of rows),
+  which answers "did this key ever fail?" in microseconds at any history
+  size. Only a key that did fail before, or a task failing now, pays the
+  projection over its own keys. Recording a warm run's hits costs one
+  probe of the same index, ~1 ms per 1,000 (2026-10-15). Judged one task at a time
   as each finishes (2026-10-06, so the row carries it): 1,000 green
   misses cost 3.0 ms in all against 0.4 batched, spread over the run
   beside 1,000 spawns.

@@ -9,6 +9,18 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## skills: drop the nested skill install path
+
+`npx skills add vznjs/vx/packages/vx/skills/vx` no longer exists; install the agent skill with `npx skills add vznjs/vx`.
+
+## cache: drop the VX_CACHE_OUTPUTS_CLEAN variable
+
+VX_CACHE_OUTPUTS_CLEAN is no longer read. Set cache.outputs.clean in .vx/workspace.ts or on the task instead.
+
+## cache: share blob sizes and the flaky record across worktrees
+
+SCHEMA_VERSION v38 (blob_sizes and task_outcomes in the store): the local index resets once. A repeat cache hit no longer counts as another pass in flaky counts.
+
 ## orchestrator: give plugins ctx.cache over the workspace cache
 
 SCHEMA_VERSION v37 (plugin_blobs, unique remote task_durations rows): the local index resets once.

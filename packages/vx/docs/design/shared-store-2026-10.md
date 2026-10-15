@@ -100,6 +100,16 @@ keyed by the workspace, not the cache dir, so the entries share as is.
   write it unless a grant names it; an unsandboxed one can write
   anywhere, as before.
 
+## v38: shared memos (owner, 2026-10-14 20:59)
+
+`blob_sizes` (fixed for its OID) and the flaky record, `task_outcomes`,
+moved to the store: a worktree reads the blob sizes another learned, and
+a key that passed in one worktree and failed in another is flaky in
+both. `task_outcomes` keeps every executed outcome that names its key
+and a key's first hit (a later hit replays a pass on record), so a warm
+run writes no row: recording 1,000 hits costs one index probe, ~1 ms.
+`blob_verdicts` stays: it is keyed by this checkout's index file.
+
 ## Measured
 
 Warm `vx run build --all`, 500 generated packages, 15 interleaved

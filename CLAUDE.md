@@ -89,6 +89,8 @@ packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by sc
                         (build.playground → public/playground/planner.js), held to the CLI by core's
                         tests/playground-parity.unsafe.test.ts
 packages/vx-bench       synthetic workspace generator + runners (vx / turbo / nx)
+skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
+                        `metadata.internal`, so that command offers nothing else; tests/skills-install.unsafe.test.ts)
 packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;
                         history/ holds the shipped record STATUS moved out (read it only when an item's why matters)
 ```
@@ -213,7 +215,7 @@ platform claim or a timed test, and add new lessons there.
 
 ## Live invariants (verify in source before quoting)
 
-- `CACHE_VERSION` `vx-cache-v43`, core `SCHEMA_VERSION` `v37`,
+- `CACHE_VERSION` `vx-cache-v43`, core `SCHEMA_VERSION` `v38`,
   `TELEMETRY_SCHEMA_VERSION` 3. Bump `CACHE_VERSION` when stored bytes are
   wrong under an unchanged key or the container changes; a key-derivation
   fix whose old key was already wrong is self-healing and does not bump.

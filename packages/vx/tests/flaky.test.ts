@@ -128,16 +128,16 @@ describe('flaky-task detection (e2e)', () => {
       expect(brokenSummary.tasks[0].flaky).toBeUndefined()
       expect(brokenSummary.tasks[0].hash).not.toBe(redSummary.tasks[0].hash)
 
-      // The doctor's standing list: one task, one flaky key, the counts —
-      // the hit above is a pass on that key too (it replayed one).
+      // The doctor's standing list: one task, one flaky key, the counts.
+      // The hit above replayed a pass already on record, so it adds none.
       const info = await vx(root, ['info'])
       expect(info.code).toBe(0)
       expect(info.text).toMatch(
-        /^flaky tasks: +1 — app#test \(2 of 5 runs failed on unchanged inputs\)$/m,
+        /^flaky tasks: +1 — app#test \(2 of 4 runs failed on unchanged inputs\)$/m,
       )
       const json = JSON.parse((await vx(root, ['info', '--format', 'json'])).text)
       expect(json.flakyTasks).toEqual([
-        { taskId: 'app#test', project: 'app', task: 'test', keys: 1, passes: 3, failures: 2 },
+        { taskId: 'app#test', project: 'app', task: 'test', keys: 1, passes: 2, failures: 2 },
       ])
     },
     TIMEOUT,

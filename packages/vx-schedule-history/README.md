@@ -54,7 +54,9 @@ configure:
 - **Untrusted.** A blob over 1 MiB, not `{ version: 1, tasks }`, with
   more than 50 000 tasks, or with a time outside 0 to 24 h, is dropped,
   silently; ids not in the run's graph are dropped. It can only order a
-  run, never change what runs.
+  run, never change what runs. The first write of a commit's blob stays,
+  so the cache's write credential is the boundary: give PR jobs a
+  read-only token.
 
 ## Timings between CI runners, without a remote cache
 

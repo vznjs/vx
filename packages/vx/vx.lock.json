@@ -24,7 +24,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -43,7 +44,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -75,7 +77,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -94,7 +97,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -126,7 +130,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -145,7 +150,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -177,7 +183,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -196,7 +203,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -228,7 +236,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -247,7 +256,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -279,7 +289,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -298,7 +309,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -330,7 +342,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -349,7 +362,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -381,7 +395,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -400,7 +415,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -432,7 +448,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -451,7 +468,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -483,7 +501,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -502,7 +521,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -534,7 +554,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -553,7 +574,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -585,7 +607,8 @@
           "allow": {
             "read": [
               "**/*",
-              "../../README.md"
+              "../../README.md",
+              "../../skills/"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -604,7 +627,8 @@
             "package.json"
           ],
           "workspaceFiles": [
-            "README.md"
+            "README.md",
+            "skills/**"
           ]
         },
         "outputs": {
@@ -686,7 +710,8 @@
               ".",
               "../*",
               "../../README.md",
-              "../../LICENSE"
+              "../../LICENSE",
+              "../../skills/"
             ],
             "write": [
               "dist/npm/"
@@ -791,7 +816,8 @@
               ".",
               "../*",
               "../../README.md",
-              "../../LICENSE"
+              "../../LICENSE",
+              "../../skills/"
             ],
             "write": [
               "dist/npm/"
@@ -1139,6 +1165,7 @@
             "CONTRIBUTING.md",
             "LICENSE",
             ".claude/skills/**",
+            "skills/**",
             "vx.config.ts",
             ".vx/workspace.ts",
             "!packages/vx/dist/**",

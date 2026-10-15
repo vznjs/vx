@@ -384,7 +384,7 @@ function gitVersion(): string | null {
 function settingsFact(config: WorkspaceConfig | null): InfoFacts['settings'] {
   const out: InfoFacts['settings'] = {}
   for (const s of SETTINGS) {
-    const env = process.env[envName(s.path)]
+    const env = s.env === false ? undefined : process.env[envName(s.path)]
     const declared = s.config === false ? undefined : atPath(config, s.path)
     out[s.path] =
       env !== undefined && env !== ''

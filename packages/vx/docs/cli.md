@@ -2587,7 +2587,7 @@ workers:          2 — cgroup CPU quota 2 of 8 cores
 memory:           13 GB usable — cgroup limit; the machine has 16 GB
 cache dir:        /work/repo/.vx/cache (8.2 MB, this workspace's run history)
 cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-cache versions:   keys vx-cache-v43 · index schema v37
+cache versions:   keys vx-cache-v43 · index schema v38
 cache entries:    42 (1.3 GB)
 orphans:          3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
 task runs (24h):  7 (5 cache hits)
@@ -3070,7 +3070,6 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_CACHE_DOWNLOAD`                 | [`cache.download`](schema.md#settings)                | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                               |
 | `VX_CACHE_INPUT_STABILITY_STRATEGY` | [`cache.inputStability.strategy`](schema.md#settings) | What a write to an input during the command means for the save, for tasks without their own.                                                                |
 | `VX_CACHE_INPUT_STABILITY_SEVERITY` | [`cache.inputStability.severity`](schema.md#settings) | Whether a skipped save warns or fails the task, for tasks without their own.                                                                                |
-| `VX_CACHE_OUTPUTS_CLEAN`            | [`cache.outputs.clean`](schema.md#settings)           | Remove a task's declared outputs before it runs on a miss, for tasks without their own.                                                                     |
 | `VX_LOCK_REVIEW_FILES`              | [`lock.reviewFiles`](schema.md#settings)              | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                           |
 | `VX_WATCH_POLL`                     | [`watch.poll`](schema.md#settings)                    | Poll for changes from the start instead of the OS watcher.                                                                                                  |
 | `VX_CONFIG_WORKER_TIMEOUT`          | [`config.workerTimeout`](schema.md#settings)          | How long one config evaluation may take.                                                                                                                    |

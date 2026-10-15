@@ -539,18 +539,19 @@ describe('detectFlaky', () => {
       const plan = real.query(`EXPLAIN QUERY PLAN ${queries[0]}`).all('B', 'C') as {
         detail: string
       }[]
-      expect(plan.map((p) => p.detail).join(' | ')).toContain('USING INDEX runs_failed')
+      expect(plan.map((p) => p.detail).join(' | ')).toContain('USING INDEX task_outcomes_hash')
     })
   })
 
   it('names a failure on a key that passed before, counting this run', async () => {
+    // The hit replays the pass already on record: it adds none (v38).
     const rows = [
       mkRun({ hash: 'K', project: 'pkg', task: 'test' }),
       mkRun({ hash: 'K', project: 'pkg', task: 'test', cacheHit: true }),
     ]
     await withRuns(rows, (db) => {
       expect(detectFlaky(db, [cand('K', 'failed')])).toEqual([
-        { ...cand('K', 'failed'), taskId: 'pkg#test', passes: 2, failures: 1 },
+        { ...cand('K', 'failed'), taskId: 'pkg#test', passes: 1, failures: 1 },
       ])
     })
   })
@@ -730,28 +731,5 @@ describe('flakyTasks', () => {
     await withRuns(rows, (db) => {
       expect(flakyTasks(db).map((t) => t.taskId)).toEqual(['c#c', 'a#y', 'a#z', 'b#a'])
     })
-  })
-})
-
-describe('runs_failed index', () => {
-  it('is created on open for a database that predates it, and only over failed rows', () => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'vx-failure-mode-'))
-    try {
-      const first = new Cache(dir)
-      first.dbHandle().exec('DROP INDEX runs_failed')
-      first.close()
-      const reopened = new Cache(dir)
-      try {
-        const row = reopened
-          .dbHandle()
-          .query("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'runs_failed'")
-          .get() as { sql: string } | null
-        expect(row?.sql).toContain("WHERE status = 'failed'")
-      } finally {
-        reopened.close()
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
   })
 })

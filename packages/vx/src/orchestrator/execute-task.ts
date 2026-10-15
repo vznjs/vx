@@ -189,7 +189,7 @@ export interface ExecuteArgs {
    * the env vars (above the task), `workspace` from `.vx/workspace` (below).
    */
   inputStability?: { run: InputStability; workspace?: InputStability }
-  /** `cache.outputs.clean` for tasks without their own: its variable, else `.vx/workspace`. */
+  /** `cache.outputs.clean` for tasks without their own: `.vx/workspace`. */
   cleanOutputs?: boolean
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: GitFilesCache
