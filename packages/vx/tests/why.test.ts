@@ -13,6 +13,7 @@ import { writeEdges } from './helpers/plugin.js'
 import { parseShowArgs } from '../src/cli/show.js'
 import { parseWhyArgs } from '../src/cli/why.js'
 import { WHAT_TO_DO } from '../src/cli/why.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -134,12 +135,12 @@ describe('vx why (e2e)', () => {
       const r = await vx(root, ['why', 'app#buil'])
       expect(r.code).toBe(1)
       expect(r.err).toContain('no recorded runs')
-      expect(r.err).toContain('did you mean app#build')
+      expect(r.err).toContain('fix  app#build')
       // A bare typo is matched against the TASK half and hinted as the
       // runnable id — a substring match alone found nothing for `buld`.
       const bare = await vx(root, ['why', 'buld'])
       expect(bare.code).toBe(1)
-      expect(bare.err).toContain('did you mean app#build')
+      expect(bare.err).toContain('fix  app#build')
     },
     TIMEOUT,
   )
@@ -149,7 +150,9 @@ describe('vx why (e2e)', () => {
     async () => {
       const r = await vx(root, ['why', 'app#build', '--run', 'nope'])
       expect(r.code).toBe(1)
-      expect(r.err).toBe('vx why: no recorded run nope (vx last --list shows recent runs)\n')
+      expect(r.err).toBe(
+        noticed('vx why: no recorded run nope (vx last --list shows recent runs)\n'),
+      )
     },
     TIMEOUT,
   )
@@ -509,11 +512,15 @@ describe('vx why (e2e) — the exact lines', () => {
       const many = await vx(root, ['why', 'build'])
       expect(many.code).toBe(1)
       expect(err(many)).toBe(
-        'vx why: "build" ran in 5 projects — pick one:\n  a#build\n  app#build\n  b#build\n  c#build\n  d#build',
+        noticed(
+          'vx why: "build" ran in 5 projects — pick one:\n  a#build\n  app#build\n  b#build\n  c#build\n  d#build',
+        ).trimEnd(),
       )
       const typo = await vx(root, ['why', 'buld'])
       expect(err(typo)).toBe(
-        'vx why: no recorded runs for task "buld" — did you mean a#build, app#build, b#build?',
+        noticed(
+          'vx why: no recorded runs for task "buld" — did you mean a#build, app#build, b#build?',
+        ).trimEnd(),
       )
     },
     TIMEOUT,
@@ -525,11 +532,15 @@ describe('vx why (e2e) — the exact lines', () => {
       const none = await vx(root, ['why', 'app#zzzzzzzz'])
       expect(none.code).toBe(1)
       expect(err(none)).toBe(
-        'vx why: no recorded runs for "app#zzzzzzzz"; `vx last --list` shows what has run',
+        noticed(
+          'vx why: no recorded runs for "app#zzzzzzzz"; `vx last --list` shows what has run',
+        ).trimEnd(),
       )
       const bare = await vx(root, ['why'])
       expect(bare.code).toBe(1)
-      expect(err(bare)).toBe('vx why: <task> required (e.g. vx why app#build, or vx why build)')
+      expect(err(bare)).toBe(
+        noticed('vx why: <task> required (e.g. vx why app#build, or vx why build)').trimEnd(),
+      )
     },
     TIMEOUT,
   )
@@ -732,7 +743,9 @@ describe('vx why in a workspace that never ran (E-39)', () => {
       const r = await vx(root, ['why', 'app#build'])
       expect({ code: r.code, err: r.err }).toEqual({
         code: 1,
-        err: 'vx why: no recorded runs for "app#build"; nothing has run here yet (vx run app#build, then vx why)\n',
+        err: noticed(
+          'vx why: no recorded runs for "app#build"; nothing has run here yet (vx run app#build, then vx why)\n',
+        ),
       })
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -753,7 +766,9 @@ describe('vx why after a run of only a group (X-50)', () => {
       const r = await vx(root, ['why', 'lib#build'])
       expect({ code: r.code, err: r.err }).toEqual({
         code: 1,
-        err: 'vx why: no recorded runs for "lib#build"; no recorded run executed a task (a group records none: ask about a task it depends on)\n',
+        err: noticed(
+          'vx why: no recorded runs for "lib#build"; no recorded run executed a task (a group records none: ask about a task it depends on)\n',
+        ),
       })
     } finally {
       await rm(root, { recursive: true, force: true })

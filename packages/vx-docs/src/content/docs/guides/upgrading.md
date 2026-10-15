@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: lay out every refusal as a notice
+
+refusals on stderr read `✗ vx <verb> <problem>` with facts, `see …` and `fix …` lines under it, not `vx <verb>: <message>`. Read --format json or the exit code, not stderr text.
+
 ## util: output components for every verb and plugin
 
 vx lock prints `✓ vx lock N project configs → .vx/projects.lock.json` and refuses as `✗ vx lock lock not written` with what, why and the fix under it. applyMigration's lock option returns { code, said }.

@@ -160,7 +160,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
       })
       expect([glob.exitCode, glob.stderr.toString().includes('Did you mean')]).toEqual([1, false])
       expect(glob.stderr.toString()).toContain(
-        "`*#build` names one project, not a pattern: run `build` with --filter '*' instead.",
+        "`*#build` names one project, not a pattern: run `build` with --filter '*' instead",
       )
     } finally {
       await rm(root, { recursive: true, force: true })

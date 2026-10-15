@@ -1330,7 +1330,7 @@ describe('turbo() under vx lock', () => {
       expect(vx('lock', '--check')).toEqual({
         code: 1,
         out: '',
-        err: "vx lock --check: packages/lib/vx.config.mjs is not in the lock — run 'vx lock'\n",
+        err: "✗ vx lock --check  packages/lib/vx.config.mjs is not in the lock — run 'vx lock'\n",
       })
     },
     TIMEOUT,

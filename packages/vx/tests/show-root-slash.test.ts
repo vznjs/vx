@@ -63,12 +63,12 @@ describe('vx show //', () => {
       {
         code: 1,
         out: '',
-        err: 'vx show: "//" names the workspace root\'s project, and the root is no project here\n',
+        err: '✗ vx show  "//" names the workspace root\'s project, and the root is no project here\n',
       },
       {
         code: 1,
         out: '',
-        err: 'vx show: "//#check" names the workspace root\'s project, and the root is no project here\n',
+        err: '✗ vx show  "//#check" names the workspace root\'s project, and the root is no project here\n',
       },
     ])
   })

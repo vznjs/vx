@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { UserError } from '../util/index.js'
+import { UserError, sayLine } from '../util/index.js'
 import {
   discoverProjects,
   loadProjects,
@@ -33,7 +33,7 @@ interface CliWorkspace {
 }
 
 export const warnToStderr = (message: string): void => {
-  process.stderr.write(`${message}\n`)
+  sayLine('warn', message)
 }
 
 export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorkspace> {

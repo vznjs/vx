@@ -11,7 +11,7 @@ import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
 import { affectedTaskProjects, isDefaultBuild } from '../orchestrator/index.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
-import { listed, nearMatches, relPosix, secretMask, UserError } from '../util/index.js'
+import { listed, nearMatches, relPosix, secretMask, UserError, sayNotice } from '../util/index.js'
 import { affectedFilterFor, resolveFilters } from './select.js'
 import {
   discoverCliProjects,
@@ -149,7 +149,7 @@ export async function showCmd(args: readonly string[]): Promise<number> {
     }
     const r = await resolveFilters(process.cwd(), raw, {}, affected)
     if ('error' in r) throw new UserError(`vx show: ${r.error}`, r.code ?? 'VX_E_USAGE')
-    if ('empty' in r) process.stderr.write(`vx show: ${r.empty}\n`)
+    if ('empty' in r) sayNotice('info', 'vx show', r.empty)
     selected = new Set('empty' in r ? [] : r.names)
     if ('names' in r && r.affected !== undefined)
       byDiff = { changes: r.affected, outright: r.outright }

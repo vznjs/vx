@@ -6,7 +6,7 @@
 // Tab is the wrong price).
 
 import { acceptedFlags, CORE_VERBS, flagHint, seeHelp } from './help.js'
-import { nearest } from '../util/index.js'
+import { nearest, sayNotice } from '../util/index.js'
 
 /** A flag whose value is one of a fixed set; the tests hold each to its parser. */
 export const FLAG_VALUES: Readonly<Record<string, readonly string[]>> = {
@@ -139,8 +139,10 @@ export async function completionsCmd(
   if (args.length !== 1 || !(SHELLS as readonly string[]).includes(shell ?? '')) {
     const flag = args.find((a) => a.startsWith('-'))
     if (flag !== undefined) {
-      process.stderr.write(
-        `vx completions: unknown flag: ${flag}${flagHint('completions', flag)}${seeHelp('completions')}\n`,
+      sayNotice(
+        'error',
+        'vx completions',
+        `unknown flag: ${flag}${flagHint('completions', flag)}${seeHelp('completions')}`,
       )
       return 1
     }
@@ -148,8 +150,10 @@ export async function completionsCmd(
     // One edit: shell names are three or four letters, so two edits took
     // `tcsh` to `bash`, a different shell.
     const best = one ? nearest(shell, SHELLS, 1) : undefined
-    process.stderr.write(
-      `vx completions: expected one shell — bash, zsh or fish${one ? ` (got ${shell})` : ''}${best === undefined ? '' : `. Did you mean ${best}?`}${seeHelp('completions')}\n`,
+    sayNotice(
+      'error',
+      'vx completions',
+      `expected one shell — bash, zsh or fish${one ? ` (got ${shell})` : ''}${best === undefined ? '' : `. Did you mean ${best}?`}${seeHelp('completions')}`,
     )
     return 1
   }

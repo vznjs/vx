@@ -147,7 +147,7 @@ describe('a refusal under --format json', () => {
         "p#p and p#q both write dist/**\n  vx clears a task's outputs before it runs, so one deletes the other's\n\n  fix  give each task its own output path",
       ),
       inputIsOutput: refused(
-        'p#s: every file "src/**" in cache.inputs.files selects is also its own output — vx removes a task\'s outputs before it runs, so the task would delete its own sources. A task that rewrites files in place (a formatter) declares no outputs.',
+        'p#s: every file "src/**" in cache.inputs.files selects is also its own output — vx removes a task\'s outputs before it runs, so the task would delete its own sources\n  A task that rewrites files in place (a formatter) declares no outputs',
       ),
       // The text is config-error-audit.test.ts's to pin.
       config: [
@@ -203,7 +203,7 @@ describe('a refusal under --format json', () => {
     const plain = await vx(['run', 'nope', '--all'])
     const forwarded = await vx(['run', 'nope', '--all', '--', '--format', 'json'])
     expect([plain.code, plain.stdout, forwarded.code, forwarded.stdout]).toEqual([1, '', 1, ''])
-    expect(plain.stderr).toContain('vx run: no projects declare task(s): nope')
+    expect(plain.stderr).toContain('no projects declare task(s): nope')
   })
 })
 

@@ -68,6 +68,19 @@ describe('configErrorFrame', () => {
       )[0],
     ).toBe(`${file}:4:7: tasks.build: \`exec\` is odd`)
   })
+  it('frames a .vx/workspace.ts field too', async () => {
+    await mkdir(path.join(dir, '.vx'), { recursive: true })
+    const ws = path.join(dir, '.vx', 'workspace.ts')
+    await writeFile(ws, 'export default {\n  concurrency: 4,\n}\n')
+    expect(
+      configErrorFrame(`${ws} has unknown field "concurrency" (allowed: cache, run)`, dir),
+    ).toBe(
+      '.vx/workspace.ts:2:3 has unknown field "concurrency" (allowed: cache, run)\n\n' +
+        '  1 | export default {\n' +
+        '> 2 |   concurrency: 4,\n' +
+        '    |   ^',
+    )
+  })
 })
 
 describe('vx lock prints a config refusal with its frame', () => {

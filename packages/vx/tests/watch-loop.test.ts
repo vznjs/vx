@@ -25,6 +25,7 @@ import {
   type Watch,
 } from './helpers/watch-loop.js'
 import { localWorkspaceSource, waitForProducers } from './helpers/local-workspace.js'
+import { noticed } from './helpers/notice.js'
 
 /** `vx lock` in `root`: what a run, and each watch cycle, reads its configs from. */
 function lock(root: string): void {
@@ -50,7 +51,9 @@ describe('vx watch loop (e2e)', () => {
       code: 1,
       watching: false,
     })
-    expect(w.err()).toContain('vx watch: no projects declare task(s): buidl. Did you mean build?')
+    expect(w.err()).toContain(
+      noticed('vx watch: no projects declare task(s): buidl. Did you mean build?'),
+    )
     // CONTROL: the declared name watches (the case above never got there).
     f.watch = startWatch(f.root)
     const ok = f.watch

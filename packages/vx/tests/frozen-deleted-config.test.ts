@@ -58,6 +58,6 @@ it('a deleted config the lock holds is refused, not silently dropped', async () 
   expect([r.code, r.out.includes('LIB'), r.err.trim()]).toEqual([
     1,
     false,
-    'vx: .vx/projects.lock.json locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`',
+    '✗ vx run  .vx/projects.lock.json locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`',
   ])
 }, 30_000)

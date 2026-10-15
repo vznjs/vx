@@ -7,6 +7,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TASKS = `export default { tasks: { build: { exec: { command: 'true' } }, dev: { exec: { command: 'true' } } } }`
@@ -36,27 +37,32 @@ describe('a task typed as a verb', () => {
   it('names the vx run that runs it, from the root, a project, or with a project after it', () => {
     expect(vx(root, 'build')).toEqual([
       1,
-      'vx: `build` is a task here, not a command: vx run build --all\n',
+      noticed('vx: `build` is a task here, not a command (did you mean vx run build --all?)\n'),
     ])
     expect(vx(root, 'build', 'lib')).toEqual([
       1,
-      'vx: `build` is a task here, not a command: vx run build --filter lib\n',
+      noticed(
+        'vx: `build` is a task here, not a command (did you mean vx run build --filter lib?)\n',
+      ),
     ])
     expect(vx(path.join(root, 'packages', 'app'), 'build')).toEqual([
       1,
-      'vx: `build` is a task here, not a command: vx run build\n',
+      noticed('vx: `build` is a task here, not a command (did you mean vx run build?)\n'),
     ])
-    expect(vx(root, 'app#build')).toEqual([1, 'vx: `app#build` is a task: vx run app#build\n'])
+    expect(vx(root, 'app#build')).toEqual([
+      1,
+      noticed('vx: `app#build` is a task (did you mean vx run app#build?)\n'),
+    ])
   })
 
   it('a `dev` task beats the no-service note; a name no project declares stays unknown', () => {
     expect(vx(root, 'dev')).toEqual([
       1,
-      'vx: `dev` is a task here, not a command: vx run dev --all\n',
+      noticed('vx: `dev` is a task here, not a command (did you mean vx run dev --all?)\n'),
     ])
     const [code, err] = vx(root, 'deploy')
     expect(code).toBe(1)
-    expect(err.split('\n')[0]).toBe('vx: unknown command: deploy (see `vx help`)')
+    expect(err.split('\n')[0]).toBe('✗ vx  unknown command: deploy')
   })
 
   it("Nx's `project:target` on vx run names the `project#task` it means", () => {
@@ -67,24 +73,32 @@ describe('a task typed as a verb', () => {
     expect(run(root, 'app:build', 'lib:dev')).toEqual([
       1,
       '',
-      "vx run: `app:build lib:dev` is Nx's project:target: vx run app#build lib#dev\n",
+      noticed(
+        "vx run: `app:build lib:dev` is Nx's project:target (did you mean vx run app#build lib#dev?)\n",
+      ),
     ])
     expect(run(root, 'app:build', '--all')[2]).toBe(
-      'vx run: no projects declare task(s): app:build. Did you mean app#build?\n',
+      noticed('vx run: no projects declare task(s): app:build. Did you mean app#build?\n'),
     )
     expect(run(path.join(root, 'packages', 'lib'), 'lib:build')[2]).toBe(
-      'vx run: no projects declare task(s): lib:build. Did you mean lib#build?\n',
+      noticed('vx run: no projects declare task(s): lib:build. Did you mean lib#build?\n'),
     )
     // A task the project does not declare is no Nx spelling: the plain lines stand.
     expect(run(root, 'app:nope')[2]).toBe(
-      'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+      noticed(
+        'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+      ),
     )
     expect(run(root, 'app:nope', '--all')[2]).toBe(
-      'vx run: no projects declare task(s): app:nope. Tasks: build, dev. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+      noticed(
+        'vx run: no projects declare task(s): app:nope. Tasks: build, dev. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+      ),
     )
     // Nor does one the project inherits from Object.prototype.
     expect(run(root, 'app:toString')[2]).toBe(
-      'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+      noticed(
+        'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+      ),
     )
   })
 
@@ -99,23 +113,27 @@ describe('a task typed as a verb', () => {
     }
     try {
       expect(run('web:build')[1]).toBe(
-        "vx run: `web:build` is Nx's project:target: vx run @s/web#build\n",
+        noticed("vx run: `web:build` is Nx's project:target (did you mean vx run @s/web#build?)\n"),
       )
       expect(run('web#build')[1]).toBe(
-        'vx run: no projects declare task(s): web#build. Did you mean @s/web#build?\n',
+        noticed('vx run: no projects declare task(s): web#build. Did you mean @s/web#build?\n'),
       )
       expect(run('ap#build')[1]).toBe(
-        'vx run: no projects declare task(s): ap#build. Did you mean app#build?\n',
+        noticed('vx run: no projects declare task(s): ap#build. Did you mean app#build?\n'),
       )
       expect(vx(root, 'build', 'web')).toEqual([
         1,
-        'vx: `build` is a task here, not a command: vx run build --filter @s/web\n',
+        noticed(
+          'vx: `build` is a task here, not a command (did you mean vx run build --filter @s/web?)\n',
+        ),
       ])
       // Two scopes share the name: none of them is meant.
       const other = await addProject(root, '@t/web', TASKS)
       try {
         expect(run('web:build')[1]).toBe(
-          'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+          noticed(
+            'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+          ),
         )
       } finally {
         await rm(other, { recursive: true, force: true })
@@ -129,7 +147,9 @@ describe('a task typed as a verb', () => {
     const bare = (cwd: string): string =>
       Bun.spawnSync({ cmd: [process.execPath, BIN, 'run'], cwd, stdin: 'ignore' }).stderr.toString()
     const line = (tasks: string): string =>
-      `vx run: missing task name (stdin is not a TTY, so no picker; tasks here: ${tasks}) (see \`vx run --help\`)\n`
+      noticed(
+        `vx run: missing task name (stdin is not a TTY, so no picker; tasks here: ${tasks}) (see \`vx run --help\`)\n`,
+      )
     expect(bare(root)).toBe(line('build, dev'))
     const many = await addProject(
       root,

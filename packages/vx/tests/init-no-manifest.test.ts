@@ -118,7 +118,7 @@ describe('vx init with no package.json', () => {
     const r = await vx(root, ['init', '--keep'])
     expect([r.code, r.err, existsSync(path.join(root, '.vx'))]).toEqual([
       1,
-      "vx init: --keep answers a Turbo or Nx repo's question, and there is no package.json here\n",
+      "✗ vx init  --keep answers a Turbo or Nx repo's question, and there is no package.json here\n",
       false,
     ])
   })

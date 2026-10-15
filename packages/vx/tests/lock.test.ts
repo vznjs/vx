@@ -14,10 +14,13 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 20_000
-const DRIFT = `vx lock --check: packages/app/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n`
+const DRIFT = noticed(
+  `vx lock --check: packages/app/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n`,
+)
 
 function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-lock-' })
@@ -71,7 +74,7 @@ describe('vx lock (e2e)', () => {
       const lockAll = await vx(root, ['lock'], {})
       expect(lockAll.out).toBe('✓ vx lock  1 project config → .vx/projects.lock.json\n')
       expect((await vx(root, ['lock', '--check'], {})).out).toBe(
-        'vx lock --check: up to date (1 project)\n',
+        '✓ vx lock --check  up to date (1 project)\n',
       )
       // A bare package with no task: nothing to freeze and nothing to name
       // (lock-discover-stage.test.ts names one a plugin gives tasks).
@@ -81,7 +84,7 @@ describe('vx lock (e2e)', () => {
       expect(lock.out).toBe('✓ vx lock  1 project config → .vx/projects.lock.json\n')
       const check = await vx(root, ['lock', '--check'], {})
       expect(check.code).toBe(0)
-      expect(check.out).toBe('vx lock --check: up to date (1 project)\n')
+      expect(check.out).toBe('✓ vx lock --check  up to date (1 project)\n')
     },
     TIMEOUT,
   )
@@ -102,7 +105,7 @@ describe('vx lock (e2e)', () => {
       }
       expect(Object.keys(lockJson.projects)).toEqual(['__proto__'])
       expect((await vx(root, ['lock', '--check'], { X: 'a' })).out).toBe(
-        'vx lock --check: up to date (1 project)\n',
+        '✓ vx lock --check  up to date (1 project)\n',
       )
       const frozen = await vx(
         root,
@@ -140,7 +143,7 @@ describe('vx lock (e2e)', () => {
       // --check under the SAME env: fresh evaluation matches the lock.
       const checkSame = await vx(root, ['lock', '--check'], { X: 'a' })
       expect(checkSame.code).toBe(0)
-      expect(checkSame.out).toContain('vx lock --check: up to date')
+      expect(checkSame.out).toContain('✓ vx lock --check  up to date')
 
       // --check under X=b: file bytes are unchanged but re-evaluation
       // resolves a different object — exit 1 naming the project.
@@ -224,7 +227,7 @@ describe('vx lock (e2e)', () => {
       await addProject(root, 'app', ENV_CONFIG)
       const typo = await vx(root, ['lock', '--chek'], {})
       expect(typo.code).toBe(1)
-      expect(typo.err).toContain('vx lock: unknown flag: --chek')
+      expect(typo.err).toContain('✗ vx lock  unknown flag: --chek')
       expect(typo.out).toBe('')
       // The audit a CI step asked for must not become a write that passes.
       expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(false)
@@ -245,12 +248,16 @@ describe('vx lock (e2e)', () => {
       const frozen = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
       expect([frozen.code, frozen.err]).toEqual([
         1,
-        'vx: .vx/projects.lock.json locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`\n',
+        noticed(
+          'vx run: .vx/projects.lock.json locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`\n',
+        ),
       ])
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
       expect([check.code, check.err]).toEqual([
         1,
-        "vx lock --check: packages/app/vx.config.ts is not the vx.config.mjs the lock holds for packages/app — run 'vx lock'\n",
+        noticed(
+          "vx lock --check: packages/app/vx.config.ts is not the vx.config.mjs the lock holds for packages/app — run 'vx lock'\n",
+        ),
       ])
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
       expect((await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })).code).toBe(0)
@@ -266,12 +273,14 @@ describe('vx lock (e2e)', () => {
       const file = path.join(root, '.vx/projects.lock.json')
       const ours = await Bun.file(file).text()
       await writeFile(file, `<<<<<<< HEAD\n${ours}=======\n${ours}>>>>>>> other\n`)
-      const invalid =
-        'vx: .vx/projects.lock.json is not valid JSON — re-run `vx lock` or delete it\n'
+      const invalid = (verb: string): string =>
+        noticed(
+          `vx ${verb}: .vx/projects.lock.json is not valid JSON — re-run \`vx lock\` or delete it`,
+        )
       const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
-      expect([run.code, run.err]).toEqual([1, invalid])
+      expect([run.code, run.err]).toEqual([1, invalid('run')])
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
-      expect([check.code, check.err]).toEqual([1, invalid])
+      expect([check.code, check.err]).toEqual([1, invalid('lock')])
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
       expect(await Bun.file(file).text()).toBe(ours)
       expect((await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })).code).toBe(0)
@@ -318,7 +327,9 @@ describe('vx lock (e2e)', () => {
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
       expect(check.code).toBe(1)
       expect(check.err).toBe(
-        `vx lock --check: the lock holds packages/gone, which has no vx.config now — run 'vx lock'\n`,
+        noticed(
+          `vx lock --check: the lock holds packages/gone, which has no vx.config now — run 'vx lock'\n`,
+        ),
       )
     },
     TIMEOUT,

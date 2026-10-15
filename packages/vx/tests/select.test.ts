@@ -16,6 +16,7 @@ import type { ProjectConfig } from '../src/config.js'
 import type { ProjectEntry, ProjectMeta } from '../src/workspace/index.js'
 import { lock } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 let root = ''
 let metas: ProjectMeta[] = []
@@ -106,10 +107,14 @@ describe('resolveFilters', () => {
     })
     // CONTROL: a name that matched nothing beside one that did IS said.
     const typo = await quiet(() => resolveFilters(root, ['app', 'nosuch']))
-    expect(typo.stderr).toBe('vx: filter "nosuch" matched no projects. Projects: app, lib\n')
+    expect(typo.stderr).toBe(
+      noticed('vx run: filter "nosuch" matched no projects. Projects: app, lib\n', 'warn'),
+    )
     // A typo beside a match names the nearest project, as the all-missed error does.
     const near = await quiet(() => resolveFilters(root, ['app', 'apq']))
-    expect(near.stderr).toBe('vx: filter "apq" matched no projects. Did you mean app?\n')
+    expect(near.stderr).toBe(
+      noticed('vx run: filter "apq" matched no projects. Did you mean app?\n', 'warn'),
+    )
   })
 
   it('a `tag:` filter in a workspace with no tags says so, not a project name', async () => {

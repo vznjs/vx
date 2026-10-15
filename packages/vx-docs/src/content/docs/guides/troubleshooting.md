@@ -32,7 +32,9 @@ A typo in `--filter` names the closest project:
 
 ```text
 $ vx run build --filter @demo/ap
-vx run: no projects matched filter(s): @demo/ap. Did you mean @demo/app?
+✗ vx run  no projects matched filter(s): @demo/ap
+
+  fix  @demo/app
 ```
 
 ## vx did something unexpected

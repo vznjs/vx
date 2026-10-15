@@ -108,13 +108,21 @@ something you did not mean, and a misspelled flag names the nearest one:
 
 ```sh frame="terminal"
 $ vx run build --concurrency 0x10
-vx run: --concurrency must be a positive integer, or a share of the cores like '50%' (got 0x10) (see `vx run --help`)
+✗ vx run  --concurrency must be a positive integer, or a share of the cores like '50%' (got 0x10)
+
+  see vx run --help
 
 $ vx run build --timeout 1e3
-vx run: --timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1e3) (see `vx run --help`)
+✗ vx run  --timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1e3)
+
+  see vx run --help
 
 $ vx run build --retry 2
-vx run: unknown flag: --retry (did you mean --retries?) (see `vx run --help`)
+✗ vx run  unknown flag: --retry
+
+  see vx run --help
+
+  fix  --retries
 ```
 
 `vx help` lists every verb, `vx help <verb>` shows one, and `vx version`

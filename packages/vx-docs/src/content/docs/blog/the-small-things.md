@@ -16,20 +16,30 @@ workspace.
 
 ```sh frame="terminal"
 $ vx run build --concurency 4
-vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)
+✗ vx run  unknown flag: --concurency
+
+  see vx run --help
+
+  fix  --concurrency
 
 $ vx run tset --all
-vx run: no projects declare task(s): tset. Did you mean test?
+✗ vx run  no projects declare task(s): tset
+
+  fix  test
 ```
 
 ## A task typed as a command gets the command
 
 ```sh frame="terminal"
 $ vx build --all
-vx: `build` is a task here, not a command: vx run build --all
+✗ vx  `build` is a task here, not a command
+
+  fix  vx run build --all
 
 $ vx biuld
-vx: unknown command: biuld; did you mean the task `build`? vx run build --all
+✗ vx  unknown command: biuld, a typo of the task `build`
+
+  fix  vx run build --all
 ```
 
 ## No task, a picker
@@ -40,7 +50,9 @@ agent, it never waits on a prompt. It names the tasks instead:
 
 ```sh frame="terminal"
 $ vx run < /dev/null
-vx run: missing task name (stdin is not a TTY, so no picker; tasks here: build, test) (see `vx run --help`)
+✗ vx run  missing task name (stdin is not a TTY, so no picker; tasks here: build, test)
+
+  see vx run --help
 ```
 
 ```mermaid

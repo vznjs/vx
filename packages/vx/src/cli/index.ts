@@ -8,11 +8,14 @@ import { FOREIGN_VERBS } from './foreign-flags.js'
 import {
   errorDocument,
   hideEnvFromTasks,
+  sayNotice,
   isFsRefusal,
   isOutOfFds,
   isUserError,
   maskedLine,
   nearest,
+  refusalNotice,
+  ui,
   UserError,
   wantsJson,
 } from '../util/index.js'
@@ -74,7 +77,8 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         await findWorkspaceRoot(process.cwd())
       } catch (err) {
         if (!isUserError(err)) throw err
-        process.stderr.write(`vx: ${err.message}; \`vx help\` lists the verbs\n`)
+        const parts = err.parts ?? { headline: err.message }
+        ui.print('err', refusalNotice('vx', err.message, { ...parts, why: 'see vx help' }))
         return 1
       }
       await printHelp(await (await plugins()).pluginCommandHelp())
@@ -97,19 +101,23 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         const unknown = resolved === null || 'declaredVerbs' in resolved
         const pointer = FOREIGN_VERBS[verb]
         if (unknown && pointer !== undefined) {
-          process.stderr.write(`${pointer}\n`)
+          sayNotice('info', 'vx', pointer)
           return 1
         }
         if (unknown && verb.startsWith('-')) {
-          process.stderr.write(
-            `vx help: unknown flag: ${verb}${flagHint('help', verb)} (see \`vx help\`)\n`,
+          sayNotice(
+            'error',
+            'vx help',
+            `unknown flag: ${verb}${flagHint('help', verb)} (see \`vx help\`)`,
           )
           return 1
         }
         if (unknown) {
           const declared = resolved === null ? [] : resolved.declaredVerbs
-          process.stderr.write(
-            `vx help: unknown command: ${verb}${didYouMeanVerb(verb, declared)} (see \`vx help\`)\n`,
+          sayNotice(
+            'error',
+            'vx help',
+            `unknown command: ${verb}${didYouMeanVerb(verb, declared)} (see \`vx help\`)`,
           )
           return 1
         }
@@ -123,8 +131,10 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       // takes no more of is refused, as every other verb refuses one.
       const extra = rest[0]
       if (extra !== undefined) {
-        process.stderr.write(
-          `vx version: ${refusedWord(extra)}: ${extra}${flagHint('version', extra)}${seeHelp('version')}\n`,
+        sayNotice(
+          'error',
+          'vx version',
+          `${refusedWord(extra)}: ${extra}${flagHint('version', extra)}${seeHelp('version')}`,
         )
         return 1
       }
@@ -193,8 +203,12 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       // points at the file that broke it.
       // Every answer below is "no such verb here": under --format json the
       // agent reads it as one code, as a verb's own refusal gives one.
-      const unknown = (text: string, code = 'VX_E_UNKNOWN_COMMAND'): number => {
-        process.stderr.write(text)
+      const unknown = (
+        text: string,
+        code = 'VX_E_UNKNOWN_COMMAND',
+        tone: 'error' | 'info' = 'error',
+      ): number => {
+        sayNotice(tone, 'vx', text.replace(/^vx: /, '').trimEnd())
         if (wantsJson(rest))
           process.stdout.write(errorDocument(code, maskedLine(text.split('\n')[0]!)))
         return 1
@@ -207,7 +221,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
       // their chance — a workspace that declares a plugin verb of that name keeps it.
       const moved = FOREIGN_VERBS[command]
       if (moved !== undefined) {
-        return unknown(`${moved}${loadNote}\n`)
+        return unknown(`${moved}${loadNote}\n`, undefined, 'info')
       }
       // A task typed where the verb goes (`turbo build`, `nx build app`),
       // `turbo dev` included: a repo's own `dev` task beats the no-service note.

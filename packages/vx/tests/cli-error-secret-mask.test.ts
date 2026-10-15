@@ -9,6 +9,7 @@ import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
 import { startWatch, until } from './helpers/watch-loop.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const SECRET = 'supersecretvalue123'
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -42,11 +43,17 @@ const SAID = 'reply token=*** id=plainrequest42'
 it("a plugin's failure in setup, in a stage and in its verb is masked", async () => {
   await addProject(root, 'app', `export default { tasks: { t: { exec: { command: 'true' } } } }`)
   await plugin(`{ setup() { ${THROW} } }`)
-  expect(stderr(['run', 't', '--all'])).toBe(`vx: plugin 'org/p' failed in setup: ${SAID}\n`)
+  expect(stderr(['run', 't', '--all'])).toBe(
+    noticed(`vx run: plugin 'org/p' failed in setup: ${SAID}\n`),
+  )
   await plugin(`{ key() { ${THROW} } }`)
-  expect(stderr(['run', 't', '--all'])).toBe(`vx: plugin 'org/p' failed in key: ${SAID}\n`)
+  expect(stderr(['run', 't', '--all'])).toBe(
+    noticed(`vx run: plugin 'org/p' failed in key: ${SAID}\n`),
+  )
   await plugin(`{ commands: { boom: { description: 'x', run() { ${THROW} } } } }`)
-  expect(stderr(['boom'])).toBe(`vx: plugin 'org/p' failed in command 'boom': ${SAID}\n`)
+  expect(stderr(['boom'])).toBe(
+    noticed(`vx boom: plugin 'org/p' failed in command 'boom': ${SAID}\n`),
+  )
 }, 30_000)
 
 it("a config's own throw is masked", async () => {
@@ -73,7 +80,7 @@ it("vx watch's failed cycle is masked", async () => {
         .err()
         .split('\n')
         .filter((l) => l.includes('cycle failed')),
-    ).toEqual([`vx watch: cycle failed: plugin 'org/p' failed in key: ${SAID}`])
+    ).toEqual([`✗ vx watch  cycle failed: plugin 'org/p' failed in key: ${SAID}`])
   } finally {
     w.proc.kill('SIGTERM')
     await w.proc.exited

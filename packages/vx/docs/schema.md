@@ -2266,16 +2266,22 @@ opens it on click), and the lines up to it with a caret under the field
 (`util/config-frame.ts`):
 
 ```
-vx: packages/b/vx.config.ts:4:15: tasks.build.exec has unknown field "comand" (allowed: …) — did you mean command?
+✗ vx lock  lock not written
 
-  2 |   tasks: {
-  3 |     build: {
-> 4 |       exec: { comand: 'mkdir -p dist' },
-    |               ^
+  packages/b/vx.config.ts:4:15
+  tasks.build.exec has unknown field "comand"
+  allowed: …
+
+    2 |   tasks: {
+    3 |     build: {
+  > 4 |       exec: { comand: 'mkdir -p dist' },
+      |               ^
+
+  fix  use command
 ```
 
 A field the file does not hold (a required one missing, or one a plugin
-set) prints the one line as before. The table below lists the messages
+set) prints without the frame. The table below lists the messages
 a user meets most:
 
 | Symptom                                                                                                                               | Cause                                                                                                                                                                                                                          |
