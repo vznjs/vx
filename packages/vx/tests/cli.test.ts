@@ -249,7 +249,7 @@ describe('cli run()', () => {
 
   // Item 483. The unresolved-task refusal is enforced at THREE sites over
   // one producer (`unresolvedRequests`): the run path, the plan builder, and
-  // here, the `--dry`/`--graph` path. Mutating each separately is the only
+  // here, the `--dry` path. Mutating each separately is the only
   // way to learn which is held — the producer fails 8 rows, the run path 5,
   // the plan builder 1, and this one NOTHING.
   //
@@ -308,7 +308,7 @@ describe('cli run()', () => {
     }
   })
 
-  it('--dry and --graph hint the nearest task, as the run does (E-29)', async () => {
+  it('--dry hints the nearest task, as the run does (E-29)', async () => {
     const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
     const os = await import('node:os')
     const path = await import('node:path')
@@ -328,13 +328,10 @@ describe('cli run()', () => {
       )
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
       process.chdir(root)
-      for (const plan of ['--dry', '--graph']) {
-        stderr = ''
-        expect(await run(['run', 'biuld', '--all', plan])).toBe(1)
-        expect(stderr).toBe(
-          noticed('vx run: no projects declare task(s): biuld. Did you mean build?'),
-        )
-      }
+      expect(await run(['run', 'biuld', '--all', '--dry'])).toBe(1)
+      expect(stderr).toBe(
+        noticed('vx run: no projects declare task(s): biuld. Did you mean build?'),
+      )
     } finally {
       process.chdir(origCwd)
       await rm(root, { recursive: true, force: true })
@@ -610,21 +607,6 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     expect(parsed.tasks).toHaveLength(1)
     expect(parsed.tasks[0]?.['id']).toBe('one#hello')
     expect(parsed.tasks[0]?.['cacheStatus']).toBe('miss')
-  })
-
-  it('--graph prints Graphviz DOT, skips execution', async () => {
-    let stdout = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      stdout += String(chunk)
-      return true
-    })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-
-    const code = await run(['run', '--all', 'hello', '--graph'])
-    expect(code).toBe(0)
-    expect(stdout).toContain('digraph TaskGraph')
-    expect(stdout).toContain('"one#hello"')
-    expect(stdout).not.toContain('hello-cli')
   })
 
   it('--all is a broad run: executed one-liner, raw output suppressed', async () => {
@@ -1067,12 +1049,7 @@ describe('vx watch command (parser-side validation)', () => {
 
   it('rejects watch with --dry', async () => {
     expect(await run(['watch', 'build', '--dry'])).toBe(1)
-    expect(stderr).toContain('--dry / --graph are not supported in watch mode')
-  })
-
-  it('rejects watch with --graph', async () => {
-    expect(await run(['watch', 'build', '--graph'])).toBe(1)
-    expect(stderr).toContain('--dry / --graph are not supported in watch mode')
+    expect(stderr).toContain('--dry is not supported in watch mode')
   })
 
   it('rejects watch with --profile', async () => {
@@ -1514,7 +1491,6 @@ describe('parseRunArgs', () => {
     expect(r.excludeDependencies).toEqual([])
     expect(r.verbosity).toBe(0)
     expect(r.dry).toBeUndefined()
-    expect(r.graph).toBeUndefined()
     expect(r.profile).toBeUndefined()
     expect(r.forwardArgs).toEqual([])
   })
@@ -1627,11 +1603,11 @@ describe('parseRunArgs', () => {
   })
 
   it("`run`'s documented flags are exactly the flags of its `(for run)` sections", () => {
-    // An exact set, not a spot check: `--dry` and `--graph` are in here only
-    // because `Planning (for run — skips execution):` carries an em dash and
-    // so does NOT match the section-header pattern, leaving the scanner
-    // inside the previous `(for run)` section. Widen that pattern and the two
-    // silently leave the list `vx run --dryy` suggests from.
+    // An exact set, not a spot check: `--dry` is in here only because
+    // `Planning (for run — skips execution):` carries an em dash and so does
+    // NOT match the section-header pattern, leaving the scanner inside the
+    // previous `(for run)` section. Widen that pattern and it silently leaves
+    // the list `vx run --dryy` suggests from.
     expect([...documentedFlags('run')].sort()).toEqual([
       '--affected',
       '--all',
@@ -1646,7 +1622,6 @@ describe('parseRunArgs', () => {
       '--exclude-dependencies',
       '--filter',
       '--force',
-      '--graph',
       '--kill-grace',
       '--no-cache',
       '--output-logs',
@@ -1863,22 +1838,12 @@ describe('parseRunArgs', () => {
     )
   })
 
-  it('parses --graph (stdout) and --graph=<path>', () => {
-    expect(parseRunArgs(['build', '--graph']).graph).toBe('')
-    expect(parseRunArgs(['build', '--graph=g.dot']).graph).toBe('g.dot')
-  })
-
-  it('rejects --dry combined with --graph (mutually exclusive)', () => {
-    expect(parseRunArgs(['build', '--dry', '--graph']).error).toMatch(/mutually exclusive/)
-  })
-
   it('parses --profile (default profile.json) and --profile=<path>', () => {
     expect(parseRunArgs(['build', '--profile']).profile).toBe('profile.json')
     expect(parseRunArgs(['build', '--profile=trace.json']).profile).toBe('trace.json')
   })
 
-  it('rejects --profile with --dry or --graph (planning skips execution)', () => {
-    expect(parseRunArgs(['build', '--graph', '--profile']).error).toMatch(/needs a real run/)
+  it('rejects --profile with --dry (planning skips execution)', () => {
     expect(parseRunArgs(['build', '--dry', '--profile']).error).toMatch(/needs a real run/)
   })
 

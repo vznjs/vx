@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: remove vx run --graph
+
+`vx run --graph` is removed. Use `vx run <task> --dry=json` (each task carries `deps`) and render it yourself.
+
 ## cli: remove vx run --summarize and --format json
 
 `vx run --summarize` and `vx run --format json` are removed, with schemas/summary.json. Read a run's result with `vx last --format json`; `vx run --dry=json` still prints the plan. RunOptions.summarize/json, RunSummary.json and OutputContext.json are gone.

@@ -72,7 +72,6 @@ vx run test --affected    # changed since main or the last commit, and dependent
 vx run build --all --dry  # the plan; runs nothing
 cd packages/app           # without --all, a run takes the package you are in
 vx run build              # ⇢ success local — after dist/ is deleted; else up-to-date
-vx run build --graph      # the task graph as Graphviz DOT
 ```
 
 A run never evaluates a `vx.config.ts`, and never looks for a new one:

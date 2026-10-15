@@ -59,6 +59,9 @@ vx run build --affected --dry=json
 
 ## The graph itself
 
+(Since vx 0.0.639, `--graph` is gone: `--dry=json` lists each task with
+its deps.)
+
 `--graph` writes the task graph as Graphviz DOT, to stdout or a file:
 
 ```sh frame="terminal"

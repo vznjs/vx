@@ -1757,7 +1757,7 @@ function noneAffected(prepared: PreparedRun, options: RunOptions): string {
  * Planning mode. Same setup as `run()` — workspace discovery, config
  * load, package graph, task graph — but stops short of execution.
  * Returns a `RunPlan` predicting the cache hit/miss outcome of every
- * task. Used by `--dry-run` and `--graph`.
+ * task. Used by `--dry`.
  *
  * Side-effects are limited to opening + closing the local Cache handle
  * (and running `cache.inputs.runtime` probe commands, which key

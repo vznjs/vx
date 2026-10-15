@@ -97,18 +97,6 @@ describe('Turbo parity — task graph (turbo.json `dependsOn`)', () => {
     },
     TIMEOUT,
   )
-
-  it(
-    '`--graph` emits Graphviz DOT with one edge per `dependsOn`',
-    async () => {
-      const r = await vx(root, ['run', 'build', '--filter', 'ui', '--graph'])
-      expect(r.code).toBe(0)
-      expect(r.out).toContain('digraph')
-      // Edges point the way work flows: dependency → dependent.
-      expect(r.out).toMatch(/"lib#build"\s*->\s*"ui#build"/)
-    },
-    TIMEOUT,
-  )
 })
 
 describe('Turbo parity — `--filter` (package selection)', () => {

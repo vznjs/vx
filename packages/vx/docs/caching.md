@@ -580,9 +580,9 @@ An upload is the outputs as the task wrote them; secret masking does
 not reach file contents, so a task whose outputs embed a secret is one
 to leave uncached ([security](./security.md)).
 
-### Planning probes (`--dry` / `--graph`)
+### Planning probes (`--dry`)
 
-The planning paths (`vx run --dry`, `--graph`) predict hits without
+The planning path (`vx run --dry`) predicts hits without
 side effects: against a remote cache they use a **lightweight
 existence probe** — no artifact download, no local ingest. A predicted
 `hit-remote` means the artifact exists remotely; the bytes move only

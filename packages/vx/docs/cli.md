@@ -64,7 +64,7 @@ included.
 
 **Every requested name must resolve.** If any positional matches no
 project in scope, the run refuses to start — `vx run: no projects
-declare task(s): <name>.` on stderr, a run and `--dry` / `--graph` alike
+declare task(s): <name>.` on stderr, a run and `--dry` alike
 (a run printed it to stdout until 2026-10-03), exit 1, with `Did you mean <task>?` when a
 declared task (or, for `pkg#task`, a runnable spec) is within two edits,
 and with no name that near, what exists: `Tasks: build, test.`, `No
@@ -494,14 +494,12 @@ than run with the args unheard.
 | `--cache-download <mode>`                  | value          | `cache.download`, else `all`                               | `all` \| `toplevel` \| `none` — where a REMOTELY-executed task's outputs land. `none` leaves them in the remote CAS and fetches lazily, only when a locally-placed task needs them. Never affects cache keys. See § `--cache-download`. `--cache-download=<mode>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `--verbosity <n>`                          | int (0+)       | `0`                                                        | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--dry[=text\|json]`                       | optional value | off                                                        | Print the task graph + predicted cache hit/miss; skip execution. `VX_DEBUG_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `--graph[=<path>]`                         | optional value | off                                                        | Emit Graphviz DOT (stdout if no path, its directory made if missing); skip execution. A path it cannot write is one line and exit 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                              | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `--tag <k=v>`                              | repeatable     | (none)                                                     | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 Mutual exclusion:
 
-- `--dry` and `--graph` — both skip execution; pick one.
-- `--dry` or `--graph` with `--profile` — it needs a real run to write
+- `--dry` with `--profile` — the profile needs a real run to write
   about.
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
@@ -526,13 +524,10 @@ name is the verb, and would change what `vx build` means the day one
 was declared.
 
 **Optional-value flags take their value with `=` only.** `--affected`,
-`--exclude-dependencies`, `--dry`, `--graph` and
-`--profile` are all valid bare, so a following word is
-read as a task name (a `--graph` word ending `.svg`, `.png`, `.json`
-and the like is refused, see § Turbo and Nx flags) — `vx run --affected build` means "run
-`build`, affected scope", and there is no way to tell that apart from
-"`build` is the git base". Write `--graph=out.dot` or
-`--affected=origin/main`. Getting it wrong is loud, not silent: the value
+`--exclude-dependencies`, `--dry` and `--profile` are all valid bare,
+so a following word is read as a task name — `vx run --affected build`
+means "run `build`, affected scope", and there is no way to tell that
+apart from "`build` is the git base". Write `--affected=origin/main`. Getting it wrong is loud, not silent: the value
 becomes a positional that matches no project, so the run refuses to
 start (see "Every requested name must resolve" above).
 
@@ -558,9 +553,8 @@ workers. A duration flag (`--timeout`, `--kill-grace`,
 `--teardown-timeout`, `--ready-notice`) takes its unit (`500ms`, `30s`,
 `10m`): a bare `500` is refused, naming both readings.
 
-An empty `=` value means "no value" on three flags, which then act like
-their bare forms: `--profile=` writes `profile.json`, `--graph=` prints
-to stdout and
+An empty `=` value means "no value" on two flags, which then act like
+their bare forms: `--profile=` writes `profile.json` and
 `--affected=` uses the default base. Every other flag refuses an empty
 value: `--dry=`, `--continue=` and
 `--exclude-dependencies=` as well as the ones with no bare form
@@ -897,9 +891,9 @@ not read a deferred output (the same reason vx refuses to infer inputs
 by tracing). When bytes are fetched later, vx saves an ordinary
 cache entry for them, so the next run is a plain local hit.
 
-## Planning mode (`--dry`, `--graph`)
+## Planning mode (`--dry`)
 
-Both flags short-circuit execution. They build the full task graph,
+`--dry` short-circuits execution. It builds the full task graph,
 compute every task's cache key, and probe the cache to predict the
 hit/miss outcome. Against a remote cache the probe is a lightweight
 existence check — planning never downloads or ingests artifacts.
@@ -1006,20 +1000,6 @@ none. The reasons are gathered only for a plan; a run pays nothing.
 against: a bare `--affected` guesses it (`origin/HEAD`, a trunk branch,
 else `HEAD~1`), so a reason that names no file may come from a commit
 the base reaches, a root `package.json` edit among them.
-
-### Task graph (`--graph`)
-
-`--graph` prints Graphviz DOT (stdout by default; `--graph=path`
-writes a file):
-
-```
-vx run ci --graph | dot -Tsvg > graph.svg
-vx run ci --graph=graph.dot
-```
-
-Node `fillcolor` varies by predicted status (green = local hit,
-sky-blue = remote hit, orange = miss, gray = no-cache, fuchsia =
-group, white = not started). Edges are unstyled.
 
 ## Run artifacts (`--profile`)
 
@@ -1347,7 +1327,7 @@ re-reads the watched set (item 971).
 The following flags are rejected (parser exits 1 before the initial
 run):
 
-- `--dry` / `--graph` — those skip execution; nothing to watch.
+- `--dry` — it skips execution; nothing to watch.
 - `--profile` — would overwrite its target per cycle.
 - `--verbosity <n>` (n > 0) — formats
   ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
@@ -1995,8 +1975,8 @@ none is dropped in silence. An Nx flag's camelCase spelling (`--nxBail`,
 `--skipNxCache`), which Nx's parser takes and its docs print, is its
 kebab-case row. A `[=<bool>]` row takes `=true` (the flag bare) and `=false` (left out), as Turbo's and Nx's parsers do. `vx run-many` and `vx affected` name the
 `vx run` that does the same, and the other verbs a hand types from
-either tool name what does it here: `graph` (`--graph`), `ls`
-(`vx show`), `query` (`--dry=json`), `reset` (`vx cache clean`), and
+either tool name what does it here: `graph` and `query` (`--dry=json`), `ls`
+(`vx show`), `reset` (`vx cache clean`), and
 `daemon`, `login`, `logout`, `link` and `unlink`, which vx has no use
 for. Nx's `project:target` (`vx run web:build`,
 when `web` declares `build`) is answered with `vx run web#build`: from
@@ -2015,8 +1995,7 @@ copy to the source.
 | turbo  | `--continue=dependencies-successful`              | alias   | `--continue=deps-ok`                                                                                                                              |
 | turbo  | `--continue`                                      | same    | `--continue[=never\|deps-ok\|always]`                                                                                                             |
 | turbo  | `--dry-run`                                       | alias   | `--dry[=text\|json]`                                                                                                                              |
-| turbo  | `--graph=<file>.svg\|png\|json\|html\|…`          | refuse  | vx writes Graphviz DOT only: `--graph=<file>.dot`, then `dot -Tsvg`                                                                               |
-| turbo  | `--graph`                                         | same    | `--graph[=<file>.dot]`                                                                                                                            |
+| turbo  | `--graph`                                         | refuse  | `--dry=json` prints the planned task graph, each task with its deps                                                                               |
 | turbo  | `--force[=<bool>]`                                | same    | `--force`: skip cache reads, keep writes                                                                                                          |
 | turbo  | `--affected`                                      | same    | `--affected[=<base>]`                                                                                                                             |
 | turbo  | `--summarize`                                     | refuse  | use `vx last --format json` for the run's JSON record                                                                                             |
@@ -2259,12 +2238,11 @@ https://github.com/vznjs/vx/issues.
 A plugin can give its refusal a code: `new UserError(message, 'MY_CODE')`.
 
 **Streams.** A verb whose stdout is a product (a `--format json`
-document, `--dry` / `--dry=json`, `--graph`'s DOT, a completion
+document, `--dry` / `--dry=json`, a completion
 script) writes that product alone there; a notice or warning it meets
 on the way (a cache index from another vx version, a plugin's warning) goes
 to stderr, as every refusal does. `vx run`'s stdout is the run's frame,
-the tasks' output it carries, except under `--format json`, where that
-moves to stderr. `tests/cli-streams.test.ts` holds each
+the tasks' output it carries. `tests/cli-streams.test.ts` holds each
 product verb to it under a notice.
 
 ## `vx show`
@@ -3114,7 +3092,7 @@ Only a run's own output (`vx run`, `vx watch`) is painted, and the
 help on a terminal: headings bold, `vx <verb>` and each flag or example
 in cyan; `NO_COLOR` or `FORCE_COLOR=0` turns it off
 (`tests/help-colors.test.ts`). Every other verb (`show`, `info`, `why`,
-`last`, a `--dry` plan, `--graph`, `cache clean`), and the help off a
+`last`, a `--dry` plan, `cache clean`), and the help off a
 terminal, prints plain text whatever `FORCE_COLOR` says, so a script
 that forces colour for a run's log still parses them
 (`tests/cli-colors-e2e.test.ts`).
@@ -3195,7 +3173,7 @@ Surface:
 
 - `run(options)` — execute. Returns `Promise<RunSummary>`.
 - `planRun(options)` — predict, no execute. Returns
-  `Promise<RunPlan>`. Used by `--dry` / `--graph`.
+  `Promise<RunPlan>`. Used by `--dry`.
 - `prepareRun(options, log)` — the shared setup (discovery → configs →
   graph → cache). What an embedder builds on.
 - `defineProject` / `defineWorkspace` — identity helpers for type

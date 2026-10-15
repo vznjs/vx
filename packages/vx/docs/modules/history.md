@@ -88,7 +88,7 @@ window. `tests/history-forecast-branch.test.ts`.
 - The live region's end-of-run forecast and each running row's usual
   duration (`p50sFor`), asked only once a run is a second old.
 
-- `plan.ts` (`--dry` / `--graph`): attaches each would-run task's p50 and
+- `plan.ts` (`--dry`): attaches each would-run task's p50 and
   predicts the run's wall-clock, through `p50sFor` when the provider has
   it: the executed successes' durations alone, 4 ms against `loadFor`'s
   38 at 27,000 rows (its rates and per-hit entry join read every row).

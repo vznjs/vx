@@ -29,14 +29,5 @@
     "tasks[].p50Ms": "number",
     "tasks[].project": "string",
     "tasks[].task": "string"
-  },
-  "graph": [
-    "digraph TaskGraph {",
-    "  rankdir=LR;",
-    "  node [shape=box];",
-    "  \"a#gen\" [label=\"a#gen\\nh0\", style=\"filled\", fillcolor=\"#bbf7d0\"];",
-    "  \"a#build\" [label=\"a#build\\nh1\", style=\"filled\", fillcolor=\"#fed7aa\"];",
-    "  \"a#gen\" -> \"a#build\";",
-    "}"
-  ]
+  }
 }

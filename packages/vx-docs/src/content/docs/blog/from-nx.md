@@ -142,7 +142,8 @@ so a shared input list is an import.
   tasks](../flaky-tasks/) from the local run history: a key that has
   both passed and failed on record, no service involved.
 - **The graph visualiser.** `vx run build --all --graph` renders DOT; `vx show`
-  prints what a run would see.
+  prints what a run would see. (Since vx 0.0.639, `--graph` is gone:
+  `--dry=json` lists each task with its deps.)
 
 The full guide, with the trade-offs spelled out one by one, is
 [Migrate from Nx](../../guides/migrate/#nx).

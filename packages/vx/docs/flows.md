@@ -294,7 +294,7 @@ batched UPDATE at prune, stats or close, so LRU reflects real use. A
 `vx run --dry` plan probes with `has`, which does not bump it — planning
 is read-only. (Prune's own rehearsal flag is `--dry-run`.)
 
-## 9. `--dry` / `--graph` — the plan path
+## 9. `--dry` — the plan path
 
 Owner: `orchestrator/plan.ts` + `cli/plan-format.ts`. Shares
 `prepareRun` with the real path, probes the cache for predicted
@@ -310,7 +310,6 @@ flowchart LR
     C --> D{format}
     D -->|--dry| E[human table:<br/>task, hash, predicted hit/miss]
     D -->|--dry=json| F[machine JSON]
-    D -->|--graph| G[Graphviz DOT]
 ```
 
 Because the plan path and `execute-task` share the same key

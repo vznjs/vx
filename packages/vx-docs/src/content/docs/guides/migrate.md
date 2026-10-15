@@ -347,7 +347,7 @@ test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --opti
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
-| `nx graph`                           | `vx run build --all --graph`                              |
+| `nx graph`                           | `vx run build --all --dry=json` (tasks and their deps)    |
 | `nx reset`                           | `vx cache clean` clears it all; `--older-than <age>` trims it; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
 

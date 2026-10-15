@@ -64,7 +64,6 @@
       "--exclude-dependencies",
       "--filter",
       "--force",
-      "--graph",
       "--help",
       "--kill-grace",
       "--no-cache",
@@ -236,9 +235,6 @@
     "run --force": [
       "false",
       "true"
-    ],
-    "run --graph": [
-      "*"
     ],
     "run --kill-grace": [
       "12h",

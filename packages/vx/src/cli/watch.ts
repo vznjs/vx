@@ -61,8 +61,8 @@ const DEBOUNCE_MAX_MS = 1_000
  * the help line and the completions, and a test holds the two together.
  */
 export function watchRefusal(parsed: RunArgs): string | null {
-  if (parsed.dry !== undefined || parsed.graph !== undefined) {
-    return 'vx watch: --dry / --graph are not supported in watch mode'
+  if (parsed.dry !== undefined) {
+    return 'vx watch: --dry is not supported in watch mode'
   }
   if (parsed.profile !== undefined) {
     return 'vx watch: --profile is not supported in watch mode (would overwrite per cycle)'

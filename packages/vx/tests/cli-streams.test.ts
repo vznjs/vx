@@ -1,7 +1,7 @@
 // Data on stdout, everything else on stderr, per verb. A script pipes a
-// verb's stdout into `jq`, a file or `dot`; a notice there corrupts it.
+// verb's stdout into `jq` or a file; a notice there corrupts it.
 // Each row runs a verb whose stdout is a product (a JSON document, the
-// plan, the DOT graph, a completion script) against a cache whose index
+// plan, a completion script) against a cache whose index
 // is from an older vx, and requires the product alone on stdout: the
 // reset is vx's own upkeep and says nothing (owner, 2026-10-06). The reading verbs refuse such a
 // cache: on stderr, stdout empty. `vx run`'s own stdout is the run's frame
@@ -64,7 +64,6 @@ describe('a verb prints its product alone on stdout over an aged index', () => {
     [['show'], (o) => o.startsWith('  project  ')],
     [['run', 'build', '--all', '--dry=json'], json],
     [['run', 'build', '--all', '--dry'], (o) => o.includes('app#build') && !o.includes(NOTICE)],
-    [['run', 'build', '--all', '--graph'], (o) => o.startsWith('digraph ')],
   ]
   for (const [args, product] of PRODUCTS) {
     it(

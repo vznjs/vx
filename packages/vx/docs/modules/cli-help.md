@@ -76,7 +76,7 @@ gap before its description.
   `--continue`, `--retries`, `--timeout`, `--kill-grace`,
   `--teardown-timeout`, `--ready-notice`, `--output-logs`,
   `--cache-download`, `--verbosity`.
-- `Planning (for run — skips execution)` — `--dry`, `--graph`.
+- `Planning (for run — skips execution)` — `--dry`.
 - `Artifacts (for run)` — `--profile`, `--tag`.
 - `Extensions (plugins)` — what plugins are for (remote cache,
   distributed execution, telemetry) and the plugin guide's URL.

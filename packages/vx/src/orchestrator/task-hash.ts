@@ -94,8 +94,8 @@ export interface ComputeHashArgs {
 /**
  * Resolve every input the cache key depends on (file content, env
  * values, upstream hashes, config bytes, forwardArgs) and ask the cache layer to combine them. Used by both
- * `executeTask` for the real run and `plan()` for `--dry-run` /
- * `--graph` previews.
+ * `executeTask` for the real run and `plan()` for `--dry`
+ * previews.
  *
  * Caller is responsible for handling the group-task case before
  * calling this — groups have no `exec` and no `cache.inputs`, so the

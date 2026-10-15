@@ -1,10 +1,9 @@
-# `src/cli/plan-format.ts` — plan → text / JSON / DOT
+# `src/cli/plan-format.ts` — plan → text / JSON
 
 ## Purpose
 
-Format a `RunPlan` (from [`plan.md`](./plan.md)) into one of three
-output formats: human-readable text, structured JSON, or Graphviz
-DOT. Pure functions; no I/O.
+Format a `RunPlan` (from [`plan.md`](./plan.md)) as human-readable
+text or structured JSON. Pure functions; no I/O.
 
 ## Public surface
 
@@ -24,7 +23,6 @@ export interface PlanTaskJson {
   affected?: AffectedReason // why `--affected` kept it (affected-tasks.md)
 }
 export function formatPlanJson(plan: RunPlan, affectedBase?: string): string
-export function formatGraphDot(plan: RunPlan): string
 ```
 
 All three return a complete string with a trailing newline; the
@@ -121,33 +119,6 @@ internal shape is not the wire — so a new `PlannedTask` field is not on
 the wire until it is added here. For tooling —
 `vx run <task> --dry=json | jq …`.
 
-## `formatGraphDot`
-
-Graphviz DOT with status-colored nodes. Groups are included — they are
-nodes in the graph, just not units of work — and every node is labelled
-with its id and the first eight characters of its key:
-
-```dot
-digraph TaskGraph {
-  rankdir=LR;
-  node [shape=box];
-  "@vzn/vx#lint" [label="@vzn/vx#lint\nd66cfed2", style="filled", fillcolor="#bae6fd"];
-  "@vzn/vx#test" [label="@vzn/vx#test\n68595e49", style="filled", fillcolor="#fed7aa"];
-  "@vzn/vx#lint" -> "@vzn/vx#test";
-}
-```
-
-Fill colors by predicted status: green (local hit), sky blue (remote
-hit), orange (miss), gray (no-cache), fuchsia (group). Edges point
-dependency → dependent, unstyled. Ids and labels are DOT-escaped: a task
-name is any object key in a config, so a quote, a backslash or a
-newline is reachable and would otherwise end the string early.
-
-```sh
-vx run ci --graph | dot -Tsvg > graph.svg
-vx run ci --graph=graph.dot
-```
-
 ## Tests
 
 `tests/plan-format.test.ts`:
@@ -158,8 +129,6 @@ vx run ci --graph=graph.dot
 - The `~p50` and `predicted:` footer appear only with history; a task
   without it is counted as `(+?)`; an all-hit plan has no footer.
 - JSON carries every planning field, `p50Ms` and `predicted` when present.
-- DOT is a valid digraph with edges, per-status fill colours and group
-  nodes; ids and labels are escaped.
 - Placement: the executor name, omitted when the task carries none, a
   JSON field when present.
 - The samples on this page are what the formatters print for the same

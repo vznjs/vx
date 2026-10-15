@@ -1,8 +1,6 @@
 // The machine-readable run outputs are a 1.0 contract surface
-// (docs/design/versioning-1.0.md): a script reads `--dry=json` and
-// `--graph`'s DOT instead of the terminal. The DOT
-// is recorded whole, line by line, for the same fixture plan: a renderer
-// keys on the graph's name, the node ids and the edge direction. The plan is a hand-enumerated wire
+// (docs/design/versioning-1.0.md): a script reads `--dry=json` instead of
+// the terminal. The plan is a hand-enumerated wire
 // object (`formatPlanJson`), not a serialized type, so
 // the type pin (contract-package-api.test.ts) does not hold them: a renamed
 // key there passed every test. This file renders each from a fixture that
@@ -18,7 +16,7 @@
 import { describe, expect, it } from 'bun:test'
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { formatGraphDot, formatPlanJson } from '../src/cli/plan-format.js'
+import { formatPlanJson } from '../src/cli/plan-format.js'
 import type { TaskNode } from '../src/graph/index.js'
 import type { PlannedTask, PlanPrediction, RunPlan } from '../src/orchestrator/plan.js'
 
@@ -112,7 +110,6 @@ describe('the machine-readable run outputs (versioning-1.0.md)', () => {
   it('agree with tests/contract/cli-wire.json', async () => {
     const live = {
       'dry=json': flatten(shapeOf(dryJson())),
-      graph: formatGraphDot(fixturePlan()).trimEnd().split('\n'),
     }
     if (process.env['VX_UPDATE_CONTRACT'] === '1' && process.env['CI'] !== 'true') {
       writeFileSync(RECORD, JSON.stringify(live, null, 2) + '\n')

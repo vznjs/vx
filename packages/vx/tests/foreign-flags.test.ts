@@ -25,7 +25,6 @@ const SAME: ReadonlyArray<readonly string[]> = [
   ['--filter', 'app^...'],
   ['--concurrency', '50%'],
   ['--continue'],
-  ['--graph'],
   ['--force'],
   ['--affected'],
   ['--output-logs', 'errors-only'],
@@ -113,7 +112,7 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
   [['--last-details'], '--last-details (vp): `vx last` prints the last run'],
   [
     ['--graph=deps.svg'],
-    '--graph (turbo): vx writes Graphviz DOT only: `--graph=<file>.dot`, then `dot -Tsvg`',
+    '--graph (turbo): `--dry=json` prints the planned task graph, each task with its deps',
   ],
   [
     ['--output-logs=new-only'],

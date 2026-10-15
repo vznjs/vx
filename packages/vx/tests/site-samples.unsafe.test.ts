@@ -289,13 +289,6 @@ describe('the quickstart shows what a run prints and what its flags do', () => {
     expect(m![1]).toBe(row.trimStart().split(' ')[0]!)
     expect(row.replace(/\s+/g, ' ')).toContain(` ${m![2]} `)
   })
-
-  it('the --graph comment says what `vx help` says: DOT', () => {
-    const page = readFileSync(path.join(DOCS, 'quickstart.md'), 'utf8')
-    expect(HELP).toContain('--graph[=<path>]     Emit Graphviz DOT')
-    const m = /^vx run build --graph\s+# (.*)$/m.exec(page)
-    expect(m![1]).toBe('the task graph as Graphviz DOT')
-  })
 })
 
 // The add-to-existing-repo page folded into the quickstart, and its
