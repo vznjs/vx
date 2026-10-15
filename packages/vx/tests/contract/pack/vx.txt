@@ -119,6 +119,7 @@ src/orchestrator/miss-save.ts
 src/orchestrator/options.ts
 src/orchestrator/output-host.ts
 src/orchestrator/output-log.ts
+src/orchestrator/persistent-task.ts
 src/orchestrator/persistent.ts
 src/orchestrator/placement.ts
 src/orchestrator/plan.ts
@@ -145,6 +146,7 @@ src/orchestrator/signals.ts
 src/orchestrator/stable-keys.ts
 src/orchestrator/task-hash.ts
 src/orchestrator/task-log-buffer.ts
+src/orchestrator/task-process.ts
 src/orchestrator/telemetry-host.ts
 src/orchestrator/telemetry.ts
 src/orchestrator/upstream.ts

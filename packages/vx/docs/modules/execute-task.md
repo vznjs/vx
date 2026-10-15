@@ -54,6 +54,9 @@ anything beneath it changes.
 
 ### B. Persistent task (`exec.persistent` set)
 
+`executePersistentTask`, in `persistent-task.ts`. The env and timeout
+both paths share are `taskEnv` and `taskTimeoutMs` in `task-process.ts`.
+
 1. Build isolated env (same as normal — see [`env.md`](./env.md)).
 2. Construct `PersistentOptions` for `runPersistent`. The
    `forwardArgs` are appended in-line (`withForwardArgs`, as a one-shot

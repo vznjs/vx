@@ -381,12 +381,12 @@ describe("cli-help.md's Purpose names the paths that print the text", () => {
 
 // J2-51: sandbox-runtime.md said executeCachedTask uses it; since the
 // executor seam the local executor calls runSandboxed, and only the
-// persistent path in execute-task.ts wraps a command itself.
+// persistent path (persistent-task.ts) wraps a command itself.
 describe("sandbox-runtime.md's Purpose names who calls it", () => {
   it('runSandboxed is the local executor’s call, and the page says so', () => {
     expect(src('exec/local-executor.ts')).toContain('runSandboxed(')
     expect(src('orchestrator/execute-task.ts')).not.toContain('runSandboxed(')
-    expect(src('orchestrator/execute-task.ts')).toContain('wrapSandboxedCommand(')
+    expect(src('orchestrator/persistent-task.ts')).toContain('wrapSandboxedCommand(')
     const purpose = blocks('modules/sandbox-runtime.md', 'Thin wrapper around')
     expect(purpose).toHaveLength(1)
     expect(purpose[0]).toContain('`local-executor.ts`')
