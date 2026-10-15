@@ -181,7 +181,7 @@ function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets
  */
 export interface RunContext {
   version: string
-  /** Projects covered by the graph — the "affected" half of the bar. */
+  /** Projects with a real task in the graph — the "affected" half of the bar. */
   packageCount: number
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number

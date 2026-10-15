@@ -44,7 +44,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 
 export interface RunContext {
   version: string
-  packageCount: number // projects covered → the bar's "affected" half
+  packageCount: number // projects with a task to run → the bar's "affected" half
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
   cache?: {

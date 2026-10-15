@@ -737,9 +737,10 @@ async function runOnBus(
     // for display. Marks `node.surfaced`; never touches `requested`.
     markSurfacedDeps(nodes)
 
-    // Header counts: unique projects covered by the graph (including
-    // dependsOn-pulled deps, not just the user-requested set), and the
-    // total number of real (non-group) task executions. Mirrors the
+    // Header counts: unique projects with a real (non-group) task in the
+    // graph (including dependsOn-pulled deps, not just the user-requested
+    // set; a `^build` placeholder in a project with no build is not one),
+    // and the total number of real task executions. Mirrors the
     // count the end-of-run summary reports under "total". The
     // requested count drives the focused logger's live-vs-buffered
     // decision, so surfaced nodes count toward it too — they display
@@ -748,8 +749,8 @@ async function runOnBus(
     let taskCount = 0
     let requestedCount = 0
     for (const node of nodes.values()) {
-      packagesInScope.add(node.projectName)
       if (!isGroupTask(node)) {
+        packagesInScope.add(node.projectName)
         taskCount++
         if (node.requested || node.surfaced === true) requestedCount++
       }
