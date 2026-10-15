@@ -792,9 +792,11 @@ describe('signal handling during vx run (e2e)', () => {
                   persistent: { readyWhen: 'READY' },
                 },
               },
+              // The trap outlasts the 200 ms grace by seconds: at 0.5 s a
+              // loaded CI box ran it out before the SIGKILL landed (#3628).
               slow: {
                 exec: {
-                  command: "trap 'sleep 0.5; printf LATE-%s OUTPUT; exit 0' TERM; sleep 30 & echo $! > child.pid; echo $$ > slow.pid; wait",
+                  command: "trap 'sleep 5; printf LATE-%s OUTPUT; exit 0' TERM; sleep 30 & echo $! > child.pid; echo $$ > slow.pid; wait",
                 },
               },
             },
