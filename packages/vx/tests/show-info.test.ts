@@ -15,6 +15,7 @@ import { VERSION } from '../src/version.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { noticed } from './helpers/notice.js'
 
 // `vx lock`, then the verb: show and info read the lock.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -303,7 +304,9 @@ describe('vx show (e2e)', () => {
       const r = await vx(root, ['show', 'app#bui'])
       expect(r.code).toBe(1)
       // The hint is a spec to paste, as `vx run`'s is (E-34).
-      expect(r.err).toBe('vx show: unknown task: "app#bui" — did you mean app#build, app#ci?\n')
+      expect(r.err).toBe(
+        noticed('vx show: unknown task: "app#bui" — did you mean app#build, app#ci?\n'),
+      )
     },
     TIMEOUT,
   )
@@ -325,7 +328,7 @@ describe('vx show (e2e)', () => {
     async () => {
       const r = await vx(root, ['show', '--format', 'yaml'])
       expect(r.code).toBe(1)
-      expect(r.err).toContain('--format must be pretty or json (got yaml) (see `vx show --help`)')
+      expect(r.err).toContain('--format must be pretty or json (got yaml)\n\n  see vx show --help')
     },
     TIMEOUT,
   )
@@ -336,7 +339,9 @@ describe('vx show (e2e)', () => {
       const r = await vx(root, ['show', 'app#'])
       expect(r.code).toBe(1)
       expect(r.err.trim()).toBe(
-        `vx show: missing task name after '#' in "app#" (vx show app lists the tasks)`,
+        noticed(
+          `vx show: missing task name after '#' in "app#" (vx show app lists the tasks)`,
+        ).trimEnd(),
       )
     },
     TIMEOUT,
@@ -614,7 +619,9 @@ describe('vx info (e2e)', () => {
       // A `--cache-dir` with no path is refused, not read as "the default".
       const noDir = await vx(root, ['info', '--cache-dir'])
       expect(noDir.code).toBe(1)
-      expect(noDir.err).toBe('vx info: --cache-dir requires a path (see `vx info --help`)\n')
+      expect(noDir.err).toBe(
+        noticed('vx info: --cache-dir requires a path (see `vx info --help`)\n'),
+      )
       expect(noDir.out).toBe('')
     },
     TIMEOUT,
@@ -1028,7 +1035,7 @@ describe('vx show reads the lock and evaluates nothing (e2e)', () => {
       const r = raw(root, ['show'])
       expect([r.exitCode, r.stderr.toString(), r.stdout.toString()]).toEqual([
         1,
-        'vx: no lock: run `vx lock`\n',
+        noticed('vx show: no lock: run `vx lock`\n'),
         '',
       ])
     },

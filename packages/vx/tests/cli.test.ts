@@ -14,6 +14,7 @@ import { planned } from './helpers/parity.js'
 import { makeWorkspace } from './helpers/workspace.js'
 import { writeLockClaim } from './helpers/plugin.js'
 import { editDistance, nearest } from '../src/util/index.js'
+import { noticed } from './helpers/notice.js'
 
 describe('cli run()', () => {
   let stdout: string
@@ -74,11 +75,13 @@ describe('cli run()', () => {
     expect([await said(['--verison']), await said(['--all']), await said(['rnu'])]).toEqual([
       [
         1,
-        "vx: unknown flag: --verison (did you mean --version?); a verb's flags follow the verb (see `vx help`)\n",
+        noticed(
+          "vx: unknown flag: --verison (did you mean --version?); a verb's flags follow the verb (see `vx help`)\n",
+        ),
       ],
-      [1, "vx: unknown flag: --all; a verb's flags follow the verb (see `vx help`)\n"],
+      [1, noticed("vx: unknown flag: --all; a verb's flags follow the verb (see `vx help`)\n")],
       // CONTROL: a word without a dash is still a command.
-      [1, 'vx: unknown command: rnu. Did you mean run? (see `vx help`)\n'],
+      [1, noticed('vx: unknown command: rnu. Did you mean run? (see `vx help`)\n')],
     ])
   })
 
@@ -98,18 +101,37 @@ describe('cli run()', () => {
       // CONTROL: a near miss keeps its one name.
       await said(['cache', 'claen']),
     ]).toEqual([
-      [1, 'vx watch: unknown flag: --debounce=abc (see `vx watch --help`)\n'],
-      [1, 'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n'],
+      [1, noticed('vx watch: unknown flag: --debounce=abc (see `vx watch --help`)\n')],
       [
         1,
-        "vx watch: --concurrency must be a positive integer, or a share of the cores like '50%' (got abc) (see `vx watch --help`)\n",
+        noticed(
+          'vx watch: unknown flag: --filtr=app (did you mean --filter?) (see `vx watch --help`)\n',
+        ),
       ],
       [
         1,
-        "vx run: --output-logs must be one of 'full', 'errors-only', 'hash-only', 'none' (got loud) (see `vx run --help`)\n",
+        noticed(
+          "vx watch: --concurrency must be a positive integer, or a share of the cores like '50%' (got abc) (see `vx watch --help`)\n",
+        ),
       ],
-      [1, 'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n'],
-      [1, 'vx cache: unknown subcommand: claen. Did you mean clean? (see `vx cache --help`)\n'],
+      [
+        1,
+        noticed(
+          "vx run: --output-logs must be one of 'full', 'errors-only', 'hash-only', 'none' (got loud) (see `vx run --help`)\n",
+        ),
+      ],
+      [
+        1,
+        noticed(
+          'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n',
+        ),
+      ],
+      [
+        1,
+        noticed(
+          'vx cache: unknown subcommand: claen. Did you mean clean? (see `vx cache --help`)\n',
+        ),
+      ],
     ])
   })
 
@@ -146,8 +168,8 @@ describe('cli run()', () => {
     expect({ stdout, stderr }).toEqual({
       stdout: '',
       stderr:
-        'vx help: unknown command: rnu. Did you mean run? (see `vx help`)\n' +
-        'vx help: unknown command: no-such-verb (see `vx help`)\n',
+        noticed('vx help: unknown command: rnu. Did you mean run? (see `vx help`)\n') +
+        noticed('vx help: unknown command: no-such-verb (see `vx help`)\n'),
     })
   })
 
@@ -277,7 +299,9 @@ describe('cli run()', () => {
       // among the unresolved; they appear only as what exists (M-56). The
       // whole line, because `toContain` would pass on the fallback's wording.
       expect(stderr).toBe(
-        'vx run: no projects declare task(s): typo-here. Tasks: build, lint. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+        noticed(
+          'vx run: no projects declare task(s): typo-here. Tasks: build, lint. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+        ),
       )
     } finally {
       process.chdir(origCwd)
@@ -308,7 +332,9 @@ describe('cli run()', () => {
       for (const plan of ['--dry', '--graph']) {
         stderr = ''
         expect(await run(['run', 'biuld', '--all', plan])).toBe(1)
-        expect(stderr).toBe('vx run: no projects declare task(s): biuld. Did you mean build?\n')
+        expect(stderr).toBe(
+          noticed('vx run: no projects declare task(s): biuld. Did you mean build?'),
+        )
       }
     } finally {
       process.chdir(origCwd)
@@ -349,25 +375,43 @@ describe('cli run()', () => {
         return 1
       })
       expect(code).toBe(1)
-      said.push(stderr.split('\n')[0]!)
+      said.push(stderr.trimEnd())
     }
     expect(said).toEqual([
-      'vx info: unknown flag: --formt (did you mean --format?) (see `vx info --help`)',
-      'vx lock: unknown flag: --chek (did you mean --check?) (see `vx lock --help`)',
-      'vx init: unknown flag: --forse (did you mean --force?) (see `vx init --help`)',
+      noticed(
+        'vx info: unknown flag: --formt (did you mean --format?) (see `vx info --help`)',
+      ).trimEnd(),
+      noticed(
+        'vx lock: unknown flag: --chek (did you mean --check?) (see `vx lock --help`)',
+      ).trimEnd(),
+      noticed(
+        'vx init: unknown flag: --forse (did you mean --force?) (see `vx init --help`)',
+      ).trimEnd(),
       'vx last: unknown flag: --lst (did you mean --list?) (see `vx last --help`)',
-      'vx show: unknown flag: --formt (did you mean --format?) (see `vx show --help`)',
+      noticed(
+        'vx show: unknown flag: --formt (did you mean --format?) (see `vx show --help`)',
+      ).trimEnd(),
       'vx why: unknown flag: --rn (did you mean --run?) (see `vx why --help`)',
-      'vx cache clean: unknown flag: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
-      'vx cache clean: unknown flag: --dry (did you mean --dry-run?) (see `vx cache --help`)',
-      'vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
-      'vx info: unknown flag: --json (did you mean --format json?) (see `vx info --help`)',
+      noticed(
+        'vx cache clean: unknown flag: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
+      ).trimEnd(),
+      noticed(
+        'vx cache clean: unknown flag: --dry (did you mean --dry-run?) (see `vx cache --help`)',
+      ).trimEnd(),
+      noticed(
+        'vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
+      ).trimEnd(),
+      noticed(
+        'vx info: unknown flag: --json (did you mean --format json?) (see `vx info --help`)',
+      ).trimEnd(),
       'vx last: unknown flag: --json (did you mean --format json?) (see `vx last --help`)',
-      'vx show: unknown flag: --json (did you mean --format json?) (see `vx show --help`)',
-      'vx upgrade: unknown flag: --json (see `vx upgrade --help`)',
-      'vx info: unexpected argument: format (see `vx info --help`)',
-      'vx lock: unexpected argument: foo (see `vx lock --help`)',
-      'vx cache clean: unexpected argument: foo (see `vx cache --help`)',
+      noticed(
+        'vx show: unknown flag: --json (did you mean --format json?) (see `vx show --help`)',
+      ).trimEnd(),
+      noticed('vx upgrade: unknown flag: --json (see `vx upgrade --help`)').trimEnd(),
+      noticed('vx info: unexpected argument: format (see `vx info --help`)').trimEnd(),
+      noticed('vx lock: unexpected argument: foo (see `vx lock --help`)').trimEnd(),
+      noticed('vx cache clean: unexpected argument: foo (see `vx cache --help`)').trimEnd(),
     ])
   })
 
@@ -416,7 +460,9 @@ describe('cli run()', () => {
       await rm(dir, { recursive: true, force: true })
     }
     expect(stderr).toBe(
-      'vx run: missing task name (stdin is not a TTY, so no picker; vx run <task>, e.g. vx run build) (see `vx run --help`)\n',
+      noticed(
+        'vx run: missing task name (stdin is not a TTY, so no picker; vx run <task>, e.g. vx run build) (see `vx run --help`)\n',
+      ),
     )
   })
 
@@ -433,7 +479,9 @@ describe('cli run()', () => {
   it('-V is rejected as unknown, pointing at --version (M-60)', async () => {
     expect(await run(['-V'])).toBe(1)
     expect(stderr).toBe(
-      "vx: unknown flag: -V (did you mean --version?); a verb's flags follow the verb (see `vx help`)\n",
+      noticed(
+        "vx: unknown flag: -V (did you mean --version?); a verb's flags follow the verb (see `vx help`)\n",
+      ),
     )
   })
 })
@@ -614,12 +662,16 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     const code = await run(['run', 'hello'])
     expect(code).toBe(1)
     expect(stderr).toBe(
-      'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+      noticed(
+        'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
+      ),
     )
     stderr = ''
     expect(await run(['watch', 'hello'])).toBe(1)
     expect(stderr).toBe(
-      'vx watch: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx watch --help`)\n',
+      noticed(
+        'vx watch: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx watch --help`)\n',
+      ),
     )
   })
 
@@ -784,7 +836,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     // The per-pattern warning is folded into the error: one line, not two
     // saying the same thing (the init walkthrough, 2026-09-04).
     expect(stderr).not.toContain('matched no projects')
-    expect(stderr).toContain('no projects matched filter(s): oen. Did you mean one?')
+    expect(stderr).toContain('no projects matched filter(s): oen\n\n  fix  one\n')
   })
 
   it('a `../` path filter is not a path form — refused loud, naming the pattern (parity L2)', async () => {
@@ -826,14 +878,18 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     ]).toEqual([
       [
         1,
-        'vx run: no projects selected: filter "...^one" matched one, and no project depends on it',
+        noticed(
+          'vx run: no projects selected: filter "...^one" matched one, and no project depends on it',
+        ).trimEnd(),
       ],
       [
         1,
-        'vx run: no projects selected: filter "one^..." matched one, which depends on no project',
+        noticed(
+          'vx run: no projects selected: filter "one^..." matched one, which depends on no project',
+        ).trimEnd(),
       ],
-      [1, 'vx run: filter "..." names no project'],
-      [1, 'vx run: filter "!" names no project'],
+      [1, noticed('vx run: filter "..." names no project').trimEnd()],
+      [1, noticed('vx run: filter "!" names no project').trimEnd()],
     ])
   })
 
@@ -847,7 +903,9 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     const code = await run(['run', '--filter', 'one', '--filter', '!one', 'hello'])
     expect([code, stderr.trim()]).toEqual([
       1,
-      'vx run: no projects selected: !one excluded every project the other filters matched',
+      noticed(
+        'vx run: no projects selected: !one excluded every project the other filters matched',
+      ).trimEnd(),
     ])
   })
 
@@ -1148,7 +1206,9 @@ describe('vx watch command (parser-side validation)', () => {
   it('rejects watch with no task name, and says how to name one', async () => {
     expect(await run(['watch'])).toBe(1)
     expect(stderr).toBe(
-      'vx watch: missing task name (vx watch <task>, e.g. vx watch build) (see `vx watch --help`)\n',
+      noticed(
+        'vx watch: missing task name (vx watch <task>, e.g. vx watch build) (see `vx watch --help`)\n',
+      ),
     )
   })
 
@@ -1174,7 +1234,7 @@ describe('vx watch command (parser-side validation)', () => {
 
   it('surfaces parser errors with the watch prefix', async () => {
     expect(await run(['watch', 'build', '--concurrency', 'oops'])).toBe(1)
-    expect(stderr).toContain('vx watch:')
+    expect(stderr).toStartWith('✗ vx watch  ')
     expect(stderr).toContain('--concurrency must be')
   })
 })
@@ -2333,7 +2393,9 @@ describe('vx cache clean command', () => {
     })
     expect(await run(['cache'])).toBe(1)
     expect(stderr).toBe(
-      'vx cache: missing subcommand. Try `vx cache clean --older-than 30d` to trim the cache, or `vx cache clean` to clear it (see `vx cache --help`)\n',
+      noticed(
+        'vx cache: missing subcommand. Try `vx cache clean --older-than 30d` to trim the cache, or `vx cache clean` to clear it (see `vx cache --help`)\n',
+      ),
     )
   })
 
@@ -2389,7 +2451,7 @@ describe('vx cache clean command', () => {
       return true
     })
     expect(await run(['cache', 'clen'])).toBe(1)
-    expect(stderr).toContain('Did you mean clean?')
+    expect(stderr).toContain('fix  clean')
   })
 })
 

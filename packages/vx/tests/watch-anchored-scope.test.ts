@@ -10,6 +10,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { SETTLE_MS, startWatch, until, type Watch } from './helpers/watch-loop.js'
+import { noticed } from './helpers/notice.js'
 
 describe('vx watch with anchored tasks (e2e)', () => {
   let root = ''
@@ -86,7 +87,7 @@ describe('vx watch with anchored tasks (e2e)', () => {
     expect(await w.proc.exited).toBe(1)
     await until(() => w.err().length > 0, 'the refusal')
     expect(w.err()).toBe(
-      'vx watch: no projects declare task(s): lbi#build. Did you mean lib#build?\n',
+      noticed('vx watch: no projects declare task(s): lbi#build. Did you mean lib#build?\n'),
     )
   }, 40_000)
 })

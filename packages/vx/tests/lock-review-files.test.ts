@@ -6,6 +6,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.join(import.meta.dir, '..', 'src', 'bin.ts')
 const CONFIG = `export default { tasks: { build: { exec: { command: 'true' } } } }\n`
@@ -60,13 +61,15 @@ it('vx lock --check fails on a stale or missing review copy', async () => {
   const stale = vx(r, 'lock', '--check')
   expect([stale.code, stale.err]).toEqual([
     1,
-    `vx lock --check: "a" (packages/a/vx.lock.json) is not what its config resolves to here — run 'vx lock'\n`,
+    noticed(
+      `vx lock --check: "a" (packages/a/vx.lock.json) is not what its config resolves to here — run 'vx lock'\n`,
+    ),
   ])
   await rm(path.join(dir, 'vx.lock.json'))
   const missing = vx(r, 'lock', '--check')
   expect([missing.code, missing.err]).toEqual([
     1,
-    `vx lock --check: "a" has no packages/a/vx.lock.json — run 'vx lock'\n`,
+    noticed(`vx lock --check: "a" has no packages/a/vx.lock.json — run 'vx lock'\n`),
   ])
   expect(vx(r, 'lock').code).toBe(0)
   expect(vx(r, 'lock', '--check').code).toBe(0)
@@ -84,7 +87,7 @@ it('vx lock --check fails on a review copy whose config is gone', async () => {
   const orphan = vx(r, 'lock', '--check')
   expect([orphan.code, orphan.err]).toEqual([
     1,
-    `vx lock --check: packages/a/vx.lock.json has no vx.config beside it — delete it\n`,
+    noticed(`vx lock --check: packages/a/vx.lock.json has no vx.config beside it — delete it\n`),
   ])
   await rm(path.join(dir, 'vx.lock.json'))
   expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })

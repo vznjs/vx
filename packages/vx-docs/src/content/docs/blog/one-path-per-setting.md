@@ -55,7 +55,7 @@ nobody can tell whether `2000` means milliseconds or seconds:
 
 ```sh frame="terminal"
 $ VX_RUN_KILL_GRACE=2000 vx run build
-vx: VX_RUN_KILL_GRACE takes a duration with its unit, like '2000ms' or '2s' (got 2000)
+✗ vx run  VX_RUN_KILL_GRACE takes a duration with its unit, like '2000ms' or '2s' (got 2000)
 ```
 
 ## Old names stop working
@@ -65,7 +65,16 @@ The names from before vx 0.0.637 are gone, with no alias. An old key in
 
 ```sh frame="terminal"
 $ vx run build
-vx: /repo/.vx/workspace.ts has unknown field "concurrency" (allowed: cache, plugins, run, watch)
+✗ vx run  config refused
+
+  .vx/workspace.ts:4:3
+  unknown field "concurrency"
+  allowed: cache, lock, plugins, run, watch
+
+    2 |
+    3 | export default defineWorkspace({
+  > 4 |   concurrency: 4,
+      |   ^
 ```
 
 An old variable such as `VX_KILL_GRACE_MS` is no longer read; set

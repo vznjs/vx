@@ -99,7 +99,7 @@ describe('a run', () => {
         const r = vx(root, ['run', 'a', '--all'], { CI })
         expect({ code: r.code, err: r.err, written: existsSync(lockFile) }).toEqual({
           code: 1,
-          err: 'vx: no lock: run `vx lock`\n',
+          err: '✗ vx run  no lock: run `vx lock`\n',
           written: false,
         })
       }

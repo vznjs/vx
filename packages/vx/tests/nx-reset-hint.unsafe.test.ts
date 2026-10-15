@@ -50,7 +50,7 @@ describe('the advice to drop the whole cache names a bare vx cache clean', () =>
       stderr: 'pipe',
     })
     expect(r.stderr.toString()).toBe(
-      '`nx reset` is `vx cache clean` here; `--older-than <age>` trims the cache instead of clearing it\n',
+      '› vx  `nx reset` is `vx cache clean` here; `--older-than <age>` trims the cache instead of clearing it\n',
     )
     const row = readFileSync(GUIDE, 'utf8')
       .split('\n')

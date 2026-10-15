@@ -10,6 +10,7 @@ import { pickTask } from '../src/cli/select.js'
 import { lock } from './helpers/orchestrator.js'
 import { packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { noticed } from './helpers/notice.js'
 
 let root: string
 
@@ -57,7 +58,7 @@ describe('vx run interactive picker', () => {
       await Bun.sleep(50)
       input.write(`${answer}\n`)
       expect(await picking).toBeNull()
-      expect(stderr).toContain(`vx run: invalid selection: ${answer} (type a number from 1 to 2)\n`)
+      expect(stderr).toContain(`invalid selection: ${answer} (type a number from 1 to 2)`)
     }
   })
 
@@ -77,7 +78,9 @@ describe('vx run interactive picker', () => {
     output.on('data', () => undefined)
     expect(await pick(root, { input: new PassThrough(), output })).toBeNull()
     expect(stderr).toBe(
-      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`\n',
+      noticed(
+        'vx run: no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`\n',
+      ),
     )
   })
 
@@ -147,7 +150,7 @@ describe('vx run interactive picker', () => {
       picked.push(await picking)
     }
     expect(picked).toEqual(['interrupted', null])
-    expect(stderr).toBe('vx run: no task picked\n')
+    expect(stderr).toBe(noticed('vx run: no task picked\n', 'info'))
   })
 
   // Within a project the menu is sorted, not the config's key order: the
@@ -196,7 +199,7 @@ describe('vx run interactive picker', () => {
       return true
     })
     expect(await pick(root, { input: new PassThrough(), output }, {}, new Set(['beta']))).toBeNull()
-    expect(stderr).toBe('vx run: no tasks declared in the selected projects (beta)\n')
+    expect(stderr).toBe(noticed('vx run: no tasks declared in the selected projects (beta)\n'))
   })
 
   it('rejects an out-of-range selection with null', async () => {

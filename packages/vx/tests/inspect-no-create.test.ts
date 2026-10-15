@@ -96,7 +96,7 @@ describe('a reading verb makes nothing on disk', () => {
         expect({ args, code: r.code, err: r.err, made: existsSync(typo) }).toEqual({
           args,
           code: 1,
-          err: `vx: --cache-dir .vx/cahce: no such directory (${typo})`,
+          err: `✗ vx ${args[0]}  --cache-dir .vx/cahce: no such directory (${typo})`,
           made: false,
         })
       }

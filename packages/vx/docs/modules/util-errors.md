@@ -46,10 +46,23 @@ export function notAWorkTree(cwd: string, stderr?: string): UserError // the one
 // src/util/config-frame.ts: a config refusal at its `line:col`, with the source under it; undefined when it names no field
 export function configErrorFrame(message: string, cwd: string): string | undefined
 export function configRefusal(message: string, cwd: string): ConfigRefusal | undefined // { where, problem, allowed?, fix?, frame }: the same, in a notice's parts
+
+// src/util/refusal-notice.ts: every refusal and warning a verb prints, as one ui.notice
+export function messageParts(message: string): RefusalParts // first sentence heads; later sentences and indented lines are facts; "(see `cmd`)" is why, "did you mean X?" the fix
+export function refusalNotice(
+  verb: string,
+  message: string,
+  parts?: RefusalParts,
+  opts?: { headline?; cwd? },
+): Block // parts, else a config refusal's frame, else messageParts
+export function lineNotice(tone: Tone, line: string, verb?: string): Block // the verb read off a `vx X:` prefix
+export function sayNotice(tone: Tone, verb: string, message: string): void // a message as a notice, on stderr
+export function sayLine(tone: Tone, line: string, verb?: string): void // lineNotice, on stderr
 ```
 
 `UserError` instances have `.name === 'UserError'`. `bin.ts` prints
-`err.message` for anything `isUserError` admits; a file-system refusal
+anything `isUserError` admits as `refusalNotice(verb, err.message, err.parts)`,
+the verb read off the message's `vx X:` prefix or argv; a file-system refusal
 (`isFsRefusal`) as its message plus `fsRefusalHint`; a process out of
 file descriptors (`isOutOfFds`) as its message plus `OUT_OF_FDS_HINT`;
 anything else with
@@ -81,6 +94,7 @@ internal bugs — those should show a full stack so we can find them.
 ## Tests
 
 `tests/errors.test.ts` — verifies the `name` field, basic shape.
+`tests/refusal-notice.test.ts` — how a message splits into a notice's parts.
 Real coverage comes from every module's "bad input" tests.
 
 ## `isUserError(err)`

@@ -27,6 +27,7 @@ export { configErrorFrame, configRefusal } from './config-frame.js'
 export { detectColors, ERROR, paint, SUCCESS, WARN, type ColorSupport } from './colors.js'
 export { gradientRule } from './report.js'
 import * as ui from './ui.js'
+export { refusalNotice, sayLine, sayNotice } from './refusal-notice.js'
 export { ui }
 export { xxh3, xxh3hex } from './hash.js'
 export {

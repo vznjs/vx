@@ -734,7 +734,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       )
       expect([stale.exitCode, stale.stderr.toString()]).toEqual([
         1,
-        'vx: .vx/projects.lock.json locks packages/gone, but its vx.config.mjs is gone — run `vx lock`\n',
+        '✗ vx run  .vx/projects.lock.json locks packages/gone, but its vx.config.mjs is gone — run `vx lock`\n',
       ])
       const again = await summarized(fixture.root, ['build', '--all'])
       expect({ code: again.code, ids: [...again.tasks.keys()] }).toEqual({

@@ -8,6 +8,7 @@ import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
@@ -63,7 +64,9 @@ describe('a bare name does not select a default build', () => {
       const r = await vx(root, [...args])
       expect(r.code).toBe(1)
       expect(r.text).toBe(
-        `vx run: no projects declare task(s): build. Tasks: ${listed}. A run reads the lock: after editing a vx.config, run \`vx lock\`.\n`,
+        noticed(
+          `vx run: no projects declare task(s): build. Tasks: ${listed}. A run reads the lock: after editing a vx.config, run \`vx lock\`.\n`,
+        ),
       )
     }
   }, 30_000)

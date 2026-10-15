@@ -15,6 +15,7 @@ import {
   gitSpawnRefusal,
   isExecutableMissing,
   isOutOfFds,
+  refusal,
   relPosix,
   UserError,
 } from '../util/index.js'
@@ -75,10 +76,10 @@ export async function findWorkspaceRoot(
   start = path.resolve(start)
   const file = await workspaceFile(start)
   if (file === null) {
-    throw new UserError(
-      `no .vx/workspace.ts in ${start} or a parent${(await gitTop(start)) === null ? '' : ' up to the git root'} — ` +
-        'run `vx init` to create one',
-      'VX_E_NO_WORKSPACE',
+    const headline = `no .vx/workspace.ts in ${start} or a parent${(await gitTop(start)) === null ? '' : ' up to the git root'}`
+    throw refusal(
+      { headline, fix: 'vx init' },
+      { code: 'VX_E_NO_WORKSPACE', message: `${headline} — run \`vx init\` to create one` },
     )
   }
   const root = workspaceRootOf(file)

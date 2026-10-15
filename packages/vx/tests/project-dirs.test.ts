@@ -156,7 +156,7 @@ describe('a project is a directory with a vx.config', () => {
       const check = vx(root, 'lock', '--check')
       expect([check.code, check.err.trim()]).toEqual([
         1,
-        "vx lock --check: b/vx.config.mjs is not in the lock — run 'vx lock'",
+        "✗ vx lock --check  b/vx.config.mjs is not in the lock — run 'vx lock'",
       ])
       expect(vx(root, 'lock').code).toBe(0)
       expect(planned(root, 'hello', '--all')).toEqual(['a#hello', 'b#hello'])
@@ -173,7 +173,7 @@ describe('a project is a directory with a vx.config', () => {
         JSON.stringify({ version: 2, projects: { a: { tasks: {} } } }),
       )
       expect(planned(root, 'hello', '--all')).toBe(
-        'exit 1: vx: .vx/projects.lock.json has unsupported version 2 (this vx expects 3) — re-run `vx lock`',
+        'exit 1: ✗ vx run  .vx/projects.lock.json has unsupported version 2 (this vx expects 3) — re-run `vx lock`',
       )
     },
     TIMEOUT,

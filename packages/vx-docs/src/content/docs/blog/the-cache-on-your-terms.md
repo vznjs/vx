@@ -54,7 +54,9 @@ An empty spec is refused, never read as "everything on":
 
 ```sh frame="terminal"
 $ vx run build --all --cache-policy=
-vx run: --cache-policy needs a spec like local:r, local:rw, remote:, or local:,remote:rw — pass --no-cache to disable every axis (see `vx run --help`)
+✗ vx run  --cache-policy needs a spec like local:r, local:rw, remote:, or local:,remote:rw — pass --no-cache to disable every axis
+
+  see vx run --help
 ```
 
 ## One store for every checkout

@@ -4,6 +4,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
@@ -67,7 +68,10 @@ it('an uncached pass kept none, and says so on stderr', () => {
   expect(vx('last', '--log', 'a#plain')).toEqual({
     code: 0,
     out: '',
-    err: 'vx last: a#plain ended success; vx keeps output only for failed and cached tasks\n',
+    err: noticed(
+      'vx last: a#plain ended success. vx keeps output only for failed and cached tasks\n',
+      'info',
+    ),
   })
 })
 
@@ -75,7 +79,7 @@ it('a task no run recorded, or one outside the run named, is refused', () => {
   expect(vx('last', '--log', 'a#nope')).toEqual({
     code: 1,
     out: '',
-    err: 'vx last: no recorded run of a#nope (a task id is project#task)\n',
+    err: noticed('vx last: no recorded run of a#nope (a task id is project#task)\n'),
   })
   expect(vx('last', runIds['bad']!, '--log', 'a#build').code).toBe(1)
 })

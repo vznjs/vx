@@ -81,8 +81,8 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
     const dry = vx(root, 'run', 'test', '--affected=HEAD~1', '--dry')
     const filter = vx(root, 'run', 'test', '--filter', '[HEAD~1]')
     expect({
-      run: [run.exitCode, run.out.includes('No affected project declares task(s): test.')],
-      dry: [dry.exitCode, dry.out.includes('No affected project declares task(s): test.')],
+      run: [run.exitCode, run.out.includes('No affected project declares task(s): test')],
+      dry: [dry.exitCode, dry.out.includes('No affected project declares task(s): test')],
       filter: filter.exitCode,
     }).toEqual({ run: [0, true], dry: [0, true], filter: 0 })
   })
@@ -98,18 +98,12 @@ describe('--affected: a task only unchanged projects declare is not a typo', () 
 
   it('a name no project declares is still refused (control)', () => {
     const r = vx(root, 'run', 'tset', '--affected=HEAD~1')
-    expect([r.exitCode, r.out.includes('vx run: no projects declare task(s): tset.')]).toEqual([
-      1,
-      true,
-    ])
+    expect([r.exitCode, r.out.includes('no projects declare task(s): tset')]).toEqual([1, true])
   })
 
   it('a scope the user named is judged as before (control)', () => {
     const r = vx(root, 'run', 'test', '--filter', 'docs')
-    expect([r.exitCode, r.out.includes('vx run: no projects declare task(s): test.')]).toEqual([
-      1,
-      true,
-    ])
+    expect([r.exitCode, r.out.includes('no projects declare task(s): test')]).toEqual([1, true])
   })
 })
 
@@ -130,9 +124,9 @@ describe('--affected: a task only an unaffected dependency declares is not a typ
     const both = vx(root, 'run', 'lint', 'test', '--affected=HEAD~1')
     const typo = vx(root, 'run', 'tset', '--affected=HEAD~1')
     expect({
-      run: [run.exitCode, run.out.includes('No affected project declares task(s): test.')],
+      run: [run.exitCode, run.out.includes('No affected project declares task(s): test')],
       both: [both.exitCode, both.out.includes('docs#lint'), both.out.includes('app#test')],
-      typo: [typo.exitCode, typo.out.includes('vx run: no projects declare task(s): tset.')],
+      typo: [typo.exitCode, typo.out.includes('no projects declare task(s): tset')],
     }).toEqual({ run: [0, true], both: [0, true, false], typo: [1, true] })
   })
 })
@@ -150,9 +144,9 @@ describe('--affected: a changed project with no vx config', () => {
     const dry = vx(root, 'run', 'test', '--affected=HEAD~1', '--dry')
     const typo = vx(root, 'run', 'tset', '--affected=HEAD~1')
     expect({
-      run: [run.exitCode, run.out.includes('No affected project declares task(s): test.')],
-      dry: [dry.exitCode, dry.out.includes('No affected project declares task(s): test.')],
-      typo: [typo.exitCode, typo.out.includes('vx run: no projects declare task(s): tset.')],
+      run: [run.exitCode, run.out.includes('No affected project declares task(s): test')],
+      dry: [dry.exitCode, dry.out.includes('No affected project declares task(s): test')],
+      typo: [typo.exitCode, typo.out.includes('no projects declare task(s): tset')],
     }).toEqual({ run: [0, true], dry: [0, true], typo: [1, true] })
   })
 })

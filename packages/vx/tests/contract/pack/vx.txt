@@ -170,6 +170,7 @@ src/util/num.ts
 src/util/paths.ts
 src/util/procfs.ts
 src/util/real-path.ts
+src/util/refusal-notice.ts
 src/util/report.ts
 src/util/secret-mask.ts
 src/util/settle.ts

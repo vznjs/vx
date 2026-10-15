@@ -31,7 +31,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-/** The first line a refusal prints, and its exit code. */
+/** What a refusal prints (a thrown one: its message, as bin.ts reads it), and its exit code. */
 async function refused(argv: string[]): Promise<[number, string]> {
   stderr = ''
   // `why` and `last` refuse by throwing, which bin.ts prints as-is.
@@ -39,7 +39,7 @@ async function refused(argv: string[]): Promise<[number, string]> {
     stderr += `${e.message}\n`
     return 1
   })
-  return [code, stderr.split('\n')[0]!]
+  return [code, stderr]
 }
 
 const HLP: Record<string, string[]> = {
@@ -58,7 +58,10 @@ describe('a refused word names the nearest one the verb takes', () => {
     it(`vx ${verb} --hlp hints --help`, async () => {
       const [code, line] = await refused(HLP[verb] ?? [verb, '--hlp'])
       expect(code).toBe(1)
-      expect(line).toContain(': unknown flag: --hlp (did you mean --help?) (see `vx ')
+      // A thrown refusal is its message; a printed one, its notice.
+      expect(line).toMatch(
+        /unknown flag: --hlp \(did you mean --help\?\) \(see `vx |unknown flag: --hlp\n\n {2}see vx .*\n\n {2}fix {2}--help\n/,
+      )
     })
   }
 
@@ -71,24 +74,27 @@ describe('a refused word names the nearest one the verb takes', () => {
     ]).toEqual([
       [
         1,
-        'vx completions: expected one shell — bash, zsh or fish (got bsh). Did you mean bash? (see `vx completions --help`)',
+        '✗ vx completions  expected one shell — bash, zsh or fish (got bsh)\n\n  see vx completions --help\n\n  fix  bash\n',
       ],
       [
         1,
-        'vx completions: expected one shell — bash, zsh or fish (got powershell) (see `vx completions --help`)',
+        '✗ vx completions  expected one shell — bash, zsh or fish (got powershell)\n\n  see vx completions --help\n',
       ],
       [
         1,
-        'vx completions: expected one shell — bash, zsh or fish (got tcsh) (see `vx completions --help`)',
+        '✗ vx completions  expected one shell — bash, zsh or fish (got tcsh)\n\n  see vx completions --help\n',
       ],
-      [1, 'vx completions: expected one shell — bash, zsh or fish (see `vx completions --help`)'],
+      [
+        1,
+        '✗ vx completions  expected one shell — bash, zsh or fish\n\n  see vx completions --help\n',
+      ],
     ])
   })
 
   it('vx version takes no word, and with none still prints and exits 0', async () => {
     expect([await refused(['version', 'extra']), await refused(['--version', '-x'])]).toEqual([
-      [1, 'vx version: unexpected argument: extra (see `vx version --help`)'],
-      [1, 'vx version: unknown flag: -x (see `vx version --help`)'],
+      [1, '✗ vx version  unexpected argument: extra\n\n  see vx version --help\n'],
+      [1, '✗ vx version  unknown flag: -x\n\n  see vx version --help\n'],
     ])
     expect(await run(['version'])).toBe(0)
     expect(await run(['--version'])).toBe(0)
@@ -97,7 +103,7 @@ describe('a refused word names the nearest one the verb takes', () => {
   it('a flag far from --help gets no hint (control)', async () => {
     expect(await refused(['lock', '--zzz'])).toEqual([
       1,
-      'vx lock: unknown flag: --zzz (see `vx lock --help`)',
+      '✗ vx lock  unknown flag: --zzz\n\n  see vx lock --help\n',
     ])
   })
 })

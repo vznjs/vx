@@ -21,7 +21,7 @@ export async function taskVerbHint(
   cwd: string,
   typo = false,
 ): Promise<string | null> {
-  if (command.includes('#')) return `\`${command}\` is a task: vx run ${command}`
+  if (command.includes('#')) return `\`${command}\` is a task (did you mean vx run ${command}?)`
   const projects = await workspaceProjects(cwd)
   if (projects === null) return null
   const tasks = new Set<string>()
@@ -40,8 +40,8 @@ export async function taskVerbHint(
         ? `vx run ${task} --all`
         : `vx run ${task}`
   return task === command
-    ? `\`${command}\` is a task here, not a command: ${run}`
-    : `unknown command: ${command}; did you mean the task \`${task}\`? ${run}`
+    ? `\`${command}\` is a task here, not a command (did you mean ${run}?)`
+    : `unknown command: ${command}, a typo of the task \`${task}\` (did you mean ${run}?)`
 }
 
 /**
@@ -54,7 +54,7 @@ export async function nxTargetHint(tasks: readonly string[], cwd: string): Promi
   if (projects === null) return null
   const specs = tasks.map((t) => nxProjectTarget(t, projects))
   if (specs.some((s) => s === undefined)) return null
-  return `\`${tasks.join(' ')}\` is Nx's project:target: vx run ${specs.join(' ')}`
+  return `\`${tasks.join(' ')}\` is Nx's project:target (did you mean vx run ${specs.join(' ')}?)`
 }
 
 /**

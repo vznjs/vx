@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     process.exitCode = code
   } catch (err) {
     const {
-      configErrorFrame,
+      detectColors,
       errorCode,
       errorDocument,
       fsRefusalHint,
@@ -55,6 +55,8 @@ async function main(): Promise<void> {
       isUserError,
       maskedLine,
       OUT_OF_FDS_HINT,
+      refusalNotice,
+      ui,
       wantsJson,
     } = await import('./util/index.js')
     // A plugin's failure quotes what it was told (a remote's reply, a
@@ -66,12 +68,16 @@ async function main(): Promise<void> {
     // on. Everything else gets the full stack so internal bugs are
     // debuggable.
     if (isUserError(err)) {
-      // A message that already names the tool (`vx why: …`, thrown by a verb
-      // that wants its own name in the line) is printed as it is; prefixing
-      // it produced `vx: vx why: …` (walkthrough, 2026-09-04).
-      // A config refusal names its line and shows it.
-      const m = configErrorFrame(err.message, process.cwd()) ?? err.message
-      say(m.startsWith('vx ') ? `${m}\n` : `vx: ${m}\n`)
+      // A message that names its verb (`vx why: …`) is that verb's; any
+      // other is the verb typed. A config refusal shows its line.
+      const named = /^(vx [a-z][\w-]*): /.exec(err.message)
+      const typed = /^[a-z][\w-]*$/.test(argv[0] ?? '') ? `vx ${argv[0]}` : 'vx'
+      const block = refusalNotice(
+        named?.[1] ?? typed,
+        named === null ? err.message : err.message.slice(named[0].length),
+        err.parts,
+      )
+      process.stderr.write(maskedLine(ui.render([block], detectColors(process.stderr))))
     } else if (isOutOfFds(err)) {
       say(`vx: ${err.message} — ${OUT_OF_FDS_HINT}\n`)
     } else if (isFsRefusal(err)) {

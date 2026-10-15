@@ -240,7 +240,7 @@ describe('vx watch under a signal (e2e)', () => {
         for await (const chunk of proc.stderr) err += new TextDecoder().decode(chunk)
       })(),
     ]
-    await waitForText(async () => err, 'vx watch: cycle failed: no lock: run `vx lock`', 10_000)
+    await waitForText(async () => err, '✗ vx watch  cycle failed: no lock: run `vx lock`', 10_000)
     await waitForText(async () => out, 'watching', 10_000)
     await Bun.write(
       path.join(dir, 'vx.config.mjs'),

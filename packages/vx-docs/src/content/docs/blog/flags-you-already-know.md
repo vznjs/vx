@@ -42,14 +42,18 @@ spelling that does the job:
 
 ```sh frame="terminal"
 $ vx run build --parallel
-vx run: --parallel (turbo): vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once (see `vx run --help`)
+✗ vx run  --parallel (turbo): vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once
+
+  see vx run --help
 ```
 
 Nx's verbs and `project:target` get the same treatment:
 
 ```sh frame="terminal"
 $ vx run web:build
-vx run: `web:build` is Nx's project:target: vx run @demo/web#build
+✗ vx run  `web:build` is Nx's project:target
+
+  fix  vx run @demo/web#build
 
 $ vx run-many -t build
 `nx run-many` is `vx run <task> --all` here; -t, -p, --exclude and --parallel work as they are

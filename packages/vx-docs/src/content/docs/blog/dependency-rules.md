@@ -85,7 +85,7 @@ $ vx lock
 ✓ vx lock  4 project configs → .vx/projects.lock.json
 
 $ vx lock --check
-vx lock --check: up to date (4 projects)
+✓ vx lock --check  up to date (4 projects)
 ```
 
 `vx lock --check` in CI fails the same way, so a pull request that adds

@@ -38,12 +38,12 @@ import {
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
-import { hangupIgnored, maskedLine, restartTimings } from '../util/index.js'
+import { hangupIgnored, maskedLine, restartTimings, sayNotice, sayLine } from '../util/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
 function sayCannot(what: string, err: unknown): void {
-  process.stderr.write(`vx watch: ${what}: ${err instanceof Error ? err.message : String(err)}\n`)
+  sayNotice('warn', 'vx watch', `${what}: ${err instanceof Error ? err.message : String(err)}`)
 }
 
 /** Wait this long after the last filesystem event before re-running. */
@@ -84,18 +84,20 @@ export function watchRefusal(parsed: RunArgs): string | null {
 export async function watchCmd(args: readonly string[]): Promise<number> {
   const parsed = parseRunArgs(args, 'watch')
   if (parsed.error) {
-    process.stderr.write(`vx watch: ${parsed.error}${seeHelp('watch')}\n`)
+    sayNotice('error', 'vx watch', `${parsed.error}${seeHelp('watch')}`)
     return 1
   }
 
   const refused = watchRefusal(parsed)
   if (refused !== null) {
-    process.stderr.write(`${refused}\n`)
+    sayLine('error', refused, 'vx watch')
     return 1
   }
   if (parsed.tasks.length === 0) {
-    process.stderr.write(
-      `vx watch: missing task name (vx watch <task>, e.g. vx watch build)${seeHelp('watch')}\n`,
+    sayNotice(
+      'error',
+      'vx watch',
+      `missing task name (vx watch <task>, e.g. vx watch build)${seeHelp('watch')}`,
     )
     return 1
   }
@@ -103,11 +105,11 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   const cwd = process.cwd()
   const resolved = await resolveRunOptions(parsed, cwd, parsed.tasks, 'watch')
   if ('error' in resolved) {
-    process.stderr.write(`vx watch: ${resolved.error}\n`)
+    sayNotice('error', 'vx watch', resolved.error)
     return 1
   }
   if ('nothingSelected' in resolved) {
-    process.stderr.write(`vx watch: ${resolved.nothingSelected}\n`)
+    sayNotice('info', 'vx watch', resolved.nothingSelected)
     return 0
   }
   // The watch loop owns SIGINT/SIGTERM for its whole lifetime. A cycle's
@@ -216,7 +218,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   let refusedToStart = false
   initial.held = runOrchestrator(initial.cycle.opts).then(
     (run) => {
-      if (run.refused !== undefined) process.stderr.write(`vx watch: ${run.refused}\n`)
+      if (run.refused !== undefined) sayNotice('error', 'vx watch', run.refused)
       // A run that failed having run nothing refused to start: a requested
       // name no project declares (run() says which, with a "did you mean").
       // `vx run` exits 1 on it; `vx watch buidl` watched on, re-running the
@@ -227,8 +229,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       return run.persistent
     },
     (err: unknown) => {
-      process.stderr.write(
-        `vx watch: cycle failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      sayNotice(
+        'error',
+        'vx watch',
+        `cycle failed: ${err instanceof Error ? err.message : String(err)}`,
       )
       return undefined
     },
@@ -247,7 +251,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // run's own refusal and its "did you mean".
   if (scope.length === 0 && !unlocked) {
     await held?.stop()
-    process.stderr.write(`vx watch: no projects in scope\n`)
+    sayNotice('error', 'vx watch', 'no projects in scope')
     return 1
   }
   await armLoop(undefined, held)
@@ -491,7 +495,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             held = cycle.persistent
             // What this cycle did not take (a server whose task did not run).
             await before?.stop()
-            if (cycle.refused !== undefined) process.stderr.write(`vx watch: ${cycle.refused}\n`)
+            if (cycle.refused !== undefined) sayNotice('error', 'vx watch', cycle.refused)
             changes.lastCycle = { start, end: Date.now() }
           } catch (err) {
             // A re-run can fail catastrophically when the workspace
@@ -503,7 +507,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // is the canonical exit; we don't unilaterally abort here.
             // A config's own throw or a plugin's failure may quote a secret (L-11).
             const message = maskedLine(err instanceof Error ? err.message : String(err))
-            process.stderr.write(`vx watch: cycle failed: ${message}\n`)
+            sayNotice('error', 'vx watch', `cycle failed: ${message}`)
           }
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config

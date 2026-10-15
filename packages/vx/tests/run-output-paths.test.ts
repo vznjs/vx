@@ -52,7 +52,7 @@ describe('output paths (item 993)', () => {
       await mkdir(path.join(root, 'gdir'))
       const r = vx('--graph=gdir')
       expect(r.code).toBe(1)
-      expect(r.err).toMatch(/^vx run: failed to write graph to .*gdir: .*EISDIR/)
+      expect(r.err).toMatch(/^✗ vx run {2}failed to write graph to .*gdir: .*EISDIR/)
       expect(r.err.trim().split('\n')).toHaveLength(1)
     },
     TIMEOUT,

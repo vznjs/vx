@@ -108,7 +108,7 @@ it('a task nothing recorded is refused; --stats combines with no run selector', 
   expect(vx('last', '--stats', 'a#nope')).toEqual({
     code: 1,
     out: '',
-    err: 'vx last: no recorded run of a#nope in the last 50 runs\n',
+    err: '✗ vx last  no recorded run of a#nope in the last 50 runs\n',
   })
   expect(vx('last', '--stats', '--list').err).toContain('--stats does not combine')
   expect(vx('last', '--stats', '--failed').err).toContain('--stats does not combine')

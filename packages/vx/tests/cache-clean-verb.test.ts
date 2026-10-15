@@ -90,7 +90,7 @@ describe('vx cache clean', () => {
       try {
         const r = await vx(bare, ['cache', 'clean', '--max-size', '1G'])
         expect({ code: r.code, out: r.out }).toEqual({ code: 1, out: '' })
-        expect(r.err).toStartWith('vx cache clean: no .vx/workspace.ts in ')
+        expect(r.err).toStartWith('✗ vx cache clean  no .vx/workspace.ts in ')
       } finally {
         await rm(bare, { recursive: true, force: true })
       }

@@ -32,6 +32,7 @@ import {
   maskedLine,
   nearest,
   UserError,
+  sayNotice,
 } from '../util/index.js'
 import {
   claimedAffected,
@@ -434,8 +435,10 @@ export async function resolveFilters(
   // Something matched, so the run proceeds; a pattern that matched nothing
   // alongside it is still worth a line — it is probably a typo.
   for (const f of unmatched)
-    process.stderr.write(
-      `vx: filter "${f}" matched no projects${didYouMean([f], projects, tags)}\n`,
+    sayNotice(
+      'warn',
+      'vx run',
+      `filter "${f}" matched no projects${didYouMean([f], projects, tags)}`,
     )
   // Each include is a union: what `--filter other` selected runs its tasks
   // whether or not the `--affected` diff reaches them, and an exclude
@@ -511,14 +514,18 @@ export async function pickTask(
     }
   }
   if (entries.length === 0 && only !== undefined) {
-    process.stderr.write(
-      `vx run: no tasks declared in the selected projects (${[...only].sort().join(', ')})\n`,
+    sayNotice(
+      'error',
+      'vx run',
+      `no tasks declared in the selected projects (${[...only].sort().join(', ')})`,
     )
     return null
   }
   if (entries.length === 0) {
-    process.stderr.write(
-      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`\n',
+    sayNotice(
+      'error',
+      'vx run',
+      'no tasks declared in any project. Declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`',
     )
     return null
   }
@@ -562,13 +569,15 @@ export async function pickTask(
       if (!(err instanceof Error) || err.name !== 'AbortError') throw err
       if (interrupted) return 'interrupted'
       out.write('\n')
-      process.stderr.write(`vx run: no task picked\n`)
+      sayNotice('info', 'vx run', 'no task picked')
       return null
     }
     const n = Number(answer)
     if (!Number.isInteger(n) || n < 1 || n > entries.length) {
-      process.stderr.write(
-        `vx run: invalid selection: ${answer} (type a number from 1 to ${entries.length})\n`,
+      sayNotice(
+        'error',
+        'vx run',
+        `invalid selection: ${answer} (type a number from 1 to ${entries.length})`,
       )
       return null
     }

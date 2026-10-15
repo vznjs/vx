@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { edgesSource, PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
+import { noticed } from './helpers/notice.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
 
@@ -308,8 +309,10 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       const r = vx(root, 'run', 'build', ...args)
       return { exitCode: r.exitCode, out: r.out.trim() }
     }
-    const head =
-      'vx run: nothing affected since HEAD — HEAD is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)'
+    const head = noticed(
+      'vx run: nothing affected since HEAD — HEAD is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)',
+      'info',
+    ).trimEnd()
     const cases = [
       ['--filter', '[HEAD]', '--filter', '!lib'],
       ['--filter', '[HEAD]^...'],
@@ -322,15 +325,24 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     expect(cases.map((c) => note(...c))).toEqual([
       {
         exitCode: 0,
-        out: 'vx run: no projects selected: !lib excluded every project the other filters matched',
+        out: noticed(
+          'vx run: no projects selected: !lib excluded every project the other filters matched',
+          'info',
+        ).trimEnd(),
       },
       {
         exitCode: 0,
-        out: 'vx run: no projects selected: filter "[HEAD]^..." matched lib, which depends on no project',
+        out: noticed(
+          'vx run: no projects selected: filter "[HEAD]^..." matched lib, which depends on no project',
+          'info',
+        ).trimEnd(),
       },
       {
         exitCode: 0,
-        out: 'vx run: no projects selected: !lib, !app excluded every project the other filters matched',
+        out: noticed(
+          'vx run: no projects selected: !lib, !app excluded every project the other filters matched',
+          'info',
+        ).trimEnd(),
       },
     ])
   })
@@ -338,8 +350,10 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
   it('no origin/HEAD and no parent commit: no base at all, said in CI terms, exit 1', () => {
     const r = vx(root, 'run', 'build', '--affected')
     expect(r.exitCode).toBe(1)
-    expect(r.out).toContain('vx run: --affected has no base here')
-    expect(r.out).toContain('a shallow clone? Fetch history (actions/checkout: fetch-depth: 0)')
+    expect(r.out).toContain('--affected has no base here')
+    expect(r.out).toContain(
+      'a shallow clone?\n\n  Fetch history (actions/checkout: fetch-depth: 0)',
+    )
     expect(r.out).not.toContain('did not resolve')
   })
 
@@ -347,14 +361,16 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     const root = await withoutGit()
     // vx names the canonical root: macOS's /tmp is a link to /private/tmp.
     const real = await realpath(root)
-    const refusal = `vx run: vx requires git: ${real} is not inside a git work tree. Run 'git init' in your workspace root.`
+    const refusal = noticed(
+      `vx run: vx requires git: ${real} is not inside a git work tree. Run 'git init' in your workspace root.`,
+    ).trimEnd()
     // A sandboxed CI shard's temp dir sits under a repository git found by
     // walking up; the ceiling keeps the fixture its own world.
     process.env['GIT_CEILING_DIRECTORIES'] = `${path.dirname(root)}:${path.dirname(real)}`
     try {
       for (const args of [['--affected'], ['--affected=main'], ['--filter', '...[main]']]) {
         const r = vx(root, 'run', 'build', ...args)
-        expect({ args, exitCode: r.exitCode, first: r.out.split(' (git: ')[0] }).toEqual({
+        expect({ args, exitCode: r.exitCode, first: r.out.split('\n  (git: ')[0] }).toEqual({
           args,
           exitCode: 1,
           first: refusal,
@@ -373,7 +389,9 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       const r = vx(root, 'run', 'build', '--affected')
       expect({ exitCode: r.exitCode, out: r.out.trim() }).toEqual({
         exitCode: 1,
-        out: 'vx run: --affected has no base here: this repository has no commit yet. Commit first, or run without --affected.',
+        out: noticed(
+          'vx run: --affected has no base here: this repository has no commit yet. Commit first, or run without --affected.',
+        ).trimEnd(),
       })
     } finally {
       await rm(root, { recursive: true, force: true })

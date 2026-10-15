@@ -24,7 +24,7 @@ import {
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
-import { formatElapsed, splitTaskId, UserError } from '../util/index.js'
+import { formatElapsed, splitTaskId, UserError, sayNotice } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
@@ -468,8 +468,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         return 0
       }
       if (log.source === null) {
-        process.stderr.write(
-          `vx last: ${log.taskId} ended ${log.status}; vx keeps output only for failed and cached tasks\n`,
+        sayNotice(
+          'info',
+          'vx last',
+          `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
         )
       }
       process.stdout.write(log.output)
