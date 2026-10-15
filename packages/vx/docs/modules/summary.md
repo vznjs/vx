@@ -44,7 +44,7 @@ export interface RunContext {
     remoteRead: boolean
     remoteWrite: boolean
     uploads: { count: number; failed: number }
-  } // the policy's layers + the live upload tally: the legend's local / remote miss and uploaded counts
+  } // the policy's layers + the live upload tally: the legend's per-layer hits / lookups and ↑uploads
   workspaceProjectCount?: number // total projects → the bar's denominator
 }
 

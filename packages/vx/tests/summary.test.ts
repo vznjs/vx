@@ -168,7 +168,7 @@ describe('formatRunSummary', () => {
     expect(lines).toContain('  info      8 workers · local + remote cache')
   })
 
-  describe('a remote cache splits the misses by layer and counts uploads (M, 2026-10-15)', () => {
+  describe('a remote cache gives each layer as hits / lookups and counts uploads (M, 2026-10-15)', () => {
     const cached = (
       id: string,
       status: TaskOutcome['status'],
@@ -202,7 +202,7 @@ describe('formatRunSummary', () => {
       return lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
     }
 
-    it('a remote hit was a local miss; a task that ran missed both', () => {
+    it('local is asked for every cached task, the remote for what local missed', () => {
       expect(
         legend({
           localRead: true,
@@ -210,9 +210,7 @@ describe('formatRunSummary', () => {
           remoteWrite: true,
           uploads: { count: 2, failed: 0 },
         }),
-      ).toBe(
-        '4 local miss · 2 remote miss · 2 uploaded · 1 no-cache · 1 up-to-date · 1 local hit · 1 remote hit',
-      )
+      ).toBe('local 1/5 · remote 2/4 · ↑2 · 1 no-cache')
     })
 
     it('a failed upload is counted apart', () => {
@@ -223,7 +221,7 @@ describe('formatRunSummary', () => {
           remoteWrite: true,
           uploads: { count: 1, failed: 1 },
         }),
-      ).toContain('2 remote miss · 1 uploaded · 1 upload failed ·')
+      ).toBe('local 1/5 · remote 2/4 · ↑1 · 1 upload failed · 1 no-cache')
     })
 
     it('a read-only remote uploads nothing and says nothing of uploads', () => {
@@ -234,10 +232,10 @@ describe('formatRunSummary', () => {
           remoteWrite: false,
           uploads: { count: 0, failed: 0 },
         }),
-      ).toStartWith('4 local miss · 2 remote miss · 1 no-cache')
+      ).toBe('local 1/5 · remote 2/4 · 1 no-cache')
     })
 
-    it('a write-only remote was never asked, so a miss is the local one', () => {
+    it('a write-only remote was never asked, so only local shows', () => {
       expect(
         legend({
           localRead: true,
@@ -245,10 +243,10 @@ describe('formatRunSummary', () => {
           remoteWrite: true,
           uploads: { count: 2, failed: 0 },
         }),
-      ).toStartWith('2 miss · 2 uploaded · 1 no-cache')
+      ).toBe('local 1/5 · ↑2 · 1 no-cache')
     })
 
-    it('a local layer the policy skips counts no local miss', () => {
+    it('a local layer the policy skips is not shown', () => {
       expect(
         legend({
           localRead: false,
@@ -256,11 +254,11 @@ describe('formatRunSummary', () => {
           remoteWrite: true,
           uploads: { count: 2, failed: 0 },
         }),
-      ).toStartWith('2 remote miss · 2 uploaded')
+      ).toBe('remote 2/5 · ↑2 · 1 no-cache')
     })
 
     it('CONTROL: no remote keeps one miss count', () => {
-      expect(legend()).toStartWith('2 miss · 1 no-cache')
+      expect(legend()).toBe('2 miss · 1 no-cache · 1 up-to-date · 1 local · 1 remote')
     })
   })
 

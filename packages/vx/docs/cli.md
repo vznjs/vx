@@ -3180,7 +3180,7 @@ A broad run looks like:
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 success · 2 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            1 miss · 1 local hit
+            1 miss · 1 local
 
   info      8 workers · local cache
   time      5.34s · 900ms saved
@@ -3188,14 +3188,13 @@ A broad run looks like:
 
 The three bars are meters: `projects` is what the run covered against
 the workspace, `tasks` is failed / success / skipped, `cache` is miss /
-no-cache / up-to-date / local hit / remote hit (a skipped task rides it
-too, so the two bars fill alike; its count is on the tasks legend only).
-With a remote cache the legend splits the misses by layer and counts the
-uploads: `4 local miss · 3 remote miss · 3 uploaded · 1 remote hit`. A
-remote hit was a local miss, and every task that ran missed both. Each
-count shows only where the run's `--cache-policy` asked that layer:
-`remote miss` when it reads the remote, `uploaded` (and `N upload
-failed`) when it writes it. The
+no-cache / up-to-date / local / remote (a skipped task rides it too, so
+the two bars fill alike; its count is on the tasks legend only). With a
+remote cache the legend gives each layer as hits over lookups, then the
+uploads: `local 0/4 · remote 3/4 · ↑1 · 1 no-cache`. Local is asked
+first, so the remote is asked only for what local missed. A layer shows
+only where the run's `--cache-policy` reads it, and `↑` (with `N upload
+failed`) only where it writes the remote. The
 `time` row is the wall time, then what the cache saved (the hits' stored
 exec times, never the restore), then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a

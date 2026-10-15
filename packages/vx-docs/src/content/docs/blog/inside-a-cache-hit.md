@@ -97,7 +97,7 @@ $ vx run build --all
   time      14ms · 1.24s saved
 
 $ rm -rf packages/web/dist && vx run build --all
-  cache     3 up-to-date · 1 local hit
+  cache     3 up-to-date · 1 local
   time      21ms · 1.24s saved
 ```
 

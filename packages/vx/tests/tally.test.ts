@@ -142,7 +142,7 @@ describe('tallyOutcomes — bucket rules', () => {
 
   it("a hit's restored flag splits local/remote from up-to-date", () => {
     // The cache meter renders these as three differently-coloured segments
-    // ("2 up-to-date · 1 local hit · 1 remote hit"), so conflating them mislabels
+    // ("2 up-to-date · 1 local · 1 remote"), so conflating them mislabels
     // what the cache actually did this run.
     expect(tallyOutcomes([mkOutcome('a#x', { status: 'cache-hit', restored: true })])).toEqual(
       tally({ total: 1, successful: 1, cachedLocal: 1, restoredLocal: 1 }),

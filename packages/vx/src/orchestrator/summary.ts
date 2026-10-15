@@ -85,7 +85,7 @@ export interface SummaryStats {
   upToDate: number
   restoredLocal: number
   restoredRemote: number
-  /** Of `upToDate`, the hits the remote layer answered: the local layer missed them. */
+  /** Of `upToDate`, the hits the remote layer answered: local missed them. */
   upToDateRemote?: number
   /** Tasks that executed (success + failed) with a `cache` block — the misses. */
   miss: number
@@ -120,8 +120,8 @@ export interface RunContext {
   concurrency?: number
   remoteCacheEnabled: boolean
   /**
-   * The layers the run's policy asked and wrote, so the cache legend splits
-   * a miss by layer and counts uploads. Absent: one `miss` count.
+   * The layers the run's policy asked and wrote, so the cache legend gives
+   * each layer's hits / lookups and the uploads. Absent: one `miss` count.
    */
   cache?: {
     localRead: boolean
@@ -221,8 +221,8 @@ export function formatSummarySection(
     if (taskParts.length > 0) lines.push(legend(taskParts))
   }
 
-  // Cache meter + numbers, fixed order: misses · uploads · no-cache ·
-  // up-to-date · local hit · remote hit.
+  // Cache meter + numbers. No remote: miss · no-cache · up-to-date ·
+  // local · remote. A remote: local h/n · remote h/n · ↑uploads · no-cache.
   if (miss + noCache + hits + left + stats.skipped > 0) {
     const cacheBar = segmentBar(
       [
@@ -238,25 +238,38 @@ export function formatSummarySection(
     )
     const cacheParts: string[] = []
     const layers = context?.cache
-    if (layers?.remoteRead === true) {
-      // Asked local, then remote: a remote hit was a local miss, and every
-      // task that ran missed both (M, 2026-10-15).
-      const localMiss = miss + stats.restoredRemote + (stats.upToDateRemote ?? 0)
-      if (layers.localRead && localMiss > 0)
-        cacheParts.push(paint(ERROR, `${localMiss} local miss`, colors))
-      if (miss > 0) cacheParts.push(paint(ERROR, `${miss} remote miss`, colors))
-    } else if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
+    if (layers !== undefined && (layers.localRead || layers.remoteRead)) {
+      // A remote in the run: each layer as hits / lookups (M, 2026-10-15).
+      // Local is asked first, so the remote is asked for what local missed.
+      const remoteHits = stats.restoredRemote + (stats.upToDateRemote ?? 0)
+      const localHits = hits - remoteHits
+      if (layers.localRead)
+        cacheParts.push(paint(LOCAL, `local ${localHits}/${miss + hits}`, colors))
+      if (layers.remoteRead)
+        cacheParts.push(
+          paint(
+            REMOTE,
+            `remote ${remoteHits}/${miss + (layers.localRead ? remoteHits : hits)}`,
+            colors,
+          ),
+        )
+    } else {
+      if (miss > 0) cacheParts.push(paint(ERROR, `${miss} miss`, colors))
+    }
     if (layers?.remoteWrite === true) {
       const { count, failed } = layers.uploads
-      if (count > 0 || miss > 0) cacheParts.push(paint(REMOTE, `${count} uploaded`, colors))
+      if (count > 0 || miss > 0) cacheParts.push(paint(REMOTE, `\u2191${count}`, colors))
       if (failed > 0) cacheParts.push(paint(ERROR, `${failed} upload failed`, colors))
     }
     if (noCache > 0) cacheParts.push(paint('', `${noCache} no-cache`, colors, { dim: true }))
-    if (stats.upToDate > 0) cacheParts.push(paint(SUCCESS, `${stats.upToDate} up-to-date`, colors))
-    if (stats.restoredLocal > 0)
-      cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local hit`, colors))
-    if (stats.restoredRemote > 0)
-      cacheParts.push(paint(REMOTE, `${stats.restoredRemote} remote hit`, colors))
+    if (layers === undefined) {
+      if (stats.upToDate > 0)
+        cacheParts.push(paint(SUCCESS, `${stats.upToDate} up-to-date`, colors))
+      if (stats.restoredLocal > 0)
+        cacheParts.push(paint(LOCAL, `${stats.restoredLocal} local`, colors))
+      if (stats.restoredRemote > 0)
+        cacheParts.push(paint(REMOTE, `${stats.restoredRemote} remote`, colors))
+    }
     // Skipped tasks ride the bar, yellow like the tasks meter, so the two
     // bars fill alike; their count is the tasks legend's alone (the footer
     // never says a fact twice, M, 2026-10-14).
