@@ -804,11 +804,11 @@ redraws within 30 ms of the last draw coalesce into a single
 trailing draw when the floor expires (the final state always lands).
 On a 3,270-task warm run this cuts ~6.7 MB of redraw ANSI to ~20 KB.
 
-Identity coloring: every `project#task` renders its project half in
-a stable hue hashed from the project name (same project = same color
-in every run and every surface) and its task half in a fixed pink —
-both deliberately outside the status palette, so an id can never
-read as an outcome.
+Identity coloring: each half of a `project#task` renders in a stable
+hue hashed from its own name (same project = same color, same target
+name = same color, in every run and every surface: every `#build`
+matches), with a dim `#` between, all outside the status palette, so
+an id can never read as an outcome.
 
 On GitHub Actions (`GITHUB_ACTIONS` truthy, full output mode), each
 task's block is wrapped in `::group::<id> (<outcome> <duration>)` /

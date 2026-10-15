@@ -71,3 +71,25 @@ export function paint(
   if (prefix.length === 0) return text
   return `${prefix}${text}${RESET}`
 }
+
+/**
+ * Identity hues for the two halves of a `project#task` id, never a status
+ * colour: one name, one hue, in every run, list and row (M, 2026-10-15:
+ * every `#build` matches every other `#build`).
+ */
+const IDENTITY_PALETTE = [
+  '#a78bfa', // violet-400
+  '#60a5fa', // blue-400
+  '#e879f9', // fuchsia-400
+  '#818cf8', // indigo-400
+  '#c084fc', // purple-400
+  '#93c5fd', // blue-300
+  '#f472b6', // pink-400
+] as const
+
+/** A project's or a target's hue: a fold of the name into the palette. */
+export function identityColor(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return IDENTITY_PALETTE[h % IDENTITY_PALETTE.length]!
+}

@@ -3,14 +3,20 @@
 // color, indent and spacing, so every surface shares one look. Colors
 // are decided at print time, per stream.
 
-import { detectColors, ERROR, paint, SUCCESS, WARN, type ColorSupport } from './colors.js'
+import {
+  detectColors,
+  ERROR,
+  identityColor,
+  paint,
+  SUCCESS,
+  WARN,
+  type ColorSupport,
+} from './colors.js'
 import { gradientRule } from './report.js'
 
 export type Tone = 'ok' | 'warn' | 'error' | 'info'
 
 const INFO = '#06b6d4'
-const PROJECT = '#a78bfa'
-const TASK = '#f472b6'
 const HUE: Record<Tone, string> = { ok: SUCCESS, warn: WARN, error: ERROR, info: INFO }
 const SYMBOL: Record<Tone, string> = { ok: '✓', warn: '!', error: '✗', info: '›' }
 const INDENT = '  '
@@ -26,7 +32,7 @@ export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
 }
 
-/** A `project#task` id, in the run's project and task hues. */
+/** A `project` or `project#task` id, each half in its name's hue, the `#` dim. */
 export const id = (text: string): Inline => ({ style: 'id', text })
 /** A path, glob or file: bold. */
 export const path = (text: string): Inline => ({ style: 'bold', text })
@@ -48,8 +54,13 @@ function inline(x: Inline, c: ColorSupport): string {
       return paint('', text, c, { bold: true })
     case 'id': {
       const hash = text.lastIndexOf('#')
-      if (hash < 0) return paint(PROJECT, text, c)
-      return paint(PROJECT, text.slice(0, hash), c) + paint(TASK, text.slice(hash), c)
+      if (hash < 0) return paint(identityColor(text), text, c)
+      const task = text.slice(hash + 1)
+      return (
+        paint(identityColor(text.slice(0, hash)), text.slice(0, hash), c) +
+        paint('', '#', c, { dim: true }) +
+        paint(identityColor(task), task, c)
+      )
     }
     default:
       return paint(HUE[style], text, c)

@@ -35,7 +35,7 @@ print('out' | 'err', ...blocks)
 ## Rules
 
 - Tones: `ok` ✓ green, `warn` ! yellow, `error` ✗ red, `info` › cyan.
-  `id` paints a `project#task` in the run's project and task hues.
+  `id` paints a `project#task` as rows do: each half in its name's hue (`identityColor`), the `#` dim.
 - Content sits 2 spaces under a headline; labels are one dim column at
   least 8 wide; `fix` and `next` values are bold.
 - Colors are decided at print time per stream (`detectColors`), so a

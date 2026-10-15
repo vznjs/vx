@@ -24,7 +24,15 @@ export {
   wantsJson,
 } from './errors.js'
 export { configErrorFrame, configRefusal } from './config-frame.js'
-export { detectColors, ERROR, paint, SUCCESS, WARN, type ColorSupport } from './colors.js'
+export {
+  detectColors,
+  ERROR,
+  identityColor,
+  paint,
+  SUCCESS,
+  WARN,
+  type ColorSupport,
+} from './colors.js'
 export { gradientRule } from './report.js'
 import * as ui from './ui.js'
 export { refusalNotice, sayLine, sayNotice } from './refusal-notice.js'
