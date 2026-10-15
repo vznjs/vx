@@ -17,7 +17,7 @@ it('every vx run / vx watch line in the CI guide selects from the root', () => {
     .split('\n')
     .map((l) => l.replace(/#\s.*$/, '').trim())
     .filter((l) => /^vx (run|watch) /.test(l))
-  expect(lines.length).toBe(11)
+  expect(lines.length).toBe(10)
   const selects = (l: string): boolean =>
     /\s--(all|filter|affected)\b/.test(l.split(' -- ')[0]!) || /\S#\S/.test(l)
   expect(lines.filter((l) => !selects(l))).toEqual([])
