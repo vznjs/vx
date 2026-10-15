@@ -112,6 +112,7 @@ export class Cache implements CacheLayer {
     ctx?: (hash: string) => CacheGetContext,
   ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
+  async localHasMany(hashes: readonly string[]): Promise<Set<string>>
   async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
@@ -224,6 +225,7 @@ export interface CacheLayer {
   readonly local?: Cache | undefined
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   markRemoteAbsent?(hashes: Iterable<string>): void
   drainUploads?(): Promise<void>
   key(input: CacheKeyInput): Promise<string>

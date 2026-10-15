@@ -51,6 +51,7 @@ and key derivation logic live here.
 export interface CacheLayer {
   readonly local?: Cache | undefined // the local handle this layer wraps (LayeredCache)
   readonly hasRemote?: boolean
+  localHasMany?(hashes: readonly string[]): Promise<Set<string>> // the keys the local store holds; the prefetch probes the remote for the rest
   remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null> // one batched probe; null = no batch info, probe per hash
   markRemoteAbsent?(hashes: Iterable<string>): void
   drainUploads?(): Promise<void> // await the background write-through uploads

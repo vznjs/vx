@@ -545,6 +545,12 @@ export interface CacheLayer {
    */
   remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   /**
+   * The subset of `hashes` the local store already holds. The prefetch
+   * pass probes the remote only for the rest, so a run the local cache
+   * answers makes no remote call. Absent reads as "none held".
+   */
+  localHasMany?(hashes: readonly string[]): Promise<Set<string>>
+  /**
    * Record that the remote has NO artifact for each of `hashes` (from a
    * batch probe), so a later `get`/`prefetch` short-circuits to a miss with
    * no round-trip. Only meaningful with `hasRemote`.
