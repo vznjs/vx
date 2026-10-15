@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: stop ignoring *.tsbuildinfo as an input
+
+*.tsbuildinfo is no longer always ignored. A tracked or untracked-not-ignored tsbuildinfo is now an input of any task whose globs reach it; gitignore it (or declare it an output) to keep it out of keys.
+
 ## cache: cache everything the outputs hold under clean: false
 
 under cache.outputs.clean: false a leftover output file is now saved and restored on every machine; before, its presence meant nothing was cached.

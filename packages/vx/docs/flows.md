@@ -188,7 +188,7 @@ root files a plugin claims (a lockfile), `.vx/projects.lock.json`
 all; on macOS one recursive root watcher always does, handing each event
 to the project it lies in (one FSEvents stream per project polled past
 ~1000 projects). Path filter drops the segments `node_modules`, `.git` and `.vx/cache`,
-the suffixes `.tsbuildinfo` and a trailing `~`, the run's resolved
+a trailing `~`, the run's resolved
 cache dir (which `.vx/cache` covers only until `cache.dir` relocates it), the
 watch probe file, and declared outputs plus the directories holding
 them (unless a task reads the path as an input). Git-ignored paths

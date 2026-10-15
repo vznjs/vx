@@ -351,7 +351,6 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
   const IGNORED_TOP = [
     '.git/HEAD',
     '.vx/cache/log',
-    'tsconfig.tsbuildinfo',
     '.vx/projects.lock.json',
     'vx.lock.json',
     '.vx/.gitattributes',
@@ -363,7 +362,6 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
   const IGNORED_NESTED = [
     'a/b/.git/HEAD',
     'a/b/.vx/cache/log',
-    'a/b/tsconfig.tsbuildinfo',
     'a/b/.vx/projects.lock.json',
     'a/b/vx.lock.json',
     'a/b/.vx/.gitattributes',
@@ -379,7 +377,10 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     '.gitignore',
     '.vxrc',
     'my_node_modules/x.js',
-    'x.tsbuildinfo.bak',
+    // A language's build state is no special case in core (M, 2026-10-15):
+    // gitignored it is out by the gitignore filter; tracked, it is an input.
+    'tsconfig.tsbuildinfo',
+    'a/b/tsconfig.tsbuildinfo',
     '.vx/projects.lock.json.bak',
     'vx.lock.json.bak',
     '.gitattributes',

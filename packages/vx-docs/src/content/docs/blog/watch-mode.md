@@ -46,8 +46,7 @@ it is not an edit. A task that rewrites its own files costs one extra
 cycle, which the cache serves, and then settles.
 
 Always ignored regardless: `node_modules`, `.git`, `.vx/cache`, the run's
-resolved cache directory wherever `--cache-dir` put it, `.tsbuildinfo`
-files, editor backup files (a trailing `~`), and any untracked path git
+resolved cache directory wherever `--cache-dir` put it, editor backup files (a trailing `~`), and any untracked path git
 ignores (one `git check-ignore` per debounce window): such a path is in
 no key, so a task writing a pid file or a log there would re-run the
 loop forever.

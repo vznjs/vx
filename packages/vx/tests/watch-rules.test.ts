@@ -46,7 +46,6 @@ describe('the ignore filter', () => {
     ['a .git internal write', '.git/refs/heads/main'],
     ['vx’s own cache', '.vx/cache/abcdef.tar.zst'],
     ['a nested .vx dir', 'packages/a/.vx/cache/x'],
-    ['a tsbuildinfo', 'packages/a/tsconfig.tsbuildinfo'],
     ['an editor swap file', 'packages/a/src/index.ts~'],
     ['a restore temp file', 'packages/a/dist/.vx-tmp-l8q-0'],
   ])('ignores %s', (_label, rel) => {
@@ -55,6 +54,8 @@ describe('the ignore filter', () => {
 
   it.each([
     ['ordinary source', 'packages/a/src/index.ts'],
+    // Gitignored, it starts no cycle by the git filter; core names no language.
+    ['a tsbuildinfo', 'packages/a/tsconfig.tsbuildinfo'],
     ['a root lockfile', 'pnpm-lock.yaml'],
     ['a config', 'packages/a/vx.config.ts'],
     // The segment rule is not a substring rule: a file whose NAME merely

@@ -212,7 +212,7 @@ other walker: a project outside a git work tree is a `UserError`
    stripped; the rest becomes a `Bun.Glob` (a literal is a tree here
    too) and any matched path is removed.
 4. **Always-ignored** — hard-coded
-   (`**/.git/**`, `**/.vx/cache/**`, `**/*.tsbuildinfo`,
+   (`**/.git/**`, `**/.vx/cache/**`,
    `**/.vx/projects.lock.json`, `**/vx.lock.json`, `**/.vx/.gitattributes`,
    `**/.vx/.gitignore`, `**/*.bun-build`,
    `**/.????????????????-????????.tmp/**`, `**/.vx-tmp-*`)
