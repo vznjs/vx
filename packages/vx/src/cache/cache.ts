@@ -96,6 +96,7 @@ import {
   type PruneResult,
   type RunRecord,
   type SaveArgs,
+  type TaskInputComponent,
   type TaskInputRow,
   WORKSPACE_OUTPUT_PREFIX,
 } from './layer.js'
@@ -318,10 +319,8 @@ export const SCHEMA_VERSION = 'v39'
  * `[kind, name, hash]` triples in (kind, name) code-unit order, the first
  * of a repeated (kind, name) kept, as the per-component primary key did.
  */
-function encodeEntryInputs(
-  components: readonly Pick<TaskInputRow, 'kind' | 'name' | 'hash'>[],
-): string {
-  const byId = new Map<string, Pick<TaskInputRow, 'kind' | 'name' | 'hash'>>()
+function encodeEntryInputs(components: readonly TaskInputComponent[]): string {
+  const byId = new Map<string, TaskInputComponent>()
   for (const c of components) {
     const id = `${c.kind}\0${c.name}`
     if (!byId.has(id)) byId.set(id, c)

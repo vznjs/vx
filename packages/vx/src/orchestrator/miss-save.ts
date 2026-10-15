@@ -26,7 +26,7 @@ import {
   wholeSubtreePrefixes,
 } from '../util/index.js'
 import type { Logger } from './logger.js'
-import type { TaskInputComponent } from './task-hash.js'
+import type { TaskInputComponent } from '../cache/index.js'
 
 /** A snapshot request for `recordOutputDirs`, taken at run end. */
 export interface OutputDirSnapshot {

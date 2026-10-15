@@ -31,13 +31,6 @@ export interface HashCache {
 }
 export function createHashCache(): HashCache
 
-// One key component at hash time: mirrors `Cache.key()`'s fold-site rows one for one.
-export interface TaskInputComponent {
-  kind: string
-  name: string
-  hash: string
-}
-
 export interface ComputeHashArgs {
   node: TaskNode
   upstream: TaskOutcome[]

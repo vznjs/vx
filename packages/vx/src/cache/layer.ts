@@ -250,6 +250,18 @@ export interface InvocationRecord {
 }
 
 /**
+ * One cache-key component as `key()` folded it, the `captureInto` row.
+ * Persisted on a miss (`TaskInputRow`) so a later run can diff its inputs
+ * against this one (the Tier-3 "why did this re-run?" moat); a hit saves
+ * nothing, so the warm path is free.
+ */
+export interface TaskInputComponent {
+  kind: string
+  name: string
+  hash: string
+}
+
+/**
  * One cache-key component of an `entry_inputs` row (v34: one row per entry) — keyed by
  * the cache-entry HASH it belongs to, not a run. Written inside the
  * entry-save transaction (`writeArtifactAndIndex`) on a miss/save; a

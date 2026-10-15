@@ -9,7 +9,7 @@
 import type { Database } from 'bun:sqlite'
 import type { InputChanges } from '../graph/index.js'
 import { diffKeyComponents, loadEntryInputs } from './metrics.js'
-import type { TaskInputComponent } from './task-hash.js'
+import type { TaskInputComponent } from '../cache/index.js'
 
 /** How many changed components a miss names; `count` says how many there were. */
 const NAMED = 10

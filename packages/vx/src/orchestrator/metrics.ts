@@ -15,11 +15,9 @@ import { statSync } from 'node:fs'
 import path from 'node:path'
 // The keyed-run predicate lives beside the schema in cache/cache.ts, so a
 // rule written once cannot drift.
-import { KEYED_RUNS_SQL } from '../cache/index.js'
-import { splitTaskId } from '../graph/index.js'
+import { KEYED_RUNS_SQL, type TaskInputComponent } from '../cache/index.js'
+import { isPassStatus, splitTaskId } from '../graph/index.js'
 import { clampInt, MASKED, secretNamed } from '../util/index.js'
-import type { TaskInputComponent } from './task-hash.js'
-import { isPassStatus } from '../graph/index.js'
 
 // A recorded `cache_policy` is the `--cache-policy` spec (`local:rw,remote:r`).
 const readsCache = (spec: string): boolean => /(?:^|,)(?:local|remote):w?r/.test(spec)
