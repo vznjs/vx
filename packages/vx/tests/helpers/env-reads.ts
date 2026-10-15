@@ -29,7 +29,7 @@ export function readInSource(): Set<string> {
       constants.set(m[1]!, m[2]!)
   // A setting's variable is read by its path (`settingEnv('run.timeout')`,
   // settings.ts), every one checked once per command (checkSettingsEnv).
-  const names = new Set<string>(SETTINGS.map((s) => envName(s.path)))
+  const names = new Set<string>(SETTINGS.filter((s) => s.env !== false).map((s) => envName(s.path)))
   for (const src of sources) {
     // `Bun.env` is the other spelling; core reads none through it today
     // (exec/sandbox-runtime.ts says why), and a negative is a claim about

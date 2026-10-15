@@ -36,6 +36,8 @@ export interface Setting {
   readonly task?: string
   /** False: read before `.vx/workspace` loads, so flag and env only. */
   readonly config?: false
+  /** False: `.vx/workspace` only, no variable. */
+  readonly env?: false
 }
 
 const SCHEDULES = ['most-work', 'critical-path', 'direct-dependents', 'ready-order'] as const
@@ -193,6 +195,7 @@ export const SETTINGS: readonly Setting[] = [
     default: 'true',
     doc: "Remove a task's declared outputs before it runs on a miss, for tasks without their own.",
     task: 'cache.outputs.clean',
+    env: false,
   },
   {
     path: 'lock.reviewFiles',
@@ -356,7 +359,8 @@ export function settingRefusal(
 
 /** A setting's environment value, parsed; undefined when unset or empty. */
 export function settingEnv(path: string, env: NodeJS.ProcessEnv = process.env): unknown {
-  const { kind } = setting(path)
+  const { kind, env: read } = setting(path)
+  if (read === false) return undefined
   const name = envName(path)
   const raw = env[name]
   if (raw === undefined || raw === '') return undefined
