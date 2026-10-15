@@ -690,7 +690,7 @@ describe('the keys-from-git post counts the parts the key folds', () => {
       path.resolve(import.meta.dir, '..', 'src', 'cache', 'git-inputs.ts'),
       'utf8',
     )
-    const spawned = [...git.matchAll(/spawnGit\(\[([^\]]*)\]/g)].map((m) =>
+    const spawned = [...git.matchAll(/spawnGit\(\s*\[([^\]]*)\]/g)].map((m) =>
       [
         'git',
         ...[...m[1]!.matchAll(/'([^']*)'/g)]

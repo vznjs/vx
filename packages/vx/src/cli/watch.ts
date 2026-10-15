@@ -573,6 +573,38 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   })
   /** Per-project arms by directory, so `rearm` can add and drop them. */
   const perProject = new Map<string, WatchHandle>()
+  // Each FSEvents stream goes live slower than the one before it: per
+  // project, 751 of 3000 missed their 2 s proof on a macos-latest runner
+  // and fell back to polling, a full core at idle; one stream at the root
+  // went live in 8 ms (tests/watch-one-stream.test.ts). Polling keeps its
+  // per-project walks, which skip what lies between projects.
+  const oneStream = process.platform === 'darwin' && !args.poll
+  /** The projects the one stream hands events to, by their real directory. */
+  let streamed: { proj: ProjectMeta; real: string }[] = []
+  const realRoot = ((): string => {
+    try {
+      return fs.realpathSync(workspaceRoot)
+    } catch {
+      return path.resolve(workspaceRoot)
+    }
+  })()
+  // The stream names a file by its real place under the root, so a project
+  // whose real directory lies outside the root keeps its own arm.
+  const toStream = (all: readonly ProjectMeta[]): { proj: ProjectMeta; real: string }[] => {
+    const out: { proj: ProjectMeta; real: string }[] = []
+    for (const proj of all) {
+      let real: string
+      try {
+        real = fs.realpathSync(proj.dir)
+      } catch {
+        continue
+      }
+      const rel = path.relative(realRoot, real)
+      if (rel.startsWith('..') || path.isAbsolute(rel)) continue
+      out.push({ proj, real })
+    }
+    return out
+  }
   // An OS watch holds the directory's inode, not its path: one removed and
   // made again (`rm -rf packages && git checkout packages`) keeps reporting
   // for the deleted one. Each arm notes the directory it holds, and a
@@ -590,25 +622,58 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     }
   }
   const stale = (dir: string): boolean => armedAs.get(dir) !== inodeOf(dir)
-  /** The root arm: recursive when workspace-wide, else the root's own files only. */
+  /** The root arm: recursive when workspace-wide or the one stream, else the root's own files only. */
   let rootArm: WatchHandle = CLOSED
   let dotVxArm: WatchHandle = CLOSED
+  const projectEvent = (proj: ProjectMeta, filename: string): void => {
+    const abs = path.join(proj.dir, filename)
+    if (isIgnoredPath(proj.dir, filename) || fenced(proj.dir, abs)) return
+    // A module the config imports from inside the project is the config
+    // too: its edit can add an output or a `workspaceFiles` input.
+    if (shapesWatchedSet(filename) || configImportFiles.includes(abs)) reread = true
+    trigger(`${proj.name} ${filename}`, abs)
+  }
   const armProject = (proj: ProjectMeta): void => {
     // Gone for now: its ancestor's arm (`armAncestors`) hears it return.
     if (inodeOf(proj.dir) === undefined) return
     try {
-      const handle = arm(proj.dir, true, (filename) => {
-        const abs = path.join(proj.dir, filename)
-        if (isIgnoredPath(proj.dir, filename) || fenced(proj.dir, abs)) return
-        // A module the config imports from inside the project is the config
-        // too: its edit can add an output or a `workspaceFiles` input.
-        if (shapesWatchedSet(filename) || configImportFiles.includes(abs)) reread = true
-        trigger(`${proj.name} ${filename}`, abs)
-      })
+      const handle = arm(proj.dir, true, (filename) => projectEvent(proj, filename))
       perProject.set(proj.dir, handle)
       armedAs.set(proj.dir, inodeOf(proj.dir) ?? '')
     } catch (err) {
       sayCannot(`cannot watch ${proj.dir}`, err)
+    }
+  }
+  const rootFileEvent = (filename: string): void => {
+    if (
+      !isWorkspaceConfigFile(filename) &&
+      filename !== '.gitignore' &&
+      !claimedRootFiles.has(filename)
+    )
+      return
+    if (shapesWatchedSet(filename) || filename === LOCKFILE_NAME || claimedRootFiles.has(filename))
+      reread = true
+    trigger(`root ${filename}`, path.join(workspaceRoot, filename))
+  }
+  const dotVxEvent = (filename: string): void => {
+    const rel = `.vx/${filename}`
+    if (!isWorkspaceConfigFile(rel) && !claimedRootFiles.has(rel)) return
+    reread = true
+    trigger(`root ${rel}`, path.join(workspaceRoot, rel))
+  }
+  /**
+   * The one stream's events, handed out as the per-project arms, the
+   * root's own files and `.vx/` would have heard them: an event lies in
+   * every watched project whose tree holds it (a nested one's fence drops
+   * it from the outer), so each listener decides exactly as its own arm did.
+   */
+  const streamEvent = (filename: string): void => {
+    const rel = filename.split(path.sep).join('/')
+    if (!rel.includes('/')) rootFileEvent(rel)
+    else if (rel.startsWith('.vx/') && rel.indexOf('/', 4) < 0) dotVxEvent(rel.slice(4))
+    const abs = path.join(realRoot, filename)
+    for (const { proj, real } of streamed) {
+      if (abs.startsWith(real + path.sep)) projectEvent(proj, path.relative(real, abs))
     }
   }
   const armRoot = (): void => {
@@ -633,50 +698,38 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               reread = true
             trigger(`root ${filename}`, abs)
           })
-        : // The root itself, non-recursive, beside the per-project arms, so
-          // claimed root files (a lockfile) trigger re-runs even when no
-          // project dir saw the change.
-          arm(workspaceRoot, false, (filename) => {
-            if (
-              isWorkspaceConfigFile(filename) ||
-              filename === '.gitignore' ||
-              claimedRootFiles.has(filename)
-            ) {
-              if (
-                shapesWatchedSet(filename) ||
-                filename === LOCKFILE_NAME ||
-                claimedRootFiles.has(filename)
-              ) {
-                reread = true
-              }
-              trigger(`root ${filename}`, path.join(workspaceRoot, filename))
-            }
-          })
+        : oneStream
+          ? arm(workspaceRoot, true, streamEvent)
+          : // The root itself, non-recursive, beside the per-project arms, so
+            // claimed root files (a lockfile) trigger re-runs even when no
+            // project dir saw the change.
+            arm(workspaceRoot, false, rootFileEvent)
     } catch (err) {
       sayCannot(`cannot watch workspace root`, err)
     }
     // The workspace config and the lock sit in `.vx/`, which the root's
     // non-recursive arm does not see into.
-    if (workspaceWide) return
+    if (workspaceWide || oneStream) return
     try {
-      dotVxArm = arm(path.join(workspaceRoot, '.vx'), false, (filename) => {
-        const rel = `.vx/${filename}`
-        if (!isWorkspaceConfigFile(rel) && !claimedRootFiles.has(rel)) return
-        reread = true
-        trigger(`root ${rel}`, path.join(workspaceRoot, rel))
-      })
+      dotVxArm = arm(path.join(workspaceRoot, '.vx'), false, dotVxEvent)
     } catch (err) {
       sayCannot(`cannot watch ${path.join(workspaceRoot, '.vx')}`, err)
     }
   }
   // One recursive watcher per project, unless workspace-wide: each project
   // owns its own subtree; the root is never watched recursively for them
-  // (it would cover every project + node_modules + caches).
+  // (it would cover every project + node_modules + caches). On macOS one
+  // recursive stream at the root stands for all of them (`oneStream`).
   const armMode = (watched: readonly ProjectMeta[]): void => {
-    if (!workspaceWide) for (const proj of watched) armProject(proj)
+    if (!workspaceWide) {
+      streamed = oneStream ? toStream(watched) : []
+      const inStream = new Set(streamed.map((s) => s.proj))
+      for (const proj of watched) if (!inStream.has(proj)) armProject(proj)
+    }
     armRoot()
   }
   const dropMode = (): void => {
+    streamed = []
     for (const handle of perProject.values()) handle.close()
     perProject.clear()
     rootArm.close()
@@ -786,13 +839,16 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       workspaceWide = next.workspaceWide
       armMode(next.projects)
     } else if (!workspaceWide) {
-      const keep = new Set(projectDirs)
+      streamed = oneStream ? toStream(next.projects) : []
+      const inStream = new Set(streamed.map((s) => s.proj))
+      const own = next.projects.filter((p) => !inStream.has(p))
+      const keep = new Set(own.map((p) => p.dir))
       for (const [dir, handle] of perProject) {
         if (keep.has(dir) && !stale(dir)) continue
         handle.close()
         perProject.delete(dir)
       }
-      for (const proj of next.projects) if (!perProject.has(proj.dir)) armProject(proj)
+      for (const proj of own) if (!perProject.has(proj.dir)) armProject(proj)
     }
     armImports()
     // A new arm proves delivery like the first ones: an edit in the new

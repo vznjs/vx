@@ -8,7 +8,7 @@
 //
 // A shim first on the child's PATH logs every git call: the real CLI in a
 // subprocess, because which git runs is decided by the PATH vx resolves on.
-import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/cache/index.js'
@@ -34,6 +34,8 @@ const ENUMERATION = [
   '--no-optional-locks var -l',
   // The blob sizes a cold cache has not learned (A-60).
   '--no-optional-locks cat-file --batch-check=%(objectname) %(objectsize)',
+  // A fresh checkout's index is racily clean: refreshed once, in a copy.
+  '--no-optional-locks update-index -q --refresh',
 ]
 
 describe('git spawns on a cold run', () => {
@@ -58,13 +60,17 @@ describe('git spawns on a cold run', () => {
       `#!/bin/sh\necho "$@" >> '${log}'\nexec '${Bun.which('git')}' "$@"\n`,
     )
     await chmod(path.join(shim, 'git'), 0o755)
+    // Racily clean whatever second the files were written in, as a fresh
+    // checkout's index is.
+    const past = new Date(Date.now() - 100_000)
+    await utimes(path.join(root, '.git', 'index'), past, past)
     // A cold run that starts inside the index's racy window keys no
     // verdict, so the warm run lists `--debug` again: an M-series Mac
     // started it inside the window and failed the warm assertion on every
     // full-file run, while slower CI runners never did. Wait it out.
     const { ctimeMs } = await stat(path.join(root, '.git', 'index'))
-    const past = ctimeMs + racyWindowMs(ctimeMs, FILE_HASH_RACY_MS) + 1
-    await Bun.sleep(Math.max(0, past - Date.now()))
+    const settled = ctimeMs + racyWindowMs(ctimeMs, FILE_HASH_RACY_MS) + 1
+    await Bun.sleep(Math.max(0, settled - Date.now()))
   })
 
   afterEach(async () => {
@@ -100,12 +106,12 @@ describe('git spawns on a cold run', () => {
           '--no-optional-locks status --porcelain -z -uall --ignored=matching --no-renames -- .',
         ].sort(),
       )
-      // Warm, the index unchanged, its verdict comes from the cache: no
-      // `--debug` listing and no cat-file.
+      // Warm, the index unchanged, its verdict comes from the cache and its
+      // refreshed copy is reused: no `--debug` listing, cat-file or refresh.
       await writeFile(log, '')
       expect(
         (await coldRun(['build', '--all'])).filter(
-          (c) => c.includes('cat-file') || c.includes('--debug'),
+          (c) => c.includes('cat-file') || c.includes('--debug') || c.includes('update-index'),
         ),
       ).toEqual([])
     },
