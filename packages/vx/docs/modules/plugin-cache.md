@@ -26,6 +26,19 @@ export interface PluginCacheRemote {
 }
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache
 export const absentPluginCache: PluginCache // every answer absent: a context outside a run
+// run-store.ts
+export function runEntryName(runId: string, taskId: string, part: 'log' | 'outputs'): string
+export function writesRunStore(remotes: readonly PluginCacheRemote[]): boolean
+export function putRunEntry(
+  remotes: readonly PluginCacheRemote[],
+  scope: string | undefined,
+  name: string,
+  bytes: Uint8Array,
+): Promise<boolean>
+export function packRunOutputs(
+  workspaceRoot: string,
+  paths: readonly string[],
+): Promise<Uint8Array | null>
 ```
 
 ## Rules
