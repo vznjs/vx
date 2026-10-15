@@ -7,8 +7,10 @@
 // reports an unknown command as it always did. Core's verbs are matched
 // before this is asked, so a plugin cannot shadow `run`.
 
+import type { CachePolicy, PluginCache, PluginCacheRemote } from '../cache/index.js'
+import type { WorkspaceConfig } from '../config.js'
 import type { VxPlugin, PluginCommand, CommandContext } from '../orchestrator/index.js'
-import { findWorkspaceRoot } from '../workspace/index.js'
+import { cacheScopeEnvError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
 import { machineParallelism, maskedLine } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 
@@ -39,10 +41,15 @@ export interface UnresolvedPluginCommand {
   loadError: string
 }
 
-async function workspacePlugins(
-  cwd: string,
-): Promise<
-  | { workspaceRoot: string; cacheDir: string; concurrency: number; plugins: readonly VxPlugin[] }
+async function workspacePlugins(cwd: string): Promise<
+  | {
+      workspaceRoot: string
+      cacheDir: string
+      storeRoot: Promise<string | null>
+      workspaceConfig: WorkspaceConfig | null
+      concurrency: number
+      plugins: readonly VxPlugin[]
+    }
   | UnresolvedPluginCommand
   | null
 > {
@@ -62,6 +69,8 @@ async function workspacePlugins(
   return {
     workspaceRoot,
     cacheDir: ws.cacheDir,
+    storeRoot: ws.storeRoot,
+    workspaceConfig: ws.workspaceConfig,
     // What run.ts takes when no --concurrency is given.
     concurrency:
       (resolveSetting('run.concurrency', ws.workspaceConfig).value as number | undefined) ??
@@ -98,11 +107,73 @@ export async function resolvePluginCommand(
         vx: (await import('./upgrade.js')).isCompiledBinary()
           ? [process.execPath]
           : [process.execPath, Bun.main],
-        warn: (m) => process.stderr.write(`${maskedLine(m)}\n`),
+        warn,
+        cache: lazyCache(() => verbCache(ws, plugin.name)),
       },
     }
   }
   return { declaredVerbs: [...declaredVerbs] }
+}
+
+const warn = (m: string): void => {
+  process.stderr.write(`${maskedLine(m)}\n`)
+}
+
+/** Read-only: a verb reads what runs stored, and only a run's policy may write. */
+const VERB_POLICY: CachePolicy = {
+  localRead: true,
+  localWrite: false,
+  remoteRead: true,
+  remoteWrite: false,
+}
+
+/**
+ * The verb's `ctx.cache`: the plugin's entries in the local store, then each
+ * remote the workspace's cache plugins supply, under the run's scope. Opened
+ * on first use, so a verb that never reads it opens nothing.
+ */
+async function verbCache(
+  ws: Exclude<Awaited<ReturnType<typeof workspacePlugins>>, UnresolvedPluginCommand | null>,
+  plugin: string,
+): Promise<PluginCache> {
+  const [{ Cache, pluginCache }, { resolveCache }] = await Promise.all([
+    import('../cache/index.js'),
+    import('../orchestrator/index.js'),
+  ])
+  const envScope = process.env['VX_CACHE_SCOPE'] || undefined
+  if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
+  const scope = envScope ?? ws.workspaceConfig?.cache?.scope
+  const localCache = new Cache(
+    ws.cacheDir,
+    { read: true, write: false },
+    ws.workspaceRoot,
+    undefined,
+    'open',
+    await ws.storeRoot,
+  )
+  const remotes: PluginCacheRemote[] = []
+  await resolveCache(ws.plugins, {
+    workspaceRoot: ws.workspaceRoot,
+    cacheDir: ws.cacheDir,
+    warn,
+    scope,
+    localCache,
+    policy: VERB_POLICY,
+    remotes,
+  })
+  return pluginCache(plugin, { db: localCache.dbHandle(), policy: VERB_POLICY, remotes, scope })
+}
+
+function lazyCache(open: () => Promise<PluginCache>): PluginCache {
+  let opened: Promise<PluginCache> | undefined
+  const cache = (): Promise<PluginCache> => (opened ??= open())
+  return {
+    get: async (key) => (await cache()).get(key),
+    put: async (key, bytes) => (await cache()).put(key, bytes),
+    has: async (key) => (await cache()).has(key),
+    hasMany: async (keys) => (await cache()).hasMany(keys),
+    getRun: async (name) => (await cache()).getRun(name),
+  }
 }
 
 /** The plugin verbs the workspace around `cwd` declares, in declaration order; none when it does not load. */

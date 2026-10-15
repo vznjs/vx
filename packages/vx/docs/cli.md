@@ -1673,16 +1673,19 @@ bound clears the whole cache when that is really what you want.
 
 ```
 $ vx cache clean --older-than 30d
-Pruned 42 entries (1.3 GB freed)
+✓ vx cache clean  freed 1.3 GB
 
-$ vx cache clean --older-than 7d --max-size 500M
-Pruned 18 entries (320 MB freed)
+  42 entries
 
 $ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
-Pruned 0 entries (0 B freed), reaped 42 orphaned artifacts (1.3 GB)
+✓ vx cache clean  freed 1.3 GB
+
+  42 orphaned artifacts
 
 $ vx cache clean --older-than 30d --dry-run
-Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
+› vx cache clean  would free 1.3 GB (dry run)
+
+  42 entries · 3 orphaned artifacts
 ```
 
 `--dry-run` picks the victims under the same policy and counts the
@@ -1706,8 +1709,8 @@ artifact that vanishes before its restore is a miss, and the task runs
 Exit codes:
 
 - `0` — pruning completed (zero or more entries evicted). A workspace
-  that never ran has no cache: `Pruned 0 entries (0 B freed)`, and
-  nothing is created.
+  that never ran has no cache: `› vx cache clean  nothing to free`,
+  and nothing is created.
 - `1` — parse error, missing policy, or workspace-discovery error.
 
 `vx cache clean` resolves the workspace root from cwd and honors a
@@ -1735,17 +1738,19 @@ and the directory goes only if that empties it. A directory with no
 names goes only if it is one (`.vx/<id>/cache` holding a `store.db`): the
 index is a file in the checkout, which a commit or a restored CI cache
 could point at any directory. A workspace that never ran says
-`Nothing to clear: no cache here`. The next run misses every task once
+`› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
 
 ```
 $ vx cache clean
-Cleared this repository's store, shared by its checkouts, and this workspace's run history (1.4 GB freed):
+✓ vx cache clean  freed 1.4 GB
+
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
 $ vx cache clean --global --dry-run
-Would clear every repository's store and this workspace's run history (3.1 GB):
+› vx cache clean  would free 3.1 GB (dry run)
+
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
   /home/me/.vx/9b8e7d6c5a4f3e2d/cache
@@ -2587,24 +2592,26 @@ counts are zero and `projects lock` says `no` — a broken config is
 
 ```
 $ vx info
-vx:               0.0.0
-bun:              1.4.2
-git:              2.53.0
-git status cache: core.fsmonitor, core.untrackedCache off
-workspace root:   /work/repo
-projects:         12 (34 tasks)
-plugins:          2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
-workers:          2 — cgroup CPU quota 2 of 8 cores
-memory:           13 GB usable — cgroup limit; the machine has 16 GB
-cache dir:        /work/repo/.vx/cache (8.2 MB, this workspace's run history)
-cache store:      /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-cache versions:   keys vx-cache-v43 · index schema v38
-cache entries:    42 (1.3 GB)
-orphans:          3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
-task runs (24h):  7 (5 cache hits)
-flaky tasks:      1 — web#test (3 of 11 runs failed on unchanged inputs)
-sandbox:          available (9 tasks declare exec.sandbox)
-projects lock:    yes
+
+─ vx info ────────────────────────────────────────────────────
+  vx                0.0.0
+  bun               1.4.2
+  git               2.53.0
+  git status cache  core.fsmonitor, core.untrackedCache off
+  workspace root    /work/repo
+  projects          12 (34 tasks)
+  plugins           2 — @vzn/vx-reapi (executor, cache); @vzn/vx-otel (telemetry)
+  workers           2 — cgroup CPU quota 2 of 8 cores
+  memory            13 GB usable — cgroup limit; the machine has 16 GB
+  cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
+  cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
+  cache versions    keys vx-cache-v43 · index schema v38
+  cache entries     42 (1.3 GB)
+  orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
+  task runs (24h)   7 (5 cache hits)
+  flaky tasks       1 — web#test (3 of 11 runs failed on unchanged inputs)
+  sandbox           available (9 tasks declare exec.sandbox)
+  projects lock     yes
 ```
 
 - `git` shows `(not found)` when the binary is missing.
@@ -2920,9 +2927,9 @@ measured. `--stats` does not combine with `--list`, `--failed` or
 `--log`; `--branch` combines only with `--stats`. `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. Before any run, every form says so
-(`vx last: no recorded runs yet — run something first`, exit 1; `--list`
-prints `no recorded runs`, exit 0), and past green runs only,
-`--list --failed` prints `no recorded run failed`. A run id may be typed as a unique prefix; a
+(`› vx last  no runs yet` with `fix  vx run`, exit 1; `--list` prints
+`› vx last  no runs yet`, exit 0), and past green runs only,
+`--list --failed` prints `› vx last  no failed runs`. A run id may be typed as a unique prefix; a
 prefix several runs share fails and lists them. A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
 vx run app#test -- …`, with the arguments the run forwarded to the
@@ -3009,7 +3016,7 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve the run history to an AI agent over stdio',
         async run(argv, ctx) {
-          // ctx.workspaceRoot, ctx.cacheDir, ctx.concurrency, ctx.warn(...)
+          // ctx.workspaceRoot, ctx.cacheDir, ctx.concurrency, ctx.cache, ctx.warn(...)
           return 0 // the process exit code
         },
       },
@@ -3020,6 +3027,9 @@ export function mcp(): VxPlugin {
 
 The plugin's name is its package name, which `definePlugin` reads from
 `import.meta`; a plain object is refused when the workspace loads.
+`ctx.cache` reads the plugin's own entries as `setup` writes them (the
+local store, then each remote the workspace's cache plugins supply,
+under the run's scope), read-only, opened on first use.
 
 (`@vzn/vx-schedule-history` ships exactly this: `vx history`, what it
 learned per task and the reservation its `admit` hook packs.) The dispatcher tries core's verbs
@@ -3180,7 +3190,7 @@ A broad run looks like:
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             2 success · 2 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            1 miss · 1 local
+            local 1↓ 1↑
 
   info      8 workers · local cache
   time      5.34s · 900ms saved
@@ -3189,7 +3199,15 @@ A broad run looks like:
 The three bars are meters: `projects` is what the run covered against
 the workspace, `tasks` is failed / success / skipped, `cache` is miss /
 no-cache / up-to-date / local / remote (a skipped task rides it too, so
-the two bars fill alike; its count is on the tasks legend only). The
+the two bars fill alike; its count is on the tasks legend only). Its
+legend reads per layer: `local 1● 1○ 2↓ 4↑ · remote 3↓ 4↑`.
+`●` is a fresh hit (outputs already on disk, whichever layer answered,
+so it counts under local), `○` a task with no cache, `↓` is restored
+from that layer and `↑` saved to it (local `↑` counts only tasks that ran here; remote `↑` counts
+uploads that landed). A layer shows only when the run's
+`--cache-policy` uses it. `N not saved` (ran, succeeded, saved nothing),
+`N not downloaded` (outputs left in the remote store) and `N ↑ failed`
+show only when non-zero. The
 `time` row is the wall time, then what the cache saved (the hits' stored
 exec times, never the restore), then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a

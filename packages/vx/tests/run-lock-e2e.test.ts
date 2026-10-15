@@ -108,7 +108,7 @@ describe('two runs on one workspace', () => {
       )
       expect(a.out + a.err).not.toContain('waiting for another vx run')
       // The second run found the first's outputs current: a hit, no rebuild.
-      expect(b.out + b.err).toMatch(/cache hit|hit  +local|up-to-date/)
+      expect(b.out + b.err).toMatch(/local 1●/)
     },
     TIMEOUT,
   )
@@ -183,7 +183,7 @@ describe('two runs on one workspace', () => {
         await release()
         released = true
         expect(await proc.exited).toBe(0)
-        expect(await out).toContain('Pruned 1 entry')
+        expect(await out).toContain('  1 entry\n')
         expect(artifacts()).toEqual([])
       } finally {
         if (!released) await release()

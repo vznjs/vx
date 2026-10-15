@@ -11,7 +11,7 @@ import { makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-const NONE = noticed('vx last: no recorded runs yet — run something first\n')
+const NONE = '› vx last  no runs yet\n\n  fix  vx run\n'
 
 let root = ''
 beforeAll(async () => {
@@ -43,14 +43,14 @@ it('before any run, every form says nothing has run', () => {
     [1, '', NONE],
     [1, '', NONE],
     [1, '', NONE],
-    [0, 'no recorded runs\n', ''],
-    [0, 'no recorded runs\n', ''],
+    [0, '› vx last  no runs yet\n', ''],
+    [0, '› vx last  no runs yet\n', ''],
   ])
 }, 30_000)
 
 it('past a green run, --list --failed says none failed', () => {
   expect(vx('run', 'build', '--all')[0]).toBe(0)
-  expect(vx('last', '--list', '--failed')).toEqual([0, 'no recorded run failed\n', ''])
+  expect(vx('last', '--list', '--failed')).toEqual([0, '› vx last  no failed runs\n', ''])
 }, 30_000)
 
 it('past a run, a failed or unknown one is named as before (control)', () => {

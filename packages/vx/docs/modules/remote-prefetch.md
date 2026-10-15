@@ -38,11 +38,13 @@ export function getContext(node: TaskNode, command: string): CacheGetContext
 
 1. `deriveStableKeys` — the pure-input keys of every stable task
    (`stable-keys.md`); none, nothing to do.
-2. One batched existence probe when the layer offers it
+2. The keys the local store already holds (`localHasMany`) are dropped:
+   a run the local cache answers makes no remote call.
+3. One batched existence probe when the layer offers it
    (`remoteHasMany`): the hashes it reports absent are marked
    (`markRemoteAbsent`, so the lazy read-through skips them too) and
    only the present ones are fetched.
-3. `concurrency` pumps drain the list through the layer's `prefetch`
+4. `concurrency` pumps drain the list through the layer's `prefetch`
    (the hash, the task id and its command); a rejected fetch is
    swallowed.
 

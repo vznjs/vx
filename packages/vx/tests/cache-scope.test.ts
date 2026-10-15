@@ -95,6 +95,72 @@ async function runScoped(
 
 describe('cache.scope', () => {
   it(
+    'the footer says what each layer restored and saved (M, 2026-10-15)',
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-footer-uploads-')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const { layer } = memoryRemote()
+        await runScoped(fixture, layer, undefined, 'v1')
+        const legend = (): string =>
+          fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
+        expect(legend()).toBe('local 1↑ · remote 1↑')
+        fixture.log.length = 0
+        await runScoped(fixture, layer, undefined, 'v1')
+        expect(legend()).toBe('remote 1↓')
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it.each([undefined, 'pr-1'])(
+    'a run the local cache answers asks the remote nothing (scope %p; M, 2026-10-15)',
+    async (scope) => {
+      const fixture = await makeWorkspace('vx-cache-warm-local-')
+      const { layer } = memoryRemote()
+      const calls: string[] = []
+      const counted: RemoteCacheLayer = {
+        has: (h) => (calls.push('has'), layer.has(h)),
+        hasMany: (h) => (calls.push('hasMany'), layer.hasMany!(h)),
+        get: (h) => (calls.push('get'), layer.get(h)),
+        put: (h, b, m) => layer.put(h, b, m),
+      }
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        await Bun.write(
+          path.join(fixture.root, '.vx/workspace.mjs'),
+          scope === undefined
+            ? `export default {}\n`
+            : `export default { cache: { scope: '${scope}' } }\n`,
+        )
+        const once = () =>
+          run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: counted,
+            remoteReadOnlyByDefault: false,
+          })
+        expect((await once()).outcomes[0]!.status).toBe('success')
+        calls.length = 0
+        expect((await once()).outcomes[0]!.status).toBe('cache-hit')
+        expect(calls).toEqual([])
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a scope reads the default keys, then its own, and writes only its own',
     async () => {
       const fixture = await makeWorkspace('vx-cache-scope-')

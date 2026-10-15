@@ -88,7 +88,7 @@ of a small package (first run, again, again after `rm -rf dist`):
 
 ```text
 └─ @demo/app#build ── (60ms) success
-  cache     1 miss
+  cache     local 1↑
   time      332ms
 
 └─ @demo/app#build ── (3ms) up-to-date

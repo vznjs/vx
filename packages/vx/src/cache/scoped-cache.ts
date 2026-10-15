@@ -75,6 +75,13 @@ export class ScopedCache implements CacheLayer {
     return out
   }
 
+  /** A task key the store holds under the default key or the scope's. */
+  async localHasMany(hashes: readonly string[]): Promise<Set<string>> {
+    const held = await this.inner.localHasMany?.([...hashes, ...hashes.map((h) => this.own(h))])
+    if (held === undefined) return new Set()
+    return new Set(hashes.filter((h) => held.has(h) || held.has(this.own(h))))
+  }
+
   private async scopedHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
     const scoped = hashes.map((h) => this.own(h))
     const [plain, own] = await Promise.all([
@@ -105,7 +112,13 @@ export class ScopedCache implements CacheLayer {
   }
 
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
-    for (const key of [hash, this.own(hash)]) {
+    // The scope's key first when only it is local: the default key's
+    // remote GET would cost a round-trip for the same inputs.
+    const own = this.own(hash)
+    const keys = (await this.inner.localHasMany?.([hash, own]))?.has(own)
+      ? [own, hash]
+      : [hash, own]
+    for (const key of keys) {
       const entry = await this.inner.get(key, ctx)
       if (entry === null) continue
       this.served.set(hash, key)

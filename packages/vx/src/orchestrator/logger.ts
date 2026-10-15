@@ -20,7 +20,7 @@ import {
   type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
-import { formatSummarySection, neverStarted, type RunContext } from './summary.js'
+import { formatSummarySection, neverStarted, ranUnsaved, type RunContext } from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 import {
   appendTail,
@@ -330,6 +330,8 @@ export function defaultLogger(
   let upToDate = 0
   let restoredLocal = 0
   let restoredRemote = 0
+  let saved = 0
+  let notSaved = 0
   let skippedCount = 0
   let savedMs = 0
   // Cache-miss duration spread, accumulated incrementally (the same
@@ -446,6 +448,8 @@ export function defaultLogger(
               upToDate,
               restoredLocal,
               restoredRemote,
+              saved,
+              notSaved,
               miss: succeeded + failed - noCache,
               noCache,
               savedMs,
@@ -837,6 +841,8 @@ export function defaultLogger(
           case 'success':
             succeeded++
             if (ranNoCache(outcome)) noCache++
+            if (outcome.saved === true) saved++
+            else if (ranUnsaved(outcome)) notSaved++
             break
           case 'cache-hit':
             if (outcome.restored === false) upToDate++

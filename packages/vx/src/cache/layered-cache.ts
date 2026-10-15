@@ -254,6 +254,10 @@ export class LayeredCache implements CacheLayer {
     return this.pullFromRemote(hash, ctx)
   }
 
+  localHasMany(hashes: readonly string[]): Promise<Set<string>> {
+    return this.local.localHasMany(hashes)
+  }
+
   /**
    * Batch existence probe over the remote layer — the subset of `hashes`
    * present remotely, in one round-trip, or `null` when the remote can't

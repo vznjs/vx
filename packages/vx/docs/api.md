@@ -112,6 +112,7 @@ export class Cache implements CacheLayer {
     ctx?: (hash: string) => CacheGetContext,
   ): Promise<Map<string, CacheEntry>>
   async has(hash: string): Promise<'local' | 'remote' | null>
+  async localHasMany(hashes: readonly string[]): Promise<Set<string>>
   async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
   isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
@@ -224,6 +225,7 @@ export interface CacheLayer {
   readonly local?: Cache | undefined
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   markRemoteAbsent?(hashes: Iterable<string>): void
   drainUploads?(): Promise<void>
   key(input: CacheKeyInput): Promise<string>
@@ -355,6 +357,7 @@ type · `src/orchestrator/plugin.ts`
 export interface CommandContext extends BaseContext {
   readonly concurrency: number
   readonly vx: readonly string[]
+  readonly cache: PluginCache
 }
 ```
 
@@ -1390,6 +1393,7 @@ export interface PluginCache {
   put(key: string, bytes: Uint8Array): Promise<void>
   has(key: string): Promise<boolean | null>
   hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  getRun(name: string): Promise<Uint8Array | null>
 }
 ```
 
@@ -1516,6 +1520,7 @@ export interface PreparedRun {
   priorities: () => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
   cacheFor: (plugin: string) => PluginCache
+  keepRunEntry: ((name: string, bytes: Uint8Array) => Promise<boolean>) | undefined
   nodes: Map<string, TaskNode>
   keyOnly: ReadonlyMap<string, TaskNode>
   unresolvedTasks: readonly string[]
@@ -1925,6 +1930,42 @@ export interface RunRecord {
 }
 ```
 
+## `RunReport`
+
+type · `src/orchestrator/plugin.ts`
+
+What a finished run hands each plugin's `teardown`: its facts and every
+task, with the names core kept the task's bytes under. Core keeps them
+only when a remote takes the run's writes (CI by default): a failed
+task's log and the files its outputs left, an uncached task's log. Read
+them with `ctx.cache.getRun(name)`. Core keeps no manifest of its own; a
+plugin that wants one writes it from here (`ctx.cache.put`).
+
+```ts
+export interface RunReport {
+  readonly runId: string
+  readonly commit: string | null
+  readonly ciRun: CiContext
+  readonly ok: boolean
+  readonly tasks: readonly RunReportTask[]
+}
+```
+
+## `RunReportTask`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export interface RunReportTask {
+  readonly id: string
+  readonly status: TaskStatus
+  readonly durationMs: number
+  readonly key?: string
+  readonly log?: string
+  readonly outputs?: string
+}
+```
+
 ## `RunResult`
 
 type · `src/orchestrator/run-report.ts`
@@ -2296,10 +2337,12 @@ export interface TaskOutcome {
   blockedBy?: string
   timedOut?: true
   failedOutput?: string
+  runLog?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
   where?: string
   outputs?: 'deferred'
+  saved?: true
   wallclockStartNs?: bigint
   wallclockEndNs?: bigint
   restored?: boolean
@@ -2630,7 +2673,7 @@ export interface VxPlugin {
     | Promise<TelemetrySink | TelemetrySink[] | undefined>
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
   setup?(ctx: PluginSetupContext): void | Promise<void>
-  teardown?(): void | Promise<void>
+  teardown?(run?: RunReport): void | Promise<void>
 }
 ```
 

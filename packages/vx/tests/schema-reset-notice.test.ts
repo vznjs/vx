@@ -231,13 +231,13 @@ describe('an upgrade resets the cache in silence', () => {
       expect({ ...dry, after: index() }).toEqual({
         threw: null,
         stderr: '',
-        stdout: `Would prune 0 entries (0 B), would reap 1 orphaned artifact (${formatBytes(a.bytes)})\n`,
+        stdout: `› vx cache clean  would free ${formatBytes(a.bytes)} (dry run)\n\n  1 orphaned artifact\n`,
         after: before,
       })
       const wet = await verb(['cache', 'clean', '--older-than', '30d'])
       expect({ threw: wet.threw, stdout: wet.stdout }).toEqual({
         threw: null,
-        stdout: `Pruned 0 entries (0 B freed), reaped 1 orphaned artifact (${formatBytes(a.bytes)})\n`,
+        stdout: `✓ vx cache clean  freed ${formatBytes(a.bytes)}\n\n  1 orphaned artifact\n`,
       })
     })
 
@@ -253,12 +253,12 @@ describe('an upgrade resets the cache in silence', () => {
       expect(dry).toEqual({
         threw: null,
         stderr: '',
-        stdout: 'Would prune 0 entries (0 B)\n',
+        stdout: '› vx cache clean  nothing to free (dry run)\n',
       })
       const wet = await verb(['cache', 'clean', '--older-than', '30d'])
       expect({ threw: wet.threw, stdout: wet.stdout }).toEqual({
         threw: null,
-        stdout: 'Pruned 0 entries (0 B freed)\n',
+        stdout: '› vx cache clean  nothing to free\n',
       })
       expect(artifact().key).toBe(a.key)
     })

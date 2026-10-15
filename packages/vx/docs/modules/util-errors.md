@@ -16,6 +16,7 @@ export class UserError extends Error {
   constructor(message: string, code?: string)
 }
 export interface RefusalParts {
+  readonly tone?: 'info' // nothing is wrong, just nothing to show yet; default error
   readonly headline: string
   readonly what?: readonly string[]
   readonly why?: string

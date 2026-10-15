@@ -1571,7 +1571,7 @@ describe('nx() under vx lock', () => {
       )
       const second = vx('run', 'build', '--all')
       expect({ code: second.code, err: second.err }).toEqual({ code: 0, err: '' })
-      expect(second.out).toContain('2 up-to-date')
+      expect(second.out).toContain('2●')
     },
     TIMEOUT,
   )

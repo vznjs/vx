@@ -77,10 +77,8 @@ describe('vx cache clean with no bound clears the cache', () => {
 
       const real = await vx(['cache', 'clean'])
       expect({ code: real.code, err: real.err }).toEqual({ code: 0, err: '' })
-      expect(real.out).toBe(
-        `Cleared this repository's store, shared by its checkouts, and this workspace's run history (${real.out.split('(')[1]!.split(')')[0]}):\n  .vx/cache\n  ${st}\n`,
-      )
-      expect(real.out).toMatch(/\(\d.* freed\)/)
+      expect(real.out).toMatch(/^✓ vx cache clean {2}freed \d[^\n]*\n\n/)
+      expect(real.out.split('\n\n')[1]).toBe(`  .vx/cache\n  ${st}\n`)
       expect([existsSync(path.join(root, '.vx', 'cache')), existsSync(st)]).toEqual([false, false])
       // The workspace config, the lock and .vx/.gitignore stay.
       expect(readdirSync(path.join(root, '.vx')).sort()).toEqual(dotVx.filter((e) => e !== 'cache'))
@@ -140,7 +138,7 @@ describe('vx cache clean with no bound clears the cache', () => {
     'a workspace that never ran has nothing to clear',
     async () => {
       const r = await vx(['cache', 'clean'])
-      expect(r).toEqual({ code: 0, out: 'Nothing to clear: no cache here\n', err: '' })
+      expect(r).toEqual({ code: 0, out: '› vx cache clean  nothing to free\n', err: '' })
     },
     TIMEOUT,
   )

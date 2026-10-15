@@ -12,6 +12,10 @@ import {
   type CachePolicy,
   cachesNothing,
   formatCachePolicy,
+  packRunOutputs,
+  resolveOutputs,
+  resolveWorkspaceOutputs,
+  runEntryName,
   stopRuntimeProbes,
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
@@ -50,6 +54,7 @@ import {
   isFsRefusal,
   isUserError,
   detectColors,
+  relPosix,
   type ColorSupport,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
@@ -61,7 +66,8 @@ import { unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
 import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
-import { installPlugins, PluginSetupError } from './plugin.js'
+import { installPlugins, PluginSetupError, type RunReport, type RunReportTask } from './plugin.js'
+import { decodeOutputLog } from './output-log.js'
 import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
@@ -139,6 +145,21 @@ const emptyShortCircuit = (): ShortCircuit => ({
   uncachedKeys: new Map(),
   groupKeys: new Map(),
 })
+
+/** The files `node`'s declared outputs match on disk now, workspace-relative and sorted. */
+async function outputsLeft(
+  node: TaskNode,
+  workspaceRoot: string,
+  nestedProjectDirs: string[],
+): Promise<string[]> {
+  const declared = node.config.cache?.outputs
+  if (declared === undefined) return []
+  const [own, ws] = await Promise.all([
+    resolveOutputs({ projectDir: node.projectDir, outputs: declared.files, nestedProjectDirs }),
+    resolveWorkspaceOutputs({ workspaceRoot, outputs: declared.workspaceFiles ?? [] }),
+  ])
+  return [...new Set([...own, ...ws].map((p) => relPosix(workspaceRoot, p)))].sort()
+}
 
 /**
  * The policy that will actually govern the run. The remote axes are inert
@@ -393,11 +414,11 @@ async function runOnBus(
   // per cycle under `vx watch`. A plugin whose own setup threw set up
   // nothing, and is the one left out.
   let tornDown = false
-  const teardown = async (except?: unknown): Promise<void> => {
+  const teardown = async (except?: unknown, report?: RunReport): Promise<void> => {
     if (tornDown) return
     tornDown = true
     const plugins = prepared.plugins.filter((p) => p !== except)
-    await teardownPlugins(plugins, (m) => log.status(m))
+    await teardownPlugins(plugins, (m) => log.status(m), report)
   }
   // A task whose command re-enters `vx run` in the workspace running it
   // is refused. When the inner run reaches this task again it forks a run
@@ -455,6 +476,13 @@ async function runOnBus(
   // the plugin. A plugin without `setup` subscribes nothing.
   let disposePlugins: (() => void) | undefined
   let telemetry: TelemetryHandle | undefined
+  // One run-id per `vx run` invocation. Every task in the resulting graph
+  // carries it so analytics queries can group by invocation; plugins get it
+  // in their teardown's `RunReport`.
+  const runId = ulid()
+  const head = captureGitContext(prepared.workspaceRoot)
+  const ciContext = detectCi(process.env)
+  const keepRunLog = prepared.keepRunEntry !== undefined
   try {
     disposePlugins = await installPlugins({
       plugins: prepared.plugins,
@@ -463,7 +491,7 @@ async function runOnBus(
       cacheDir: prepared.cacheDir,
       warn: (m) => log.status(m),
       cache: prepared.cacheFor,
-      ci: detectCi(process.env).ci,
+      ci: ciContext.ci,
       branch: prepared.branch(),
     })
   } catch (err) {
@@ -726,9 +754,6 @@ async function runOnBus(
     }),
   )
   try {
-    // One run-id per `vx run` invocation. Every task in the resulting
-    // graph carries it so analytics queries can group by invocation.
-    const runId = ulid()
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
     const remoteCacheEnabled = prepared.hasRemoteLayer
@@ -759,10 +784,10 @@ async function runOnBus(
     // second status spawn.
     // `run.branch` names the branch over git's (`prepared.branch`).
     const gitContext = {
-      ...captureGitContext(workspaceRoot, gitFilesCache.worktreeDirty),
+      ...head,
+      dirty: gitFilesCache.worktreeDirty,
       branch: prepared.branch(),
     }
-    const ciContext = detectCi(process.env)
     const hostContext = captureHostContext()
 
     // The canonical run-context record — the same git/CI/host data the
@@ -903,6 +928,13 @@ async function runOnBus(
       version: VERSION,
       packageCount: packagesInScope.size,
       remoteCacheEnabled,
+      cache: {
+        local: policy.localRead || policy.localWrite,
+        localWrite: policy.localWrite,
+        remote: remoteCacheEnabled && (policy.remoteRead || policy.remoteWrite),
+        uploads: prepared.localCache.uploads,
+        notDownloaded: () => deferredOutputs.pending().length,
+      },
       concurrency,
       workspaceProjectCount,
     }
@@ -1098,6 +1130,7 @@ async function runOnBus(
       if (upfrontKey !== undefined) a.upfrontKey = upfrontKey
       if (upfrontGroupKey !== undefined) a.upfrontGroupKey = upfrontGroupKey
       if (tainted) a.taintedUpstream = true
+      if (keepRunLog) a.keepRunLog = true
       if (!dependedOn.has(node.id)) a.noDependants = true
       if (holders.has(node.id)) a.terminal = true
       if (armSandbox !== undefined) a.armSandbox = armSandbox
@@ -1315,7 +1348,7 @@ async function runOnBus(
     const stillDeferred = deferredOutputs.pending()
     if (stillDeferred.length > 0) {
       log.status(
-        `  Deferred: ${stillDeferred.length} task(s) left outputs remote (--cache-download=none): ${stillDeferred.join(', ')}`,
+        `  Deferred: left outputs remote (--cache-download=none): ${stillDeferred.join(', ')}`,
       )
     }
 
@@ -1323,6 +1356,55 @@ async function runOnBus(
     // change the run's exit code — the run already happened.
     // Written again after the keep-alive wait: a kept server's crash or a
     // Ctrl-C there is the process's exit, and the first write said ok.
+    // The run's own bytes, kept in a remote that takes its writes (owner
+    // 2026-10-15): a failed task's log and the files its outputs left, an
+    // uncached task's log. Then the report every plugin's teardown reads.
+    const keepRunBytes = async (final: readonly TaskOutcome[]): Promise<RunReport> => {
+      const keep = prepared.keepRunEntry
+      const tasks: RunReportTask[] = []
+      const work: (() => Promise<void>)[] = []
+      for (const o of final) {
+        if (isGroupTask(o.node)) continue
+        const task: { -readonly [K in keyof RunReportTask]: RunReportTask[K] } = {
+          id: o.node.id,
+          status: o.status,
+          durationMs: Math.round(o.durationMs),
+          ...(o.hash !== undefined ? { key: o.hash } : {}),
+        }
+        tasks.push(task)
+        if (keep === undefined) continue
+        const runLog = o.runLog
+        if (runLog !== undefined) {
+          work.push(async () => {
+            const text = decodeOutputLog(runLog)
+              .map((c) => c.text)
+              .join('')
+            if (text.length === 0) return
+            const name = runEntryName(runId, o.node.id, 'log')
+            if (await keep(name, new TextEncoder().encode(text))) task.log = name
+          })
+        }
+        if (o.status === 'failed' && o.where === undefined) {
+          work.push(async () => {
+            const bytes = await packRunOutputs(
+              prepared.workspaceRoot,
+              await outputsLeft(
+                o.node,
+                prepared.workspaceRoot,
+                prepared.nestedDirsByProject.get(o.node.projectName) ?? [],
+              ),
+            )
+            if (bytes === null) return
+            const name = runEntryName(runId, o.node.id, 'outputs')
+            if (await keep(name, bytes)) task.outputs = name
+          })
+        }
+      }
+      for (let i = 0; i < work.length; i += 8) {
+        await Promise.all(work.slice(i, i + 8).map((w) => w()))
+      }
+      return { runId, commit: head.commitSha, ciRun: ciContext, ok, tasks }
+    }
     let json: RunSummaryJson | undefined
     const summarize = async (runOk: boolean, final = list): Promise<void> => {
       if (options.json === true) {
@@ -1461,6 +1543,7 @@ async function runOnBus(
     // drain of the lane stood here until item 634; deleting it changed
     // nothing the suite could see, because this gate is the rule.
     await cache.drainUploads?.()
+    const report = await keepRunBytes(list)
     // Hand the per-run summary to the telemetry sinks + drain them. Only
     // when a sink is active (telemetry !== undefined) — otherwise this
     // whole block is skipped and the run is byte-identical to before.
@@ -1519,7 +1602,7 @@ async function runOnBus(
     // whole keep-alive wait below (C-66). Idempotent; the finally's stay.
     disposePlugins?.()
     telemetry?.dispose()
-    await teardown()
+    await teardown(undefined, report)
     await closeCache()
     mark('close')
     printTimings()

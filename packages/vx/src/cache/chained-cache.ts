@@ -108,6 +108,10 @@ export class ChainedCache implements CacheLayer {
     return false
   }
 
+  localHasMany(hashes: readonly string[]): Promise<Set<string>> {
+    return this.layers[0]!.localHasMany?.(hashes) ?? Promise.resolve(new Set())
+  }
+
   async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
     // The caller (remote-prefetch) treats a non-null answer as authoritative
     // for the WHOLE chain: complement = absent, broadcast. That is sound only

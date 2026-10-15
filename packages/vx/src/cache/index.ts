@@ -77,5 +77,6 @@ export {
   type PluginCache,
   type PluginCacheRemote,
 } from './plugin-cache.js'
+export { packRunOutputs, putRunEntry, runEntryName, writesRunStore } from './run-store.js'
 export { ChainedCache } from './chained-cache.js'
 export { branchSource } from './run-history.js'

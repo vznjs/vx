@@ -19,10 +19,11 @@ import {
 } from '../cache/index.js'
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
-import type { TaskNode, TaskOutcome } from '../graph/index.js'
+import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
 import { maskedLine, nearest, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, RunStartInfo } from './events.js'
+import type { CiContext } from './run-context.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
 
@@ -233,8 +234,44 @@ export interface VxPlugin {
    */
   setup?(ctx: PluginSetupContext): void | Promise<void>
 
-  /** Optional teardown at end-of-run (flush a sink, close a socket). Errors are logged, never thrown. */
-  teardown?(): void | Promise<void>
+  /**
+   * Optional teardown at end-of-run (flush a sink, close a socket). Errors
+   * are logged, never thrown. A run that ran to its end passes its
+   * `RunReport`; every other exit (a refused setup, a stop) passes none.
+   */
+  teardown?(run?: RunReport): void | Promise<void>
+}
+
+/**
+ * What a finished run hands each plugin's `teardown`: its facts and every
+ * task, with the names core kept the task's bytes under. Core keeps them
+ * only when a remote takes the run's writes (CI by default): a failed
+ * task's log and the files its outputs left, an uncached task's log. Read
+ * them with `ctx.cache.getRun(name)`. Core keeps no manifest of its own; a
+ * plugin that wants one writes it from here (`ctx.cache.put`).
+ */
+export interface RunReport {
+  /** The `run_id` the run's history rows and telemetry carry. */
+  readonly runId: string
+  /** `HEAD`'s commit, null outside a git worktree. */
+  readonly commit: string | null
+  /** What the CI provider says about this run: provider, run URL, pipeline, job, attempt. */
+  readonly ciRun: CiContext
+  readonly ok: boolean
+  /** Every task the run decided, in completion order; group tasks are left out. */
+  readonly tasks: readonly RunReportTask[]
+}
+
+export interface RunReportTask {
+  readonly id: string
+  readonly status: TaskStatus
+  readonly durationMs: number
+  /** The task's cache key, when one was computed. */
+  readonly key?: string
+  /** Its output (both streams, secrets masked), when core kept it: `ctx.cache.getRun(log)`. */
+  readonly log?: string
+  /** A tar of the files its declared outputs left, when core kept it: `ctx.cache.getRun(outputs)`. */
+  readonly outputs?: string
 }
 
 /** Shared, read-only context every capability factory receives. */
@@ -282,6 +319,12 @@ export interface CommandContext extends BaseContext {
    * which `vx` a PATH holds.
    */
   readonly vx: readonly string[]
+  /**
+   * This plugin's entries in the workspace's cache, as `setup` reaches them
+   * (`PluginCache`), read-only: the local store, then each remote the
+   * workspace's cache plugins supply, under the run's scope. Opened on first use.
+   */
+  readonly cache: PluginCache
 }
 
 /** `config` runs before the cache dir is known — it may be what the hook changes. */

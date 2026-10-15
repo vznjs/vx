@@ -30,7 +30,7 @@ changed:
 
 ```sh frame="terminal"
 $ vx run build test --all --force
-  cache     8 miss
+  cache     local 8↑
   time      879ms
 
 $ vx run build test --all

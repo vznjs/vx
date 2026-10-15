@@ -124,7 +124,7 @@ describe('docs/cli.md — the `vx info` sample quotes the current versions', () 
     // The renderer pads every label to the widest; the sample is its output.
     expect(doc).toMatch(
       new RegExp(
-        `^cache versions:\\s+keys ${CACHE_VERSION} · index schema ${SCHEMA_VERSION}$`,
+        `^  cache versions\\s+keys ${CACHE_VERSION} · index schema ${SCHEMA_VERSION}$`,
         'm',
       ),
     )
@@ -276,6 +276,7 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
       status: 'success',
       exitCode: 0,
       durationMs: 5200,
+      saved: true,
     }
     const rendered = [
       formatTaskHitLine(hit.node, hit),
@@ -290,6 +291,13 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
           remoteCacheEnabled: false,
           concurrency: 8,
           workspaceProjectCount: 3,
+          cache: {
+            local: true,
+            localWrite: true,
+            remote: false,
+            uploads: { count: 0, failed: 0 },
+            notDownloaded: () => 0,
+          },
         },
       ),
     ].join('\n')

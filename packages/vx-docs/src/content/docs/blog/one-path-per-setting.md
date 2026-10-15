@@ -44,7 +44,7 @@ every setting that is not at its default and where its value came from:
 ```sh frame="terminal"
 $ VX_RUN_CONCURRENCY=2 vx info
 …
-settings:         run.concurrency 2 (VX_RUN_CONCURRENCY), run.killGrace 5s (.vx/workspace)
+  settings          run.concurrency 2 (VX_RUN_CONCURRENCY), run.killGrace 5s (.vx/workspace)
 ```
 
 ## Units are part of the value

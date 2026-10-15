@@ -21,6 +21,8 @@ import {
   LayeredCache,
   absentPluginCache,
   pluginCache,
+  putRunEntry,
+  writesRunStore,
   type PluginCache,
   type PluginCacheRemote,
   ScopedCache,
@@ -122,6 +124,11 @@ export interface PreparedRun {
   branch: () => string | null
   /** Each plugin's `ctx.cache`: the run's local store and remotes, under its policy and scope. */
   cacheFor: (plugin: string) => PluginCache
+  /**
+   * Keep `bytes` of this run under `name` (run-store.ts); undefined when no
+   * remote takes the run's writes, and so core keeps nothing.
+   */
+  keepRunEntry: ((name: string, bytes: Uint8Array) => Promise<boolean>) | undefined
   nodes: Map<string, TaskNode>
   /**
    * The tasks `--exclude-dependencies` took out of the schedule: keyed as a
@@ -521,6 +528,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       localCache,
       hasRemoteLayer,
       cachePolicy: policy,
+      keepRunEntry: undefined,
       priorities: () => Promise.resolve(new Map()),
       branch,
       cacheFor: () => absentPluginCache,
@@ -764,6 +772,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       priorities,
       branch,
       cacheFor,
+      keepRunEntry: writesRunStore(remotes)
+        ? (name, bytes) => putRunEntry(remotes, cacheScope, name, bytes)
+        : undefined,
       nodes,
       keyOnly,
       unresolvedTasks,

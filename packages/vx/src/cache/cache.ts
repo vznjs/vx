@@ -1746,6 +1746,16 @@ export class Cache implements CacheLayer {
     return this.guard(() => this.hasEntry(hash))
   }
 
+  /**
+   * The subset of `hashes` this store holds, `has` for each: the prefetch
+   * pass asks the remote only about the rest (M, 2026-10-15).
+   */
+  async localHasMany(hashes: readonly string[]): Promise<Set<string>> {
+    const out = new Set<string>()
+    for (const hash of hashes) if ((await this.has(hash)) === 'local') out.add(hash)
+    return out
+  }
+
   private async hasEntry(hash: string): Promise<'local' | 'remote' | null> {
     if (!this.read) return null
     const row = this.entryExists.get(hash) as { inline_at: number | null } | null

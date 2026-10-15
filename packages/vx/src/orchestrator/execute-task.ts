@@ -257,6 +257,12 @@ export interface ExecuteArgs {
    */
   taintedUpstream?: boolean
   /**
+   * The run keeps its bytes in a remote (run-store.ts): an attempt captures
+   * its output at the entry's bounds, and an outcome that saves no entry
+   * (a failure, an uncached run) carries it as `runLog`.
+   */
+  keepRunLog?: boolean
+  /**
    * Whether a task has rewritten a root file a plugin claims (whose bytes
    * the claimant folded) since the run read it (fingerprint-watch.ts): past that, no key taken
    * on the old digest is probed or saved.
@@ -1464,9 +1470,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   }
 
   async function buildRequest(local: boolean): Promise<ExecuteRequest> {
-    const kept = willSave
-      ? new BoundedCapture()
-      : new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
+    const kept =
+      willSave || args.keepRunLog === true
+        ? new BoundedCapture()
+        : new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
     output = kept
     const toOut = (t: string): void => {
       kept.push(t)
@@ -1536,6 +1543,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const stability = inputStabilityOf(args.node.config.cache, args.inputStability)
   let movedFails: string | undefined
   let own: Awaited<ReturnType<typeof ownOutputs>>
+  let saved = false
   if (effectiveExitCode === 0 && willSave && deferralRequested) {
     // The outputs never landed here: no artifact, no rows. A partial local
     // record (a row with no artifact) is exactly the corrupt-entry shape
@@ -1599,6 +1607,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         : {}),
     })
     args.deferredSaves?.set(node.id, landed)
+    saved = true
   } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants !== true) {
     // Ran here and saves nothing — failed, a read-only policy, a tainted
     // upstream, a key that no longer held — yet it wrote what a save would
@@ -1741,8 +1750,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       : {}),
     ...(inputChanges !== undefined ? { inputChanges } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
+    ...(saved ? { saved: true as const } : {}),
     ...(effectiveExitCode !== 0 && output !== undefined
-      ? { failedOutput: failedOutputLog(output, willSave) }
+      ? { failedOutput: failedOutputLog(output, willSave || args.keepRunLog === true) }
+      : {}),
+    ...(args.keepRunLog === true && (effectiveExitCode !== 0 || !willSave) && output !== undefined
+      ? { runLog: storedOutput() }
       : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
     ...(movedFails !== undefined ? { inputMoved: movedFails } : {}),

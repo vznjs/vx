@@ -17,10 +17,14 @@ gives you two ways to bound it and does the cleanup it can do on its own.
 
 ```sh frame="terminal"
 $ vx cache clean --older-than 30d
-Pruned 42 entries (1.3 GB freed)
+✓ vx cache clean  freed 1.3 GB
+
+  42 entries
 
 $ vx cache clean --older-than 7d --max-size 500M
-Pruned 18 entries (320 MB freed)
+✓ vx cache clean  freed 320 MB
+
+  18 entries
 ```
 
 `--older-than` drops entries nobody has used for that long. A hit
@@ -97,7 +101,9 @@ repository's store.
 
 ```sh frame="terminal"
 $ vx cache clean --older-than 30d --dry-run
-Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
+› vx cache clean  would free 1.3 GB (dry run)
+
+  42 entries · 3 orphaned artifacts
 ```
 
 `--dry-run` picks the victims under the same policy and stops there.
