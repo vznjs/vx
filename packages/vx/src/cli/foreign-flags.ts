@@ -250,7 +250,8 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     runner: 'nx',
     names: ['--parallel'],
     value: true,
-    when: (v) => v !== undefined && v !== 'true',
+    // Nx's value is a count or `false`; a word after it is a task name.
+    when: (v) => v === 'false' || (v !== undefined && /^\d+$/.test(v)),
     shown: '`--parallel <n>`',
     outcome: 'alias',
     vx: '`--concurrency <n>` (`--parallel=false` is 1)',
