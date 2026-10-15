@@ -53,6 +53,10 @@ nothing runs and caches here.
 - `executorLabel(executor)` — how a message names a resolved executor:
   `plugin '<name>' (executor '<name>')`, or `executor '<name>'` for the
   local floor. A throwing `accepts` or `demand` is named by it.
+- `executorDemand(placed, warn)` → `(id) => void` — tells each executor
+  with a `demand` hook the task ids it still has left, once up front and
+  again as each finishes; a throwing `demand` is warned once and not
+  asked again. With no such executor it returns a no-op.
 - `nameExecutorFailure(executor, err)` — a plugin executor's throw from
   `execute` as a `UserError` reading `<label> failed in execute: <reason>`
   (C-63), the plugin's error as its `cause`: printed plainly, as every
