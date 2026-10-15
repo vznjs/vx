@@ -1,6 +1,6 @@
 // scripts/api-break.ts: what counts as a break of the package API record.
 import { describe, expect, it } from 'bun:test'
-import { apiBreaks, contractBreaks } from '../scripts/api-break.js'
+import { apiBreaks, contractBreaks, packEntries } from '../scripts/api-break.js'
 
 const record = (...sections: [string, ...string[]][]): string =>
   sections.map(([id, ...lines]) => [`== ${id}`, ...lines].join('\n')).join('\n') + '\n'
@@ -59,6 +59,22 @@ describe('apiBreaks', () => {
     expect(apiBreaks(empty, rebased)).toEqual([
       'type C (src/c.ts): - export interface C extends B {}',
     ])
+  })
+
+  it('a declaration moved to another file is no break', () => {
+    const moved = record(
+      [
+        'type TaskExecutor (src/exec/task-executor.ts)',
+        'export interface TaskExecutor {',
+        '  readonly name: string',
+        '}',
+      ],
+      [
+        'function run (src/run.ts)',
+        'export async function run(options: RunOptions): Promise<RunSummary>',
+      ],
+    )
+    expect(apiBreaks(before, moved)).toEqual([])
   })
 
   it('a removed export, a removed member and a changed signature each are', () => {
@@ -124,6 +140,23 @@ describe('contractBreaks', () => {
         j({ t: { answer: ['x'] } }),
       ),
     ).toEqual(['- t.answer[]="y"'])
+  })
+
+  it('a pack list given its entries: only an entry or a file outside src/ is contract', () => {
+    const entries = packEntries(
+      j({ exports: { '.': { import: './src/index.ts' } }, bin: { vx: './src/bin.ts' } }),
+    )
+    expect([...entries].sort()).toEqual(['src/bin.ts', 'src/index.ts'])
+    const before = 'README.md\nsrc/bin.ts\nsrc/index.ts\nsrc/orchestrator/metrics.ts\n'
+    const moved = 'README.md\nsrc/bin.ts\nsrc/history/metrics.ts\nsrc/index.ts\n'
+    const record = 'tests/contract/pack/vx.txt'
+    expect(contractBreaks(record, before, moved, entries)).toEqual([])
+    expect(contractBreaks(record, before, 'src/history/metrics.ts\n', entries)).toEqual([
+      '- README.md',
+      '- src/bin.ts',
+      '- src/index.ts',
+    ])
+    expect(contractBreaks(record, before, moved)).toEqual(['- src/orchestrator/metrics.ts'])
   })
 
   it('the config schema: a field or an accepted value lost is a break, a reworded refusal is not', () => {

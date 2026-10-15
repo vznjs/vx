@@ -2,17 +2,25 @@
 // breaks. The record is one section per declaration the façade exports,
 // `== <kind> <Name> (<file>)` and its lines. A section gone, or a line gone
 // from one, is breaking: a removed export or member, or a changed signature
-// (which reads as one line out and one in). A section or line added is not.
+// (which reads as one line out and one in). A section or line added is not,
+// nor a declaration that moved to another file.
 // Conservative on purpose: a new required member of an interface a plugin
 // implements breaks that plugin and reads here as an addition, and a
 // reformatted line reads as a break.
 
-function sections(record: string): Map<string, Set<string>> {
-  const out = new Map<string, Set<string>>()
+/**
+ * A record's sections by declaration, `<kind> <Name>`: the `(<file>)` a
+ * header names is where the façade found it, not what a user imports, so
+ * a declaration moved between files is the same section.
+ */
+function sections(record: string): Map<string, { label: string; lines: Set<string> }> {
+  const out = new Map<string, { label: string; lines: Set<string> }>()
   let lines: Set<string> | undefined
   for (const line of record.split('\n')) {
-    if (line.startsWith('== ')) out.set(line.slice(3), (lines = new Set()))
-    else if (line !== '') lines?.add(line)
+    if (line.startsWith('== ')) {
+      const label = line.slice(3)
+      out.set(label.replace(/ \([^)]*\)$/, ''), { label, lines: (lines = new Set()) })
+    } else if (line !== '') lines?.add(line)
   }
   return out
 }
@@ -21,17 +29,17 @@ function sections(record: string): Map<string, Set<string>> {
 export function apiBreaks(before: string, after: string): string[] {
   const now = sections(after)
   const breaks: string[] = []
-  for (const [id, lines] of sections(before)) {
-    const kept = now.get(id)
+  for (const [id, { label, lines }] of sections(before)) {
+    const kept = now.get(id)?.lines
     if (kept === undefined) {
-      breaks.push(`removed ${id}`)
+      breaks.push(`removed ${label}`)
       continue
     }
     for (const line of lines) {
       if (kept.has(line)) continue
       // An empty body's first member: `X extends B {}` now reads `X extends B {`.
       if (line.endsWith(' {}') && kept.has(line.slice(0, -1)) && kept.has('}')) continue
-      breaks.push(`${id}: - ${line.trim()}`)
+      breaks.push(`${label}: - ${line.trim()}`)
     }
   }
   return breaks
@@ -59,6 +67,19 @@ const gone = (before: readonly string[], after: readonly string[]): string[] => 
   return [...new Set(before)].filter((l) => !now.has(l)).map((l) => `- ${l}`)
 }
 
+/** The files a manifest's `exports` and `bin` point at, as a pack list names them. */
+export function packEntries(manifest: string): Set<string> {
+  const m = JSON.parse(manifest) as { exports?: unknown; bin?: unknown }
+  const out = new Set<string>()
+  const add = (v: unknown): void => {
+    if (typeof v === 'string') out.add(v.replace(/^\.\//, ''))
+    else if (v !== null && typeof v === 'object') for (const x of Object.values(v)) add(x)
+  }
+  add(m.exports)
+  add(m.bin)
+  return out
+}
+
 /** vx's support for a Turbo or Nx key, best first: a step down is a break. */
 /** A JSON Schema's prose, not its shape; under `properties` the same word is a field. */
 const ANNOTATIONS = new Set(['title', 'description', '$comment', 'examples'])
@@ -72,16 +93,26 @@ const SUPPORT = ['supported', 'mapped', 'not-supported', 'not-applicable']
  * record of leaves by what left it (a changed value leaves too), the
  * config schema by the fields and accepted values it lost (a reworded
  * refusal is no break), its rules by the combinations it lost, and the
- * Turbo/Nx table by a key whose status got worse.
+ * Turbo/Nx table by a key whose status got worse. A pack list given its
+ * package's `entries` (`packEntries`) loses a `src/` file as a break only
+ * when it is one of them: nothing else under `src/` can be imported, so a
+ * file moving inside it is internal (npm-pack.unsafe still pins the list).
  */
-export function contractBreaks(record: string, before: string, after: string): string[] {
+export function contractBreaks(
+  record: string,
+  before: string,
+  after: string,
+  entries?: ReadonlySet<string>,
+): string[] {
   const name = record.split('/').pop()!
   if (record.includes('package-api') || record.includes('plugin-api/')) {
     return apiBreaks(before, after)
   }
   if (name.endsWith('.txt')) {
     const lines = (t: string): string[] => t.split('\n').filter((l) => l !== '')
-    return gone(lines(before), lines(after))
+    const lost = gone(lines(before), lines(after))
+    if (entries === undefined) return lost
+    return lost.filter((l) => !l.startsWith('- src/') || entries.has(l.slice(2)))
   }
   const parse = (t: string): unknown => (t === '' ? {} : JSON.parse(t))
   const [b, a] = [parse(before), parse(after)]

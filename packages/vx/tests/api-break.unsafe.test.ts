@@ -12,7 +12,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { contractBreaks } from '../scripts/api-break.js'
+import { contractBreaks, packEntries } from '../scripts/api-break.js'
 import { commitsBetween, isBreaking } from '../scripts/release-notes.js'
 
 const ROOT = path.resolve(import.meta.dir, '..')
@@ -34,6 +34,14 @@ const EXTRA_RECORDS = [
   '../vx-ci/tests/contract/checks.txt',
 ]
 const isRecord = (f: string): boolean => f !== '' && !f.startsWith(`${CONTRACT_DIR}turbo-nx/`)
+
+/** A pack list's package entries at `ref`: `pack/vx-otel.txt` reads `../vx-otel/package.json`. */
+function entriesOf(ref: string, record: string): Set<string> | undefined {
+  const pack = /^tests\/contract\/pack\/(.+)\.txt$/.exec(record)?.[1]
+  if (pack === undefined) return undefined
+  const manifest = git('show', `${ref}:./${pack === 'vx' ? '' : `../${pack}/`}package.json`)
+  return manifest.ok ? packEntries(manifest.out) : undefined
+}
 
 /**
  * What changed in the contract records from `from` to `to` (the working
@@ -62,7 +70,9 @@ function recordBreaks(from: string, to?: string): string[] {
     } else if (existsSync(path.join(ROOT, record))) {
       after = readFileSync(path.join(ROOT, record), 'utf8')
     }
-    return contractBreaks(record, before.out, after).map((b) => `${record}: ${b}`)
+    return contractBreaks(record, before.out, after, entriesOf(from, record)).map(
+      (b) => `${record}: ${b}`,
+    )
   })
 }
 
