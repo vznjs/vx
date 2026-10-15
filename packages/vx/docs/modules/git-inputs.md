@@ -37,6 +37,16 @@ clean tree costs the same. The flag does not reach `--affected`'s
 `git diff <base>`, which git 2.43 refreshes regardless; the plumbing
 `diff-index` would report every stat-dirty file as changed.
 
+So vx never refreshes the real index, and a fresh checkout's is racily
+clean: written in the second its files were, so git re-hashes every file
+on every `status` until something rewrites it. When the index holds such
+an entry, the enumeration copies it beside itself (`vx-index-<hash>`,
+named by its bytes, keeping its mtime so git's racy rule still holds),
+runs `git update-index -q --refresh` on the copy once, and points `status`
+at it with `GIT_INDEX_FILE`. Later runs on the same index reuse the copy.
+A synthetic 5,300-file clone: 310 to 223 ms a run; a refreshed tree pays
+nothing. Skipped when a git location variable is set.
+
 ## Public surface
 
 ```ts

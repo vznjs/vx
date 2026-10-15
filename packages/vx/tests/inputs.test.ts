@@ -970,6 +970,9 @@ describe('populateGitFilesCache — single workspace-wide git spawn', () => {
       const dir = path.join(workspaceRoot, 'packages', name)
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, 'src.ts'), `export const ${name} = ${name === 'a' ? 1 : 2};\n`)
+      // Older than the index, so no entry is racily clean and no refresh is spawned.
+      const past = new Date(Date.now() - 100_000)
+      await utimes(path.join(dir, 'src.ts'), past, past)
     }
     await gitCmd(workspaceRoot, 'add', '-A')
     await gitCmd(workspaceRoot, 'commit', '-m', 'init')
