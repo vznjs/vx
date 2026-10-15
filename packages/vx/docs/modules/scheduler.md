@@ -54,6 +54,7 @@ export interface TaskOutcome {
   inputMoved?: string // failed by inputStability.severity 'error': the input that changed ('' unnamed)
   where?: string // executor-reported placement, when not this host (telemetry-only)
   outputs?: 'deferred' // outputs left in the remote store (`--cache-download=none`)
+  saved?: true // ran here and its result went to the cache: the footer's `↑`
   wallclockStartNs?: bigint // hrtime span relative to run t=0
   wallclockEndNs?: bigint
   restored?: boolean // cache hits: false = tree already current (up-to-date)

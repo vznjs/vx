@@ -62,7 +62,7 @@ describe('a keyed group in a config', () => {
 
     const first = await vx(root, ['run', 'test', '--all'])
     expect(first).toContain('1 success · 1 total')
-    expect(first).toContain('1 miss')
+    expect(first).toContain('1↑')
     expect(await lastTasks(root)).toEqual({ 'a#test': false })
 
     await vx(root, ['run', 'test', '--all'])

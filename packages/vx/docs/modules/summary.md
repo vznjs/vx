@@ -23,7 +23,8 @@ export interface SummaryStats {
   upToDate: number
   restoredLocal: number
   restoredRemote: number
-  upToDateRemote?: number // of `upToDate`, the hits the remote answered: local misses
+  saved?: number // ran here and saved: the legend's `↑`
+  notSaved?: number // ran here with a `cache` block, succeeded, saved nothing
   miss: number
   noCache?: number // a task no cache answered for (`ranNoCache`) never consulted one
   left?: number // still to run: the live section's gray remainder; 0 in the final summary
@@ -40,11 +41,12 @@ export interface RunContext {
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
   cache?: {
-    localRead: boolean
-    remoteRead: boolean
-    remoteWrite: boolean
+    local: boolean
+    localWrite: boolean
+    remote: boolean
     uploads: { count: number; failed: number }
-  } // the policy's layers + the live upload tally: the legend's per-layer hits / lookups and ↑uploads
+    notDownloaded: () => number
+  } // the layers the run used: the legend's `local 1● 1○ 2↓ 4↑ · remote 3↓ 4↑`
   workspaceProjectCount?: number // total projects → the bar's denominator
 }
 
@@ -98,7 +100,7 @@ a bare `vx` and the `projects` / `info` rows are skipped.
   tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             4 success · 4 total
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            4 miss
+            local 4↑
 
   info      10 workers · local cache
   time      248ms · max 239ms · avg 215ms · min 190ms

@@ -168,97 +168,76 @@ describe('formatRunSummary', () => {
     expect(lines).toContain('  info      8 workers · local + remote cache')
   })
 
-  describe('a remote cache gives each layer as hits / lookups and counts uploads (M, 2026-10-15)', () => {
+  describe('the cache legend reads per layer: = fresh, ↓ restored, ↑ saved (M, 2026-10-15)', () => {
     const cached = (
       id: string,
       status: TaskOutcome['status'],
-      restored?: boolean,
+      extra: Partial<TaskOutcome> = {},
     ): TaskOutcome => ({
       ...outcome(id, status),
       node: { id, config: { exec: { command: 'noop' }, cache: {} } } as unknown as TaskNode,
-      ...(restored !== undefined ? { restored } : {}),
+      ...extra,
     })
     const run = [
-      cached('a#build', 'success'),
-      cached('b#build', 'success'),
-      cached('c#build', 'cache-hit-remote', true),
-      cached('d#build', 'cache-hit-remote', false),
-      cached('e#build', 'cache-hit', true),
-      outcome('f#dev', 'success'),
+      cached('a#build', 'success', { saved: true }),
+      cached('b#build', 'success', { saved: true }),
+      cached('c#build', 'success'),
+      cached('d#build', 'cache-hit-remote', { restored: true }),
+      cached('e#build', 'cache-hit-remote', { restored: false }),
+      cached('f#build', 'cache-hit', { restored: true }),
+      cached('g#build', 'cache-hit', { restored: false }),
+      outcome('h#dev', 'success'),
     ]
-    const legend = (cache?: {
-      localRead: boolean
-      remoteRead: boolean
-      remoteWrite: boolean
-      uploads: { count: number; failed: number }
-    }): string => {
-      const ctx = {
-        version: '0.0.0',
-        packageCount: 1,
-        remoteCacheEnabled: cache !== undefined,
-        ...(cache !== undefined ? { cache } : {}),
-      }
-      const lines = formatRunSummary(run, 10, { enabled: false }, ctx)
+    const legend = (
+      layers: { local?: boolean; localWrite?: boolean; remote?: boolean },
+      uploads = { count: 2, failed: 0 },
+      notDownloaded = 0,
+    ): string => {
+      const lines = formatRunSummary(
+        run,
+        10,
+        { enabled: false },
+        {
+          version: '0.0.0',
+          packageCount: 1,
+          remoteCacheEnabled: layers.remote === true,
+          cache: {
+            local: layers.local ?? true,
+            localWrite: layers.localWrite ?? true,
+            remote: layers.remote ?? true,
+            uploads,
+            notDownloaded: () => notDownloaded,
+          },
+        },
+      )
       return lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
     }
 
-    it('local is asked for every cached task, the remote for what local missed', () => {
-      expect(
-        legend({
-          localRead: true,
-          remoteRead: true,
-          remoteWrite: true,
-          uploads: { count: 2, failed: 0 },
-        }),
-      ).toBe('local 1/5 · remote 2/4 · ↑2 · 1 no-cache')
+    it('fresh and no-cache count under local; ↑ is what landed', () => {
+      expect(legend({})).toBe('local 2● 1○ 1↓ 2↑ · remote 1↓ 2↑ · 1 not saved')
     })
 
-    it('a failed upload is counted apart', () => {
-      expect(
-        legend({
-          localRead: true,
-          remoteRead: true,
-          remoteWrite: true,
-          uploads: { count: 1, failed: 1 },
-        }),
-      ).toBe('local 1/5 · remote 2/4 · ↑1 · 1 upload failed · 1 no-cache')
+    it('a failed upload and outputs left remote are counted apart', () => {
+      expect(legend({}, { count: 1, failed: 1 }, 3)).toBe(
+        'local 2● 1○ 1↓ 2↑ · remote 1↓ 1↑ · 1 ↑ failed · 1 not saved · 3 not downloaded',
+      )
     })
 
-    it('a read-only remote uploads nothing and says nothing of uploads', () => {
-      expect(
-        legend({
-          localRead: true,
-          remoteRead: true,
-          remoteWrite: false,
-          uploads: { count: 0, failed: 0 },
-        }),
-      ).toBe('local 1/5 · remote 2/4 · 1 no-cache')
+    it('a layer the run did not use is not shown', () => {
+      expect(legend({ remote: false }, { count: 0, failed: 0 })).toBe(
+        'local 2● 1○ 1↓ 2↑ · 1 not saved',
+      )
     })
 
-    it('a write-only remote was never asked, so only local shows', () => {
-      expect(
-        legend({
-          localRead: true,
-          remoteRead: false,
-          remoteWrite: true,
-          uploads: { count: 2, failed: 0 },
-        }),
-      ).toBe('local 1/5 · ↑2 · 1 no-cache')
+    it('local ↑ shows only when the policy writes the local layer', () => {
+      expect(legend({ localWrite: false })).toBe('local 2● 1○ 1↓ · remote 1↓ 2↑ · 1 not saved')
     })
 
-    it('a local layer the policy skips is not shown', () => {
-      expect(
-        legend({
-          localRead: false,
-          remoteRead: true,
-          remoteWrite: true,
-          uploads: { count: 2, failed: 0 },
-        }),
-      ).toBe('remote 2/5 · ↑2 · 1 no-cache')
-    })
-
-    it('CONTROL: no remote keeps one miss count', () => {
-      expect(legend()).toBe('2 miss · 1 no-cache · 1 up-to-date · 1 local · 1 remote')
+    it('CONTROL: with no run context the legend is the plain one', () => {
+      const lines = formatRunSummary(run, 10)
+      expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe(
+        '3 miss · 1 no-cache · 2 up-to-date · 1 local · 1 remote',
+      )
     })
   })
 
@@ -478,11 +457,12 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
     )
     const block = /## Format\n\n```\n([\s\S]*?)```/.exec(doc)
     expect(block).not.toBeNull()
-    // A cached task (a `cache` block) that ran: the page's "4 miss" row.
+    // A cached task (a `cache` block) that ran and saved: the page's "local 4↑" row.
     const timed = (id: string, durationMs: number): TaskOutcome => ({
       ...outcome(id, 'success'),
       node: { id, config: { exec: { command: 'noop' }, cache: {} } } as TaskNode,
       durationMs,
+      saved: true,
     })
     const lines = formatRunSummary(
       [timed('a#build', 239), timed('a#test', 190), timed('a#lint', 215), timed('a#fmt', 216)],
@@ -494,6 +474,13 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
         concurrency: 10,
         remoteCacheEnabled: false,
         workspaceProjectCount: 2,
+        cache: {
+          local: true,
+          localWrite: true,
+          remote: false,
+          uploads: { count: 0, failed: 0 },
+          notDownloaded: () => 0,
+        },
       },
     )
     // The leading blank line stands the footer apart from the last frame;

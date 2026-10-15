@@ -95,7 +95,7 @@ async function runScoped(
 
 describe('cache.scope', () => {
   it(
-    "the footer gives each layer's hits / lookups and the uploads (M, 2026-10-15)",
+    'the footer says what each layer restored and saved (M, 2026-10-15)',
     async () => {
       const fixture = await makeWorkspace('vx-cache-footer-uploads-')
       try {
@@ -107,10 +107,10 @@ describe('cache.scope', () => {
         await runScoped(fixture, layer, undefined, 'v1')
         const legend = (): string =>
           fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
-        expect(legend()).toBe('local 0/1 · remote 0/1 · ↑1')
+        expect(legend()).toBe('local 1↑ · remote 1↑')
         fixture.log.length = 0
         await runScoped(fixture, layer, undefined, 'v1')
-        expect(legend()).toBe('local 0/1 · remote 1/1')
+        expect(legend()).toBe('remote 1↓')
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

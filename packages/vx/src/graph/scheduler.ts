@@ -171,6 +171,8 @@ export interface TaskOutcome {
    *  (`--cache-download=none`) instead of landing on this machine. Absent for
    *  every ordinary outcome. Telemetry-only. */
   outputs?: 'deferred'
+  /** The task ran here and its result went to the cache. The footer's `↑`. */
+  saved?: true
   /**
    * v11 analytics: hrtime span relative to the parent run's t=0.
    * Lets downstream analytics reconstruct the actual parallel timeline

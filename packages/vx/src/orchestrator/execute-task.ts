@@ -1536,6 +1536,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const stability = inputStabilityOf(args.node.config.cache, args.inputStability)
   let movedFails: string | undefined
   let own: Awaited<ReturnType<typeof ownOutputs>>
+  let saved = false
   if (effectiveExitCode === 0 && willSave && deferralRequested) {
     // The outputs never landed here: no artifact, no rows. A partial local
     // record (a row with no artifact) is exactly the corrupt-entry shape
@@ -1599,6 +1600,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         : {}),
     })
     args.deferredSaves?.set(node.id, landed)
+    saved = true
   } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants !== true) {
     // Ran here and saves nothing — failed, a read-only policy, a tainted
     // upstream, a key that no longer held — yet it wrote what a save would
@@ -1741,6 +1743,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       : {}),
     ...(inputChanges !== undefined ? { inputChanges } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
+    ...(saved ? { saved: true as const } : {}),
     ...(effectiveExitCode !== 0 && output !== undefined
       ? { failedOutput: failedOutputLog(output, willSave) }
       : {}),

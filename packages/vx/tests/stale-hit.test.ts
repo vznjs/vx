@@ -126,7 +126,8 @@ describe('stale cache hits', () => {
       git(root, 'commit', '-q', '-m', 'init')
       const out = path.join(pkg, 'dist', 'o')
       const step = async (): Promise<[string, string]> => {
-        const word = /1 (miss|up-to-date)/.exec(vx(root, 'run', 'build', '--all'))?.[1] ?? '?'
+        const said = vx(root, 'run', 'build', '--all')
+        const word = / 1↑/.test(said) ? 'miss' : / 1●/.test(said) ? 'up-to-date' : '?'
         return [word, (await readFile(out, 'utf8')).replace(/\n/g, ' ')]
       }
       const seen: Array<[string, string]> = [await step()]
@@ -177,7 +178,7 @@ describe('stale cache hits', () => {
         const out = path.join(pkg, 'dist', 'o')
         const step = async (): Promise<[string, string]> => {
           const said = vx(root, 'run', 'build', '--all')
-          const word = /1 miss/.test(said) ? 'miss' : 'hit'
+          const word = /1↑/.test(said) ? 'miss' : 'hit'
           return [word, (await readFile(out, 'utf8')).trim()]
         }
         const seen: Array<[string, string]> = [await step()]
@@ -225,7 +226,7 @@ describe('stale cache hits', () => {
       }
       expect(seen).toEqual(['v1', 'v2', 'v1', 'v2', 'v2'])
       // The steady state still skips: the last run found v2's own stamp.
-      expect(vx(root, 'run', 'build', '--all')).toContain('1 up-to-date')
+      expect(vx(root, 'run', 'build', '--all')).toContain('1●')
     },
     TIMEOUT,
   )
@@ -299,7 +300,7 @@ describe('stale cache hits', () => {
 
       const out = vx(root, 'run', 'build')
       expect(out).toContain('restored-local')
-      expect(out).not.toContain('up-to-date')
+      expect(out).not.toMatch(/ \d+●/)
       expect(await Bun.file(path.join(root, 'dist', 'STRAY.txt')).exists()).toBe(false)
       expect(await readFile(path.join(root, 'dist', 'a.txt'), 'utf8')).toBe('a')
       expect(await readFile(path.join(root, 'dist', 'b.txt'), 'utf8')).toBe('b')
@@ -1733,7 +1734,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       await rm(path.join(root, 'dist'), { recursive: true, force: true })
       const second = vxExit(root, 'run', 'build')
       expect(second.out).not.toContain('restored')
-      expect(second.out).not.toContain('up-to-date')
+      expect(second.out).not.toMatch(/ \d+●/)
     },
     TIMEOUT,
   )
@@ -1821,7 +1822,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         full,
         full,
       ])
-      expect(vx(root, 'run', 'app#build', '--exclude-dependencies')).toContain('up-to-date')
+      expect(vx(root, 'run', 'app#build', '--exclude-dependencies')).toMatch(/ \d+●/)
     },
     TIMEOUT,
   )
@@ -1869,7 +1870,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       vx(root, 'run', 'build', '--all')
       const out = vx(root, 'run', 'app#build', '--exclude-dependencies=build', '--output-logs=none')
       // `prep` and `app#build` both current: the run's key is the full one.
-      expect(out).toContain('2 up-to-date')
+      expect(out).toContain('2●')
     },
     TIMEOUT,
   )
@@ -1882,7 +1883,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await baseLibApp()
       vx(root, 'run', 'build', '--all')
       const out = vx(root, 'run', 'app#build', 'lib#build', '--exclude-dependencies')
-      expect(out).toContain('2 up-to-date')
+      expect(out).toContain('2●')
     },
     TIMEOUT,
   )
@@ -2003,7 +2004,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       )
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'app reads its own source')
-      expect(vx(root, 'run', 'app#build')).toContain('1 miss')
+      expect(vx(root, 'run', 'app#build')).toContain('1↑')
       const plan = JSON.parse(vx(root, 'run', 'app#build', '--dry=json')) as {
         tasks: Array<{ id: string; hash: string; cacheStatus: string }>
       }
@@ -2037,10 +2038,10 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       )
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'app behind a server')
-      expect(vx(root, 'run', 'app#build')).toContain('1 miss')
-      expect(vx(root, 'run', 'app#build')).toContain('1 up-to-date')
+      expect(vx(root, 'run', 'app#build')).toContain('1↑')
+      expect(vx(root, 'run', 'app#build')).toContain('1●')
       await write(path.join(root, 'packages', 'lib', 'src', 'x.txt'), 'server v2')
-      expect(vx(root, 'run', 'app#build')).toContain('1 miss')
+      expect(vx(root, 'run', 'app#build')).toContain('1↑')
     },
     TIMEOUT,
   )
@@ -2156,10 +2157,10 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'app folds no task')
       const out = vx(root, 'run', 'app#build', '--exclude-dependencies', '--continue=always')
-      expect([
-        out.includes('1 miss'),
-        vx(root, 'run', 'app#build').includes('1 up-to-date'),
-      ]).toEqual([true, true])
+      expect([out.includes('1↑'), vx(root, 'run', 'app#build').includes('1●')]).toEqual([
+        true,
+        true,
+      ])
     },
     TIMEOUT,
   )
