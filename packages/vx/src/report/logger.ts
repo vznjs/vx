@@ -589,7 +589,11 @@ export function defaultLogger(
   // no task row (`status`). Without a footer, the caller frames the log
   // (`vx watch` opens each cycle with its own line).
   let logOpened = opts.footer === false
+  // The log ends on a blank line (a block's own): a blank status line
+  // after it (the footer's) would make two; one blank line apart is the rule.
+  let endsBlank = false
   const taskWrite = (chunk: string): void => {
+    if (chunk.length > 0) endsBlank = chunk.endsWith('\n\n')
     if (!logOpened && chunk.length > 0) {
       logOpened = true
       writer.write(`\n${chunk}`)
@@ -660,6 +664,8 @@ export function defaultLogger(
         writer.write('\n')
         streamMidLine = false
       }
+      if (line === '' && endsBlank) return
+      endsBlank = line === ''
       writer.write(`${line}\n`)
     },
     runStart(info) {
