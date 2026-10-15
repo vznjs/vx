@@ -20,8 +20,7 @@ import {
   findManifestRoot,
   findWorkspaceRoot,
   isUserError,
-  listProjectMetas,
-  loadWorkspace,
+  listPackages,
   type MigrationFormat,
   type MigrationPlan,
   UserError,
@@ -141,7 +140,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     .catch(async (err: unknown) => {
       throw isUserError(err) ? await noRootReason(process.cwd(), err) : err
     })
-  const metas = await listProjectMetas(await loadWorkspace(root))
+  const metas = await listPackages(root)
 
   const turboFile = await turboConfigFile(root)
   const hasTurbo = turboFile !== null

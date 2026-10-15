@@ -117,7 +117,6 @@ and graph traversal.
 - a project that names ITSELF is not its own dependency
 - an edge to a name not in the graph is no edge
 - builds an empty graph from no projects
-- a manifest dependency adds no edge, and no edge source
 - a project carrying deps, even none, makes the graph an edge source
 - directDeps returns only immediate deps, sorted
 - walks transitive deps and dedupes them

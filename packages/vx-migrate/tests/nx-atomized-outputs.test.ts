@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 
 let root: string
@@ -21,7 +21,7 @@ async function cachedTasks(targets: Record<string, unknown>): Promise<string[]> 
   const dir = path.join(root, 'apps', 'e2e')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), '{"name":"e2e"}')
-  const meta: ProjectMeta = {
+  const meta: PackageMeta = {
     name: 'e2e',
     dir,
     packageJson: { name: 'e2e' } as never,

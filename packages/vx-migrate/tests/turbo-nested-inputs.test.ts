@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { type ProjectMeta } from '@vzn/vx'
+import { type PackageMeta } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 import { silent, useTurboWorkspace } from './helpers/turbo-workspace.js'
@@ -51,7 +51,7 @@ describe('turbo-map: a nested workspace package', () => {
           tasks: { a: {}, b: { inputs: ['src/**', '!**/*.md'] }, c: { inputs: ['lib/*.ts'] } },
         }),
       )
-      const meta = (rel: string, scripts: object): ProjectMeta => ({
+      const meta = (rel: string, scripts: object): PackageMeta => ({
         name: rel,
         dir: path.join(dir, rel),
         packageJson: { name: rel, scripts } as never,

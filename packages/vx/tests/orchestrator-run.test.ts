@@ -394,30 +394,21 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
-    'duplicate package names across workspace globs error clearly',
+    'two configs naming one project error clearly, naming both directories',
     async () => {
-      // Two packages claiming the same name.
-      await mkdir(path.join(fixture.root, 'packages/a'), { recursive: true })
-      await mkdir(path.join(fixture.root, 'packages/b'), { recursive: true })
-      await writeFile(
-        path.join(fixture.root, 'packages/a/package.json'),
-        JSON.stringify({ name: 'dup', version: '0.0.0' }),
-      )
-      await writeFile(
-        path.join(fixture.root, 'packages/b/package.json'),
-        JSON.stringify({ name: 'dup', version: '0.0.0' }),
-      )
-      // One meant to run: a pair with no vx config is left out instead.
-      await writeFile(
-        path.join(fixture.root, 'packages/b/vx.config.mjs'),
-        'export default { tasks: {} }\n',
-      )
+      for (const dir of ['packages/a', 'packages/b']) {
+        await mkdir(path.join(fixture.root, dir), { recursive: true })
+        await writeFile(
+          path.join(fixture.root, dir, 'vx.config.mjs'),
+          "export default { name: 'dup', tasks: {} }\n",
+        )
+      }
 
       await expect(
         run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }),
       ).rejects.toThrow(
         new Error(
-          'Duplicate package name "dup" in workspace: packages/a and packages/b; vx names a project by its package name — rename one, or leave one out with a `!` pattern in the workspace globs',
+          'vx lock: .vx/projects.lock.json not written: two projects are named "dup": packages/a and packages/b — give one another `name` in its vx.config',
         ),
       )
     },
@@ -724,7 +715,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
 
   // turborepo#7245: a deleted package stayed in the graph after a warm run.
   it(
-    'a package deleted after a warm run and a lock leaves the next run without it, before and after a re-lock',
+    'a project deleted after a warm run and a lock is named by the next run until a re-lock',
     async () => {
       const build = `
           export default {
@@ -736,17 +727,15 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       expect((await vx(fixture.root, ['run', 'build', '--all'])).code).toBe(0)
       await rm(path.join(fixture.root, 'packages', 'gone'), { recursive: true })
 
-      // The lock still holds `gone`: a run takes its projects from discovery.
+      // The lock still holds `gone`: a run takes its projects from the lock.
       const stale = Bun.spawnSync(
         [process.execPath, REAL_BIN, 'run', 'build', '--all', '--dry=json'],
         { cwd: fixture.root, stderr: 'pipe' },
       )
-      expect({
-        code: stale.exitCode,
-        ids: (JSON.parse(stale.stdout.toString()) as { tasks: { id: string }[] }).tasks.map(
-          (t) => t.id,
-        ),
-      }).toEqual({ code: 0, ids: ['keep#build'] })
+      expect([stale.exitCode, stale.stderr.toString()]).toEqual([
+        1,
+        'vx: .vx/projects.lock.json locks packages/gone, but its vx.config.mjs is gone — run `vx lock`\n',
+      ])
       const again = await summarized(fixture.root, ['build', '--all'])
       expect({ code: again.code, ids: [...again.tasks.keys()] }).toEqual({
         code: 0,

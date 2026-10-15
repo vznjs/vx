@@ -26,8 +26,6 @@ import { VERSION } from '../version.js'
 import { probeSandbox, resetSandbox, untracedReason } from '../exec/index.js'
 import {
   findWorkspaceRoot,
-  type LoadReads,
-  loadWorkspace,
   lockfilePath,
   resolveCacheDir,
   resolveStoreRoot,
@@ -133,7 +131,6 @@ export interface CollectInfoOptions {
 
 export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): Promise<InfoFacts> {
   const warn = opts.warn ?? warnToStderr
-  const reads: LoadReads = new Map()
   // Both first: outside a workspace, or under a workspace config that does
   // not load, the doctor refuses at once, with no probe (~180 ms) ahead.
   const root = await findWorkspaceRoot(cwd)
@@ -145,7 +142,7 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
   // Rejects only if the reset does; awaited below, never unhandled.
   probing.catch(() => {})
   try {
-    return await collectWorkspaceInfo(cwd, root, reads, workspace, opts, probing)
+    return await collectWorkspaceInfo(cwd, root, workspace, opts, probing)
   } catch (err) {
     // The workspace's refusal is the error worth reporting.
     await probing.catch(() => {})
@@ -156,7 +153,6 @@ export async function collectInfo(cwd: string, opts: CollectInfoOptions = {}): P
 async function collectWorkspaceInfo(
   cwd: string,
   root: string,
-  reads: LoadReads,
   { workspaceConfig, plugins }: Awaited<ReturnType<typeof loadWorkspacePlugins>>,
   opts: CollectInfoOptions,
   probing: Promise<Omit<InfoFacts['sandbox'], 'declared'>>,
@@ -166,7 +162,17 @@ async function collectWorkspaceInfo(
     opts.cacheDir === undefined
       ? resolveCacheDir(root, workspaceConfig)
       : path.resolve(cwd, opts.cacheDir)
-  const metas = await discoverProjects(await loadWorkspace(root, reads), plugins, cacheDir, warn)
+  // The lock's projects: none without a lock, or with one a run would
+  // refuse, which is `vx lock`'s to report.
+  const lock = lockReader(root)
+  const held = await lock().then(
+    () => true,
+    (err: unknown) => {
+      if (!isUserError(err)) throw err
+      return false
+    },
+  )
+  const metas = held ? await discoverProjects(root, lock, plugins, cacheDir, warn) : []
   const storeRoot =
     opts.cacheDir === undefined ? await resolveStoreRoot(root, workspaceConfig) : null
   const cache = new Cache(cacheDir, undefined, undefined, undefined, 'inspect', storeRoot)
@@ -191,7 +197,7 @@ async function collectWorkspaceInfo(
         projectMetas: metas,
         seeds: 'all',
         closure: false,
-        configs: lockReader(root),
+        configs: lock,
         warn,
       })
       for (const p of loaded.projects.values()) {

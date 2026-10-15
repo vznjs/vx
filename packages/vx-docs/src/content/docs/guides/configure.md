@@ -3,10 +3,14 @@ title: Configure
 description: Tasks and dependencies, caching, environment variables, dev servers, the workspace file and lockfiles, one section each.
 ---
 
-Tell vx what each package runs, what it reads and what it may see: a
-`vx.config.ts` per package, and one [`.vx/workspace.ts`](#workspace-config)
-at the root that marks the workspace. Every field:
-[the config reference](../../schema/).
+Tell vx what each project runs, what it reads and what it may see: a
+`vx.config.ts` per project, and one [`.vx/workspace.ts`](#workspace-config)
+at the root that marks the workspace. A project is any directory holding
+a `vx.config.ts`, in any language; `vx lock` finds them and records them
+in `.vx/projects.lock.json`, so run it after adding one. A project is
+named by its config's `name`, else by a plugin (`@vzn/vx-lockfile` gives
+the `package.json` name), else by its path (`apps/web`; `//` for the
+root). Every field: [the config reference](../../schema/).
 
 ## Tasks and dependencies
 

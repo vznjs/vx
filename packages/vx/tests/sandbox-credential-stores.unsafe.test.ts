@@ -75,7 +75,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     ].join('; ')
     await writeFile(
       path.join(ws, 'packages', 'a', 'vx.config.mjs'),
-      `export default { tasks: {
+      `export default { name: 'a', tasks: {
   peek: { exec: { command: ${JSON.stringify(cmd)}, sandbox: { allow: { read: ['.'] } } } },
   granted: { exec: { command: ${JSON.stringify(read('.npmrc'))}, sandbox: { allow: { read: ['.', '~/.npmrc'] } } } },
   written: { exec: { command: ${JSON.stringify(written)}, sandbox: { allow: { read: ['.'], write: ['~/.npmrc', '~/.aws/config'] } } } },
@@ -123,7 +123,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     const ws = path.join(root!, 'ws')
     await writeFile(
       path.join(ws, 'packages', 'a', 'vx.config.mjs'),
-      `export default { tasks: {
+      `export default { name: 'a', tasks: {
   link: {
     exec: { command: 'mkdir -p dist && ln "$HOME/.ssh/id_ed25519" dist/k || true', sandbox: { allow: { read: ['.'], write: ['dist/'] } } },
     cache: { inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['dist/**'] } },

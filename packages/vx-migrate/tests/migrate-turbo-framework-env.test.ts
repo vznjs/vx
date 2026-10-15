@@ -6,11 +6,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 
 let root: string
-let metas: ProjectMeta[]
+let metas: PackageMeta[]
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'vx-migrate-fwenv-'))
   await writeFile(

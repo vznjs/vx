@@ -92,7 +92,7 @@ describe('selection reads the lock', () => {
     async () => {
       await Bun.$`rm ${path.join(root, '.vx/projects.lock.json')}`.quiet()
       const r = await vx(root, ['run', 'build', '--affected=HEAD~1'])
-      expect([r.code, r.err]).toEqual([1, 'vx run: no lock: run `vx lock`\n'])
+      expect([r.code, r.err]).toEqual([1, 'vx: no lock: run `vx lock`\n'])
       expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(false)
     },
     TIMEOUT,

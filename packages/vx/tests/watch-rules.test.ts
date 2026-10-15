@@ -12,7 +12,8 @@ import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import path from 'node:path'
 import { pendingAfterCycle, watchCmd } from '../src/cli/watch.js'
-import { memberEntries, sweepConfigs } from '../src/cli/watch-set.js'
+import { sweepConfigs } from '../src/cli/watch-set.js'
+import { discoverCliProjects } from '../src/cli/workspace-config.js'
 import {
   isIgnoredWatchPath,
   makeRootEventFilter,
@@ -25,9 +26,8 @@ import {
   pollWatcher,
   WATCH_PROBE,
 } from '../src/cli/watch-fs.js'
-import { listProjects, loadWorkspace } from '../src/workspace/index.js'
 import { watchProbeDelivered } from './helpers/watch-events.js'
-import { edgesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { lock } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'
@@ -269,7 +269,7 @@ describe('the sweep sees what a run sees', () => {
     // outputs land in its dir — the zero-migration shape.
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
-      `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+      `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${pluginSource(
         'gen',
         `{ project(config) {
         config.tasks.build = { exec: { command: 'echo' }, cache: {
@@ -293,7 +293,7 @@ describe('the sweep sees what a run sees', () => {
     // `dist/**` was not ignored, so the run's own write re-triggered the
     // loop, and its workspace input did not widen the watch.
     await lock(root)
-    const metas = await listProjects(await loadWorkspace(root))
+    const metas = await discoverCliProjects(root)
     const swept = await sweepConfigs(metas, root)
     expect(swept.workspaceWide).toBe(true)
     expect([...swept.outputs]).toEqual([[path.join(root, 'packages', 'bare'), ['dist/**']]])
@@ -326,7 +326,7 @@ describe('sweepConfigs: which projects read what they like', () => {
       }
       await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
       await lock(root)
-      const metas = await listProjects(await loadWorkspace(root))
+      const metas = await discoverCliProjects(root)
       const swept = await sweepConfigs(metas, root)
       expect([...swept.uncached]).toEqual([path.join(root, 'packages', 'tool')])
     } finally {
@@ -363,7 +363,7 @@ describe('sweepConfigs: only the tasks the run reaches are judged', () => {
       // lint's `**/*` reading build's `dist/` is the case under test.
       await waitForProducers(root, [edgesSource()])
       await lock(root)
-      const metas = await listProjects(await loadWorkspace(root))
+      const metas = await discoverCliProjects(root)
       const ui = path.join(root, 'packages', 'ui')
       const inputs = async (tasks?: string[]): Promise<unknown> =>
         (await sweepConfigs(metas, root, {}, tasks)).inputs.get(ui)
@@ -462,7 +462,7 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['packages/lib/package.json', true],
     ['packages/app', true],
     ['pnpm-lock.yaml', false], // no plugin claims it here: no key folds it
-    ['pnpm-workspace.yaml', true], // its `packages` are the member globs
+    ['pnpm-workspace.yaml', false], // core reads no member list: the lock names the projects
     ['tsconfig.base.json', true],
     ['configs/tsconfig.strict.json', true],
     ['configs/README.md', true], // a `!` only narrows; one cache-hit cycle beats a missed edit
@@ -473,12 +473,10 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ['tsconfig.json', false],
     // These pin the predicates' EXACTNESS: a basename or suffix match would
     // fail them.
-    ['nested/pnpm-workspace.yaml', false], // the member globs are the root's alone
     ['.vx/workspace.ts', true], // the one root file that shapes a run without being an input
     ['.vx/workspace.mjs', true],
     ['nested/.vx/workspace.ts', false],
-    ['package.json', true], // its `workspaces` list is the package globs (item 1018)
-    ['nested/package.json', false],
+    ['package.json', false], // nor `workspaces`; a plugin that reads it claims it
     // A sibling whose name EXTENDS a project's is no project: a prefix test
     // without the separator made its edits cycles (E-12's sweep).
     ['packages/app-e2e/spec.ts', false],
@@ -539,7 +537,7 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
       }
       await Bun.write(path.join(wsRoot, '.vx/workspace.mjs'), 'export default {}\n')
       await lock(wsRoot)
-      const projects = await listProjects(await loadWorkspace(wsRoot))
+      const projects = await discoverCliProjects(wsRoot)
       const swept = await sweepConfigs(projects, wsRoot)
       expect(swept.workspaceWide).toBe(true)
       expect([...swept.workspaceInputs].sort()).toEqual(['configs/**', 'tsconfig.base.json'])
@@ -1006,31 +1004,6 @@ describe('armWatcher on an unwritable directory', () => {
       }
     },
   )
-})
-
-describe('the member set under a package glob directory', () => {
-  // The watcher on `packages/` reacts to this set changing and to nothing
-  // else: on macOS it also hears a member whose contents changed, and a
-  // task writing into its own project must not read as a package added.
-  it('a file, a dotted entry or node_modules is not a member; a directory or a link is', async () => {
-    const base = await mkdtemp(path.join(os.tmpdir(), 'vx-members-'))
-    try {
-      await mkdir(path.join(base, 'app'))
-      await mkdir(path.join(base, '.hidden'))
-      await mkdir(path.join(base, 'node_modules'))
-      await writeFile(path.join(base, 'notes.txt'), '')
-      await symlink(path.join(base, 'app'), path.join(base, 'linked'))
-      expect([...memberEntries(base)].sort()).toEqual(['app', 'linked'])
-      // A write INSIDE a member changes nothing here.
-      await writeFile(path.join(base, 'app', 'out.txt'), 'x')
-      expect([...memberEntries(base)].sort()).toEqual(['app', 'linked'])
-      await mkdir(path.join(base, 'lib'))
-      expect([...memberEntries(base)].sort()).toEqual(['app', 'lib', 'linked'])
-      expect([...memberEntries(path.join(base, 'missing'))]).toEqual([])
-    } finally {
-      await rm(base, { recursive: true, force: true })
-    }
-  })
 })
 
 describe('a first sighting is a change only if the path moved since the arm', () => {

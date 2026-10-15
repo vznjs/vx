@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -21,6 +21,7 @@ const TIMEOUT = 30_000
 const WORKSPACE = `${PLUGIN_IMPORT}
   export default {
     plugins: [
+      ${packagesSource()},
       ${pluginSource(
         'mover',
         `{ config(ws) {

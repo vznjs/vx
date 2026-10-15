@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 
 let root: string
@@ -22,7 +22,7 @@ it('an uncached target carries no output todo; a cached one does', async () => {
     const dir = path.join(root, 'packages', 'a')
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'package.json'), '{"name":"a"}')
-    const meta: ProjectMeta = {
+    const meta: PackageMeta = {
       name: 'a',
       dir,
       packageJson: { name: 'a' } as never,

@@ -28,7 +28,7 @@ const runs = async (log: string): Promise<number> =>
 describe('vx watch and .gitignore', () => {
   for (const [where, at] of [
     ['the root', '.gitignore'],
-    ['a member base', 'packages/.gitignore'],
+    ["a project's parent", 'packages/.gitignore'],
   ] as const) {
     it(`un-ignoring an input in ${where} .gitignore re-runs, as \`vx run\` would`, async () => {
       root = await makeWorkspace({ prefix: 'vx-watch-gi-' })

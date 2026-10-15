@@ -17,16 +17,16 @@ plugin for each of nine seams, each held by a test that runs it, is in
 [`packages/vx-plugin-examples`](https://github.com/vznjs/vx/tree/main/packages/vx-plugin-examples).
 `vx init --plugin <seam>` writes one, with its test, into your workspace.
 
-This one gives every TypeScript package a `typecheck` task:
+This one gives every project with a `tsconfig.json` a `typecheck` task:
 
 ```ts
+import path from 'node:path'
 import { definePlugin, type VxPlugin } from '@vzn/vx'
 
 export function typecheck(): VxPlugin {
   return definePlugin(import.meta, {
-    project(config, ctx) {
-      const dev = ctx.packageJson['devDependencies'] as Record<string, string> | undefined
-      if (!dev?.['typescript']) return
+    async project(config, ctx) {
+      if (!(await Bun.file(path.join(ctx.dir, 'tsconfig.json')).exists())) return
       config.tasks ??= {}
       config.tasks['typecheck'] ??= {
         exec: { command: 'tsc --noEmit' },
@@ -100,8 +100,10 @@ export function ciConcurrency(): VxPlugin {
 }
 ```
 
-`discover` makes a directory no member glob lists a project; its
-`vx.config.ts` gives it tasks:
+A project is a directory holding a `vx.config.ts`, which `vx lock`
+finds. `discover` makes any other directory a project too, and names one
+its path would name; its tasks come from a `project` hook. It runs in
+`vx lock` and in every run:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'

@@ -1369,11 +1369,11 @@ run...` precedes it.
    `dependsOn` edges included — is watched recursively, less any project
    nested inside it, with a config or not (a root project's key leaves a nested
    project's files out, so an edit there is no cycle; X-42, X-57). The workspace root is
-   watched (non-recursively) for lockfile / `pnpm-workspace.yaml`
-   changes and for an edit to `.vx/workspace.*` — the one root file that
+   watched (non-recursively) for a claimed file (a lockfile), for
+   `.vx/projects.lock.json` and for an edit to `.vx/workspace.*` — the one root file that
    shapes a run (plugins, `config` stage, concurrency) without being any
    task's input; the cycle after it re-evaluates the file. A `.gitignore`
-   there or in a package glob's directory is a cycle too: inputs are
+   there or in a project's parent directory is a cycle too: inputs are
    gitignore-aware, so it changes what keys read (X-136). A file a
    config imports by relative path from outside the watched projects (a
    shared preset) is watched too, and its edit is a cycle that re-reads
@@ -1381,20 +1381,20 @@ run...` precedes it.
    config's own edit does (WD-14). A file the workspace config imports is loaded once per
    process, so its edit is named with the restart it needs rather than
    run stale (item 949). An import whose file is gone stays on the list
-   by the name it would have, so its return is a cycle (X-133). The directory
-   each `<dir>/*` package glob names (`packages/` for `packages/*`) is
-   watched for members coming and going: a package added while the watch
-   runs is a cycle that runs it, and its directory is watched from before
-   that cycle runs, so an edit made during it queues (X-138); a removed one is dropped. An edit to the glob list itself (the
-   root `package.json`'s `workspaces`, `pnpm-workspace.yaml`) re-reads
-   the set, so a glob added there is watched from the cycle it triggers
-   (item 1018). A base, or a directory a config imports from, removed and made
-   again (a checkout that restores `packages/`) is heard from its nearest directory that exists, and a
-   watch whose directory was replaced is armed again (an OS watch holds
-   the deleted one; `watch-recreated-dirs.test.ts`). Under `--filter` or `--affected` the scope is the one
-   resolved at start, and a new package joins it only as a dependency of
-   it; a glob of another shape (`apps/**`) has no such directory, so a
-   package added under it waits for a restart. A task's own declared outputs (`cache.outputs.files`,
+   by the name it would have, so its return is a cycle (X-133). The
+   projects are the lock's: a new `.vx/projects.lock.json` is the
+   event that adds or drops one, and its directory is watched
+   from before that cycle runs, so an edit made during it queues
+   (X-138). A config added and not locked is no project yet. With no
+   lock at start the first cycle fails saying so, and the watch waits
+   for one. A project directory, or one a config imports from,
+   removed and made again (a checkout that restores `packages/`) is
+   heard from its nearest directory that exists and each one above it,
+   and a watch whose
+   directory was replaced is armed again (an OS watch holds the deleted
+   one; `watch-recreated-dirs.test.ts`). Under `--filter` or
+   `--affected` the scope is the one resolved at start, and a new
+   project joins it only as a dependency of it. A task's own declared outputs (`cache.outputs.files`,
    `outputs.workspaceFiles`; a plugin's `project` stage counts, as in
    a run) never trigger a re-run — a cycle that writes `dist/` is not
    an edit, nor is the `dist` directory itself coming and going (a
@@ -1526,7 +1526,7 @@ edit to it as it is to the OS watcher.
 A root file a plugin claims — a lockfile or install setting under
 `@vzn/vx-lockfile` (`pnpm-lock.yaml`, `bun.lock`, `.npmrc`, …),
 `turbo.json` under `turbo()` (item 961) — triggers a cycle, and so does
-`pnpm-workspace.yaml`. Watch mode hears them because it watches the
+`.vx/projects.lock.json`. Watch mode hears them because it watches the
 workspace root (non-recursively); a plugin added to the workspace
 config mid-watch counts from the cycle that loads it. The keys then
 decide which projects actually re-run: core keys no package file, so a
@@ -1746,22 +1746,32 @@ listing the directories.
 
 ## Runs read the lock
 
-Every run, `vx watch` cycle, `--affected` selection and the picker loads
-configs only from the committed `.vx/projects.lock.json` (owner, 2026-10-14). A
-run never evaluates a config, never checks the graph rules
+Every run, `vx watch` cycle, `--affected` selection and the picker takes
+its projects and their configs only from the committed
+`.vx/projects.lock.json` (owner, 2026-10-14). A run never walks for
+configs, never evaluates one, never checks the graph rules
 (`run.rules`) and never writes the lock: only `vx lock` does. With no
 lock, a run fails with `no lock: run \`vx lock\``. A run trusts the
-lock: it performs NO staleness check, so after editing a config, run
-`vx lock`. In a pipeline, `vx lock --check` first re-evaluates every
+lock: it performs NO staleness check, so after adding or editing a
+config, run `vx lock`. In a pipeline, `vx lock --check` first re-evaluates every
 config and checks the rules.
 
 ## `vx lock`
 
-Freeze every project's **resolved** config into `.vx/projects.lock.json` at the
-workspace root. Configs are programs; `vx lock` evaluates them in the
-current environment and stores the post-evaluation objects, by project
-name. "Every project" is the set a run
-sees, a plugin's `discover` stage included (X-143). Before writing, it
+Find every project, and freeze each one's **resolved** config into
+`.vx/projects.lock.json` at the workspace root. A project is a directory
+holding a `vx.config.*`, in any language: `vx lock` lists them with git
+(`git ls-files`, tracked and untracked, git's ignore rules applied; a
+nested repository's own configs too), or walks the tree outside git,
+and leaves out any under a nested `.vx/workspace.*`. Configs are
+programs; `vx lock` evaluates them in the current environment and
+stores the post-evaluation objects, by directory (version 3; a lock an
+earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
+its config's `name`, else by a plugin's `discover` stage (vx-lockfile
+gives `package.json`'s `name`), else by its root-relative path (`//` for
+the root); two projects of one name are refused naming both
+directories. The plugin `discover` stage runs here as in a run, and may
+add directories (X-143). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
 included, and checks the graph rules (`run.rules`), which no run
 checks, `dependencies` (which projects a project may depend on,
@@ -1795,8 +1805,9 @@ Every run consumes it: configs come from the
 lock with no evaluation, no staleness check and no schema validation
 of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
-project absent from the lock, a locked project whose config file is
-gone (X-144) or a missing lock is a hard error). An entry edited by
+locked directory whose config file is gone (X-144) or that this user
+may not search (EACCES, named as such), or a missing lock, is a hard error; a config added since the lock is no project until
+`vx lock`). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it.
@@ -1960,8 +1971,9 @@ outside git it looks up to `/`. Nothing else marks the root: not a
 `package.json`, `pnpm-workspace.yaml` or a lockfile (owner, 2026-10-13).
 Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
 `vx init` writes it at the package manager's root, and does so too in
-a nested workspace the outer one does not list. Projects inside the
-root are found from its package globs as before.
+a nested workspace the outer one does not list. A project inside the
+root is a directory holding a `vx.config.*`, which `vx lock` finds
+(see [`vx lock`](#vx-lock)); a `discover` plugin adds others.
 
 ## Which vx runs
 

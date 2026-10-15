@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { storedBytesUnder } from './helpers/stored-artifact.js'
 import { PARITY_TIMEOUT as TIMEOUT, summarized } from './helpers/parity.js'
+import { workspaceWith } from './helpers/local-workspace.js'
 
 // The shape of `dist/out` follows the one input file: `dir` writes a
 // directory with a file inside, `file` a plain file, `link` a symlink to a
@@ -454,7 +455,7 @@ describe('a restore beside a sibling writing into its directory (e2e)', () => {
           // ahead of the schedule, and hits.
           await Bun.write(
             path.join(root, '.vx/workspace.mjs'),
-            'export default { run: { rules: { upfrontKeys: false } } }\n',
+            workspaceWith('run: { rules: { upfrontKeys: false } }'),
           )
           const app = await addProject(root, 'app', {
             config: `

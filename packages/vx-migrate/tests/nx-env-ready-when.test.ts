@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 import { fakeNx } from './helpers/fake-nx.js'
 
@@ -88,7 +88,7 @@ describe('the mapper waits for every readyWhen string', () => {
       },
       dependencies: { app: [] },
     }
-    const meta: ProjectMeta = {
+    const meta: PackageMeta = {
       name: 'app',
       dir: path.join(root, 'packages', 'app'),
       packageJson: { name: 'app' },

@@ -2,91 +2,65 @@
 
 ## Purpose
 
-Package globs come from the package manager's manifest and take its
-full grammar: a negated entry (`!packages/fixtures`, `!**/test/**`)
-subtracts from what the positive globs found — a literal one excludes
-its tree, and a wildcard one is matched against the member's manifest
-(`<pattern>/package.json`) as pnpm matches it, so `!**/test/**` excludes
-`packages/test` itself (item 986) — in both discovery and the root-claim walk.
-A negation applies whatever its position, as pnpm reads its own file: a
-later positive glob does not re-include what it excluded. npm and bun
-read `package.json` `workspaces` in order and disagree with each other
-(npm drops a negation a later pattern matches as text; bun lets the last
-pattern matching a path decide), so a list that re-includes after a
-negation names a member vx leaves out (probed npm 10 and bun 1.4, D-147).
-A read that finds nothing (a missing directory, a dangling link, no
-config) is absent; a read the process could not make, out of file
-descriptors (`EMFILE`, `ENFILE`), fails discovery with the `ulimit -n`
-hint, where it had read the workspace as empty (D-60).
-A symlinked member is found by any glob without `**` (`packages/*`,
-`packages/{a,b}`, `pack*/*`); only `packages/*` found one until item 987.
-Under `**` links are not followed, so the scan never walks a pnpm
-`node_modules` link farm. Handed to the
-glob engine raw, a leading `!` negated the whole pattern and made every
-manifest in the tree a member (2026-09-10). Every entry goes through
-`normalizeBunGlob` first: `!./packages/legacy` and `!packages//legacy`
-excluded nothing until they did (same day). A trailing slash is dropped
-before that, as npm and pnpm drop it: `normalizeBunGlob` gives a task
-glob's trailing slash the meaning `/**`, and `packages/*/` found every
-example and fixture package at any depth (item 985). A member glob keeps the
-package manager's grammar, so a bracket there is a class and `\[` a
-literal bracket — unlike a task glob, where a bracket is literal (item
-667). The one form it refuses is extglob (`!(…)`, `@(…)`, `+(…)`,
-`*(…)`, `?(…)`): npm and yarn read `packages/!(x)` as an exclusion,
-`Bun.Glob` has no extglob and its scan widened the segment to a
-wildcard (x became a project, turborepo#3766), so `assertGlobList`
-refuses the entry by name, with the exact `!` rewrite when the group is
-a whole segment of plain names. A brace whose alternatives hold a
-slash (`packages/{a,nested/b}`) is scanned as its expansions:
-`Bun.Glob`'s scan found nothing for one, though its match reads it, so
-both packages vanished while the root still claimed them (D-2).
-
-Find the workspace root, enumerate its projects, and resolve the
-cache directory. Supports pnpm / npm / yarn / Bun workspaces, plus a
-single-project mode (bare `package.json` with no `workspaces` field).
+Find the workspace root, find its projects, name them, and resolve the
+cache directory. **A project is a directory holding a `vx.config.*`**, in
+any language (owner, 2026-10-14): core reads no `package.json` and no
+package-manager member list. `vx lock` finds the directories
+(`findProjectConfigs`) and records each by directory; a run takes its
+projects from the lock (`lockedProjects`), then the plugin `discover`
+stage, which may add directories (`discoveredProject`), name them and give
+edges (`linkDiscoveredEdges`). `checkProjectNames` ends the stage. The
+package manager's members are `packages.ts`'s, read by `vx init` alone
+([`packages.md`](./packages.md)). Design:
+`docs/design/language-agnostic-core-2026-10.md`.
 
 ## Public surface
 
 ```ts
-export interface PackageJson {
-  name: string
-  version?: string
-  dependencies?: Record<string, string>
-  devDependencies?: Record<string, string>
-  peerDependencies?: Record<string, string>
-  optionalDependencies?: Record<string, string>
-  workspaces?: string[] | { packages?: string[] }
-}
-
-export interface Workspace {
-  root: string
-  packageGlobs: string[] // patterns relative to root
-}
-
 export interface ProjectMeta {
-  name: string // canonical from package.json
+  name: string // config `name`, else a `discover` plugin's, else its root-relative path (`//` for the root)
   dir: string // absolute project directory
-  packageJson: PackageJson
-  configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs,cts,cjs}
+  configPath: string | null // absolute vx.config.{ts,mts,js,mjs,cts,cjs}; null for a project a plugin added
   deps?: readonly string[] // project names a `discover` plugin orders this one after ([] when an entry carried none)
   reach?: readonly string[] // project names a `discover` plugin reaches it through, no order
 }
 
+// A loaded project: its name, directory and evaluated config.
+// `ProjectMeta` is what discovery finds; this is what a run reads.
+export interface ProjectEntry {
+  name: string
+  dir: string
+  config: ProjectConfig
+}
+
+// A directory holding a vx config, and the file precedence picked there.
+export interface ConfigDir {
+  readonly dir: string
+  readonly configPath: string
+}
+
+// A project's config file names, in the order discovery prefers them.
+export const PROJECT_CONFIG_FILENAMES: string[]
+// The root project's name when nothing names it (Turbo's spelling).
+export const ROOT_NAME: '//'
+
 // the directory of the nearest .vx/workspace.* up to the git top-level
 // (handoff.ts workspaceFile); VX_E_NO_WORKSPACE without one
 export function findWorkspaceRoot(start: string, uid?: number): Promise<string>
-// where `vx init` and @vzn/vx-migrate put .vx/workspace.ts when there is
-// none: the package manager's root, by the claim rule below
-export function findManifestRoot(start: string, reads?: LoadReads, uid?: number): Promise<string>
-export function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
-export function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
-// listProjects, collecting each nameless member's dir into `nameless` (vx init)
-export function discoverProjects(workspace: Workspace, nameless?: string[]): Promise<ProjectMeta[]>
+// A project's name when nothing names it: its root-relative POSIX path, `//` for the root
+export function pathName(root: string, dir: string): string
+// Every directory holding a vx config, for `vx lock`; sorted by directory
+export function findProjectConfigs(root: string): Promise<ConfigDir[]>
+// The projects a lock records, named by the config's `name`, else by path
+export function lockedProjects(
+  root: string,
+  locked: Readonly<Record<string, { readonly file: string; readonly config: ProjectConfig }>>,
+): ProjectMeta[]
 // The project a `discover` entry names: new (`added`) or the one already
-// at its dir (a nameless entry must name one). `deps` / `reach` are
+// at its dir, renamed when its path named it. `deps` / `reach` are
 // checked to be string arrays here and resolved by linkDiscoveredEdges
 export function discoveredProject(
-  workspace: Workspace,
+  root: string,
   known: readonly ProjectMeta[],
   entry: { dir: string; name?: string; deps?: readonly string[]; reach?: readonly string[] },
   by: string,
@@ -105,34 +79,13 @@ export function linkDiscoveredEdges(
     reach: readonly string[]
   }[],
 ): void
+// Sorts by name; refuses two projects of one name and a name no spec can address
+export function checkProjectNames(root: string, metas: ProjectMeta[]): ProjectMeta[]
 export function resolveCacheDir(root: string, config: WorkspaceConfig | null): string
 export function resolveStoreRoot(
   root: string,
   config: WorkspaceConfig | null,
 ): Promise<string | null>
-
-// A loaded project: its canonical name, directory and evaluated config.
-// `ProjectMeta` is what discovery finds; this is what a run reads.
-export interface ProjectEntry {
-  name: string
-  dir: string
-  config: ProjectConfig
-}
-
-// Workspace members whose package globs match no directory — `vx run`
-// warns with `unreachedHint`, which names them and what to check.
-export function unreachedPackages(workspace: Workspace): Promise<string[]>
-export function unreachedHint(unreached: readonly string[], root: string): string
-
-// Whether a member glob reaches any package.json but the root's,
-// addressable or not; `vx init` names globs that reach none (M-46).
-export function reachesManifest(workspace: Workspace): Promise<boolean>
-
-// The directories a recursive watch must cover to see every member.
-export function memberBaseDirs(workspace: Workspace): string[]
-
-// A project's config file names, in the order discovery prefers them.
-export const PROJECT_CONFIG_FILENAMES: string[]
 ```
 
 From `src/workspace/load-reads.ts`, what one load has read of the root:
@@ -144,16 +97,12 @@ export type LoadReads = Map<string, Promise<Uint8Array | null>>
 export function readOnce(reads: LoadReads | undefined, file: string): Promise<Uint8Array | null>
 ```
 
-A run reads the root manifest once. `findManifestRoot`, `loadWorkspace`
-and the workspace fingerprint each read `pnpm-workspace.yaml` for
-themselves until 2026-09-24 — three probes and three reads per run;
-`prepareRun` now hands all three one `LoadReads`, and so do the verbs
-that pair the first two (`show`, `lock`, `init`, `watch`, the
-selection pass, the doctor). The map is the load's and dies with it:
-a `vx watch` cycle is a new run and reads the file afresh
-(`tests/load-reads.test.ts` holds both). The probe stays ahead of the
-read — most names asked about are absent, and a failed read costs
-90–200 µs building its error where `exists()` answers in 15–40 µs.
+A load reads each root file once: the workspace fingerprint and `vx init`'s
+package workspace share one `LoadReads`. The map is the load's and dies
+with it: a `vx watch` cycle is a new run and reads afresh
+(`tests/load-reads.test.ts`). The probe stays ahead of the read — most
+names asked about are absent, and a failed read costs 90–200 µs building
+its error where `exists()` answers in 15–40 µs.
 
 ## Discovery rules
 
@@ -171,130 +120,30 @@ aside): it is code that would run as you. Without one the error is
 (`tests/workspace-root-file.test.ts`). The lookup is `workspaceFile` in
 `handoff.ts`, shared with the hand-off and the config loader, once per run.
 
-### `findManifestRoot(start)`
+### `findProjectConfigs(root)`
 
-Where `vx init` and `@vzn/vx-migrate` write `.vx/workspace.ts` when there
-is none yet. Walks up from `start` to the git top-level, or to the
-filesystem root outside git, where it stops above `start` at a manifest
-another user owns (root aside). A directory is a root
-CANDIDATE if it contains either:
+`vx lock`'s walk; a run never walks. In git: `git ls-files` over the
+config names, tracked and untracked, git's ignore rules applied, so a
+config git ignores is no project. A nested repository is one entry to the
+outer git (a submodule's gitlink, an embedded repository's untracked
+`dir/`): its own git lists its configs, or a walk when it has no `.git`,
+as the input enumeration expands one. Outside git: a walk that skips
+dot-directories and `node_modules`. A config at or under a nested
+`.vx/workspace.*` is that workspace's and is left out. Where a directory
+holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
+file (a directory may carry a config's name; git lists a tracked config
+deleted from the worktree).
 
-- `pnpm-workspace.yaml`, OR
-- `package.json` (with or without a `workspaces` field).
+### Names
 
-**The nearest candidate that CLAIMS `start` wins** — one of the
-directories between it and `start` matches one of its package globs.
-Every member has its own `package.json`, so first-match-wins would make
-a run from inside a package treat that package as the whole workspace:
-`^task` edges vanish, upstream hashes drop out of the cache key (stale
-hits), and a second cache dir appears under the member. Claiming reads
-the same globs `loadWorkspace` applies, and only a directory holding a
-manifest can be the claimed member, as only such a directory is listed,
-so "the root that claims me" and "the root that lists me as a project"
-cannot diverge. They did until item 989: `packages/*` matched a
-manifest-less `packages/tools`, and the standalone package below it ran
-in a workspace that does not list it. Nor can a directory discovery skips
-be claimed: a `node_modules` path, or a dot-dir a wildcard reached
-(`packages/*` over `packages/.tpl`), which `vx run` there answered "not
-inside a project". The walk matches each glob against the member's
-manifest path, as discovery does, so `packages/**` claims `packages`
-itself when it holds a `package.json` (npm lists it too); matched
-against the directory, it needed a segment below and a run from
-`packages` took it as its own root. A `pnpm-workspace.yaml` is a hard
-root, as pnpm has it: the walk stops at the nearest one, listed by an
-outer workspace or not. From `apps/inner` the walk went past its own file
-to the outer workspace while `apps/inner/pkgs/x` stopped there, two roots
-and two caches for one tree, until item 990.
-A `package.json` with `workspaces` of its own is a root the same way
-unless the outer root lists that directory itself, as npm reads it: a
-nested workspace inside a member (`apps/tool/ws` under `apps/*`) was
-claimed through `apps/tool`, and its members ran in a workspace that does
-not list them (D-137). The converse holds too: an outer root that lists
-both the nested root and the claimed member (`packages/**` over
-`packages/inner` and `packages/inner/sub`) owns the member, since the
-walk from `packages/inner` itself reaches it; `sub` resolved to `inner`
-with its `^` edges into the outer workspace dropped until X-3.
-
-When nothing claims `start` — a standalone package, or a subdirectory
-of a single-project repo — the nearest candidate wins. A bare
-`package.json` without `workspaces` means single-project mode: the root
-itself IS the project. Throws a `UserError` if no candidate is found.
-`unreachedPackages(workspace)` is the failure-path check for that mode:
-one shallow scan (two levels, `node_modules` and dot directories
-skipped) for the `package.json` files the missing globs never reach, and
-`unreachedHint` is the line `vx init` and `vx run` print for them —
-the cause, the packages, the `workspaces` entry to add (the `packages`
-entry, where a `pnpm-workspace.yaml` holds pnpm's settings and no
-`packages:`).
-
-### `loadWorkspace(root, reads?)`
-
-Reads the package-glob list (through `reads`, so the manifest
-`findManifestRoot` just read is not read again):
-
-| Manager                | Source                                                           |
-| ---------------------- | ---------------------------------------------------------------- |
-| pnpm                   | `pnpm-workspace.yaml`'s `packages:` field (via `Bun.YAML.parse`) |
-| npm / yarn / bun (new) | `package.json` `workspaces: string[]`                            |
-| yarn (legacy)          | `package.json` `workspaces: { packages: string[] }`              |
-| single project         | `package.json` without `workspaces` → returns `['.']`            |
-
-A `workspaces` object without `packages` (bun's `{ catalog }`, yarn's
-`{ nohoist }`) is the single project too, as bun and yarn read it.
-
-A `pnpm-workspace.yaml` without a `packages:` list, or with an empty
-one (the list commented out), defers to `package.json`, as pnpm does.
-
-A yarn `workspaces: { packages: null }` is the single project too, as
-yarn 1 and 4 read it.
-
-### `listProjects(workspace)`
-
-Globs every `package.json` matching the patterns (`Bun.Glob`,
-`onlyFiles: true`, `dot: false`). For each:
-
-- Skip if no `name` field (`discoverProjects` collects the directory for
-  `vx init`, which names one that has scripts, D-106).
-- A member outside the workspace root (`../ext/*`, an absolute glob) is
-  refused naming its directory: npm and pnpm take one, but `--affected`
-  asks git from the root and saw nothing outside it, so an edit there
-  moved the task's key and selected nothing. Move the root up to a
-  directory that holds every member.
-- A member dir (`<dir>/*` shape) with a vx config but no `package.json` is
-  skipped with a stderr line naming it (D-128): `--all` said only that no
-  package matched, and a run from inside it "not inside a project".
-- A file this user may not read is refused as a read (D-132):
-  `<file>: not readable by this user (EACCES)`, for a member's manifest, a
-  project config, the root's manifest and `.vx/workspace.ts`. A manifest
-  at mode 000 had dropped its project from `--all` under a green run. A
-  member directory it may not search hides whether a manifest is there,
-  so it is named on stderr and skipped (a service's data directory under
-  `packages/*`). Any other glob shape is scanned, and the scan stops at
-  such a directory and cannot skip it, so the load is refused naming the
-  directory and the glob.
-- A name several manifests share: pnpm accepts it (vite's playground,
-  sveltejs/kit's test apps); vx cannot, since a project is addressed by
-  its name. With no vx config among them they are left out, named on one
-  stderr line, and the rest runs; with one, a `UserError` names every
-  root-relative path and the way on (rename one, or a `!` glob).
-- One package reached by two paths, a member and a link to it
-  (`apps/docs` linking to `../packages/docs`), is one project, kept at the
-  path that reaches it through no link (D-135); real paths are resolved
-  only for a name several manifests share.
-- Find the first existing `vx.config.{ts,mts,js,mjs,cts,cjs}` sibling; that
-  becomes `configPath`. Projects without a config keep
-  `configPath: null` — they're still projects (a plugin's edges may
-  reach them) but contribute no tasks.
-- `node_modules` paths are explicitly skipped even when a
-  pathological `**` glob would match them.
-- The root package is a project too when it holds a
-  `vx.config.{ts,mts,js,mjs,cts,cjs}` and no glob lists `.` (D-39): a
-  workspace-root task (Turbo's `//#task`, an Nx root project) without
-  changing the package manager's member list. Its globs stop at every
-  member, as any parent project's do. Design:
-  `docs/design/root-project-2026-09-28.md`.
-
-Returns the project list sorted by `name`.
+A project's name is, in order: its config's `name`; the name a `discover`
+plugin gives (`@vzn/vx-lockfile` gives `package.json#name`); its
+root-relative POSIX path (`apps/web`), `//` for the root. A plugin renames
+only a project its path names: a config's `name` wins silently, and a
+different name from a second plugin is refused naming the first. Two
+projects of one name are refused naming both directories; a path that
+holds `#`, or `//` away from the root, is refused asking for `name`
+(`tests/discovery-refusals.test.ts`, `tests/project-dirs.test.ts`).
 
 ### `resolveCacheDir(root, config)`
 
@@ -331,8 +180,10 @@ the plugin `config` stage applied).
 ## What this does NOT do
 
 - **Doesn't load configs.** `loadProjectConfig` does (see
-  [`project-loader.md`](./project-loader.md)). Discovery is purely
-  about "what packages exist and where?"
+  [`project-loader.md`](./project-loader.md)), for `vx lock`; a run reads
+  the lock.
+- **Doesn't read package manifests.** A `discover` plugin does
+  (`@vzn/vx-lockfile`); `vx init` reads them through `packages.ts`.
 - **Doesn't compute the package graph.** That's
   [`package-graph.md`](./package-graph.md).
 - **Doesn't filter projects.** `--filter` / `--affected` happen in
@@ -342,23 +193,13 @@ the plugin `config` stage applied).
 
 ## Tests
 
-`tests/workspace.test.ts`:
-
-- pnpm-workspace.yaml discovery.
-- npm/yarn/bun `workspaces` array form.
-- yarn legacy `workspaces.packages` form.
-- bare-`package.json` single-project mode (`['.']`).
-- duplicate-name detection.
-- `findWorkspaceRoot` (the nearest `.vx/workspace.*`, git-bounded) and
-  `findManifestRoot` ascending behavior + missing-root errors.
-- glob behavior (one project, multiple projects, nested
-  `node_modules` skipped).
-
-## Replacing this module
-
-- **Lerna / Rush layouts** — replace `loadWorkspace` to parse the
-  appropriate config file. Keep `Workspace` shape.
-- **Custom workspace yaml** — add another source to `loadWorkspace`.
-- **Project discovery beyond `package.json`** — e.g., reading
-  `pyproject.toml` for non-JS deps. Would require generalizing
-  `ProjectMeta.packageJson` into a more abstract `manifest` field.
+- `tests/project-dirs.test.ts`: a config alone makes a project, named by
+  its path; `//` for the root; `name` over a plugin's over the path;
+  duplicates refused; an ignored config and a nested workspace's are no
+  project; a config added after `vx lock` waits for it; a version 2 lock
+  is refused; a package-manager member with no config is no project;
+  `--affected` without a plugin.
+- `tests/discovery-refusals.test.ts`: each refusal whole.
+- `tests/discover-stage.test.ts`: the stage over the locked projects.
+- `tests/contract-discovery.test.ts`: the walk and the root, as recorded.
+- `tests/workspace-root-file.test.ts`: `findWorkspaceRoot`.

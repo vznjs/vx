@@ -2,15 +2,14 @@ import * as fsp from 'node:fs/promises'
 import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, spyOn, vi } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import {
+  discoverPackages,
   findManifestRoot,
-  listProjects,
-  loadWorkspace,
-  memberBaseDirs,
+  loadPackageWorkspace,
   unreachedHint,
   unreachedPackages,
-} from '../src/workspace/workspace.js'
+} from '../src/workspace/packages.js'
 import { applyFilters, parseFilter } from '../src/workspace/filter.js'
 import { relPosix, UserError } from '../src/util/index.js'
 import { buildPackageGraph } from '../src/workspace/package-graph.js'
@@ -138,7 +137,7 @@ describe('findManifestRoot', () => {
         await mkdir(path.join(dir, rel), { recursive: true })
         await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name: rel }))
       }
-      const listed = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+      const listed = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)
       expect(listed.sort()).toEqual([...members].sort())
       const roots: string[] = []
       for (const rel of [...skipped, ...members]) {
@@ -202,13 +201,13 @@ describe('findManifestRoot', () => {
       // A broken `package.json` is a root SIGNAL even though it can claim
       // no members: walking past it would find some ancestor — or nothing
       // — and report that instead of the parse error the user has to fix.
-      // `loadWorkspace` is where the message comes from, and it only gets
+      // `loadPackageWorkspace` is where the message comes from, and it only gets
       // to speak if this dir is the one chosen.
       await writeFile(path.join(dir, 'package.json'), '{ this is not json')
       const sub = path.join(dir, 'packages', 'a')
       await mkdir(sub, { recursive: true })
       expect(await findManifestRoot(sub)).toBe(dir)
-      await expect(loadWorkspace(dir)).rejects.toThrow(/package\.json/)
+      await expect(loadPackageWorkspace(dir)).rejects.toThrow(/package\.json/)
     })
 
     it('a member EXCLUDED by a negated glob does not claim its root', async () => {
@@ -246,7 +245,7 @@ describe('findManifestRoot', () => {
   })
 })
 
-describe('listProjects', () => {
+describe('discoverPackages', () => {
   let dir: string
 
   beforeEach(async () => {
@@ -264,101 +263,9 @@ describe('listProjects', () => {
     await mkdir(path.join(dir, 'packages/b'), { recursive: true })
     await writeFile(path.join(dir, 'packages/b/package.json'), '{"name":"b"}')
 
-    const ws = await loadWorkspace(dir)
-    const projects = await listProjects(ws)
+    const ws = await loadPackageWorkspace(dir)
+    const projects = await discoverPackages(ws)
     expect(projects.map((p) => p.name)).toEqual(['b'])
-  })
-
-  // The row above is the SILENT half, and it is silent on purpose: a
-  // nameless manifest that declares no tasks is nothing to say anything
-  // about. A nameless manifest WITH a vx config is the other half — it
-  // was meant to run, vx identifies projects by name, so it simply
-  // vanishes, and this line is the only trace it ever existed.
-  // Silencing it broke nothing in the repo (item 458).
-  it('a nameless package that HAS a vx config is skipped loudly, naming the directory', async () => {
-    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-    await mkdir(path.join(dir, 'packages/ghost'), { recursive: true })
-    await writeFile(path.join(dir, 'packages/ghost/package.json'), '{}')
-    await writeFile(
-      path.join(dir, 'packages/ghost/vx.config.mjs'),
-      'export default { tasks: {} }\n',
-    )
-    await mkdir(path.join(dir, 'packages/quiet'), { recursive: true })
-    await writeFile(path.join(dir, 'packages/quiet/package.json'), '{}')
-
-    const written: string[] = []
-    const real = process.stderr.write.bind(process.stderr)
-    process.stderr.write = ((chunk: unknown): boolean => {
-      written.push(String(chunk))
-      return true
-    }) as typeof process.stderr.write
-    let projects: Awaited<ReturnType<typeof listProjects>>
-    try {
-      projects = await listProjects(await loadWorkspace(dir))
-    } finally {
-      process.stderr.write = real
-    }
-
-    expect(projects.map((p) => p.name)).toEqual([])
-    const notices = written.filter((w) => w.includes('has a vx config'))
-    expect(notices).toHaveLength(1)
-    // It must name WHICH directory, or the user cannot find it.
-    expect(notices[0]).toContain('packages/ghost')
-    // CONTROL: the config-less one stays silent, which is the distinction
-    // the warning exists to draw.
-    expect(notices[0]).not.toContain('quiet')
-  })
-
-  // `{"name": ""}` is the other spelling of a nameless manifest: a check on
-  // `name === undefined` would admit it as a project named "" that nothing
-  // can address, and say nothing.
-  it('an EMPTY-string name with a vx config gets the same warning as a missing one', async () => {
-    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-    await mkdir(path.join(dir, 'packages/blank'), { recursive: true })
-    await writeFile(path.join(dir, 'packages/blank/package.json'), '{"name": ""}')
-    await writeFile(
-      path.join(dir, 'packages/blank/vx.config.mjs'),
-      'export default { tasks: {} }\n',
-    )
-
-    const written: string[] = []
-    const real = process.stderr.write.bind(process.stderr)
-    process.stderr.write = ((chunk: unknown): boolean => {
-      written.push(String(chunk))
-      return true
-    }) as typeof process.stderr.write
-    let projects: Awaited<ReturnType<typeof listProjects>>
-    try {
-      projects = await listProjects(await loadWorkspace(dir))
-    } finally {
-      process.stderr.write = real
-    }
-
-    expect(projects.map((p) => p.name)).toEqual([])
-    expect(written).toEqual([
-      'vx: packages/blank has a vx config but its package.json has no "name" — skipped\n',
-    ])
-  })
-
-  // vuejs/core's root has no name; its warning named an empty path.
-  it('a nameless root with a vx config is named as the workspace root', async () => {
-    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-    await writeFile(path.join(dir, 'package.json'), '{"private": true}')
-    await writeFile(path.join(dir, 'vx.config.mjs'), 'export default { tasks: {} }\n')
-    const written: string[] = []
-    const real = process.stderr.write.bind(process.stderr)
-    process.stderr.write = ((chunk: unknown): boolean => {
-      written.push(String(chunk))
-      return true
-    }) as typeof process.stderr.write
-    try {
-      await listProjects(await loadWorkspace(dir))
-    } finally {
-      process.stderr.write = real
-    }
-    expect(written).toEqual([
-      'vx: the workspace root has a vx config but its package.json has no "name" — skipped\n',
-    ])
   })
 
   // vite's playground (eight names, two manifests each) refused the whole
@@ -386,7 +293,7 @@ describe('listProjects', () => {
         return true
       }) as typeof process.stderr.write
       try {
-        const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+        const names = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)
         return { names, written }
       } finally {
         process.stderr.write = real
@@ -457,8 +364,8 @@ describe('listProjects', () => {
         await mkdir(path.join(dir, rel), { recursive: true })
         await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
       }
-      const ws = await loadWorkspace(dir)
-      const projects = await listProjects(ws)
+      const ws = await loadPackageWorkspace(dir)
+      const projects = await discoverPackages(ws)
       expect(projects.map((p) => p.name).sort()).toEqual(['a'])
     }
   })
@@ -472,7 +379,7 @@ describe('listProjects', () => {
       await mkdir(path.join(dir, 'packages', name), { recursive: true })
       await writeFile(path.join(dir, 'packages', name, 'package.json'), JSON.stringify({ name }))
     }
-    const projects = await listProjects(await loadWorkspace(dir))
+    const projects = await discoverPackages(await loadPackageWorkspace(dir))
     expect(projects.map((p) => p.name)).toEqual(['ab'])
   })
 
@@ -489,7 +396,7 @@ describe('listProjects', () => {
       await mkdir(path.join(dir, rel), { recursive: true })
       await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
     }
-    const projects = await listProjects(await loadWorkspace(dir))
+    const projects = await discoverPackages(await loadPackageWorkspace(dir))
     expect(projects.map((p) => p.name)).toEqual(['a'])
   })
 
@@ -514,7 +421,7 @@ describe('listProjects', () => {
         await mkdir(path.join(dir, rel), { recursive: true })
         await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
       }
-      const projects = await listProjects(await loadWorkspace(dir))
+      const projects = await discoverPackages(await loadPackageWorkspace(dir))
       expect(projects.map((p) => p.name)).toEqual([...want])
     }
   })
@@ -527,7 +434,7 @@ describe('listProjects', () => {
       await mkdir(path.join(dir, rel), { recursive: true })
       await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name: rel }))
     }
-    expect(await unreachedPackages(await loadWorkspace(dir))).toEqual(['tools/gen'])
+    expect(await unreachedPackages(await loadPackageWorkspace(dir))).toEqual(['tools/gen'])
     // Past three, the hint counts the rest.
     expect(unreachedHint(['a', 'b', 'c', 'd'], dir)).toContain('not: a, b, c and 1 more.')
   })
@@ -554,7 +461,7 @@ describe('listProjects', () => {
       await mkdir(path.join(dir, 'packages', rel), { recursive: true })
       await writeFile(path.join(dir, 'packages', rel, 'package.json'), JSON.stringify({ name }))
     }
-    const projects = await listProjects(await loadWorkspace(dir))
+    const projects = await discoverPackages(await loadPackageWorkspace(dir))
     expect(projects.map((p) => p.name)).toEqual(['c', 'x'])
   })
 
@@ -574,7 +481,7 @@ describe('listProjects', () => {
     const pkg = path.join(dir, 'package.json')
     const refusal = async (pattern: string): Promise<string> => {
       await writeFile(pkg, JSON.stringify({ name: 'r', private: true, workspaces: [pattern] }))
-      return loadWorkspace(dir).then(
+      return loadPackageWorkspace(dir).then(
         () => 'loaded',
         (err: unknown) =>
           err instanceof UserError ? err.message : `not a UserError: ${String(err)}`,
@@ -599,7 +506,9 @@ describe('listProjects', () => {
       pkg,
       JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*', '!packages/x'] }),
     )
-    expect((await listProjects(await loadWorkspace(dir))).map((p) => p.name)).toEqual(['a'])
+    expect((await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)).toEqual([
+      'a',
+    ])
     // CONTROL: a parenthesis that is no extglob is a name.
     expect(await refusal('packages/(a)')).toBe('loaded')
   })
@@ -618,7 +527,7 @@ describe('listProjects', () => {
         JSON.stringify({ name: rel.replaceAll('/', '-') }),
       )
     }
-    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    const names = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)
     expect(names).toEqual(['packages-app'])
   })
 
@@ -630,7 +539,7 @@ describe('listProjects', () => {
       path.join(dir, 'package.json'),
       JSON.stringify({ name: 'root-pkg', private: true, workspaces: ['.', '!'] }),
     )
-    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    const names = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)
     expect(names).toEqual(['root-pkg'])
   })
 
@@ -646,7 +555,7 @@ describe('listProjects', () => {
     }
     const names = async (workspaces: string[]) => {
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'r', workspaces }))
-      return (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+      return (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)
     }
     // Control: a slash-free brace, which the glob expands itself.
     expect(await names(['apps/{x,y}'])).toEqual(['x', 'y'])
@@ -667,7 +576,7 @@ describe('listProjects', () => {
       JSON.stringify({ name: 'real' }),
     )
     await mkdir(path.join(dir, 'packages', 'empty'), { recursive: true })
-    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    const names = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)
     expect(names).toEqual(['real'])
   })
 
@@ -687,34 +596,8 @@ describe('listProjects', () => {
         JSON.stringify({ name }),
       )
     }
-    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    const names = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)
     expect(names).toEqual(['Zed', 'apple', 'beta'])
-  })
-
-  it('warns when a skipped package declares vx tasks (otherwise it vanishes silently)', async () => {
-    await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
-    await mkdir(path.join(dir, 'packages/noname'), { recursive: true })
-    await writeFile(path.join(dir, 'packages/noname/package.json'), '{"version":"0.0.0"}')
-    await writeFile(path.join(dir, 'packages/noname/vx.config.mjs'), 'export default { tasks: {} }')
-    await mkdir(path.join(dir, 'packages/quiet'), { recursive: true })
-    await writeFile(path.join(dir, 'packages/quiet/package.json'), '{}')
-
-    let stderr = ''
-    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
-      stderr += String(chunk)
-      return true
-    })
-    try {
-      const projects = await listProjects(await loadWorkspace(dir))
-      expect(projects).toEqual([])
-    } finally {
-      spy.mockRestore()
-    }
-    expect(stderr).toContain('packages/noname')
-    expect(stderr).toContain('name')
-    // A nameless manifest with no vx config contributes nothing to a run —
-    // warning about it would be noise.
-    expect(stderr).not.toContain('packages/quiet')
   })
 
   it('resolves the config file by CONFIG_FILENAMES precedence, skipping non-files', async () => {
@@ -744,8 +627,8 @@ describe('listProjects', () => {
     await mkdir(path.join(dir, 'packages/none'), { recursive: true })
     await writeFile(path.join(dir, 'packages/none/package.json'), '{"name":"none"}')
 
-    const ws = await loadWorkspace(dir)
-    const projects = await listProjects(ws)
+    const ws = await loadPackageWorkspace(dir)
+    const projects = await discoverPackages(ws)
     const byName = new Map(
       projects.map((p) => [p.name, p.configPath && path.relative(dir, p.configPath)]),
     )
@@ -758,9 +641,9 @@ describe('listProjects', () => {
 
   it('handles an empty pnpm-workspace.yaml gracefully', async () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), '\n')
-    const ws = await loadWorkspace(dir)
+    const ws = await loadPackageWorkspace(dir)
     expect(ws.packageGlobs).toEqual([])
-    const projects = await listProjects(ws)
+    const projects = await discoverPackages(ws)
     expect(projects).toEqual([])
   })
 
@@ -769,7 +652,7 @@ describe('listProjects', () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "!schematics"\n')
     await mkdir(path.join(dir, 'schematics'), { recursive: true })
     await writeFile(path.join(dir, 'schematics', 'package.json'), '{"name":"schematics"}')
-    expect(await listProjects(await loadWorkspace(dir))).toEqual([])
+    expect(await discoverPackages(await loadPackageWorkspace(dir))).toEqual([])
   })
 
   // nx#15625: a project directory named with underscores (`__generated__`)
@@ -780,7 +663,7 @@ describe('listProjects', () => {
       await mkdir(path.join(dir, 'libs', d), { recursive: true })
       await writeFile(path.join(dir, 'libs', d, 'package.json'), JSON.stringify({ name: `n${d}` }))
     }
-    const listed = (await listProjects(await loadWorkspace(dir))).map((p) => [
+    const listed = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => [
       p.name,
       path.relative(dir, p.dir),
     ])
@@ -799,7 +682,7 @@ describe('listProjects', () => {
     await writeFile(path.join(dir, 'submodules', 'widget-a', 'package.json'), '{"name":"widget-a"}')
     await mkdir(path.join(dir, 'widgets'), { recursive: true })
     await symlink('../submodules/widget-a', path.join(dir, 'widgets', 'widget-a'))
-    const listed = (await listProjects(await loadWorkspace(dir))).map((p) => [
+    const listed = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => [
       p.name,
       path.relative(dir, p.dir),
     ])
@@ -816,7 +699,9 @@ describe('listProjects', () => {
     await symlink('../submodules/widget-a', path.join(dir, 'widgets', 'widget-a'))
     for (const glob of ['widgets/*', 'widgets/{plain,widget-a}', 'widg*/*', 'widgets/*/']) {
       await writeFile(path.join(dir, 'pnpm-workspace.yaml'), `packages:\n  - "${glob}"\n`)
-      const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name).sort()
+      const names = (await discoverPackages(await loadPackageWorkspace(dir)))
+        .map((p) => p.name)
+        .sort()
       expect({ glob, names }).toEqual({ glob, names: ['plain', 'widget-a'] })
     }
   })
@@ -838,15 +723,15 @@ describe('malformed workspace manifests', () => {
 
   it('names the root package.json that failed to parse', async () => {
     await writeFile(path.join(dir, 'package.json'), '{"name":"r",}')
-    await expect(loadWorkspace(dir)).rejects.toThrow(/failed to parse .*package\.json/)
+    await expect(loadPackageWorkspace(dir)).rejects.toThrow(/failed to parse .*package\.json/)
   })
 
   it('names the MEMBER package.json that failed to parse', async () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await mkdir(path.join(dir, 'packages/broken'), { recursive: true })
     await writeFile(path.join(dir, 'packages/broken/package.json'), '{ not json')
-    const ws = await loadWorkspace(dir)
-    await expect(listProjects(ws)).rejects.toThrow(
+    const ws = await loadPackageWorkspace(dir)
+    await expect(discoverPackages(ws)).rejects.toThrow(
       /failed to parse .*packages\/broken\/package\.json/,
     )
   })
@@ -859,8 +744,8 @@ describe('malformed workspace manifests', () => {
     await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
     for (const workspaces of [{ catalog: { 'is-number': '7.0.0' } }, { nohoist: ['**/x'] }, {}]) {
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app', workspaces }))
-      const ws = await loadWorkspace(dir)
-      const projects = await listProjects(ws)
+      const ws = await loadPackageWorkspace(dir)
+      const projects = await discoverPackages(ws)
       expect({ workspaces, projects: projects.map((p) => [p.name, p.dir]) }).toEqual({
         workspaces,
         projects: [['app', dir]],
@@ -877,13 +762,15 @@ describe('malformed workspace manifests', () => {
     )
     await mkdir(path.join(dir, 'packages/a'), { recursive: true })
     await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
-    const projects = await listProjects(await loadWorkspace(dir))
+    const projects = await discoverPackages(await loadPackageWorkspace(dir))
     expect(projects.map((p) => [p.name, p.dir])).toEqual([['app', dir]])
   })
 
   it('rejects a pnpm `packages:` string instead of a list', async () => {
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'packages: "packages/*"\n')
-    await expect(loadWorkspace(dir)).rejects.toThrow(/`packages` must be an array of glob strings/)
+    await expect(loadPackageWorkspace(dir)).rejects.toThrow(
+      /`packages` must be an array of glob strings/,
+    )
   })
 
   it('a pnpm-workspace.yaml with no packages list defers to package.json (item 984)', async () => {
@@ -892,7 +779,7 @@ describe('malformed workspace manifests', () => {
     // and `vx show` printed nothing and exited 0.
     await writeFile(path.join(dir, 'pnpm-workspace.yaml'), 'onlyBuiltDependencies:\n  - esbuild\n')
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
-    const single = await listProjects(await loadWorkspace(dir))
+    const single = await discoverPackages(await loadPackageWorkspace(dir))
     expect(single.map((p) => [p.name, p.dir])).toEqual([['app', dir]])
 
     await writeFile(
@@ -901,7 +788,7 @@ describe('malformed workspace manifests', () => {
     )
     await mkdir(path.join(dir, 'packages/a'), { recursive: true })
     await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
-    const members = await listProjects(await loadWorkspace(dir))
+    const members = await discoverPackages(await loadPackageWorkspace(dir))
     expect(members.map((p) => p.name)).toEqual(['a'])
   })
 
@@ -918,14 +805,14 @@ packages:
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     await mkdir(path.join(dir, 'packages/a'), { recursive: true })
     await writeFile(path.join(dir, 'packages/a/package.json'), JSON.stringify({ name: 'a' }))
-    const single = await listProjects(await loadWorkspace(dir))
+    const single = await discoverPackages(await loadPackageWorkspace(dir))
     expect(single.map((p) => [p.name, p.dir])).toEqual([['app', dir]])
 
     await writeFile(
       path.join(dir, 'package.json'),
       JSON.stringify({ name: 'root', workspaces: ['packages/*'] }),
     )
-    const members = await listProjects(await loadWorkspace(dir))
+    const members = await discoverPackages(await loadPackageWorkspace(dir))
     expect(members.map((p) => p.name)).toEqual(['a'])
   })
 
@@ -946,7 +833,7 @@ packages:
         await mkdir(path.join(dir, rel), { recursive: true })
         await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
       }
-      const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+      const names = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)
       expect({ file, names }).toEqual({ file, names: ['a'] })
     }
   })
@@ -965,7 +852,7 @@ packages:
       await mkdir(path.join(dir, rel), { recursive: true })
       await writeFile(path.join(dir, rel, 'package.json'), JSON.stringify({ name }))
     }
-    const names = (await listProjects(await loadWorkspace(dir))).map((p) => p.name)
+    const names = (await discoverPackages(await loadPackageWorkspace(dir))).map((p) => p.name)
     expect(names).toEqual(['a'])
   })
 
@@ -982,7 +869,7 @@ packages:
       // The root's own manifest, then a member's.
       await writeFile(path.join(dir, 'package.json'), body)
       seen.push(
-        await loadWorkspace(dir).then(
+        await loadPackageWorkspace(dir).then(
           () => 'loaded',
           (e: Error) => e.message,
         ),
@@ -994,8 +881,8 @@ packages:
       await mkdir(path.join(dir, 'packages/m'), { recursive: true })
       await writeFile(path.join(dir, 'packages/m/package.json'), body)
       seen.push(
-        await loadWorkspace(dir)
-          .then((ws) => listProjects(ws))
+        await loadPackageWorkspace(dir)
+          .then((ws) => discoverPackages(ws))
           .then(
             () => 'loaded',
             (e: Error) => e.message,
@@ -1015,7 +902,7 @@ packages:
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'app' }))
     for (const body of ['- packages/*\n', '42\n']) {
       await writeFile(path.join(dir, 'pnpm-workspace.yaml'), body)
-      await expect(loadWorkspace(dir)).rejects.toThrow(
+      await expect(loadPackageWorkspace(dir)).rejects.toThrow(
         /pnpm-workspace\.yaml: must be a mapping \(`packages:` and pnpm's settings\)$/,
       )
     }
@@ -1026,7 +913,7 @@ packages:
       path.join(dir, 'package.json'),
       JSON.stringify({ name: 'r', workspaces: [42, 'packages/*'] }),
     )
-    await expect(loadWorkspace(dir)).rejects.toThrow(
+    await expect(loadPackageWorkspace(dir)).rejects.toThrow(
       /`workspaces` must be an array of glob strings/,
     )
   })
@@ -1036,37 +923,37 @@ packages:
       path.join(dir, 'package.json'),
       JSON.stringify({ name: 'r', workspaces: { packages: 'packages/*' } }),
     )
-    await expect(loadWorkspace(dir)).rejects.toThrow(
+    await expect(loadPackageWorkspace(dir)).rejects.toThrow(
       /`workspaces\.packages` must be an array of glob strings/,
     )
   })
 
   it('still accepts every well-formed manifest shape', async () => {
     await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'r' }))
-    expect((await loadWorkspace(dir)).packageGlobs).toEqual(['.'])
+    expect((await loadPackageWorkspace(dir)).packageGlobs).toEqual(['.'])
 
     await writeFile(
       path.join(dir, 'package.json'),
       JSON.stringify({ name: 'r', workspaces: ['packages/*'] }),
     )
-    expect((await loadWorkspace(dir)).packageGlobs).toEqual(['packages/*'])
+    expect((await loadPackageWorkspace(dir)).packageGlobs).toEqual(['packages/*'])
 
     await writeFile(
       path.join(dir, 'package.json'),
       JSON.stringify({ name: 'r', workspaces: { packages: ['apps/*'] } }),
     )
-    expect((await loadWorkspace(dir)).packageGlobs).toEqual(['apps/*'])
+    expect((await loadPackageWorkspace(dir)).packageGlobs).toEqual(['apps/*'])
   })
 })
 
-describe('loadWorkspace at a public boundary (D-58)', () => {
+describe('loadPackageWorkspace at a public boundary (D-58)', () => {
   // The CLI reaches it through findWorkspaceRoot, which never returns such a
-  // directory; `loadWorkspace` is public API (src/index.ts), and a direct call
+  // directory; `loadPackageWorkspace` is public API (src/index.ts), and a direct call
   // on a directory with neither manifest is refused, never loaded as nothing.
   it('refuses a root with neither pnpm-workspace.yaml nor package.json', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-ws-bare-'))
     try {
-      const err = await loadWorkspace(dir).then(
+      const err = await loadPackageWorkspace(dir).then(
         () => null,
         (e: unknown) => e as Error,
       )
@@ -1097,8 +984,8 @@ describe('discovery out of file descriptors (D-60)', () => {
     await rm(root, { recursive: true, force: true })
   })
   const listed = async (): Promise<string> => {
-    const ws = await loadWorkspace(root)
-    return (await listProjects(ws)).map((p) => p.name).join(',')
+    const ws = await loadPackageWorkspace(root)
+    return (await discoverPackages(ws)).map((p) => p.name).join(',')
   }
 
   // One read site each: the member glob's listing of `packages/`, and the
@@ -1145,39 +1032,6 @@ describe('discovery out of file descriptors (D-60)', () => {
     // CONTROL: a directory that is not there is still absent, not a failure.
     await rm(path.join(root, 'packages', 'a'), { recursive: true, force: true })
     expect(await listed()).toBe('')
-  })
-})
-
-describe('memberBaseDirs', () => {
-  // The directories `vx watch` arms so a package APPEARING or disappearing
-  // is heard as one directory entry, with no walk. Only the `<dir>/*`
-  // shape has such a directory; anything else (`apps/**`, a brace, a
-  // negation) names a tree, and arming its prefix would watch a directory
-  // that is not a member base — or, for `apps/**/*`, a directory literally
-  // named `**`, which exists nowhere.
-  const ws = (globs: string[]) => ({ root: '/ws', packageGlobs: globs })
-
-  it('takes the `<dir>/*` shape and nothing else', () => {
-    expect(memberBaseDirs(ws(['packages/*']))).toEqual([path.resolve('/ws', 'packages')])
-    expect(memberBaseDirs(ws(['packages/*', 'apps/*']))).toEqual([
-      path.resolve('/ws', 'packages'),
-      path.resolve('/ws', 'apps'),
-    ])
-  })
-
-  it('contributes nothing for a glob that names a TREE', () => {
-    expect(memberBaseDirs(ws(['apps/**']))).toEqual([])
-    expect(memberBaseDirs(ws(['apps/**/*']))).toEqual([])
-    expect(memberBaseDirs(ws(['packages/{a,b}/*']))).toEqual([])
-    expect(memberBaseDirs(ws(['.']))).toEqual([])
-  })
-
-  it('a negated glob arms nothing', () => {
-    expect(memberBaseDirs(ws(['!packages/*']))).toEqual([])
-    // …and does not disturb the positive one beside it.
-    expect(memberBaseDirs(ws(['packages/*', '!packages/fx']))).toEqual([
-      path.resolve('/ws', 'packages'),
-    ])
   })
 })
 
@@ -1240,7 +1094,7 @@ describe('a project directory named packages/[abc]', () => {
   }, 30_000)
 
   it('a path filter with the brackets escaped selects it, and only it', async () => {
-    const projects = await listProjects(await loadWorkspace(root))
+    const projects = await discoverPackages(await loadPackageWorkspace(root))
     const graph = buildPackageGraph(projects)
     const select = (f: string): string[] =>
       [...applyFilters({ filters: [parseFilter(f, root)], projects, graph })].sort()
@@ -1252,7 +1106,7 @@ describe('a project directory named packages/[abc]', () => {
   // git reads a pathspec (item 664; before it the form compiled as a glob and
   // selected the sibling the class matches).
   it('the unescaped `./packages/[abc]` selects the directory it names, not the sibling `a`', async () => {
-    const projects = await listProjects(await loadWorkspace(root))
+    const projects = await discoverPackages(await loadPackageWorkspace(root))
     const graph = buildPackageGraph(projects)
     const select = (f: string): string[] =>
       [...applyFilters({ filters: [parseFilter(f, root)], projects, graph })].sort()

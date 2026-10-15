@@ -270,11 +270,7 @@ export function makeRootEventFilter(
     // Exact membership, not a basename match: `nested/pnpm-lock.yaml` and
     // `nested/.vx/workspace.ts` are no root file. The workspace config and
     // a claimed file carry their `.vx/` prefix.
-    if (
-      isWorkspaceConfigFile(rel) ||
-      claimedRootFiles.has(rel) ||
-      (!rel.includes('/') && (shapesMembers(rel) || rel === 'package.json' || rel === '.gitignore'))
-    ) {
+    if (isWorkspaceConfigFile(rel) || claimedRootFiles.has(rel) || rel === '.gitignore') {
       return true
     }
     const abs = path.resolve(workspaceRoot, filename)
@@ -305,32 +301,19 @@ export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: s
 }
 
 /**
- * A file whose edit can change what the loop watches: a `package.json`
- * (a dependency added under `--filter` widens the closure), a project
- * config (a task that starts declaring `workspaceFiles` needs the root
- * watcher, a new output must stop being an event) or the workspace config
- * (a plugin's `project` stage). Until item 891 only a member directory
- * coming or going re-read the set, so each of these waited for a restart
- * while the loop looked alive. `pnpm-workspace.yaml` too: a glob added
- * there was a cycle that ran the new packages and watched none of them
- * (item 1018). A file a plugin claims re-reads the set as well (the
- * caller asks: a lockfile plugin's `discover` edges come from it).
+ * A file whose edit can change what the loop watches: a project config (a
+ * task that starts declaring `workspaceFiles` needs the root watcher, a
+ * new output must stop being an event) or the workspace config (a
+ * plugin's `project` stage). Until item 891 each of these waited for a
+ * restart while the loop looked alive. The lock and a file a plugin
+ * claims re-read the set as well (the caller asks: the projects come from
+ * the lock, a lockfile plugin's `discover` names and edges from its file).
  */
 const PROJECT_CONFIGS: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
 
 export function shapesWatchedSet(filename: string): boolean {
   const base = path.basename(filename)
-  return (
-    base === 'package.json' ||
-    shapesMembers(base) ||
-    PROJECT_CONFIGS.has(base) ||
-    isWorkspaceConfigFile(filename.split(path.sep).join('/'))
-  )
-}
-
-/** `pnpm-workspace.yaml`: discovery reads the member globs from it. */
-export function shapesMembers(name: string): boolean {
-  return name === 'pnpm-workspace.yaml'
+  return PROJECT_CONFIGS.has(base) || isWorkspaceConfigFile(filename.split(path.sep).join('/'))
 }
 
 /**

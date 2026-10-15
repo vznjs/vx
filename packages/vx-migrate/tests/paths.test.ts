@@ -4,11 +4,11 @@
 // workspace; these rows exist so the next one is not either.
 
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { packageScripts, relPosix } from '../src/paths.js'
 
-const meta = (packageJson: unknown): ProjectMeta =>
-  ({ name: 'app', dir: '/w/app', packageJson }) as unknown as ProjectMeta
+const meta = (packageJson: unknown): PackageMeta =>
+  ({ name: 'app', dir: '/w/app', packageJson }) as unknown as PackageMeta
 
 describe('packageScripts — package.json is a boundary', () => {
   it('returns the map when the file holds one', () => {

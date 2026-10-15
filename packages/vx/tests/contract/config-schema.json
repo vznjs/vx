@@ -1745,7 +1745,7 @@
   },
   "project": {
     "levels": {
-      "": ["tags", "tasks"],
+      "": ["name", "tags", "tasks"],
       "tasks.*": ["cache", "dependsOn", "description", "exec"],
       "tasks.*.exec": [
         "command",
@@ -1793,6 +1793,37 @@
     },
     "records": ["tasks", "tasks.*.exec.env.define"],
     "fields": {
+      "name": {
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"web\""],
+        "$CONFIG: `name` must be a non-empty string with no surrounding whitespace and no \"#\" (a task is <name>#<task>)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
       "tags": {
         "ok": [
           "<absent>",

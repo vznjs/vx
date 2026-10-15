@@ -23,9 +23,8 @@ async function key(plugin: VxPlugin): Promise<Readonly<Record<string, string>> |
 }
 
 async function discover(plugin: VxPlugin): Promise<unknown> {
-  const projects: ProjectMeta[] = [
-    { name: 'ws', dir: root, configPath: null, packageJson: { name: 'ws' } } as ProjectMeta,
-  ]
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws' }))
+  const projects: ProjectMeta[] = [{ name: '//', dir: root, configPath: null }]
   const ctx = {
     workspaceRoot: root,
     cacheDir: path.join(root, '.vx', 'cache'),

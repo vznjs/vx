@@ -5,7 +5,7 @@
 // dependency, dev or optional entry whose key names a workspace package
 // orders it; a peer on one only reaches it.
 
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 
 export interface ManifestGraph {
   /** Packages this one builds after, sorted. */
@@ -18,7 +18,7 @@ export interface ManifestGraph {
 
 const ORDER_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies'] as const
 
-export function manifestGraph(metas: readonly ProjectMeta[]): ManifestGraph {
+export function manifestGraph(metas: readonly PackageMeta[]): ManifestGraph {
   const names = new Set(metas.map((m) => m.name))
   const order = new Map<string, string[]>()
   const reach = new Map<string, string[]>()

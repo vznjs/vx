@@ -6,6 +6,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 let root: string | undefined
@@ -33,7 +34,7 @@ it('every git vx runs sees the git and locale variables, not the rest', async ()
     path.join(ws, 'package.json'),
     JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
   )
-  await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(ws, '.vx/workspace.mjs'), localWorkspaceSource())
   await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(
     path.join(ws, 'packages', 'a', 'vx.config.mjs'),

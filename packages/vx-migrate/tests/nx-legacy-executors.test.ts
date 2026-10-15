@@ -4,7 +4,7 @@
 // its `nx:` twin does.
 
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 
 const rc = { commands: ['tsc', 'node x.js'], cwd: 'libs/a', parallel: false }
@@ -19,10 +19,10 @@ const targets = {
 }
 const graph = { nodes: { a: { name: 'a', data: { root: 'libs/a', targets } } }, dependencies: {} }
 
-const meta: ProjectMeta = {
+const meta: PackageMeta = {
   name: 'a',
   dir: '/w/libs/a',
-  packageJson: { name: 'a', scripts: { build: 'tsc -b' } } as ProjectMeta['packageJson'],
+  packageJson: { name: 'a', scripts: { build: 'tsc -b' } } as PackageMeta['packageJson'],
   configPath: null,
 }
 

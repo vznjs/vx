@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { UserError, type ProjectMeta } from '@vzn/vx'
+import { UserError, type PackageMeta } from '@vzn/vx'
 import { DOTENV_PROBE, DOTENV_PROBE_TOP, dotenvGlobsProbe } from '../src/dotenv-probe.js'
 import { mapTurboWorkspace, type TurboMappedTask } from '../src/turbo/turbo-map.js'
 
@@ -33,7 +33,7 @@ async function map(
   envNames?: readonly string[],
 ) {
   await writeFile(path.join(root, 'turbo.json'), JSON.stringify(turbo))
-  const metas: ProjectMeta[] = []
+  const metas: PackageMeta[] = []
   for (const [name, p] of Object.entries(pkgs)) {
     const dir = p.root === true ? root : path.join(root, 'packages', name)
     await mkdir(dir, { recursive: true })
@@ -356,7 +356,7 @@ describe('turbo-map: what the sweep found unheld', () => {
   // names them. CONTROL: a package that runs no task is not named.
   it('a framework Turbo infers is named with its env prefix', async () => {
     await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { build: {} } }))
-    const metas: ProjectMeta[] = []
+    const metas: PackageMeta[] = []
     for (const [name, deps, scripts] of [
       ['web', { dependencies: { next: '15' } }, { build: 'next build' }],
       ['site', { devDependencies: { vite: '6' } }, { build: 'vite build' }],
@@ -382,7 +382,7 @@ describe('turbo-map: what the sweep found unheld', () => {
   // nothing), and a literal name (NEXT_DEPLOYMENT_ID) is keyed as named.
   it("a live mapping takes the first framework of Turbo's table", async () => {
     await writeFile(path.join(root, 'turbo.json'), JSON.stringify({ tasks: { build: {} } }))
-    const metas: ProjectMeta[] = []
+    const metas: PackageMeta[] = []
     for (const [name, deps] of [
       ['next', { dependencies: { next: '15', vite: '6' } }],
       ['kit', { devDependencies: { '@sveltejs/kit': '2', vite: '6' } }],
@@ -500,7 +500,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       path.join(root, 'turbo.json'),
       JSON.stringify({ tasks: { build: { env: ['!NEXT_PUBLIC_VERCEL_URL', 'API'] } } }),
     )
-    const metas: ProjectMeta[] = []
+    const metas: PackageMeta[] = []
     for (const [name, deps] of [
       ['web', { dependencies: { next: '15' } }],
       ['lib', {}],
@@ -1548,20 +1548,20 @@ describe('turbo-map: a single-package repo', () => {
       path.join(root, 'turbo.json'),
       JSON.stringify({ tasks: { build: { outputs: ['dist/**'] }, '//#fmt': {} } }),
     )
-    const rootMeta = (scripts: Record<string, string>): ProjectMeta => ({
+    const rootMeta = (scripts: Record<string, string>): PackageMeta => ({
       name: 'solo',
       dir: root,
       packageJson: { name: 'solo', scripts } as never,
       configPath: null,
     })
-    const names = async (metas: ProjectMeta[]) =>
+    const names = async (metas: PackageMeta[]) =>
       (await mapTurboWorkspace(root, metas, opts)).projects.map((p) => [
         p.name,
         p.tasks.map((t) => t.name).sort(),
       ])
     const scripts = { build: 'b', fmt: 'f' }
     await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
-    const member: ProjectMeta = {
+    const member: PackageMeta = {
       name: 'a',
       dir: path.join(root, 'packages', 'a'),
       packageJson: { name: 'a', scripts: { build: 'b' } } as never,

@@ -19,8 +19,8 @@ export function pendingAfterCycle(
   aborted: boolean,
 ): [abs: string, label: string] | undefined
 
-// watch-set.ts — what is watched: the projects a cycle can run, what their
-// configs declare, the member dirs a package glob can grow:
+// watch-set.ts — what is watched: the projects a cycle can run and what
+// their configs declare:
 export async function watchedProjects(
   workspaceRoot,
   allProjects,
@@ -39,8 +39,6 @@ export interface ConfigSweep {
   staged: Map<string, ProjectEntry> | null
 }
 export async function sweepConfigs(projects, workspaceRoot, load?, tasks?): Promise<ConfigSweep> // tasks: judge only what the run can reach
-export function memberEntries(base: string): ReadonlySet<string>
-export function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean
 
 // watch-judge.ts — which settled paths are changes (state gate, self-write
 // window, the 3-cycle notice):
@@ -91,8 +89,7 @@ export function makeRootEventFilter(
   fenced?: (ownDir: string, abs: string) => boolean,
 ): (filename: string) => boolean
 export function makeFence(fenceDirs: readonly string[]): (ownDir: string, abs: string) => boolean // inside a configured project nested under ownDir, its own config aside
-export function shapesWatchedSet(filename: string): boolean // a manifest, a config or pnpm-workspace.yaml: re-read the watched set
-export function shapesMembers(name: string): boolean // pnpm-workspace.yaml: discovery reads the member globs from it
+export function shapesWatchedSet(filename: string): boolean // a project or workspace config: re-read the watched set
 export function isWorkspaceConfigFile(name: string): boolean
 
 // watch-fs.ts — the file-system side, which knows nothing of tasks or cycles:
@@ -191,8 +188,7 @@ are refused too: they format one run's result.
      still passes, since it may give the project tasks.
    - For the workspace root, `fs.watch(root, { recursive: false })`
      — only a file a plugin claims (a lockfile, an install setting),
-     `pnpm-workspace.yaml`, the root `package.json`, `.gitignore` and
-     the workspace config (`.vx/workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)
+     `.vx/projects.lock.json`, `.gitignore` and the workspace config (`.vx/workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)
      trigger: the config is no task's input, and it shapes every cycle
      (plugins, `config` stage, concurrency); a cycle re-evaluates it
      since its import is keyed on its bytes. When any task declares
@@ -200,42 +196,44 @@ are refused too: they format one run's result.
      `fs.watch(root, { recursive: true })` replaces all of the above,
      and `makeRootEventFilter` keeps the events a key can see — a path
      inside any watched project's directory and outside the projects
-     fenced off under it, a claimed file, `pnpm-workspace.yaml` or the
-     workspace config at the root, a
+     fenced off under it, a claimed file or the workspace config at the
+     root, a
      match of a declared `workspaceFiles` glob (negations not
      consulted: a `!` only narrows, and a spurious event is one
      cache-hit cycle) — and drops the rest of the tree, so a log
      written at the root or a `coverage/` run is not a cycle.
-   - For the directory each `<dir>/*` package glob names
-     (`memberBaseDirs`), `fs.watch(base, { recursive: false })`: a
-     member coming or going there is a cycle, and the cycle's end
-     re-reads the workspace (`rediscover`: discovery, the sweep, the
-     watched closure) and `rearm`s — new project dirs get an arm that
-     proves delivery before the loop goes on, dropped ones are closed,
-     the root filter and the ignore filter are rebuilt on the new set.
-     Until 2026-09-10 the set was fixed when the loop armed: the next
-     cycle ran the new package and every edit inside it was silence
-     (`tests/watch-loop-members.test.ts`, the added-package pair). A
-     cycle that fails re-reads too: a package added with a config that
-     does not load yet was left unwatched, and the fix to that config
-     ran nothing (WD-26). The scope
-     is the one resolved at start; a glob of another shape has no
-     such directory.
+   - The projects are the lock's (`vx lock` finds them; a watch
+     never walks for configs), so `.vx/projects.lock.json` is the
+     event that changes the set: the cycle it starts re-reads the
+     workspace before the run keys anything (`rediscover`: discovery,
+     the sweep, the watched closure) and `rearm`s — new project dirs
+     get an arm that proves delivery before the loop goes on, dropped
+     ones are closed, the root filter and the ignore filter are rebuilt
+     on the new set. Armed only after the run, an edit in the new
+     project while its first cycle ran fell in the gap (X-138). A
+     config added and not yet locked is no project and no event; until
+     2026-09-10 the set was fixed when the loop armed, and every edit
+     in a new project was silence (`tests/watch-loop-members.test.ts`).
+     With no lock at start the first cycle fails naming `vx lock` and
+     the loop watches for the lock.
    - The same re-read follows a cycle started by a file that shapes
-     the watched set (`shapesWatchedSet`): a `package.json` (a
-     dependency added under `--filter` widens the closure; the root's
-     `workspaces`, like `pnpm-workspace.yaml`, is the glob list, and the
-     re-read takes its bases too, so a glob added there is watched from
-     the cycle it triggers, item 1018), a project
-     config (a task that starts or stops declaring `workspaceFiles`
-     swaps the arm between per-project and root, `dropMode` /
-     `armMode`), the workspace config or a file a plugin claims (a
-     lockfile plugin's `discover` edges come from it). And a directory under a
-     member base with no package in it yet gets a non-recursive arm
-     of its own (`armPending`): the base's watcher never hears the
-     `package.json` written inside it, so a directory made before its
-     manifest stayed unwatched for good. Until item 891 each of these
-     waited for a restart (the three item-891 rows).
+     the watched set (`shapesWatchedSet`): a project config (a task
+     that starts or stops declaring `workspaceFiles` swaps the arm
+     between per-project and root, `dropMode` / `armMode`), the
+     workspace config, or a file a plugin claims (a lockfile plugin's
+     `discover` names and edges come from it, so a dependency added
+     under `--filter` widens the closure). Until item 891 each of
+     these waited for a restart.
+   - A project directory, and a directory a config imports from, is
+     also watched from its nearest directory that exists, for the next
+     name on the way down (`armAncestors`): an inotify watch holds an
+     inode, so a directory removed and made again (`rm -rf packages &&
+git checkout packages`) was no event to its own arm, nor to the
+     root's (`tests/watch-recreated-dirs.test.ts`). Every directory
+     above it up to the root is watched for the next name as well:
+     FSEvents reports no child of a watched directory removed with it,
+     so on macOS the parent's arm alone never heard `packages/` go. A
+     project's parent's `.gitignore` is heard there too, as the root's is.
    - Filter out `node_modules` / `.git` / `.vx/cache` path segments,
      `.tsbuildinfo` / `~` suffixes (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger
@@ -256,7 +254,7 @@ are refused too: they format one run's result.
      `tests/watch-rules.test.ts`; end to end in
      `tests/watch-loop.test.ts`). The outputs come from the run
      path's staged load (`sweepConfigs` → `loadProjects`), so an
-     output a `project` plugin gave a config-less package is ignored
+     output a `project` plugin gave a config-less project is ignored
      like a declared one, and each config is read from `.vx/projects.lock.json`;
      a config that fails to load drops the sweep to the
      files that do load. The sweep's load is also what
@@ -411,7 +409,7 @@ on, as the cache keys decide.
 
 The loop's own suites: `tests/watch-rules.test.ts` (the ignore rules
 and the root event filter), `tests/watch-loop.test.ts` (cycles end to
-end), `tests/watch-loop-members.test.ts` (a package coming or going),
+end), `tests/watch-loop-members.test.ts` (a project the lock adds or drops),
 `tests/watch-affected.test.ts` (`--affected` past the first cycle),
 `tests/watch-anchored-scope.test.ts` (what `pkg#task` watches),
 `tests/watch-loop-uncached.test.ts` (undeclared writes judged by

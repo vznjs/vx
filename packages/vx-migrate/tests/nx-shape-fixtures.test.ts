@@ -11,7 +11,7 @@ import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { type Logger, listProjectMetas, loadProjectConfig, loadWorkspace } from '@vzn/vx'
+import { type Logger, listPackages, loadProjectConfig } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
@@ -111,7 +111,7 @@ async function migrate(shape: string): Promise<{
     if (unlisted.size > 0) {
       // Follow the note: list every member, as it says to.
       await writeFile(path.join(root, 'package.json'), manifest(members.map(([, r]) => r)))
-      discovered = (await listProjectMetas(await loadWorkspace(root))).map((m) => m.name).sort()
+      discovered = (await listPackages(root)).map((m) => m.name).sort()
     }
     // Every written task plans: a config that loads can still be refused
     // when core builds the graph (a cycle, P2-22; a dropped key, P2-23).

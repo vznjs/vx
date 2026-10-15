@@ -95,15 +95,11 @@ export type { CacheLayer, RemoteCacheLayer, RunRecord, InvocationRecord } from '
 // out-of-process service/CLI needs these. `loadProjectConfig` is the RAW
 // per-file load (`vx lock` freezes exactly that); the resolved view a run
 // or `vx show` sees — plugin stages applied — is `loadResolvedProjects`
-// below. Workspace's `listProjects` re-exports as `listProjectMetas` (the
-// bare name once belonged to a metrics query).
-export { findManifestRoot, findWorkspaceRoot } from './workspace/index.js'
-export {
-  loadWorkspace,
-  loadProjectConfig,
-  listProjects as listProjectMetas,
-} from './workspace/index.js'
-export type { ProjectMeta } from './workspace/index.js'
+// below. `listPackages` and `findManifestRoot` are the package manager's
+// members and root, which an adoption tool maps from; a run reads neither.
+export { findManifestRoot, findWorkspaceRoot, listPackages } from './workspace/index.js'
+export { loadProjectConfig } from './workspace/index.js'
+export type { PackageMeta, ProjectMeta } from './workspace/index.js'
 // The run path's RESOLVED view — plugin `config` and `project` stages
 // applied — for a reader outside the CLI
 // (`@vzn/vx-schedule-history`, an embedder's task catalog). What `vx show`

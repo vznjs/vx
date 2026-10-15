@@ -74,7 +74,6 @@ function world(rnd: Rnd): World {
     projects.push({
       name,
       dir: dir === '' ? ROOT : `${ROOT}/${dir}`,
-      packageJson: { name },
       configPath: null,
       deps: manifest,
     })

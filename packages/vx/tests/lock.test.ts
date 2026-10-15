@@ -10,14 +10,14 @@
 //     semantics; the run succeeds with the locked value. It never
 //     evaluates a config.
 
-import { rm, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 20_000
-const DRIFT = `vx lock --check: "app" (packages/app/vx.config.mjs) evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n`
+const DRIFT = `vx lock --check: packages/app/vx.config.mjs evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'\n`
 
 function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-lock-' })
@@ -87,12 +87,13 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'locks a project named __proto__ as its own entry (D-152)',
+    'locks a directory named __proto__ as its own entry (D-152)',
     async () => {
       // Assigned into a plain object, the entry set the map's prototype:
       // "locked 1 project", `"projects": {}` on disk, and --check said the
       // project was not in the lock.
-      await addProject(root, '__proto__', ENV_CONFIG)
+      await mkdir(path.join(root, '__proto__'))
+      await writeFile(path.join(root, '__proto__', 'vx.config.mjs'), ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
       const lockJson = JSON.parse(
         await Bun.file(path.join(root, '.vx/projects.lock.json')).text(),
@@ -124,10 +125,17 @@ describe('vx lock (e2e)', () => {
       expect(lock.code).toBe(0)
       const lockJson = (await Bun.file(path.join(root, '.vx/projects.lock.json')).json()) as {
         version: number
-        projects: Record<string, { tasks: { build: { exec: { command: string } } } }>
+        projects: Record<
+          string,
+          { file: string; config: { tasks: { build: { exec: { command: string } } } } }
+        >
       }
-      expect(lockJson.version).toBe(2)
-      expect(lockJson.projects.app!.tasks.build.exec.command).toBe('echo flavor-a')
+      expect(lockJson.version).toBe(3)
+      const app = lockJson.projects['packages/app']!
+      expect([app.file, app.config.tasks.build.exec.command]).toEqual([
+        'vx.config.mjs',
+        'echo flavor-a',
+      ])
 
       // --check under the SAME env: fresh evaluation matches the lock.
       const checkSame = await vx(root, ['lock', '--check'], { X: 'a' })
@@ -227,19 +235,25 @@ describe('vx lock (e2e)', () => {
   )
 
   it(
-    'a config that moved and evaluates the same is still locked: the lock is keyed by name',
+    'a config renamed in its directory is a re-lock: the lock holds the file',
     async () => {
       const dir = await addProject(root, 'app', ENV_CONFIG)
       expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
       const bytes = await Bun.file(path.join(dir, 'vx.config.mjs')).bytes()
       await rm(path.join(dir, 'vx.config.mjs'))
       await writeFile(path.join(dir, 'vx.config.ts'), bytes)
-      const frozen = await vx(root, ['run', 'build', '--all', '--no-cache'], {
-        X: 'a',
-      })
-      expect(frozen.code).toBe(0)
+      const frozen = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
+      expect([frozen.code, frozen.err]).toEqual([
+        1,
+        'vx: .vx/projects.lock.json locks packages/app ("app"), but its vx.config.mjs is gone — run `vx lock`\n',
+      ])
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
-      expect([check.code, check.err]).toEqual([0, ''])
+      expect([check.code, check.err]).toEqual([
+        1,
+        "vx lock --check: packages/app/vx.config.ts is not the vx.config.mjs the lock holds for packages/app — run 'vx lock'\n",
+      ])
+      expect((await vx(root, ['lock'], { X: 'a' })).code).toBe(0)
+      expect((await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })).code).toBe(0)
     },
     TIMEOUT,
   )
@@ -278,7 +292,13 @@ describe('vx lock (e2e)', () => {
         { tasks: { build: { exec: 'x' } } },
         { tasks: { build: { exec: { command: 'x' }, cache: { inputs: { files: 'src' } } } } },
       ]) {
-        await writeFile(file, JSON.stringify({ version: 2, projects: { app } }))
+        await writeFile(
+          file,
+          JSON.stringify({
+            version: 3,
+            projects: { 'packages/app': { file: 'vx.config.mjs', config: app } },
+          }),
+        )
         const run = await vx(root, ['run', 'build', '--all', '--no-cache'], { X: 'a' })
         expect(run.code).toBe(1)
         expect(run.err + run.out).toContain(invalid)
@@ -298,7 +318,7 @@ describe('vx lock (e2e)', () => {
       const check = await vx(root, ['lock', '--check'], { X: 'a' })
       expect(check.code).toBe(1)
       expect(check.err).toBe(
-        `vx lock --check: locked project "gone" has no config in the workspace — run 'vx lock'\n`,
+        `vx lock --check: the lock holds packages/gone, which has no vx.config now — run 'vx lock'\n`,
       )
     },
     TIMEOUT,

@@ -27,6 +27,7 @@ import {
   refuseUnknownOptions,
   type PluginOptionKinds,
   type GeneratedProject,
+  type PackageMeta,
   type ProjectMeta,
   UserError,
   type VxPlugin,
@@ -54,6 +55,7 @@ export type {
 import { listDotenv } from './nx-dotenv.js'
 import { trackedKinds } from '../tracked-outputs.js'
 import { relPosix } from '../paths.js'
+import { memberProjects, withManifests } from '../manifests.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { yarnrcText } from '../script-command.js'
 
@@ -121,10 +123,12 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     cacheDir: string,
     projects: readonly ProjectMeta[],
     changes?: WorktreeChanges,
+    members: readonly DiscoveredProject[] = [],
   ) => {
     if (graphFor !== projects) {
       graphFor = projects
-      graph = loadGraph(root, cacheDir, projects, options.graph, changes)
+      const also = members.map((m) => ({ name: m.name ?? '', dir: m.dir, configPath: null }))
+      graph = loadGraph(root, cacheDir, [...projects, ...also], options.graph, changes)
     }
     return graph!
   }
@@ -166,20 +170,23 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
             workspace.cache = { ...workspace.cache, retention: { maxSize } }
         }
       },
-      // An integrated Nx repo keeps projects out of the package manager's
-      // list (analogjs: `project.json` libraries no glob names), and their
+      // The package manager's members are projects, each with no vx.config
+      // written. An integrated Nx repo keeps projects out of that list
+      // (analogjs: `project.json` libraries no glob names), and their
       // targets had nowhere to attach: 1 of 21 `build` tasks ran. Each
-      // graph node with targets at a directory core did not find is named
-      // a project, by its package.json name or else its Nx name; a name a
+      // graph node with targets at a directory neither found is named a
+      // project, by its package.json name or else its Nx name; a name a
       // project already holds stays unattached, and the mapping says so.
       async discover(ctx) {
         const root = options.root ?? ctx.workspaceRoot
+        const members = await memberProjects(ctx.workspaceRoot)
         // Core's status is the workspace's: a root elsewhere asks git itself.
         const changes = options.root === undefined ? () => ctx.worktreeChanges() : undefined
-        const { graph } = await graphOf(root, ctx.cacheDir, ctx.projects, changes)
-        const dirs = new Set(ctx.projects.map((m) => path.resolve(m.dir)))
-        const names = new Set(ctx.projects.map((m) => m.name))
-        const named: Array<{ dir: string; name: string }> = []
+        const { graph } = await graphOf(root, ctx.cacheDir, ctx.projects, changes, members)
+        const found = [...ctx.projects, ...members]
+        const dirs = new Set(found.map((m) => path.resolve(m.dir)))
+        const names = new Set(found.map((m) => m.name))
+        const named = members.map((m) => ({ dir: path.resolve(m.dir), name: m.name! }))
         for (const [nodeName, node] of Object.entries(graph.nodes)) {
           if (node?.data?.targets === undefined) continue
           const dir = path.resolve(root, node.data.root ?? '')
@@ -201,7 +208,9 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
           dirs.add(dir)
           named.push({ dir, name })
         }
-        return withGraphEdges(root, graph, dirs, named)
+        const entries = withGraphEdges(root, graph, dirs, named)
+        const covered = new Set(entries.map((e) => e.dir))
+        return [...entries, ...named.filter((n) => !covered.has(n.dir))]
       },
     },
   )
@@ -310,10 +319,11 @@ interface LoadedGraph {
 
 async function mapAll(
   root: string,
-  metas: readonly ProjectMeta[],
+  projects: readonly ProjectMeta[],
   loaded: LoadedGraph,
   executors: NxExecutors | undefined,
 ): Promise<AdoptionRun> {
+  const metas = await withManifests(projects)
   const { text, graph, notes } = loaded
   const reads = await nxReads(root, metas, text, graph, notes)
   // The mapping is cached on what it read; a translator is code it ran.
@@ -346,7 +356,7 @@ const textOf = (file: string): Promise<string> =>
  */
 async function nxReads(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   graphText: string,
   graph: NxGraph,
   notes: readonly string[],
@@ -388,7 +398,7 @@ async function nxReads(
 
 async function index(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   graph: NxGraph,
   loadNotes: readonly string[],
   trackedFiles: () => Promise<readonly string[] | null>,

@@ -40,7 +40,7 @@ export default {
 `,
   )
   await addProject(root, 'app', {
-    config: `export default { tasks: { build: { exec: { command: 'true' } }, lint: { exec: { command: 'true' } } } }`,
+    config: `export default { name: 'app', tasks: { build: { exec: { command: 'true' } }, lint: { exec: { command: 'true' } } } }`,
   })
   expect(vx(['run', 'app#build']).code).toBe(0)
   const r = vx(['history', '--format', 'json'])

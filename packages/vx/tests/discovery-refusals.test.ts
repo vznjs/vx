@@ -1,43 +1,41 @@
 // A plugin's `discover` hook names projects by `{ dir, name?, deps?, reach? }`,
-// and `discoveredProject` / `linkDiscoveredEdges` refuse what discovery
-// cannot hold: no row held any of the first six refusals. Each is compared
-// whole.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+// and `discoveredProject` / `linkDiscoveredEdges` / `checkProjectNames`
+// refuse what discovery cannot hold. Each is compared whole.
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import {
+  checkProjectNames,
   discoveredProject,
+  findProjectConfigs,
   linkDiscoveredEdges,
+  lockedProjects,
   type ProjectMeta,
-  type Workspace,
 } from '../src/workspace/workspace.js'
 
 let root: string
-let workspace: Workspace
 let known: ProjectMeta[]
 
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-named-'))
-  await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
-  await mkdir(path.join(root, 'packages', 'b'), { recursive: true })
-  await writeFile(path.join(root, 'packages', 'b', 'package.json'), '{"name":"bee"}')
-  workspace = { root, packageGlobs: ['packages/*'] }
-  known = [
-    {
-      name: 'a',
-      dir: path.join(root, 'packages', 'a'),
-      packageJson: { name: 'a' },
-      configPath: null,
-    },
-  ]
+  for (const d of ['a', 'b', 'c']) await mkdir(path.join(root, 'packages', d), { recursive: true })
 })
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
+/** `packages/a` named by its path, `packages/c` by its config. */
+function fresh(): ProjectMeta[] {
+  known = lockedProjects(root, {
+    'packages/a': { file: 'vx.config.mjs', config: {} },
+    'packages/c': { file: 'vx.config.mjs', config: { name: 'cee' } },
+  })
+  return known
+}
+
 const refusal = (named: unknown): Promise<string> =>
-  discoveredProject(workspace, known, named as { dir: string }, 'p').then(
+  discoveredProject(root, fresh(), named as { dir: string }, 'p').then(
     () => 'accepted',
     (err: Error) => err.message.replaceAll(root, '<root>'),
   )
@@ -54,26 +52,31 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
     )
   })
 
-  it('no name for a directory that is not a project', async () => {
-    expect(await refusal({ dir: 'packages/b' })).toBe(
-      `plugin 'p' named project at packages/b: not a project yet — give it a name`,
+  it('a name no task spec can address', async () => {
+    expect(await refusal({ dir: 'packages/b', name: ' b' })).toBe(
+      `plugin 'p' named project " b": the name has surrounding whitespace`,
+    )
+    expect(await refusal({ dir: 'packages/b', name: 'b#1' })).toBe(
+      `plugin 'p' named project "b#1": the name holds "#" — vx addresses a task as <name>#<task>`,
     )
   })
 
   it('an edge to a directory that is no project, or outside the root', () => {
     const link = (target: string): string => {
       try {
-        linkDiscoveredEdges(root, known, [{ by: 'p', meta: known[0]!, deps: [target], reach: [] }])
+        linkDiscoveredEdges(root, fresh(), [
+          { by: 'p', meta: known[0]!, deps: [target], reach: [] },
+        ])
         return 'accepted'
       } catch (err) {
         return (err as Error).message
       }
     }
     expect(link('packages/b')).toBe(
-      `plugin 'p' gave project "a" an edge to packages/b: not a project`,
+      `plugin 'p' gave project "packages/a" an edge to packages/b: not a project`,
     )
     expect(link('../out')).toBe(
-      `plugin 'p' gave project "a" an edge to ../out: outside the workspace root`,
+      `plugin 'p' gave project "packages/a" an edge to ../out: outside the workspace root`,
     )
   })
 
@@ -83,37 +86,81 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
     )
   })
 
-  it("another project's directory", async () => {
-    expect(await refusal({ dir: 'packages/a', name: 'other' })).toBe(
-      `plugin 'p' named project "other" at packages/a: already the project "a"`,
-    )
-  })
-
-  it("another project's name", async () => {
-    expect(await refusal({ dir: 'packages/b', name: 'a' })).toBe(
-      `plugin 'p' named project "a" at packages/b: the name is taken by packages/a`,
-    )
-  })
-
   it('a directory that does not exist', async () => {
     expect(await refusal({ dir: 'packages/none', name: 'none' })).toBe(
       `plugin 'p' named project "none" at packages/none: no such directory`,
     )
   })
 
-  it('a name its package.json does not give', async () => {
-    expect(await refusal({ dir: 'packages/b', name: 'b' })).toBe(
-      `plugin 'p' named project "b" at packages/b: its package.json names it "bee"`,
+  it('a different name for a project an earlier plugin named', async () => {
+    const metas = fresh()
+    await discoveredProject(root, metas, { dir: 'packages/a', name: 'a' }, 'first')
+    expect(
+      await discoveredProject(root, metas, { dir: 'packages/a', name: 'other' }, 'p').then(
+        () => 'accepted',
+        (err: Error) => err.message,
+      ),
+    ).toBe(`plugin 'p' named project "other" at packages/a: plugin 'first' already named it "a"`)
+  })
+
+  it('two projects of one name, naming both directories', () => {
+    const metas = fresh()
+    metas[0]!.name = 'cee'
+    expect(() => checkProjectNames(root, metas)).toThrow(
+      'two projects are named "cee": packages/a and packages/c — give one another `name` in its vx.config',
     )
   })
 
-  it('CONTROL: a directory it can hold is accepted, and one known already is no new project', async () => {
-    expect(await refusal({ dir: 'packages/b', name: 'bee' })).toBe('accepted')
-    for (const entry of [{ dir: 'packages/a', name: 'a' }, { dir: 'packages/a' }]) {
-      expect(await discoveredProject(workspace, known, entry, 'p')).toEqual({
-        meta: known[0]!,
-        added: false,
+  it('a path name holding "#", and `//` away from the root', () => {
+    const named = (rel: string, name?: string): ProjectMeta[] =>
+      lockedProjects(root, {
+        [rel]: { file: 'vx.config.mjs', config: name === undefined ? {} : { name } },
       })
+    expect(() => checkProjectNames(root, named('pkg#1'))).toThrow(
+      'pkg#1: a project is named by its path unless named, and this one holds "#" — vx addresses a task as <name>#<task> — set `name` in its vx.config',
+    )
+    expect(() => checkProjectNames(root, named('packages/a', '//'))).toThrow(
+      'packages/a: "//" names the workspace root — set another `name`',
+    )
+    // CONTROL: the root named by its path, and a `#` path a config names.
+    expect(checkProjectNames(root, named('.')).map((m) => m.name)).toEqual(['//'])
+    expect(checkProjectNames(root, named('pkg#1', 'pkg')).map((m) => m.name)).toEqual(['pkg'])
+  })
+
+  it("CONTROL: a path name takes the plugin's, a config's name stays, and a new directory is named by its path", async () => {
+    const metas = fresh()
+    const a = await discoveredProject(root, metas, { dir: 'packages/a', name: 'a' }, 'p')
+    const c = await discoveredProject(root, metas, { dir: 'packages/c', name: 'see' }, 'p')
+    const b = await discoveredProject(root, metas, { dir: 'packages/b' }, 'p')
+    expect([a.meta.name, a.added, c.meta.name, c.added, b.meta.name, b.added]).toEqual([
+      'a',
+      false,
+      'cee',
+      false,
+      'packages/b',
+      true,
+    ])
+  })
+})
+
+describe('`vx lock` finding the configs', () => {
+  it('a git that cannot list them is refused with what it said', async () => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-ls-files-'))
+    try {
+      Bun.spawnSync(['git', 'init', '-q'], { cwd: repo })
+      await Bun.write(path.join(repo, 'vx.config.mjs'), 'export default {}\n')
+      Bun.spawnSync(['git', 'add', '-A'], { cwd: repo })
+      // A torn index: git still finds the repository, and refuses to read it.
+      await Bun.write(path.join(repo, '.git', 'index'), 'DIRC')
+      const err = await findProjectConfigs(repo).then(
+        () => 'listed',
+        (e: Error) => e.message,
+      )
+      // git's own words vary by version.
+      expect(err).toStartWith('git ls-files failed (exit 128): ')
+      expect(err).toContain('index file smaller than expected')
+    } finally {
+      await rm(repo, { recursive: true, force: true })
     }
   })
 })

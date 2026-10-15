@@ -1060,15 +1060,16 @@ describe('per-package turbo.json', () => {
   )
 })
 
-describe('the mapping reads the packages core discovered', () => {
-  it('maps a package that is in ctx.projects and not on disk — the plugin never walks the workspace itself', async () => {
+describe('the mapping reads the projects the run has', () => {
+  it('maps a project in ctx.projects that no member glob lists — the project stage walks nothing itself', async () => {
     const plugin = turbo()
-    const ghost = {
-      name: 'ghost',
-      dir: path.join(root, 'packages', 'ghost'),
-      packageJson: { name: 'ghost', version: '1.0.0', scripts: { build: 'echo ghost' } },
-      configPath: null,
-    } as unknown as ProjectMeta
+    const dir = path.join(root, 'elsewhere', 'ghost')
+    await mkdir(dir, { recursive: true })
+    await writeFile(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: 'ghost', version: '1.0.0', scripts: { build: 'echo ghost' } }),
+    )
+    const ghost: ProjectMeta = { name: 'ghost', dir, configPath: null }
     const config: ProjectConfig = { tasks: {} }
     await plugin.project!(config, {
       workspaceRoot: root,
@@ -1076,7 +1077,6 @@ describe('the mapping reads the packages core discovered', () => {
       warn() {},
       name: ghost.name,
       dir: ghost.dir,
-      packageJson: ghost.packageJson as unknown as Readonly<Record<string, unknown>>,
       projects: [ghost],
     })
     expect(config.tasks?.build?.exec?.command).toBe('echo ghost')
@@ -1293,8 +1293,8 @@ describe('turbo(): the mapping cache', () => {
 
 // Every run reads configs from the lock, on real Turbo repos too: the
 // plugin's tasks are no vx.config, so the lock records none of them and a
-// run maps turbo.json live. A config written after the lock is a project the
-// lock lacks, and a run refuses it rather than evaluating it.
+// run maps turbo.json live. A config written after the lock waits for
+// `vx lock`: the run maps the package as before, and `--check` names it.
 describe('turbo() under vx lock', () => {
   const vx = (...args: string[]) => {
     const p = Bun.spawnSync({
@@ -1310,7 +1310,7 @@ describe('turbo() under vx lock', () => {
   }
 
   it(
-    'locks, runs from the lock, hits on the second run, and refuses a config the lock lacks',
+    'locks, runs from the lock, hits on the second run, and runs no config the lock lacks',
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
@@ -1327,12 +1327,16 @@ describe('turbo() under vx lock', () => {
       expect(second.out).toContain('3 up-to-date')
       await writeFile(
         path.join(root, 'packages', 'lib', 'vx.config.mjs'),
-        'export default { tasks: { build: { command: "true" } } }\n',
+        'export default { tasks: { build: { exec: { command: "true" } } } }\n',
       )
-      expect(vx('run', 'build', '--all')).toEqual({
+      const third = vx('run', 'build', '--all')
+      // The new file is an input of the mapped build, which re-runs; the config is not read.
+      expect({ code: third.code, err: third.err }).toEqual({ code: 0, err: '' })
+      expect(third.out).toContain('lib#build')
+      expect(vx('lock', '--check')).toEqual({
         code: 1,
         out: '',
-        err: 'vx: .vx/projects.lock.json has no entry for "lib" (packages/lib/vx.config.mjs) — run `vx lock`\n',
+        err: "vx lock --check: packages/lib/vx.config.mjs is not in the lock — run 'vx lock'\n",
       })
     },
     TIMEOUT,

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 
 let root: string
@@ -18,7 +18,7 @@ afterEach(async () => {
 
 it('a directory pattern in `projects` reaches the projects under it', async () => {
   const at = { app: 'apps/app', ui: 'libs/ui', util: 'libs/util' } as const
-  const metas: ProjectMeta[] = []
+  const metas: PackageMeta[] = []
   for (const [name, rel] of Object.entries(at)) {
     const dir = path.join(root, rel)
     await mkdir(dir, { recursive: true })

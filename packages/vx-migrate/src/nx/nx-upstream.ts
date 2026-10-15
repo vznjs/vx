@@ -16,7 +16,7 @@
 // goes on through it. Nx allows a project cycle and vx's task graph does
 // not: inside a cycle a twin carries its peers' files as workspace globs
 // and edges only out of the cycle.
-import type { GeneratedTask, ProjectMeta } from '@vzn/vx'
+import type { GeneratedTask, PackageMeta } from '@vzn/vx'
 import { emptyNxInputs, expandNxInputs, type NxInputs } from './nx-inputs.js'
 import { nxProjectOutputs } from './nx-outputs.js'
 import { matchNxProjects } from './nx-deps.js'
@@ -70,7 +70,7 @@ export function planNxUpstream(
   nodes: Readonly<Record<string, GraphNode>>,
   dependencies: unknown,
   workspaceNamed: Readonly<Record<string, unknown[]>> | null,
-  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  metaByNode: ReadonlyMap<string, PackageMeta>,
 ): NxUpstream {
   const isProject = (n: string): boolean => typeof nodes[n]?.data?.root === 'string'
   const projectTags = Object.entries(nodes).map(([name, n]) => ({

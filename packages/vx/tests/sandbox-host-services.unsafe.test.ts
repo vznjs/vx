@@ -56,7 +56,7 @@ describe.skipIf(!available)('a sandboxed task and the host’s services', () => 
     await writeFile(path.join(ws, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
     await writeFile(
       path.join(ws, 'packages', 'a', 'vx.config.mjs'),
-      `export default { tasks: {
+      `export default { name: 'a', tasks: {
   tcp: { exec: { command: ${JSON.stringify(probe(tcpProbe))}, sandbox: { allow: { read: ['.'] } } } },
   unix: { exec: { command: ${JSON.stringify(probe(unixProbe))}, sandbox: { allow: { read: ['.'] } } } },
 } }

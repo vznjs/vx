@@ -6,7 +6,7 @@ One code path for "which tasks exist, resolved": `prepareRun` (a run,
 a plan) and `vx show` both call `loadProjects`, so what `show` prints
 is what a run would see — the plugin `config` and `project` stages
 included. Before this, `show` read config files raw and printed
-`(no vx config)` for a package `turbo()` gives tasks to.
+`(no vx config)` for a project `turbo()` gives tasks to.
 
 `loadWorkspacePlugins` runs the `config` stage on a copy of the
 workspace file's export (its plugins kept as they are): the export is one
@@ -30,10 +30,12 @@ export function loadWorkspacePlugins(
   warn: (m: string) => void,
 ): Promise<{ workspaceConfig: WorkspaceConfig | null; plugins: readonly VxPlugin[] }>
 
-// listProjects, then the plugin `discover` stage (skipped when no plugin has
-// it), then its edges onto the metas (linkDiscoveredEdges)
+// The lock's directories (lockedProjects; a run never walks for configs),
+// then the plugin `discover` stage (skipped when no plugin has it), its
+// edges onto the metas (linkDiscoveredEdges), then checkProjectNames
 export function discoverProjects(
-  workspace: Workspace,
+  workspaceRoot: string,
+  lock: () => Promise<Lockfile>,
   plugins: readonly VxPlugin[],
   cacheDir: string,
   warn: (m: string) => void,
@@ -41,6 +43,10 @@ export function discoverProjects(
 ): Promise<ProjectMeta[]>
 // The enumeration a discovery's hooks shared, by the array it returned (G-75).
 export function gitOfDiscovery(projects: readonly ProjectMeta[]): LazyGitEnumeration | undefined
+// The lock that discovery read, by the same array: a later config load reads no second copy.
+export function lockOfDiscovery(
+  projects: readonly ProjectMeta[],
+): (() => Promise<Lockfile>) | undefined
 // The package graph a selection pass built over that array with no task edge
 // in it: the graph a run reusing the discovery would build again.
 export function keepDiscoveryGraph(projects: readonly ProjectMeta[], graph: PackageGraph): void
@@ -77,8 +83,9 @@ export function lockReader(workspaceRoot: string): () => Promise<Lockfile>
 ## Algorithm
 
 1. **Who can carry tasks.** A project with a config file; and, when
-   any plugin declares `project`, every package — it loads as
-   `{ tasks: {} }` for the stage to fill. `configured` is that set.
+   any plugin declares `project`, every project — one a `discover`
+   plugin added, with no config, loads as `{ tasks: {} }` for the stage
+   to fill. `configured` is that set.
    Boundary geometry fences every workspace project, configured or not
    (`prepare.ts`, X-57).
 2. **Seeds.** `'all'` is `configured`; named seeds load as named. With

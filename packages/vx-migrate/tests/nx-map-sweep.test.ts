@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { UserError, type GeneratedTask, type ProjectMeta } from '@vzn/vx'
+import { UserError, type GeneratedTask, type PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph, readNxJsonFacts, type NxGraph } from '../src/nx/nx-map.js'
 import { trackedKinds } from '../src/tracked-outputs.js'
 
@@ -18,7 +18,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-async function meta(name: string, scripts: Record<string, string> = {}): Promise<ProjectMeta> {
+async function meta(name: string, scripts: Record<string, string> = {}): Promise<PackageMeta> {
   const dir = path.join(root, 'packages', name)
   await mkdir(dir, { recursive: true })
   const packageJson = { name, scripts }
@@ -32,7 +32,7 @@ const node = (rootRel: string, targets: Record<string, unknown>, name?: string) 
 })
 
 async function tasksOf(
-  metas: ProjectMeta[],
+  metas: PackageMeta[],
   nodes: Record<string, unknown>,
   dependencies: unknown = {},
 ): Promise<Map<string, GeneratedTask>> {
@@ -286,7 +286,7 @@ describe('nx-map: what the sweep found unheld', () => {
   // already reaches (`listed`) is vx's `^` edge alone, and an `npm:` node is
   // no project.
   it('`^target` follows the Nx graph: explicit edges, through a project that lacks the target', async () => {
-    const metas: ProjectMeta[] = []
+    const metas: PackageMeta[] = []
     const nodes: Record<string, unknown> = {}
     const targets: Record<string, Record<string, unknown>> = {
       e2e: { typecheck: { command: 'tsc', dependsOn: ['^typecheck'] } },
@@ -767,7 +767,7 @@ describe('nx-map: a workspace output two projects declare', () => {
       outputs: [out],
     })
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'repo' }))
-    const repo: ProjectMeta = {
+    const repo: PackageMeta = {
       name: 'repo',
       dir: root,
       packageJson: { name: 'repo' } as never,

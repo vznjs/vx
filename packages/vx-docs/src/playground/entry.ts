@@ -3,8 +3,9 @@
 // in item 695).
 //
 // Everything below the shim is core's own source, bundled unchanged:
-// discovery (`loadWorkspace`, `listProjects`), the package graph over the
-// page's edges (edges.ts), the staged-config load (`loadProjects`), config
+// the config walk `vx lock` makes (`findProjectConfigs`), discovery with the
+// page's `discover` source in it (edges.ts), the project graph, the
+// config load from the lock that walk makes (`loadProjects`), config
 // validation, the task graph, the
 // git-enumeration partition, `plan()` with the real key fold (`foldKey`)
 // and the scheduler. What this
@@ -24,11 +25,11 @@ import { relPosix } from '../../../vx/src/util/index.js'
 import {
   buildPackageGraph,
   computeNestedProjectDirs,
-  linkDiscoveredEdges,
-  listProjects,
-  loadWorkspace,
+  findProjectConfigs,
+  LOCKFILE_VERSION,
+  lockKey,
   validateProjectConfig,
-  type ProjectEntry,
+  type Lockfile,
 } from '../../../vx/src/workspace/index.js'
 import {
   buildTaskGraph,
@@ -38,7 +39,8 @@ import {
   type TaskNode,
 } from '../../../vx/src/graph/index.js'
 import { computeReverseDepCount } from '../../../vx/src/graph/priorities.js'
-import { loadProjects } from '../../../vx/src/orchestrator/projects.js'
+import { discoverProjects, loadProjects } from '../../../vx/src/orchestrator/projects.js'
+import type { VxPlugin } from '../../../vx/src/orchestrator/plugin.js'
 import { plan } from '../../../vx/src/orchestrator/plan.js'
 import { createHashCache, type TaskInputComponent } from '../../../vx/src/orchestrator/task-hash.js'
 import { manifestEdges } from './edges.js'
@@ -52,7 +54,7 @@ export interface PlaygroundInput {
   root: string
   /** Root-relative path → contents. */
   files: Record<string, string>
-  /** Project name → its evaluated `vx.config` default export. */
+  /** Root-relative config file → its evaluated `vx.config` default export. */
   configs: Record<string, unknown>
   /** The environment `cache.inputs.env` reads. */
   env: Record<string, string>
@@ -144,8 +146,9 @@ export interface PlaygroundProject {
 
 /**
  * The workspace's projects as core discovers them, so the page evaluates
- * the config file core would load (its name precedence included) under the
- * name core gives the project.
+ * the config file core would load (its name precedence included). The name
+ * is the one discovery gives before any config is read: a config's own
+ * `name` wins over it.
  */
 export function listPlaygroundProjects(
   input: Pick<PlaygroundInput, 'root' | 'files'>,
@@ -157,11 +160,30 @@ async function discover(
   input: Pick<PlaygroundInput, 'root' | 'files'>,
 ): Promise<PlaygroundProject[]> {
   useVfs(new Vfs(input.root, input.files))
-  const metas = await listProjects(await loadWorkspace(input.root))
+  const found = await findProjectConfigs(input.root)
+  const lock: Lockfile = { version: LOCKFILE_VERSION, projects: {} }
+  for (const f of found)
+    lock.projects[lockKey(input.root, f.dir)] = { file: basename(f.configPath), config: {} }
+  const metas = await discoverMetas(input.root, lock)
   return metas.map((m) => ({
     name: m.name,
     configFile: m.configPath === null ? null : m.configPath.slice(input.root.length + 1),
   }))
+}
+
+const warn = (m: string): void => console.warn(m)
+const CACHE_DIR = (root: string): string => `${root}/.vx/cache`
+const basename = (p: string): string => p.slice(p.lastIndexOf('/') + 1)
+
+/** The page's one `discover` source (edges.ts), as the CLI declares it in the parity test. */
+const PAGE_PLUGIN = {
+  name: 'playground',
+  discover: (ctx: { projects: ReadonlyArray<{ dir: string }> }) => manifestEdges(ctx.projects),
+} as unknown as VxPlugin
+
+/** Core's discovery over `lock`: its projects, then the page's `discover` stage. */
+function discoverMetas(root: string, lock: Lockfile): ReturnType<typeof discoverProjects> {
+  return discoverProjects(root, async () => lock, [PAGE_PLUGIN], CACHE_DIR(root), warn)
 }
 
 export function planPlayground(input: PlaygroundInput): Promise<PlaygroundResult> {
@@ -179,41 +201,25 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
   for (const [abs, bytes] of vfs.files)
     trusted.set(abs.slice(root.length + 1), await blobOid(bytes))
 
-  const workspace = await loadWorkspace(root)
-  const metas = await listProjects(workspace)
-  // The `discover` stage with the page's one edge source in it.
-  const byDir = new Map(metas.map((m) => [m.dir, m]))
-  linkDiscoveredEdges(
-    root,
-    metas,
-    manifestEdges(metas).map((e) => ({
-      by: 'playground',
-      meta: byDir.get(e.dir)!,
-      deps: e.deps,
-      reach: [],
-    })),
-  )
-  const packageGraph = buildPackageGraph(metas)
-  const staged = new Map<string, ProjectEntry>()
-  for (const meta of metas) {
-    if (meta.configPath === null) continue
-    const config = structuredClone(input.configs[meta.name]) as ProjectConfig
-    validateProjectConfig(config, meta.configPath)
-    staged.set(meta.name, { name: meta.name, dir: meta.dir, config })
+  // The lock `vx lock` would write: every config found, each one checked.
+  const lock: Lockfile = { version: LOCKFILE_VERSION, projects: {} }
+  for (const f of await findProjectConfigs(root)) {
+    const config = structuredClone(input.configs[relPosix(root, f.configPath)]) as ProjectConfig
+    validateProjectConfig(config, f.configPath)
+    lock.projects[lockKey(root, f.dir)] = { file: basename(f.configPath), config }
   }
-  const warn = (m: string): void => console.warn(m)
+  const metas = await discoverMetas(root, lock)
+  const packageGraph = buildPackageGraph(metas)
   const { projects } = await loadProjects({
     workspaceRoot: root,
-    cacheDir: `${root}/.vx/cache`,
+    cacheDir: CACHE_DIR(root),
     plugins: [],
     projectMetas: metas,
     packageGraph,
     seeds: 'all',
     closure: true,
-    // Every config is staged, so the lock is never asked.
-    configs: async () => ({ version: 2, projects: {} }),
+    configs: async () => lock,
     warn,
-    staged,
   })
   const nestedDirsByProject = computeNestedProjectDirs(metas)
   const candidates = [...projects.keys()]

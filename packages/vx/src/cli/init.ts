@@ -24,11 +24,11 @@ import {
 } from '../util/index.js'
 import {
   applyMigration,
-  discoverProjects,
+  discoverPackages,
   findManifestRoot,
   findWorkspaceRoot,
   type LoadReads,
-  loadWorkspace,
+  loadPackageWorkspace,
   migrateScripts,
   WORKSPACE_CONFIG_FILENAMES,
 } from '../workspace/index.js'
@@ -119,8 +119,8 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     throw err
   })
   const nameless: string[] = []
-  const workspace = await loadWorkspace(root, reads)
-  const metas = await discoverProjects(workspace, nameless)
+  const workspace = await loadPackageWorkspace(root, reads)
+  const metas = await discoverPackages(workspace, nameless)
   // `init` reads scripts only; a runner's own config beside them is the
   // richer source (dependsOn, inputs, outputs) and was ignored without a
   // word — the walkthrough on a Turbo repo (2026-09-09) got the scripts'
@@ -635,7 +635,7 @@ async function initRoot(reads: LoadReads): Promise<string> {
   // .vx/workspace.ts made init report the outer configs and write nothing.
   const manifest = await findManifestRoot(cwd, reads).catch(() => marked)
   if (manifest.startsWith(`${marked}${path.sep}`)) {
-    const nested = await loadWorkspace(manifest, reads).catch(() => undefined)
+    const nested = await loadPackageWorkspace(manifest, reads).catch(() => undefined)
     if (nested !== undefined && nested.packageGlobs.length > 0) return manifest
   }
   return marked

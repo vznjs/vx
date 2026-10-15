@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { gitIn, gitInitCommit } from './helpers/workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from './helpers/orchestrator.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const silent: Logger = {
   status: () => undefined,
@@ -26,7 +27,7 @@ let root: string
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-taint-'))
   await writeFile(path.join(root, 'package.json'), '{"name":"fixture","workspaces":["packages/*"]}')
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   const dir = path.join(root, 'packages', 'p')
   await mkdir(path.join(dir, 'src'), { recursive: true })
   await writeFile(path.join(dir, 'package.json'), '{"name":"p"}')

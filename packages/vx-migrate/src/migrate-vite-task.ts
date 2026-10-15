@@ -2,14 +2,14 @@
 // `run` block (vite-plus's `vp run`) and its package.json scripts, as a
 // migration plan.
 
-import { type MigrationFormat, type MigrationPlan, type ProjectMeta } from '@vzn/vx'
+import { type MigrationFormat, type MigrationPlan, type PackageMeta } from '@vzn/vx'
 import { spelledNames } from './spelled-env.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { mapViteTaskWorkspace, viteTaskProjects } from './vite-task/vite-task-map.js'
 
 export async function migrateViteTask(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   format: MigrationFormat = 'ts',
 ): Promise<MigrationPlan> {
   const withRoot = await viteTaskProjects(root, metas)

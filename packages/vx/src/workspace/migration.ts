@@ -10,8 +10,13 @@ import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
 import { DOT_VX_GITIGNORE, executablePath, gitEnv, relPosix, UserError } from '../util/index.js'
-import type { ProjectMeta } from './workspace.js'
-import { loadWorkspace, reachesManifest, unreachedHint, unreachedPackages } from './workspace.js'
+import {
+  loadPackageWorkspace,
+  type PackageMeta,
+  reachesManifest,
+  unreachedHint,
+  unreachedPackages,
+} from './packages.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
 /**
@@ -233,7 +238,7 @@ export interface MigrationPlan {
 
 export interface ApplyMigrationArgs {
   root: string
-  metas: readonly ProjectMeta[]
+  metas: readonly PackageMeta[]
   plan: MigrationPlan
   /** Named in the report and the generated header, e.g. `turbo.json`. */
   source: string
@@ -446,7 +451,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const report: string[] = []
   // Single-project mode with packages the root's missing `workspaces` never
   // reaches: the scripts exist, the globs do not (item 248).
-  const workspace = empty ? await loadWorkspace(root) : undefined
+  const workspace = empty ? await loadPackageWorkspace(root) : undefined
   const unreached = workspace === undefined ? [] : await unreachedPackages(workspace)
   // Globs that reach no package: "no scripts" was true and named nothing
   // to fix (M-42).
@@ -813,7 +818,7 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
  */
 function projectConfigName(
   dir: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   format: MigrationFormat,
 ): string {
   if (format !== 'ts' || !existsSync(path.join(dir, 'tsconfig.json'))) return `vx.config.${format}`

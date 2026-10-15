@@ -11,6 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
+import { workspaceWith } from './helpers/local-workspace.js'
 import type { Logger } from '../src/orchestrator/index.js'
 import { run } from './helpers/orchestrator.js'
 import { parseRunArgs } from '../src/cli/run.js'
@@ -49,10 +50,7 @@ async function makeWorkspace(): Promise<Fixture> {
 
 /** Rewrite the workspace file with `fields` (object-literal body) plus the local plugins. */
 async function setWorkspace(root: string, fields: string): Promise<void> {
-  await Bun.write(
-    path.join(root, '.vx/workspace.mjs'),
-    `export default { run: { ${fields} }, plugins: [] }\n`,
-  )
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), workspaceWith(`run: { ${fields} }`))
 }
 
 /** A task that sleeps well past any timeout under test, so a kill is the only

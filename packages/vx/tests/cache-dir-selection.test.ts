@@ -12,8 +12,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { lock } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { loadCliProjects } from '../src/cli/workspace-config.js'
-import { listProjects, loadWorkspace } from '../src/workspace/index.js'
+import { discoverCliProjects, loadCliProjects } from '../src/cli/workspace-config.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { summarized } from './helpers/parity.js'
 
@@ -191,7 +190,7 @@ describe('the run’s --cache-dir reaches selection', () => {
   })
 
   it('loadCliProjects opens no cache, at the given dir or the workspace default', async () => {
-    const metas = await listProjects(await loadWorkspace(root))
+    const metas = await discoverCliProjects(root)
     const staged = await loadCliProjects(root, metas, 'all', { cacheDir: elsewhere })
     expect([...staged.keys()]).toEqual(['app'])
     expect(existsSync(path.join(elsewhere, 'cache.db'))).toBe(false)

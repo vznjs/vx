@@ -2,16 +2,19 @@
 // with strace: the syscalls naming each path, in vx's own process (its git
 // children are dropped). `load-reads.test.ts` counts what vx ASKS for; this
 // counts what happens, Bun's module loader included. A run reads each
-// project's config from `.vx/projects.lock.json` (owner, 2026-10-14), so it never
-// opens a `vx.config.*` and Bun's resolver never visits the project.
+// project's directory and config from `.vx/projects.lock.json` (owner,
+// 2026-10-14), so it never opens a `vx.config.*`, Bun's resolver never
+// visits the project, and core reads no package-manager file.
 //
 // The rows name what stays and why, so a Bun upgrade that moves a count
 // fails here with the reason beside it:
-//   - `package.json` and the project directory once each: discovery;
+//   - the project's config one stat: a locked config that is gone is
+//     refused, not run as locked (X-144). It replaced a member's
+//     `package.json` read and its directory listing;
+//   - the root `package.json` once: `packageManager`, for the
+//     `npm_execpath` a task's shell gets;
 //   - `.vx/workspace.mjs` three times: a probe, vx's read and Bun's. Serving
 //     it measured 0.3 ms slower (the parser's first use), so Bun reads it;
-//   - `pnpm-workspace.yaml` twice: a probe and one read for the root, the
-//     globs and the fingerprint (it was three of each);
 //   - `.vx/projects.lock.json` twice: `readLockfile`'s exists probe and its read.
 // Linux only (strace). CI's Linux job sets VX_REQUIRE_SANDBOX and installs
 // strace for the sandbox; without strace there it fails instead of skipping.
@@ -133,11 +136,12 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
     async () => {
       for (const name of ['cold', 'warm']) {
         const run = await tracedRun(name)
-        expect(run('packages/a/vx.config.mjs')).toEqual([])
-        expect(run('packages/a/package.json')).toEqual(['openat'])
-        expect(run('packages/a')).toEqual(['openat'])
+        expect(run('packages/a/vx.config.mjs')).toEqual(['newfstatat'])
+        expect(run('packages/a/package.json')).toEqual([])
+        expect(run('packages/a')).toEqual([])
         expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
-        expect(run('pnpm-workspace.yaml')).toEqual(['newfstatat', 'openat'])
+        expect(run('pnpm-workspace.yaml')).toEqual([])
+        expect(run('package.json')).toEqual(['openat'])
         expect(run('.vx/projects.lock.json')).toEqual(['newfstatat', 'openat'])
       }
     },

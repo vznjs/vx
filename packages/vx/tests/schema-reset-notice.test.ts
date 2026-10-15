@@ -12,6 +12,7 @@ import { run } from './helpers/orchestrator.js'
 import { run as cli } from './helpers/cli.js'
 import { SCHEMA_VERSION } from '../src/cache/index.js'
 import { formatBytes } from '../src/util/index.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 let root: string
 const origCwd = process.cwd()
@@ -105,7 +106,7 @@ describe('an upgrade resets the cache in silence', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-schema-reset-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     const app = path.join(root, 'packages', 'app')
     await mkdir(path.join(app, 'src'), { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))

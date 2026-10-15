@@ -63,17 +63,18 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
 
 ## Steps
 
-1. **Workspace discovery** — `findWorkspaceRoot`, `loadWorkspace`,
-   `listProjects`, sharing one `LoadReads` with the fingerprint in
-   step 4 so the root manifest is read once per run; the workspace config arrives evaluated and with the
-   `config` stage applied (`RunOptions`, from `cli/workspace-config.ts`),
-   and `loadWorkspacePlugins` gives the declared plugin list.
+1. **Workspace discovery** — `findWorkspaceRoot`, then
+   `discoverProjects`: the directories `.vx/projects.lock.json` records
+   and the plugin `discover` stage (a run never walks for configs); the
+   workspace config arrives evaluated and with the `config` stage
+   applied (`RunOptions`, from `cli/workspace-config.ts`), and
+   `loadWorkspacePlugins` gives the declared plugin list.
 2. **Project config load** — `loadProjects` ([`projects.md`](./projects.md)),
    the load `vx show` shares: scoped to the seeds and their package
    closure, from the lock, through the plugin
-   `project` stage. Projects without configs are kept in the
-   workspace graph (for cross-package dep edges) but contribute no
-   tasks — unless a plugin fills the `project` stage.
+   `project` stage. A project a `discover` plugin added has no config:
+   it is kept in the graph (for its edges) and contributes no tasks
+   unless a plugin fills the `project` stage, or the default `build`.
 3. **Package + task structure** — `buildPackageGraph`,
    `computeNestedProjectDirs`, `expandRequested` (plus
    `unresolvedRequests`, the same predicate run in reverse to name the

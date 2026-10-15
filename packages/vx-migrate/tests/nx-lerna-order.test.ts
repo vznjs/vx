@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { type Logger, type ProjectMeta } from '@vzn/vx'
+import { type Logger, type PackageMeta } from '@vzn/vx'
 import { planRun } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
@@ -23,7 +23,7 @@ const script = (name: string) => ({ executor: 'nx:run-script', options: { script
 
 async function deps(files: Record<string, string>, bNx?: unknown) {
   for (const [rel, text] of Object.entries(files)) await writeFile(path.join(root, rel), text)
-  const metas: ProjectMeta[] = []
+  const metas: PackageMeta[] = []
   for (const name of ['a', 'b']) {
     const dir = path.join(root, 'packages', name)
     await mkdir(dir, { recursive: true })

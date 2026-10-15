@@ -619,7 +619,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         // The loader spells `//` as the root project's name when there is one.
         if (spec.project === '//')
           throw new UserError(
-            `${id}: dependsOn //#${spec.task}, Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config with that task`,
+            `${id}: dependsOn //#${spec.task}, the workspace root's task, but the root declares no such task: add a vx.config at the root declaring it and run \`vx lock\``,
             'VX_E_DEPENDS_ON',
           )
         throw new UserError(

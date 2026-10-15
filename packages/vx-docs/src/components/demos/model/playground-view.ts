@@ -81,12 +81,23 @@ export async function runPlayground(planner: Planner, input: RunInput): Promise<
   const evaluated = await Promise.all(
     withConfig.map((p) => planner.evaluateConfig(input.files[p.configFile]!, EVAL_DEADLINE_MS)),
   )
+  // By file for the planner, by the name the run gives for the page: a
+  // config's own `name` wins over discovery's.
+  const byFile: Record<string, unknown> = {}
   const configs: Record<string, unknown> = {}
+  const named = new Map<string, number>()
   const errors: string[] = []
   for (const [i, p] of withConfig.entries()) {
     const r = evaluated[i]!
-    if (r.ok) configs[p.name] = r.config
-    else errors.push(`${p.name} (${p.configFile}): ${r.error}`)
+    if (!r.ok) {
+      errors.push(`${p.name} (${p.configFile}): ${r.error}`)
+      continue
+    }
+    const own = (r.config as { name?: unknown } | null)?.name
+    const name = typeof own === 'string' ? own : p.name
+    byFile[p.configFile] = r.config
+    configs[name] = r.config
+    named.set(name, fileOrderOf(input.files, p.configFile))
   }
   if (errors.length > 0) return { ok: false, errors }
 
@@ -95,7 +106,7 @@ export async function runPlayground(planner: Planner, input: RunInput): Promise<
     result = await planner.planPlayground({
       root,
       files: input.files,
-      configs,
+      configs: byFile,
       env: input.env,
       tasks: input.tasks,
       cached: [...input.cached],
@@ -111,8 +122,7 @@ export async function runPlayground(planner: Planner, input: RunInput): Promise<
   if (result.unresolvedTasks.length > 0) return undeclared(result.unresolvedTasks)
   if (result.tasks.length === 0) return undeclared(input.tasks)
 
-  const fileOrder = Object.keys(input.files)
-  const projectRank = new Map(withConfig.map((p) => [p.name, fileOrder.indexOf(p.configFile)]))
+  const projectRank = named
   const taskRank = (t: PlaygroundTask): number =>
     Object.keys(taskConfigs(configs[t.project])).indexOf(t.task)
   const tasks = [...result.tasks].sort(
@@ -126,6 +136,9 @@ export async function runPlayground(planner: Planner, input: RunInput): Promise<
     cached: new Set([...input.cached, ...tasks.map((t) => t.hash)]),
   }
 }
+
+const fileOrderOf = (files: Record<string, string>, file: string): number =>
+  Object.keys(files).indexOf(file)
 
 export type KeyChange = 'new' | 'moved' | 'same'
 

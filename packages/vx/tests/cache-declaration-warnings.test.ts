@@ -9,6 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { run } from './helpers/orchestrator.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 let root: string
 
@@ -49,7 +50,7 @@ describe('cache declarations that match nothing', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-decl-warn-'))
     await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r', private: true }))
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
     const app = path.join(root, 'packages', 'app')
     await mkdir(path.join(app, 'src'), { recursive: true })
     await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))

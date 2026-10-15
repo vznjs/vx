@@ -6,10 +6,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { affectedProjects, defaultAffectedBase, refIsHead } from '../src/workspace/affected.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
-import { listProjects, loadWorkspace, LOCKFILE_NAME } from '../src/workspace/index.js'
+import { LOCKFILE_NAME } from '../src/workspace/index.js'
 import { workspaceGlobOwners } from '../src/cli/select.js'
-import { loadCliProjects } from '../src/cli/workspace-config.js'
-import { PLUGIN_IMPORT, pluginSource, testPlugin } from './helpers/plugin.js'
+import { discoverCliProjects, loadCliProjects } from '../src/cli/workspace-config.js'
+import { PLUGIN_IMPORT, packagesSource, pluginSource, testPlugin } from './helpers/plugin.js'
 import { claimedAffected } from '../src/orchestrator/index.js'
 import { lock } from './helpers/orchestrator.js'
 import type { FingerprintContext, VxPlugin } from '../src/index.js'
@@ -17,7 +17,7 @@ import { UserError } from '../src/util/index.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 import { declaresInput, startGitEnumeration } from '../src/cache/index.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 
 async function git(cwd: string, ...args: string[]): Promise<void> {
   // -c commit.gpgsign=false defends against environments (CI sandboxes,
@@ -109,13 +109,11 @@ describe('affectedProjects', () => {
         name: 'a',
         dir: path.join(root, 'packages/a'),
         configPath: null,
-        packageJson: { name: 'a' },
       },
       {
         name: 'b',
         dir: path.join(root, 'packages/b'),
         configPath: null,
-        packageJson: { name: 'b' },
       },
     ]
 
@@ -170,7 +168,6 @@ describe('affectedProjects', () => {
         name: 'c',
         dir: path.join(root, 'packages/c'),
         configPath: null,
-        packageJson: { name: 'c' },
       },
     ]
     await writeFile(path.join(root, 'ext/c/file.txt'), 'c-changed')
@@ -433,10 +430,7 @@ describe('affectedProjects', () => {
     // `git add` of an embedded repository records a gitlink — what a submodule is.
     await git(root, 'add', 'vendor/sub')
     await git(root, 'commit', '-q', '-m', 'gitlink')
-    const nested = [
-      ...projects,
-      { name: 'c', dir: subC, configPath: null, packageJson: { name: 'c' } },
-    ]
+    const nested = [...projects, { name: 'c', dir: subC, configPath: null }]
     // Control: a clean tree selects nothing, and a change beside it only its own project.
     expect([
       ...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: nested })),
@@ -472,10 +466,7 @@ describe('affectedProjects', () => {
     await mkdir(nestedD, { recursive: true })
     await writeFile(path.join(nestedD, 'file.txt'), 'd')
     await git(path.join(root, 'vendor/nested'), 'init', '-q')
-    const withD = [
-      ...nested,
-      { name: 'd', dir: nestedD, configPath: null, packageJson: { name: 'd' } },
-    ]
+    const withD = [...nested, { name: 'd', dir: nestedD, configPath: null }]
     expect(
       [...(await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: withD }))].sort(),
     ).toEqual(['c', 'd'])
@@ -497,39 +488,33 @@ describe('affectedProjects', () => {
   })
 
   it('a new nested project selects the project it took files from (D-1)', async () => {
-    // `a`'s inputs stop at every project below it, so a manifest that makes
+    // `a`'s inputs stop at every project below it, so a config that makes
     // `packages/a/sub` a project re-keys `a` while containment maps the
     // change to `sub` alone.
     await mkdir(path.join(root, 'packages/a/sub'), { recursive: true })
     await writeFile(path.join(root, 'packages/a/sub/data.txt'), 'data')
-    await writeFile(path.join(root, 'packages/a/sub/package.json'), JSON.stringify({}))
     await git(root, 'add', '-A')
     await git(root, 'commit', '-q', '-m', 'sub')
     const sub: ProjectMeta = {
       name: 'sub',
       dir: path.join(root, 'packages/a/sub'),
-      configPath: null,
-      packageJson: { name: 'sub' },
+      configPath: path.join(root, 'packages/a/sub/vx.config.mjs'),
     }
     const select = () =>
       affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: [...projects, sub] }).then(
         (s) => [...s].sort(),
       )
-    // Control: an edit to a manifest that already named a project.
-    await writeFile(path.join(root, 'packages/a/sub/package.json'), JSON.stringify({ name: 'sub' }))
-    await git(root, 'commit', '-q', '-am', 'name sub')
-    await writeFile(
-      path.join(root, 'packages/a/sub/package.json'),
-      JSON.stringify({ name: 'sub', version: '2' }),
-    )
+    const config = (body: string) =>
+      writeFile(path.join(root, 'packages/a/sub/vx.config.mjs'), `export default ${body}\n`)
+    // A config at the base made it a project already: an edit is sub's alone.
+    await config('{}')
+    await git(root, 'add', '-A')
+    await git(root, 'commit', '-q', '-m', 'sub config')
+    await config('{ tags: [] }')
     expect(await select()).toEqual(['sub'])
-    // A nameless manifest at the base was no project, and a missing one neither.
-    await git(root, 'checkout', '-q', 'HEAD~1', '--', 'packages/a/sub/package.json')
-    await git(root, 'commit', '-q', '-m', 'unname sub')
-    await writeFile(path.join(root, 'packages/a/sub/package.json'), JSON.stringify({ name: 'sub' }))
-    expect(await select()).toEqual(['a', 'sub'])
-    await git(root, 'rm', '-q', '--cached', 'packages/a/sub/package.json')
-    await git(root, 'commit', '-q', '-m', 'drop sub manifest')
+    // A config the base did not have is a new project: `a` lost its files.
+    await git(root, 'rm', '-q', '--cached', 'packages/a/sub/vx.config.mjs')
+    await git(root, 'commit', '-q', '-m', 'drop sub config')
     expect(await select()).toEqual(['a', 'sub'])
   })
 
@@ -543,10 +528,7 @@ describe('affectedProjects', () => {
     // The root is a project here, so a root-level file edit WOULD map to
     // it — proving the exclusion is the lock filter, not "root isn't a
     // project". A README edit at root still marks it; .vx/projects.lock.json never.
-    const withRoot: ProjectMeta[] = [
-      ...projects,
-      { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
-    ]
+    const withRoot: ProjectMeta[] = [...projects, { name: 'root', dir: root, configPath: null }]
     // Commit both root files so `git diff` (tracked changes only) can see
     // edits to them.
     await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":1}')
@@ -593,7 +575,6 @@ describe('affectedProjects', () => {
         name: 'inner',
         dir: path.join(root, 'packages/a/inner'),
         configPath: null,
-        packageJson: { name: 'inner' },
       },
     ]
     await writeFile(path.join(root, 'packages/a/inner/file.txt'), 'inner-changed')
@@ -619,7 +600,6 @@ describe('affectedProjects', () => {
       name,
       dir: path.join(root, 'packages', name),
       configPath: null,
-      packageJson: { name },
     }))
     await writeFile(path.join(root, 'packages/app-e2e/file.txt'), 'app-e2e-changed')
     const out = await affectedProjects({ workspaceRoot: root, since: 'HEAD', projects: siblings })
@@ -1115,10 +1095,7 @@ describe('affectedProjects', () => {
       // it from `changed`. That mutation survives and no test can kill it —
       // recorded rather than papered over, so nobody adds a second guard here
       // believing it does something. The exclusion lives in exactly one place.
-      const withRoot: ProjectMeta[] = [
-        ...projects,
-        { name: 'root', dir: root, configPath: null, packageJson: { name: 'root' } },
-      ]
+      const withRoot: ProjectMeta[] = [...projects, { name: 'root', dir: root, configPath: null }]
       await Bun.write(path.join(root, '.vx/projects.lock.json'), '{"v":1}')
       await git(root, 'add', '.')
       await git(root, 'commit', '-q', '-m', 'add vx lock')
@@ -1475,7 +1452,6 @@ describe('affectedProjects workspaceFiles gate', () => {
         name: 'a',
         dir: path.join(root, 'packages/a'),
         configPath: null,
-        packageJson: { name: 'a' },
       },
     ]
     await git(root, 'init', '-q')
@@ -1615,7 +1591,6 @@ describe('affectedProjects: config import closures', () => {
       name,
       dir: path.join(root, dir),
       configPath: path.join(root, dir, 'vx.config.mjs'),
-      packageJson: { name },
     })
     projects = [meta('app', 'packages/app'), meta('lib', 'packages/lib'), meta('x', 'apps/x')]
 
@@ -1821,13 +1796,11 @@ describe('affectedProjects: a workspace whose ROOT is itself a project', () => {
         name: 'root-pkg',
         dir: root,
         configPath: path.join(root, 'vx.config.mjs'),
-        packageJson: { name: 'root-pkg' },
       },
       {
         name: 'app',
         dir: path.join(root, 'packages/app'),
         configPath: path.join(root, 'packages/app/vx.config.mjs'),
-        packageJson: { name: 'app' },
       },
     ]
     await git(root, 'init', '-q')
@@ -1902,7 +1875,7 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
     // glob; a written config in a sibling declares none.
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
-      `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+      `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${pluginSource(
         'gen',
         `{ project(config, ctx) {
         if (ctx.name === 'bare') config.tasks.build = { exec: { command: 'true' }, cache: {
@@ -1931,12 +1904,15 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
   // even begins — which is why the inner guard below could be deleted
   // with the whole repo still green.
   it('the staged load itself refuses a run with no lock', async () => {
-    const metas = await listProjects(await loadWorkspace(root))
+    const metas = await discoverCliProjects(root)
     // Control: with the lock the load succeeds, so the rejection is the
     // missing lock and not the fixture.
     expect((await loadCliProjects(root, metas, 'all', {})).size).toBeGreaterThan(0)
     await rm(path.join(root, LOCKFILE_NAME))
-    await expect(loadCliProjects(root, metas, 'all', {})).rejects.toThrow('no lock: run `vx lock`')
+    // A discovery carries the lock it read; projects without one read it now.
+    await expect(loadCliProjects(root, [...metas], 'all', {})).rejects.toThrow(
+      'no lock: run `vx lock`',
+    )
   })
 
   // A run with no lock is refused HERE, before the tolerant
@@ -1949,12 +1925,12 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
   // (measured, item 461). This row pins THIS guard on its own, so the
   // pair is covered rather than each hiding the other's absence.
   it('refuses a run with no lock instead of sweeping and answering "nothing"', async () => {
-    const metas = await listProjects(await loadWorkspace(root))
+    const metas = await discoverCliProjects(root)
     // Control first: with the lock it answers normally, so the rejection
     // below is the missing lock's doing and not a broken fixture.
     expect(await workspaceGlobOwners(root, metas, ['shared/x.ts'])).toEqual(['bare'])
     await rm(path.join(root, LOCKFILE_NAME))
-    await expect(workspaceGlobOwners(root, metas, ['shared/x.ts'])).rejects.toThrow(
+    await expect(workspaceGlobOwners(root, [...metas], ['shared/x.ts'])).rejects.toThrow(
       'no lock: run `vx lock`',
     )
   })
@@ -1963,7 +1939,7 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
     // Read raw, `bare` had no config to inspect and an orphan edit under
     // shared/ selected nothing — `--affected` skipped a task whose input
     // had changed.
-    const metas = await listProjects(await loadWorkspace(root))
+    const metas = await discoverCliProjects(root)
     expect(await workspaceGlobOwners(root, metas, ['shared/x.ts'])).toEqual(['bare'])
     expect(await workspaceGlobOwners(root, metas, ['docs/x.md'])).toEqual([])
   })
@@ -2010,9 +1986,7 @@ describe('a fingerprint claim in a workspace BELOW the git root', () => {
     // rather than nothing — the reading this row exists to exclude is
     // "resolved from the repo root", not merely "found nothing".
     await writeFile(path.join(repo, 'pnpm-lock.yaml'), 'lockfileVersion: 9\nDECOY\n')
-    projects = [
-      { name: 'a', dir: path.join(ws, 'packages/a'), configPath: null, packageJson: { name: 'a' } },
-    ]
+    projects = [{ name: 'a', dir: path.join(ws, 'packages/a'), configPath: null }]
     await git(repo, 'init', '-q')
     await git(repo, 'add', '.')
     await git(repo, 'commit', '-q', '-m', 'initial')
@@ -2063,6 +2037,8 @@ describe('an --affected run walks the worktree once', () => {
         })
       }
       gitInitCommit(root)
+      // Locked first: `vx lock` walks for configs, a run does not.
+      await lock(root)
       await writeFile(path.join(root, 'packages/a/src/new.js'), 'export {}\n')
       const bin = path.join(root, '.gitbin')
       const log = path.join(root, '.gitbin.log')
@@ -2074,7 +2050,7 @@ describe('an --affected run walks the worktree once', () => {
       )
       await writeFile(path.join(root, '.gitignore'), '.gitbin*\n')
       const p = Bun.spawnSync({
-        cmd: [process.execPath, BIN, 'run', 'build', '--affected=HEAD', '--dry'],
+        cmd: [process.execPath, CORE_BIN, 'run', 'build', '--affected=HEAD', '--dry'],
         cwd: root,
         env: { ...process.env, PATH: `${bin}:${process.env['PATH']}`, NO_COLOR: '1' },
       })

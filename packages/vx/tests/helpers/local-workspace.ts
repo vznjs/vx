@@ -1,12 +1,13 @@
 import path from 'node:path'
+import { PLUGIN_IMPORT } from './core-index.js'
+import { packagesSource } from './plugin.js'
 
-const here = import.meta.dir
-
-/** Absolute path — fixtures live in a tmp dir where `@vzn/vx` does not resolve. */
-export const CORE_INDEX = path.resolve(here, '../../src/index.ts')
+export { CORE_INDEX, PLUGIN_IMPORT } from './core-index.js'
 
 /**
- * Source for a `.vx/workspace.mjs` declaring the test's own plugins.
+ * Source for a `.vx/workspace.mjs` declaring the test's own plugins, after
+ * `packages()` unless one of them is it: core reads no package.json, and
+ * fixtures are written as packages named by their manifests.
  *
  * Running here and caching here are core's fallbacks, so a fixture that
  * wants neither needs only a bare workspace file, which marks the root. A plugin file imported by
@@ -19,8 +20,11 @@ export function localWorkspaceSource(
   prelude = '',
   rules?: string,
 ): string {
+  const plugins = extra.some((p) => p.includes('/vx-test-packages"'))
+    ? extra
+    : [packagesSource(), ...extra]
   return `${PLUGIN_IMPORT}${prelude}
-export default { plugins: [${extra.join(', ')}]${rules === undefined ? '' : `, run: { rules: ${rules} }`} }
+export default { plugins: [${plugins.join(', ')}]${rules === undefined ? '' : `, run: { rules: ${rules} }`} }
 `
 }
 
@@ -39,13 +43,11 @@ export async function waitForProducers(root: string, extra: readonly string[] = 
   )
 }
 
-/**
- * The import every fixture workspace file carries: a plugin is made by
- * `definePlugin` and nothing else (`tests/helpers/plugin.ts` builds the
- * `pluginSource` entries that call it).
- */
-export const PLUGIN_IMPORT = `import { definePlugin } from ${JSON.stringify(CORE_INDEX)}\n`
-
 export async function writeLocalWorkspace(root: string): Promise<void> {
   await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
+}
+
+/** `localWorkspaceSource()` with `fields` (an object-literal body) beside its plugins. */
+export function workspaceWith(fields: string): string {
+  return `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}], ${fields} }\n`
 }

@@ -13,8 +13,10 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { FILE_HASH_RACY_MS, racyWindowMs } from '../src/cache/index.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { lock } from './helpers/orchestrator.js'
 
-const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
+// Core's bin over a lock written first: `vx lock` walks for configs, a run does not.
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TIMEOUT = 30_000
 
 const CONFIG = `
@@ -44,6 +46,7 @@ describe('git spawns on a cold run', () => {
     for (const name of ['a', 'b']) {
       await addProject(root, name, { config: CONFIG, files: { 'src/a.txt': `${name}\n` } })
     }
+    await lock(root)
     const git = gitIn(root)
     git('add', '-A')
     git('commit', '-q', '-m', 'init')

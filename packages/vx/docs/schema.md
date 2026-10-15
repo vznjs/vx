@@ -10,24 +10,30 @@ re-exported from `@vzn/vx`.
 
 ```
 <workspaceRoot>/
-├── pnpm-workspace.yaml          (or: package.json with "workspaces", or bare package.json)
+├── vx.config.ts                 (optional: the root project, named `//`)
 ├── .vx/
 │   ├── workspace.ts             (required: marks the root; workspace-wide settings)
 │   ├── projects.lock.json                (`vx lock`, minified; committed)
 │   ├── .gitattributes           (`projects.lock.json linguist-generated=true`; written when missing)
 │   ├── .gitignore               (`/cache`; written by `vx init` and the cache when missing)
 │   └── cache/                   (machine-local state; the only part git ignores)
-└── packages/
-    └── <pkg>/
-        ├── package.json
-        ├── vx.config.ts         (per-package task definitions)
-        └── vx.lock.json         (`vx lock`: its resolved config, pretty, for review)
+└── <any>/<dir>/
+    ├── vx.config.ts             (this directory is a project; its tasks)
+    └── vx.lock.json             (`vx lock`: its resolved config, pretty, for review)
 ```
 
-A project is discovered as a vx project by the **presence of a
-`vx.config.*` file alongside the project's `package.json`.** Projects
-without a config are visible in the workspace graph but contribute no
-tasks.
+**A project is a directory holding a `vx.config.*`**, in any language;
+core reads no `package.json` and no package-manager member list. `vx lock`
+finds them (git's tracked and unignored files; a config at or under a
+nested `.vx/workspace.*` is that workspace's) and records each by
+directory; a run takes its projects from the lock, so a config added since
+runs once `vx lock` records it. A `discover` plugin may add directories
+with no config (`@vzn/vx-lockfile` adds the package manager's members).
+
+A project's name is its config's `name`, else the name a `discover` plugin
+gives (`@vzn/vx-lockfile` gives `package.json#name`), else its
+root-relative path (`apps/web`); the root is `//`. Two projects of one
+name are refused, naming both directories.
 
 ## Project config
 
@@ -35,6 +41,7 @@ tasks.
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
+  name: 'web',
   tags: ['scope:web', 'type:app'],
   tasks: {
     <taskName>: TaskConfig,
@@ -45,6 +52,7 @@ export default defineProject({
 
 ```ts
 interface ProjectConfig {
+  name?: string // what `<name>#<task>`, filters and `dependsOn` address; no "#"
   tags?: readonly string[] // labels for `--filter tag:<name>`
   tasks?: Record<string, TaskConfig> // keyed by task name
 }
@@ -1774,7 +1782,8 @@ interface CacheSettings {
   and any other reader use the same resolution
   (`src/workspace/workspace.ts:resolveCacheDir`). The cache is a
   directory of its own: a first index in one that holds a
-  `package.json` or `pnpm-workspace.yaml` (`''` and `'.'` name the
+  `package.json`, `pnpm-workspace.yaml`, a `vx.config.*` or a
+  `.vx/workspace.*` (`''` and `'.'` name the
   root), whose subdirectory does (`'packages'`), or that holds the
   workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
   `.gitignore` would hide the sources from git and the cache keys. A
@@ -2330,7 +2339,19 @@ ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none
 (`true`) name the shape to write.
 
-Workspace-discovery errors (`src/workspace/workspace.ts`):
+Project-discovery errors (`src/workspace/workspace.ts`, `src/orchestrator/projects.ts`):
+
+| Symptom                                                                                         | Cause                                                                     |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `two projects are named "<name>": <dir> and <dir> — give one another \`name\` in its vx.config` | Two directories got one name: a config's `name`, a plugin's, or the path. |
+| `<dir>: a project is named by its path unless named, and this one holds "#" …`                  | A path no task spec can address: set `name` in its config.                |
+| `<dir>: "//" names the workspace root — set another \`name\``                                   | A config away from the root says `name: '//'`.                            |
+| `.vx/projects.lock.json locks <dir>, but its <file> is gone — run \`vx lock\``                  | A locked project's config was deleted or renamed (X-144).                 |
+| `.vx/projects.lock.json locks <dir>, but its <file> is not readable by this user (<code>)`      | This user may not search the project's directory (D-132).                 |
+| `.vx/projects.lock.json has unsupported version <n> (this vx expects 3) — re-run \`vx lock\``   | A lock an earlier vx wrote (version 2 keyed by name).                     |
+| `git ls-files failed (exit <n>): <why>`                                                         | `vx lock` could not list the configs (a torn index).                      |
+
+Package-manager errors, from `vx init` and `@vzn/vx-migrate` reading the members (`src/workspace/packages.ts`; a run reads none):
 
 | Symptom                                                                                                      | Cause                                                                                                                                                                                                                                                      |
 | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

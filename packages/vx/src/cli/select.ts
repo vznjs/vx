@@ -14,10 +14,9 @@ import {
   buildPackageGraph,
   defaultAffectedBase,
   findWorkspaceRoot,
-  type LoadReads,
   type FingerprintClaims,
+  lockKey,
   NO_LOCK,
-  loadWorkspace,
   parseFilter,
   type ProjectMeta,
   readLockfile,
@@ -92,9 +91,10 @@ export async function workspaceGlobOwners(
   const owners: string[] = []
   for (const meta of projects) {
     if (meta.configPath === null || meta.configPath === '') continue
-    if (!Object.hasOwn(lock.projects, meta.name)) continue
+    const dir = lockKey(root, meta.dir)
+    if (!Object.hasOwn(lock.projects, dir)) continue
     try {
-      if (declaresMatch(lock.projects[meta.name]!)) owners.push(meta.name)
+      if (declaresMatch(lock.projects[dir]!.config)) owners.push(meta.name)
     } catch {
       // A hand-edited entry that will not read cannot be shown to declare a
       // matching glob; surfacing it here would fail a run the load tolerates.
@@ -128,9 +128,7 @@ async function workspaceFingerprintClaims(
 }
 
 async function loadWorkspaceProjects(cwd: string): Promise<ProjectMeta[]> {
-  const reads: LoadReads = new Map()
-  const root = await findWorkspaceRoot(cwd)
-  return await discoverCliProjects(await loadWorkspace(root, reads))
+  return await discoverCliProjects(await findWorkspaceRoot(cwd))
 }
 
 export async function findCwdProject(cwd: string): Promise<string | null> {
@@ -145,9 +143,8 @@ export async function findCwdProject(cwd: string): Promise<string | null> {
 export async function findCwdSelection(
   cwd: string,
 ): Promise<{ name: string; discovered: { root: string; projects: ProjectMeta[] } } | null> {
-  const reads: LoadReads = new Map()
   const root = await findWorkspaceRoot(cwd)
-  const projects = await discoverCliProjects(await loadWorkspace(root, reads))
+  const projects = await discoverCliProjects(root)
   const abs = path.resolve(cwd)
   const within = (dirOf: (p: ProjectMeta) => string): string | null => {
     let best: string | null = null
@@ -521,7 +518,7 @@ export async function pickTask(
   }
   if (entries.length === 0) {
     process.stderr.write(
-      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts\n',
+      'vx run: no tasks declared in any project; declare one under `tasks` in a vx.config, or run `vx init` to write them from package.json scripts, then `vx lock`\n',
     )
     return null
   }
@@ -612,7 +609,7 @@ function didYouMeanProject(
     const typed = pattern.replace(/^!|\.\.\.$|^\.\.\.|\^/g, '')
     // Two edits from any two-letter name: `--filter //` hinted `ui` (X-13).
     if (typed === '//') {
-      return ". `//` is Turbo's root package, but the workspace root is no project here: give it a package.json name and a vx.config"
+      return '. `//` is the workspace root, which is no project here: add a vx.config there and run `vx lock`'
     }
     const best = nearest(typed, names)
     if (best !== undefined) return `. Did you mean ${best}?`

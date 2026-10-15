@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 
 let root: string
@@ -28,7 +28,7 @@ describe('migrateTurbo: a root dependency with outputs', () => {
       path.join(root, 'turbo.json'),
       JSON.stringify({ tasks: { build: { dependsOn: ['^build'], outputs: ['dist/**'] } } }),
     )
-    const metas: ProjectMeta[] = []
+    const metas: PackageMeta[] = []
     for (const name of ['lib', 'app']) {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })

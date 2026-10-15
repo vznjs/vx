@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { findManifestRoot } from '../src/workspace/workspace.js'
+import { findManifestRoot } from '../src/workspace/packages.js'
 
 let root: string
 

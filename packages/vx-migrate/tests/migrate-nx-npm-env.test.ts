@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { migrateNx } from '../src/migrate-nx.js'
 
 let root: string
@@ -41,7 +41,7 @@ it('npm_package_* is the imported manifest; npm_lifecycle_event stays the name',
       dependencies: {},
     }),
   )
-  const meta: ProjectMeta = { name: 'a', dir, packageJson: packageJson as never, configPath: null }
+  const meta: PackageMeta = { name: 'a', dir, packageJson: packageJson as never, configPath: null }
   const plan = await migrateNx(root, [meta])
   const p = plan.projects[0]!
   const define = (

@@ -9,7 +9,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { loadResolvedProjects } from '../src/orchestrator/index.js'
 import { lock, run } from './helpers/orchestrator.js'
-import { affectedProjects, listProjects, loadWorkspace } from '../src/workspace/index.js'
+import { affectedProjects } from '../src/workspace/index.js'
+import { discoverCliProjects } from '../src/cli/workspace-config.js'
 import { silentLogger, type Fixture } from './helpers/orchestrator-fixture.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
@@ -39,18 +40,18 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     await rm(fixture.root, { recursive: true, force: true })
   })
 
-  const names = async (): Promise<string[]> =>
-    (await listProjects(await loadWorkspace(fixture.root))).map((p) => p.name)
+  // As a lockfile plugin names it: by its package.json (the fixture's `packages()`).
+  const names = async (): Promise<string[]> => {
+    await lock(fixture.root)
+    return (await discoverCliProjects(fixture.root)).map((p) => p.name)
+  }
 
   it('is a project with the config, and is not without it', async () => {
-    expect(await names()).toEqual(['a'])
-    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
-    expect(await names()).toEqual(['a', 'fixture-root'])
-    // A root the globs list already is one project, not two.
-    await writeFile(
-      path.join(fixture.root, 'pnpm-workspace.yaml'),
-      'packages:\n  - "."\n  - "packages/*"\n',
+    // Without it, `vx lock` refuses a's edge to the root.
+    await expect(names()).rejects.toThrow(
+      'a#test: dependsOn fixture-root#build but no such project or task is declared',
     )
+    await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
     expect(await names()).toEqual(['a', 'fixture-root'])
   })
 
@@ -99,7 +100,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
       .then(() => '')
       .catch((e: Error) => e.message)
     expect(refused).toContain(
-      "dependsOn //#build, Turbo's root package, but the workspace root is no project here",
+      "dependsOn //#build, the workspace root's task, but the root declares no such task",
     )
     await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
     const r = await run({ cwd: fixture.root, tasks: ['a#test'], log: silentLogger(fixture) })
@@ -144,7 +145,7 @@ describe('a root vx.config makes the root a project (D-39)', () => {
         const err = p.stderr.toString()
         return [
           p.exitCode,
-          err.includes("`//` is Turbo's root package"),
+          err.includes('`//` is the workspace root, which is no project here'),
           err.includes('Did you mean'),
         ]
       }
@@ -200,11 +201,13 @@ describe('a root vx.config makes the root a project (D-39)', () => {
 
   it('--affected gives a file no member owns to the root, and a member file to the member', async () => {
     await writeFile(path.join(fixture.root, 'vx.config.mjs'), ROOT_CONFIG)
+    // Committed with the lock, as `vx lock` leaves it to be.
+    await lock(fixture.root)
     const git = gitIn(fixture.root)
     git('add', '-A')
     git('commit', '-q', '-m', 'init')
     const affected = async (): Promise<string[]> => {
-      const projects = await listProjects(await loadWorkspace(fixture.root))
+      const projects = await discoverCliProjects(fixture.root)
       return [
         ...(await affectedProjects({ workspaceRoot: fixture.root, since: 'HEAD', projects })),
       ].sort()

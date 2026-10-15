@@ -7,7 +7,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 
 const target = (inputs: string[]) => ({
@@ -33,7 +33,7 @@ describe('an undefined named input', () => {
     try {
       await writeFile(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeFile(path.join(root, 'nx.json'), '{"extends":"@acme/nx-preset/nx.json"}')
-      const metas: ProjectMeta[] = ['a', 'b'].map((n) => ({
+      const metas: PackageMeta[] = ['a', 'b'].map((n) => ({
         name: n,
         dir: path.join(root, 'libs', n),
         packageJson: { name: n },

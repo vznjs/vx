@@ -6,7 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 
 const rc = (command: string) => ({ executor: 'nx:run-commands', options: { command } })
@@ -34,7 +34,7 @@ async function todos(migration: boolean): Promise<Record<string, string[]>> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vx-nx-self-'))
   try {
     await writeFile(path.join(root, 'package.json'), '{"name":"root","private":true}')
-    const metas: ProjectMeta[] = [
+    const metas: PackageMeta[] = [
       {
         name: 'a',
         dir: path.join(root, 'libs', 'a'),

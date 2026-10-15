@@ -11,10 +11,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
 import { writeEdges } from './helpers/plugin.js'
 import type { Logger } from '../src/orchestrator/index.js'
-import { loadProjects, loadResolvedProjects } from '../src/orchestrator/index.js'
+import { loadProjects, loadResolvedProjects, lockReader } from '../src/orchestrator/index.js'
 import { lock, run } from './helpers/orchestrator.js'
 import { run as runFromLock } from '../src/orchestrator/index.js'
-import { buildPackageGraph, listProjects, loadWorkspace } from '../src/workspace/index.js'
+import { buildPackageGraph } from '../src/workspace/index.js'
+import { discoverCliProjects } from '../src/cli/workspace-config.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
 
 const TIMEOUT = 30_000
@@ -230,7 +231,8 @@ describe('scoped config loading', () => {
         'b-fresh',
         "export default { tasks: { beta: { exec: { command: 'echo b' } } } }\n",
       )
-      const metas = await listProjects(await loadWorkspace(root))
+      await lock(root)
+      const metas = await discoverCliProjects(root)
       const staged = new Map<string, ProjectEntry>([
         [
           'a-staged',
@@ -249,7 +251,7 @@ describe('scoped config loading', () => {
         packageGraph: buildPackageGraph([...metas]),
         seeds: 'all',
         closure: false,
-        configs: 'evaluate',
+        configs: lockReader(root),
         warn: () => {},
         staged,
       })
@@ -278,7 +280,8 @@ describe('scoped config loading', () => {
       // d is out of the scoped run, so its count never trips the guard
       // and only the memo stops the repeat walks.
       for (const n of ['a', 'b', 'c', 'd']) await addProject(n, GOOD)
-      const metas = await listProjects(await loadWorkspace(root))
+      await lock(root)
+      const metas = await discoverCliProjects(root)
       const cross = { dependsOn: ['a#build', 'b#build'], exec: { command: 'true' } }
       const staged = new Map<string, ProjectEntry>(
         ['a', 'b', 'c', 'd'].map((n) => [
@@ -305,7 +308,7 @@ describe('scoped config loading', () => {
           },
           seeds,
           closure: true,
-          configs: 'evaluate',
+          configs: lockReader(root),
           warn: () => {},
           staged,
         })

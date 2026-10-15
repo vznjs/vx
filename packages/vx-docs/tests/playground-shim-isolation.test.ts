@@ -15,7 +15,9 @@ it('a loaded bundle still plans after the shim source is imported', async () => 
   await import('../src/playground/shim/platform.js')
   const configs: Record<string, unknown> = {}
   for (const [name, t] of Object.entries(CONFIG_TEXTS)) {
-    configs[name] = ((await planner.evaluateConfig(t, 10_000)) as { config: unknown }).config
+    configs[`packages/${name}/vx.config.mjs`] = (
+      (await planner.evaluateConfig(t, 10_000)) as { config: unknown }
+    ).config
   }
   const plan = await planner.planPlayground({
     root: PLAYGROUND_ROOT,

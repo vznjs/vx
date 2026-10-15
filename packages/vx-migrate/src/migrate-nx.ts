@@ -3,7 +3,7 @@
 
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import { type MigrationFormat, type MigrationPlan, type ProjectMeta } from '@vzn/vx'
+import { type MigrationFormat, type MigrationPlan, type PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'
@@ -17,7 +17,7 @@ export const NX_GRAPH_REL = '.nx/workspace-data/project-graph.json'
 /** `snapshot`: the graph file to read, absolute; the checked-in one by default. */
 export async function migrateNx(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   format: MigrationFormat = 'ts',
   snapshot = path.join(root, NX_GRAPH_REL),
   /** This run writes `.vx/workspace.ts`, with nx.json's run settings as fields. */
@@ -82,7 +82,7 @@ export async function migrateNx(
  */
 async function unlistedProjects(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   projects: readonly { name: string; dir: string }[],
 ): Promise<{ manifests: { relPath: string; contents: string }[]; notes: string[] }> {
   const listed = new Set(metas.map((m) => path.resolve(m.dir)))

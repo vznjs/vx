@@ -22,7 +22,7 @@ import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
-import type { PackageJson, ProjectMeta } from './workspace.js'
+import { PROJECT_CONFIG_FILENAMES, type ProjectMeta } from './workspace.js'
 
 /**
  * Every git call here goes through these two: a git that is not on PATH
@@ -332,11 +332,11 @@ export async function affectedChanges(
   )
   for (const name of claimedOwned) owned.add(name)
 
-  // A `package.json` that makes an existing directory a project took files
-  // from the project above it.
-  const manifests = changed.filter((rel) => path.posix.basename(rel) === 'package.json')
-  if (manifests.length > 0) {
-    const atBase = await gitBlobsAt(args.workspaceRoot, base, manifests)
+  // A config that makes an existing directory a project took files from
+  // the project above it.
+  const configs = changed.filter((rel) => CONFIG_NAMES.has(path.posix.basename(rel)))
+  if (configs.length > 0) {
+    const atBase = await gitBlobsAt(args.workspaceRoot, base, configs)
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, args.projects)) {
       owned.add(name)
       whole.add(name)
@@ -374,14 +374,16 @@ export async function affectedChanges(
   return done()
 }
 
+const CONFIG_NAMES: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)
+
 /**
  * The projects a NEW nested project took files from. A project's inputs
- * stop at every project below it, so a `package.json` that makes an
- * existing directory a project re-keys the project above it — its
- * `**` lost the directory's files — while containment maps the change to
- * the new project alone, and `--affected` left the re-keyed parent out.
- * "New" is judged at the base: no manifest there, or one with no name,
- * which discovery skips. `atBase` holds each changed manifest there.
+ * stop at every project below it, so a config that makes an existing
+ * directory a project re-keys the project above it — its `**` lost the
+ * directory's files — while containment maps the change to the new
+ * project alone, and `--affected` left the re-keyed parent out. "New" is
+ * judged at the base: none of the changed configs in its directory was
+ * there. `atBase` holds each changed config there.
  */
 function parentsOfNewNested(
   workspaceRoot: string,
@@ -393,7 +395,10 @@ function parentsOfNewNested(
   // dir discovered by readdir keeps the spelling it was created with.
   const dirToName = new Map<string, string>()
   for (const p of projects) dirToName.set(p.dir.normalize('NFC'), p.name)
-  for (const [rel, bytes] of atBase) {
+  const existed = new Set<string>()
+  for (const [rel, bytes] of atBase) if (bytes !== null) existed.add(path.posix.dirname(rel))
+  for (const rel of atBase.keys()) {
+    if (existed.has(path.posix.dirname(rel))) continue
     const dir = path.resolve(workspaceRoot, path.posix.dirname(rel))
     if (!dirToName.has(dir)) continue
     let parent: string | undefined
@@ -401,17 +406,7 @@ function parentsOfNewNested(
       parent = dirToName.get(d)
       if (path.dirname(d) === d) break
     }
-    if (parent === undefined || out.has(parent)) continue
-    let named = false
-    if (bytes !== null) {
-      try {
-        const name = (JSON.parse(new TextDecoder().decode(bytes)) as PackageJson).name
-        named = typeof name === 'string' && name !== ''
-      } catch {
-        // A manifest that did not parse at the base named no project.
-      }
-    }
-    if (!named) out.add(parent)
+    if (parent !== undefined) out.add(parent)
   }
   return out
 }

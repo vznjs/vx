@@ -18,6 +18,7 @@ import { type Logger } from '../src/index.js'
 import { run } from './helpers/orchestrator.js'
 import { validateWorkspace } from '../src/workspace/config-schema.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { workspaceWith } from './helpers/local-workspace.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
 
@@ -450,7 +451,7 @@ describe('a run applies the workspace retention at its end', () => {
 
   async function setup(retention: string): Promise<string> {
     root = await makeWorkspace({ prefix: 'vx-retention-run-' })
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), `export default { ${retention} }\n`)
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), workspaceWith(retention))
     await addProject(root, 'a', { config: task('a'), files: { 'src/a.txt': 'a' } })
     await addProject(root, 'b', { config: task('b'), files: { 'src/b.txt': 'b' } })
     const cacheDir = path.join(root, '.vx', 'cache')
@@ -548,7 +549,7 @@ describe('a run applies the workspace retention at its end', () => {
           via === 'cache.dir' ? `, dir: ${JSON.stringify(path.relative(root, outside))}` : ''
         await Bun.write(
           path.join(root, '.vx/workspace.mjs'),
-          `export default { cache: { retention: { olderThan: '1d' }${where} } }\n`,
+          workspaceWith(`cache: { retention: { olderThan: '1d' }${where} }`),
         )
         await addProject(root, 'a', { config: task('a'), files: { 'src/a.txt': 'a' } })
         await addProject(root, 'b', { config: task('b'), files: { 'src/b.txt': 'b' } })
@@ -592,7 +593,7 @@ describe('a run applies the workspace retention at its end', () => {
   })
 
   it('a workspace that declares no retention evicts nothing', async () => {
-    const cacheDir = await setup('plugins: []')
+    const cacheDir = await setup('run: {}')
     const log = logger()
     await run({ cwd: root, tasks: ['build'], projects: ['b'], log, handleSignals: false })
     expect(projects(cacheDir)).toEqual(['a', 'b'])

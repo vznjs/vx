@@ -21,7 +21,7 @@ import {
   type Duration,
   type GeneratedProject,
   type GeneratedTask,
-  type ProjectMeta,
+  type PackageMeta,
   UserError,
 } from '@vzn/vx'
 import { withoutTakenBack } from '../glob-grammar.js'
@@ -300,7 +300,7 @@ function normRel(p: string): string {
 
 export async function mapNxWorkspace(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   graph: NxGraph,
   opts: MapNxOptions,
 ): Promise<NxMapping> {
@@ -326,11 +326,11 @@ export async function mapNxWorkspace(
     syncTasks: new Map(),
   }
 
-  const metaByRel = new Map<string, ProjectMeta>()
+  const metaByRel = new Map<string, PackageMeta>()
   for (const meta of metas) metaByRel.set(normRel(relPosix(root, meta.dir)), meta)
-  const metaByNode = new Map<string, ProjectMeta>()
-  const nodeByMeta = new Map<ProjectMeta, NxNode>()
-  const nodeNameOf = new Map<ProjectMeta, string>()
+  const metaByNode = new Map<string, PackageMeta>()
+  const nodeByMeta = new Map<PackageMeta, NxNode>()
+  const nodeNameOf = new Map<PackageMeta, string>()
   for (const [nodeName, node] of Object.entries(nodeMap)) {
     const meta = metaByRel.get(normRel(node?.data?.root ?? ''))
     if (meta) {
@@ -345,16 +345,16 @@ export async function mapNxWorkspace(
   // workspace root, but Nx routinely defines root targets. Synthesize
   // a meta for any unmatched node whose root resolves inside the
   // workspace, so its targets migrate too.
-  const allMetas: ProjectMeta[] = [...metas]
+  const allMetas: PackageMeta[] = [...metas]
   const taken = new Set(metas.map((m) => m.name))
   for (const [nodeName, node] of Object.entries(nodeMap)) {
     if (metaByNode.has(nodeName)) continue
     const relRoot = normRel(node?.data?.root ?? '')
     if (node?.data?.targets === undefined) continue
     const dir = relRoot === '' || relRoot === '.' ? root : path.join(root, relRoot)
-    let pkg: ProjectMeta['packageJson'] = { name: nodeName }
+    let pkg: PackageMeta['packageJson'] = { name: nodeName }
     try {
-      pkg = (await Bun.file(path.join(dir, 'package.json')).json()) as ProjectMeta['packageJson']
+      pkg = (await Bun.file(path.join(dir, 'package.json')).json()) as PackageMeta['packageJson']
     } catch {
       // No manifest at the node root — keep the synthetic one.
     }
@@ -364,7 +364,7 @@ export async function mapNxWorkspace(
     const name = [pkg.name, nodeName].find((n) => n && !taken.has(n))
     if (name === undefined) continue
     taken.add(name)
-    const synthetic: ProjectMeta = {
+    const synthetic: PackageMeta = {
       name,
       dir,
       packageJson: pkg,
@@ -390,7 +390,7 @@ export async function mapNxWorkspace(
 
   // Once per project, not per task and variant: `path.relative` was a
   // fifth of the mapping at 1,000 projects (item 608).
-  const relOf = new Map<ProjectMeta, string>()
+  const relOf = new Map<PackageMeta, string>()
   for (const meta of allMetas) {
     if (nodeByMeta.get(meta)?.data?.targets) relOf.set(meta, normRel(relPosix(root, meta.dir)))
   }
@@ -401,7 +401,7 @@ export async function mapNxWorkspace(
       ? null
       : await listDotenv(root, [...relOf.values()])
 
-  const mapped: Array<{ meta: ProjectMeta; tasks: GeneratedTask[] }> = []
+  const mapped: Array<{ meta: PackageMeta; tasks: GeneratedTask[] }> = []
   let releasePublish = 0
   // A configuration variant's task (`build:production`) and what it runs.
   const configured = new WeakMap<GeneratedTask, string>()
@@ -778,7 +778,7 @@ function allTargetNames(nodeMap: Readonly<Record<string, NxNode>>): string[] {
 }
 
 function buildTask(
-  meta: ProjectMeta,
+  meta: PackageMeta,
   projectRel: string,
   scripts: Record<string, unknown>,
   projectName: string,
@@ -787,7 +787,7 @@ function buildTask(
   variant: Variant,
   nodeName: string,
   upstream: NxUpstream,
-  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  metaByNode: ReadonlyMap<string, PackageMeta>,
   nodeMap: Readonly<Record<string, NxNode>>,
   taskNameFor: TaskNameFor,
   opts: MapOpts,
@@ -1355,7 +1355,7 @@ function passConfiguration(
   nodeName: string,
   configuration: string,
   nxEdges: (from: string, target: string) => readonly string[],
-  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  metaByNode: ReadonlyMap<string, PackageMeta>,
   emittedIds: ReadonlySet<string>,
   taskNameFor: TaskNameFor,
 ): void {
@@ -1395,7 +1395,7 @@ function narrowToNxGraph(
   pkgName: string,
   nxClosure: (node: string) => ReadonlySet<string>,
   nxEdges: (from: string, target: string) => readonly string[],
-  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  metaByNode: ReadonlyMap<string, PackageMeta>,
   emittedIds: ReadonlySet<string>,
   directDeps: (pkg: string) => readonly string[],
 ): void {
@@ -1437,7 +1437,7 @@ function followNxGraph(
   nodeName: string,
   pkgName: string,
   nxEdges: (from: string, target: string) => readonly string[],
-  metaByNode: ReadonlyMap<string, ProjectMeta>,
+  metaByNode: ReadonlyMap<string, PackageMeta>,
   emittedIds: ReadonlySet<string>,
   reached: (name: string) => ReadonlySet<string>,
 ): void {

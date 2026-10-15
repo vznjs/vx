@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 
 it('a literal env name vx cannot key is one note with its task count, no task todo', async () => {
@@ -15,7 +15,7 @@ it('a literal env name vx cannot key is one note with its task count, no task to
       path.join(root, 'turbo.json'),
       JSON.stringify({ tasks: { build: { env: ['\\*', 'API'] }, test: { env: ['API'] } } }),
     )
-    const metas: ProjectMeta[] = []
+    const metas: PackageMeta[] = []
     for (const name of ['a', 'b', 'c']) {
       const dir = path.join(root, 'packages', name)
       await mkdir(dir, { recursive: true })

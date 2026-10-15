@@ -8,7 +8,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { migrateNx } from '../src/migrate-nx.js'
 
 const graph = {
@@ -54,7 +54,7 @@ describe('the migration writes every executor as an nx-exec line', () => {
     try {
       await writeFile(path.join(root, 'package.json'), '{"name":"root","private":true}')
       await writeFile(path.join(root, 'graph.json'), JSON.stringify(graph))
-      const metas: ProjectMeta[] = [
+      const metas: PackageMeta[] = [
         ['a', 'libs/a'],
         ['web', 'apps/web'],
       ].map(([name, rel]) => ({

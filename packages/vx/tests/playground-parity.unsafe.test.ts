@@ -401,13 +401,13 @@ async function evaluate(text: string, deadlineMs = 10_000): Promise<Evaluated> {
   }
 }
 
-/** Each project's config, evaluated by the page from its text. */
+/** Each project's config, evaluated by the page from its text, by its config file. */
 async function evaluateAll(texts: Record<string, string>): Promise<Record<string, unknown>> {
   const configs: Record<string, unknown> = {}
   for (const [name, text] of Object.entries(texts)) {
     const r = await evaluate(text)
     if (!r.ok) throw new Error(`${name}: ${r.error}`)
-    configs[name] = r.config
+    configs[CONFIG_FILE[name]!] = r.config
   }
   return configs
 }
@@ -692,7 +692,10 @@ describe("the bundle's entry, one field at a time (item 835)", () => {
 
   it('an invalid config is refused as the CLI refuses it; an unknown task is reported', async () => {
     const configs = await evaluateAll(CONFIG_TEXTS)
-    const bad = { ...configs, '@pg/utils': { tasks: { build: { exec: { command: 1 } } } } }
+    const bad = {
+      ...configs,
+      [CONFIG_FILE['@pg/utils']!]: { tasks: { build: { exec: { command: 1 } } } },
+    }
     expect(await refusal(plan({ configs: bad }))).toContain('packages/utils/vx.config.mjs')
     const unknown = await plan({ tasks: ['no-such-task'] })
     expect(unknown.unresolvedTasks).toEqual(['no-such-task'])

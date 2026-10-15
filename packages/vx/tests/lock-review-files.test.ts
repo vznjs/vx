@@ -37,10 +37,14 @@ it('writes the lock minified, a pretty review copy per config, and .vx/.gitattri
   expect(vx(r, 'lock').code).toBe(0)
   const lock = (await text(path.join(r, '.vx', 'projects.lock.json')))!
   expect(lock.split('\n')).toHaveLength(2)
-  expect(lock).toStartWith('{"version":2,"projects":{"a":')
+  expect(lock).toStartWith(
+    '{"version":3,"projects":{"packages/a":{"file":"vx.config.mjs","config":',
+  )
   const review = (await text(path.join(dir, 'vx.lock.json')))!
-  const locked = (JSON.parse(lock) as { projects: Record<string, unknown> }).projects['a']
-  expect(JSON.parse(review)).toMatchObject(locked as object)
+  const locked = (JSON.parse(lock) as { projects: Record<string, { config: object }> }).projects[
+    'packages/a'
+  ]!.config
+  expect(JSON.parse(review)).toMatchObject(locked)
   expect(review).toStartWith('{\n  "tasks": {')
   expect(await text(path.join(r, '.vx', '.gitattributes'))).toBe(
     'projects.lock.json linguist-generated=true\n',

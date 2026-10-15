@@ -4,7 +4,7 @@
 // such a `^name` is the explicit edges Nx draws instead.
 
 import { describe, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, parseNxGraph } from '../src/nx/nx-map.js'
 
 const build = {
@@ -13,10 +13,10 @@ const build = {
   dependsOn: ['^build'],
   outputs: ['{projectRoot}/dist'],
 }
-const meta = (name: string, packageJson: Record<string, unknown>): ProjectMeta => ({
+const meta = (name: string, packageJson: Record<string, unknown>): PackageMeta => ({
   name,
   dir: `/w/libs/${name}`,
-  packageJson: { name, ...packageJson } as ProjectMeta['packageJson'],
+  packageJson: { name, ...packageJson } as PackageMeta['packageJson'],
   configPath: null,
 })
 

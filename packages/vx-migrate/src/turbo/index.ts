@@ -11,7 +11,8 @@
 import { readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import path from 'node:path'
-import type { ProjectMeta, VxPlugin, WorkspaceConfig } from '@vzn/vx'
+import type { PackageMeta, ProjectMeta, VxPlugin, WorkspaceConfig } from '@vzn/vx'
+import { memberProjects, withManifests } from '../manifests.js'
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
@@ -78,18 +79,20 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
         if (workspace.run?.affectedBase === undefined && base)
           workspace.run = { ...workspace.run, affectedBase: base }
       },
-      // `//#task` keys run on the root, as Turbo runs them: named here, the
-      // root is a project with no vx.config written (a create-turbo repo's
-      // `//#format`). A package that holds the root's name keeps it, and
-      // the mapping's note says so.
+      // Turbo's packages are the package manager's members, each a project
+      // with no vx.config written. `//#task` keys run on the root, as Turbo
+      // runs them: named here, the root is a project too (a create-turbo
+      // repo's `//#format`). A package that holds the root's name keeps it,
+      // and the mapping's note says so.
       async discover(ctx) {
-        if (options.root !== undefined) return []
+        const members = await memberProjects(ctx.workspaceRoot)
+        if (options.root !== undefined) return members
         const named = await rootTaskProject(ctx.workspaceRoot)
-        if (named === null) return []
-        const taken = ctx.projects.some(
-          (m) => m.name === named.name && path.resolve(m.dir) !== path.resolve(named.dir),
-        )
-        return taken ? [] : [named]
+        if (named === null) return members
+        const rootDir = path.resolve(named.dir)
+        const known = [...ctx.projects, ...members.map((m) => ({ name: m.name, dir: m.dir }))]
+        const taken = known.some((m) => m.name === named.name && path.resolve(m.dir) !== rootDir)
+        return taken ? members : [...members.filter((m) => path.resolve(m.dir) !== rootDir), named]
       },
     },
   )
@@ -236,7 +239,8 @@ const textOf = (file: string): Promise<string> =>
  * `turbo.json` / `turbo.jsonc`, every package manifest, the root's,
  * `.yarnrc.yml` and the microfrontends configs.
  */
-async function run(root: string, metas: readonly ProjectMeta[]): Promise<AdoptionRun> {
+async function run(root: string, projects: readonly ProjectMeta[]): Promise<AdoptionRun> {
+  const metas = await withManifests(projects)
   const dirs = [root, ...metas.map((m) => m.dir)]
   const configs = await Promise.all(
     dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
@@ -271,7 +275,7 @@ async function run(root: string, metas: readonly ProjectMeta[]): Promise<Adoptio
  */
 async function mapAll(
   root: string,
-  metas: readonly ProjectMeta[],
+  metas: readonly PackageMeta[],
   envNames: readonly string[],
   trackedFiles: () => Promise<readonly string[] | null>,
 ): Promise<AdoptionMapping> {

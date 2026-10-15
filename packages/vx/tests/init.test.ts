@@ -1276,8 +1276,8 @@ describe('migrateScripts', () => {
 
 /**
  * A stand-in `@vzn/vx-lockfile` (the sandbox lets this suite read only
- * core): `pnpm()` supplies the edges the real one reads from the lockfile,
- * here from the manifests the fixture wrote.
+ * core): `pnpm()` supplies the names and edges the real one reads from the
+ * lockfile, here from the manifests the fixture wrote.
  */
 async function standIn(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true })
@@ -1289,12 +1289,16 @@ async function standIn(dir: string): Promise<void> {
     path.join(dir, 'index.js'),
     `import { definePlugin } from '@vzn/vx'
 export const pnpm = () => definePlugin(import.meta, {
-  discover(ctx) {
-    const dir = new Map(ctx.projects.map((p) => [p.name, p.dir]))
-    return ctx.projects.map((p) => ({
+  async discover(ctx) {
+    const pkgs = await Promise.all(
+      ctx.projects.map((p) => Bun.file(p.dir + '/package.json').json().catch(() => ({}))),
+    )
+    const dir = new Map(pkgs.map((pkg, i) => [pkg.name, ctx.projects[i].dir]))
+    return ctx.projects.map((p, i) => ({
       dir: p.dir,
-      deps: Object.keys({ ...p.packageJson.dependencies, ...p.packageJson.devDependencies })
-        .filter((n) => n !== p.name && dir.has(n))
+      ...(typeof pkgs[i].name === 'string' ? { name: pkgs[i].name } : {}),
+      deps: Object.keys({ ...pkgs[i].dependencies, ...pkgs[i].devDependencies })
+        .filter((n) => n !== pkgs[i].name && dir.has(n))
         .map((n) => dir.get(n)),
     }))
   },
@@ -1371,7 +1375,11 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const lock = (await Bun.file(path.join(root, '.vx/projects.lock.json')).json()) as {
         projects: Record<string, unknown>
       }
-      expect(Object.keys(lock.projects)).toEqual(['app', 'lib', 'silent'])
+      expect(Object.keys(lock.projects)).toEqual([
+        'packages/app',
+        'packages/lib',
+        'packages/silent',
+      ])
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1862,27 +1870,9 @@ describe('vx init — the generated build is not a cached no-op', () => {
     try {
       const r = await vx(root, ['run', 'build', '--all'])
       expect(r.code).not.toBe(0)
-      expect(`${r.out}${r.err}`).toContain('No package declares a vx.config — run `vx init`')
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
-  it('a run in a workspace whose package globs match nothing says so, not `vx init`', async () => {
-    // `vx init` would find no package to write for: the globs are the fault.
-    const root = await makeRoot('vx-init-no-packages-')
-    await writeFile(
-      path.join(root, 'package.json'),
-      JSON.stringify({ name: 'ws', private: true, workspaces: ['apps/*'] }),
-    )
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
-    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
-    try {
-      const r = await vx(root, ['run', 'build', '--all'])
-      expect(r.code).not.toBe(0)
-      const text = `${r.out}${r.err}`
-      expect(text).toContain("No package matched the workspace's package globs")
-      expect(text).not.toContain('run `vx init`')
+      expect(`${r.out}${r.err}`).toContain(
+        'No directory holds a vx.config — run `vx init` to write them, then `vx lock`.',
+      )
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -1890,7 +1880,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
 
   // A root package.json with no `workspaces` is single-project mode, and a
   // packages/app full of scripts beside it is invisible: `vx init` said
-  // "no package.json scripts" and `vx run` said "run vx init" (item 248).
+  // "no package.json scripts" (item 248).
   const bareRoot = async (): Promise<string> => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-bare-'))
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'w', private: true }))
@@ -1910,20 +1900,6 @@ describe('vx init — the generated build is not a cached no-op', () => {
       expect(r.out).toContain(`vx init: ${HINT}`)
       expect(r.out).not.toContain('no package.json scripts')
       expect(r.out).not.toContain('Declare tasks in a')
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
-  it('`vx run` there says the same, not `vx init`', async () => {
-    const root = await bareRoot()
-    try {
-      await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
-      const r = await vx(root, ['run', 'build', '--all'])
-      expect(r.code).not.toBe(0)
-      const text = `${r.out}${r.err}`
-      expect(text).toContain(HINT)
-      expect(text).not.toContain('run `vx init`')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

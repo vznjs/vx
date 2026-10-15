@@ -56,7 +56,7 @@ type · `src/workspace/migration.ts`
 ```ts
 export interface ApplyMigrationArgs {
   root: string
-  metas: readonly ProjectMeta[]
+  metas: readonly PackageMeta[]
   plan: MigrationPlan
   source: string
   verb: string
@@ -625,7 +625,7 @@ export function exitSignal(code: number): string | undefined
 
 ## `findManifestRoot`
 
-function · `src/workspace/workspace.ts`
+function · `src/workspace/packages.ts`
 
 Where `vx init` (and `@vzn/vx-migrate`) puts `.vx/workspace.ts` when
 there is none yet: the package manager's workspace root. A directory is a root
@@ -637,7 +637,7 @@ member has its own `package.json`, so stopping at the first candidate would
 make a run from inside a package treat that package as the whole workspace:
 `^task` edges vanish, upstream hashes drop out of the cache key (stale
 hits), and a second cache dir appears under the member. Claiming is decided
-with the same globs `loadWorkspace` applies, so "the root that claims me"
+with the same globs `loadPackageWorkspace` applies, so "the root that claims me"
 and "the root that lists me as a project" cannot diverge. An outer root
 that lists both the claimer and the claimed member outranks the claimer:
 from the claimer's own directory the walk reaches the outer root too.
@@ -645,7 +645,7 @@ from the claimer's own directory the walk reaches the outer root too.
 When no candidate claims `start` — a standalone package, or a subdirectory
 of a single-project repo — the nearest candidate wins (the root itself IS
 the project). Throws a `UserError` when there is no candidate before `/`.
-A load that goes on to `loadWorkspace` passes its `reads`, so the
+A load that goes on to `loadPackageWorkspace` passes its `reads`, so the
 root's manifest is read once for both.
 
 Inside git the walk never goes above the git top-level ({@link gitTop}),
@@ -968,12 +968,14 @@ type · `src/orchestrator/plugin.ts`
 export interface KeyHookContext extends BaseContext {}
 ```
 
-## `listProjectMetas`
+## `listPackages`
 
-function · `src/workspace/workspace.ts`
+function · `src/workspace/packages.ts`
+
+The members of the package-manager workspace at `root`.
 
 ```ts
-export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
+export async function listPackages(root: string): Promise<PackageMeta[]>
 ```
 
 ## `loadProjectConfig`
@@ -989,7 +991,7 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
 function · `src/orchestrator/projects.ts`
 
 The run path's view of a workspace's projects for a reader — a plugin's
-verb, an embedder: discovery, the lock and the plugin `config` and
+verb, an embedder: the lock, the plugin `config`, `discover` and
 `project` stages. `scope` is every project or a list of names; no
 closure. No lock is `NO_LOCK`. Plugin warnings go to `warn`.
 
@@ -998,23 +1000,6 @@ export async function loadResolvedProjects(
   workspaceRoot: string,
   opts: { scope?: 'all' | readonly string[]; warn?: (message: string) => void } = {},
 ): Promise<Map<string, ProjectEntry>>
-```
-
-## `loadWorkspace`
-
-function · `src/workspace/workspace.ts`
-
-Read the workspace's package-glob list, supporting all common
-package managers:
-  - `pnpm-workspace.yaml` (pnpm)
-  - `package.json` `workspaces` array (npm / yarn / bun)
-  - `package.json` `workspaces.packages` array (yarn legacy)
-
-If a `package.json` exists with no `workspaces` field, the root
-itself is treated as a single-project workspace.
-
-```ts
-export async function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
 ```
 
 ## `LocalHistoryProvider`
@@ -1343,6 +1328,21 @@ export interface OutputView {
 }
 ```
 
+## `PackageMeta`
+
+type · `src/workspace/packages.ts`
+
+A workspace member: its `package.json#name`, directory, manifest and vx config.
+
+```ts
+export interface PackageMeta {
+  name: string
+  dir: string
+  packageJson: PackageJson
+  configPath: string | null
+}
+```
+
 ## `PERSISTENT_TODO`
 
 const · `src/workspace/migration.ts`
@@ -1579,6 +1579,7 @@ type · `src/config.ts`
 
 ```ts
 export interface ProjectConfig {
+  name?: string
   tags?: readonly string[]
   tasks?: Record<string, TaskConfig>
 }
@@ -1606,7 +1607,6 @@ type · `src/orchestrator/plugin.ts`
 export interface ProjectHookContext extends BaseContext {
   readonly name: string
   readonly dir: string
-  readonly packageJson: Readonly<Record<string, unknown>>
   readonly projects: readonly ProjectMeta[]
 }
 ```
@@ -1619,7 +1619,6 @@ type · `src/workspace/workspace.ts`
 export interface ProjectMeta {
   name: string
   dir: string
-  packageJson: PackageJson
   configPath: string | null
   deps?: readonly string[]
   reach?: readonly string[]

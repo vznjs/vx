@@ -27,28 +27,24 @@ terminal and a task succeeding or failing. Read it alongside
  │       --dry / --graph short-circuit into planRun instead.
  │
  ├─ Prepare (src/orchestrator/prepare.ts:prepareRun — shared with planRun)
- │    1. findWorkspaceRoot(cwd) — walks up over pnpm-workspace.yaml,
- │       package.json with a `workspaces` field (npm/yarn/bun), or a
- │       bare package.json (single-project mode). The nearest one whose
- │       package globs CLAIM cwd wins, so running from inside a member
- │       resolves the declaring root, not the member; the first
- │       directory holding pnpm-workspace.yaml stops the walk whether
- │       or not its globs claim cwd (pnpm's rule); when nothing claims
- │       cwd the nearest candidate wins. An UNSCOPED run (no explicit
- │       project scope, at least one bare task name) then starts
- │       step 12's git enumeration over the whole tree, overlapping
- │       steps 2–11; a scoped run waits, since its pathspecs depend on
- │       which projects the task graph holds.
- │    2. loadWorkspace — parses the appropriate manifest. Bun.YAML
- │       for pnpm; the package.json forms read as bytes (readOnce,
- │       shared with step 1) and JSON.parse.
+ │    1. findWorkspaceRoot(cwd) — the directory of the nearest
+ │       .vx/workspace.* up to the git top-level. An UNSCOPED run (no
+ │       explicit project scope, at least one bare task name) then
+ │       starts step 12's git enumeration over the whole tree,
+ │       overlapping steps 2–11; a scoped run waits, since its
+ │       pathspecs depend on which projects the task graph holds.
+ │    2. Read .vx/projects.lock.json: the project directories `vx lock`
+ │       found (every directory holding a vx.config.*, git's ignore
+ │       rules applied) and their configs. Each locked config file is
+ │       stat'ed; one gone is refused ("run `vx lock`").
  │    3. loadWorkspacePlugins — loadWorkspaceConfig reads the
  │       .vx/workspace.{ts,mts,js,mjs,cts,cjs} the root lookup found (run / cache /
  │       watch / plugins / lock),
  │       then the plugin `config` stage runs on it.
- │    4. listProjects — globs every workspace member's package.json,
- │       finds sibling vx.config.* files, detects duplicate package
- │       names (hard error with both paths).
+ │    4. The plugin `discover` stage: more directories, names and
+ │       edges. A project is named by its config's `name`, else a
+ │       plugin's, else its path (`//` for the root); two of one name
+ │       are refused naming both directories.
  │    5. buildPackageGraph — project edges the `discover` plugins gave.
  │    6. Local cache open: new Cache(cacheDir, { read, write }, root)
  │       with the policy's local slice. Then
@@ -436,7 +432,7 @@ broader access has cache-stability implications).
 | Remote-cache error (500, timeout, corrupt artifact)                                                                                                              | Degrades to a cache miss; never fails the run                                                                                                                                                                                                                                                                                                                                                                                                           |
 | No .vx/workspace.* in cwd or any parent up to the git top-level                                                                                                  | `findWorkspaceRoot` throws (UserError); `vx run` exits 1                                                                                                                                                                                                                                                                                                                                                                                                |
 | Same-project task referenced in `dependsOn` not declared                                                                                                         | `buildTaskGraph` throws with the offending edge                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Duplicate workspace package name                                                                                                                                 | `listProjects` throws with both paths                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Two projects of one name                                                                                                                                         | `checkProjectNames` throws with both paths                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Cycle in task graph                                                                                                                                              | `detectCycle` throws with the cycle path                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Malformed config                                                                                                                                                 | `loadProjectConfigs` throws (UserError) with file + field                                                                                                                                                                                                                                                                                                                                                                                               |
 | `cache.inputs.runtime` command exits non-zero                                                                                                                    | UserError naming the command + exit code; that task is `failed`, dependents skip                                                                                                                                                                                                                                                                                                                                                                        |

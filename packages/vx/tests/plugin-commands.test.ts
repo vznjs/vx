@@ -323,7 +323,7 @@ describe('plugin commands', () => {
     expect(await cli(['hello'])).toBe(1)
     const text = err.join('')
     expect(text).toContain('unknown command: hello')
-    expect(text).toMatch(/plugins\[0\]\.commands\.hello/)
+    expect(text).toMatch(/plugins\[1\]\.commands\.hello/)
     // The load error's message, not its class name in front of it.
     expect(text).toContain(
       `(plugin verbs could not be looked up: .vx/workspace failed to load: ${root}/.vx/workspace.mjs: `,

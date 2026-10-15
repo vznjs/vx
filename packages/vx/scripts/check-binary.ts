@@ -97,7 +97,10 @@ writeFileSync(
 // worker. A worker that let the function through would report drift.
 writeFileSync(
   path.join(ws, '.vx/projects.lock.json'),
-  JSON.stringify({ version: 2, projects: { a: { tasks: {} } } }),
+  JSON.stringify({
+    version: 3,
+    projects: { 'packages/a': { file: 'vx.config.mjs', config: { tasks: {} } } },
+  }),
 )
 const check = Bun.spawnSync({
   cmd: [out, 'lock', '--check'],
@@ -133,7 +136,7 @@ writeFileSync(path.join(dotenv, '.vx/workspace.mjs'), 'export default {}\n')
 writeFileSync(path.join(dotenv, 'packages', 'a', 'package.json'), JSON.stringify({ name: 'a' }))
 writeFileSync(
   path.join(dotenv, 'packages', 'a', 'vx.config.mjs'),
-  `export default { tasks: { probe: { exec: { command: 'echo "probe=\${VX_DOTENV_PROBE-unset}"', env: { passThrough: ['VX_DOTENV_PROBE'] } } } } }\n`,
+  `export default { name: 'a', tasks: { probe: { exec: { command: 'echo "probe=\${VX_DOTENV_PROBE-unset}"', env: { passThrough: ['VX_DOTENV_PROBE'] } } } } }\n`,
 )
 writeFileSync(path.join(dotenv, '.env'), 'VX_DOTENV_PROBE=from-dotenv\n')
 Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: dotenv })
@@ -192,7 +195,7 @@ writeFileSync(
   path.join(resolve, 'packages', 'a', 'vx.config.mjs'),
   `import { m } from '@fixture/main'
 import { e } from '@fixture/exports'
-export default { tasks: { probe: { exec: { command: \`echo "resolved=\${m},\${e}"\` } } } }
+export default { name: 'a', tasks: { probe: { exec: { command: \`echo "resolved=\${m},\${e}"\` } } } }
 `,
 )
 Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: resolve })
@@ -242,7 +245,7 @@ writeFileSync(path.join(bare, 'packages', 'a', 'src', 'x.js'), 'x\n')
 writeFileSync(
   path.join(bare, 'packages', 'a', 'vx.config.mjs'),
   `import { defineProject } from '@vzn/vx'
-export default defineProject({ tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })
+export default defineProject({ name: 'a', tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })
 `,
 )
 mkdirSync(path.join(bare, '.vx'), { recursive: true })

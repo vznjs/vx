@@ -10,8 +10,8 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { localWorkspaceSource, writeLocalWorkspace } from './local-workspace.js'
-import { edgesSource, type EdgeMap } from './plugin.js'
+import { localWorkspaceSource } from './local-workspace.js'
+import { edgesSource, packagesSource, type EdgeMap } from './plugin.js'
 
 export interface WorkspaceOptions {
   /** mkdtemp prefix; name the suite so a leaked directory says who left it. */
@@ -21,14 +21,16 @@ export interface WorkspaceOptions {
   /** The root package.json `name`. */
   rootName?: string
   /**
-   * `.vx/workspace.mjs` with the plugin import (no plugins). Default true;
-   * false writes a bare `export default {}`: the file marks the root either way.
+   * `.vx/workspace.mjs` declaring the `packages()` test plugin, which names
+   * each `packages/*` member by its package.json as a lockfile plugin
+   * would (core names a project by its path). Default true; false writes a
+   * bare `export default {}`: the file marks the root either way.
    */
   workspaceFile?: boolean
   /**
-   * Project edges, by name, from the `edges()` test plugin in the workspace
-   * file: core reads none from a manifest, and a `^task` with no edge
-   * source is refused. `{}` is an edge source where every project is a leaf.
+   * Project edges, by name, from the same plugin: core reads none from a
+   * manifest, and a `^task` with no edge source is refused. `{}` is an
+   * edge source where every project is a leaf.
    */
   edges?: EdgeMap
   /**
@@ -85,7 +87,8 @@ export async function makeWorkspace(opts: WorkspaceOptions = {}): Promise<string
       path.join(root, '.vx/workspace.mjs'),
       localWorkspaceSource([edgesSource(opts.edges)]),
     )
-  } else if (opts.workspaceFile !== false) await writeLocalWorkspace(root)
+  } else if (opts.workspaceFile !== false)
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([packagesSource()]))
   else await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
   await mkdir(path.join(root, 'packages'), { recursive: true })
   const git = opts.git ?? 'init'

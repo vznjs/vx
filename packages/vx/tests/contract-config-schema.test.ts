@@ -92,7 +92,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
     watch: keys<WatchSettings>({ poll: true }),
   },
   project: {
-    '': keys<ProjectConfig>({ tags: true, tasks: true }),
+    '': keys<ProjectConfig>({ name: true, tags: true, tasks: true }),
     'tasks.*': keys<TaskConfig>({ description: true, exec: true, dependsOn: true, cache: true }),
     'tasks.*.exec': keys<ExecConfig>({
       command: true,
@@ -203,6 +203,7 @@ function projectSeed(): Record<string, unknown> {
     systemInfo: grants.systemInfo,
   }
   return {
+    name: 'web',
     tags: ['scope:web'],
     tasks: {
       t: {

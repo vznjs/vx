@@ -8,7 +8,7 @@
 // now, so these are the edges a run has. The rows after them pin where the
 // lockfile says otherwise than a manifest read guesses: the edge is what
 // was installed.
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -23,16 +23,22 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-type Manifests = Record<string, ProjectMeta['packageJson']>
+type Manifests = Record<string, { name: string } & Record<string, unknown>>
 
-/** Core's metas for `manifests` (dir → manifest; `.` is the root project). */
-function metas(manifests: Manifests): ProjectMeta[] {
-  return Object.entries(manifests).map(([dir, packageJson]) => ({
-    name: packageJson.name,
-    dir: dir === '.' ? root : path.join(root, dir),
-    packageJson,
-    configPath: null,
-  }))
+/**
+ * Core's metas for `manifests` (dir → manifest; `.` is the root project),
+ * each written where the plugin reads it, and named here by its manifest
+ * so the edge lists read by name.
+ */
+async function metas(manifests: Manifests): Promise<ProjectMeta[]> {
+  return await Promise.all(
+    Object.entries(manifests).map(async ([dir, pkg]) => {
+      const abs = dir === '.' ? root : path.join(root, dir)
+      await mkdir(abs, { recursive: true })
+      await writeFile(path.join(abs, 'package.json'), JSON.stringify(pkg))
+      return { name: pkg.name, dir: abs, configPath: null }
+    }),
+  )
 }
 
 /** Every `from → to` order edge and every edge of the transitive reach, by project name. */
@@ -607,7 +613,7 @@ describe('plugin edges are the recorded graph over the installed manifests', () 
     [yarn, 'yarn.lock', YARN, 'workspace:*'],
   ] as const) {
     it(`${make.name}()`, async () => {
-      const projects = metas(combined(any))
+      const projects = await metas(combined(any))
       expect(await pluginEdges(make(), file, text, projects)).toEqual(COMBINED)
     })
   }
@@ -894,7 +900,7 @@ __metadata:
   ] as const
   for (const row of rows) {
     it(row.title, async () => {
-      const projects = metas(row.manifests as Manifests)
+      const projects = await metas(row.manifests as Manifests)
       expect(await pluginEdges(row.make(), row.file, row.text, projects)).toEqual({
         order: [...row.edges],
         reach: [...row.edges],
@@ -907,7 +913,7 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
   it('pnpm installs a plain range from the registry, though the workspace package satisfies it', async () => {
     // pnpm 9+ links a workspace package only by `workspace:` (`linkWorkspacePackages`
     // is off by default); `other` got the registry is-number@2.1.0.
-    const projects = metas({
+    const projects = await metas({
       'packages/myapp': {
         name: 'myapp',
         version: '1.0.0',
@@ -925,7 +931,7 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
   })
 
   it('yarn packs a `file:` directory, a copy that is no link to the workspace package', async () => {
-    const projects = metas({
+    const projects = await metas({
       'packages/app': { name: 'app', version: '1.0.0', dependencies: { a: 'file:../real-a' } },
       'packages/a': { name: 'a', version: '2.0.0' },
       'packages/real-a': { name: 'real-a', version: '2.0.0' },
@@ -935,7 +941,7 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
   })
 
   it('bun installs `dependencies` over a devDependency or an optional one of the same key', async () => {
-    const projects = metas({
+    const projects = await metas({
       'packages/dev-met-prod-unmet': {
         name: 'dev-met-prod-unmet',
         version: '1.0.0',
@@ -957,7 +963,7 @@ describe('where the lockfile is exact and a manifest read guesses', () => {
   it("npm resolves an `npm:` alias's key to the workspace package of that name", async () => {
     // `d: npm:is-number@^2.0.0` beside a workspace `d`: npm wrote no entry
     // for the alias, so `require('d')` from app finds the workspace d.
-    const projects = metas({
+    const projects = await metas({
       'packages/app': {
         name: 'app',
         version: '1.0.0',

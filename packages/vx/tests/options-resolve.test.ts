@@ -35,6 +35,7 @@ import type { Logger } from '../src/orchestrator/index.js'
 import { run } from './helpers/orchestrator.js'
 import { MAX_TIMEOUT_MS } from '../src/util/index.js'
 import { settingEnv } from '../src/settings.js'
+import { workspaceWith } from './helpers/local-workspace.js'
 
 const TIMEOUT = 20_000
 
@@ -67,10 +68,7 @@ async function makeWorkspace(): Promise<Fixture> {
 
 /** Rewrite the workspace file with `fields` (object-literal body) plus the local plugins. */
 async function setWorkspace(root: string, fields: string): Promise<void> {
-  await Bun.write(
-    path.join(root, '.vx/workspace.mjs'),
-    `export default { ${fields}, plugins: [] }\n`,
-  )
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), workspaceWith(fields))
 }
 
 function lineCount(file: string): number {

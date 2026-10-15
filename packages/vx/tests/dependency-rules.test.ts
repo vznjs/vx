@@ -20,7 +20,6 @@ const meta = (name: string, deps: string[] = []): ProjectMeta => ({
   name,
   dir: `/ws/${name}`,
   configPath: null,
-  packageJson: { name },
   deps,
 })
 

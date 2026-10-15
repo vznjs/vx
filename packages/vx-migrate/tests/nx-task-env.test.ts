@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { ProjectMeta } from '@vzn/vx'
+import type { PackageMeta } from '@vzn/vx'
 import { mapNxWorkspace, type NxGraph } from '../src/nx/nx-map.js'
 
 let root: string
@@ -20,7 +20,7 @@ it('every task gets the target Nx names, a configuration task its configuration 
   const dir = path.join(root, 'packages', 'a')
   await mkdir(dir, { recursive: true })
   await writeFile(path.join(dir, 'package.json'), '{"name":"@acme/a"}')
-  const meta: ProjectMeta = {
+  const meta: PackageMeta = {
     name: '@acme/a',
     dir,
     packageJson: { name: '@acme/a' } as never,

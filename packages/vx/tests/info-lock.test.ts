@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const roots: string[] = []
@@ -23,9 +23,10 @@ async function workspace(): Promise<string> {
   const scripts = pluginSource(
     'scripts-plugin',
     `{
-      project(config, ctx) {
+      async project(config, ctx) {
         config.tasks ??= {}
-        for (const [name, command] of Object.entries(ctx.packageJson.scripts ?? {})) {
+        const { scripts } = await Bun.file(ctx.dir + '/package.json').json()
+        for (const [name, command] of Object.entries(scripts ?? {})) {
           config.tasks[name] ??= { exec: { command } }
         }
       },
@@ -33,7 +34,7 @@ async function workspace(): Promise<string> {
   )
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    `${PLUGIN_IMPORT}export default { plugins: [${scripts}] }\n`,
+    `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${scripts}] }\n`,
   )
   const bare = path.join(root, 'packages', 'bare')
   await mkdir(bare, { recursive: true })

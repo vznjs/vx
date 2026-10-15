@@ -8,15 +8,18 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
 import { UserError } from '../util/index.js'
-import { discoverProjects, loadProjects, loadWorkspacePlugins } from '../orchestrator/index.js'
+import {
+  discoverProjects,
+  loadProjects,
+  loadWorkspacePlugins,
+  lockOfDiscovery,
+  lockReader,
+} from '../orchestrator/index.js'
 import type { VxPlugin } from '../orchestrator/index.js'
 import {
   buildPackageGraph,
-  NO_LOCK,
-  type Workspace,
   type ProjectEntry,
   type ProjectMeta,
-  readLockfile,
   resolveCacheDir,
   resolveStoreRoot,
 } from '../workspace/index.js'
@@ -44,12 +47,13 @@ export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorksp
 }
 
 /**
- * The workspace's projects as a run discovers them: core's, then the
- * plugin `discover` stage, with the cache dir the run uses.
+ * The workspace's projects as a run discovers them: the lock's, then the
+ * plugin `discover` stage, with the cache dir the run uses. No lock is
+ * `NO_LOCK`.
  */
-export async function discoverCliProjects(workspace: Workspace): Promise<ProjectMeta[]> {
-  const { plugins, cacheDir } = await loadCliWorkspace(workspace.root)
-  return await discoverProjects(workspace, plugins, cacheDir, warnToStderr)
+export async function discoverCliProjects(root: string): Promise<ProjectMeta[]> {
+  const { plugins, cacheDir } = await loadCliWorkspace(root)
+  return await discoverProjects(root, lockReader(root), plugins, cacheDir, warnToStderr)
 }
 
 /**
@@ -127,8 +131,6 @@ export async function loadCliProjects(
   const ws = await loadCliWorkspace(workspaceRoot)
   const { plugins } = ws
   const cacheDir = opts.cacheDir ?? ws.cacheDir
-  const lock = await readLockfile(workspaceRoot)
-  if (lock === null) throw new UserError(NO_LOCK)
   const loaded = await loadProjects({
     workspaceRoot,
     cacheDir,
@@ -138,7 +140,7 @@ export async function loadCliProjects(
     ...(opts.closure === true
       ? { closure: true as const, packageGraph: buildPackageGraph([...metas]) }
       : { closure: false as const }),
-    configs: async () => lock,
+    configs: lockOfDiscovery(metas) ?? lockReader(workspaceRoot),
     warn: warnToStderr,
   })
   return loaded.projects

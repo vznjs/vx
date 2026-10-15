@@ -83,20 +83,32 @@ function cfg(...tasks: string[]): string {
 }
 
 /**
- * Locks the workspace, then edits the lock: a lock `vx lock` would not
- * write, read by `prepare({ locked: true })` as is.
+ * Locks the workspace, then edits the locked configs, by package name: a
+ * lock `vx lock` would not write, read by `prepare({ locked: true })` as is.
  */
-async function editLock(edit: (projects: Record<string, ProjectConfig>) => void): Promise<void> {
+async function editLock(edit: (configs: Record<string, ProjectConfig>) => void): Promise<void> {
   await lock(root)
   const file = path.join(root, '.vx', 'projects.lock.json')
-  const held = (await Bun.file(file).json()) as { projects: Record<string, ProjectConfig> }
-  edit(held.projects)
+  const held = (await Bun.file(file).json()) as {
+    projects: Record<string, { config: ProjectConfig }>
+  }
+  edit(
+    Object.fromEntries(
+      Object.entries(held.projects).map(([dir, e]) => [path.posix.basename(dir), e.config]),
+    ),
+  )
   await Bun.write(file, JSON.stringify(held))
 }
 
-/** What a run says when the lock holds no entry for a config it reads. */
-const noEntry = (name: string): string =>
-  `.vx/projects.lock.json has no entry for "${name}" (packages/${name}/vx.config.mjs) — run \`vx lock\``
+/** Locks the workspace, then deletes `name`'s config file: a run that reads it refuses. */
+async function goneAfterLock(name: string): Promise<void> {
+  await lock(root)
+  await rm(path.join(root, 'packages', name, 'vx.config.mjs'))
+}
+
+/** What a run says when a config it reads is gone since the lock. */
+const gone = (name: string): string =>
+  `.vx/projects.lock.json locks packages/${name} ("${name}"), but its vx.config.mjs is gone — run \`vx lock\``
 
 /**
  * NB `prepareRun` takes an EXPLICIT project scope — resolving cwd to "the
@@ -204,7 +216,7 @@ describe('scoped config loading reaches every project a run can need', () => {
       // are the scope and nothing else needs reading — which is what keeps
       // `vx run a#build` from paying for a 1000-package config load.
       //
-      // Asserted through a sibling the lock holds no entry for, because the
+      // Asserted through a sibling whose config is gone since the lock, because the
       // observable is which configs get READ, and `nodes` cannot see it:
       // `expandRequested` resolves an anchored spec to the same one node either
       // way, so a test that reads `nodes` passes whether or not the optimisation
@@ -212,16 +224,16 @@ describe('scoped config loading reaches every project a run can need', () => {
       // mutation that seeds every project survived it.)
       await pkg('app', cfg(task('build')))
       await pkg('other', cfg(task('build')))
-      await editLock((projects) => delete projects['other'])
+      await goneAfterLock('other')
 
       const anchoredOnly = await prepare({ tasks: ['app#build'], locked: true })
       expect([...anchoredOnly.nodes.keys()]).toEqual(['app#build'])
 
       // The control: ONE bare name beside the anchor re-opens the fan-out, so
       // the rule is about the whole spec set rather than per-entry — and the
-      // missing entry is now in scope and reported.
+      // missing file is now in scope and reported.
       await expect(prepare({ tasks: ['app#build', 'build'], locked: true })).rejects.toThrow(
-        noEntry('other'),
+        gone('other'),
       )
     },
     TIMEOUT,
@@ -425,15 +437,15 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
   )
 
   it(
-    'an out-of-scope entry the lock lacks leaves the name unjudged, not the run failed',
+    'an out-of-scope config gone since the lock leaves the name unjudged, not the run failed',
     async () => {
-      // Proving the typo needs every config; one the lock holds no entry for
-      // cannot fail a scoped run (the anchored row above this describe), so
-      // the name is let through. Other's pack is what let `vx lock` write it.
+      // Proving the typo needs every config; one gone since the lock cannot
+      // fail a scoped run (the anchored row above this describe), so the
+      // name is let through. Other's pack is what let `vx lock` write it.
       await pkg('app', cfg(task('test', ['^pack'])), ['cart'])
       await pkg('cart', cfg(task('lint')))
       await pkg('other', cfg(task('pack')))
-      await editLock((projects) => delete projects['other'])
+      await goneAfterLock('other')
 
       const p = await prepare({ tasks: ['app#test'], locked: true })
       expect([...p.nodes.keys()]).toEqual(['app#test'])
@@ -693,10 +705,10 @@ describe('a broken config leaks nothing either', () => {
       // for a process that keeps running — `vx watch`, an editor plugin, a
       // daemon — and the next open of the same file meets a busy lock.
       await pkg('app', cfg(task('build')))
-      await editLock((projects) => delete projects['app'])
+      await goneAfterLock('app')
       const closes = spyOn(Cache.prototype, 'close')
       try {
-        await expect(prepare({ locked: true })).rejects.toThrow(noEntry('app'))
+        await expect(prepare({ locked: true })).rejects.toThrow(gone('app'))
         expect(closes).toHaveBeenCalledTimes(1)
       } finally {
         closes.mockRestore()

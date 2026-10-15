@@ -214,7 +214,7 @@ export function escapeMarkdownCell(value: string): string
 export function executorFallback(reason: string): Error
 == function exitSignal (src/exec/runner.ts)
 export function exitSignal(code: number): string | undefined
-== function findManifestRoot (src/workspace/workspace.ts)
+== function findManifestRoot (src/workspace/packages.ts)
 export async function findManifestRoot(
   start: string,
   reads: LoadReads = new Map(),
@@ -239,8 +239,8 @@ export function isLiteralPattern(glob: string): boolean
 export function isPassStatus(status: string): boolean
 == function isUserError (src/util/errors.ts)
 export function isUserError(err: unknown): err is UserError
-== function listProjects (src/workspace/workspace.ts)
-export async function listProjects(workspace: Workspace): Promise<ProjectMeta[]>
+== function listPackages (src/workspace/packages.ts)
+export async function listPackages(root: string): Promise<PackageMeta[]>
 == function loadProjectConfig (src/workspace/project-loader.ts)
 export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 == function loadResolvedProjects (src/orchestrator/projects.ts)
@@ -248,8 +248,6 @@ export async function loadResolvedProjects(
   workspaceRoot: string,
   opts: { scope?: 'all' | readonly string[]; warn?: (message: string) => void } = {},
 ): Promise<Map<string, ProjectEntry>>
-== function loadWorkspace (src/workspace/workspace.ts)
-export async function loadWorkspace(root: string, reads?: LoadReads): Promise<Workspace>
 == function lockfileClaim (src/orchestrator/lockfile-claim.ts)
 export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 == function machineMemoryBytes (src/util/cgroup.ts)
@@ -314,7 +312,7 @@ export interface AffectedReason {
 == type ApplyMigrationArgs (src/workspace/migration.ts)
 export interface ApplyMigrationArgs {
   root: string
-  metas: readonly ProjectMeta[]
+  metas: readonly PackageMeta[]
   plan: MigrationPlan
   source: string
   verb: string
@@ -906,7 +904,7 @@ export interface OutputView {
   gha?: boolean
   ci?: boolean
 }
-== type PackageJson (src/workspace/workspace.ts)
+== type PackageJson (src/workspace/packages.ts)
 export interface PackageJson {
   name: string
   version?: string
@@ -915,6 +913,13 @@ export interface PackageJson {
   peerDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   workspaces?: string[] | { packages?: string[] }
+}
+== type PackageMeta (src/workspace/packages.ts)
+export interface PackageMeta {
+  name: string
+  dir: string
+  packageJson: PackageJson
+  configPath: string | null
 }
 == type PersistentConfig (src/config.ts)
 export interface PersistentConfig {
@@ -1026,6 +1031,7 @@ export interface PreparedRun {
 }
 == type ProjectConfig (src/config.ts)
 export interface ProjectConfig {
+  name?: string
   tags?: readonly string[]
   tasks?: Record<string, TaskConfig>
 }
@@ -1043,14 +1049,12 @@ export type ProjectFilesCache = Map<
 export interface ProjectHookContext extends BaseContext {
   readonly name: string
   readonly dir: string
-  readonly packageJson: Readonly<Record<string, unknown>>
   readonly projects: readonly ProjectMeta[]
 }
 == type ProjectMeta (src/workspace/workspace.ts)
 export interface ProjectMeta {
   name: string
   dir: string
-  packageJson: PackageJson
   configPath: string | null
   deps?: readonly string[]
   reach?: readonly string[]
@@ -1712,11 +1716,6 @@ export interface VxPlugin {
 == type WatchSettings (src/config.ts)
 export interface WatchSettings {
   poll?: boolean
-}
-== type Workspace (src/workspace/workspace.ts)
-export interface Workspace {
-  root: string
-  packageGlobs: string[]
 }
 == type WorkspaceConfig (src/config.ts)
 export interface WorkspaceConfig {

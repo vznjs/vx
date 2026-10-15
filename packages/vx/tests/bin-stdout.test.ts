@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 // The locked CLI imports bin.ts in its own process: the exit path is bin.ts's.
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -17,7 +18,7 @@ let root: string
 beforeAll(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-bin-stdout-'))
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), 'export default {}\n')
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   const app = path.join(root, 'packages', 'app')
   await mkdir(app, { recursive: true })
