@@ -5,57 +5,57 @@
         "hash xxh3": 1619,
         "spawn git": 6,
         "spawn sh": 51,
-        "sqlite statement": 694
+        "sqlite statement": 695
       },
       "up-to-date run @25": {
         "hash xxh3": 836,
         "spawn git": 3,
-        "sqlite statement": 21
+        "sqlite statement": 22
       },
       "restore run @25": {
         "hash xxh3": 836,
         "spawn git": 3,
-        "sqlite statement": 72
+        "sqlite statement": 73
       },
       "plan @25": {
         "hash xxh3": 835,
         "spawn git": 3,
-        "sqlite statement": 115
+        "sqlite statement": 117
       },
       "one-edit run @25": {
         "hash blob update": 2,
         "hash xxh3": 1118,
         "spawn git": 3,
         "spawn sh": 18,
-        "sqlite statement": 192
+        "sqlite statement": 193
       },
       "cold run @100": {
         "hash xxh3": 6569,
         "spawn git": 6,
         "spawn sh": 200,
-        "sqlite statement": 2648
+        "sqlite statement": 2649
       },
       "up-to-date run @100": {
         "hash xxh3": 3386,
         "spawn git": 3,
-        "sqlite statement": 24
+        "sqlite statement": 25
       },
       "restore run @100": {
         "hash xxh3": 3386,
         "spawn git": 3,
-        "sqlite statement": 225
+        "sqlite statement": 226
       },
       "plan @100": {
         "hash xxh3": 3385,
         "spawn git": 3,
-        "sqlite statement": 415
+        "sqlite statement": 417
       },
       "one-edit run @100": {
         "hash blob update": 2,
         "hash xxh3": 4468,
         "spawn git": 3,
         "spawn sh": 68,
-        "sqlite statement": 645
+        "sqlite statement": 646
       }
     },
     "time": {
