@@ -116,10 +116,11 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     --     prunes on started_at now (a row ends after it starts, so the
     --     30-day window moves by at most one task's duration).
     --   runs_failed (v38) served the flakiness probe, which reads the
-    --     store's task_outcomes now; the v38 reset drops it with runs.
+    --     store's task_outcomes now.
     DROP INDEX IF EXISTS main.runs_hash;
     DROP INDEX IF EXISTS main.runs_project;
     DROP INDEX IF EXISTS main.runs_ended;
+    DROP INDEX IF EXISTS main.runs_failed;
     CREATE INDEX IF NOT EXISTS main.runs_started_at ON runs(started_at);
     CREATE INDEX IF NOT EXISTS main.runs_run_id     ON runs(run_id);
     -- Per-file (mtime, size, content_hash) cache. Lets Cache.key()

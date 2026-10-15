@@ -2816,10 +2816,9 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     // A (project, task) index scattered every run's inserts over one leaf
     // per pair (record stage 57–79 ms vs 14–19 ms at 1,000 hits); the
     // history reader bounds its scan by rowid instead. Any index added here
-    // must be append-only under a run's inserts — `runs_failed` is PARTIAL
-    // over failed rows, so a green run's inserts only evaluate its
-    // predicate — and the DROPs must still clear a database created before
-    // they left.
+    // must be append-only under a run's inserts, and the DROPs must still
+    // clear a database created before they left (`runs_failed`: the flaky
+    // probe reads the store's task_outcomes since v38).
     const indexesOnRuns = (db: Database): string[] =>
       (
         db
@@ -2830,11 +2829,8 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
         .sort()
     const cache = new Cache(cacheDir)
     try {
-      expect(indexesOnRuns(cache.dbHandle())).toEqual([
-        'runs_failed',
-        'runs_run_id',
-        'runs_started_at',
-      ])
+      expect(indexesOnRuns(cache.dbHandle())).toEqual(['runs_run_id', 'runs_started_at'])
+      cache.dbHandle().exec("CREATE INDEX runs_failed ON runs(hash) WHERE status = 'failed'")
       cache.dbHandle().exec('CREATE INDEX runs_project ON runs(project, task)')
       cache.dbHandle().exec('CREATE INDEX runs_ended ON runs(ended_at)')
     } finally {
@@ -2842,11 +2838,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     }
     const reopened = new Cache(cacheDir)
     try {
-      expect(indexesOnRuns(reopened.dbHandle())).toEqual([
-        'runs_failed',
-        'runs_run_id',
-        'runs_started_at',
-      ])
+      expect(indexesOnRuns(reopened.dbHandle())).toEqual(['runs_run_id', 'runs_started_at'])
     } finally {
       reopened.close()
     }
