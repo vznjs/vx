@@ -112,8 +112,6 @@ const SETTING_OPTIONS = [
   ['run.timeout', 'timeout'],
   ['run.retries', 'retries'],
   ['run.outputLogs', 'outputLogs'],
-  ['run.killGrace', 'killGrace'],
-  ['run.teardownTimeout', 'teardownTimeout'],
   ['cache.download', 'download'],
 ] as const satisfies readonly (readonly [string, keyof RunOptions])[]
 

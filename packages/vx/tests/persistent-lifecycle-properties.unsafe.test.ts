@@ -47,12 +47,12 @@ let grace: string | undefined
 beforeAll(async () => {
   tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-plife-'))
   // The trapping server waits out the kill grace at every stop.
-  grace = process.env['VX_RUN_KILL_GRACE']
-  process.env['VX_RUN_KILL_GRACE'] = '300ms'
+  grace = process.env['VX_TEST_KILL_GRACE']
+  process.env['VX_TEST_KILL_GRACE'] = '300ms'
 })
 afterAll(async () => {
-  if (grace === undefined) delete process.env['VX_RUN_KILL_GRACE']
-  else process.env['VX_RUN_KILL_GRACE'] = grace
+  if (grace === undefined) delete process.env['VX_TEST_KILL_GRACE']
+  else process.env['VX_TEST_KILL_GRACE'] = grace
   await rm(tmp, { recursive: true, force: true })
 })
 

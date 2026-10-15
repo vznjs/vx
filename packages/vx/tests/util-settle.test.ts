@@ -41,7 +41,7 @@ import {
   teardownTimeoutMs as teardownViaBarrel,
 } from '../src/util/index.js'
 
-const ENV = 'VX_RUN_TEARDOWN_TIMEOUT'
+const ENV = 'VX_TEST_TEARDOWN_TIMEOUT'
 
 /** A promise that never settles — the production symptom being bounded. */
 const never = <T = void>(): Promise<T> => new Promise<T>(() => {})
@@ -347,7 +347,7 @@ describe('settleWithin — hostile budgets', () => {
   // FINDING (see src/util/settle.ts:25, reachable via teardownTimeoutMs).
   // A delay of 2^31 or more does not fit a 32-bit signed int, so the timer
   // silently clamps it to ONE MILLISECOND — the tightest possible deadline,
-  // the exact inverse of the request. `VX_RUN_TEARDOWN_TIMEOUT=99999999999ms`
+  // the exact inverse of the request. `VX_TEST_TEARDOWN_TIMEOUT=99999999999ms`
   // ("give the flush all the time it needs") therefore makes every flush time
   // out and every buffered telemetry record get dropped, with only a
   // "flush timed out" warning to show for it. Pinned as CURRENT behaviour.
@@ -374,7 +374,7 @@ describe('teardownTimeoutMs — the default', () => {
   })
 
   // A CI job exporting an EMPTY value (an unset shell variable expanded into
-  // `VX_RUN_TEARDOWN_TIMEOUT=$SOMETHING`) must fall back to the default, not to
+  // `VX_TEST_TEARDOWN_TIMEOUT=$SOMETHING`) must fall back to the default, not to
   // Number('') === 0, which would give every flush a zero budget.
   it('falls back to the default for an empty or blank value', () => {
     expect(Number('')).toBe(0) // the divergence this guards must still exist
@@ -624,25 +624,25 @@ describe('call-site contracts', () => {
 })
 
 describe('killGraceMs — the SIGTERM→SIGKILL grace knob', () => {
-  const saved = process.env['VX_RUN_KILL_GRACE']
+  const saved = process.env['VX_TEST_KILL_GRACE']
   afterEach(() => {
-    if (saved === undefined) delete process.env['VX_RUN_KILL_GRACE']
-    else process.env['VX_RUN_KILL_GRACE'] = saved
+    if (saved === undefined) delete process.env['VX_TEST_KILL_GRACE']
+    else process.env['VX_TEST_KILL_GRACE'] = saved
   })
 
   it('answers the default when unset', () => {
-    delete process.env['VX_RUN_KILL_GRACE']
+    delete process.env['VX_TEST_KILL_GRACE']
     expect(killGraceMs(2000)).toBe(2000)
   })
 
   it('honours a duration', () => {
-    process.env['VX_RUN_KILL_GRACE'] = '200ms'
+    process.env['VX_TEST_KILL_GRACE'] = '200ms'
     expect(killGraceMs(2000)).toBe(200)
   })
 
   it('falls back on zero, garbage and a value past the timer ceiling — a grace is a bound', () => {
     for (const raw of ['0ms', '200', '-5ms', '1e3ms', '25.0ms', 'soon', `${2 ** 31}ms`]) {
-      process.env['VX_RUN_KILL_GRACE'] = raw
+      process.env['VX_TEST_KILL_GRACE'] = raw
       expect(killGraceMs(2000)).toBe(2000)
     }
   })

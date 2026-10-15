@@ -166,12 +166,12 @@ describe('an executor that ignores the signal', () => {
   )
   let grace: string | undefined
   beforeEach(() => {
-    grace = process.env['VX_RUN_KILL_GRACE']
-    process.env['VX_RUN_KILL_GRACE'] = '200ms'
+    grace = process.env['VX_TEST_KILL_GRACE']
+    process.env['VX_TEST_KILL_GRACE'] = '200ms'
   })
   afterEach(() => {
-    if (grace === undefined) delete process.env['VX_RUN_KILL_GRACE']
-    else process.env['VX_RUN_KILL_GRACE'] = grace
+    if (grace === undefined) delete process.env['VX_TEST_KILL_GRACE']
+    else process.env['VX_TEST_KILL_GRACE'] = grace
   })
 
   it('is abandoned after the grace once exec.timeout fires, and the task times out', async () => {

@@ -75,7 +75,7 @@ const watch = fs.watch
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, ...NOT_CI, VX_RUN_KILL_GRACE: '200ms' },
+      env: { ...process.env, ...NOT_CI, VX_TEST_KILL_GRACE: '200ms' },
     })
     let out = ''
     let err = ''

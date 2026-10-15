@@ -42,7 +42,7 @@ const setting = (p: string): Setting => SETTINGS.find((s) => s.path === p)!
 
 describe('the settings list', () => {
   it('derives each variable from its path', () => {
-    expect(envName('run.killGrace')).toBe('VX_RUN_KILL_GRACE')
+    expect(envName('run.timeout')).toBe('VX_RUN_TIMEOUT')
     expect(envName('cache.inputStability.strategy')).toBe('VX_CACHE_INPUT_STABILITY_STRATEGY')
     expect(envName('debug.timing')).toBe('VX_DEBUG_TIMING')
   })
@@ -229,8 +229,6 @@ describe('flags', () => {
       '--timeout',
       '2m',
       '--retries=2',
-      '--kill-grace',
-      '100ms',
       '--schedule=critical-path',
       '--cache-download',
       'toplevel',
@@ -239,7 +237,6 @@ describe('flags', () => {
     expect(p.settings).toEqual({
       'run.timeout': 120_000,
       'run.retries': 2,
-      'run.killGrace': 100,
       'run.schedule': 'critical-path',
       'cache.download': 'toplevel',
     })

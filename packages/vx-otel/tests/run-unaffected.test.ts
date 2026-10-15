@@ -38,13 +38,13 @@ beforeEach(async () => {
     '-m',
     'init',
   )
-  process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '1500ms'
+  process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '1500ms'
 })
 afterEach(async () => {
   for (const release of held.splice(0)) release()
   await server?.stop(true)
   server = undefined
-  delete process.env['VX_RUN_TEARDOWN_TIMEOUT']
+  delete process.env['VX_TEST_TEARDOWN_TIMEOUT']
   await rm(root, { recursive: true, force: true })
 })
 

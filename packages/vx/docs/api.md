@@ -1830,8 +1830,6 @@ export interface RunOptions {
   continueMode?: ContinueMode
   branch?: string
   schedule?: NonNullable<RunSettings['schedule']>
-  killGrace?: number
-  teardownTimeout?: number
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   footer?: boolean
@@ -1948,8 +1946,6 @@ export interface RunSettings {
   timeout?: Duration
   retries?: number
   continue?: 'never' | 'deps-ok' | 'always'
-  killGrace?: Duration
-  teardownTimeout?: Duration
   rules?: WorkspaceRules
 }
 ```

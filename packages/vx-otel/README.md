@@ -190,8 +190,7 @@ same CPU live as with one send at the end (median of 10: 815 ms both).
 
 No send ever holds a task: a task's end only queues its records. A collector
 that never answers holds nothing either: at the end of the run every send
-still in flight is cut at core's teardown deadline (3 s,
-`VX_RUN_TEARDOWN_TIMEOUT`), and the process exits.
+still in flight is cut at core's teardown deadline (3 s), and the process exits.
 
 ## Behavior note
 
@@ -218,5 +217,5 @@ userinfo and query string replaced by `***`, so an endpoint that carries
 its credential in the URL does not leak it into a CI log. The run stays
 green either way; a collector that
 takes too long is cut off by core's end-of-run deadline
-(`VX_RUN_TEARDOWN_TIMEOUT`, 3 s by default) with a line saying the buffered
+(3 s) with a line saying the buffered
 records were lost.

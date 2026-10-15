@@ -67,8 +67,6 @@ export {
   claimExitForSignal,
   exitClaimedBySignal,
   killGraceMs,
-  setSettleBounds,
-  type SettleBound,
   settleWithin,
   teardownTimeoutMs,
   testTimerMs,

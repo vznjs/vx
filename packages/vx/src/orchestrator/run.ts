@@ -279,14 +279,11 @@ function refuseRunOptions(options: RunOptions): void {
     refuse('concurrency', concurrency, 'a positive integer')
   if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
     refuse('retries', retries, 'a non-negative integer')
-  for (const [name, ms] of [
-    ['timeout', timeout],
-    ['killGrace', options.killGrace],
-    ['teardownTimeout', options.teardownTimeout],
-  ] as const) {
-    if (ms !== undefined && !(Number.isInteger(ms) && ms > 0 && ms <= MAX_TIMEOUT_MS))
-      refuse(name, ms, `a positive integer of ms, at most ${MAX_TIMEOUT_MS}`)
-  }
+  if (
+    timeout !== undefined &&
+    !(Number.isInteger(timeout) && timeout > 0 && timeout <= MAX_TIMEOUT_MS)
+  )
+    refuse('timeout', timeout, `a positive integer of ms, at most ${MAX_TIMEOUT_MS}`)
 }
 
 export async function run(options: RunOptions): Promise<RunSummary> {

@@ -559,8 +559,8 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
     // outlived the run under init (nx#11782's sibling, reproduced on vx
     // 2026-09-24). settle() waits out the grace for the GROUP and SIGKILLs
     // whoever is left.
-    const prev = process.env['VX_RUN_KILL_GRACE']
-    process.env['VX_RUN_KILL_GRACE'] = '200ms'
+    const prev = process.env['VX_TEST_KILL_GRACE']
+    process.env['VX_TEST_KILL_GRACE'] = '200ms'
     const proc = Bun.spawn(
       ['sh', '-c', `sh -c 'trap "" TERM; echo $$; exec sleep 30' & sleep 30`],
       { stdout: 'pipe', stderr: 'ignore', detached: true },
@@ -579,8 +579,8 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
       // reads as alive: CI's reaper took past 500 ms.
       expect(await waitForDead(gc, 3_000)).toBe(true)
     } finally {
-      if (prev === undefined) delete process.env['VX_RUN_KILL_GRACE']
-      else process.env['VX_RUN_KILL_GRACE'] = prev
+      if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
+      else process.env['VX_TEST_KILL_GRACE'] = prev
       reader.releaseLock()
       try {
         process.kill(gc, 'SIGKILL')
@@ -590,8 +590,8 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
   it('settle() lets a grandchild that traps the SIGTERM finish inside the grace', async () => {
     // The grace is the time a TERM handler is promised; settle() SIGKILLs
     // only what is left when it runs out, never at once.
-    const prev = process.env['VX_RUN_KILL_GRACE']
-    process.env['VX_RUN_KILL_GRACE'] = '600ms'
+    const prev = process.env['VX_TEST_KILL_GRACE']
+    process.env['VX_TEST_KILL_GRACE'] = '600ms'
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-grace-'))
     const marker = path.join(dir, 'done')
     const proc = Bun.spawn(
@@ -610,8 +610,8 @@ describe('armTimeout — what settle() disarms and what it reaps', () => {
       await handle.settle()
       expect(await Bun.file(marker).exists()).toBe(true)
     } finally {
-      if (prev === undefined) delete process.env['VX_RUN_KILL_GRACE']
-      else process.env['VX_RUN_KILL_GRACE'] = prev
+      if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
+      else process.env['VX_TEST_KILL_GRACE'] = prev
       reader.releaseLock()
       try {
         process.kill(gc, 'SIGKILL')
@@ -1335,8 +1335,8 @@ describe('runPersistent — the rows its sweep asked for', () => {
   })
 
   it('a readyWhen timeout sends SIGTERM first, and SIGKILL to what ignores it', async () => {
-    const prev = process.env['VX_RUN_KILL_GRACE']
-    process.env['VX_RUN_KILL_GRACE'] = '300ms'
+    const prev = process.env['VX_TEST_KILL_GRACE']
+    process.env['VX_TEST_KILL_GRACE'] = '300ms'
     const heard = path.join(dir, 'heard')
     // Each shell sets its trap before the deadline only if the window
     // outlasts its start: a SIGTERM that came first killed the polite one
@@ -1367,8 +1367,8 @@ describe('runPersistent — the rows its sweep asked for', () => {
       ])
       expect(died).toBe('SIGKILL')
     } finally {
-      if (prev === undefined) delete process.env['VX_RUN_KILL_GRACE']
-      else process.env['VX_RUN_KILL_GRACE'] = prev
+      if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
+      else process.env['VX_TEST_KILL_GRACE'] = prev
       polite.child.kill('SIGKILL')
       deaf.child.kill('SIGKILL')
     }
@@ -1405,8 +1405,8 @@ describe('runCommand — the rows its sweep asked for', () => {
     // the 100 ms timeout on a slow macOS runner and the group died at 142.
     // The outer shell's own trap raced it too (a 300 ms start: 106 ms,
     // M-23), so the deadline is one a shell's start meets.
-    const prev = process.env['VX_RUN_KILL_GRACE']
-    process.env['VX_RUN_KILL_GRACE'] = '400ms'
+    const prev = process.env['VX_TEST_KILL_GRACE']
+    process.env['VX_TEST_KILL_GRACE'] = '400ms'
     try {
       const r = await runCommand({
         command: `trap "" TERM; sleep 30 & trap - TERM; wait`,
@@ -1417,8 +1417,8 @@ describe('runCommand — the rows its sweep asked for', () => {
       expect(r.timedOut).toBe(true)
       expect(r.durationMs).toBeGreaterThanOrEqual(START_WINDOW_MS + 400)
     } finally {
-      if (prev === undefined) delete process.env['VX_RUN_KILL_GRACE']
-      else process.env['VX_RUN_KILL_GRACE'] = prev
+      if (prev === undefined) delete process.env['VX_TEST_KILL_GRACE']
+      else process.env['VX_TEST_KILL_GRACE'] = prev
     }
   }, 10_000)
 

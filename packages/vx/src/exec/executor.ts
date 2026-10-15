@@ -142,7 +142,7 @@ export interface ExecuteRequest {
    * work and returns: a child an executor spawned is not one core can
    * reach (H-10, H-12). One already aborted is work not to start (B-55).
    * Any exit after the timeout's abort, a 0 included, is a timeout. Core
-   * waits the kill grace (`VX_RUN_KILL_GRACE`, 2 s) after the abort, then
+   * waits the kill grace (2 s) after the abort, then
    * settles the attempt without `execute` and abandons it (H-14).
    */
   readonly signal?: AbortSignal

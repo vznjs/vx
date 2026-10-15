@@ -830,7 +830,7 @@ describe('the evaluation deadline', () => {
   it('a budget of 0 falls back to the default instead of firing on the next tick (D-157)', async () => {
     // `0` deadlined every repeat load instantly ("did not answer within 0ms"),
     // so `vx watch` failed each cycle. It is out of range for a bound, as it is
-    // for VX_RUN_KILL_GRACE, and falls back like the timer-ceiling case below:
+    // for VX_TEST_KILL_GRACE, and falls back like the timer-ceiling case below:
     // not "no deadline", which would let a wedged worker hang the watch loop.
     process.env[BUDGET_ENV] = '0ms'
     const file = await write('await Bun.sleep(400)\nexport default { tasks: { ok: {} } }\n')

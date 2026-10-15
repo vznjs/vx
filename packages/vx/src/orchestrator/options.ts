@@ -163,10 +163,6 @@ export interface RunOptions {
   branch?: string
   /** `run.schedule` from its flag; unset, `VX_RUN_SCHEDULE`, then the workspace's. */
   schedule?: NonNullable<RunSettings['schedule']>
-  /** `run.killGrace` in ms from its flag; unset, `VX_RUN_KILL_GRACE`, then the workspace's. */
-  killGrace?: number
-  /** `run.teardownTimeout` in ms from its flag; unset, `VX_RUN_TEARDOWN_TIMEOUT`, then the workspace's. */
-  teardownTimeout?: number
   /**
    * Filter `dependsOn` expansion. `'all'` drops every edge (just the
    * requested task runs). A string array drops only those task names

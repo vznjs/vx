@@ -37,7 +37,7 @@ function taskRefusal(task: unknown): string | null {
 describe('run.branch in the workspace config', () => {
   it('is refused as an unknown key', () => {
     expect(refusal({ run: { branch: 'main' } })).toBe(
-      `${WS}: \`run\` has unknown field "branch" (allowed: affectedBase, concurrency, continue, killGrace, retries, rules, schedule, teardownTimeout, timeout)`,
+      `${WS}: \`run\` has unknown field "branch" (allowed: affectedBase, concurrency, continue, retries, rules, schedule, timeout)`,
     )
   })
 })

@@ -5,7 +5,6 @@
 
 import type { WorkspaceConfig } from '../config.js'
 import { resolveSetting } from '../settings.js'
-import { setSettleBounds, type SettleBound } from '../util/index.js'
 import type { RunOptions } from './options.js'
 
 const FROM_OPTIONS = {
@@ -19,9 +18,7 @@ const FROM_OPTIONS = {
 
 /**
  * `options` with each run-level setting it leaves unset filled from the
- * environment, then the workspace. Arms the settle bounds (`util/settle`,
- * below settings) with the flag's or workspace's `run.killGrace` and
- * `run.teardownTimeout`: the variable sits between them, read per call.
+ * environment, then the workspace.
  */
 export function withRunSettings(
   options: RunOptions,
@@ -32,16 +29,5 @@ export function withRunSettings(
     const { value } = resolveSetting(path, workspace, options[field as keyof RunOptions])
     if (value !== undefined) out[field] = value
   }
-  const bound = (flag: number | undefined, path: string): SettleBound | undefined => {
-    if (flag !== undefined) return { ms: flag, from: 'flag' }
-    const { value } = resolveSetting(path, workspace, undefined, {})
-    return value === undefined ? undefined : { ms: value as number, from: 'workspace' }
-  }
-  const killGrace = bound(options.killGrace, 'run.killGrace')
-  const teardown = bound(options.teardownTimeout, 'run.teardownTimeout')
-  setSettleBounds({
-    ...(killGrace !== undefined ? { killGrace } : {}),
-    ...(teardown !== undefined ? { teardown } : {}),
-  })
   return out as unknown as RunOptions
 }

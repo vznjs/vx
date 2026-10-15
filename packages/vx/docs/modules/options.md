@@ -35,8 +35,6 @@ export interface RunOptions {
   continueMode?: ContinueMode
   branch?: string // --branch; unset, VX_RUN_BRANCH, git's, then CI's
   schedule?: NonNullable<RunSettings['schedule']> // run.schedule
-  killGrace?: number // run.killGrace in ms
-  teardownTimeout?: number // run.teardownTimeout in ms
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   footer?: boolean // false: no footer, live or printed, and no blank line opening the task log (vx watch)

@@ -133,7 +133,7 @@ export default { plugins: [${edgesSource({ app: ['lib'] })}, ${pluginSource(
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, VX_RUN_KILL_GRACE: '200ms' },
+      env: { ...process.env, VX_TEST_KILL_GRACE: '200ms' },
     })
     let out = ''
     void (async () => {

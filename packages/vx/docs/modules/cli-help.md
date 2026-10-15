@@ -73,8 +73,7 @@ gap before its description.
   / `pkg#task`.
 - `Execution (for run)` — concurrency, `--schedule`,
   `--exclude-dependencies`, `--no-cache` / `--force`, `--cache-policy`,
-  `--continue`, `--retries`, `--timeout`, `--kill-grace`,
-  `--teardown-timeout`, `--output-logs`,
+  `--continue`, `--retries`, `--timeout`, `--output-logs`,
   `--cache-download`, `--verbosity`.
 - `Planning (for run — skips execution)` — `--dry`.
 - `Artifacts (for run)` — `--profile`.

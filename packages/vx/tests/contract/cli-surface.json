@@ -65,13 +65,11 @@
       "--filter",
       "--force",
       "--help",
-      "--kill-grace",
       "--no-cache",
       "--output-logs",
       "--profile",
       "--retries",
       "--schedule",
-      "--teardown-timeout",
       "--timeout",
       "--verbosity"
     ],
@@ -101,13 +99,11 @@
       "--filter",
       "--force",
       "--help",
-      "--kill-grace",
       "--no-cache",
       "--output-logs",
       "--poll",
       "--retries",
       "--schedule",
-      "--teardown-timeout",
       "--timeout"
     ],
     "why": [
@@ -232,13 +228,6 @@
       "false",
       "true"
     ],
-    "run --kill-grace": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
     "run --output-logs": [
       "errors-only",
       "full",
@@ -255,13 +244,6 @@
       "2"
     ],
     "run --schedule": [],
-    "run --teardown-timeout": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
     "run --timeout": [
       "12h",
       "1d",
@@ -331,13 +313,6 @@
       "false",
       "true"
     ],
-    "watch --kill-grace": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
     "watch --output-logs": [
       "errors-only",
       "full",
@@ -351,13 +326,6 @@
       "2"
     ],
     "watch --schedule": [],
-    "watch --teardown-timeout": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
     "watch --timeout": [
       "12h",
       "1d",
@@ -395,14 +363,12 @@
     "VX_RUN_BRANCH",
     "VX_RUN_CONCURRENCY",
     "VX_RUN_CONTINUE",
-    "VX_RUN_KILL_GRACE",
     "VX_RUN_OUTPUT_LOGS",
     "VX_RUN_RETRIES",
     "VX_RUN_RULES_EXCLUSIVE_OUTPUTS",
     "VX_RUN_RULES_UPFRONT_KEYS",
     "VX_RUN_SCHEDULE",
     "VX_RUN_TASK",
-    "VX_RUN_TEARDOWN_TIMEOUT",
     "VX_RUN_TIMEOUT",
     "VX_RUN_WORKSPACE",
     "VX_WATCH_POLL"
