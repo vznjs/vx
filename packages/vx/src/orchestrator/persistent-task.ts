@@ -13,6 +13,7 @@ import {
 } from '../exec/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import { maskedEmitter, secretMask, testTimerMs } from '../util/index.js'
+import { warnOf } from '../report/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import {
   commandWriteReach,
@@ -206,7 +207,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
           if (isAborted(args.stopSignal)) return
           const after = noticeMs < 1000 ? `${noticeMs} ms` : `${noticeMs / 1000} s`
           const unbounded = effectiveTimeout === undefined ? ', with no exec.timeout' : ''
-          log.status(
+          warnOf(log)(
             `vx: ${node.id} not ready after ${after}: waiting for a line matching /${serverSecrets?.mask(readyWhen) ?? readyWhen}/ (readyWhen)${unbounded}`,
           )
         }, noticeMs)

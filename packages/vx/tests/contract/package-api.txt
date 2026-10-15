@@ -871,6 +871,7 @@ export interface LockSettings {
 == type Logger (src/report/logger.ts)
 export interface Logger {
   status(line: string): void
+  warn?(line: string): void
   taskStdout(node: TaskNode, chunk: string): void
   taskStderr(node: TaskNode, chunk: string): void
   taskComplete(node: TaskNode, outcome: TaskOutcome): void
@@ -1259,7 +1260,7 @@ export type RunEvent =
   | { kind: 'task:stdout'; node: TaskNode; chunk: string }
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
-  | { kind: 'run:status'; line: string }
+  | { kind: 'run:status'; line: string; warn?: true }
   | { kind: 'step:start'; id: string }
   | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }

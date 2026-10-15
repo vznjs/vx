@@ -49,7 +49,8 @@ export type RunEvent =
   | { kind: 'task:stdout'; node: TaskNode; chunk: string }
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
-  | { kind: 'run:status'; line: string }
+  /** `warn`: a warning, which the terminal prints on stderr. */
+  | { kind: 'run:status'; line: string; warn?: true }
   | { kind: 'step:start'; id: string }
   | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
@@ -121,6 +122,7 @@ export function busLogger(bus: EventBus): Logger {
   const secrets = secretMask([process.env])
   return {
     status: (line) => bus.emit({ kind: 'run:status', line: secrets?.mask(line) ?? line }),
+    warn: (line) => bus.emit({ kind: 'run:status', line: secrets?.mask(line) ?? line, warn: true }),
     taskStdout: (node, chunk) => bus.emit({ kind: 'task:stdout', node, chunk }),
     taskStderr: (node, chunk) => bus.emit({ kind: 'task:stderr', node, chunk }),
     taskComplete: (node, outcome) => bus.emit({ kind: 'task:complete', node, outcome }),
@@ -167,7 +169,8 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
         sink.taskComplete(event.node, event.outcome)
         return
       case 'run:status':
-        sink.status(event.line)
+        if (event.warn === true && sink.warn !== undefined) sink.warn(event.line)
+        else sink.status(event.line)
         return
       case 'step:start':
         sink.stepStart?.(event.id)
@@ -457,7 +460,8 @@ export type WireEvent =
   | { kind: 'task:stdout'; taskId: string; chunk: string }
   | { kind: 'task:stderr'; taskId: string; chunk: string }
   | { kind: 'task:complete'; outcome: OutcomeView }
-  | { kind: 'run:status'; line: string }
+  /** `warn`: a warning, which the terminal prints on stderr. */
+  | { kind: 'run:status'; line: string; warn?: true }
   | { kind: 'step:start'; id: string }
   | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
@@ -477,7 +481,9 @@ export function toWireEvent(event: RunEvent): WireEvent {
     case 'task:complete':
       return { kind: 'task:complete', outcome: projectOutcome(event.outcome) }
     case 'run:status':
-      return { kind: 'run:status', line: event.line }
+      return event.warn === true
+        ? { kind: 'run:status', line: event.line, warn: true }
+        : { kind: 'run:status', line: event.line }
     case 'step:start':
     case 'step:end':
     case 'run:end':

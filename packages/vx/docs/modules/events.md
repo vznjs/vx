@@ -14,7 +14,9 @@ run removes on its way out (`orchestrator.md`).
 - `createEventBus(): EventBus` — synchronous, order-preserving fan-out
   (`emit(event)`, `subscribe(subscriber)` returning a disposer); its
   subscribers are `RunEventSubscriber`s, `(event: RunEvent) => void`.
-- `busLogger(bus)` — `Logger`-shaped facade that emits events.
+- `busLogger(bus)` — `Logger`-shaped facade that emits events. Its
+  `warn` is a `run:status` with `warn: true`, which `terminalSubscriber`
+  hands to the sink's `warn` (stderr in the default logger).
 - `step:start` / `step:end` carry one of vx's own steps (`vx:uploads`,
   `<plugin>:setup`), emitted only where something renders them; `run:end`
   is the graph's end and `run:done` the run's, just before the footer.

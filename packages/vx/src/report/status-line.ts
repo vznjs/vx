@@ -38,6 +38,11 @@ export interface OutputWriter {
   /** Serialized content write: erase status → content → redraw. */
   write(chunk: string): void
   /**
+   * The same, to another stream on the same terminal (stderr): the region
+   * on this one is erased first and redrawn after.
+   */
+  writeTo(target: StatusStream, chunk: string): void
+  /**
    * Replace the status line's content. Redraws are throttled to
    * `minRedrawMs` unless `force` (task start/finish) is set.
    */
@@ -236,6 +241,22 @@ export function createOutputWriter(
       }
       stream.write(chunk)
       if (chunk.length > 0) atLineStart = chunk.endsWith('\n')
+      if (!dead && current !== null && atLineStart) draw()
+    },
+    writeTo(target, chunk) {
+      if (target === stream) return this.write(chunk)
+      // Held stdout is older than this chunk.
+      flushHeld()
+      if (!enabled) {
+        target.write(chunk)
+        return
+      }
+      if (shown) {
+        stream.write(eraseSeq())
+        shown = false
+        shownRows = 0
+      }
+      target.write(chunk)
       if (!dead && current !== null && atLineStart) draw()
     },
     setStatus(line, o = {}) {

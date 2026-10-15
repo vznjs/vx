@@ -25,6 +25,10 @@ when disabled (CI). When active:
   output. The erase always uses the height of the **previous** draw;
   the new draw establishes the new height, so the region may grow and
   shrink freely (pins arriving).
+- `writeTo(target, chunk)` does the same for another stream on the
+  same terminal (the logger's warnings on stderr): the region on this
+  stream is erased first and redrawn after; off a TTY it hands over
+  any coalesced output first, so the order holds.
 - A region taller than the terminal (`stream.rows`, read per draw)
   is cut to its leading lines that fit in one row less, counting
   wrapped rows. Cursor-up stops at the top of the screen, so rows in

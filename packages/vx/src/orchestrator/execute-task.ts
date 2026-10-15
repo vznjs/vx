@@ -77,7 +77,7 @@ import { sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
-import type { Logger } from '../report/index.js'
+import { type Logger, warnOf } from '../report/index.js'
 import {
   computeGroupHash,
   computeTaskHash,
@@ -349,7 +349,7 @@ async function restoreOrMiss(
     return await restoreHit({ args, hash, hit, cacheOpStart, taskStartNs })
   } catch (err) {
     if (!(err instanceof ArtifactVanishedError)) throw err
-    args.log.status(`[vx] ${args.node.id}: ${err.message} — running it`)
+    warnOf(args.log)(`[vx] ${args.node.id}: ${err.message} — running it`)
     return null
   }
 }
@@ -817,7 +817,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(cacheCfg?.inputs.workspaceFiles ?? []),
   ]
   if (inputs !== undefined && declaredInputs.length > 0 && inputs.files.length === 0) {
-    log.status(
+    warnOf(log)(
       `[vx] ${node.id}: cache.inputs matched no files (${declaredInputs.join(', ')}) — ` +
         `the key will not change when this project's source does`,
     )
@@ -941,7 +941,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           if (remoteOnly) {
             raw = new UserError(`${why}, and remote: 'only' keeps it off this machine`)
           } else {
-            log.status(`[vx] ${node.id}: ${why} — running it here`)
+            warnOf(log)(`[vx] ${node.id}: ${why} — running it here`)
             const local = await localExecutor().execute(await buildRequest(true))
             assertExecuteResult('local', node.id, local)
             return local
@@ -1415,13 +1415,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         ? ''
         : '; if the task writes it, declare it in cache.outputs'
     if (stability.severity === 'error') {
-      log.status(
+      warnOf(log)(
         `[vx] ${node.id}: ${what} — the result is not saved, ` +
           `and inputStability.severity is 'error', so the task fails${hint}`,
       )
       movedFails = moved === null ? '' : printable(relPosix(args.workspaceRoot, moved))
     } else {
-      log.status(
+      warnOf(log)(
         `[vx] ${node.id}: ${what} — the result stands, ` +
           `but is not saved under a key that no longer describes it${hint}`,
       )
@@ -1434,7 +1434,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (movedFails !== undefined) effectiveExitCode = 1
 
   if (unkeyedUpstream !== undefined && willWrite && effectiveExitCode === 0) {
-    log.status(
+    warnOf(log)(
       `[vx] ${node.id}: ran over ${unkeyedUpstream.node.id}'s outputs, which its key no longer ` +
         `describes — the result stands, but is not saved`,
     )

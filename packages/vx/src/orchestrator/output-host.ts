@@ -64,6 +64,7 @@ export function guardedOutput(
       failed = true
       fallback({
         kind: 'run:status',
+        warn: true,
         line: `[vx] plugin '${claimed.owner}' output failed: ${err instanceof Error ? err.message : String(err)}; vx renders the rest of the run`,
       })
       fallback(event)
