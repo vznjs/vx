@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { parseLastArgs } from '../src/cli/last.js'
 import { formatRunList, formatTaskRows } from '../src/cli/last.js'
-import type { RunSummaryRow } from '../src/orchestrator/index.js'
+import type { RunSummaryRow } from '../src/history/index.js'
 import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')

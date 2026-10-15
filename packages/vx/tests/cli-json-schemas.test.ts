@@ -27,19 +27,21 @@ import type {
   TaskConfig,
 } from '../src/config.js'
 import type {
-  CacheKeyDiff,
-  CacheKeyExplanation,
-  FlakyTask,
   InfoFacts,
-  InputDiffEntry,
-  InvocationDetail,
-  RunSummaryRow,
   TaskFailure,
   TaskLog,
-  WhyDidThisRerun,
   PlanPrediction,
   RunPlan,
 } from '../src/orchestrator/index.js'
+import type {
+  CacheKeyDiff,
+  CacheKeyExplanation,
+  FlakyTask,
+  InputDiffEntry,
+  InvocationDetail,
+  RunSummaryRow,
+  WhyDidThisRerun,
+} from '../src/history/index.js'
 import type { PruneResult } from '../src/cache/layer.js'
 import type { ClearResult } from '../src/cli/cache.js'
 import type { TaskNode } from '../src/graph/index.js'

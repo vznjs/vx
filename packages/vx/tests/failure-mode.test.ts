@@ -22,7 +22,7 @@ import {
   detectFlaky,
   flakyTasks,
   mixedOutcomeKeyCount,
-} from '../src/orchestrator/failure-mode.js'
+} from '../src/history/failure-mode.js'
 
 /** Monotonic `started_at` so row ordering is deterministic across a file run. */
 let seq = 0

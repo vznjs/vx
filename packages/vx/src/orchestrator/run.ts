@@ -78,7 +78,6 @@ import { defaultLogger, type DefaultLogger, resolveOutputView, type Logger } fro
 import { plainOutput } from './plain-output.js'
 import { formatPersistentList } from './framed-output.js'
 import { createForecast } from './forecast.js'
-import { LocalHistoryProvider } from './history.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
 import { prepareRun, type PreparedRun } from './prepare.js'
@@ -127,8 +126,12 @@ import { writeRunProfile } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { commandWindows } from './command-windows.js'
 import { formatOutcomeTable, formatRunSummary } from './summary.js'
-import { detectFlaky, type FlakyCandidate } from './failure-mode.js'
-import { createMissExplainer } from './miss-reason.js'
+import {
+  createMissExplainer,
+  detectFlaky,
+  type FlakyCandidate,
+  LocalHistoryProvider,
+} from '../history/index.js'
 import type { HeldServer, RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
 import { resolveSetting } from '../settings.js'

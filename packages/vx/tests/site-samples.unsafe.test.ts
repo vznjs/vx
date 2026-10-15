@@ -328,7 +328,7 @@ describe('the configure guide quotes what vx why says', () => {
   const post = readFileSync(path.join(DOCS, 'blog', 'why-did-this-rerun.md'), 'utf8')
   it("every verdict sentence metrics.ts can print is a row of its table, and of the post's", () => {
     const src = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'metrics.ts'),
+      path.resolve(import.meta.dir, '..', 'src', 'history', 'metrics.ts'),
       'utf8',
     )
     // The verdict notes: `unchangedKeyNote` and `whyDidThisRerun` after it,

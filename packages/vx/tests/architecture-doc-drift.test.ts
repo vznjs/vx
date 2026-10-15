@@ -90,7 +90,7 @@ describe('architecture.md follows the source it describes', () => {
 // is the first thing to rot when a module lands (item 355's "five layers"
 // above a six-row table, one page over). Item 363, 2026-09-19.
 describe('architecture.md counts the modules that are on disk', () => {
-  it('eight modules and three root files, and the table has a row each', async () => {
+  it('nine modules and three root files, and the table has a row each', async () => {
     const src = path.join(import.meta.dir, '..', 'src')
     const entries = readdirSync(src, { withFileTypes: true })
     const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name)
@@ -100,7 +100,7 @@ describe('architecture.md counts the modules that are on disk', () => {
     // `config` is the root file the page counts as a module: it is the user
     // schema every other module consumes, not plumbing like bin/index/version.
     const modules = [...dirs, 'config'].sort()
-    expect(modules.length).toBe(8)
+    expect(modules.length).toBe(9)
     const doc = await Bun.file(path.join(import.meta.dir, '..', 'docs', 'architecture.md')).text()
     const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
     expect(doc).toContain(

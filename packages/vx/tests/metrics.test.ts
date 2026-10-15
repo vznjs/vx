@@ -5,15 +5,15 @@ import { describe, expect, it } from 'bun:test'
 import { type InvocationRecord, Cache, type RunRecord } from '../src/cache/index.js'
 import {
   cacheKeyDiff,
-  explainCacheKeyQuery,
+  explainCacheKey as explainCacheKeyQuery,
   getInvocation,
   getRun,
   listInvocations,
   latestRunId,
   listRuns,
-  whyDidThisRerunQuery,
-} from '../src/orchestrator/index.js'
-import { diffKeyComponents } from '../src/orchestrator/metrics.js'
+  whyDidThisRerun as whyDidThisRerunQuery,
+} from '../src/history/index.js'
+import { diffKeyComponents } from '../src/history/metrics.js'
 
 function mkRun(
   args: Partial<RunRecord> & { hash: string; project: string; task: string },

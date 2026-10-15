@@ -9,13 +9,13 @@ import { flagHint, formatValue, seeHelp } from './help.js'
 import { splitTaskId } from '../graph/index.js'
 import {
   cacheKeyDiff,
-  explainCacheKeyQuery as explainCacheKey,
+  explainCacheKey,
   inputWriters,
   latestRunId,
   rootCauses,
-  whyDidThisRerunQuery as whyDidThisRerun,
-  resolveRunId,
-} from '../orchestrator/index.js'
+  whyDidThisRerun,
+} from '../history/index.js'
+import { resolveRunId } from '../orchestrator/index.js'
 import { MASKED, nearMatches, printable, refusal, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'

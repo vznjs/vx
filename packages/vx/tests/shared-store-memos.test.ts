@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { Cache, type RunRecord } from '../src/cache/index.js'
-import { detectFlaky, flakyTasks } from '../src/orchestrator/index.js'
+import { detectFlaky, flakyTasks } from '../src/history/index.js'
 
 let dir: string
 let store: string

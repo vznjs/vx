@@ -22,11 +22,8 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { Cache, LayeredCache, type RemoteCacheLayer } from '../src/cache/index.js'
 import { ownRssHighWater } from '../src/exec/runner.js'
-import {
-  LocalHistoryProvider,
-  type RunSummaryRecord,
-  type TelemetryRecord,
-} from '../src/orchestrator/index.js'
+import { type RunSummaryRecord, type TelemetryRecord } from '../src/orchestrator/index.js'
+import { LocalHistoryProvider } from '../src/history/index.js'
 import { planRun, run } from './helpers/orchestrator.js'
 import { pluginSource, writeEdges } from './helpers/plugin.js'
 import { storedKeys } from './helpers/stored-artifact.js'

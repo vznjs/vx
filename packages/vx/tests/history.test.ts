@@ -4,7 +4,7 @@ import path from 'node:path'
 import type { Database } from 'bun:sqlite'
 import { afterEach, describe, expect, it, vi } from 'bun:test'
 import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
-import { EmptyHistoryProvider, LocalHistoryProvider } from '../src/orchestrator/index.js'
+import { EmptyHistoryProvider, LocalHistoryProvider } from '../src/history/index.js'
 
 function mkRun(args: {
   hash: string
