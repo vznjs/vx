@@ -25,6 +25,14 @@ can never drift on the stability gate.
   unkeyed group's key with the synthetic upstream it folded, stable or
   not: execute-task compares that upstream with the live one before
   reusing the key (`group-key-once.test.ts`).
+- `gatedOutputs(nodes, workspaceRoot)` / `askIgnoredOutputs(gated, workspaceRoot)`
+  — the same-project outputs some reader's inputs reach, and one `git
+check-ignore` over their directories (`util/git-ignored.ts`) that
+  `prepare` starts beside the git enumeration and settles into
+  `GitFilesCache.ignoredOutputs` once the listing is in: a deep glob
+  (`**/dist/**`) counts only when the listing holds no file it matches
+  (a tracked output, a directory a `!` rule takes back). Nothing reached:
+  no spawn.
 - `dependsOnSiblingOutputs(node, upstreamOutputProjects, hasWsOutputUpstream, dirByProject?, sameProject?)`
   — the conservative gate, fed the TRANSITIVE-upstream output producers
   `deriveStableKeys` accumulates in topo order. The key is preliminary
@@ -32,7 +40,9 @@ can never drift on the stability gate.
   its input globs can meet (literal prefixes, ancestor or equal; A-20:
   a `test` reading `src/**` after a `build` writing `dist/**` is stable;
   X-54: an output the task's own `!` inputs take back whole, by
-  `outputTakenBack`, does not count, so `['**/*', '!dist/**']` is too),
+  `outputTakenBack`, does not count, so `['**/*', '!dist/**']` is too;
+  nor does an output git ignores whole, `sameProject.readableOf`, from
+  `GitFilesCache.ignoredOutputs`),
   when a same-project upstream may write undeclared (every input), when
   its own `outputs.files` meet another same-project task's (M-5: restored
   early, it raced the producer's restore), when ANY upstream declares

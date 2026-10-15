@@ -453,8 +453,17 @@ transitive dependant of one with it (their up-front keys fold a
 preliminary key); a glob with no literal prefix reaches every project.
 Before item 584 one such declaration emptied the tier graph-wide.
 `rules.upfrontKeys` (on by default, X-54) refuses at load a task whose
-input globs can match another task's declared outputs, so the clauses
-on declared outputs fire only with the rule off; undeclared writes, an
+input globs can match another task's declared outputs, unless git
+ignores those outputs whole, so the clauses on declared outputs fire
+only with the rule off. An output git ignores whole is no reach either:
+a key reads only what git lists, so a `**/*` reader beside a gitignored
+`**/dist/**` producer keys up front, the same key before and after the
+build. The run asks git once, beside its walk and only when a reader
+reaches a same-project output: one `git check-ignore` over each such
+output's directory (`dist/`, and a fresh `__vx_probe__/dist/` for a
+glob that starts with `**`), and the walk's listing must hold no file
+the glob matches (a tracked output, a directory a `!` rule takes back);
+anything git cannot answer keeps the key late. Undeclared writes, an
 `outputs.workspaceFiles` producer upstream, a rewriter the key does not
 fold, and runtime probes after a writer still leave a key preliminary.
 The

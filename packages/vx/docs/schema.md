@@ -892,8 +892,8 @@ Always applied to every glob pass (regardless of what you wrote):
   itself via its own output. A path an output `!` entry takes back is
   no output, so it stays an input (A-44). Another task's outputs are
   not excluded for you: an input glob that can match them is refused
-  while `rules.upfrontKeys` is on (X-54). Write the exclusion,
-  `['**/*', '!dist/**']`. An input entry the task's OWN outputs take
+  while `rules.upfrontKeys` is on (X-54), unless git ignores them
+  whole. Write the exclusion, `['**/*', '!dist/**']`, or ignore `dist/`. An input entry the task's OWN outputs take
   back whole is always refused (X-55): vx removes outputs before a run,
   so a formatter declaring `src/**` as both would delete its sources. A
   task that rewrites files in place declares no outputs.
@@ -1893,7 +1893,17 @@ false in .vx/workspace.ts to let it wait for its producer.` Such a key
     the schedule (`caching.md` § Local restore tier). The upstream's key
     already reaches the reader through `dependsOn`. A `!` entry that
     takes the whole output back clears it, and an output the reader's
-    `!` entries take back no longer holds its key back either. A task's
+    `!` entries take back no longer holds its key back either. Nor does
+    an output git ignores whole: a key reads only what git lists, so
+    `**/*` beside a gitignored `**/dist/**` passes and keys up front. Git
+    is asked, never a `.gitignore` read: `git check-ignore` on the
+    output's directory (for `**/dist/**`, `dist/` and a fresh
+    `__vx_probe__/dist/`), and no tracked or listed file may match it,
+    so a tracked output is still refused. A glob no few paths stand for
+    (`*.js`) is refused as before. `vx lock` asks once for every
+    overlapped output; a run asks once beside its git walk for the
+    stability gate, so a rule changed after the lock keys the reader
+    late until the next `vx lock` refuses it. A task's
     own outputs, a task with no `cache`, and a group are exempt. Off,
     the key waits for its producer, as before.
   - **`dependencies`** — which workspace projects a project may depend

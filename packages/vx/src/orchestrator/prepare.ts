@@ -78,6 +78,7 @@ import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
+import { askIgnoredOutputs, gatedOutputs } from './stable-keys.js'
 import { currentBranch } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import type { Logger } from '../report/index.js'
@@ -679,6 +680,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       if ((n.config.cache?.inputs.workspaceFiles?.length ?? 0) > 0) usesWorkspaceInputs = true
     }
     const projectDirs = [...graphDirs]
+    const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot)
     const enumeration = await (git.started ??
       startGitEnumeration(
         workspaceRoot,
@@ -692,6 +694,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       usesWorkspaceInputs,
       localCache,
     )
+    await settleIgnored(gitFilesCache)
     mark('git enumeration')
     if (hasGraphHook && !hooksFirst) await graphStage()
     // Args after `--` go to requested commands only; with none among them

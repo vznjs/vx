@@ -289,6 +289,12 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * a cache no enumeration filled; its OIDs are then re-checked by content.
    */
   enumeratedAtMs: number | undefined
+  /**
+   * The declared outputs (root-relative globs) git ignores whole, asked
+   * once per run beside the enumeration: no key reads them, so a reader
+   * beside their producer keys up front (`dependsOnSiblingOutputs`).
+   */
+  ignoredOutputs: ReadonlySet<string> = new Set()
 
   get undecodableNames(): ReadonlySet<string> {
     return this.undecodable

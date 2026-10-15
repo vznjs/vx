@@ -69,6 +69,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   setGitVars(listing: string | null): void // the enumeration's `git var -l`
   configValue(key: string): string | null | undefined // undefined: not read, ask git
   enumeratedAtMs: number | undefined // the enumeration's start: what `oidsFor` says is true as of then
+  ignoredOutputs: ReadonlySet<string> // declared outputs (root-relative) git ignores whole, asked once per run (`stable-keys.md`)
 }
 
 export interface GitEnumeration {
