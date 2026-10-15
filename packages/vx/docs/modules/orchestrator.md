@@ -104,7 +104,8 @@ export interface RunSummary {
    producing `preProbed` (probe reuse) + `restoreTier`.
 9. **`runGraph({..., priorities, restoreTier})`.** Two-tier schedule;
    each ready node runs `executeTask` (with its pre-probe when
-   present) through `admission.ts`: a service-supplied `inflight` map
+   present; its arguments from `executeArgsOf`, execute-args.ts, which
+   spreads the run's `RunScope` built once) through `admission.ts`: a service-supplied `inflight` map
    dedupes identical-hash tasks across concurrent delegated runs, and
    under `continueMode: 'always'` the taint of an upstream failure is
    tracked so the task's save is withheld.
