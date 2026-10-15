@@ -1468,9 +1468,11 @@ watch events within 2000 ms; polling every 250 ms instead`.
    changed, then its task rows as `vx run` prints them, with no footer.
    The named path is the first changed one that still exists, so an
    editor's temporary file renamed away names nothing; a deletion names
-   the cycle when nothing else changed. A cycle that re-read the watched
-   set (a member came or went, the lock or a plugin changed) says the
-   `watching` line again. Errors and refusals go to stderr. The
+   the cycle when nothing else changed. The `watching` line is said
+   once: a cycle that re-reads the watched set (a member came or went,
+   the lock or a plugin changed) says nothing more; `VX_DEBUG_WATCH=1`
+   says each arm on stderr as `vx watch: armed N projects`. Errors and
+   refusals go to stderr. The
    orchestrator is invoked again with the same options, save one: the
    `--affected` diff is read once, for the initial run. A later cycle
    runs the requested task in every project of the scope fixed at start,
@@ -3074,6 +3076,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_WATCH_POLL`                     | [`watch.poll`](schema.md#settings)                    | Poll for changes from the start instead of the OS watcher.                                                                                                  |
 | `VX_CONFIG_WORKER_TIMEOUT`          | [`config.workerTimeout`](schema.md#settings)          | How long one config evaluation may take.                                                                                                                    |
 | `VX_DEBUG_TIMING`                   | [`debug.timing`](schema.md#settings)                  | Print the run's stage timings to stderr.                                                                                                                    |
+| `VX_DEBUG_WATCH`                    | [`debug.watch`](schema.md#settings)                   | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                            |
 | `VX_DEBUG_DUMPABLE`                 | [`debug.dumpable`](schema.md#settings)                | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                                 |
 | `VX_HANDED_OFF`                     | —                                                     | Set by a global vx that hands the call to the project's own (§ Which vx runs): the path of the vx that handed off, so the receiver does not hand off again. |
 | `VX_RUN_WORKSPACE`, `VX_RUN_TASK`   | —                                                     | Set by vx on every task (below); a `vx run` a task starts reads them back.                                                                                  |

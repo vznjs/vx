@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { BIN, SETTLE_MS, startWatch, until, type Watch } from './helpers/watch-loop.js'
+import { BIN, SETTLE_MS, ARMS, arms, startWatch, until, type Watch } from './helpers/watch-loop.js'
 
 let w: Watch | undefined
 let root = ''
@@ -32,7 +32,7 @@ it('an edit in a project added mid-watch, made while its first cycle still runs,
     'slow',
     `export default { tasks: { build: { exec: { command: 'touch ${marker}; sleep 3' } } } }`,
   )
-  w = startWatch(root)
+  w = startWatch(root, ['--all'], ARMS)
   const ww = w
   await until(() => ww.out().includes('watching '), 'watching')
   await rm(marker, { force: true })
@@ -56,7 +56,7 @@ it('an edit in a project added mid-watch, made while its first cycle still runs,
   )
   // The cycle is still in slow#build's sleep.
   await writeFile(path.join(root, 'packages', 'fresh', 'src', 'a.txt'), '2')
-  await until(() => ww.out().includes('watching 2 projects'), 'the re-arm')
+  await until(() => arms(ww, 2) === 1, 'the re-arm')
   await Bun.sleep(SETTLE_MS * 2)
   expect(await runs()).toEqual(['fresh 1', 'fresh 2'])
 }, 40_000)

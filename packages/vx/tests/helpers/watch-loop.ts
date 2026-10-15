@@ -18,6 +18,18 @@ export const SETTLE_MS = 1_000
 /** Rows, not CI's full blocks: the suites count a task's row per cycle, and CI sets these. */
 export const NOT_CI = { CI: '', GITHUB_ACTIONS: '' }
 
+/** `debug.watch`: each arm said on stderr, the sync point after a cycle that re-read the set. */
+export const ARMS = { VX_DEBUG_WATCH: '1' }
+/** How many times the loop has armed (the first included), under `ARMS`. */
+export const arms = (w: Watch, projects?: number): number =>
+  w
+    .err()
+    .split(
+      projects === undefined
+        ? 'vx watch: armed '
+        : `vx watch: armed ${projects} project${projects === 1 ? '' : 's'}\n`,
+    ).length - 1
+
 export interface Watch {
   proc: ReturnType<typeof Bun.spawn>
   out: () => string

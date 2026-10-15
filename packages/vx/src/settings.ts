@@ -225,6 +225,13 @@ export const SETTINGS: readonly Setting[] = [
     config: false,
   },
   {
+    path: 'debug.watch',
+    kind: { type: 'bool' },
+    default: 'false',
+    doc: '`vx watch`: say on stderr each time the loop arms, with the projects it watches.',
+    config: false,
+  },
+  {
     path: 'debug.dumpable',
     kind: { type: 'bool' },
     default: 'false',
