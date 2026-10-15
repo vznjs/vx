@@ -47,7 +47,7 @@ directory as the store:
 // plugins/cache.ts
 import { link, mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
-import { definePlugin, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
+import { definePlugin, LayeredCache, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
 class DirRemote implements RemoteCacheLayer {
   constructor(readonly endpoint: string) {}
@@ -74,8 +74,11 @@ class DirRemote implements RemoteCacheLayer {
 
 export function dirCache(dir: string): VxPlugin {
   return definePlugin(import.meta, {
-    cache() {
-      return new DirRemote(dir)
+    cache(ctx) {
+      return new LayeredCache(ctx.localCache, new DirRemote(dir), {
+        policy: ctx.policy,
+        onRemoteError: (err) => ctx.warn(`dir-cache: ${err.message}`),
+      })
     },
   })
 }
@@ -87,11 +90,14 @@ while a link never replaces an existing file, and an `EEXIST` is
 success because the same hash means the same bytes. (Thanks to a
 reader's comment.)
 
-Swap the directory for S3, R2 or your own HTTP server. vx does the
-rest: the local cache stays in front, `--cache-policy` and `cache.policy` gate
-the remote, a remote error turns into a miss and a warning naming the
-plugin, uploads run in the background, and every artifact gets the same
-integrity check as a local one. vx bounds no call, so a
+Swap the directory for S3, R2 or your own HTTP server. `LayeredCache`
+does the rest: the local cache stays in front, a remote error turns
+into a miss and a warning, uploads run in the background, and every
+artifact gets the same integrity check as a local one. (Since vx
+0.0.637, a cache plugin returns only its remote, `cache() { return new
+DirRemote(dir) }`, and core does the layering: `--cache-policy` and
+`cache.policy` gate the remote, and a remote error's warning names the
+plugin.) vx bounds no call, so a
 network store gives each request its own deadline. A plugin's name is its
 package name, taken from `import.meta`.
 

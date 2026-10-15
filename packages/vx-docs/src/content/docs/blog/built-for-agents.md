@@ -113,7 +113,10 @@ $ mkdir -p .claude/skills/vx
 $ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 ```
 
-Or install it with `npx skills add vznjs/vx`. The
+For live questions over the Model Context Protocol, see
+[Give your coding agent the build's memory](../agents-and-mcp/). (Since
+vx 0.0.637, `@vzn/vx-mcp` is retired; install the skill with
+`npx skills add vznjs/vx`.) The
 [agents guide](../../guides/agents/) and
 [machine-readable output](../../cli/#machine-readable-output) have the
 details.

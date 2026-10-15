@@ -38,7 +38,7 @@ $ vx run build --all --cache-policy=local:r             # read local, write noth
 $ vx run build --all --cache-policy=local:,remote:rw    # skip local, still upload
 ```
 
-`VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and
+(Since vx 0.0.637.) `VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and
 `cache.policy` in `.vx/workspace.ts` sets the default; the flag beats the
 variable, which beats the config. Whatever the spec, a lookup asks the
 local cache first, then each remote in the order the plugins declare them.
@@ -84,29 +84,38 @@ it. `cache.scope` decides where a run's writes land:
 
 ```mermaid
 flowchart LR
-  M[main CI · no scope] -->|reads + writes| T[(default keys)]
+  M[main CI · trusted] -->|reads + writes| T[(trusted keys)]
   P[PR CI · pr-123] -->|reads| T
   P -->|writes| S[(pr-123 keys)]
-  L[laptop · remote:r] -->|reads| T
+  L[laptop · read-only] -->|reads| T
   style T stroke:#c6f84e,stroke-width:2px
 ```
 
-- With no scope, a run reads and writes the default keys.
-- A scope, like `pr-123`, reads the default keys first, then its own,
-  and writes only its own. A pull request never writes what main reads.
-- Whether a run writes at all is the policy's call. Off CI the default
-  reads the remote and writes nothing.
+- `trusted` reads and writes the task keys. This is the default on CI.
+- `read-only` reads the task keys and writes nothing. This is the default on a laptop.
+- Any other name, like `pr-123`, reads its own keys first, then the
+  trusted ones, and writes only its own. A pull request never writes what
+  main reads.
 
-```sh frame="terminal"
-$ vx run build --cache-scope pr-123
+```ts
+// .vx/workspace.ts
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({ cache: { scope: 'trusted' } })
 ```
 
-`--cache-scope` beats `VX_CACHE_SCOPE`, which beats `cache.scope` in
-`.vx/workspace.ts`. On GitHub Actions, the
+`VX_CACHE_SCOPE` beats the config, and `--cache-scope` beats both for one run. On GitHub Actions, the
 [@vzn/vx-ci plugin](https://vznjs.github.io/vx/blog/results-on-github/)
-sets the scope for you: `pr-<n>` on a pull request, none on the
+sets the scope for you: `pr-<n>` on a pull request, trusted on the
 default branch. The scope is a client-side rule, so a cache server that
 checks tokens is still the real boundary.
+
+(Since vx 0.0.637, `trusted` and `read-only` are gone. With no scope a
+run reads and writes the default keys; a scope like `pr-123` reads the
+default keys first, then its own, and writes only its own; whether a run
+writes at all is the policy's call, and off CI the default reads the
+remote and writes nothing. @vzn/vx-ci sets no scope on the default
+branch.)
 
 Every flag is in the [CLI reference](../../cli/), and `cache` is in
 the [schema](../../schema/).

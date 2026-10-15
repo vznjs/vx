@@ -19,6 +19,10 @@ below is a simplification.
 
 ## One command
 
+(Since vx 0.0.637. Before, `vx init` wrote a `.vx/workspace.ts` running
+the graph through `nx()` as a temporary start, and
+`bunx @vzn/vx-migrate` wrote the native configs.)
+
 `npx @vzn/vx init` beside `nx.json` is the whole adoption. It writes
 one `vx.config.ts` per project, a `.vx/workspace.ts` declaring your
 lockfile's plugin, and `.vx/projects.lock.json`, and installs vx with

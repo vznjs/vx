@@ -53,10 +53,13 @@ compares the task's latest recorded run with the one before it (or a
 run you pin with `--run`) and diffs the stored components, one row per
 kind: `file` (path and blob id), `env` (a declared variable), `runtime`
 and `ws-runtime` (a declared command's output, project- or
-workspace-rooted), `forward` (the argv forwarded after `--`),
+workspace-rooted), `forward` (the argv forwarded after `--`), `package`
+(the project's own `package.json`), `workspace` (the fingerprint),
 `config` (the evaluated task config), `upstream` (a dependency's input
 key, by task id), `plugin` (a plugin's material, by name) and `format`
-(the key format, which moves only with a vx upgrade). When
+(the key format, which moves only with a vx upgrade). (Since vx 0.0.637,
+core keys no package file, so `package` and `workspace` rows are gone; a
+lockfile plugin's part shows as `plugin`.) When
 `@vzn/vx-lockfile` is declared, a dependency bump shows up as
 `plugin @vzn/vx-lockfile/pnpm` for exactly the projects it reaches.
 
@@ -64,10 +67,10 @@ Because it only reads the database, it works after the fact and on
 another machine: a CI job that copied `.vx/cache` out can be asked why
 it rebuilt, tomorrow, from a laptop.
 
-Update (2026-10-07): by default the entries `vx why` compares live in
-the shared store, `~/.vx/<id>/cache`, not in `.vx/cache`. A CI job that
+(Since vx 0.0.593, by default the entries `vx why` compares live in the
+shared store, `~/.vx/<id>/cache`, not in `.vx/cache`. A CI job that
 names a `cache.dir` keeps both there, and that directory is the one to
-copy.
+copy.)
 
 ## Eleven endings for an unchanged key
 
@@ -103,10 +106,12 @@ cross.
 
 ## The same answer for machines
 
-`--format json` emits one object: `{ taskId, runId, why, diff, roots }`,
-so "why is CI rebuilding everything" is a question a coding agent can
-answer without reading the source of the runner. The
-[agent skill](../../guides/agents/) teaches it the command.
+`--format json` emits one object: `{ taskId, runId, why, diff, roots }`.
+The `@vzn/vx-mcp` plugin exposes the same query as a tool a coding agent
+can call (`whyDidThisRerun`), so "why is CI rebuilding everything" is a
+question an agent can answer without reading the source of the runner.
+(Since vx 0.0.637, `@vzn/vx-mcp` is retired; the
+[agent skill](../../guides/agents/) teaches an agent the command.)
 
 A cache is a claim that the work has been done before. `vx why` is how
 the claim is audited. The guide is

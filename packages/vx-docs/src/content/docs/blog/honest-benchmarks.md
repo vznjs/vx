@@ -47,7 +47,8 @@ The run below is Turborepo 2.11.7, Nx 23.3.0 and Vite Task (`vp run`,
 vite-plus 1.1.0) on Linux x64 with 4 cores, every runner pinned to
 concurrency 10, every Nx task an `nx:run-commands` target. Fairness is deliberate: vx runs as
 the compiled binary users install, from a `vx lock` snapshot
-as a CI pipeline runs it, Turbo and Nx run as they would in
+(`--frozen`; since vx 0.0.637 every run reads the lock) as a CI
+pipeline runs it, Turbo and Nx run as they would in
 CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`), and
 the runners are measured strictly one at a
 time, each daemon stopped before the next runner is timed so it cannot

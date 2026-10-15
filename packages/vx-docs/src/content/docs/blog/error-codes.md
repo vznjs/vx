@@ -58,5 +58,7 @@ tasks it found; `vx show --format json` lists each project's. …
 | `VX_E_FDS`        | `ulimit -n 4096`, or fewer tasks at once |
 
 Every core code has its section, and a test holds the list to the codes
-the source can throw. `--format json` carries the same `docs` link for
-an agent. See the [Agents guide](../../guides/agents/).
+the source can throw. Over MCP, a refused tool call carries the same
+`docs` link. (Since vx 0.0.637, `@vzn/vx-mcp` is retired; `--format
+json` carries the link for an agent.) See the
+[Agents guide](../../guides/agents/).

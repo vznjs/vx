@@ -49,8 +49,11 @@ A task that was not flaky carries no note. `vx info` keeps the
 standing list across runs, `--summarize` carries it as typed data
 (`flaky: { passes, failures, attempts }` on the task, so a consumer can
 tell a break from a flake without parsing text), and
-`vx last --stats --format json` gives an agent each task's failure
-mode, so it does not learn to shrug at a repeated failure on changing inputs.
+the MCP server reports the same signal to an agent (`getRunHistory` as
+each task's failure mode, `getWorkspaceInfo` as the standing list), so
+an agent does not learn to shrug at a repeated failure on changing
+inputs. (Since vx 0.0.637, `@vzn/vx-mcp` is retired; `vx last --stats
+--format json` gives an agent each task's failure mode.)
 
 ## Why it is free
 
@@ -58,12 +61,14 @@ The information was already there. Every cache entry records its key,
 its outcome and its run. Asking "has this key ever had the other
 outcome" is one index probe on a green miss, and nothing at all on a
 run that executed nothing. There is no upload because there is nothing
-to upload to; the record lives in the repo's local store under
-`~/.vx`, so every worktree of the repo reads what the others saw.
+to upload to; the history is the local `cache.db` that `vx why` and
+`vx last` already read.
 
 That is also why it works on the first day. A service-side detector
 needs a fleet of runs before it can say anything. vx's needs the second
-run of the same key on your machine, in any of its worktrees.
+run of the same key on your machine. (Since vx 0.0.638, the record lives
+in the repo's store under `~/.vx`, so every worktree of the repo reads
+what the others saw.)
 
 ## What it is not
 

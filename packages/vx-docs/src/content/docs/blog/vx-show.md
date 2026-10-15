@@ -5,7 +5,7 @@ authors:
   - vzn
 tags:
   - dx
-excerpt: 'vx show prints a project or a task as the run sees it: the locked config, after presets, plugins and TypeScript have had their say.'
+excerpt: 'vx show prints a project or a task as the run sees it: the evaluated config, after presets, plugins and TypeScript have had their say.'
 ---
 
 A `vx.config.ts` is TypeScript. Presets compose, plugins add tasks, a
@@ -41,19 +41,19 @@ build
 
 This is the config the cache key sees, not the source text. When a
 preset sets `outputs` or a plugin rewrites a command, it shows here.
-`vx show` reads it from the lock, as a run does, so an edit shows after
-`vx lock`.
 
 ```mermaid
 flowchart LR
-  SRC["vx.config.ts"] --> EVAL["vx lock"]
+  SRC["vx.config.ts"] --> EVAL["evaluate"]
   PRE["presets"] --> EVAL
-  EVAL --> LOCK["projects.lock.json"]
-  LOCK --> PLUG["plugins"]
-  PLUG --> SHOW["vx show"]
-  PLUG --> KEY["cache key"]
+  PLUG["plugins"] --> EVAL
+  EVAL --> SHOW["vx show"]
+  EVAL --> KEY["cache key"]
   style SHOW stroke:#c6f84e,stroke-width:2px
 ```
+
+(Since vx 0.0.637, `vx show` reads the config from the lock, as a run
+does, so an edit shows after `vx lock`.)
 
 ## The same answer, for agents
 
