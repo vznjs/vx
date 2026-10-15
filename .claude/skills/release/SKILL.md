@@ -32,8 +32,10 @@ The post is a release story, not a changelog (owner, 2026-10-15:
 like Home Assistant releases"). Fewest words; no speed claims; never
 "best". Its shape:
 
-- Title = the story headline: the cover's `head` without its
-  `[brackets]` (`A core that knows no language`). The version is not in
+- Title = what vx can now do overall, not one feature (owner,
+  2026-10-15: "not focusing one particular feature but the new overall
+  capabilities"): `Any language, one lock, a cache PRs share`. It is
+  the cover's `head` without its `[brackets]`. The version is not in
   the title; the Releases page shows it as a `v0.0.<N+1>` chip, read
   from the slug. Date today, tag `release`, an excerpt that says why the
   release matters.

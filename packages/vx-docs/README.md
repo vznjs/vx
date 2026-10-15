@@ -169,8 +169,9 @@ changelog: an intro on what changed and why, one `##` per notable
 feature (the problem it solves, what it does now, one example, a link
 on), Other noteworthy changes, a short Breaking changes list (every
 `old → new` rename and removal; the code keeps no aliases before 1.0)
-and How to update. The title is the story, the cover's headline without
-its accent brackets (`A core that knows no language`); the version is
+and How to update. The title names what vx can now do overall, not
+one feature, and is the cover's headline without its accent brackets
+(`Any language, one lock, a cache PRs share`); the version is
 metadata, shown as a `v0.0.637` chip beside the date, read from the
 slug. Every post has a cover (`src/assets/blog/vx-0-0-<version>.png`,
 1200×630). The slug is `vx-0-0-<version>`, the tag `release`, and the
