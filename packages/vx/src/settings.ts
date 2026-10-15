@@ -103,20 +103,6 @@ export const SETTINGS: readonly Setting[] = [
     config: false,
   },
   {
-    path: 'run.killGrace',
-    kind: { type: 'duration', timer: true },
-    default: '2s',
-    doc: 'How long a task that ignores SIGTERM gets before SIGKILL.',
-    flag: { verb: 'run', name: '--kill-grace' },
-  },
-  {
-    path: 'run.teardownTimeout',
-    kind: { type: 'duration', timer: true, zero: true },
-    default: '3s',
-    doc: "The bound on each plugin's end-of-run flush and teardown.",
-    flag: { verb: 'run', name: '--teardown-timeout' },
-  },
-  {
     path: 'run.rules.exclusiveOutputs',
     kind: { type: 'bool' },
     default: 'true',
@@ -242,7 +228,7 @@ export function setting(path: string): Setting {
   return BY_PATH.get(path)!
 }
 
-/** `run.killGrace` → `VX_RUN_KILL_GRACE`. */
+/** `run.affectedBase` → `VX_RUN_AFFECTED_BASE`. */
 export function envName(path: string): string {
   return `VX_${path
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')

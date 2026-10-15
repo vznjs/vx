@@ -316,7 +316,7 @@ task's `exec.timeout`: core cannot reach a process your executor spawned,
 so a stop that misses the shell's children leaves them running after vx
 exits. Stopped on the timeout, return a non-zero exit and the task fails
 as timed out. An executor still running two seconds after the abort
-(`VX_RUN_KILL_GRACE`) is abandoned: core settles the task without it.
+is abandoned: core settles the task without it.
 
 ```ts
 import { definePlugin, type ExecuteResult, type VxPlugin } from '@vzn/vx'

@@ -37,13 +37,13 @@ const BOUND_MS = 120
 let prevBound: string | undefined
 
 beforeEach(() => {
-  prevBound = process.env['VX_RUN_TEARDOWN_TIMEOUT']
-  process.env['VX_RUN_TEARDOWN_TIMEOUT'] = `${BOUND_MS}ms`
+  prevBound = process.env['VX_TEST_TEARDOWN_TIMEOUT']
+  process.env['VX_TEST_TEARDOWN_TIMEOUT'] = `${BOUND_MS}ms`
 })
 
 afterEach(() => {
-  if (prevBound === undefined) delete process.env['VX_RUN_TEARDOWN_TIMEOUT']
-  else process.env['VX_RUN_TEARDOWN_TIMEOUT'] = prevBound
+  if (prevBound === undefined) delete process.env['VX_TEST_TEARDOWN_TIMEOUT']
+  else process.env['VX_TEST_TEARDOWN_TIMEOUT'] = prevBound
 })
 
 const never = (): Promise<void> => new Promise<void>(() => {})
@@ -294,7 +294,7 @@ describe('the lifecycle is reached on a run a signal stops', () => {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, VX_RUN_KILL_GRACE: '200ms', VX_RUN_TEARDOWN_TIMEOUT: '10000ms' },
+      env: { ...process.env, VX_TEST_KILL_GRACE: '200ms', VX_TEST_TEARDOWN_TIMEOUT: '10000ms' },
     })
     const up = path.join(root, 'a', 'up.txt')
     const deadline = Date.now() + 10_000

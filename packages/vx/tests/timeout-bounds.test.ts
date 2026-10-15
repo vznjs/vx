@@ -150,7 +150,7 @@ describe('env knobs past the ceiling: a timeout is refused, a bound falls back',
     expect(settingEnv('run.timeout', { VX_RUN_TIMEOUT: '120s' })).toBe(120_000)
   })
 
-  it('VX_RUN_TEARDOWN_TIMEOUT FALLS BACK rather than clamping — it is a bound', () => {
+  it('VX_TEST_TEARDOWN_TIMEOUT FALLS BACK rather than clamping — it is a bound', () => {
     // The exception to this block's title, and the distinction is load-bearing.
     //
     // Unbounded, this is the sharpest instance of the class: the deadline
@@ -168,21 +168,21 @@ describe('env knobs past the ceiling: a timeout is refused, a bound falls back',
     // reading, because the deadline exists precisely so a plugin's flush cannot
     // hold the run's exit hostage. Out-of-range therefore falls back to the
     // default, which keeps the bound real at both ends.
-    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '9999999999999ms'
+    process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '9999999999999ms'
     expect(teardownTimeoutMs()).toBe(3000)
 
-    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = `${MAX_TIMEOUT_MS + 1}ms`
+    process.env['VX_TEST_TEARDOWN_TIMEOUT'] = `${MAX_TIMEOUT_MS + 1}ms`
     expect(teardownTimeoutMs()).toBe(3000)
 
     // At the ceiling it is honoured, so the fallback is a bound and not a cap
     // on anything a user can reasonably ask for.
-    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = `${MAX_TIMEOUT_MS}ms`
+    process.env['VX_TEST_TEARDOWN_TIMEOUT'] = `${MAX_TIMEOUT_MS}ms`
     expect(teardownTimeoutMs()).toBe(MAX_TIMEOUT_MS)
 
-    process.env['VX_RUN_TEARDOWN_TIMEOUT'] = '250ms'
+    process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '250ms'
     expect(teardownTimeoutMs()).toBe(250)
 
-    delete process.env['VX_RUN_TEARDOWN_TIMEOUT']
+    delete process.env['VX_TEST_TEARDOWN_TIMEOUT']
     expect(teardownTimeoutMs()).toBe(3000)
   })
 })

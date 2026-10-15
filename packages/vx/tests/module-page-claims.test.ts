@@ -446,7 +446,7 @@ describe('util-settle.md names every grace killGraceMs serves', () => {
     const rule = blocks('modules/util-settle.md', '`killGraceMs` is the SIGTERM')
     expect(rule).toHaveLength(1)
     for (const f of users) expect(rule[0]).toContain(`\`${f}\``)
-    expect(rule[0]).toContain('overrides all three')
+    expect(rule[0]).toContain('shortens all three')
   })
 })
 

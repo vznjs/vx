@@ -6,7 +6,7 @@ A SIGINT, SIGTERM or SIGHUP to the vx process mid-run forwards the
 signal it received — SIGINT as SIGINT, SIGTERM as SIGTERM, SIGHUP as
 SIGTERM — to every live child's process group and every ready
 persistent task's,
-waits the kill grace (`VX_RUN_KILL_GRACE`, 2 s) for those GROUPS to go,
+waits the kill grace (2 s) for those GROUPS to go,
 SIGKILLs every group with a member left, lets `run()` leave through its
 own end-of-run path (which records no history for a stopped run), and dies
 of the signal it received, so its parent sees 130 / 143 / 129; a second
@@ -32,8 +32,7 @@ the abort listener runs `terminateChildren` and kills the run's running
 `cache.inputs.runtime` probes (C-65), whose answers nothing needs now and
 which a Ctrl-C used to wait out. `run()` awaits that teardown
 before it leaves, then the handler waits for `done` (bounded by
-`boundMs`: the grace, one telemetry flush and each plugin's teardown at
-`VX_RUN_TEARDOWN_TIMEOUT`, and 2 s of slack) and for stdout to drain, and
+`boundMs`: the grace, one telemetry flush and each plugin's teardown bound, and 2 s of slack) and for stdout to drain, and
 exits. Until item 849 the handler exited straight after the kill:
 `process.exit` runs no `finally`, so a Ctrl-C skipped every sink's flush
 and every plugin's teardown, which `plugin.md` promises at the end of

@@ -47,11 +47,9 @@ const RUN = [
   'affectedBase',
   'concurrency',
   'continue',
-  'killGrace',
   'retries',
   'rules',
   'schedule',
-  'teardownTimeout',
   'timeout',
 ] as const satisfies readonly Keys<RunSettings>[]
 const RULES = ['dependencies', 'exclusiveOutputs', 'upfrontKeys'] as const satisfies readonly Keys<

@@ -143,8 +143,6 @@ function genWorkspace(r: R): Obj {
         timeout: maybe(r, () => pick(r, ['1s', `${MAX_TIMEOUT_MS}ms`])),
         retries: maybe(r, () => pick(r, [0, 2])),
         continue: maybe(r, () => pick(r, ['never', 'always'])),
-        killGrace: maybe(r, () => pick(r, ['200ms', '2s'])),
-        teardownTimeout: maybe(r, () => pick(r, ['0ms', '3s'])),
         rules: maybe(r, () =>
           fields({
             exclusiveOutputs: maybe(r, () => chance(r)),
@@ -248,7 +246,6 @@ const BAD_VALUES: Record<string, readonly unknown[]> = {
   concurrency: [0, 2.5],
   dir: ['   '],
   schedule: ['fastest'],
-  killGrace: ['0ms', 200],
   download: ['some'],
   strategy: ['content'],
   severity: ['fail'],
@@ -337,7 +334,6 @@ const SCHEMAS: Schema[] = [
       'dir',
       'timeout',
       'retries',
-      'killGrace',
       'download',
       'strategy',
       'severity',

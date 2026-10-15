@@ -12,7 +12,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { createEventBus, type HeldPersistent, type Logger } from '../src/orchestrator/index.js'
 import { run } from './helpers/orchestrator.js'
 
-process.env['VX_RUN_KILL_GRACE'] = '200ms'
+process.env['VX_TEST_KILL_GRACE'] = '200ms'
 
 let root: string
 beforeEach(async () => {

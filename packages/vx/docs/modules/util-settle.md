@@ -8,31 +8,25 @@ await goes through (`plugin-host.ts`, `telemetry-host.ts`), and a
 plugin's `telemetry()` consultation before the run too (item 921).
 
 ```ts
-interface SettleBound { ms: number; from: 'flag' | 'workspace' }
-setSettleBounds(b: { teardown?: SettleBound; killGrace?: SettleBound }): void
+testTimerMs(name, defaultMs, zero = false): number // VX_TEST_<name>, else defaultMs
 teardownTimeoutMs(): number                       // default 3000
 settleWithin(p: Promise<unknown>, ms): Promise<boolean>
-killGraceMs(defaultMs: number): number            // run.killGrace, else defaultMs
+killGraceMs(defaultMs: number): number            // defaultMs
 claimExitForSignal(): void                        // a signal's handler will end the process
 exitClaimedBySignal(): boolean
-testTimerMs(name, defaultMs): number              // VX_TEST_<name>, else defaultMs
 ```
 
-- `testTimerMs` is how a test shortens a fixed timer (the ready notice):
-  `VX_TEST_<name>`, a duration, read per call; undocumented and in no
-  settings table.
-
-- `setSettleBounds` takes the run's `run.teardownTimeout` and
-  `run.killGrace` from its flag or `.vx/workspace`, resolved by the
-  orchestrator (`run-settings.ts`): util sits below `settings.ts`. The
-  flag beats the variable, which beats the workspace.
-- `teardownTimeoutMs` reads `VX_RUN_TEARDOWN_TIMEOUT` per call (a test
-  drives the deadline instead of waiting it out); `0ms` waits for
-  nothing not already done. Out-of-range falls
-  back to the default rather than clamping: this is a BOUND, not a
-  duration — clamping to `MAX_TIMEOUT_MS` would honour "wait 24.8
-  days", which defeats it, and past the ceiling the delay becomes 1 ms
-  and every flush times out.
+- `testTimerMs` is the one way a test shortens a run's timer:
+  `VX_TEST_<name>`, a duration, read per call. It is undocumented and in
+  no settings table (the kill grace, teardown bound and ready notice are
+  fixed, 0.0.639); the suites that prove a deadline drive it instead of
+  waiting the real one out. Zero is taken only where `zero` allows it;
+  garbage, zero elsewhere and a value past `MAX_TIMEOUT_MS` fall back to
+  the default rather than clamping: this is a BOUND, not a duration —
+  clamping would honour "wait 24.8 days", and past the ceiling the delay
+  becomes 1 ms and every flush times out.
+- `teardownTimeoutMs` is 3 s (`VX_TEST_TEARDOWN_TIMEOUT`; `0ms` waits
+  for nothing not already done).
 - `settleWithin` returns true when `p` fulfilled before the deadline,
   false when the deadline won; the caller decides whether a lost result
   is worth a warning. A rejection before the deadline is not a timeout:
@@ -44,10 +38,9 @@ testTimerMs(name, defaultMs): number              // VX_TEST_<name>, else defaul
   ignores SIGTERM — the one-shot timeout escalation (`exec/runner.ts`),
   the signal teardown (`orchestrator/signals.ts`) and the end-of-run
   persistent shutdown (`orchestrator/persistent.ts`) share it, 2 s each.
-  `run.killGrace` (`VX_RUN_KILL_GRACE`, `--kill-grace`) overrides all three, read per call and bounded the same way (zero,
-  garbage and a value past the timer ceiling fall back). It exists for
-  the tests that prove the escalation: each used to wait the full two
-  seconds, a third of the suite's wall time, for a claim 200 ms proves.
+  `VX_TEST_KILL_GRACE` shortens all three: each escalation test used to
+  wait the full two seconds, a third of the suite's wall time, for a
+  claim 200 ms proves.
 
 - `claimExitForSignal` / `exitClaimedBySignal`: bin.ts exits once its
   verb has settled and both streams have ended, so a timer a config left

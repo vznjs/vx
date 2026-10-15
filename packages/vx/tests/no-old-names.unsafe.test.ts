@@ -12,9 +12,15 @@ const ROOT = path.resolve(import.meta.dir, '../../..')
 
 const OLD: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bVX_TASK_TIMEOUT\b/, 'VX_RUN_TIMEOUT'],
-  [/\bVX_KILL_GRACE_MS\b/, 'VX_RUN_KILL_GRACE'],
-  [/\bVX_TEARDOWN_TIMEOUT_MS\b/, 'VX_RUN_TEARDOWN_TIMEOUT'],
-  [/\bVX_READY_NOTICE_MS\b/, 'VX_RUN_READY_NOTICE'],
+  [
+    /\bVX_(RUN_)?KILL_GRACE(_MS)?\b|\brun\.killGrace\b|(?<![\w-])--kill-grace\b/,
+    'nothing (the kill grace is a fixed 2 s)',
+  ],
+  [
+    /\bVX_(RUN_)?TEARDOWN_TIMEOUT(_MS)?\b|\brun\.teardownTimeout\b|(?<![\w-])--teardown-timeout\b/,
+    'nothing (the teardown bound is a fixed 3 s)',
+  ],
+  [/\bVX_READY_NOTICE_MS\b/, 'nothing (the ready notice is a fixed 10 s)'],
   [/\bVX_CACHE\b(?!_)/, 'VX_CACHE_POLICY'],
   [/(?<!CACHE_)\bVX_INPUT_STABILITY/, 'VX_CACHE_INPUT_STABILITY_STRATEGY / _SEVERITY'],
   [/\bVX_CONFIG_WORKER_TIMEOUT_MS\b/, 'VX_CONFIG_WORKER_TIMEOUT'],
@@ -48,7 +54,7 @@ const SKIP = [
 // what changed after (owner, 2026-10-15).
 const FROZEN = 'vx lock (runs read only the lock)'
 const NAMES_THE_RENAME: ReadonlyMap<string, string> = new Map([
-  ['packages/vx-docs/src/content/docs/blog/one-path-per-setting.md', 'VX_RUN_KILL_GRACE'],
+  ['packages/vx-docs/src/content/docs/blog/one-path-per-setting.md', 'VX_DEBUG_TIMING'],
   ['packages/vx-docs/src/content/docs/blog/upgrade-you-can-trust.md', '--retries'],
   ...[
     'config-in-typescript',

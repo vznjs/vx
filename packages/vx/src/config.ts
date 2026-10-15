@@ -62,10 +62,6 @@ export interface RunSettings {
    * default) skips its dependents, `always` runs them too.
    */
   continue?: 'never' | 'deps-ok' | 'always'
-  /** How long a task that ignores SIGTERM gets before SIGKILL. Omitted → `'2s'`. */
-  killGrace?: Duration
-  /** The bound on each plugin's end-of-run flush and teardown. Omitted → `'3s'`. */
-  teardownTimeout?: Duration
   /**
    * Graph rules checked by `vx lock` and `vx lock --check`, never by a
    * run. Each is on

@@ -19,8 +19,8 @@ import { loadWorkspaceConfig } from '../src/workspace/project-loader.js'
 
 // The SIGTERM→SIGKILL grace is 2 s by default; every test here that proves
 // the escalation would wait it out. 200 ms proves the same claim
-// (`VX_RUN_KILL_GRACE`, see util/settle.ts); children inherit it.
-process.env['VX_RUN_KILL_GRACE'] = '200ms'
+// (`VX_TEST_KILL_GRACE`, see util/settle.ts); children inherit it.
+process.env['VX_TEST_KILL_GRACE'] = '200ms'
 
 const TIMEOUT = 20_000
 

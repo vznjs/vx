@@ -510,7 +510,7 @@ export default defineProject({
     ],
     example: {
       lang: 'sh',
-      code: 'VX_RUN_KILL_GRACE=5s vx run dev   # a longer grace before SIGKILL',
+      code: 'vx run dev   # Ctrl-C: SIGINT to each group, 2 s, then SIGKILL',
     },
     image: 'ctrl-c.png',
     imageAlt: 'Ctrl-C stopping every task’s process group.',

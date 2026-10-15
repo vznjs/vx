@@ -29,7 +29,7 @@ and `watch`.
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({
-  run: { concurrency: 4, killGrace: '5s' },
+  run: { concurrency: 4, retries: 2 },
   cache: { retention: { olderThan: '30d', maxSize: '10GB' } },
 })
 ```
@@ -44,7 +44,7 @@ every setting that is not at its default and where its value came from:
 ```sh frame="terminal"
 $ VX_RUN_CONCURRENCY=2 vx info
 …
-  settings          run.concurrency 2 (VX_RUN_CONCURRENCY), run.killGrace 5s (.vx/workspace)
+  settings          run.concurrency 2 (VX_RUN_CONCURRENCY), run.retries 2 (.vx/workspace)
 ```
 
 ## Units are part of the value
@@ -54,9 +54,12 @@ and a size says its own (`'10GB'`). A bare number is refused, because
 nobody can tell whether `2000` means milliseconds or seconds:
 
 ```sh frame="terminal"
-$ VX_RUN_KILL_GRACE=2000 vx run build
-✗ vx run  VX_RUN_KILL_GRACE takes a duration with its unit, like '2000ms' or '2s' (got 2000)
+$ VX_CACHE_RETENTION_OLDER_THAN=2000 vx run build
+✗ vx run  VX_CACHE_RETENTION_OLDER_THAN takes a duration with its unit, like '2000ms' or '2s' (got 2000)
 ```
+
+(Since vx 0.0.639, the examples use other settings: the kill grace and
+the teardown bound are no longer settings, fixed at 2 s and 3 s.)
 
 ## Old names stop working
 
@@ -77,8 +80,8 @@ $ vx run build
       |   ^
 ```
 
-An old variable such as `VX_KILL_GRACE_MS` is no longer read; set
-`VX_RUN_KILL_GRACE` instead.
+An old variable such as `VX_TIMING` is no longer read; set
+`VX_DEBUG_TIMING` instead.
 
 A few settings are read before the workspace file loads, such as
 `run.outputLogs` and `debug.timing`. Those are set only by a variable

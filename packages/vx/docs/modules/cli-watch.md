@@ -313,7 +313,7 @@ git checkout packages`) was no event to its own arm, nor to the
    `AbortController`, with the signal's name as the reason, whose
    signal every cycle's `run()` carries (`RunOptions.signal`, `handleSignals: false`). The
    in-flight cycle tears its children down (the received signal, a
-   SIGHUP as SIGTERM; `VX_RUN_KILL_GRACE`; SIGKILL) and returns; the loop
+   SIGHUP as SIGTERM; a 2 s grace; SIGKILL) and returns; the loop
    closes its watchers, waits for that cycle, stops the persistent tasks
    it holds with the same signal, and resolves; watch exits 0. The pool
    stays closed: a cycle still re-arming arms nothing, and a watcher the

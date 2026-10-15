@@ -1622,13 +1622,11 @@ describe('parseRunArgs', () => {
       '--exclude-dependencies',
       '--filter',
       '--force',
-      '--kill-grace',
       '--no-cache',
       '--output-logs',
       '--profile',
       '--retries',
       '--schedule',
-      '--teardown-timeout',
       '--timeout',
       '--verbosity',
     ])

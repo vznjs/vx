@@ -7,66 +7,29 @@ import { parseDuration } from './size.js'
 /** Default upper bound on one end-of-run flush/teardown await. */
 const DEFAULT_TIMEOUT_MS = 3000
 
-/** A bound the run resolved from its flag or `.vx/workspace`. */
-export interface SettleBound {
-  readonly ms: number
-  readonly from: 'flag' | 'workspace'
-}
-
-let teardownSet: SettleBound | undefined
-let killGraceSet: SettleBound | undefined
-
-/**
- * The run's `run.teardownTimeout` and `run.killGrace` from its flag or
- * workspace (the orchestrator resolves them; util sits below settings).
- * The variable, read per call, sits between the two, so a test drives the
- * deadline instead of waiting it out.
- */
-export function setSettleBounds(b: { teardown?: SettleBound; killGrace?: SettleBound }): void {
-  teardownSet = b.teardown
-  killGraceSet = b.killGrace
-}
-
-/**
- * A flag's bound, else the variable's (a positive duration inside the
- * timer's range: the CLI refuses any other before a run, and an embedder's
- * falls back), else the workspace's.
- */
-function bound(name: string, set: SettleBound | undefined, zero = false): number | undefined {
-  if (set?.from === 'flag') return set.ms
-  const raw = process.env[name]
-  if (raw !== undefined && raw !== '') {
-    const n = parseDuration(raw)
-    if (n !== null && (n > 0 || zero) && n <= MAX_TIMEOUT_MS) return n
-  }
-  return set?.ms
-}
-
 /**
  * A timer a test shortens: `VX_TEST_<name>`, a duration. Undocumented and
  * in no settings table: the suites that prove a deadline drive it instead
- * of waiting the real one out.
+ * of waiting the real one out. Zero only where `zero` allows it.
  */
-export function testTimerMs(name: string, defaultMs: number): number {
+export function testTimerMs(name: string, defaultMs: number, zero = false): number {
   const raw = process.env[`VX_TEST_${name}`]
   if (raw === undefined || raw === '') return defaultMs
   const n = parseDuration(raw)
-  return n !== null && n >= 0 && n <= MAX_TIMEOUT_MS ? n : defaultMs
+  return n !== null && (n > 0 || (zero && n === 0)) && n <= MAX_TIMEOUT_MS ? n : defaultMs
 }
 
 /**
- * The bound on one end-of-run flush or teardown (`run.teardownTimeout`).
- * There is no "no limit": the deadline exists so a plugin's flush cannot
- * hold the run's exit hostage, so a timer past the platform's range (which
- * would fire at once and drop every buffered record) is no value.
+ * The bound on one end-of-run flush or teardown: a plugin's flush cannot
+ * hold the run's exit hostage.
  */
 export function teardownTimeoutMs(): number {
-  return bound('VX_RUN_TEARDOWN_TIMEOUT', teardownSet, true) ?? DEFAULT_TIMEOUT_MS
+  return testTimerMs('TEARDOWN_TIMEOUT', DEFAULT_TIMEOUT_MS, true)
 }
 
 /**
- * The SIGTERM→SIGKILL grace a run grants a child that ignores SIGTERM
- * (`run.killGrace`): the one-shot timeout escalation (`exec/runner.ts`),
+ * The SIGTERM→SIGKILL grace a run grants a child that ignores SIGTERM:
+ * the one-shot timeout escalation (`exec/runner.ts`),
  * the signal teardown (`orchestrator/signals.ts`) and the end-of-run
  * persistent shutdown (`orchestrator/persistent.ts`) share it. Two seconds
  * is generous for a real server's cleanup and is what every run waits when
@@ -75,7 +38,7 @@ export function teardownTimeoutMs(): number {
  * 200 ms grace proves too.
  */
 export function killGraceMs(defaultMs: number): number {
-  return bound('VX_RUN_KILL_GRACE', killGraceSet) ?? defaultMs
+  return testTimerMs('KILL_GRACE', defaultMs)
 }
 
 /**

@@ -155,7 +155,7 @@ terminal and a task succeeding or failing. Read it alongside
  │                signal, forward it (SIGHUP as SIGTERM) to everything
  │                in liveChildren + persistentRegistry (and kill any
  │                running cache.inputs.runtime probe, C-65), wait
- │                VX_RUN_KILL_GRACE (2 s) for their groups, SIGKILL
+ │                2 s for their groups, SIGKILL
  │                what is still there, let the run finish its own
  │                end (flush, teardown, cache close), then
  │                die of the signal (SIGINT → 130, SIGTERM → 143,

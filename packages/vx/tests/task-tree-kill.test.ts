@@ -90,7 +90,7 @@ function spawnVx(root: string, task: string, graceMs = 200): ReturnType<typeof B
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, NO_COLOR: '1', VX_RUN_KILL_GRACE: `${graceMs}ms` },
+      env: { ...process.env, NO_COLOR: '1', VX_TEST_KILL_GRACE: `${graceMs}ms` },
     }),
   )
 }
@@ -257,7 +257,7 @@ describe('a task dies with everything it forked', () => {
             cwd: root,
             stdout: 'pipe',
             stderr: 'pipe',
-            env: { ...process.env, NO_COLOR: '1', VX_RUN_KILL_GRACE: '200ms' },
+            env: { ...process.env, NO_COLOR: '1', VX_TEST_KILL_GRACE: '200ms' },
           },
         ),
       )

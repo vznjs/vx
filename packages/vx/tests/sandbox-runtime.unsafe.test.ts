@@ -5227,8 +5227,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     // SRT's AF_UNIX filter for it, as `prepareSandbox` does.
     await resetSandbox()
     await initSandbox({ allowAllUnixSockets: true })
-    const grace = process.env['VX_RUN_KILL_GRACE']
-    process.env['VX_RUN_KILL_GRACE'] = '200ms'
+    const grace = process.env['VX_TEST_KILL_GRACE']
+    process.env['VX_TEST_KILL_GRACE'] = '200ms'
     let during: string[] = []
     try {
       const r = await runSandboxed(
@@ -5247,8 +5247,8 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       expect([during.length, r.timedOut, socks()]).toEqual([1, true, []])
     } finally {
       rmSync(dead, { recursive: true, force: true })
-      if (grace === undefined) delete process.env['VX_RUN_KILL_GRACE']
-      else process.env['VX_RUN_KILL_GRACE'] = grace
+      if (grace === undefined) delete process.env['VX_TEST_KILL_GRACE']
+      else process.env['VX_TEST_KILL_GRACE'] = grace
     }
   })
 

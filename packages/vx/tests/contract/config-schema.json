@@ -2,17 +2,7 @@
   "workspace": {
     "levels": {
       "": ["cache", "lock", "plugins", "run", "watch"],
-      "run": [
-        "affectedBase",
-        "concurrency",
-        "continue",
-        "killGrace",
-        "retries",
-        "rules",
-        "schedule",
-        "teardownTimeout",
-        "timeout"
-      ],
+      "run": ["affectedBase", "concurrency", "continue", "retries", "rules", "schedule", "timeout"],
       "run.rules": ["dependencies", "exclusiveOutputs", "upfrontKeys"],
       "cache": ["dir", "download", "inputStability", "outputs", "policy", "retention", "scope"],
       "cache.retention": ["maxSize", "olderThan"],
@@ -25,7 +15,7 @@
     "fields": {
       "run": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `run` must be an object (fields: concurrency, schedule, affectedBase, timeout, retries, continue, killGrace, teardownTimeout, rules)": [
+        "$CONFIG: `run` must be an object (fields: concurrency, schedule, affectedBase, timeout, retries, continue, rules)": [
           "null",
           "true",
           "false",
@@ -56,7 +46,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `run` has unknown field \"x\" (allowed: affectedBase, concurrency, continue, killGrace, retries, rules, schedule, teardownTimeout, timeout)": [
+        "$CONFIG: `run` has unknown field \"x\" (allowed: affectedBase, concurrency, continue, retries, rules, schedule, timeout)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -477,198 +467,6 @@
         ],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {})": ["{}"],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "run.killGrace": {
-        "ok": ["<absent>", "\"2s\""],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
-          "null"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
-          "true"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
-          "false"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `run.killGrace` takes a duration with its unit, like '1ms' or '1s' (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `run.killGrace` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `run.killGrace` takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `run.killGrace` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
-          "\"30d\""
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `run.killGrace` takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
-          "{}"
-        ],
-        "$CONFIG: `run.killGrace` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "run.teardownTimeout": {
-        "ok": ["<absent>", "\"3s\""],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
-          "null"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got true)": [
-          "true"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got false)": [
-          "false"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `run.teardownTimeout` takes a duration with its unit, like '1ms' or '1s' (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `run.teardownTimeout` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `run.teardownTimeout` takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `run.teardownTimeout` of \"30d\" exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\"": [
-          "\"30d\""
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `run.teardownTimeout` takes a duration with its unit, like '10ms' or '1s' (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {})": [
-          "{}"
-        ],
-        "$CONFIG: `run.teardownTimeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },

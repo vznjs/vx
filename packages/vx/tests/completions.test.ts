@@ -46,8 +46,6 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--branch': ['main'],
   '--cache-policy': ['local:rw'],
   '--cache-download': ['all'],
-  '--kill-grace': ['1s'],
-  '--teardown-timeout': ['1s'],
   '--poll': [],
   '--continue': [],
   '--output-logs': ['full'],

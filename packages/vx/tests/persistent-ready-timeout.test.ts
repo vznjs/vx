@@ -15,7 +15,7 @@ import type { Logger } from '../src/orchestrator/index.js'
 import { run } from './helpers/orchestrator.js'
 import { loadProjectConfig } from '../src/workspace/project-loader.js'
 
-process.env['VX_RUN_KILL_GRACE'] = '200ms'
+process.env['VX_TEST_KILL_GRACE'] = '200ms'
 
 const TIMEOUT = 15_000
 
@@ -180,7 +180,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       // The trap runs once the loop's `sleep` returns; a loaded macOS runner
       // took past the file's 200 ms grace once and the SIGKILL read 137
       // (CI run 37847982300). The row is about the code, not the grace.
-      process.env['VX_RUN_KILL_GRACE'] = '5000ms'
+      process.env['VX_TEST_KILL_GRACE'] = '5000ms'
       try {
         const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
         const { status, notReady, exitCode } = r.outcomes[0]!
@@ -190,7 +190,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
           exitCode: 143,
         })
       } finally {
-        process.env['VX_RUN_KILL_GRACE'] = '200ms'
+        process.env['VX_TEST_KILL_GRACE'] = '200ms'
       }
     },
     TIMEOUT,
@@ -218,7 +218,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
         }
         `,
       )
-      process.env['VX_RUN_KILL_GRACE'] = '2000ms'
+      process.env['VX_TEST_KILL_GRACE'] = '2000ms'
       try {
         const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
         const { exitCode, durationMs } = r.outcomes[0]!
@@ -227,7 +227,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
           waited: true,
         })
       } finally {
-        process.env['VX_RUN_KILL_GRACE'] = '200ms'
+        process.env['VX_TEST_KILL_GRACE'] = '200ms'
       }
     },
     TIMEOUT,
@@ -371,8 +371,8 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
         }
         `,
       )
-      const grace = process.env['VX_RUN_KILL_GRACE']
-      process.env['VX_RUN_KILL_GRACE'] = '3000ms'
+      const grace = process.env['VX_TEST_KILL_GRACE']
+      process.env['VX_TEST_KILL_GRACE'] = '3000ms'
       const kill = vi.spyOn(process, 'kill')
       try {
         const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
@@ -383,7 +383,7 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
         expect(readFileSync(path.join(dir, 'clean.txt'), 'utf8')).toBe('done\n')
       } finally {
         kill.mockRestore()
-        process.env['VX_RUN_KILL_GRACE'] = grace
+        process.env['VX_TEST_KILL_GRACE'] = grace
       }
     },
     TIMEOUT,

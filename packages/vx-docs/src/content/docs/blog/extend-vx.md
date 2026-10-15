@@ -106,8 +106,9 @@ package name, taken from `import.meta`.
 `setup(ctx)` runs before the first task, and `teardown` runs after the
 last. Use them to start a service, take a lock, or flush a report. A
 `setup` that throws stops the run with a clean error naming the plugin.
-A `teardown` cannot hold the exit hostage: it gets 3 seconds, which
-`VX_RUN_TEARDOWN_TIMEOUT` changes.
+A `teardown` cannot hold the exit hostage: it gets 3 seconds. (Since vx
+0.0.639, the 3 seconds are fixed; the variable that changed them is
+gone.)
 
 ## vx from your own scripts
 
