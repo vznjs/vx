@@ -44,8 +44,8 @@ const OUTCOMES_PER_INSERT = 160
 const keyed = (r: RunRecord): boolean =>
   r.hash !== undefined && r.hash !== '' && r.cached !== false && r.blockedBy == null
 
-const isHit = (r: RunRecord): boolean =>
-  r.status === 'cache-hit' || r.status === 'cache-hit-remote' || r.cacheHit === true
+/** A hit, as the orchestrator marks one (`isCacheHit`, run-records.ts). */
+const isHit = (r: RunRecord): boolean => r.cacheHit === true
 
 /**
  * Of a JSON array of hashes, those the record holds a pass of: one index
