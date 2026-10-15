@@ -136,6 +136,7 @@ here, itself or in a brace group.
 | [`task-graph.md`](./task-graph.md)           | `src/graph/task-graph.ts` — TaskNode DAG builder + cycle detection.     |
 | [`scheduler.md`](./scheduler.md)             | `src/graph/scheduler.ts` — parallel topological executor.               |
 |                                              | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md). |
+|                                              | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).  |
 | [`dependency-spec.md`](./dependency-spec.md) | `src/graph/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.   |
 
 ## Cache cluster

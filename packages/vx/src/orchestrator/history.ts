@@ -16,7 +16,7 @@ import { branchSource, EXECUTED_RUNS_SQL } from '../cache/index.js'
 import { splitTaskId } from '../util/index.js'
 import { failureModeOf, mixedOutcomeKeysSql } from './failure-mode.js'
 import type { FailureMode } from './failure-mode.js'
-import { isPassStatus, TASK_STATUSES } from './telemetry.js'
+import { isPassStatus, TASK_STATUSES } from '../graph/index.js'
 
 const DEFAULT_RECENT = 50
 

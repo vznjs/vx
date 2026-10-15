@@ -252,11 +252,11 @@ export function foldScriptHooks(
   body: string,
   post: string | undefined,
 ): string
-== function isCacheHit (src/orchestrator/telemetry.ts)
+== function isCacheHit (src/graph/task-status.ts)
 export function isCacheHit(status: string): boolean
 == function isLiteralPattern (src/util/paths.ts)
 export function isLiteralPattern(glob: string): boolean
-== function isPassStatus (src/orchestrator/telemetry.ts)
+== function isPassStatus (src/graph/task-status.ts)
 export function isPassStatus(status: string): boolean
 == function isUserError (src/util/errors.ts)
 export function isUserError(err: unknown): err is UserError
@@ -519,7 +519,7 @@ export interface CacheSettings {
   inputStability?: InputStability
   outputs?: { clean?: boolean }
 }
-== type CacheSource (src/orchestrator/telemetry.ts)
+== type CacheSource (src/graph/task-status.ts)
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
 == type CacheStats (src/cache/layer.ts)
 export interface CacheStats {
@@ -1597,7 +1597,7 @@ export interface TaskPlacement {
 export type TaskResources = Pick<
   TaskHistory,
   'p50DurationMs' | 'maxPeakRssBytes' | 'maxCpuParallelism'
-== type TaskStatus (src/graph/scheduler.ts)
+== type TaskStatus (src/graph/task-status.ts)
 export type TaskStatus =
   | 'success'
   | 'cache-hit'

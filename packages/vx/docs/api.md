@@ -323,7 +323,7 @@ export interface CacheSettings {
 
 ## `CacheSource`
 
-type · `src/orchestrator/telemetry.ts`
+type · `src/graph/task-status.ts`
 
 Where a task's result came from, derived ONCE in core from the status.
 
@@ -832,7 +832,7 @@ export interface InvocationRecord {
 
 ## `isCacheHit`
 
-function · `src/orchestrator/telemetry.ts`
+function · `src/graph/task-status.ts`
 
 Did the task's result come out of the cache (either layer)? Derived from
 `deriveCacheSource` rather than re-listing the two hit statuses, so the two
@@ -866,7 +866,7 @@ export function isLiteralPattern(glob: string): boolean
 
 ## `isPassStatus`
 
-function · `src/orchestrator/telemetry.ts`
+function · `src/graph/task-status.ts`
 
 Did the task pass? A cache hit counts — it produced the same result without
 spending the time, which is the whole point. `skipped` and `aborted` do NOT:
@@ -2337,7 +2337,7 @@ export type TaskResources = Pick<
 
 ## `TaskStatus`
 
-type · `src/graph/scheduler.ts`
+type · `src/graph/task-status.ts`
 
 ```ts
 export type TaskStatus =

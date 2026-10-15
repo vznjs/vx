@@ -21,7 +21,7 @@
 // task printed nothing".
 
 import type { TaskStatus } from '../graph/index.js'
-import type { CacheSource } from './telemetry.js'
+import type { CacheSource } from '../graph/index.js'
 
 /** Version of the drained-bundle shape below. It is the canonical drained
  *  logs format, not one transport's: every sink ships the same object. */

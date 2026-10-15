@@ -20,7 +20,7 @@
 import { describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { isCacheHit, isPassStatus, type TaskStatus } from '../src/index.js'
-import { deriveCacheSource, TASK_STATUSES } from '../src/orchestrator/index.js'
+import { deriveCacheSource, TASK_STATUSES } from '../src/graph/index.js'
 
 const ROOT = path.join(import.meta.dir, '..')
 const read = (rel: string) => Bun.file(path.join(ROOT, rel)).text()
@@ -101,7 +101,7 @@ describe('the tripwire that makes one definition stay one definition', () => {
     // and a `Record` behave identically TODAY and differ only on the day a
     // member is added — when the Record fails to compile and the Set does
     // not. That compile error IS the guarantee, so it is what gets pinned.
-    const src = await read('src/orchestrator/telemetry.ts')
+    const src = await read('src/graph/task-status.ts')
     expect(src).toContain('const PASSES: Record<TaskStatus, boolean>')
     // Derived, not a parallel list: swapping this for a written-out array
     // reintroduces exactly the drift the Record removes.

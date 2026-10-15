@@ -19,7 +19,7 @@ import { KEYED_RUNS_SQL } from '../cache/index.js'
 import { splitTaskId } from '../graph/index.js'
 import { clampInt, MASKED, secretNamed } from '../util/index.js'
 import type { TaskInputComponent } from './task-hash.js'
-import { isPassStatus } from './telemetry.js'
+import { isPassStatus } from '../graph/index.js'
 
 // A recorded `cache_policy` is the `--cache-policy` spec (`local:rw,remote:r`).
 const readsCache = (spec: string): boolean => /(?:^|,)(?:local|remote):w?r/.test(spec)
