@@ -1,12 +1,14 @@
-// LayeredCache — composes the local cache with a remote HTTP cache.
+// LayeredCache — the local cache with the declared remotes behind it.
 //
-// Read path:  try local. On miss, try remote; on remote hit, stream
-// the artifact body into local so the next read is a local hit.
+// Read path:  try local. On miss, ask each readable remote in declared
+// order; the first hit streams its body into local so the next read is a
+// local hit.
 //
 // Write path: write to local synchronously. Upload the local artifact
-// to remote as a fire-and-forget background task; failures log a
-// warning but never fail the user's run (the task already succeeded;
-// the only loss is the remote cache entry).
+// to every writable remote as a fire-and-forget background task; failures
+// log a warning but never fail the user's run (the task already
+// succeeded; the only loss is the remote cache entry). Each remote's
+// boundary, upload pool and warnings are its `RemoteLane`.
 //
 // The local and remote layers share the SAME artifact format — the
 // `<hash>.tar.zst` bytes ship across the wire verbatim. Metadata
@@ -21,7 +23,6 @@ import type {
   CacheGetContext,
   CacheKeyInput,
   CacheLayer,
-  CachePolicy,
   CacheStats,
   CacheStatsOptions,
   IngestMeta,
@@ -32,7 +33,8 @@ import type {
   RunRecord,
   SaveArgs,
 } from './cache.js'
-import { FULL_CACHE_POLICY, type OutputDirRow } from './cache.js'
+import type { OutputDirRow } from './cache.js'
+import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
 
 /**
  * What a remote cache layer must provide — THE plugin seam for remote
@@ -40,8 +42,8 @@ import { FULL_CACHE_POLICY, type OutputDirRow } from './cache.js'
  * (or an embedder passes one as `RunOptions.remoteCache`), speaking
  * whatever protocol it wants, and `LayeredCache` owns everything else:
  * policy gating, in-flight dedup, remote provenance, and the never-fail
- * contract (implementations THROW on failure; LayeredCache degrades every
- * throw to a cache miss via `onRemoteError`). The artifact bytes are the
+ * contract (implementations THROW on failure; every throw degrades to a
+ * cache miss, reported to the remote's `onError`). The artifact bytes are the
  * local `<hash>.tar.zst` verbatim. The wires live in plugin packages
  * (`@vzn/vx-migrate`'s `turboCache()` and `nxCache()`, `@vzn/vx-reapi`); see
  * docs/modules/layered-cache.md.
@@ -94,150 +96,43 @@ export interface RemoteCacheLayer {
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
 
-/**
- * What a remote layer resolves is a plugin's, so its shape is a boundary
- * (item 252): a `get` that resolved `{ body: 'abc' }` was reported as
- * "corrupt artifact … not a readable archive" — the bytes blamed for the
- * plugin's shape — and a `hasMany` that resolved an array reached the
- * prefetch pass's `.has()`. Named here and degraded to a miss, like every
- * other remote failure.
- */
-function invalidRemoteResult(what: string): Error {
-  return new Error(
-    `remote cache layer returned an invalid result: ${what} — a plugin bug, degraded to a miss`,
-  )
-}
-
-function isBody(value: unknown): value is Blob | Response {
-  return value instanceof Blob || value instanceof Response
-}
-
-function describeValue(value: unknown): string {
-  if (value === null) return 'null'
-  if (Array.isArray(value)) return 'an array'
-  // The pre-stream contract's shape, named so an unported layer reads its fix.
-  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value))
-    return `a ${value.constructor.name}`
-  return typeof value === 'object' ? 'an object' : typeof value
-}
-
-/**
- * Cap on concurrent background PUTs. Keeps a burst of cache misses from
- * opening one socket per task; excess uploads queue and drain FIFO.
- */
-const UPLOAD_CONCURRENCY = 4
-
-/** The seam call a failure happened in, as the warning names it. */
-type RemoteOp = 'probe' | 'download' | 'upload'
-
-const PREPOSITION: Record<RemoteOp, string> = { probe: 'at', download: 'from', upload: 'to' }
-
-/** The layer's `endpoint` as it may be printed: no userinfo, query or fragment. */
-function printableEndpoint(endpoint: unknown): string | undefined {
-  if (typeof endpoint !== 'string' || endpoint === '') return undefined
-  if (!URL.canParse(endpoint)) return endpoint
-  const u = new URL(endpoint)
-  if (u.username === '' && u.password === '' && u.search === '' && u.hash === '') return endpoint
-  u.username = ''
-  u.password = ''
-  u.search = ''
-  u.hash = ''
-  return u.toString()
-}
-
-/**
- * What makes two failures "the same way": the error's `code` when it
- * carries one (a gRPC status, an errno, Bun's `ConnectionRefused`), because
- * gRPC writes the elapsed time into its message and no two deadline messages
- * match; else the message with the artifact's hash taken out, so a 500 on
- * one hash and a 500 on the next are one class. The operation is not part of
- * it: an unreachable server fails the probe, the download and the upload
- * alike, and that is one fact.
- */
-function failureClass(err: Error, hash: string | undefined): string {
-  const code = (err as { code?: unknown }).code
-  if (typeof code === 'string' || typeof code === 'number') return `${err.name}\0${code}`
-  return hash === undefined ? err.message : err.message.replaceAll(hash, '\0')
-}
-
-/** A batch probe names no one hash, so its line counts them. */
-function batchOf(hashes: readonly string[]): { batch: string } {
-  return { batch: `of ${hashes.length} artifact${hashes.length === 1 ? '' : 's'}` }
-}
-
-export interface LayeredCacheOptions {
-  /**
-   * Called for the remote failures the layer degrades to a miss, once per
-   * failure class per layer (`upload <hash> to <endpoint> failed: <cause>`,
-   * with the original error as `cause`); the repeats are counted and said
-   * once more at `close()` (`<n> more requests failed the same way: <cause>`).
-   */
-  onRemoteError?: (err: Error) => void
-  /**
-   * The 4-axis read/write policy. The local slice (read/write) is
-   * already applied to the inner `Cache` by the caller; this layer reads
-   * `remoteRead` / `remoteWrite` to gate its OWN remote operations.
-   * Default: everything on.
-   */
-  policy?: CachePolicy
-}
-
 export class LayeredCache implements CacheLayer {
   /** A remote layer is composed in by construction — see `CacheLayer.hasRemote`. */
   readonly hasRemote = true
 
+  private readonly lanes: readonly RemoteLane[]
+  private readonly readable: readonly RemoteLane[]
+
   /**
    * In-flight remote pulls keyed by hash. `prefetch` and `get` both go
    * through here, so a key probed concurrently by both resolves a
-   * SINGLE remote GET. Each promise resolves `true` iff the artifact
-   * was successfully ingested into local. Entries are retained for the
-   * run's lifetime: a settled `false` records "remote already had no
-   * such artifact (or it was corrupt)", which lets `get` skip a second
-   * lazy probe of the same dead hash. The map is bounded by the number
-   * of distinct task keys in a run — negligible.
+   * SINGLE walk of the remotes. Each promise resolves `true` iff the
+   * artifact was successfully ingested into local. Entries are retained
+   * for the run's lifetime: a settled `false` records "no remote had
+   * such an artifact (or it was corrupt)", which lets `get` skip a
+   * second lazy probe of the same dead hash. The map is bounded by the
+   * number of distinct task keys in a run — negligible.
    */
   private readonly inflight = new Map<string, Promise<boolean>>()
 
   /**
-   * Hashes whose local artifact was materialized FROM the remote layer
-   * this run (by `prefetch` or `get`'s read-through). A later `get`
-   * finds them as a local hit, but the work was still saved by the
-   * remote cache — so we flip `source` to `'remote'` and the
-   * orchestrator reports `cache-hit-remote`. Without this, a prefetch
-   * followed by a `get` would mislabel a genuine remote hit as local.
-   * Each maps to how long its download and ingest took.
+   * Hashes whose local artifact was materialized FROM a remote this run
+   * (by `prefetch` or `get`'s read-through). A later `get` finds them as
+   * a local hit, but the work was still saved by the remote cache — so
+   * we flip `source` to `'remote'` and the orchestrator reports
+   * `cache-hit-remote`. Without this, a prefetch followed by a `get`
+   * would mislabel a genuine remote hit as local. Each maps to how long
+   * its download and ingest took.
    */
   private readonly remoteSourced = new Map<string, number>()
 
-  /**
-   * Background write-through uploads. `save()` returns after the local
-   * write + byte capture; the PUT runs here so a cache-miss task never
-   * holds its scheduler worker slot for the upload round-trip. Bounded
-   * at UPLOAD_CONCURRENCY; `run()` awaits `drainUploads()` before
-   * `cache.close()`.
-   */
-  private readonly uploadQueue: Array<() => Promise<void>> = []
-  private activeUploads = 0
-  private drainWaiters: Array<() => void> = []
-
-  private readonly policy: CachePolicy
-  private readonly endpoint: string | undefined
-
-  /**
-   * One entry per failure class said: its first line went out, `repeats`
-   * counts the ones held back. A run's requests are concurrent, so an
-   * unreachable server otherwise printed its bare runtime message once per
-   * request (three lines for one task over the Turbo wire, item 749).
-   */
-  private readonly reported = new Map<string, { cause: string; repeats: number }>()
-
+  /** Remotes in declared order: the first readable one holding a hash answers it. */
   constructor(
     readonly local: Cache,
-    private readonly remote: RemoteCacheLayer,
-    private readonly options: LayeredCacheOptions = {},
+    remotes: readonly ResolvedRemote[],
   ) {
-    this.policy = options.policy ?? FULL_CACHE_POLICY
-    this.endpoint = printableEndpoint(remote.endpoint)
+    this.lanes = remotes.map((r) => new RemoteLane(r))
+    this.readable = this.lanes.filter((l) => l.read)
   }
 
   key(input: CacheKeyInput): Promise<string> {
@@ -245,8 +140,8 @@ export class LayeredCache implements CacheLayer {
   }
 
   async prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean> {
-    // No-op when remote reads are off — there's nothing to warm from.
-    if (!this.policy.remoteRead) return false
+    // No-op when no remote may be read — there's nothing to warm from.
+    if (this.readable.length === 0) return false
     // The local-first skip lives in doPullFromRemote (the shared choke
     // point): pullFromRemote registers the `inflight` entry SYNCHRONOUSLY,
     // so a concurrent markRemoteAbsent can't clobber a pending pull — a
@@ -259,43 +154,34 @@ export class LayeredCache implements CacheLayer {
   }
 
   /**
-   * Batch existence probe over the remote layer — the subset of `hashes`
-   * present remotely, in one round-trip, or `null` when the remote can't
-   * batch (no `hasMany`, reads disabled, or an error). The prefetch pass uses
-   * this to fetch only the hits and to pre-mark the misses (`markRemoteAbsent`)
-   * so their lazy `get` skips the network. Never throws — a batch failure
-   * degrades to "no batch info" and the caller falls back to per-hash.
+   * Batch existence probe over the readable remotes — the subset of
+   * `hashes` some remote holds, one round-trip each, or `null` when any
+   * readable remote can't batch (no `hasMany`, or an error), or none may
+   * be read. The prefetch pass treats a non-null answer as complete: it
+   * fetches only the hits and pre-marks the rest (`markRemoteAbsent`) so
+   * their lazy `get` skips the network, which is sound only when every
+   * readable remote answered. Each answering remote keeps its own
+   * absences either way, so a hash only a sibling holds costs it no GET.
+   * Never throws.
    */
   async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
-    if (!this.policy.remoteRead || this.remote.hasMany === undefined) return null
-    try {
-      // `return await`, deliberately: the catch below is the never-fail
-      // contract, and a returned promise's rejection would sail past it.
-      const found: unknown = await this.remote.hasMany(hashes)
-      if (found !== null && found !== undefined && !(found instanceof Set)) {
-        this.reportRemoteError(
-          'probe',
-          batchOf(hashes),
-          invalidRemoteResult(
-            `hasMany() resolved ${describeValue(found)} (expected a Set of the hashes present, or null)`,
-          ),
-        )
-        return null
-      }
-      return found ?? null
-    } catch (err) {
-      this.reportRemoteError('probe', batchOf(hashes), err)
-      return null
+    if (this.readable.length === 0) return null
+    let out: Set<string> | null = new Set()
+    for (const lane of this.readable) {
+      const found = await lane.hasMany(hashes)
+      if (found === null) out = null
+      else if (out !== null) for (const h of found) out.add(h)
     }
+    return out
   }
 
   /**
-   * Record that the remote layer has NO artifact for each of `hashes` (from a
-   * batch probe), so a later `get`/`prefetch` short-circuits to a miss WITHOUT
-   * a network round-trip. Byte-for-byte equivalent to a background prefetch GET
-   * having resolved `false` into `inflight` — same at-most-once semantics, same
-   * point-in-time staleness window — but without spending the GET. Never
-   * overwrites an entry already in flight.
+   * Record that no remote has an artifact for each of `hashes` (from a
+   * batch probe), so a later `get`/`prefetch` short-circuits to a miss
+   * WITHOUT a network round-trip. Byte-for-byte equivalent to a
+   * background prefetch having resolved `false` into `inflight` — same
+   * at-most-once semantics, same point-in-time staleness window — but
+   * without spending the GET. Never overwrites an entry already in flight.
    */
   markRemoteAbsent(hashes: Iterable<string>): void {
     for (const hash of hashes) {
@@ -313,12 +199,12 @@ export class LayeredCache implements CacheLayer {
     }
 
     // Remote reads disabled (e.g. `--cache-policy=remote:`): a local miss is a
-    // real miss; never touch the remote layer.
-    if (!this.policy.remoteRead) return null
+    // real miss; never touch a remote.
+    if (this.readable.length === 0) return null
 
     // A prefetch may already have probed this hash (resolved) or be
     // mid-flight. Awaiting the shared promise guarantees AT MOST ONE
-    // remote GET per key: a settled `false` means remote had nothing
+    // remote walk per key: a settled `false` means no remote had it
     // (no second probe), and a settled/in-flight `true` means the
     // artifact was/will-be ingested locally — re-read below.
     const ingested = await this.pullFromRemote(hash, ctx)
@@ -348,27 +234,23 @@ export class LayeredCache implements CacheLayer {
     return fetchMs === undefined ? entry : { ...entry, source: 'remote', fetchMs }
   }
 
-  // Existence probe: local first, then a remote HEAD — no body
+  // Existence probe: local first, then each remote's HEAD — no body
   // transfer, no ingest, so the plan path stays read-only even against
   // a remote cache. Remote errors degrade to a miss (never throw).
   async has(hash: string): Promise<'local' | 'remote' | null> {
     if ((await this.local.has(hash)) === 'local') return 'local'
-    if (!this.policy.remoteRead) return null
-    try {
-      return (await this.remote.has(hash)) ? 'remote' : null
-    } catch (err) {
-      this.reportRemoteError('probe', hash, err)
-      return null
-    }
+    for (const lane of this.readable) if (await lane.has(hash)) return 'remote'
+    return null
   }
 
   /**
    * Single implementation of the remote read-through, shared by
    * `prefetch` and `get`. Idempotent per hash via `inflight`: the first
-   * caller starts the GET + validate + ingest; concurrent and later
+   * caller starts the walk + validate + ingest; concurrent and later
    * callers await the same promise. Resolves `true` when the artifact
-   * ends up in local, `false` on a remote miss / error / corruption
-   * (degrades to a cache miss; the error is reported, never thrown).
+   * ends up in local, `false` on a miss in every remote / error /
+   * corruption (degrades to a cache miss; the error is reported, never
+   * thrown).
    */
   private pullFromRemote(hash: string, ctx?: CacheGetContext): Promise<boolean> {
     const existing = this.inflight.get(hash)
@@ -388,31 +270,16 @@ export class LayeredCache implements CacheLayer {
     // caller re-reads it, keeping whatever provenance it already had (local,
     // or remote if a concurrent prefetch set it).
     if ((await this.local.has(hash)) === 'local') return true
+    for (const lane of this.readable) {
+      if (await this.pullFrom(lane, hash, ctx)) return true
+    }
+    return false
+  }
 
+  private async pullFrom(lane: RemoteLane, hash: string, ctx?: CacheGetContext): Promise<boolean> {
     const fetchStart = performance.now()
-    let remoteResult: unknown
-    try {
-      remoteResult = await this.remote.get(hash)
-    } catch (err) {
-      this.reportRemoteError('download', hash, err)
-      return false
-    }
-    if (!remoteResult) return false
-    if (typeof remoteResult !== 'object' || !isBody((remoteResult as { body?: unknown }).body)) {
-      const shape =
-        typeof remoteResult !== 'object'
-          ? describeValue(remoteResult)
-          : `body is ${describeValue((remoteResult as { body?: unknown }).body)}`
-      this.reportRemoteError(
-        'download',
-        hash,
-        invalidRemoteResult(
-          `get() resolved ${shape} (expected { body: Blob | Response, durationMs } or null)`,
-        ),
-      )
-      return false
-    }
-    const remoteBody = remoteResult as { body: Blob | Response; durationMs?: number }
+    const remoteBody = await lane.get(hash)
+    if (remoteBody === null) return false
 
     // Ingest the remote body into local using the caller-supplied
     // taskId/command plus the remote-reported durationMs, which `get`
@@ -438,7 +305,7 @@ export class LayeredCache implements CacheLayer {
       // artifact must degrade to a cache miss (task re-executes), not
       // crash the run. A corrupt LOCAL artifact is a miss too, one level
       // down: `Cache.restoreOutputs` drops it (A-52).
-      this.reportRemoteError('download', hash, err)
+      lane.report('download', hash, err)
       return false
     }
     this.remoteSourced.set(hash, Math.round(performance.now() - fetchStart))
@@ -463,17 +330,17 @@ export class LayeredCache implements CacheLayer {
 
   async save(args: SaveArgs): Promise<void> {
     // Local write honors its own gates inside Cache.save (no-op when local
-    // writes are disabled, or when ChainedCache marked this a duplicate save
-    // to a shared local handle — see `skipLocalWrite` on the contract).
+    // writes are disabled).
     await this.local.save(args)
-    if (!this.policy.remoteWrite) return
-    // Write-through upload, OFF the task's critical path: the PUT runs in
-    // the bounded background pool so the task's worker slot is released
-    // immediately, and `run()` awaits `drainUploads()` before closing the
-    // cache. Errors are logged, not propagated: the task already
-    // succeeded; we don't fail it on cache-server issues.
+    const writable = this.lanes.filter((l) => l.write)
+    if (writable.length === 0) return
+    // Write-through upload, OFF the task's critical path: each PUT runs in
+    // its remote's bounded background pool so the task's worker slot is
+    // released immediately, and `run()` awaits `drainUploads()` before
+    // closing the cache. Errors are logged, not propagated: the task
+    // already succeeded; we don't fail it on cache-server issues.
     //
-    // The job hands the plugin a file-backed Blob over the local artifact,
+    // Each job hands the plugin a file-backed Blob over the local artifact,
     // pinned under a private name when the job starts (`pinArtifact`): a
     // queued job holds a path, not a buffer, a plugin that streams the Blob
     // never holds it whole, and every read of it sees the same bytes though
@@ -493,61 +360,22 @@ export class LayeredCache implements CacheLayer {
       try {
         packed = await this.local.packArtifactBytes(args)
       } catch (err) {
-        this.reportRemoteError('upload', hash, err)
+        for (const lane of writable) lane.report('upload', hash, err)
         return
       }
     }
-    this.enqueueUpload(async () => {
-      const tally = this.local.uploads
-      const start = performance.now()
-      let release: (() => Promise<void>) | undefined
-      try {
-        let body: Blob
-        if (packed !== undefined) body = new Blob([packed])
-        else ({ body, release } = this.local.pinArtifact(hash))
-        await this.remote.put(hash, body, { durationMs })
-        tally.count++
-        tally.bytes += body.size
-        tally.ms += Math.round(performance.now() - start)
-      } catch (err) {
-        tally.failed++
-        this.reportRemoteError('upload', hash, err)
-      } finally {
-        await release?.()
-      }
-    })
+    const body = (): { body: Blob; release?: () => Promise<void> } =>
+      packed !== undefined ? { body: new Blob([packed]) } : this.local.pinArtifact(hash)
+    for (const lane of writable) lane.upload(hash, durationMs, body, this.local.uploads)
   }
 
   /**
-   * Resolves once every queued + in-flight background upload settles.
-   * `run()` calls this next to the prefetch drain, before
+   * Resolves once every remote's queued + in-flight background upload
+   * settles. `run()` calls this next to the prefetch drain, before
    * `cache.close()` — an upload reading state after close would race.
    */
   async drainUploads(): Promise<void> {
-    if (this.activeUploads === 0 && this.uploadQueue.length === 0) return
-    await new Promise<void>((resolve) => this.drainWaiters.push(resolve))
-  }
-
-  private enqueueUpload(job: () => Promise<void>): void {
-    this.uploadQueue.push(job)
-    this.pumpUploads()
-  }
-
-  private pumpUploads(): void {
-    while (this.activeUploads < UPLOAD_CONCURRENCY && this.uploadQueue.length > 0) {
-      const job = this.uploadQueue.shift()!
-      this.activeUploads++
-      // Jobs never reject (each wraps its PUT in the never-fail guard).
-      void job().finally(() => {
-        this.activeUploads--
-        this.pumpUploads()
-      })
-    }
-    if (this.activeUploads === 0 && this.uploadQueue.length === 0 && this.drainWaiters.length > 0) {
-      const waiters = this.drainWaiters
-      this.drainWaiters = []
-      for (const w of waiters) w()
-    }
+    await Promise.all(this.lanes.map((l) => l.drain()))
   }
 
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
@@ -598,54 +426,8 @@ export class LayeredCache implements CacheLayer {
 
   /** `run()` drains the uploads and prefetches first, so the repeat counts are final here. */
   close(): void {
-    for (const { cause, repeats } of this.reported.values()) {
-      if (repeats === 0) continue
-      this.emit(
-        new Error(
-          `${repeats} more request${repeats === 1 ? '' : 's'} failed the same way: ${cause}`,
-        ),
-      )
-    }
-    this.reported.clear()
+    for (const lane of this.lanes) lane.close()
     this.local.close()
-  }
-
-  /**
-   * `subject` is the artifact's hash, or the batch for a `hasMany`. The
-   * wire's own message says what went wrong but not on what or where: an
-   * upload deadline read `The operation timed out.` with no upload, hash or
-   * server in it (item 749).
-   */
-  private reportRemoteError(op: RemoteOp, subject: string | { batch: string }, err: unknown): void {
-    const e = err instanceof Error ? err : new Error(String(err))
-    const hash = typeof subject === 'string' ? subject : undefined
-    const cls = failureClass(e, hash)
-    const seen = this.reported.get(cls)
-    if (seen !== undefined) {
-      seen.repeats++
-      return
-    }
-    this.reported.set(cls, { cause: e.message, repeats: 0 })
-    const what = typeof subject === 'string' ? subject : subject.batch
-    const where = this.endpoint === undefined ? '' : ` ${PREPOSITION[op]} ${this.endpoint}`
-    this.emit(new Error(`${op} ${what}${where} failed: ${e.message}`, { cause: e }))
-  }
-
-  private emit(e: Error): void {
-    // The remote cache is fully optional: NO remote failure — a 500, a
-    // network drop, a corrupt artifact, even a throwing onRemoteError
-    // callback — may ever fail the run. We report and degrade to a
-    // cache miss. The callback is guarded so a buggy reporter can't
-    // turn an optional-cache hiccup into a run failure.
-    try {
-      if (this.options.onRemoteError) {
-        this.options.onRemoteError(e)
-      } else {
-        process.stderr.write(`[vx] remote cache: ${e.message}\n`)
-      }
-    } catch {
-      // swallow — reporting must never escalate
-    }
   }
 }
 

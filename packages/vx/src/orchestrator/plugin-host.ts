@@ -10,13 +10,12 @@
 import path from 'node:path'
 import {
   type Cache,
-  ChainedCache,
   type CacheLayer,
   type CachePolicy,
   LayeredCache,
   absentPluginCache,
   type PluginCache,
-  type PluginCacheRemote,
+  type ResolvedRemote,
 } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
@@ -485,57 +484,39 @@ export interface CacheHost extends CacheContext {
   readonly localCache: Cache
   readonly policy: CachePolicy
   /** Filled with each remote and what its policy lets it do, for the plugins' `ctx.cache`. */
-  readonly remotes?: PluginCacheRemote[]
+  readonly remotes?: ResolvedRemote[]
 }
 
 /**
  * Collect every plugin's remote (`cache` hook) in declaration order and
  * layer each over the local store: a lookup asks the local store first,
  * then each remote in order (owner, 2026-10-13), and a save reaches every
- * remote. The run's policy, narrowed by a remote's `access`, and its scope
- * gate each remote; a remote's throw is a miss and a warning naming its
- * plugin. No remote → the local store alone.
+ * remote. The run's policy, narrowed by a remote's `access`, gates each
+ * remote; a remote's throw is a miss and a warning naming its plugin. No
+ * remote → the local store alone.
  */
 export async function resolveCache(
   plugins: readonly VxPlugin[],
   host: CacheHost,
 ): Promise<CacheLayer> {
   const { localCache, policy, remotes, ...ctx } = host
-  const layers: CacheLayer[] = []
-  const owners: string[] = []
+  const resolved: ResolvedRemote[] = []
   for (const plugin of plugins) {
     if (plugin.cache === undefined) continue
     const remote = await safe(plugin, 'cache', () => plugin.cache!(ctx))
     if (remote === undefined) continue
     assertShape(plugin, 'cache', remote, REMOTE_CACHE_METHODS, 'a remote cache layer')
     const access = remote.access
-    const own: CachePolicy = {
-      ...policy,
-      remoteRead: policy.remoteRead && access?.read !== false,
-      remoteWrite: policy.remoteWrite && access?.write !== false,
+    const entry: ResolvedRemote = {
+      remote,
+      read: policy.remoteRead && access?.read !== false,
+      write: policy.remoteWrite && access?.write !== false,
+      onError: (err) => ctx.warn(`[vx] plugin '${plugin.name}': ${err.message}`),
     }
-    remotes?.push({ remote, read: own.remoteRead, write: own.remoteWrite })
-    layers.push(
-      new LayeredCache(localCache, remote, {
-        policy: own,
-        onRemoteError: (err) => ctx.warn(`[vx] plugin '${plugin.name}': ${err.message}`),
-      }),
-    )
-    owners.push(`the cache layer of plugin '${plugin.name}'`)
+    resolved.push(entry)
+    remotes?.push(entry)
   }
-  if (layers.length === 0) return localCache
-  if (layers.length === 1) return layers[0]!
-  // One line per layer and method: a layer that throws on every lookup
-  // would otherwise print once per task.
-  const told = new Set<string>()
-  return new ChainedCache(layers, (i, method, err) => {
-    if (told.has(`${i}\0${method}`)) return
-    told.add(`${i}\0${method}`)
-    const m = err instanceof Error ? err.message : String(err)
-    const then =
-      method === 'save' ? 'the other layers still save' : 'a miss there; the next layer answers'
-    ctx.warn(`[vx] ${owners[i]} failed in cache ${method}: ${m}; ${then}`)
-  })
+  return resolved.length === 0 ? localCache : new LayeredCache(localCache, resolved)
 }
 
 /** The plugin each resolved executor came from, so a hook of it that throws is named. */

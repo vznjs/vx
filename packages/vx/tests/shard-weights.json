@@ -36,7 +36,7 @@
   "caching-doc-drift.test.ts": 4,
   "capture-cap.test.ts": 824,
   "cgroup.test.ts": 15,
-  "chained-cache.test.ts": 133,
+  "resolve-cache.test.ts": 133,
   "ci-output.test.ts": 1671,
   "cli-arg-hygiene.test.ts": 10,
   "cli-doc-drift.test.ts": 15,

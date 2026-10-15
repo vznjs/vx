@@ -19,18 +19,13 @@ export interface PluginCache {
   hasMany(keys: readonly string[]): Promise<Set<string> | null>
   getRun(name: string): Promise<Uint8Array | null> // run bytes core kept (run-store.ts), first readable remote, uncapped
 }
-export interface PluginCacheRemote {
-  remote: RemoteCacheLayer
-  read: boolean
-  write: boolean
-}
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache
 export const absentPluginCache: PluginCache // every answer absent: a context outside a run
 // run-store.ts
 export function runEntryName(runId: string, taskId: string, part: 'log' | 'outputs'): string
-export function writesRunStore(remotes: readonly PluginCacheRemote[]): boolean
+export function writesRunStore(remotes: readonly ResolvedRemote[]): boolean
 export function putRunEntry(
-  remotes: readonly PluginCacheRemote[],
+  remotes: readonly ResolvedRemote[],
   scope: string | undefined,
   name: string,
   bytes: Uint8Array,

@@ -24,7 +24,7 @@ import {
   putRunEntry,
   writesRunStore,
   type PluginCache,
-  type PluginCacheRemote,
+  type ResolvedRemote,
   ScopedCache,
   applyGitEnumeration,
   gitPathspecs,
@@ -464,17 +464,18 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // winning prevents double-wrapping when the workspace also declares a
   // cache plugin.
   let cache: CacheLayer
-  const remotes: PluginCacheRemote[] = []
+  const remotes: ResolvedRemote[] = []
   if (options.remoteCache) {
-    const { remoteCache } = options
-    remotes.push({ remote: remoteCache, read: policy.remoteRead, write: policy.remoteWrite })
+    remotes.push({
+      remote: options.remoteCache,
+      read: policy.remoteRead,
+      write: policy.remoteWrite,
+      onError: (err) => log.status(`[vx] remote cache: ${err.message}`),
+    })
   }
   try {
     cache = options.remoteCache
-      ? new LayeredCache(localCache, options.remoteCache, {
-          policy,
-          onRemoteError: (err) => log.status(`[vx] remote cache: ${err.message}`),
-        })
+      ? new LayeredCache(localCache, remotes)
       : await resolveCache(plugins, {
           workspaceRoot,
           cacheDir,

@@ -61,11 +61,10 @@ nothing runs and caches here.
 - `resolveCache(plugins, host)` → `CacheLayer`. `host` is a
   `CacheHost`: the hook's `CacheContext` (with the run's `scope`) plus
   the `localCache` and `policy` core keeps from plugins. Each plugin's `cache`
-  hook returns a remote (`RemoteCacheLayer`); core layers it over
-  `host.localCache` in a `LayeredCache` under `host.policy`, narrowed by
-  the remote's `access`, and names the plugin in its warnings. One
-  remote is that layer; two or more are chained in declared order
-  (`ChainedCache`); none leaves the local store unwrapped.
+  hook returns a remote (`RemoteCacheLayer`); core puts every remote, in
+  declared order, behind `host.localCache` in one `LayeredCache`, each
+  gated by `host.policy` narrowed by its `access`, and names the plugin
+  in its warnings. No remote leaves the local store unwrapped.
   `REMOTE_CACHE_METHODS` is what a returned remote must carry.
 - `buildAdmission(plugins, nodes, concurrency, warn)` → the scheduler's
   `admit(id, running)` predicate, or undefined when no plugin declares

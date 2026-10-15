@@ -15,16 +15,11 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { mkdtemp } from 'node:fs/promises'
 import os from 'node:os'
-import {
-  Cache,
-  FULL_CACHE_POLICY,
-  LayeredCache,
-  type RemoteCacheLayer,
-  ScopedCache,
-} from '../src/cache/index.js'
+import { Cache, FULL_CACHE_POLICY, type RemoteCacheLayer, ScopedCache } from '../src/cache/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run } from './helpers/orchestrator.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { layeredOver } from './helpers/layered.js'
 
 const BUILD_CONFIG = `
   export default {
@@ -372,7 +367,7 @@ describe('cache.scope', () => {
     const local = new Cache(path.join(dir, 'cache'))
     try {
       const layered = new ScopedCache(
-        new LayeredCache(local, remote, { policy: FULL_CACHE_POLICY, onRemoteError: () => {} }),
+        layeredOver(local, remote, { policy: FULL_CACHE_POLICY, onRemoteError: () => {} }),
         'pr-1',
       )
       expect(await layered.remoteHasMany!([key])).toEqual(new Set([key]))
@@ -455,7 +450,7 @@ describe('cache.scope', () => {
     const local = new Cache(path.join(dir, 'cache'))
     const layered = (): ScopedCache =>
       new ScopedCache(
-        new LayeredCache(local, remote, {
+        layeredOver(local, remote, {
           policy: FULL_CACHE_POLICY,
           onRemoteError: (err) => errors.push(err.message),
         }),

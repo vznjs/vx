@@ -144,7 +144,8 @@ here, itself or in a brace group.
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`cache.md`](./cache.md)                 | `src/cache/cache.ts` — local cache: `bun:sqlite` index + tar.zst artifacts.                                                                                                                                                                    |
 |                                          | `src/cache/{layer,policy,zstd,schema,file-hashes,output-index,run-history,key-fold}.ts` — the slices `Cache` composes (cache.md § Files); `src/cache/{archive,tar-stream}.ts` — pack / scan / extract (cache.md, caching.md § Storage layout). |
-| [`layered-cache.md`](./layered-cache.md) | `src/cache/layered-cache.ts` — local + remote composition + `RemoteCacheLayer` seam.                                                                                                                                                           |
+| [`layered-cache.md`](./layered-cache.md) | `src/cache/layered-cache.ts` — the local cache with the declared remotes behind it + `RemoteCacheLayer` seam.                                                                                                                                  |
+| [`remote-lane.md`](./remote-lane.md)     | `src/cache/remote-lane.ts` — one declared remote: its gate, boundary, upload pool and warnings.                                                                                                                                                |
 | [`inputs.md`](./inputs.md)               | `src/cache/inputs.ts` — glob resolution, boundary enforcement, `cleanOutputs`.                                                                                                                                                                 |
 | [`git-inputs.md`](./git-inputs.md)       | `src/cache/git-inputs.ts` — the git enumeration (`ls-files`, `status`, `check-attr`) the resolver trusts.                                                                                                                                      |
 
@@ -166,12 +167,11 @@ here, itself or in a brace group.
 
 ## Plugins
 
-| File                                     | Topic                                                                                               |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| [`plugins.md`](./plugins.md)             | Core ships no plugin: the floor (run here, cache here) and where plugins live (`packages/vx-*`).    |
-| [`chained-cache.md`](./chained-cache.md) | `src/cache/chained-cache.ts` — several declared cache layers, chained in order.                     |
-| [`scoped-cache.md`](./scoped-cache.md)   | `src/cache/scoped-cache.ts` — the run's `cache.scope` over every layer.                             |
-| [`plugin-cache.md`](./plugin-cache.md)   | `src/cache/{plugin-cache,run-store}.ts` — a plugin's own entries (`ctx.cache`); a run's kept bytes. |
+| File                                   | Topic                                                                                               |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [`plugins.md`](./plugins.md)           | Core ships no plugin: the floor (run here, cache here) and where plugins live (`packages/vx-*`).    |
+| [`scoped-cache.md`](./scoped-cache.md) | `src/cache/scoped-cache.ts` — the run's `cache.scope` over every layer.                             |
+| [`plugin-cache.md`](./plugin-cache.md) | `src/cache/{plugin-cache,run-store}.ts` — a plugin's own entries (`ctx.cache`); a run's kept bytes. |
 
 ## Utilities
 

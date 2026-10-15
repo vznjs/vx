@@ -134,7 +134,6 @@ export class Cache implements CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
-    skipLocalWrite?: boolean
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
@@ -253,7 +252,6 @@ export interface CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
-    skipLocalWrite?: boolean
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
@@ -1700,8 +1698,8 @@ caching. Core ships no wire client; a plugin's `cache` hook returns one
 (or an embedder passes one as `RunOptions.remoteCache`), speaking
 whatever protocol it wants, and `LayeredCache` owns everything else:
 policy gating, in-flight dedup, remote provenance, and the never-fail
-contract (implementations THROW on failure; LayeredCache degrades every
-throw to a cache miss via `onRemoteError`). The artifact bytes are the
+contract (implementations THROW on failure; every throw degrades to a
+cache miss, reported to the remote's `onError`). The artifact bytes are the
 local `<hash>.tar.zst` verbatim. The wires live in plugin packages
 (`@vzn/vx-migrate`'s `turboCache()` and `nxCache()`, `@vzn/vx-reapi`); see
 docs/modules/layered-cache.md.

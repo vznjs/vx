@@ -9,7 +9,7 @@
 import type { Database } from 'bun:sqlite'
 import { xxh3hex } from '../util/index.js'
 import type { CachePolicy } from './policy.js'
-import type { RemoteCacheLayer } from './layered-cache.js'
+import type { ResolvedRemote } from './remote-lane.js'
 import { scopedKey } from './scoped-cache.js'
 import { runReadKeys } from './run-store.js'
 
@@ -37,18 +37,11 @@ export interface PluginCache {
   getRun(name: string): Promise<Uint8Array | null>
 }
 
-/** One remote as the plugin cache reaches it: its wire and what the policy lets it do. */
-export interface PluginCacheRemote {
-  readonly remote: RemoteCacheLayer
-  readonly read: boolean
-  readonly write: boolean
-}
-
 export interface PluginCacheHost {
   /** The run's index; its store holds `plugin_blobs`. */
   readonly db: Database
   readonly policy: CachePolicy
-  readonly remotes: readonly PluginCacheRemote[]
+  readonly remotes: readonly ResolvedRemote[]
   readonly scope: string | undefined
 }
 

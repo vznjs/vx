@@ -18,7 +18,12 @@ import {
   type VxPlugin,
 } from '../src/orchestrator/index.js'
 import type { TaskExecutor, TaskInputs } from '../src/exec/index.js'
-import { Cache, ChainedCache, type RemoteCacheLayer } from '../src/cache/index.js'
+import {
+  Cache,
+  LayeredCache,
+  type RemoteCacheLayer,
+  type ResolvedRemote,
+} from '../src/cache/index.js'
 import { loadWorkspaceConfig } from '../src/workspace/index.js'
 import { machineParallelism } from '../src/util/index.js'
 import { PLUGIN_IMPORT, pluginSource, testPlugin } from './helpers/plugin.js'
@@ -183,21 +188,16 @@ describe('plugin-host — capability consultation + fallbacks', () => {
       testPlugin('org/second', { cache: () => second }),
     ]
     try {
+      const remotes: ResolvedRemote[] = []
       const resolved = await resolveCache(plugins, {
         ...baseCtx,
         localCache: local,
         policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
+        remotes,
       })
-      expect(resolved).toBeInstanceOf(ChainedCache)
-      // `remote` is private; the cast reads it without widening the class.
-      const layers = (resolved as ChainedCache).layers as unknown as {
-        local: Cache
-        remote: RemoteCacheLayer
-      }[]
-      expect(layers.map((l) => [l.local, l.remote])).toEqual([
-        [local, first],
-        [local, second],
-      ])
+      expect(resolved).toBeInstanceOf(LayeredCache)
+      expect((resolved as LayeredCache).local).toBe(local)
+      expect(remotes.map((r) => r.remote)).toEqual([first, second])
     } finally {
       local.close()
       rmSync(cacheDir, { recursive: true, force: true })

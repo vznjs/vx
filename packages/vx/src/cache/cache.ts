@@ -2056,8 +2056,6 @@ export class Cache implements CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
-    /** See `CacheLayer.save`. */
-    skipLocalWrite?: boolean
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
@@ -2082,7 +2080,6 @@ export class Cache implements CacheLayer {
     // still uploads to remote — it calls `packArtifact` itself to get
     // the bytes, since there's no local artifact to read off disk.
     if (!this.write) return
-    if (args.skipLocalWrite === true) return
     // The cache directory is the constructor's (`mkdirSync`, with a
     // refusal recorded for `assertWritable`); re-creating it here and
     // again in `writeArtifactAndIndex` cost every save two thread-pool
