@@ -1139,6 +1139,7 @@ task's outputs. Typical case: an integration-test task `dependsOn`s
 interface CacheOutputs {
   files: readonly string[] // required
   workspaceFiles?: readonly string[] // optional; workspace-root-relative
+  clean?: boolean // optional; false keeps outputs on a miss
 }
 ```
 
@@ -1182,6 +1183,14 @@ restores either way.
 Empty `[]` is valid for tasks that produce no files (e.g. `lint`,
 `typecheck`, `test`); you still cache the no-op success so the next
 run is a no-op too.
+
+**`clean: false`** keeps the outputs on a miss instead of wiping them
+first, for a tool that reads its own last output (tsc's
+`.tsbuildinfo`). An entry still holds only what a clean run would
+leave: a run that leaves a file it found untouched saves nothing, and
+the next run executes again. A retry still starts clean, and a hit
+still restores bit-identically. Omitted → the workspace's
+`cache.outputs.clean`, else `true`.
 
 A **`!` entry takes a path back** from what the positive globs select
 (A-44; a scratch dir under `dist` stays out of the clean this way; a
@@ -1649,6 +1658,7 @@ export default defineWorkspace({
     policy: 'local:rw,remote:r',
     scope: 'main',
     inputStability: { strategy: 'immutable', severity: 'warn' },
+    outputs: { clean: true },
   },
   lock: { reviewFiles: true },
   watch: { poll: false },
@@ -1698,6 +1708,7 @@ default and where it came from.
 | `cache.download`                               | `VX_CACHE_DOWNLOAD`                 | `--cache-download`   | one of 'all', 'toplevel', 'none'                                        | all                                        | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                       |
 | `cache.inputStability.strategy`                | `VX_CACHE_INPUT_STABILITY_STRATEGY` | —                    | one of 'immutable', 'mutable', 'unchecked'                              | immutable                                  | What a write to an input during the command means for the save, for tasks without their own. A task's own `cache.inputStability.strategy` beats it. |
 | `cache.inputStability.severity`                | `VX_CACHE_INPUT_STABILITY_SEVERITY` | —                    | one of 'warn', 'error'                                                  | warn                                       | Whether a skipped save warns or fails the task, for tasks without their own. A task's own `cache.inputStability.severity` beats it.                 |
+| `cache.outputs.clean`                          | `VX_CACHE_OUTPUTS_CLEAN`            | —                    | true or false                                                           | true                                       | Remove a task's declared outputs before it runs on a miss, for tasks without their own. A task's own `cache.outputs.clean` beats it.                |
 | `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`              | —                    | true or false                                                           | true                                       | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                   |
 | `watch.poll`                                   | `VX_WATCH_POLL`                     | `vx watch --poll`    | true or false                                                           | false                                      | Poll for changes from the start instead of the OS watcher.                                                                                          |
 | `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`          | —                    | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                        | How long one config evaluation may take.                                                                                                            |
@@ -1745,6 +1756,7 @@ interface CacheSettings {
   scope?: string
   download?: 'all' | 'toplevel' | 'none'
   inputStability?: InputStability
+  outputs?: { clean?: boolean }
 }
 ```
 

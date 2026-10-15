@@ -15,9 +15,10 @@
         "timeout"
       ],
       "run.rules": ["dependencies", "exclusiveOutputs", "upfrontKeys"],
-      "cache": ["dir", "download", "inputStability", "policy", "retention", "scope"],
+      "cache": ["dir", "download", "inputStability", "outputs", "policy", "retention", "scope"],
       "cache.retention": ["maxSize", "olderThan"],
       "cache.inputStability": ["severity", "strategy"],
+      "cache.outputs": ["clean"],
       "lock": ["reviewFiles"],
       "watch": ["poll"]
     },
@@ -959,7 +960,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache` has unknown field \"x\" (allowed: dir, download, inputStability, policy, retention, scope)": [
+        "$CONFIG: `cache` has unknown field \"x\" (allowed: dir, download, inputStability, outputs, policy, retention, scope)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1568,6 +1569,77 @@
           "{\"x\":\"y\"}"
         ]
       },
+      "cache.outputs": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `cache.outputs` must be an object (fields: clean)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.outputs` has unknown field \"x\" (allowed: clean)": ["{\"x\":\"y\"}"]
+      },
+      "cache.outputs.clean": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got null)": ["null"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 0)": ["0"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 1)": ["1"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [])": ["[]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got {})": ["{}"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
       "lock": {
         "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `lock` must be an object (fields: reviewFiles)": [
@@ -1788,7 +1860,7 @@
         "workspaceFiles",
         "workspaceRuntime"
       ],
-      "tasks.*.cache.outputs": ["files", "workspaceFiles"],
+      "tasks.*.cache.outputs": ["clean", "files", "workspaceFiles"],
       "tasks.*.cache.inputStability": ["severity", "strategy"]
     },
     "records": ["tasks", "tasks.*.exec.env.define"],
@@ -3653,7 +3725,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.c.cache.outputs must be an object (fields: files, workspaceFiles), not an array — did you mean `{ files: [...] }`?": [
+        "$CONFIG: tasks.c.cache.outputs must be an object (fields: clean, files, workspaceFiles), not an array — did you mean `{ files: [...] }`?": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -3670,7 +3742,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.c.cache.outputs.files must be an array of glob strings": ["{}"],
-        "$CONFIG: tasks.c.cache.outputs has unknown field \"x\" (allowed: files, workspaceFiles)": [
+        "$CONFIG: tasks.c.cache.outputs has unknown field \"x\" (allowed: clean, files, workspaceFiles)": [
           "{\"x\":\"y\"}"
         ],
         "ok": ["<seed>"]
@@ -3767,6 +3839,40 @@
         ],
         "$CONFIG: tasks.c.cache.outputs.workspaceFiles: \".\" names the workspace root itself and selects nothing — use \"**\" for everything under it": [
           "[\".\"]"
+        ]
+      },
+      "tasks.*.cache.outputs.clean": {
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: tasks.c.cache.outputs.clean must be true or false": [
+          "null",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
         ]
       },
       "tasks.*.cache.inputStability": {

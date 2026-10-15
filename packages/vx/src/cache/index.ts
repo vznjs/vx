@@ -47,6 +47,7 @@ export {
   type ProjectFilesCache,
   type WorkspaceFilesCache,
   cleanOutputPaths,
+  anyUntouched,
   ownOutputsSince,
   ownWorkspaceOutputsSince,
   stampOutputs,

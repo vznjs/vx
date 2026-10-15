@@ -188,6 +188,13 @@ export const SETTINGS: readonly Setting[] = [
     task: 'cache.inputStability.severity',
   },
   {
+    path: 'cache.outputs.clean',
+    kind: { type: 'bool' },
+    default: 'true',
+    doc: "Remove a task's declared outputs before it runs on a miss, for tasks without their own.",
+    task: 'cache.outputs.clean',
+  },
+  {
     path: 'lock.reviewFiles',
     kind: { type: 'bool' },
     default: 'true',

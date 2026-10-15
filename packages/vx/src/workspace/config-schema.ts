@@ -776,6 +776,10 @@ export function validateProjectConfig(
         )
       }
       assertKnownFields(outputs, CACHE_OUTPUT_FIELDS, `${where}.cache.outputs`)
+      const clean = (outputs as { clean?: unknown }).clean
+      if (clean !== undefined && typeof clean !== 'boolean') {
+        throw new UserError(`${where}.cache.outputs.clean must be true or false`)
+      }
       const outFiles = (outputs as { files?: unknown }).files
       if (!Array.isArray(outFiles)) {
         throw new UserError(`${where}.cache.outputs.files must be an array of glob strings`)
@@ -967,7 +971,7 @@ const CACHE_INPUT_FIELDS = new Set([
   'runtime',
   'workspaceRuntime',
 ])
-const CACHE_OUTPUT_FIELDS = new Set(['files', 'workspaceFiles'])
+const CACHE_OUTPUT_FIELDS = new Set(['files', 'workspaceFiles', 'clean'])
 
 /**
  * Another runner's spelling of a field vx has under another name, by the

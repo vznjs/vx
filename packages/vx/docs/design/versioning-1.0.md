@@ -49,9 +49,10 @@ the values it takes and each refusal's exact words are recorded in
 | `run`                  | `affectedBase`, `concurrency`, `continue`, `killGrace`, `readyNotice`, `retries`, `rules`, `schedule`, `teardownTimeout`, `timeout` |
 | `lock`                 | `reviewFiles`                                                                                                                       |
 | `run.rules`            | `dependencies`, `exclusiveOutputs`, `upfrontKeys`                                                                                   |
-| `cache`                | `dir`, `download`, `inputStability`, `policy`, `retention`, `scope`                                                                 |
+| `cache`                | `dir`, `download`, `inputStability`, `outputs`, `policy`, `retention`, `scope`                                                      |
 | `cache.retention`      | `maxSize`, `olderThan`                                                                                                              |
 | `cache.inputStability` | `severity`, `strategy`                                                                                                              |
+| `cache.outputs`        | `clean`                                                                                                                             |
 | `watch`                | `poll`                                                                                                                              |
 
 `vx.config.ts`:
@@ -69,7 +70,7 @@ the values it takes and each refusal's exact words are recorded in
 | `tasks.<name>.exec.sandbox.ignore`  | `network`, `read`, `systemInfo`, `write`                                                                  |
 | `tasks.<name>.cache`                | `inputs`, `outputs`, `inputStability`                                                                     |
 | `tasks.<name>.cache.inputs`         | `env`, `files`, `runtime`, `tasks`, `workspaceFiles`, `workspaceRuntime`                                  |
-| `tasks.<name>.cache.outputs`        | `files`, `workspaceFiles`                                                                                 |
+| `tasks.<name>.cache.outputs`        | `clean`, `files`, `workspaceFiles`                                                                        |
 | `tasks.<name>.cache.inputStability` | `severity`, `strategy`                                                                                    |
 
 Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.

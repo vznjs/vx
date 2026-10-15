@@ -114,6 +114,8 @@ export interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   /** The `cache.inputStability` of every task that does not set its own. */
   inputStability?: InputStability
+  /** The `cache.outputs.clean` of every task that does not set its own. */
+  outputs?: { clean?: boolean }
 }
 
 /** `WorkspaceConfig.lock`. */
@@ -628,6 +630,14 @@ export interface CacheOutputs {
    * and before a restore, so the second would delete the first's).
    */
   workspaceFiles?: readonly string[]
+  /**
+   * `false`: a miss leaves the declared outputs in place for the command
+   * (tsc's `.tsbuildinfo`) instead of removing them first. A run that
+   * leaves a file it found untouched saves nothing, so an entry holds only
+   * what a clean run would leave. A retry still starts clean. Omitted →
+   * the workspace's `cache.outputs.clean`, else `true`.
+   */
+  clean?: boolean
 }
 
 export interface CacheInputs {
