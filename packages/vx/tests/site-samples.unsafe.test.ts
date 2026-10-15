@@ -547,7 +547,7 @@ describe('the watch-mode post states what watch.ts does', () => {
       return [...m![1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!)
     }
     // flows.md describes the same filter and said "editor swap files" where
-    // the suffix list is `.tsbuildinfo` and a trailing `~` — the wording
+    // the suffix list is a trailing `~` — the wording
     // item 338 struck from this post, still standing there (item 353).
     const flows = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'flows.md'), 'utf8')
     for (const text of [page, flows]) {
@@ -1189,7 +1189,7 @@ describe('the caching guide lists what the cache never reads', () => {
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n')
     const names = [...entries.matchAll(/'\*\*\/([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
-    expect(names.length).toBe(10)
+    expect(names.length).toBe(9)
     const excluded = /^\| Always excluded +\|.*$/m.exec(page)
     expect(excluded).not.toBeNull()
     for (const name of names) expect(excluded![0]).toContain(name)

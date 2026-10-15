@@ -17,7 +17,7 @@ import { asTrees } from '../cache/index.js'
 import { PROJECT_CONFIG_FILENAMES, WORKSPACE_CONFIG_FILENAMES } from '../workspace/index.js'
 import { isIgnoredDir } from './watch-fs.js'
 
-const IGNORED_SUFFIXES = ['.tsbuildinfo', '~']
+const IGNORED_SUFFIXES = ['~']
 
 /**
  * True for a path the ignore filter drops. Every project dir is watched

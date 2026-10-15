@@ -1497,8 +1497,8 @@ Always ignored (no re-trigger):
   tracked + untracked-not-ignored — so a cycle it started could change
   nothing. A tracked file that matches a pattern is not ignored, by
   git's own rule; outside a repository nothing is.
-- Files ending in `.tsbuildinfo` or `~` (editor swap files), and a
-  restore's own `.vx-tmp-*` file.
+- Files ending in `~` (editor swap files), and a restore's own
+  `.vx-tmp-*` file.
 - The run's **resolved cache directory**, wherever it is. `.vx/cache/` covers the
   default, but `defineWorkspace({ cache: { dir } })` and `--cache-dir` can put it
   anywhere; watching it would let vx's own cache writes trigger the next

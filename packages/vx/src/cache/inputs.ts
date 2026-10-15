@@ -81,7 +81,6 @@ const ALWAYS_IGNORE = [
   '**/.git/**',
   // vx's machine-local state; the workspace config beside it is a source.
   '**/.vx/cache/**',
-  '**/*.tsbuildinfo',
   '**/.vx/projects.lock.json',
   // `vx lock`'s review copy of a project's resolved config: the config is
   // keyed already, and a re-lock must not move every `**` reader's key.
