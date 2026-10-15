@@ -7,7 +7,15 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
-import { SETTLE_MS, initialOnly, startWatch, until, useWatchFixture } from './helpers/watch-loop.js'
+import {
+  SETTLE_MS,
+  initialOnly,
+  ARMS,
+  arms,
+  startWatch,
+  until,
+  useWatchFixture,
+} from './helpers/watch-loop.js'
 
 const claimant = (name: string): string =>
   `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
@@ -19,13 +27,13 @@ describe('vx watch and claimed root files', () => {
   const f = useWatchFixture()
 
   it('a file a plugin added mid-watch claims is an event from then on', async () => {
-    f.watch = startWatch(f.root)
+    f.watch = startWatch(f.root, ['--all'], ARMS)
     const w = f.watch
     await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await Bun.write(path.join(f.root, '.vx/workspace.mjs'), claimant('org/claimant'))
     await until(() => w.out().includes('CLAIMANT-LOADED'), 'the cycle under the new plugin')
-    await until(() => w.out().split('watching ').length === 3, 'the re-arm after it')
+    await until(() => arms(w) === 2, 'the re-arm after it')
     await writeFile(path.join(f.root, 'custom.lock'), 'v1\n')
     await until(() => w.cycles() === 2, 'the cycle for the claimed file')
     expect(w.out()).toContain('changed root custom.lock')

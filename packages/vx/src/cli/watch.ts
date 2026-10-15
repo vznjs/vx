@@ -797,12 +797,18 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     armAncestors()
   }
 
-  // Said once the loop is armed, and again after a cycle that re-read the
-  // watched set (a member came or went, the lock or a plugin changed).
+  // Said once, when the loop first arms: a re-arm repeated it after every
+  // cycle that re-read the watched set, between task rows. `debug.watch`
+  // says each arm on stderr, for whoever needs to see the set change.
   let lastTasks: number | undefined
+  const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
   const sayWatching = (count: number): void => {
-    const tasks = lastTasks === undefined ? '' : ` · ${lastTasks} task${lastTasks === 1 ? '' : 's'}`
-    process.stdout.write(`watching ${count} project${count === 1 ? '' : 's'}${tasks}\n`)
+    const tasks = lastTasks === undefined ? '' : ` · ${plural(lastTasks, 'task')}`
+    process.stdout.write(`watching ${plural(count, 'project')}${tasks}\n`)
+  }
+  const debugArms = resolveSetting('debug.watch', undefined).value === true
+  const sayArmed = (count: number): void => {
+    if (debugArms) process.stderr.write(`vx watch: armed ${plural(count, 'project')}\n`)
   }
 
   const rearm = async (say = true): Promise<void> => {
@@ -854,7 +860,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     // A new arm proves delivery like the first ones: an edit in the new
     // project right after this cycle is seen, not lost in the gap.
     await pool.proved()
-    if (say) sayWatching(next.projects.length)
+    if (say) sayArmed(next.projects.length)
   }
 
   armMode(projects)
@@ -950,6 +956,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
 
   lastTasks = args.tasks()
   sayWatching(projects.length)
+  sayArmed(projects.length)
 
   return await new Promise<void>((resolve) => {
     const cleanup = async (): Promise<void> => {

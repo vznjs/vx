@@ -1678,7 +1678,7 @@ task's value over all of them; the input-stability variables are the one
 exception, overriding every task for the run. A duration carries its
 unit (`'500ms'`, `'30s'`, `'10m'`, `'2h'`, `'30d'`), and a bare number is
 refused naming the forms with units; a size carries one too (`'10GB'`).
-`debug.timing`, `debug.dumpable`, `config.workerTimeout` and `run.outputLogs` are read
+`debug.timing`, `debug.watch`, `debug.dumpable`, `config.workerTimeout` and `run.outputLogs` are read
 before the workspace loads, so they have a variable (and a flag) only.
 None is folded into a cache key. `vx info` lists every setting not at its
 default and where it came from.
@@ -1715,6 +1715,7 @@ default and where it came from.
 | `watch.poll`                                   | `VX_WATCH_POLL`                     | `vx watch --poll`    | true or false                                                           | false                                      | Poll for changes from the start instead of the OS watcher.                                                                                          |
 | `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`          | —                    | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                        | How long one config evaluation may take.                                                                                                            |
 | `debug.timing` (variable or flag only)         | `VX_DEBUG_TIMING`                   | —                    | true or false                                                           | false                                      | Print the run's stage timings to stderr.                                                                                                            |
+| `debug.watch` (variable or flag only)          | `VX_DEBUG_WATCH`                    | —                    | true or false                                                           | false                                      | `vx watch`: say on stderr each time the loop arms, with the projects it watches.                                                                    |
 | `debug.dumpable` (variable or flag only)       | `VX_DEBUG_DUMPABLE`                 | —                    | true or false                                                           | false                                      | Linux: keep vx dumpable, so strace or a debugger can read its memory and `/proc/<pid>/fd`, and an unsandboxed task its env.                         |
 
 <!-- /settings table -->
