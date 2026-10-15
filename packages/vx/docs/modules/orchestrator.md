@@ -90,8 +90,9 @@ export interface RunSummary {
    builds no records. The pipeline stages (`config`, `project`,
    `graph`, `key`, `schedule`) ran earlier, inside `prepareRun`.
 5. **Run-level state.** `runId` (UUIDv7) + `runStartHrTimeNs` anchor +
-   `liveChildren` set + `persistentRegistry` map. SIGINT/SIGTERM/SIGHUP
-   handlers installed here, removed in a `finally`.
+   `runStop` (`run-stop.ts`): the run's one abort, the `liveChildren` set
+   and `persistentRegistry` map, and the SIGINT/SIGTERM/SIGHUP handlers,
+   installed here and removed (`detach`) in a `finally`.
 6. **Sandbox prepare.** `prepareSandbox(nodes)` — null when no node
    declares `exec.sandbox`; otherwise an armer whose probe + init run on
    the first sandboxed execution (sandbox-request.md).

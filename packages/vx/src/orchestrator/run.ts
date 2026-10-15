@@ -36,7 +36,6 @@ import {
 import {
   mark,
   stageTimes,
-  killGraceMs,
   MAX_TIMEOUT_MS,
   printTimings,
   ulid,
@@ -45,7 +44,6 @@ import {
   nearest,
   UserError,
   machineParallelism,
-  teardownTimeoutMs,
   secretMask,
   isFsRefusal,
   isUserError,
@@ -87,13 +85,8 @@ import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
 import { prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
-import {
-  forwardedSignal,
-  type StopSignal,
-  forwardSignals,
-  SIGNAL_SHUTDOWN_GRACE_MS,
-  terminateChildren,
-} from './signals.js'
+import { terminateChildren } from './signals.js'
+import { runStop } from './run-stop.js'
 import {
   hasPooledExecutor,
   placeTasks,
@@ -568,88 +561,16 @@ async function runOnBus(
     | boolean
     | undefined
 
-  // Run-scoped registries of live subprocesses:
-  //   - `liveChildren`: in-flight children. The runner adds/removes
-  //     each child around its spawn (persistent children stay until
-  //     they exit).
-  //   - `persistentRegistry`: ready persistent tasks (dev servers,
-  //     watchers). executeTask spawns them but does NOT await their
-  //     exit; ownership moves here so the orchestrator can SIGTERM
-  //     them once the rest of the graph finishes.
-  //
-  // A SIGINT/SIGTERM mid-run forwards that signal to everything in both
-  // (`signals.ts`); the handlers are removed in the finally below so
-  // repeated run() calls (test suites) never stack listeners.
-  const liveChildren = new Set<ReturnType<typeof Bun.spawn>>()
-  // A server that ends on its own while the graph still runs is said at
-  // once: its dependants were failing against it, and the end of the run
-  // was the first word of it (C-69). Not once the graph is done (the end
-  // of the run and the keep-alive wait say it) nor under a stop.
-  let graphDone = false
-  const persistentRegistry = new (class extends Map<string, ReturnType<typeof Bun.spawn>> {
-    override set(id: string, child: ReturnType<typeof Bun.spawn>): this {
-      super.set(id, child)
-      void child.exited.then((code) => {
-        if (code !== 0 && !graphDone && !stopRun.signal.aborted)
-          log.status(`vx: ${id} exited with code ${code} while the run went on`)
-      })
-      return this
-    }
-  })()
-  // One stop for the run: an embedder's `RunOptions.signal` and a process
-  // signal both abort it. The scheduler stops dispatching (it reads the
-  // signal), the children are torn down, and run() returns through its own
-  // end-of-run path. Detached in the finally below.
-  const stopRun = new AbortController()
-  const forwardAbort = (): void => stopRun.abort(options.signal?.reason)
-  if (options.signal?.aborted === true) forwardAbort()
-  else options.signal?.addEventListener('abort', forwardAbort, { once: true })
-  // A run a process signal stopped records no history: until item 849 the
-  // handler exited before any outcome landed, and a Ctrl-C'd run then read
-  // in `vx last` as FAILED with 0 tasks (item 854). An embedder's abort is
-  // its own call and keeps its record.
-  let stoppedBy: StopSignal | undefined
-  let leftRun = (): void => {}
-  const runLeft = new Promise<void>((resolve) => {
-    leftRun = resolve
-  })
-  const signals = forwardSignals({
-    enabled: options.handleSignals ?? true,
+  const stop = runStop({
     log,
     cache,
-    liveChildren,
-    persistentRegistry,
-    stop: (signal) => {
-      stoppedBy = signal
-      stopRun.abort(signal)
-    },
-    done: runLeft,
+    external: options.signal,
+    handleSignals: options.handleSignals ?? true,
     handsTerminal: holders.size > 0,
-    // The grace, then one flush and each teardown at their own bound, and
-    // slack for the summary and the cache close.
-    boundMs:
-      killGraceMs(SIGNAL_SHUTDOWN_GRACE_MS) +
-      teardownTimeoutMs() * (1 + prepared.plugins.filter((p) => p.teardown).length) +
-      2_000,
+    teardowns: prepared.plugins.filter((p) => p.teardown).length,
+    onStop: () => stopRuntimeProbes(hashCache.runtime, hashCache.workspaceRuntime),
   })
-  // Awaited before run() leaves: a task's shell can die of the signal at
-  // once while a child it backgrounded ignores it and dies only to the
-  // SIGKILL after the grace, and a run that returned first left that child
-  // running past vx's exit (turborepo#14043's class).
-  let aborting: Promise<void> | undefined
-  // The servers that had ended when the stop landed: those crashed. One that
-  // ends after it is the stop's own kill, and was named a crash (item 1061).
-  let endedBeforeStop: ReadonlySet<ReturnType<typeof Bun.spawn>> | undefined
-  const onAbort = (): void => {
-    stopRuntimeProbes(hashCache.runtime, hashCache.workspaceRuntime)
-    endedBeforeStop = new Set([...persistentRegistry.values()].filter(hasEnded))
-    aborting = terminateChildren(
-      () => [...liveChildren, ...persistentRegistry.values()],
-      forwardedSignal(stopRun.signal.reason),
-    )
-  }
-  if (stopRun.signal.aborted) onAbort()
-  else stopRun.signal.addEventListener('abort', onAbort, { once: true })
+  const { liveChildren, persistentRegistry } = stop
   // The cache handle must be released on EVERY exit path, not just the
   // happy one: `close()` is also where the run's deferred `accessed_at`
   // bumps are flushed, so a throw between opening the cache and the
@@ -678,7 +599,7 @@ async function runOnBus(
   const releaseRunLock = await abandoning(() =>
     acquireRunLock(prepared.workspaceRoot, {
       log: (m) => log.status(m),
-      signal: stopRun.signal,
+      signal: stop.signal,
     }),
   )
   try {
@@ -1017,7 +938,7 @@ async function runOnBus(
         deferSave: saveLane.defer,
         deferredSaves,
         commandWindows: windows,
-        stopSignal: stopRun.signal,
+        stopSignal: stop.signal,
         failFast: failFast.signal,
       }
       if (options.retries !== undefined) a.retries = options.retries
@@ -1112,7 +1033,7 @@ async function runOnBus(
       ...(options.continueMode !== undefined ? { continueMode: options.continueMode } : {}),
       serverDied,
       onFailFast: () => failFast.abort(),
-      signal: stopRun.signal,
+      signal: stop.signal,
       onStart: (node) => {
         log.taskStart?.(node)
       },
@@ -1163,7 +1084,7 @@ async function runOnBus(
       // Empty when the short-circuit didn't fire → byte-identical.
       restoreTier: shortCircuit.restoreTier,
     })
-    graphDone = true
+    stop.graphDone()
 
     // Which persistent children outlive the graph, and the bounded SIGTERM
     // of the rest, before the summary prints. Scoped to the real CLI
@@ -1173,7 +1094,7 @@ async function runOnBus(
     // expect run() to return, not block on a server.
     const foreground = options.log === undefined && (options.handleSignals ?? true)
     // An aborted run's children are already being torn down: nothing to hold.
-    const hold = options.holdPersistent === true && !stopRun.signal.aborted
+    const hold = options.holdPersistent === true && !stop.signal.aborted
     // A run that failed elsewhere holds nothing: `vx run dev --all` with one
     // server that never became ready sat on the others for good, so a
     // script hung, and the Ctrl-C that ended it read 130 over the failure
@@ -1191,7 +1112,7 @@ async function runOnBus(
       keepAlive = { nodes: [], children: [] }
     const crashedPersistent = (
       await shutdownPersistent(persistentRegistry, keepAlive.children)
-    ).filter((c) => endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
+    ).filter((c) => stop.endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
 
     mark('run graph')
 
@@ -1213,7 +1134,7 @@ async function runOnBus(
     keepAlive.nodes.forEach((n, i) => {
       const child = keepAlive.children[i]!
       if (!hasEnded(child) || child.exitCode === 0) return
-      if (endedBeforeStop !== undefined && !endedBeforeStop.has(child)) return
+      if (stop.endedBeforeStop !== undefined && !stop.endedBeforeStop.has(child)) return
       failServer(n.id, child.exitCode ?? child.signalCode ?? 'unknown')
     })
     // Clear the status line for good before the summary prints.
@@ -1316,7 +1237,7 @@ async function runOnBus(
     // A server kept in the foreground can still fail the run after the
     // cache closes: its history is written once the wait has decided, or it
     // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
-    const historyAfterWait = keepAlive.children.length > 0 && !hold && stoppedBy === undefined
+    const historyAfterWait = keepAlive.children.length > 0 && !hold && stop.stoppedBy === undefined
     // A failed task's output, for `vx last` and an agent: files beside the
     // index, so a refused write (a full disk, a read-only cache dir) costs
     // only that output.
@@ -1328,7 +1249,7 @@ async function runOnBus(
         log.status(`[vx] failed tasks' output not kept: ${err.message} — the verdict above stands`)
       }
     }
-    if (stoppedBy === undefined && !historyAfterWait) {
+    if (stop.stoppedBy === undefined && !historyAfterWait) {
       recordHistory(() => cache.recordRunBundle(records))
       recordFailures(list)
     }
@@ -1416,7 +1337,7 @@ async function runOnBus(
     mark('output dir snapshots')
     // Not on a stopped run: one stopped while it waited on another run's
     // lock never held it, and its prune evicted under that run (item 858).
-    if (!stopRun.signal.aborted) await applyCacheRetention(prepared)
+    if (!stop.signal.aborted) await applyCacheRetention(prepared)
     // A plugin hears the run until its teardown and nothing after: released
     // only in the finally, its handlers heard a kept server through the
     // whole keep-alive wait below (C-66). Idempotent; the finally's stay.
@@ -1483,7 +1404,7 @@ async function runOnBus(
       // Not when the run was stopped: the server ended because the user
       // stopped it, and "exited with code 130" read as a crash after every
       // Ctrl-C once a stop let run() finish its own path (item 852).
-      if (!stopRun.signal.aborted) {
+      if (!stop.signal.aborted) {
         log.status(
           `vx: ${node.id} exited with code ${first.code}` +
             (others > 0
@@ -1494,10 +1415,10 @@ async function runOnBus(
       // Under a stop the abort is already taking them down with the stop's
       // signal; a second SIGTERM in its grace cut short the graceful
       // shutdown of a server that reads it as "quit now" (WD-16).
-      if (stopRun.signal.aborted) await aborting?.catch(() => {})
+      if (stop.signal.aborted) await stop.aborting?.catch(() => {})
       else await terminateChildren(() => keepAlive.children)
       // The server that ended the session on its own, not cleanly, failed.
-      if (!stopRun.signal.aborted && first.code !== 0) failServer(node.id, first.code)
+      if (!stop.signal.aborted && first.code !== 0) failServer(node.id, first.code)
       const final = [...outcomes.values()]
       if (historyAfterWait) {
         recordHistory(() => {
@@ -1525,9 +1446,7 @@ async function runOnBus(
     // here), so deleting this line reddens nothing (item 635). It is the
     // floor for a throw a later change adds, not a path a row can drive.
     log.runEnd?.()
-    signals.remove()
-    options.signal?.removeEventListener('abort', forwardAbort)
-    stopRun.signal.removeEventListener('abort', onAbort)
+    stop.detach()
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.
     disposePlugins?.()
@@ -1544,9 +1463,9 @@ async function runOnBus(
     } catch {
       // teardown must not throw on the way out
     }
-    await aborting?.catch(() => {})
+    await stop.aborting?.catch(() => {})
     // Last: a process signal waits for this before it exits.
-    leftRun()
+    stop.left()
   }
 }
 
