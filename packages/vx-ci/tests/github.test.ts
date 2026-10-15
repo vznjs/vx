@@ -36,7 +36,7 @@ const RUN: RunContextRecord = {
   workspaceName: 'fixture',
   command: 'vx run build',
   requestedTasks: ['build'],
-  cachePolicy: 'lR,lW',
+  cachePolicy: 'local:rw,remote:',
   concurrency: 4,
   flow: 'focused',
 } as unknown as RunContextRecord

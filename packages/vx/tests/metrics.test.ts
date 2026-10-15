@@ -47,7 +47,7 @@ function mkInvocation(args: Partial<InvocationRecord> & { runId: string }): Invo
     runId: args.runId,
     command: args.command ?? 'vx run build',
     requestedTasks: args.requestedTasks ?? JSON.stringify(['build']),
-    cachePolicy: args.cachePolicy ?? 'lR,lW,rR,rW',
+    cachePolicy: args.cachePolicy ?? 'local:rw,remote:rw',
     concurrency: args.concurrency ?? 8,
     flow: args.flow ?? 'broad',
     startedAt: args.startedAt ?? 1000,
@@ -885,7 +885,7 @@ describe('whyDidThisRerunQuery', () => {
             invocation: mkInvocation({
               runId: 'r-2',
               startedAt: 2000,
-              cachePolicy: setup.policy ?? 'lR,lW',
+              cachePolicy: setup.policy ?? 'local:rw,remote:',
               failedCount: setup.failed?.[1] ?? 0,
             }),
           })
@@ -923,7 +923,7 @@ describe('whyDidThisRerunQuery', () => {
     const unsaved =
       'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
     expect(verdict({})).toBe(unsaved)
-    expect(verdict({ prevPolicy: 'lR' })).toBe(
+    expect(verdict({ prevPolicy: 'local:r,remote:' })).toBe(
       'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit',
     )
     // CONTROL: a previous run that was a hit saved nothing of its own.

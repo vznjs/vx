@@ -54,7 +54,7 @@ const RUN: RunContextRecord = {
   workspaceName: 'fixture-ws',
   command: 'vx run build',
   requestedTasks: ['build'],
-  cachePolicy: 'lR,lW,rR,rW',
+  cachePolicy: 'local:rw,remote:rw',
   concurrency: 4,
   flow: 'focused',
   commitSha: 'abc123',

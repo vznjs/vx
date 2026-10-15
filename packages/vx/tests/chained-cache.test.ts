@@ -21,7 +21,7 @@ function invocation(runId: string): InvocationRecord {
     runId,
     command: 'vx run t',
     requestedTasks: JSON.stringify(['t']),
-    cachePolicy: 'lR,lW',
+    cachePolicy: 'local:rw,remote:',
     concurrency: 1,
     flow: 'broad',
     startedAt: Date.now() - 10,

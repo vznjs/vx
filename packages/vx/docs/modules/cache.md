@@ -202,7 +202,7 @@ export interface InvocationRecord {
   runId: string
   command: string
   requestedTasks: string // JSON string[]
-  cachePolicy: string // compact flags, e.g. 'lR,lW,rR,rW'
+  cachePolicy: string // the --cache-policy spec, e.g. 'local:rw,remote:r'
   concurrency: number
   flow: 'focused' | 'broad' | null
   startedAt: number
@@ -326,6 +326,7 @@ export interface CachePolicy {
 }
 export const FULL_CACHE_POLICY: CachePolicy
 export function parseCachePolicy(spec: string, base?: CachePolicy): CachePolicy
+export function formatCachePolicy(p: CachePolicy): string // the spec parseCachePolicy reads: local:rw,remote:r
 // `--no-cache` (all off) beats `--force` (reads off), over whichever spec set the base
 export interface CacheFlags {
   noCache?: boolean

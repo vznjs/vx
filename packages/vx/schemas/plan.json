@@ -45,8 +45,8 @@
             "required": ["kind"],
             "properties": {
               "kind": {
-                "enum": ["input", "project", "package", "named", "selected"],
-                "description": "input: a changed file is a declared input; project: its project changed and the task reads it whole; package: a ^ edge passes a changed package; named: asked as pkg#task; selected: another filter selected its project"
+                "enum": ["input", "project", "workspace", "package", "named", "selected"],
+                "description": "input: a changed file is a declared input; project: its project changed and the task reads it whole; workspace: a workspace-wide file (the workspace config, a root file a plugin claims) changed; package: a ^ edge passes a changed package; named: asked as pkg#task; selected: another filter selected its project"
               },
               "file": { "type": "string", "description": "the changed file, workspace-relative" },
               "project": { "type": "string", "description": "the changed package (kind package)" },

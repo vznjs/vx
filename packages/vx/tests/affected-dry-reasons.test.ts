@@ -1,4 +1,4 @@
-import { rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
@@ -103,6 +103,30 @@ describe('vx run --affected --dry says why each requested task was kept', () => 
       })
     } finally {
       await rm(stray)
+    }
+  })
+
+  it('json and text: a workspace-wide file names itself on every task it reached', async () => {
+    // Agent trial 3, row 3: a changed workspace config made every task
+    // `kind: project` with no `file`.
+    const ws = path.join(root, '.vx/workspace.mjs')
+    const before = await readFile(ws, 'utf8')
+    await writeFile(ws, `${before}// edited\n`)
+    try {
+      const plan = JSON.parse(dry('build', '--dry=json')) as {
+        tasks: Array<{ id: string; affected?: unknown }>
+      }
+      const reason = { kind: 'workspace', file: '.vx/workspace.mjs' }
+      expect(Object.fromEntries(plan.tasks.map((t) => [t.id, t.affected]))).toEqual({
+        'lib#build': reason,
+        'app#build': reason,
+        'other#build': reason,
+      })
+      expect(dry('build', '--filter', 'other', '--dry')).toContain(
+        'affected: .vx/workspace.mjs changed (workspace-wide)',
+      )
+    } finally {
+      await writeFile(ws, before)
     }
   })
 })

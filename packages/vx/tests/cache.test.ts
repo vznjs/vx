@@ -10,6 +10,7 @@ import {
   CorruptArtifactError,
   FULL_CACHE_POLICY,
   type InvocationRecord,
+  formatCachePolicy,
   parseCachePolicy,
   zstdContentSize,
 } from '../src/cache/cache.js'
@@ -75,6 +76,21 @@ describe('zstdContentSize (frame-header parse)', () => {
     expect(zstdContentSize(new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x20, 1]))).toBeNull()
     // A header cut inside its FCS field (4 bytes asked, 2 there).
     expect(zstdContentSize(new Uint8Array([...MAGIC, 0xa0, 0x00, 0x01]))).toBeNull()
+  })
+})
+
+// Agent trial 3, row 4: `vx last` showed `lR,lW`, which `--cache-policy`
+// refused; the recorded policy is now the flag's own spec.
+describe('formatCachePolicy', () => {
+  it('writes the spec parseCachePolicy reads back', () => {
+    for (const spec of [
+      'local:rw,remote:rw',
+      'local:r,remote:',
+      'local:,remote:w',
+      'local:w,remote:r',
+    ]) {
+      expect(formatCachePolicy(parseCachePolicy(spec))).toBe(spec)
+    }
   })
 })
 
@@ -2708,7 +2724,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       runId,
       command: 'vx run build --all',
       requestedTasks: JSON.stringify(['build']),
-      cachePolicy: 'lR,lW,rR,rW',
+      cachePolicy: 'local:rw,remote:rw',
       concurrency: 4,
       flow: 'broad',
       startedAt: Date.now() - 100,

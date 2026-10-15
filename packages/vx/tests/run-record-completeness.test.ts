@@ -232,7 +232,7 @@ function mkInvocation(runId: string): InvocationRecord {
     runId,
     command: 'vx run build',
     requestedTasks: JSON.stringify(['build']),
-    cachePolicy: 'lR,lW,rR,rW',
+    cachePolicy: 'local:rw,remote:rw',
     concurrency: 8,
     flow: 'broad',
     startedAt: T0,

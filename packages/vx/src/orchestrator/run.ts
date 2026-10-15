@@ -11,6 +11,7 @@ import {
   type CacheLayer,
   type CachePolicy,
   cachesNothing,
+  formatCachePolicy,
   stopRuntimeProbes,
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
@@ -137,20 +138,6 @@ const emptyShortCircuit = (): ShortCircuit => ({
   uncachedKeys: new Map(),
   groupKeys: new Map(),
 })
-
-/**
- * Compact the 4-axis cache policy into the `invocations.cache_policy`
- * column string. Each enabled axis contributes its flag; a fully-on
- * policy reads `'lR,lW,rR,rW'`. Pure presentation — never affects the key.
- */
-function compactCachePolicy(p: CachePolicy): string {
-  const parts: string[] = []
-  if (p.localRead) parts.push('lR')
-  if (p.localWrite) parts.push('lW')
-  if (p.remoteRead) parts.push('rR')
-  if (p.remoteWrite) parts.push('rW')
-  return parts.join(',')
-}
 
 /**
  * The policy that will actually govern the run. The remote axes are inert
@@ -812,7 +799,7 @@ async function runOnBus(
           invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
         ),
         requestedTasks: [...options.tasks],
-        cachePolicy: compactCachePolicy(policy),
+        cachePolicy: formatCachePolicy(policy),
         concurrency,
         flow: options.flow ?? null,
         commitSha: gitContext.commitSha,
@@ -1408,7 +1395,7 @@ async function runOnBus(
         // own output masks it, so cache.db holds no plaintext value.
         command: maskInvocation(options.command ?? process.argv.slice(1).join(' ')),
         requestedTasks: options.tasks,
-        cachePolicy: compactCachePolicy(policy),
+        cachePolicy: formatCachePolicy(policy),
         concurrency,
         flow: options.flow ?? null,
         forwardArgs: options.forwardArgs,

@@ -66,7 +66,7 @@ export function affectedRoots(
 ): string[] // the ids whose closure the change reaches
 
 export interface AffectedReason {
-  kind: 'input' | 'project' | 'package' | 'named' | 'selected'
+  kind: 'input' | 'project' | 'workspace' | 'package' | 'named' | 'selected'
   file?: string // workspace-relative
   project?: string // the changed package, kind `package`
   via?: string[] // the `dependsOn` chain, nearest first, to the seeded task

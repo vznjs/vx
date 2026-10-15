@@ -76,7 +76,7 @@ const invocation: InvocationRecord = {
   runId: 'run-1',
   command: 'vx run build --all',
   requestedTasks: JSON.stringify(['build']),
-  cachePolicy: 'lR,lW',
+  cachePolicy: 'local:rw,remote:',
   concurrency: 1,
   flow: 'broad',
   startedAt: Date.now(),

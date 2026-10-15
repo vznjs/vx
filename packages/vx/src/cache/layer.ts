@@ -221,7 +221,7 @@ export interface InvocationRecord {
   command: string
   /** JSON-serialized `string[]` of the requested task names. */
   requestedTasks: string
-  /** Compact policy flags, e.g. `'lR,lW,rR,rW'` (an axis omitted = off). */
+  /** The `--cache-policy` spec, e.g. `'local:rw,remote:r'` (a flag omitted = off). */
   cachePolicy: string
   concurrency: number
   flow: 'focused' | 'broad' | null

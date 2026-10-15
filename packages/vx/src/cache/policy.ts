@@ -90,6 +90,15 @@ export function parseCachePolicy(spec: string, base: CachePolicy = FULL_CACHE_PO
   return out
 }
 
+/**
+ * The `--cache-policy` spec for `p`, both layers named, so the line
+ * `vx last` shows pastes back as the flag: `local:rw,remote:r`.
+ */
+export function formatCachePolicy(p: CachePolicy): string {
+  const flags = (r: boolean, w: boolean): string => `${r ? 'r' : ''}${w ? 'w' : ''}`
+  return `local:${flags(p.localRead, p.localWrite)},remote:${flags(p.remoteRead, p.remoteWrite)}`
+}
+
 /** `--no-cache` and `--force`, which still apply over whichever spec set the base. */
 export interface CacheFlags {
   /** `--no-cache`: every axis off. Beats `force`. */

@@ -62,13 +62,15 @@ function wholeProjects(
  * `input`, a changed `file` is one of its declared inputs; `project`, its
  * project changed and the task reads it whole (an uncached task, a path no
  * cached task declares, or no single `file`: a lockfile claim, a manifest
- * edge, a config import); `package`, a `^` edge passes through `project`, a
+ * edge, a config import); `workspace`, a workspace-wide `file` (the
+ * workspace config, a root file a plugin claims) reached every task of its
+ * project; `package`, a `^` edge passes through `project`, a
  * changed package with no such task; `named`, asked as `pkg#task`;
  * `selected`, another filter selected its project outright. `via` is the
  * `dependsOn` chain, nearest first, to the task the change seeded.
  */
 export interface AffectedReason {
-  kind: 'input' | 'project' | 'package' | 'named' | 'selected'
+  kind: 'input' | 'project' | 'workspace' | 'package' | 'named' | 'selected'
   /** Workspace-relative. */
   file?: string
   project?: string
@@ -102,7 +104,10 @@ export function affectedRoots(
   const seeds = explain === undefined ? null : new Map<string, AffectedReason>()
   const through = explain === undefined ? null : new Map<string, string>()
   const inProject = (name: string, rel: string | undefined): AffectedReason => {
-    if (rel === undefined) return { kind: 'project' }
+    if (rel === undefined) {
+      const file = changes.wholeBy?.get(name)
+      return file === undefined ? { kind: 'project' } : { kind: 'workspace', file }
+    }
     const dir = path.relative(explain!.workspaceRoot, projects.get(name)!.dir)
     return { kind: 'project', file: dir === '' ? rel : path.posix.join(dir, rel) }
   }

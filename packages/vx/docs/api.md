@@ -34,6 +34,7 @@ export interface AffectedChanges {
   changed: readonly string[]
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  wholeBy?: ReadonlyMap<string, string>
   nested?: readonly string[]
 }
 ```

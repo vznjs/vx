@@ -68,7 +68,7 @@ const RUN: Required<RunContextRecord> = {
   ciAttempt: 1,
   command: 'vx run build',
   requestedTasks: ['build'],
-  cachePolicy: 'lR,lW',
+  cachePolicy: 'local:rw,remote:',
   concurrency: 2,
   flow: 'focused',
   commitSha: 'c0ffee',
