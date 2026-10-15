@@ -1,18 +1,104 @@
-# Signed cache entries from CI identity (2026-10)
+# Cache integrity: the cache server's job (2026-10)
 
-**Status:** design, Security. Not built. M asked 2026-10-15 09:08 (via EA):
-"We need to sign each cache." It folds in the saved idea
-`org/product/cache-service-oidc-provenance.md` §2 and replaces its
-per-run manifest and Rekor log.
+**Status:** decided, nothing to build in vx. M, 2026-10-15 10:03 (via
+EA): "Ok so signing is up to cache server to implement." This replaces
+the per-run signing design merged earlier the same day (#3594). That
+design is kept below, marked superseded.
 
-## Problem
+## Decision
+
+Cache integrity is the cache server's job. It works like npm trusted
+publishing:
+
+- **Writes.** When a CI job writes, it sends its OIDC token as the write
+  credential. The token is fetched at request time with the server's
+  own URL as its audience.
+- **Server checks.** The server verifies the token against GitHub's or
+  GitLab's public keys (JWKS). It checks `iss`, `aud` and `exp`, and
+  checks the claims against the repo and workflows the user registered
+  with it.
+- **Token never stored.** The token authorizes one request and is
+  dropped. It is never written into the cache or next to an entry.
+- **Reads.** Readers trust the server, as with any trusted artifact
+  store (M 10-14: the cache is trusted like GitLab artifacts).
+
+## What vx ships
+
+Nothing for this:
+
+- no signing code;
+- no core `remote(layer)` hook;
+- no `signing` option in `@vzn/vx-ci`.
+
+Core stays as it is: the token is the only boundary core knows, and
+`access` on a remote still narrows what a run may do.
+
+## Plugin side
+
+If a cache plugin's server supports OIDC auth, the plugin may send the
+CI token as its write credential, from its `cache(ctx)` hook. That is
+the plugin's own choice, not core's. The plugin:
+
+- fetches the token with its server's URL as the audience;
+- refreshes it before `exp`;
+- sends nothing, and prints nothing, when the job has no token
+  (no GitHub `id-token: write`, no GitLab `id_tokens:`).
+
+## What a server should check
+
+This is guidance for whoever builds one, folded in from
+`org/product/cache-service-oidc-provenance.md` §1 and M's questions of
+2026-10-15. It is not vx code.
+
+- **Default keys** accept writes only from the default branch or a
+  protected ref, and from the registered workflow files
+  (`job_workflow_ref` / `ci_config_ref_uri`).
+- **Events.** Refuse writes when `event_name` is `pull_request_target`,
+  `workflow_run` or `issue_comment`. Those events run on main's ref on a
+  PR's behalf.
+- **Other jobs** write only their own scope. On GitHub that is the PR
+  number from `refs/pull/<n>/merge`. On GitLab it is the merge request
+  (`ref_path` `refs/merge-requests/<iid>/head`), or project id plus
+  branch, never the branch name alone.
+- **Replay.** Each `jti` is accepted once.
+- **Audit.** Each stored entry records the writer's run id and sha, so a
+  bad run's entries can be found and purged.
+
+## Why the stored-token designs were dropped
+
+The superseded design below stored each run's token inside every entry,
+so readers could verify the entry offline.
+
+- **GitLab tokens cannot name a key.** `id_tokens` are fixed before the
+  job starts, so the audience cannot carry the run's key. Readers cannot
+  check `exp` days later either. So any main token copied out of the
+  cache would vouch for any key: whoever can read the cache could sign
+  anything as main.
+- **M ruled that the signing token is never stored in the cache.**
+
+A server that checks the token at write time has neither problem. The
+token is live when it is checked, and it is never stored.
+
+## What this does not cover
+
+A compromised server or bucket can still serve wrong bytes. Readers
+trust the store. Per-entry signatures that a reader verifies are the
+only answer to that, and they are dropped for the reasons above.
+
+---
+
+## Superseded: per-run keys bound to the CI token (2026-10-15, 09:08 to 10:03)
+
+Kept as the record. Dropped by M's 10:03 decision above.
+
+### Problem
 
 Today the cache token is the only boundary. Anyone who can write the store can poison
 a hit for everyone who reads it: a PR job whose token can write, a leaked
 token, a compromised bucket, or a server bug. Each of these replays wrong bytes under a green run, which
 is the worst failure class vx has.
 
-## M's calls
+### M's calls
 
 - Sign first; encrypt later.
 - Sign each entry, with no run manifest: an entry is verifiable once it
@@ -25,7 +111,7 @@ is the worst failure class vx has.
 - Core gets one small seam on the remote path. A failed check is a miss,
   and the seam costs nothing when no plugin uses it.
 
-## Why not Fulcio
+### Why not Fulcio
 
 The EA's sketch was one Sigstore Fulcio certificate per run. Public Fulcio
 writes every certificate it issues to a public Certificate Transparency
@@ -34,7 +120,7 @@ repo's name the same way Rekor would. Public Fulcio also trusts only
 gitlab.com, not self-managed GitLab. A private Fulcio is a service the
 user would have to run.
 
-## Design: the CI token binds the key
+### Design: the CI token binds the key
 
 The CI provider signs the binding itself, with no third party.
 
@@ -75,7 +161,7 @@ carries its own token and key, so each one verifies alone. There is no
 certificate object to fetch first, and nothing is missing if the run
 dies halfway.
 
-## Reading
+### Reading
 
 `get(key)` on the wrapped remote does the following:
 
@@ -102,7 +188,7 @@ dies halfway.
 verify, so `--dry` may predict a remote hit that then fails the check
 and becomes a miss.
 
-## Who is trusted
+### Who is trusted
 
 The wire key is opaque: a scoped key is `xxh3(scope, key)`, so the
 reader cannot tell which scope wrote an entry. Trust therefore follows
@@ -121,7 +207,7 @@ It cannot reach main, another PR, or a laptop. A fork PR gets no
 `id-token` permission on `pull_request`, so it cannot sign: its uploads
 are skipped and its cache stays local.
 
-## M's questions
+### M's questions
 
 **(a) No writes from `pull_request_target` or `workflow_run` jobs.** The
 writer reads `event_name` from its own token, not from the environment.
@@ -157,7 +243,7 @@ self-managed instance.
   the bucket. `signing.distrust: ['run:<id>']` makes every reader on that
   commit refuse a run's entries at once, before anyone touches the bucket.
 
-## Writing
+### Writing
 
 - Only a job with an OIDC endpoint signs (GitHub
   `ACTIONS_ID_TOKEN_REQUEST_URL`, GitLab's token variable). Anywhere
@@ -176,7 +262,7 @@ self-managed instance.
   Uploads already run off the critical path.
 - `put` stays write-once, as core already enforces.
 
-## Core seam
+### Core seam
 
 ```ts
 interface VxPlugin {
@@ -209,7 +295,7 @@ returns a verify-only plugin there, so a laptop checks entries too. A
 laptop with no vx-ci plugin reads the header as part of a corrupt
 archive, which is a miss: forgetting the plugin fails closed.
 
-## Reused from shared timings (#3580)
+### Reused from shared timings (#3580)
 
 - Plugin-namespaced keys: the signature uses the entry's own key and
   adds no new keys.
@@ -218,7 +304,7 @@ archive, which is a miss: forgetting the plugin fails closed.
 - A deadline on every network call: 5 s to mint, 2 s for the JWKS.
 - The `ctx.ci` and branch facts.
 
-## Tests (each red first)
+### Tests (each red first)
 
 - A body signed for key A, stored under key B, is a miss.
 - A flipped body byte under a valid header errors the stream and stores
@@ -242,7 +328,7 @@ archive, which is a miss: forgetting the plugin fails closed.
 The tests use a local JWKS and an issuer stub. The live GitHub and
 GitLab mints run in a CI job that has `id-token: write`.
 
-## Residual risks
+### Residual risks
 
 - **No signing-time proof.** Without a log or a timestamp, a key stolen
   from a running main job's memory can sign later. Stealing it needs code
@@ -256,7 +342,7 @@ GitLab mints run in a CI job that has `id-token: write`.
 - **GitHub Enterprise issuers** (`iss` with an enterprise slug) need the
   issuer as an option. Default: `https://token.actions.githubusercontent.com`.
 
-## Open points (EA to raise with M)
+### Open points (EA to raise with M)
 
 - API names: the `remote` hook, the `signing` option and `distrust`.
   M names APIs himself.
@@ -264,7 +350,7 @@ GitLab mints run in a CI job that has `id-token: write`.
   per-run key. Then GitLab signing waits for a server-side check (the
   cache service, provenance note §1) or a private Fulcio.
 
-## Out of scope
+### Out of scope
 
 Encryption (next). The cache service's OIDC auth (provenance note §1).
 Purge tooling beyond `readSignature`.
