@@ -1042,6 +1042,7 @@ type · `src/report/logger.ts`
 ```ts
 export interface Logger {
   status(line: string): void
+  warn?(line: string): void
   taskStdout(node: TaskNode, chunk: string): void
   taskStderr(node: TaskNode, chunk: string): void
   taskComplete(node: TaskNode, outcome: TaskOutcome): void

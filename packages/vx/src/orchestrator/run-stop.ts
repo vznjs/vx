@@ -13,7 +13,7 @@
 // (test suites) never stack listeners.
 
 import { killGraceMs, teardownTimeoutMs } from '../util/index.js'
-import type { Logger } from '../report/index.js'
+import { type Logger, warnOf } from '../report/index.js'
 import { hasEnded } from './persistent.js'
 import {
   forwardedSignal,
@@ -84,7 +84,7 @@ export function runStop(args: {
       super.set(id, child)
       void child.exited.then((code) => {
         if (code !== 0 && !graphDone && !controller.signal.aborted)
-          log.status(`vx: ${id} exited with code ${code} while the run went on`)
+          warnOf(log)(`vx: ${id} exited with code ${code} while the run went on`)
       })
       return this
     }

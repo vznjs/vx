@@ -3051,6 +3051,11 @@ bars. On a terminal narrower than that the bars shrink and the rule
 with them, as do a frame's section rules, so none wraps onto a second
 row. Off a terminal they keep their width.
 
+**Warnings on stderr.** A run's warnings, such as `[vx] app#build:
+cache.outputs matched no files …` or a plugin's, go to stderr. Stdout
+carries only the rows, the frames and the footer, so `vx run build >
+log.txt` keeps them out of the log.
+
 **Skipped rows.** A red run lists every task that never started as a
 row naming the failure that blocked it, so the footer's `1 skipped`
 always has a name above it:

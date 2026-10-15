@@ -54,6 +54,12 @@ import {
 export interface Logger {
   /** Header / footer / status text. Written verbatim, one trailing \n added. */
   status(line: string): void
+  /**
+   * A warning: something worked, but look at it. The default logger writes
+   * it to stderr, so stdout carries only the rows and the footer. A logger
+   * without it gets warnings through `status`.
+   */
+  warn?(line: string): void
   /** Streamed stdout chunk for a task. Buffered until `taskComplete`. */
   taskStdout(node: TaskNode, chunk: string): void
   /** Streamed stderr chunk for a task. Buffered until `taskComplete`. */
@@ -88,6 +94,11 @@ export interface Logger {
   stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
   /** The run's work is done; the footer follows. Idempotent. */
   runDone?(): void
+}
+
+/** `log.warn`, or `log.status` for a logger without it. */
+export function warnOf(log: Logger): (line: string) => void {
+  return log.warn !== undefined ? (line) => log.warn!(line) : (line) => log.status(line)
 }
 
 /** The logger `run()` builds when none is passed. */
@@ -231,9 +242,12 @@ export function defaultLogger(
     footer?: boolean
     /** The environment that names the terminal (`TERM_PROGRAM`, …); `process.env` by default. */
     env?: Readonly<Record<string, string | undefined>>
+    /** Where warnings go; `process.stderr` by default. */
+    err?: StatusStream
   } = {},
 ): DefaultLogger {
   const forwardArgs = opts.forwardArgs ?? []
+  const errOut = opts.err ?? process.stderr
   // Per-task buffers, split by stream. Splitting lets the framed-output
   // renderer put stdout under `├─ stdout` and stderr under `├─ stderr`.
   // The price: chunks that interleaved at runtime get re-ordered (all
@@ -667,6 +681,14 @@ export function defaultLogger(
       if (line === '' && endsBlank) return
       endsBlank = line === ''
       writer.write(`${line}\n`)
+    },
+    warn(line) {
+      flushKept()
+      if (streamMidLine) {
+        writer.write('\n')
+        streamMidLine = false
+      }
+      writer.writeTo(errOut, `${line}\n`)
     },
     runStart(info) {
       total = info.total

@@ -25,7 +25,7 @@ import {
   taskGlob,
   wholeSubtreePrefixes,
 } from '../util/index.js'
-import type { Logger } from '../report/index.js'
+import { type Logger, warnOf } from '../report/index.js'
 import type { TaskInputComponent } from '../cache/index.js'
 
 /** A snapshot request for `recordOutputDirs`, taken at run end. */
@@ -183,7 +183,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     // A `workspaceFiles` directory linked out of the workspace drops every
     // file (M-65); a project one is refused by the resolver (X-88).
     const linkedOut = outputDirLinkedOut(a.workspaceRoot, a.wsOutputs)
-    log.status(
+    warnOf(log)(
       `[vx] ${node.id}: cache.outputs matched no files (${[...a.outputs, ...a.wsOutputs].join(', ')}) — ` +
         `an empty artifact is saved; a later hit restores nothing` +
         (linkedOut !== undefined

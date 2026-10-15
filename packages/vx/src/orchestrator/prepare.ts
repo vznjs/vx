@@ -81,7 +81,7 @@ import type { VxPlugin } from './plugin.js'
 import { askIgnoredOutputs, gatedOutputs } from './stable-keys.js'
 import { currentBranch } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
-import type { Logger } from '../report/index.js'
+import { type Logger, warnOf } from '../report/index.js'
 import type { RunOptions } from './options.js'
 import { refuseFiltersThroughGroups } from './upstream.js'
 import { runRules } from '../settings.js'
@@ -242,9 +242,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
     lazyGitEnumeration(workspaceRoot)
   if (wholeTree) void git.start()
-  const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, (m) =>
-    log.status(m),
-  )
+  const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warnOf(log))
   mark('workspace config')
   let learnedBranch: string | null | undefined
   const branch = (): string | null =>
@@ -264,14 +262,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const projectMetas =
     reused !== undefined
       ? reused.projects
-      : await discoverProjects(
-          workspaceRoot,
-          readLock,
-          plugins,
-          cacheDir,
-          (m) => log.status(m),
-          git,
-        )
+      : await discoverProjects(workspaceRoot, readLock, plugins, cacheDir, warnOf(log), git)
   mark('discover projects')
 
   // SCOPED config loading: configs are programs, and evaluating 1090
@@ -369,7 +360,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     projectMetas,
     packageGraph,
     configs: readLock,
-    warn: (m: string) => log.status(m),
+    warn: warnOf(log),
   }
   let loaded: LoadedProjects
   try {
@@ -471,7 +462,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       remote: options.remoteCache,
       read: policy.remoteRead,
       write: policy.remoteWrite,
-      onError: (err) => log.status(`[vx] remote cache: ${err.message}`),
+      onError: (err) => warnOf(log)(`[vx] remote cache: ${err.message}`),
     })
   }
   try {
@@ -480,7 +471,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       : await resolveCache(plugins, {
           workspaceRoot,
           cacheDir,
-          warn: (m) => log.status(m),
+          warn: warnOf(log),
           scope: cacheScope,
           localCache,
           policy,
@@ -491,7 +482,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // refused by name; the local handle opened above must not leak with it,
     // nor what another plugin's factory opened: the factories have run
     // (C-4, item 1029's contract).
-    await teardownPlugins(plugins, (m) => log.status(m))
+    await teardownPlugins(plugins, warnOf(log))
     localCache.close()
     throw err
   }
@@ -583,7 +574,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         workspaceRoot,
         cacheDir,
         projectMetas,
-        warn: (m) => log.status(m),
+        warn: warnOf(log),
         rules: graphRules,
       })
     // `--affected` selects over the FINAL graph: an edge or an input a
@@ -710,7 +701,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       }
     }
     if (hasHook(plugins, 'key')) {
-      await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: (m) => log.status(m) })
+      await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log) })
     }
     refuseFiltersThroughGroups(nodes)
     const exclude = options.excludeDependencies
@@ -756,7 +747,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
             {
               workspaceRoot,
               cacheDir,
-              warn: (m) => log.status(m),
+              warn: warnOf(log),
               localCache,
               branch: branch(),
             },
@@ -794,7 +785,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       empty: nodes.size === 0 ? 'empty-graph' : null,
     }
   } catch (err) {
-    await teardownPlugins(plugins, (m) => log.status(m))
+    await teardownPlugins(plugins, warnOf(log))
     cache.close()
     throw err
   }

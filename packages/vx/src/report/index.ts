@@ -27,6 +27,7 @@ export {
   type Logger,
   type OutputView,
   resolveOutputView,
+  warnOf,
 } from './logger.js'
 export { formatPersistentList } from './framed-output.js'
 export { createForecast } from './forecast.js'

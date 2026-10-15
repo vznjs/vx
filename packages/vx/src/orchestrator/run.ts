@@ -73,6 +73,7 @@ import {
   plainOutput,
   resolveOutputView,
   terminalSubscriber,
+  warnOf,
 } from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
 import { keepRunBytes } from './run-report.js'
@@ -385,7 +386,7 @@ async function runOnBus(
     if (tornDown) return
     tornDown = true
     const plugins = prepared.plugins.filter((p) => p !== except)
-    await teardownPlugins(plugins, (m) => log.status(m), report, step)
+    await teardownPlugins(plugins, warnOf(log), report, step)
   }
   // A task whose command re-enters `vx run` in the workspace running it
   // is refused. When the inner run reaches this task again it forks a run
@@ -456,7 +457,7 @@ async function runOnBus(
       bus,
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
-      warn: (m) => log.status(m),
+      warn: warnOf(log),
       cache: prepared.cacheFor,
       ci: ciContext.ci,
       branch: prepared.branch(),
@@ -513,7 +514,7 @@ async function runOnBus(
     resolveExecutors(prepared.plugins, {
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
-      warn: (m: string) => log.status(m),
+      warn: warnOf(log),
       concurrency,
     }),
   )
@@ -537,11 +538,11 @@ async function runOnBus(
         : nodes.get(id)?.config.cache === undefined
           ? 'no remote executor accepted it — the task declares no `cache` block, so there is no input set to ship'
           : 'no remote executor accepted it'
-      log.status(`[vx] ${id}: exec.remote is 'only' and ${why} — nothing ran`)
+      warnOf(log)(`[vx] ${id}: exec.remote is 'only' and ${why} — nothing ran`)
     }
   }
   // Demand: what each executor still has left to run (`executorDemand`).
-  const narrowDemand = executorDemand(placements.executors, (m) => log.status(m))
+  const narrowDemand = executorDemand(placements.executors, warnOf(log))
 
   // `cache.download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home.
@@ -606,7 +607,7 @@ async function runOnBus(
   const releaseRunLock = await abandoning(() =>
     step('vx:run-lock', () =>
       acquireRunLock(prepared.workspaceRoot, {
-        log: (m) => log.status(m),
+        log: warnOf(log),
         signal: stop.signal,
       }),
     ),
@@ -622,7 +623,7 @@ async function runOnBus(
     // happened.
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer)
     if (options.remoteRequested === true && !prepared.hasRemoteLayer) {
-      log.status(
+      warnOf(log)(
         'vx: --cache-policy named the remote cache, but no cache plugin in .vx/workspace.* supplies one — the remote axes are off for this run',
       )
     }
@@ -687,7 +688,7 @@ async function runOnBus(
       telemetry = await subscribeTelemetry(
         prepared.plugins,
         bus,
-        { workspaceRoot, cacheDir, warn: (m: string) => log.status(m) },
+        { workspaceRoot, cacheDir, warn: warnOf(log) },
         runContextRecord,
         options.telemetrySinks,
         nodes,
@@ -720,7 +721,7 @@ async function runOnBus(
     // each pack holds an artifact's bytes); a failed save is a miss next
     // time, said once — the task's work ran.
     const saveLane = createSaveLane(2 * concurrency, (err) =>
-      log.status(`[vx] cache save failed: ${err instanceof Error ? err.message : String(err)}`),
+      warnOf(log)(`[vx] cache save failed: ${err instanceof Error ? err.message : String(err)}`),
     )
     const deferredSaves = new Map<string, Promise<SaveFacts>>()
     const windows = commandWindows()
@@ -756,7 +757,7 @@ async function runOnBus(
     // Admission over the worker count is a plugin's (`admit`): built once
     // into the predicate the scheduler asks at every local dispatch. No
     // plugin answers → undefined → the count-only path, byte for byte.
-    const admit = buildAdmission(prepared.plugins, nodes, concurrency, (m) => log.status(m))
+    const admit = buildAdmission(prepared.plugins, nodes, concurrency, warnOf(log))
 
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
@@ -780,7 +781,7 @@ async function runOnBus(
       const claimed = await claimOutput(prepared.plugins, {
         workspaceRoot,
         cacheDir,
-        warn: (m: string) => log.status(m),
+        warn: warnOf(log),
         isTTY: process.stdout.isTTY === true,
         ci: ciContext.ci,
       })
@@ -876,7 +877,7 @@ async function runOnBus(
     // admission.ts.
     const excluded = excludedTaint(nodes)
     if (excluded.unsaved > 0) {
-      log.status(
+      warnOf(log)(
         `[vx] --exclude-dependencies: ${excluded.unsaved} cached task(s) build on a skipped dependency; what they build is not saved`,
       )
     }
@@ -1133,7 +1134,7 @@ async function runOnBus(
     // 1102).
     for (const c of crashedPersistent) {
       const code = typeof c.code === 'number' ? c.code : signalExitCode(c.code)
-      log.status(`vx: ${c.id} exited with code ${code} before the run stopped it`)
+      warnOf(log)(`vx: ${c.id} exited with code ${code} before the run stopped it`)
     }
     // Outputs that never came home are not an error, but a silent `dist/`
     // that is empty-or-stale would be: name every task whose bytes are
@@ -1162,7 +1163,7 @@ async function runOnBus(
         log.status(`vx: profile written to ${wrote}`)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        log.status(`vx: failed to write profile: ${msg}`)
+        warnOf(log)(`vx: failed to write profile: ${msg}`)
       }
     }
     // Record each task to the run history in a single SQLite transaction
@@ -1206,7 +1207,7 @@ async function runOnBus(
         // an unprivileged user on a 2 MiB disk, 2026-09-16). The run said
         // what happened; `vx last` and the flaky list will not know this one.
         const message = err instanceof Error ? err.message : String(err)
-        log.status(`[vx] run history not recorded: ${message} — the verdict above stands`)
+        warnOf(log)(`[vx] run history not recorded: ${message} — the verdict above stands`)
       }
     }
     // A server kept in the foreground can still fail the run after the
@@ -1215,7 +1216,7 @@ async function runOnBus(
     const historyAfterWait = keepAlive.children.length > 0 && !hold && stop.stoppedBy === undefined
     // A failed task's output, for `vx last` and an agent (run-failures.ts).
     const recordFailures = (final: readonly TaskOutcome[]): void =>
-      writeRunFailures(prepared.cacheDir, runId, final, (m) => log.status(m))
+      writeRunFailures(prepared.cacheDir, runId, final, warnOf(log))
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       stepSync('vx:history', () => {
         recordHistory(() => cache.recordRunBundle(records))
@@ -1312,7 +1313,7 @@ async function runOnBus(
           await resetSandbox()
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          log.status(`vx: sandbox cleanup failed: ${msg}`)
+          warnOf(log)(`vx: sandbox cleanup failed: ${msg}`)
         }
       }
     })
@@ -1349,7 +1350,7 @@ async function runOnBus(
         persistent: holdServers(keepAlive, {
           forwardArgs: options.forwardArgs,
           outOf: (id) => serverOuts.get(id) ?? { bus },
-          warn: (m) => log.status(m),
+          warn: warnOf(log),
         }),
       }
     }
@@ -1363,7 +1364,7 @@ async function runOnBus(
       // stopped it, and "exited with code 130" read as a crash after every
       // Ctrl-C once a stop let run() finish its own path (item 852).
       if (!stop.signal.aborted) {
-        log.status(
+        warnOf(log)(
           `vx: ${node.id} exited with code ${first.code}` +
             (others > 0
               ? `; stopping ${others} other persistent task${others === 1 ? '' : 's'}`
@@ -1544,7 +1545,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   } finally {
     // The plan called the cache and executor factories; teardown releases
     // what they opened, as a run's end does (item 1021).
-    await teardownPlugins(prepared.plugins, (m) => log.status(m))
+    await teardownPlugins(prepared.plugins, warnOf(log))
     prepared.cache.close()
     // The same table a run prints: a dry run is how the prepare stages
     // (discovery, config load, the git enumeration) get profiled on a

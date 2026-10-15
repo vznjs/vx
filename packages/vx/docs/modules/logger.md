@@ -13,6 +13,7 @@ framed-block renderer. Programmatic embedders can pass their own
 ```ts
 export interface Logger {
   status(line: string): void // header / summary / status lines
+  warn?(line: string): void // a warning; the default logger writes it to stderr, a logger without it gets it through status
   taskStdout(node: TaskNode, chunk: string): void // streamed stdout chunk
   taskStderr(node: TaskNode, chunk: string): void // streamed stderr chunk
   taskComplete(node: TaskNode, outcome: TaskOutcome): void // flush block
@@ -64,8 +65,12 @@ export function defaultLogger(
     tty?: boolean
     env?: Record<string, string | undefined> // names the terminal for OSC 9 / 9;4 / 8; default process.env
     forwardArgs?: readonly string[]
+    err?: StatusStream // where warnings go; default process.stderr
   },
 ): DefaultLogger
+
+// log.warn, or log.status for a logger without it
+export function warnOf(log: Logger): (line: string) => void
 
 // path-links.ts: the path pattern both share
 export function linkPaths(text: string, dir: string, isFile: (abs: string) => boolean): string

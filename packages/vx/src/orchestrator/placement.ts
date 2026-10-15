@@ -11,7 +11,7 @@ import { machineParallelism, UserError } from '../util/index.js'
 import { isLocalExecutor, selectExecutor, type TaskExecutor } from '../exec/index.js'
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { resolveDownloadModes } from './download-policy.js'
-import type { Logger } from '../report/index.js'
+import { type Logger, warnOf } from '../report/index.js'
 import { executorLabel, resolveExecutors } from './plugin-host.js'
 import type { prepareRun } from './prepare.js'
 
@@ -218,11 +218,11 @@ export async function planExecutorOf(
     executors = await resolveExecutors(prepared.plugins, {
       workspaceRoot: prepared.workspaceRoot,
       cacheDir: prepared.cacheDir,
-      warn: (m: string) => log.status(m),
+      warn: warnOf(log),
       concurrency: machineParallelism(),
     })
   } catch (err) {
-    log.status(
+    warnOf(log)(
       `[vx] placement not shown — ${err instanceof Error ? err.message : String(err)} (the run would refuse on it)`,
     )
     return {}

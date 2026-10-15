@@ -58,6 +58,32 @@ describe('createOutputWriter', () => {
     expect(s.text()).not.toContain('\x1b')
   })
 
+  // A warning goes to stderr on the same terminal: the region drawn on
+  // stdout is erased before it and redrawn after, or the warning lands
+  // inside the region and the next erase eats it.
+  it('writeTo erases the region, writes to the other stream, redraws', () => {
+    const s = tty()
+    const err = tty()
+    const w = createOutputWriter(s, { forceFloorMs: 0 })
+    w.setStatus('▶ 1 running', { force: true })
+    s.chunks.length = 0
+    w.writeTo(err, 'warning\n')
+    expect(err.text()).toBe('warning\n')
+    expect(s.text()).toBe(`${CLEAR}${CLEAR}▶ 1 running`)
+  })
+
+  it('writeTo off a TTY hands over held output first, so the order holds', () => {
+    const s = pipe()
+    const err = pipe()
+    const order: string[] = []
+    s.write = (c: string) => order.push(`out:${c}`)
+    err.write = (c: string) => order.push(`err:${c}`)
+    const w = createOutputWriter(s, { coalesce: true })
+    w.write('row\n')
+    w.writeTo(err, 'warning\n')
+    expect(order).toEqual(['out:row\n', 'err:warning\n'])
+  })
+
   it('is inert when disabled (CI), even on a TTY', () => {
     const s = tty()
     const w = createOutputWriter(s, { enabled: false })

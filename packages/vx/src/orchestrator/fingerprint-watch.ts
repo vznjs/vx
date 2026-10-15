@@ -12,7 +12,7 @@
 import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { FILE_HASH_RACY_MS, racyWindowMs } from '../cache/index.js'
-import type { Logger } from '../report/index.js'
+import { type Logger, warnOf } from '../report/index.js'
 
 export class FingerprintWatch {
   private pending = false
@@ -83,7 +83,7 @@ export class FingerprintWatch {
   say(log: Logger): void {
     if (this.said || this.movedFiles === undefined) return
     this.said = true
-    log.status(
+    warnOf(log)(
       `[vx] a task rewrote \`${this.movedFiles.join('`, `')}\` during the run, which a plugin ` +
         `folds into every key: nothing keyed before it is restored or saved from here on`,
     )
