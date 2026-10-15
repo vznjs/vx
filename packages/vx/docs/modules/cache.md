@@ -229,6 +229,14 @@ export interface InvocationRecord {
   vxVersion: string
 }
 
+// One key component as `key()` folded it (a `captureInto` row); task-hash,
+// miss-save, metrics and miss-reason pass these, never redeclaring the shape.
+export interface TaskInputComponent {
+  kind: string
+  name: string
+  hash: string
+}
+
 // (Tier 3) One cache-key component row for `entry_inputs`, keyed by the
 // cache-entry hash. Persisted inside the entry-save transaction (miss
 // path only), via INSERT OR IGNORE.

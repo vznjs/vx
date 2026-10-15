@@ -257,6 +257,18 @@ export interface InvocationRecord {
  * The diff (Phase B/B1) reads these by the run's task hash
  * (`runs.hash → entry_inputs[entry_hash]`).
  */
+/**
+ * One cache-key component as `key()` folded it, the `captureInto` row.
+ * Persisted on a miss (`TaskInputRow`) so a later run can diff its inputs
+ * against this one (the Tier-3 "why did this re-run?" moat); a hit saves
+ * nothing, so the warm path is free.
+ */
+export interface TaskInputComponent {
+  kind: string
+  name: string
+  hash: string
+}
+
 export interface TaskInputRow {
   entryHash: string
   kind: string

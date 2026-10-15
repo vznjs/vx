@@ -13,6 +13,7 @@ import {
   racyWindowMs,
   resolveInputs,
   type GitFilesCache,
+  type TaskInputComponent,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
@@ -50,20 +51,6 @@ export function createHashCache(): HashCache {
     workspaceFiles: new Map(),
     projectFiles: new Map(),
   }
-}
-
-/**
- * One cache-key component captured at hash time. On a cache MISS the
- * orchestrator persists these to `entry_inputs` (keyed by the entry
- * hash, inside the save transaction) so a later run can diff its inputs
- * against this one (the Tier-3 "why did this re-run?" moat). A cache
- * HIT never saves, so it captures nothing — the warm path is free.
- * Mirrors `Cache.key()`'s fold-site rows one-for-one.
- */
-export interface TaskInputComponent {
-  kind: string
-  name: string
-  hash: string
 }
 
 export interface ComputeHashArgs {

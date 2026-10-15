@@ -21,6 +21,7 @@ export {
   KEYED_RUNS_SQL,
   parseCachePolicy,
   type RunRecord,
+  type TaskInputComponent,
   type TaskInputRow,
   WORKSPACE_OUTPUT_PREFIX,
   type OutputDirRow,

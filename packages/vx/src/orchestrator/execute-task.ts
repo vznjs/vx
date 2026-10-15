@@ -16,6 +16,7 @@ import {
   FULL_CACHE_POLICY,
   type GitFilesCache,
   racyWindowMs,
+  type TaskInputComponent,
 } from '../cache/index.js'
 import {
   buildIsolatedEnv,
@@ -98,7 +99,6 @@ import {
   type HashCache,
   type InputFact,
   movedInput,
-  type TaskInputComponent,
   type UpfrontGroupKey,
 } from './task-hash.js'
 import { getContext } from './remote-prefetch.js'
