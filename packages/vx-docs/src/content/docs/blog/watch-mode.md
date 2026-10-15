@@ -46,10 +46,12 @@ it is not an edit. A task that rewrites its own files costs one extra
 cycle, which the cache serves, and then settles.
 
 Always ignored regardless: `node_modules`, `.git`, `.vx/cache`, the run's
-resolved cache directory wherever `--cache-dir` put it, editor backup files (a trailing `~`), and any untracked path git
+resolved cache directory wherever `--cache-dir` put it, `.tsbuildinfo`
+files, editor backup files (a trailing `~`), and any untracked path git
 ignores (one `git check-ignore` per debounce window): such a path is in
 no key, so a task writing a pid file or a log there would re-run the
-loop forever.
+loop forever. (Since vx 0.0.638, a `.tsbuildinfo` file is an ordinary
+file: ignored only when git ignores it.)
 
 ## Watchers that are actually watching
 
@@ -67,9 +69,10 @@ reach.
 
 ## The rest of the contract
 
-- The output is the work: one opening line, `watching N projects · M
-  tasks`, then each cycle as a blank line, `changed <project> <file>`
-  (with `+N more` when more changed) and its task rows, with no footer.
+- (Since vx 0.0.637.) The output is the work: one opening line,
+  `watching N projects · M tasks`, then each cycle as a blank line,
+  `changed <project> <file>` (with `+N more` when more changed) and its
+  task rows, with no footer.
 - Events during a cycle queue and drain after it; re-runs are debounced
   about 150 ms after the last event.
 - A failed cycle prints its failure and waits for the next change; it

@@ -15,6 +15,10 @@ a hundred `project.json` files, guessing which task to run, re-running
 things to see whether they are cached. The runner already knows all of
 that. `@vzn/vx-mcp` hands it over.
 
+(Since vx 0.0.637, `@vzn/vx-mcp` is retired. An agent now gets the same
+answers from the [vx skill](../../guides/agents/) and `--format json`:
+`vx last --stats`, `vx why`, `vx info`, `vx lock --check`.)
+
 ```ts
 // .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'

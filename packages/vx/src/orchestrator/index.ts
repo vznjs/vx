@@ -94,6 +94,8 @@ export {
   type PluginHookHandlers,
   type PluginHookName,
   type PluginSetupContext,
+  type RunReport,
+  type RunReportTask,
   type FingerprintChange,
   type FingerprintClaim,
   type FingerprintContext,

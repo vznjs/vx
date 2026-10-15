@@ -50,12 +50,14 @@ In plugin terms the stages are named `config` → `discover` → `project` → `
 `key` → `fingerprint` → `schedule` → `admit`, followed by the two
 behaviour capabilities `executor` (where a command runs) and `cache`
 (where artifacts live), the observe-only `telemetry` capability,
-`output` (who draws the terminal),
+`output` (who draws the terminal, since vx 0.0.637),
 `setup` and `teardown` around the run, and `commands` (CLI verbs).
 Core applies **no** plugin by default and names
-none. A `.vx/workspace.ts` that declares no plugins still runs and
-caches, because the local executor and the local cache are the floor
-under every list, not plugins you have to remember to add.
+none. A workspace with no `.vx/workspace.ts` still runs and caches,
+because the local executor and the local cache are the floor under
+every list, not plugins you have to remember to add. (Since vx 0.0.637,
+the workspace file is required: `.vx/workspace.ts` marks the root, and
+one that declares no plugins runs and caches the same way.)
 
 ## What a task is
 

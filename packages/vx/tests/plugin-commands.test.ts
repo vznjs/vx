@@ -9,6 +9,7 @@ import { run as cli } from './helpers/cli.js'
 import { pluginVerbs } from '../src/cli/plugin-commands.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { pluginSource } from './helpers/plugin.js'
+import { xxh3hex } from '../src/util/index.js'
 import { noticed } from './helpers/notice.js'
 
 let root: string
@@ -84,6 +85,38 @@ describe('plugin commands', () => {
       cacheDir: path.join(root, '.vx', 'cache'),
     })
     expect(err.join('')).not.toContain('unknown command')
+  })
+
+  it("a verb's ctx.cache reads the plugin's entries from the workspace's remote and never writes it", async () => {
+    const box = globalThis as unknown as { __vxWire: Map<string, Uint8Array>; __vxCmd?: unknown }
+    box.__vxWire = new Map([
+      [xxh3hex('vx-plugin\0org/reader\0seed'), new TextEncoder().encode('kept')],
+    ])
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/wire',
+          `{ cache: () => ({
+              has: async (h) => globalThis.__vxWire.has(h),
+              get: async (h) => globalThis.__vxWire.has(h) ? { body: new Blob([globalThis.__vxWire.get(h)]), durationMs: undefined } : null,
+              put: async (h, b) => { globalThis.__vxWire.set(h, new Uint8Array(await b.arrayBuffer())) },
+            }) }`,
+        ),
+        pluginSource(
+          'org/reader',
+          `{ commands: { read: { description: 'reads', async run(argv, ctx) {
+               const got = await ctx.cache.get('seed')
+               await ctx.cache.put('new', new TextEncoder().encode('n'))
+               globalThis.__vxCmd = new TextDecoder().decode(got)
+               return 0
+             } } } }`,
+        ),
+      ]),
+    )
+    expect(await cli(['read'])).toBe(0)
+    expect(box.__vxCmd).toBe('kept')
+    expect(box.__vxWire.size).toBe(1)
   })
 
   // `vx <verb> --help` answers from core's reference for a CORE verb only: a

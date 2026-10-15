@@ -34,8 +34,9 @@ and macOS, x64 and arm64 (Windows under WSL). It is the same binary the GitHub r
 so a CI image can fetch the tarball directly and skip the package
 manager entirely. There is no postinstall that compiles anything, no
 download at first run, and no runtime to match. The npm package's
-`vx` command is a small sh launcher that execs that binary; the
-release binary needs no launcher.
+`vx` command is a small Node launcher that starts that binary; the
+release binary needs no launcher. (Since vx 0.0.635, the launcher is sh
+and execs the binary.)
 
 Your tasks are unaffected. `tsc`, `vite`, `eslint` run under whatever
 Node your project uses, because a task is a shell command and vx only
@@ -53,8 +54,8 @@ is vx's business.
 - **No runtime to boot before vx's own code runs**, run as the release
   binary: a compiled Bun binary starts as itself, which is part of what
   keeps a fully cached run in milliseconds. Through npm, the launcher
-  is one shell start first, a few milliseconds; Node starts only when
-  no prebuilt binary fits.
+  costs one Node start first. (Since vx 0.0.635, it is one shell start,
+  a few milliseconds; Node starts only when no prebuilt binary fits.)
 - **`vx.config.ts` evaluated natively.** TypeScript config with no
   transpile step, no `ts-node`, no loader flag. The binary resolves the
   `@vzn/vx` import from your `node_modules`, which is also why the

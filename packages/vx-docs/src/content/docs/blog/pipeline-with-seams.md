@@ -37,7 +37,7 @@ setup and teardown wrap the run; commands adds a verb
 | `executor`    | Decide where one task's command runs.                                                      |
 | `cache`       | Provide a layer where artifacts live.                                                      |
 | `telemetry`   | Receive plain-data run records. Cannot change behaviour, by construction.                  |
-| `output`      | Return a Logger that draws the run's terminal output in place of vx's.                     |
+| `output`      | (Since vx 0.0.637.) Return a Logger that draws the run's terminal output in place of vx's. |
 | `setup`       | Once per run, after the planning stages and before the first task.                         |
 | `commands`    | Add a CLI verb. A verb named like a core verb is refused, so nothing shadows `vx run`.     |
 | `teardown`    | Flush and close at the end of the run.                                                     |
@@ -72,6 +72,9 @@ them without a special case in core:
 - **`@vzn/vx-otel`** and **`@vzn/vx-ci`** are `telemetry` sinks: an
   OTLP exporter with no OpenTelemetry SDK dependency, and a GitHub
   Actions job summary plus a check run on the built commit.
+- **`@vzn/vx-mcp`** is `commands`: a Model Context Protocol server for
+  coding agents, a verb core does not know. (Retired since vx 0.0.637
+  for the agent skill.)
 
 Every one of these lives in its own package and imports core only
 through `@vzn/vx`'s public façade. A test pins the façade so it cannot

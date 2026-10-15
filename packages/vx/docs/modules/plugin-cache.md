@@ -17,6 +17,7 @@ export interface PluginCache {
   put(key: string, bytes: Uint8Array): Promise<void>
   has(key: string): Promise<boolean | null>
   hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  getRun(name: string): Promise<Uint8Array | null> // run bytes core kept (run-store.ts), first readable remote, uncapped
 }
 export interface PluginCacheRemote {
   remote: RemoteCacheLayer
@@ -25,6 +26,19 @@ export interface PluginCacheRemote {
 }
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache
 export const absentPluginCache: PluginCache // every answer absent: a context outside a run
+// run-store.ts
+export function runEntryName(runId: string, taskId: string, part: 'log' | 'outputs'): string
+export function writesRunStore(remotes: readonly PluginCacheRemote[]): boolean
+export function putRunEntry(
+  remotes: readonly PluginCacheRemote[],
+  scope: string | undefined,
+  name: string,
+  bytes: Uint8Array,
+): Promise<boolean>
+export function packRunOutputs(
+  workspaceRoot: string,
+  paths: readonly string[],
+): Promise<Uint8Array | null>
 ```
 
 ## Rules
@@ -55,3 +69,13 @@ export const absentPluginCache: PluginCache // every answer absent: a context ou
 ## Tests
 
 `tests/plugin-cache.test.ts`.
+
+## Run store (`run-store.ts`)
+
+What a run that writes a remote keeps of itself (`docs/modules/plugin.md`
+§ Run report and run bytes): `writesRunStore(remotes)` says whether any
+remote takes the run's writes, `runEntryName(runId, taskId, 'log' | 'outputs')`
+names an entry, `putRunEntry(remotes, scope, name, bytes)` writes it to
+each writing remote once, and `packRunOutputs(root, paths)` makes the plain
+ustar of a failed task's outputs. Keys are `xxh3('vx-run\0' + name)`,
+scoped as tasks are; `getRun` reads them. Never the local store.

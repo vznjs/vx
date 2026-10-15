@@ -55,8 +55,11 @@ stopped mattering:
   file list and every clean file's blob id. A concurrent `git status`
   names the dirty ones. A clean tree of thousands of files is keyed with
   no read of a source file ([the details](../keys-from-git/)).
-- **A run evaluates no config.** It reads the resolved objects from
-  `.vx/projects.lock.json`, which `vx lock` writes.
+- **Config evaluation is cached where it is provably safe**, keyed by
+  the git blob ids of the import closure, and evaluated live where it
+  is not. (Since vx 0.0.637, a run evaluates no config: it reads the
+  resolved objects from `.vx/projects.lock.json`, which `vx lock`
+  writes.)
 - **The graph algorithms are bitsets**, so building priorities over
   3,270 tasks is milliseconds, not seconds.
 - **A warm hit on a current tree is N stats and zero writes**, because

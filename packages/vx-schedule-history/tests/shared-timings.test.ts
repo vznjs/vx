@@ -85,6 +85,9 @@ function spyCache(opts: { hang?: boolean } = {}): Spy {
       if (opts.hang) return never
       return new Set(ks.filter((k) => store.has(k)))
     },
+    async getRun() {
+      return null
+    },
   }
 }
 

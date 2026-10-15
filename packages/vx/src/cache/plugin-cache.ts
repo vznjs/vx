@@ -11,6 +11,7 @@ import { xxh3hex } from '../util/index.js'
 import type { CachePolicy } from './policy.js'
 import type { RemoteCacheLayer } from './layered-cache.js'
 import { scopedKey } from './scoped-cache.js'
+import { runReadKeys } from './run-store.js'
 
 /** The largest entry kept or read, in bytes: a remote's larger body is a miss, read no further. */
 export const PLUGIN_ENTRY_MAX_BYTES = 1024 * 1024
@@ -28,6 +29,12 @@ export interface PluginCache {
    * when a readable remote has no batch probe: ask `get` one at a time.
    */
   hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  /**
+   * What core kept of a run under `name` (a `log` or `outputs` name its
+   * `RunReport` hands `teardown`), from the first readable remote holding
+   * it; null when none does. Uncapped: core wrote it.
+   */
+  getRun(name: string): Promise<Uint8Array | null>
 }
 
 /** One remote as the plugin cache reaches it: its wire and what the policy lets it do. */
@@ -55,9 +62,9 @@ function entryKey(plugin: string, name: string): string {
  * an empty or odd body, which kept would hide every later good one: an entry
  * is written once (Security, #3580).
  */
-async function capped(body: unknown): Promise<Uint8Array | null> {
+async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint8Array | null> {
   if (body instanceof Blob) {
-    if (body.size === 0 || body.size > PLUGIN_ENTRY_MAX_BYTES) return null
+    if (body.size === 0 || body.size > max) return null
     return new Uint8Array(await body.arrayBuffer())
   }
   if (!(body instanceof Response) || body.body === null) return null
@@ -68,7 +75,7 @@ async function capped(body: unknown): Promise<Uint8Array | null> {
     const { done, value } = await reader.read()
     if (done) break
     size += value.byteLength
-    if (size > PLUGIN_ENTRY_MAX_BYTES) {
+    if (size > max) {
       await reader.cancel().catch(() => {})
       return null
     }
@@ -212,6 +219,22 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       }
       return found
     },
+
+    async getRun(name) {
+      for (const { remote } of readers) {
+        for (const key of runReadKeys(name, scope)) {
+          try {
+            const got = await remote.get(key)
+            if (got === null) continue
+            const bytes = await capped(got.body, Infinity)
+            if (bytes !== null) return bytes
+          } catch {
+            // a failing remote is a miss there
+          }
+        }
+      }
+      return null
+    },
   }
 }
 
@@ -221,4 +244,5 @@ export const absentPluginCache: PluginCache = {
   put: async () => {},
   has: async () => null,
   hasMany: async () => null,
+  getRun: async () => null,
 }

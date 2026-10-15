@@ -16,10 +16,10 @@ every task's key. That is coarse but correct. Any `pnpm install` that
 changes `pnpm-lock.yaml` invalidates every cached task, and `--affected`
 selects every project.
 
-Update (2026-10-14): core no longer folds the lockfile, the install
+(Since vx 0.0.637, core no longer folds the lockfile, the install
 settings or any `package.json` at all. Without a lockfile plugin an
 install re-keys nothing; with one, the plugin is the only way they reach
-a key.
+a key.)
 
 It is also the single largest source of "why did everything rebuild"
 in a large workspace. A patch bump to a test utility used by one

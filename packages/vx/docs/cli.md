@@ -2052,8 +2052,9 @@ binary keeps the old one's mode (and, as root, its owner), and must
 answer `--version` before the upgrade reports it installed: one that
 does not start on this machine, or does not answer within 10 s, is
 swapped back for the previous vx, and the command exits 1 saying so
-(item 1097). On the version it already is it says `already at
-<version>` and downloads nothing.
+(item 1097): `✓ vx upgrade  installed 0.0.2`. On the version it
+already is it says `› vx upgrade  already at <version>` and downloads
+nothing.
 
 **A vx a package manager installed** (the npm package's launcher runs
 `…/node_modules/@vzn/vx-<os>-<arch>/vx`) is upgraded by that package
@@ -2077,10 +2078,16 @@ root adds `--workspace-root`. The lockfile is updated by that manager.
 Run inside a project that installs `@vzn/vx`, a global vx hands
 `vx upgrade` to the project's own (§ Which vx runs), so the project's
 dependency is what moves.
-vx prints what it runs (`vx upgrade: 0.0.1 → 0.0.2: running pnpm add
-@vzn/vx@0.0.2 --save-dev (in /repo)`), runs it there, and exits with an
-error if it fails. vx never installs Node or a package manager: one not
-on `PATH` is refused with the command to run. A vx run from an npx or
+vx prints what it runs, runs it there, and exits with an error if it
+fails:
+
+```
+› vx upgrade  0.0.1 → 0.0.2
+
+  bun add @vzn/vx@0.0.2 in /repo
+```
+
+vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from an npx or
 bunx cache has nothing installed to upgrade, and says to ask for
 `@vzn/vx@latest` instead.
 
@@ -3018,7 +3025,7 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve the run history to an AI agent over stdio',
         async run(argv, ctx) {
-          // ctx.workspaceRoot, ctx.cacheDir, ctx.concurrency, ctx.warn(...)
+          // ctx.workspaceRoot, ctx.cacheDir, ctx.concurrency, ctx.cache, ctx.warn(...)
           return 0 // the process exit code
         },
       },
@@ -3029,6 +3036,9 @@ export function mcp(): VxPlugin {
 
 The plugin's name is its package name, which `definePlugin` reads from
 `import.meta`; a plain object is refused when the workspace loads.
+`ctx.cache` reads the plugin's own entries as `setup` writes them (the
+local store, then each remote the workspace's cache plugins supply,
+under the run's scope), read-only, opened on first use.
 
 (`@vzn/vx-schedule-history` ships exactly this: `vx history`, what it
 learned per task and the reservation its `admit` hook packs.) The dispatcher tries core's verbs
