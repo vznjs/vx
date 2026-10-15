@@ -169,6 +169,12 @@ export async function showCmd(args: readonly string[]): Promise<number> {
   const projects = await loadCliProjects(root, metas, scope, { closure: true })
 
   if (parsed.target === undefined) {
+    if (metas.length === 0)
+      sayNotice(
+        'info',
+        'vx show',
+        'no projects: no directory holds a vx.config — run `vx init` to write them, then `vx lock`',
+      )
     const shown = metas.filter((m) => inSelection(m.name))
     process.stdout.write(renderList(root, shown, projects, parsed.format, colorsOut()))
     return 0

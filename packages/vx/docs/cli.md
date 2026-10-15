@@ -2371,6 +2371,9 @@ or `; projects and tasks: …` (M-57).
 
 An empty target (`vx show ''`) is refused: omit it to list every project.
 
+In a workspace with no project, the list is empty and `vx show` says so
+on stderr (`no projects`) and names `vx init`.
+
 Exit codes: `0` success; `1` parse error or unknown target.
 
 Two runs on one workspace take turns: the second waits for the first's
