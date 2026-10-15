@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## plugin: keep a CI run's bytes and hand plugins a run report
+
+`teardown` now takes the run's `RunReport` (`teardown(run?)`), and `PluginCache` has a `getRun(name)` method: a test double that implements `PluginCache` adds `getRun: async () => null`.
+
 ## cli: lay out every refusal as a notice
 
 refusals on stderr no longer read `vx <verb>: <message>`; scripts should read --format json or the exit code.

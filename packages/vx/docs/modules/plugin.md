@@ -39,13 +39,13 @@ names until 0.0.397; it is the kinds record since.
 | `fingerprint`          | claim, static                        | `{ files, affected(change, ctx) }`: the workspace-fingerprint files this plugin keys per project; one claimant each                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `schedule(nodes, ctx)` | once, if a task will start           | task id → weight, merged over the structural baseline; later plugin wins per task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `admit(task, ctx)`     | every local dispatch                 | `false` holds a ready task beside `ctx.running` until something finishes (with nothing running, it is overridden, by name); a persistent task leaves `ctx.running` at ready, when it frees its worker; sync, cheap; a throw or a Promise admits from then on                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `commands`             | unknown CLI verb                     | `{ verb: { description, run(argv, ctx) } }`; a core verb's name, an empty one or one opening with `-` is refused; `vx help`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `commands`             | unknown CLI verb                     | `{ verb: { description, run(argv, ctx) } }` (`ctx.cache` read-only, opened on first use); a core verb's name, an empty one or one opening with `-` is refused; `vx help`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `executor(ctx)`        | `plugin-host.ts`                     | return a `TaskExecutor` or decline; ALL kept in order, first accepting runs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `cache(ctx)`           | run setup                            | return a `RemoteCacheLayer` or decline; core layers each over the local cache, in declared order, under the run policy (plugin-host.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `telemetry(ctx)`       | `telemetry-host.ts`                  | return sink(s) or decline                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `output(ctx)`          | `output-host.ts`, before `run:start` | return a `Logger` that draws the run, or decline (`OutputContext`: `ctx.isTTY`, `ctx.ci`, `ctx.json` say where it would draw); first one wins                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `setup(ctx)`           | `installPlugins`                     | validate config; throw `UserError`; `ctx.cache`, `ctx.ci`, `ctx.branch` (below)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `teardown()`           | end-of-run                           | flush/close; crash-isolated, 3s-bounded                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `teardown(run?)`       | end-of-run                           | flush/close; crash-isolated, 3s-bounded; `RunReport` when the run ran to its end                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ## The installer
 
@@ -76,6 +76,44 @@ answer, never a throw or a warning; `hasMany` is `null` when a readable
 remote has no batch probe. With no remote, `get` is a local lookup.
 `schedule` runs after `setup` (only a run that starts a task schedules).
 `tests/plugin-cache.test.ts`.
+
+## Run report and run bytes
+
+A run that writes a remote (CI by default) keeps its own bytes there
+(`cache/run-store.ts`): a failed task's log and a tar of the files its
+declared outputs left, an uncached task's log. A task that saved an
+entry keeps its log in the entry; nothing goes to the local cache, where
+`vx last --log` and the tree already hold it. Names are
+`run/<runId>/<taskId>/log|outputs`, each key derived in its own
+namespace (no task key or plugin entry shares it), scoped as tasks are,
+uncapped. A run that ran to its end then calls each `teardown(run)` with
+a `RunReport`: `runId` (its history rows' `run_id`), `commit`, `ciRun`
+(`detectCi`: provider, run URL, change, pipeline, job, attempt), `ok`
+and every task (`id`, `status`, `durationMs`, `key`, and `log` /
+`outputs` names when kept). `ctx.cache.getRun(name)` reads one from the
+first readable remote. Core writes no manifest: a plugin that wants a
+run record writes one from the report with `ctx.cache.put`.
+
+```ts
+interface RunReport {
+  runId: string
+  commit: string | null
+  ciRun: CiContext
+  ok: boolean
+  tasks: readonly RunReportTask[]
+}
+interface RunReportTask {
+  id: string
+  status: TaskStatus
+  durationMs: number
+  key?: string
+  log?: string
+  outputs?: string
+}
+```
+
+`tests/plugin-run-facts.test.ts`; `tests/plugin-run-record.test.ts` builds
+a run explorer's record on this API and reads it back through a verb.
 
 ## Invariants
 

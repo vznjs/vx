@@ -1001,7 +1001,8 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
             ).outcomes.map((o) => [o.node.id, o.status]),
           )
         expect(await statuses()).toEqual({ 'app#build': 'success', 'app#deploy': 'success' })
-        expect(remote.store.size).toBe(1)
+        // build's entry, and deploy's log the run keeps (run-store.ts).
+        expect(remote.store.size).toBe(2)
 
         await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         await rm(path.join(fixture.root, 'packages', 'app', 'out.txt'))
