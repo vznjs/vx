@@ -550,6 +550,55 @@ export function executorLabel(executor: TaskExecutor): string {
 }
 
 /**
+ * Demand: what each executor still has left to run. An executor that
+ * provisions per task (a container, an allocation, a pod) otherwise has to
+ * guess from `capacity` alone and hold everything until teardown. Built
+ * ONLY for executors that asked: with none declared there is no map, no
+ * set, and the returned narrower does nothing.
+ *
+ * The SAME set is handed back every time, narrowed in place: a consumer
+ * reading it later sees the truth rather than a stale snapshot. A hint,
+ * as `admit` is: one that throws is named once and asked no more, where
+ * it surfaced as a bare stack, or mid-run from the completion path
+ * (item 1022). Returns the call that drops a finished task's id.
+ */
+export function executorDemand(
+  placed: ReadonlyMap<string, TaskExecutor>,
+  warn: (message: string) => void,
+): (id: string) => void {
+  const demandOf = new Map<TaskExecutor, Set<string>>()
+  for (const [id, executor] of placed) {
+    if (executor.demand === undefined) continue
+    let remaining = demandOf.get(executor)
+    if (remaining === undefined) demandOf.set(executor, (remaining = new Set()))
+    remaining.add(id)
+  }
+  if (demandOf.size === 0) return () => {}
+  const tell = (executor: TaskExecutor, remaining: ReadonlySet<string>): void => {
+    const failed = (err: unknown): void => {
+      if (!demandOf.delete(executor)) return
+      const m = err instanceof Error ? err.message : String(err)
+      warn(`[vx] ${executorLabel(executor)} failed in demand: ${m}; not asked again this run`)
+    }
+    try {
+      // An `async demand` that rejects did so where no one listened: an
+      // unhandled rejection, a stack, the run killed. Its rejection is a
+      // throw like any other.
+      const ret: unknown = executor.demand!(remaining)
+      if (ret instanceof Promise) ret.catch(failed)
+    } catch (err) {
+      failed(err)
+    }
+  }
+  for (const [executor, remaining] of demandOf) tell(executor, remaining)
+  return (id) => {
+    for (const [executor, remaining] of demandOf) {
+      if (remaining.delete(id)) tell(executor, remaining)
+    }
+  }
+}
+
+/**
  * Collect every plugin's `executor`, in declaration order, with core's
  * own appended at the tail: per task, `selectExecutor` takes the first
  * that accepts, and what every plugin declines runs here. A broken
