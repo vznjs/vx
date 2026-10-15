@@ -124,7 +124,7 @@ describe('docs/cli.md — the `vx info` sample quotes the current versions', () 
     // The renderer pads every label to the widest; the sample is its output.
     expect(doc).toMatch(
       new RegExp(
-        `^cache versions:\\s+keys ${CACHE_VERSION} · index schema ${SCHEMA_VERSION}$`,
+        `^  cache versions\\s+keys ${CACHE_VERSION} · index schema ${SCHEMA_VERSION}$`,
         'm',
       ),
     )
