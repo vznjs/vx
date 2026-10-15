@@ -969,6 +969,19 @@ function witnessed(a: string, b: string): boolean {
       if (ga.match(candidate) && gb.match(candidate)) return true
     }
   }
+  // Each glob filled in whole, every wildcard a name and `**` one level or
+  // none: `**/dist/**` beside `**/*` meets at `x/dist/x`, a path neither
+  // last segment builds (solid, M 2026-10-15).
+  for (const glob of [a, b]) {
+    const segs = glob.split('/')
+    if (segs.some((s) => /[[\]{}()!+@]/.test(s))) continue
+    for (const drop of [false, true]) {
+      const candidate = segs
+        .flatMap((s) => (s === '**' ? (drop ? [] : ['x']) : [s.replace(/\*+|\?/g, 'x')]))
+        .join('/')
+      if (candidate !== '' && ga.match(candidate) && gb.match(candidate)) return true
+    }
+  }
   return false
 }
 

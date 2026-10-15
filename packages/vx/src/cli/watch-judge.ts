@@ -161,7 +161,12 @@ export class ChangeJudge {
       spell !== undefined && this.ctx.held() && this.ctx.trackedAtArm?.has(spell(abs)) !== true
     if (this.lastCycle === undefined && !open) return false
     try {
-      const m = fs.statSync(abs).mtimeMs
+      // The later of the two clocks: a cache hit restores an output with
+      // the mtime it was saved with, and read by mtime alone the restore
+      // was the user's edit and ran one more cycle (solid, M 2026-10-15).
+      // The restore's write moves the ctime.
+      const st = fs.statSync(abs)
+      const m = Math.max(st.mtimeMs, st.ctimeMs)
       const start = this.lastCycle?.start ?? this.ctx.armedAt
       return m >= start && (open || m <= this.lastCycle!.end)
     } catch {

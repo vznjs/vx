@@ -1259,7 +1259,9 @@ and so are `dist//**` and `dist/./app.js` (item 441) — and a literal
 entry is read as the file OR its whole tree, the same rule the resolver
 uses, so `dist` collides with `dist/app.js` (item 442). A whole subtree
 collides with any glob whose literal head lies inside it: `dist/**` with
-`dist/extra/**` or `dist/*.js` (item 941). Globs that only _might_
+`dist/extra/**` or `dist/*.js` (item 941). Two globs a path built from
+either one matches are one too: `**/*` and `**/dist/**` both match
+`x/dist/x`. Globs that only _might_
 overlap (`dist/*` and `dist/sub/**`) are let through; there, last
 restore wins. A workspace output is also compared with every other
 project's `files` outputs, read from the root: `packages/b/dist/a.txt`

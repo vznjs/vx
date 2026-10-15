@@ -48,6 +48,7 @@ describe('the ignore filter', () => {
     ['a nested .vx dir', 'packages/a/.vx/cache/x'],
     ['a tsbuildinfo', 'packages/a/tsconfig.tsbuildinfo'],
     ['an editor swap file', 'packages/a/src/index.ts~'],
+    ['a restore temp file', 'packages/a/dist/.vx-tmp-l8q-0'],
   ])('ignores %s', (_label, rel) => {
     expect(isIgnoredWatchPath(rel.split('/').join(path.sep))).toBe(true)
   })

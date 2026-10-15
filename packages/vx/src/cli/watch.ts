@@ -872,10 +872,18 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // never heard `packages/` removed under `packages/a` (inotify did).
   const ancestorArms = new Map<string, WatchHandle>()
   let ancestorNames = new Map<string, Set<string>>()
+  /** Each project directory below the root as these arms first saw it (`inodeOf`). */
+  let heldDirs = new Map<string, string>()
   const armAncestors = (): void => {
     ancestorNames = new Map()
     const rootDir = path.resolve(workspaceRoot)
     const below = projectDirs.filter((d) => path.resolve(d) !== rootDir)
+    heldDirs = new Map(
+      below.flatMap((d) => {
+        const id = inodeOf(d)
+        return id === undefined ? [] : [[d, id]]
+      }),
+    )
     for (const base of [...below, ...importNames.keys()]) {
       let dir = path.dirname(base)
       let name = path.basename(base)
@@ -907,8 +915,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
           arm(dir, false, (filename) => {
             // A project's parent's `.gitignore` shapes what its keys read, as the root's does.
             if (!ancestorNames.get(dir)?.has(filename) && filename !== '.gitignore') return
-            reread = true
             const abs = path.join(dir, filename)
+            // A project directory still the one its arm holds is no change:
+            // its arm judges what is in it. macOS reports the directory's
+            // mtime here on every write at its top level, and a cycle's own
+            // write started the next (solid's `types`, M 2026-10-15).
+            if (heldDirs.get(abs) === (inodeOf(abs) ?? '')) return
+            reread = true
             trigger(path.relative(workspaceRoot, abs), abs)
           }),
         )
