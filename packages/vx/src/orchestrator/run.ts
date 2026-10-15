@@ -114,10 +114,10 @@ import { writeRunFailures } from './run-failures.js'
 import { assembleRunRecords } from './run-records.js'
 import {
   hasEnded,
-  selectKeepAlive,
+  disposeServers,
+  failServer,
   holdServers,
   sessionEnd,
-  shutdownPersistent,
   takeHeldServers,
 } from './persistent.js'
 import { writeRunProfile } from './run-artifacts.js'
@@ -1095,48 +1095,18 @@ async function runOnBus(
     const foreground = options.log === undefined && (options.handleSignals ?? true)
     // An aborted run's children are already being torn down: nothing to hold.
     const hold = options.holdPersistent === true && !stop.signal.aborted
-    // A run that failed elsewhere holds nothing: `vx run dev --all` with one
-    // server that never became ready sat on the others for good, so a
-    // script hung, and the Ctrl-C that ended it read 130 over the failure
-    // (C-60). A kept server's own crash ends the wait below as before, and
-    // `--continue=always` asked to keep going, and does. The watch loop
-    // (`holdPersistent`) still holds: a failing test in a cycle stopped
-    // the dev server the next change would restart anyway.
-    let keepAlive = selectKeepAlive(persistentRegistry, nodes, foreground || hold)
-    const failedElsewhere =
-      ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||
-      [...persistentRegistry.values()].some(
-        (c) => hasEnded(c) && c.exitCode !== 0 && !keepAlive.children.includes(c),
-      )
-    if (failedElsewhere && !hold && options.continueMode !== 'always')
-      keepAlive = { nodes: [], children: [] }
-    const crashedPersistent = (
-      await shutdownPersistent(persistentRegistry, keepAlive.children)
-    ).filter((c) => stop.endedBeforeStop?.has(persistentRegistry.get(c.id)!) ?? true)
+    const { keepAlive, crashed: crashedPersistent } = await disposeServers({
+      registry: persistentRegistry,
+      nodes,
+      outcomes,
+      keep: foreground || hold,
+      hold,
+      continueAlways: options.continueMode === 'always',
+      endedBeforeStop: stop.endedBeforeStop,
+    })
 
     mark('run graph')
 
-    // A server that died on its own before the stop failed, whatever its
-    // outcome said when it became ready: the footer counted it a success
-    // over the run's red exit (item 1071). A kept one that has already
-    // died is the same; the keep-alive wait below names it. Its code is its
-    // own, or the shell's report of the signal that took it.
-    const failServer = (id: string, code: number | string): void => {
-      const o = outcomes.get(id)
-      if (o === undefined) return
-      // In place: the renderer holds this outcome (events carry live refs)
-      // and closes the server's output block from it at runEnd, where a
-      // copy left it reading `running` under its exit line (WD-10).
-      o.status = 'failed'
-      o.exitCode = typeof code === 'number' ? code : signalExitCode(code)
-    }
-    for (const c of crashedPersistent) failServer(c.id, c.code)
-    keepAlive.nodes.forEach((n, i) => {
-      const child = keepAlive.children[i]!
-      if (!hasEnded(child) || child.exitCode === 0) return
-      if (stop.endedBeforeStop !== undefined && !stop.endedBeforeStop.has(child)) return
-      failServer(n.id, child.exitCode ?? child.signalCode ?? 'unknown')
-    })
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
     const list = [...outcomes.values()]
@@ -1418,7 +1388,7 @@ async function runOnBus(
       if (stop.signal.aborted) await stop.aborting?.catch(() => {})
       else await terminateChildren(() => keepAlive.children)
       // The server that ended the session on its own, not cleanly, failed.
-      if (!stop.signal.aborted && first.code !== 0) failServer(node.id, first.code)
+      if (!stop.signal.aborted && first.code !== 0) failServer(outcomes, node.id, first.code)
       const final = [...outcomes.values()]
       if (historyAfterWait) {
         recordHistory(() => {

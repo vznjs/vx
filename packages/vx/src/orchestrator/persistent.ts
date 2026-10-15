@@ -3,9 +3,9 @@
 // ownership moves to the run's registry, and this is the one place that
 // decides which of them outlive the graph and how the rest go down.
 
-import { isGroupTask, type TaskNode } from '../graph/index.js'
+import { isGroupTask, isPassStatus, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { killGraceMs } from '../util/index.js'
-import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
+import { holdGroups, killTree, signalExitCode, untilGroupsGone } from '../exec/index.js'
 import type { HeldPersistent, HeldServer } from './options.js'
 import { terminateChildren } from './signals.js'
 
@@ -214,4 +214,68 @@ export function holdServers(keepAlive: KeepAlive, args: HoldArgs): HeldPersisten
       return terminateChildren(() => held.filter((c) => !handed.has(c)), signal)
     },
   }
+}
+
+/**
+ * A server that died on its own before the stop failed, whatever its
+ * outcome said when it became ready: the footer counted it a success over
+ * the run's red exit (item 1071). Its code is its own, or the shell's
+ * report of the signal that took it. In place: the renderer holds this
+ * outcome (events carry live refs) and closes the server's output block
+ * from it at runEnd, where a copy left it reading `running` under its exit
+ * line (WD-10).
+ */
+export function failServer(
+  outcomes: ReadonlyMap<string, TaskOutcome>,
+  id: string,
+  code: number | string,
+): void {
+  const o = outcomes.get(id)
+  if (o === undefined) return
+  o.status = 'failed'
+  o.exitCode = typeof code === 'number' ? code : signalExitCode(code)
+}
+
+/**
+ * The end of the graph for its servers: which stay up (`selectKeepAlive`),
+ * the bounded shutdown of the rest, and each one that died on its own
+ * failed. A run that failed elsewhere keeps nothing: `vx run dev --all`
+ * with one server that never became ready sat on the others for good, so
+ * a script hung, and the Ctrl-C that ended it read 130 over the failure
+ * (C-60). A kept server's own crash ends the keep-alive wait as before,
+ * and `--continue=always` asked to keep going, and does. The watch loop
+ * (`hold`) still holds: a failing test in a cycle stopped the dev server
+ * the next change would restart anyway. A kept server that has already
+ * died fails too; the keep-alive wait names it.
+ */
+export async function disposeServers(args: {
+  registry: ReadonlyMap<string, Child>
+  nodes: ReadonlyMap<string, TaskNode>
+  outcomes: ReadonlyMap<string, TaskOutcome>
+  /** Keep the requested servers up: the CLI foreground, or a hold. */
+  keep: boolean
+  hold: boolean
+  continueAlways: boolean
+  /** The servers that had ended when a stop landed; undefined without a stop. */
+  endedBeforeStop: ReadonlySet<Child> | undefined
+}): Promise<{ keepAlive: KeepAlive; crashed: CrashedPersistent[] }> {
+  const { registry, outcomes, endedBeforeStop } = args
+  let keepAlive = selectKeepAlive(registry, args.nodes, args.keep)
+  const failedElsewhere =
+    ![...outcomes.values()].every((o) => isPassStatus(o.status)) ||
+    [...registry.values()].some(
+      (c) => hasEnded(c) && c.exitCode !== 0 && !keepAlive.children.includes(c),
+    )
+  if (failedElsewhere && !args.hold && !args.continueAlways) keepAlive = { nodes: [], children: [] }
+  const crashed = (await shutdownPersistent(registry, keepAlive.children)).filter(
+    (c) => endedBeforeStop?.has(registry.get(c.id)!) ?? true,
+  )
+  for (const c of crashed) failServer(outcomes, c.id, c.code)
+  keepAlive.nodes.forEach((n, i) => {
+    const child = keepAlive.children[i]!
+    if (!hasEnded(child) || child.exitCode === 0) return
+    if (endedBeforeStop !== undefined && !endedBeforeStop.has(child)) return
+    failServer(outcomes, n.id, child.exitCode ?? child.signalCode ?? 'unknown')
+  })
+  return { keepAlive, crashed }
 }
