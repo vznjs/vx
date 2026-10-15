@@ -80,7 +80,6 @@ const RUN: Required<RunContextRecord> = {
   host: 'box',
   os: 'linux',
   arch: 'x64',
-  tags: { env: 'prod' },
 }
 
 const TASK: Required<TaskTelemetry> = {

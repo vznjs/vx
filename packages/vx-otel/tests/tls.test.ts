@@ -81,7 +81,6 @@ const RUN = {
   host: 'h',
   os: 'linux',
   arch: 'x64',
-  tags: {},
 } as unknown as RunContextRecord
 
 /** Export one run to a TLS collector under `env`; the spans it received, and the warnings. */
