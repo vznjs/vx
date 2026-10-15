@@ -3,7 +3,15 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { Cache, vxCacheEntries } from '../cache/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
-import { errorCode, nearest, parseDuration, parseSize, relPosix, treeBytes } from '../util/index.js'
+import {
+  errorCode,
+  nearest,
+  parseDuration,
+  parseSize,
+  relPosix,
+  treeBytes,
+  ui,
+} from '../util/index.js'
 import { acquireRunLock } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import {
@@ -254,13 +262,26 @@ function printPruned(
     )
     return
   }
-  const orphans =
-    result.orphans > 0
-      ? `, ${dry ? 'would reap' : 'reaped'} ${result.orphans} orphaned artifact${result.orphans === 1 ? '' : 's'} (${formatBytes(result.orphanBytes)})`
-      : ''
-  process.stdout.write(
-    `${dry ? 'Would prune' : 'Pruned'} ${result.evicted} entr${result.evicted === 1 ? 'y' : 'ies'} (${formatBytes(result.bytesFreed)}${dry ? '' : ' freed'})${orphans}\n`,
+  const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
+  const facts = [
+    ...(result.evicted > 0 ? [plural(result.evicted, 'entry', 'entries')] : []),
+    ...(result.orphans > 0
+      ? [plural(result.orphans, 'orphaned artifact', 'orphaned artifacts')]
+      : []),
+  ]
+  ui.print(
+    'out',
+    freedStatus(dry, result.bytesFreed + result.orphanBytes, facts.length > 0),
+    ...(facts.length > 0 ? [ui.text(facts.join(' · '))] : []),
   )
+}
+
+/** `✓ vx cache clean  freed 1.3 GB`, `› … would free 1.3 GB (dry run)`, or nothing to free. */
+function freedStatus(dry: boolean, bytes: number, any: boolean): ui.Block {
+  if (!any) return ui.status('info', 'vx cache clean', `nothing to free${dry ? ' (dry run)' : ''}`)
+  return dry
+    ? ui.status('info', 'vx cache clean', `would free ${formatBytes(bytes)} (dry run)`)
+    : ui.status('ok', 'vx cache clean', `freed ${formatBytes(bytes)}`)
 }
 
 /** `vx cache clean --format json` with no bound (schemas/cache.json `clear`). */
@@ -341,16 +362,12 @@ async function clear(
   if (parsed.format === 'json') {
     const result: ClearResult = { dryRun: dry, cleared: shown, bytesFreed: bytes }
     process.stdout.write(`${JSON.stringify(result)}\n`)
-  } else if (shown.length === 0) process.stdout.write('Nothing to clear: no cache here\n')
-  else {
-    const scope =
-      parsed.global === true
-        ? "every repository's store and this workspace's run history"
-        : "this repository's store, shared by its checkouts, and this workspace's run history"
-    process.stdout.write(
-      `${dry ? 'Would clear' : 'Cleared'} ${scope} (${formatBytes(bytes)}${dry ? '' : ' freed'}):\n${shown.map((t) => `  ${t}\n`).join('')}`,
+  } else
+    ui.print(
+      'out',
+      freedStatus(dry, bytes, shown.length > 0),
+      ...(shown.length > 0 ? [ui.text(...shown)] : []),
     )
-  }
   return 0
 }
 

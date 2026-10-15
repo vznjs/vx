@@ -16,7 +16,7 @@ import {
   whyDidThisRerunQuery as whyDidThisRerun,
   resolveRunId,
 } from '../orchestrator/index.js'
-import { MASKED, nearMatches, printable, UserError } from '../util/index.js'
+import { MASKED, nearMatches, printable, refusal, UserError } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { findCwdProject } from './select.js'
 import { cliCacheDir, discoverCliProjects, parseCacheDirFlag } from './workspace-config.js'
@@ -145,6 +145,15 @@ async function resolveTarget(
     .all() as Array<{ project: string; task: string }>
   const ids = pairs.map((p) => `${p.project}#${p.task}`)
   const invoked = ids.length === 0 && db.query('SELECT 1 FROM invocations LIMIT 1').get() !== null
+  if (ids.length === 0 && !invoked) {
+    throw refusal(
+      { tone: 'info', headline: `no runs of ${target} yet`, fix: `vx run ${target}` },
+      {
+        code: 'VX_E_NO_HISTORY',
+        message: `vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`,
+      },
+    )
+  }
   if (target.includes('#')) {
     throw new UserError(
       `vx why: no recorded runs for "${target}"${suggest(target, ids, invoked)}`,

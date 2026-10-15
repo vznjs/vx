@@ -126,7 +126,7 @@ describe('the `config` stage reaches every verb that opens the cache', () => {
 
       const r = await vx(root, ['cache', 'clean', '--max-size', '1B'])
       expect(`${r.code}\n${r.err}`).toBe('0\n')
-      expect(r.out).toBe(`Pruned 1 entry (${size} B freed)\n`)
+      expect(r.out).toBe(`✓ vx cache clean  freed ${size} B\n\n  1 entry\n`)
       expect(storedKeys(moved)).toEqual([])
       expect(existsSync(path.join(root, '.vx', 'cache'))).toBe(false)
     },

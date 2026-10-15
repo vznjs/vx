@@ -194,7 +194,7 @@ describe('vx last (e2e)', () => {
         expect(there.out.trim().split('\n').length).toBe(1)
         expect(there.out).toContain('ok')
         const here = await vx(other, ['last', '--list'])
-        expect(here.out.trim()).toBe('no recorded runs')
+        expect(here.out.trim()).toBe('› vx last  no runs yet')
         // The same directory, spelled with `=` and read by `vx info`.
         const info = await vx(other, ['info', '--format=json', '--cache-dir=elsewhere'])
         expect(info.code).toBe(0)

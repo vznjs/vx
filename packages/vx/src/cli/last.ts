@@ -24,7 +24,7 @@ import {
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
-import { formatElapsed, splitTaskId, UserError, sayNotice } from '../util/index.js'
+import { formatElapsed, refusal, splitTaskId, UserError, sayNotice, ui } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
@@ -242,7 +242,7 @@ async function printStats(
     return 0
   }
   if (stats.length === 0) {
-    process.stdout.write('no recorded runs\n')
+    ui.print('out', ui.status('info', 'vx last', 'no runs yet'))
     return 0
   }
   const pct = (r: number): string => `${Math.round(r * 100)}%`
@@ -488,9 +488,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         return 0
       }
       if (invocations.length === 0) {
-        process.stdout.write(
-          parsed.failed === true && !noRuns() ? 'no recorded run failed\n' : 'no recorded runs\n',
-        )
+        const none = parsed.failed === true && !noRuns() ? 'no failed runs' : 'no runs yet'
+        ui.print('out', ui.status('info', 'vx last', none))
         return 0
       }
       const lines = formatRunList(
@@ -506,6 +505,12 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         : parsed.failed === true
           ? (failedInvocations(db, 1)[0] ?? null)
           : (listInvocations(db, { limit: 1 })[0] ?? null)
+    if ((inv === null || inv === undefined) && noRuns()) {
+      throw refusal(
+        { tone: 'info', headline: 'no runs yet', fix: 'vx run' },
+        { code: 'VX_E_NO_HISTORY', message: 'vx last: no recorded runs yet — run something first' },
+      )
+    }
     if (inv === null || inv === undefined) {
       throw new UserError(
         noRuns()

@@ -68,7 +68,7 @@ export function refusalNotice(
   const p = parts ?? messageParts(message)
   const what = opts.headline !== undefined ? [p.headline, ...(p.what ?? [])] : (p.what ?? [])
   return notice({
-    tone: 'error',
+    tone: p.tone ?? 'error',
     verb,
     headline: opts.headline ?? p.headline,
     ...(what.length > 0 ? { what } : {}),

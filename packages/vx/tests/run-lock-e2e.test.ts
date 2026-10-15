@@ -183,7 +183,7 @@ describe('two runs on one workspace', () => {
         await release()
         released = true
         expect(await proc.exited).toBe(0)
-        expect(await out).toContain('Pruned 1 entry')
+        expect(await out).toContain('  1 entry\n')
         expect(artifacts()).toEqual([])
       } finally {
         if (!released) await release()

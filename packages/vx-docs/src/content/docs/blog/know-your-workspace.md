@@ -68,7 +68,9 @@ Or trim by hand, and look first:
 
 ```sh frame="terminal"
 $ vx cache clean --max-size 4KB --dry-run
-Would prune 25 entries (5.9 KB)
+› vx cache clean  would free 5.9 KB (dry run)
+
+  25 entries
 ```
 
 Learn more: [the CLI reference](../../cli/) and

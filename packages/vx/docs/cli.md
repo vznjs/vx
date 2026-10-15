@@ -1673,16 +1673,19 @@ bound clears the whole cache when that is really what you want.
 
 ```
 $ vx cache clean --older-than 30d
-Pruned 42 entries (1.3 GB freed)
+✓ vx cache clean  freed 1.3 GB
 
-$ vx cache clean --older-than 7d --max-size 500M
-Pruned 18 entries (320 MB freed)
+  42 entries
 
 $ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
-Pruned 0 entries (0 B freed), reaped 42 orphaned artifacts (1.3 GB)
+✓ vx cache clean  freed 1.3 GB
+
+  42 orphaned artifacts
 
 $ vx cache clean --older-than 30d --dry-run
-Would prune 42 entries (1.3 GB), would reap 3 orphaned artifacts (12 MB)
+› vx cache clean  would free 1.3 GB (dry run)
+
+  42 entries · 3 orphaned artifacts
 ```
 
 `--dry-run` picks the victims under the same policy and counts the
@@ -1706,8 +1709,8 @@ artifact that vanishes before its restore is a miss, and the task runs
 Exit codes:
 
 - `0` — pruning completed (zero or more entries evicted). A workspace
-  that never ran has no cache: `Pruned 0 entries (0 B freed)`, and
-  nothing is created.
+  that never ran has no cache: `› vx cache clean  nothing to free`,
+  and nothing is created.
 - `1` — parse error, missing policy, or workspace-discovery error.
 
 `vx cache clean` resolves the workspace root from cwd and honors a
@@ -1735,17 +1738,19 @@ and the directory goes only if that empties it. A directory with no
 names goes only if it is one (`.vx/<id>/cache` holding a `store.db`): the
 index is a file in the checkout, which a commit or a restored CI cache
 could point at any directory. A workspace that never ran says
-`Nothing to clear: no cache here`. The next run misses every task once
+`› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
 
 ```
 $ vx cache clean
-Cleared this repository's store, shared by its checkouts, and this workspace's run history (1.4 GB freed):
+✓ vx cache clean  freed 1.4 GB
+
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
 
 $ vx cache clean --global --dry-run
-Would clear every repository's store and this workspace's run history (3.1 GB):
+› vx cache clean  would free 3.1 GB (dry run)
+
   .vx/cache
   /home/me/.vx/3f2a9c01b4d5e6f7/cache
   /home/me/.vx/9b8e7d6c5a4f3e2d/cache
@@ -2920,9 +2925,9 @@ measured. `--stats` does not combine with `--list`, `--failed` or
 `--log`; `--branch` combines only with `--stats`. `--list --format json`
 an array of the same `invocation` objects, newest first. An unknown run id fails
 loud and points at `--list`. Before any run, every form says so
-(`vx last: no recorded runs yet — run something first`, exit 1; `--list`
-prints `no recorded runs`, exit 0), and past green runs only,
-`--list --failed` prints `no recorded run failed`. A run id may be typed as a unique prefix; a
+(`› vx last  no runs yet` with `fix  vx run`, exit 1; `--list` prints
+`› vx last  no runs yet`, exit 0), and past green runs only,
+`--list --failed` prints `› vx last  no failed runs`. A run id may be typed as a unique prefix; a
 prefix several runs share fails and lists them. A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
 vx run app#test -- …`, with the arguments the run forwarded to the
