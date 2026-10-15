@@ -111,7 +111,7 @@ const KITCHEN = `export default {
           runtime: ['echo r'],
           workspaceRuntime: ['echo w'],
         },
-        outputs: { files: ['dist/**'], workspaceFiles: ['out.txt'] },
+        outputs: { files: ['dist/**'], workspaceFiles: ['out.txt'], clean: false },
         inputStability: { strategy: 'mutable', severity: 'error' },
       },
     },
@@ -778,7 +778,7 @@ describe('each schema object is its source type', () => {
       }),
     )
     expect(def('show', ...cache, 'properties', 'outputs')).toEqual(
-      keys<CacheOutputs>({ files: true, workspaceFiles: true }),
+      keys<CacheOutputs>({ files: true, workspaceFiles: true, clean: true }),
     )
     expect(def('show', ...cache, 'properties', 'inputStability')).toEqual(
       keys<InputStability>({ strategy: true, severity: true }),

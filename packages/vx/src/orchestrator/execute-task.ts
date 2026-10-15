@@ -5,6 +5,7 @@ import {
   type CacheEntry,
   type CacheLayer,
   type CachePolicy,
+  anyUntouched,
   cleanOutputs,
   committedFiles,
   cleanWorkspaceOutputs,
@@ -188,6 +189,8 @@ export interface ExecuteArgs {
    * the env vars (above the task), `workspace` from `.vx/workspace` (below).
    */
   inputStability?: { run: InputStability; workspace?: InputStability }
+  /** `cache.outputs.clean` for tasks without their own: its variable, else `.vx/workspace`. */
+  cleanOutputs?: boolean
   /** Per-run memo for `git ls-files` (one entry per project dir). */
   gitFilesCache?: GitFilesCache
   /** Per-run memo for derived hashes (task config, file lists). */
@@ -973,6 +976,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
   let stampedBefore: ReadonlyMap<string, OutputStamp> | undefined
   let wsStampedBefore: ReadonlyMap<string, OutputStamp> | undefined
+  // `cache.outputs.clean: false` leaves the outputs to the first attempt's
+  // command, stamped, so a save can tell what it found and never wrote.
+  // An additive task never cleans by glob anyway.
+  const keepOutputs = !additive && (cacheCfg?.outputs.clean ?? args.cleanOutputs ?? true) === false
+  let keptBefore: ReadonlyMap<string, OutputStamp> | undefined
+  let wsKeptBefore: ReadonlyMap<string, OutputStamp> | undefined
 
   // Cache lookup. On hit, time the user-perceived restore op
   // (clean+restore+log-replay) — that's what the framed-block footer
@@ -1147,7 +1156,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const endStamp = span('miss: stamp outputs')
       stampedBefore ??= await stampOutputs(cleanArgs)
       endStamp()
+    } else if (
+      keepOutputs &&
+      attempt === 1 &&
+      willWrite &&
+      !deferralRequested &&
+      outputs.length > 0
+    ) {
+      keptBefore = await stampOutputs(cleanArgs)
     } else if (willWrite && !deferralRequested && outputs.length > 0) {
+      keptBefore = undefined
       // Mark the wiped paths, exactly as the workspace twin below does. The
       // git snapshot still lists them with their committed index OIDs, and
       // resolveFiles SKIPS its existence probe for any path carrying a
@@ -1164,7 +1182,16 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // glob clean deleted the upstream's files before this task, which
       // reads them, ran (A-43).
       wsStampedBefore ??= await stampWorkspaceOutputs(wsCleanArgs)
+    } else if (
+      keepOutputs &&
+      attempt === 1 &&
+      willWrite &&
+      !deferralRequested &&
+      wsOutputs.length > 0
+    ) {
+      wsKeptBefore = await stampWorkspaceOutputs(wsCleanArgs)
     } else if (willWrite && !deferralRequested && wsOutputs.length > 0) {
+      wsKeptBefore = undefined
       // Root-anchored deletions can land in other projects' dirs; mark
       // them so stale per-project git snapshots can't survive the wipe.
       const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
@@ -1553,6 +1580,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   } else if (
     effectiveExitCode === 0 &&
     willSave &&
+    !leftBehind() &&
     (await keyStillTrue()) &&
     (own = await ownOutputs()) !== undefined
   ) {
@@ -1612,6 +1640,18 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         wsOutputs,
       })
     }
+  }
+
+  /**
+   * A file the kept outputs held that the run left as it was: saving would
+   * file a leftover from an older build as this run's output, so nothing is
+   * saved (`cache.outputs.clean: false`).
+   */
+  function leftBehind(): boolean {
+    return (
+      (keptBefore !== undefined && anyUntouched(keptBefore)) ||
+      (wsKeptBefore !== undefined && anyUntouched(wsKeptBefore))
+    )
   }
 
   /**

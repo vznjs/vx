@@ -92,7 +92,11 @@ const INPUTS = [
   'workspaceFiles',
   'workspaceRuntime',
 ] as const satisfies readonly Keys<CacheInputs>[]
-const OUTPUTS = ['files', 'workspaceFiles'] as const satisfies readonly Keys<CacheOutputs>[]
+const OUTPUTS = [
+  'clean',
+  'files',
+  'workspaceFiles',
+] as const satisfies readonly Keys<CacheOutputs>[]
 const RETENTION = ['maxSize', 'olderThan'] as const satisfies readonly Keys<
   NonNullable<CacheSettings['retention']>
 >[]
@@ -100,6 +104,7 @@ const WORKSPACE_CACHE = [
   'dir',
   'download',
   'inputStability',
+  'outputs',
   'policy',
   'retention',
   'scope',

@@ -617,6 +617,10 @@ async function runOnBus(
       : {}),
   }
 
+  const cleanOutputs = resolveSetting('cache.outputs.clean', workspaceConfig).value as
+    | boolean
+    | undefined
+
   // Run-scoped registries of live subprocesses:
   //   - `liveChildren`: in-flight children. The runner adds/removes
   //     each child around its spawn (persistent children stay until
@@ -1093,6 +1097,7 @@ async function runOnBus(
       if (taskTimeoutDefault !== undefined) a.timeout = taskTimeoutDefault
       if (options.readyNotice !== undefined) a.readyNotice = options.readyNotice
       a.inputStability = inputStability
+      if (cleanOutputs !== undefined) a.cleanOutputs = cleanOutputs
       if (download.modeOf.get(node.id) === 'deferred') a.download = 'deferred'
       if (placements.remoteOnlyNoop.has(node.id)) a.remoteOnlyNoop = true
       if (placements.remoteOnly.has(node.id)) a.remoteOnly = true

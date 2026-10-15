@@ -274,6 +274,7 @@ type · `src/config.ts`
 export interface CacheOutputs {
   files: readonly string[]
   workspaceFiles?: readonly string[]
+  clean?: boolean
 }
 ```
 
@@ -314,6 +315,7 @@ export interface CacheSettings {
   scope?: string
   download?: 'all' | 'toplevel' | 'none'
   inputStability?: InputStability
+  outputs?: { clean?: boolean }
 }
 ```
 
