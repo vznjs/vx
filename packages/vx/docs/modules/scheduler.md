@@ -167,7 +167,7 @@ browser (through `packages/vx-bench/schedule-policy.ts`), and
 when they load:
 
 ```ts
-export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number>
+export function computeReverseDepCount(nodes: ReadonlyMap<string, TaskNode>): Map<string, number> // also the live region's waiting order
 export function tieredReverseDepCount(
   nodes: Map<string, TaskNode>,
   restoreTier: ReadonlySet<string>,

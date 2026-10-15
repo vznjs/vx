@@ -75,7 +75,11 @@ Slot rules (the point of the design — the display derives from the
   states the pool (`C workers`).
 - A task takes the lowest free row and **stays there for its whole
   life**; idle rows hold their place dimmed, so the height and the
-  rows never shift.
+  rows never shift. An idle row holds a blocked task (`blocked`, the id,
+  `by <running task>`; `blocked`, by row) from the forecast's list, else
+  reads `idle` until the forecast knows. The logger keeps each row's
+  task until it starts, in that row, or leaves the list, and drops a row
+  with nothing left to hold, the rows below closing up.
 - More running tasks than rows queue for a freed row and surface as
   a `… +k more running` line under the rows.
 - A worker row leads with the ticking elapsed time (no glyph), then

@@ -308,3 +308,98 @@ describe('a worker row says what waits on it', () => {
     expect(lines[2]).toEndWith('p#d')
   })
 })
+
+// M, 2026-10-15: an idle worker row holds a task an unfinished dependency
+// blocks, in the order the scheduler would start it; a row with none left
+// to hold leaves the region.
+describe('idle worker rows hold blocked tasks', () => {
+  // a runs; b and c wait on it, d waits on c; x is ready, so not blocked.
+  const nodes = graph(
+    node('p#a'),
+    node('p#b', ['p#a']),
+    node('p#c', ['p#a']),
+    node('p#d', ['p#c']),
+    node('p#x'),
+    node('p#g', ['p#a'], true),
+  )
+
+  it('lists blocked tasks most-blocking first, each with the running task that holds it', () => {
+    const f = createForecast(nodes, new Map(), 8)
+    expect(f(new Set(), new Map([['p#a', 0]]), 0).blocked).toEqual([
+      { id: 'p#c', by: 'p#a' },
+      { id: 'p#b', by: 'p#a' },
+      { id: 'p#d', by: 'p#a' },
+    ])
+  })
+
+  it('lists no more than the workers, and nothing once none is blocked', () => {
+    const f = createForecast(nodes, new Map(), 2)
+    expect(f(new Set(), new Map([['p#a', 0]]), 0).blocked?.map((b) => b.id)).toEqual(['p#c', 'p#b'])
+    expect(f(new Set(['p#a', 'p#c']), new Map([['p#b', 0]]), 0).blocked).toEqual([])
+  })
+
+  it('an idle row reads blocked, the id, then what holds it, on the running grid', () => {
+    const lines = formatStatusRegion(
+      {
+        pinnedPersistent: [],
+        slots: [{ id: 'p#a', startedMs: 0 }, null, null],
+        blocked: [null, { id: 'p#c', by: 'p#a' }, null],
+        overflow: 0,
+        nowMs: 500,
+        summaryLines: [],
+      },
+      { enabled: false },
+    )
+    expect(lines[2]).toBe('           blocked          p#c  by p#a')
+    expect(lines[2]!.indexOf('blocked')).toBe(lines[1]!.indexOf('running'))
+    // Before the forecast knows, a free row still reads idle.
+    expect(lines[3]).toContain('idle')
+  })
+
+  const live = async (list: { id: string; by: string }[]) => {
+    const out = tty()
+    const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, {
+      env: {},
+      forceFloorMs: 0,
+    })
+    log.runStart?.({ total: 6, concurrency: 3 })
+    log.forecast(async () => () => ({ blocks: new Map(), blocked: list }))
+    // Three rows shown; x and y finish, so two workers sit idle beside a.
+    const [a, x, y] = [node('p#a'), node('p#x'), node('p#y')]
+    for (const n of [a, x, y]) log.taskStart?.(n)
+    for (const n of [x, y])
+      log.taskComplete(n, { node: n, status: 'success', exitCode: 0, durationMs: 1 } as TaskOutcome)
+    await Bun.sleep(1200)
+    const frame = (): string[] => {
+      const lines = out.text().split('\n')
+      const i = lines.findLastIndex((l) => l.includes('running') && l.endsWith('p#a'))
+      return lines.slice(i + 1, i + 3).map((l) => l.trimEnd())
+    }
+    return { log, frame }
+  }
+
+  it('a blocked task that starts runs in the row that held it', async () => {
+    const { log, frame } = await live([
+      { id: 'p#c', by: 'p#a' },
+      { id: 'p#b', by: 'p#a' },
+    ])
+    expect(frame()).toEqual([
+      '           blocked          p#c  by p#a',
+      '           blocked          p#b  by p#a',
+    ])
+    log.taskStart?.(node('p#b'))
+    const [second, third] = frame()
+    expect(second).toContain('blocked          p#c')
+    expect(third).toContain('running          p#b')
+    log.runEnd?.()
+  })
+
+  it('a worker with nothing left to hold leaves the region', async () => {
+    const { log, frame } = await live([{ id: 'p#c', by: 'p#a' }])
+    const [second, third] = frame()
+    expect(second).toBe('           blocked          p#c  by p#a')
+    expect(third).not.toContain('idle')
+    expect(third).not.toContain('blocked')
+    log.runEnd?.()
+  })
+})

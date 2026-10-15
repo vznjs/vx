@@ -85,7 +85,7 @@ export function tieredReverseDepCount(
  * dependents only (`calculateReverseDeps` in
  * `packages/nx/src/tasks-runner/utils.ts`, read 2026-09-24).
  */
-export function computeReverseDepCount(nodes: Map<string, TaskNode>): Map<string, number> {
+export function computeReverseDepCount(nodes: ReadonlyMap<string, TaskNode>): Map<string, number> {
   // Exact transitive-dependent COUNTS need closure SETS (diamonds
   // double-count under naive summing). Set-of-strings closures are
   // O(N²) entries and took 8.5s on a 1090-package, 100-layer repo;

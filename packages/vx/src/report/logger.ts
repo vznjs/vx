@@ -34,7 +34,7 @@ import {
 } from '../util/index.js'
 import { isCacheHit } from '../graph/index.js'
 import { failedLabel, outcomeWord, ranNoCache } from './events.js'
-import type { Forecast } from './forecast.js'
+import type { BlockedTask, Forecast } from './forecast.js'
 import {
   notifyEscape,
   PROGRESS_CLEAR,
@@ -303,6 +303,10 @@ export function defaultLogger(
   let critical: string | undefined
   let blocks: ReadonlyMap<string, number> | undefined
   let expected: ReadonlyMap<string, number> | undefined
+  let blocked: readonly BlockedTask[] | undefined
+  // The blocked task each idle worker row holds, by slot: a row keeps its
+  // task until it starts, in that row, or leaves the list, so nothing hops.
+  const heldRows: (string | null)[] = []
   let etaAtMs = 0
   const signals = writer.enabled
     ? terminalSignals(opts.env ?? process.env)
@@ -419,6 +423,7 @@ export function defaultLogger(
       critical = f.critical
       blocks = f.blocks
       expected = f.expected
+      blocked = f.blocked
     }
     if (signals.progress && total > 0) {
       const elapsed = now - startedAtMs
@@ -464,11 +469,13 @@ export function defaultLogger(
             colors,
             runContext,
           )
+    const held = blocked === undefined ? undefined : holdRows(blocked)
     writer.setRegion(
       formatStatusRegion(
         {
           pinnedPersistent,
           slots: slots.slice(0, shownSlots),
+          ...(held !== undefined ? { blocked: held } : {}),
           overflow: slotQueue.length,
           nowMs: Date.now(),
           summaryLines,
@@ -480,6 +487,35 @@ export function defaultLogger(
       ),
       { force },
     )
+  }
+  // Each idle worker row holds a blocked task, in scheduler order. A row
+  // with none left to hold leaves the region (M, 2026-10-15): blocked tasks
+  // only dwindle, so it is never needed again, and the rows below close up.
+  const holdRows = (list: readonly BlockedTask[]): (BlockedTask | null)[] => {
+    const started = new Set<string>()
+    for (const s of slots) if (s !== null) started.add(s.id)
+    for (const s of slotQueue) started.add(s.id)
+    const open = new Map<string, BlockedTask>()
+    for (const b of list) if (!started.has(b.id)) open.set(b.id, b)
+    const rows: (BlockedTask | null)[] = []
+    for (let i = 0; i < shownSlots; i++) {
+      const kept = slots[i] === null ? open.get(heldRows[i] ?? '') : undefined
+      rows.push(kept ?? null)
+      if (kept !== undefined) open.delete(kept.id)
+    }
+    const rest = open.values()
+    for (let i = 0; i < shownSlots; i++)
+      if (slots[i] === null && rows[i] === null) rows[i] = rest.next().value ?? null
+    for (let i = shownSlots - 1; i >= 0; i--) {
+      if (slots[i] !== null || rows[i] !== null) continue
+      rows.splice(i, 1)
+      slots.splice(i, 1)
+      slots.push(null)
+      shownSlots--
+    }
+    heldRows.length = 0
+    for (const r of rows) heldRows.push(r?.id ?? null)
+    return rows
   }
   const killStatus = (): void => {
     if (ticker !== null) {
@@ -619,7 +655,14 @@ export function defaultLogger(
         persistentTails.set(node.id, { node, out: createTail(), err: createTail() })
       }
       const slot: WorkerSlot = { id: node.id, startedMs: Date.now() }
-      const free = slots.indexOf(null)
+      // A blocked task starts in the row that held it; another takes a free
+      // row, else the last held one, whose task moves to the next free row.
+      const own = heldRows.indexOf(node.id)
+      let free = own >= 0 && slots[own] === null ? own : -1
+      if (free < 0)
+        free = slots.findIndex((s, i) => s === null && i < shownSlots && heldRows[i] == null)
+      if (free < 0) free = slots.findLastIndex((s, i) => s === null && i < shownSlots)
+      if (free < 0) free = slots.indexOf(null)
       if (free >= 0) {
         slots[free] = slot
         shownSlots = Math.max(shownSlots, free + 1)

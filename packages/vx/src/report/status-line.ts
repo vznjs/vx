@@ -7,6 +7,7 @@
 
 import { paint, type ColorSupport } from '../util/index.js'
 import { formatTaskRow, paintIdParts, TIME_COL } from './framed-output.js'
+import type { BlockedTask } from './forecast.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 // Same palette as framed-output.ts so glyphs and stats agree.
@@ -283,6 +284,8 @@ export interface StatusRegionState {
   pinnedPersistent: readonly string[]
   /** Fixed-size slot array; null = idle worker. Index = display row. */
   slots: readonly (WorkerSlot | null)[]
+  /** The blocked task an idle slot's row holds instead of `idle`, by the same index. */
+  blocked?: readonly (BlockedTask | null)[]
   /** Running tasks beyond the displayed slots. */
   overflow: number
   /** Clock value used for per-slot elapsed (injectable for tests). */
@@ -363,12 +366,19 @@ export function formatStatusRegion(
   // Worker rows: NO glyph — the live elapsed time leads (no spinner;
   // the ticking time IS the motion), then `running`, full id (never
   // truncated — name is the last column). Idle rows hold their slot's
-  // place, dim, aligned under the status column.
+  // place, dim, aligned under the status column: the blocked task the row
+  // holds and what holds it back, else `idle`.
   // One task running has no path to compare against.
   const busy = s.slots.filter((x) => x !== null).length
-  for (const slot of s.slots) {
+  for (const [row, slot] of s.slots.entries()) {
     if (slot === null) {
-      lines.push(`${' '.repeat(3 + TIME_COL + 1)}${paint(IDLE, 'idle', colors, { dim: true })}`)
+      const w = s.blocked?.[row]
+      lines.push(
+        w == null
+          ? `${' '.repeat(3 + TIME_COL + 1)}${paint(IDLE, 'idle', colors, { dim: true })}`
+          : formatTaskRow(' ', null, 'blocked', '', '', '', paintPinnedId(w.id, colors), colors) +
+              `  ${dim(`by ${w.by}`)}`,
+      )
       continue
     }
     // What waits on it, after the id: the row to watch is the one the

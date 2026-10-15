@@ -745,9 +745,16 @@ other persistent task`), and a non-zero exit makes the run exit 1
 3. **Worker rows** — one per worker slot that has been busy (at most
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
-   its row for its whole life; a row whose task ended holds its place
-   dimmed (`idle`), so nothing ever jumps; overflow shows as `+k more`. A second in, a row
-   says what waits on it: `critical path` (yellow) on the running task
+   its row for its whole life, so nothing jumps; overflow shows as
+   `+k more`. A second in, an idle worker row holds a task an
+   unfinished dependency blocks, one per row, in the order the
+   scheduler starts them (most dependents first):
+   `blocked  solid-js#build  by solid-js#types` (dim `blocked`, the id,
+   then the running task that holds it back). The task starts in the
+   row that held it. A row with no blocked task left to hold leaves the
+   region and the rows below close up; blocked tasks only dwindle, so
+   it never comes back. A running row says what waits on it:
+   `critical path` (yellow) on the running task
    the longest unfinished chain waits on, by the same p50s as the
    forecast below and only while two or more run, and a dim
    `blocks N`, its unfinished dependents direct and transitive. Where

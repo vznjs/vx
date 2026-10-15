@@ -8,6 +8,7 @@ export {
   parseDependencySpec,
   type DependencySpec,
 } from './dependency-spec.js'
+export { computeReverseDepCount } from './priorities.js'
 export {
   type ContinueMode,
   deadServerBehind,
