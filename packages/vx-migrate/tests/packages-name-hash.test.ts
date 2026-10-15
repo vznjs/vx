@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { discoverPackages, loadPackageWorkspace } from '../src/workspace/packages.js'
+import { discoverPackages, loadPackageWorkspace } from '../src/packages.js'
 
 const load = async (name: string) => {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'vx-name-hash-')))

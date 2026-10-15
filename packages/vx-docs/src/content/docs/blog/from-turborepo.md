@@ -39,15 +39,22 @@ what `turbo run build` did, delete `turbo.json`.
 ## Check the mapping first
 
 `npx @vzn/vx init --keep` writes only a `.vx/workspace.ts` that runs
-`turbo.json` unchanged through `turbo()` from `@vzn/vx-migrate`, and
-prints a `next:` line that installs it and builds once:
+`turbo.json` unchanged through `turbo()` from `@vzn/vx-migrate`,
+installs what it imports, and prints a `next:` line that builds once:
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { turbo } from '@vzn/vx-migrate'
 import { npm } from '@vzn/vx-lockfile'
+import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
-export default { plugins: [turbo(), npm()] } satisfies WorkspaceConfig
+export default {
+  plugins: [
+    turbo(),
+    npm(),
+    scheduleHistoryPlugin(),
+  ],
+} satisfies WorkspaceConfig
 ```
 
 It is a check, not a way to keep `turbo.json`: vx's benchmarks measure

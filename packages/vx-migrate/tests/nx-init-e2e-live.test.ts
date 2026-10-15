@@ -1,5 +1,5 @@
 // The Nx path end to end against REAL Nx, on a package-based and an
-// integrated workspace: `vx init` writes `nx()`, `vx run build --all`
+// integrated workspace: `--keep` (what `vx init --keep` runs) writes `nx()`, `vx run build --all`
 // runs through it, `bunx @vzn/vx-migrate` writes native config, and with
 // `nx()` removed (the guide's last step) the same build runs green from
 // that config alone, the executor target as its `nx-exec` line. Live
@@ -203,8 +203,11 @@ describe.skipIf(!MODULES)('an Nx workspace from vx init to native config, live',
           await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
         }
 
-        // 1. vx init --keep: the temporary start.
-        expect(await run(['bun', VX, 'init', '--keep'])).toEqual({ code: 0, tail: '' })
+        // 1. Keep: the temporary start. `vx init --keep` is this migrator
+        // (init-no-manifest.test.ts), which installs; the sandbox has no
+        // registry, so the lock it would write after is a step here.
+        expect(await run(['bun', MIGRATE, '--keep', '--no-install'])).toEqual({ code: 0, tail: '' })
+        expect(await run(['bun', VX, 'lock'])).toEqual({ code: 0, tail: '' })
         expect(await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')).toContain('nx()')
 
         // 2. The build through nx(), executors as nx-exec.

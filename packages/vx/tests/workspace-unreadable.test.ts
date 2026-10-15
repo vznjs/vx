@@ -3,13 +3,12 @@
 // mode 000 dropped its project from `--all` and the run went green
 // without it, and D-128's warning said it had no package.json (D-132).
 // Projects now come from the lock and core reads no manifest, so a run
-// names an unreadable project directory against the lock, and the member
-// globs' refusals are `listPackages`'s (vx init, @vzn/vx-migrate).
+// names an unreadable project directory against the lock; the member
+// globs' refusals are @vzn/vx-migrate's (its packages-unreadable test).
 import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { listPackages } from '../src/workspace/index.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
@@ -88,20 +87,6 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
         err: 'vx: .vx/projects.lock.json locks packages/b, but its vx.config.mjs is not readable by this user (EACCES)',
         planned: [],
       })
-    })
-
-    it('listPackages refuses a directory a scanned glob may not open, naming the glob', async () => {
-      await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["packages/**"]}')
-      await chmod(path.join(root, 'packages', 'b'), 0o000)
-      await expect(listPackages(root)).rejects.toThrow(
-        'packages/b: not readable by this user (EACCES), and the workspace glob "packages/**" walks into it',
-      )
-    })
-
-    it('listPackages names and skips a member directory it may not search', async () => {
-      await chmod(path.join(root, 'packages', 'b'), 0o000)
-      const names = (await listPackages(root)).map((m) => m.name)
-      expect(names).toEqual(['a'])
     })
 
     it('CONTROL: every member readable plans both', async () => {

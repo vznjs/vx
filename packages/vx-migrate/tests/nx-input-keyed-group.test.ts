@@ -10,7 +10,8 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import type { MigrationPlan, PackageMeta } from '@vzn/vx'
+import type { MigrationPlan } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { migrateNx } from '../src/migrate-nx.js'
 
 const graph = {

@@ -3,7 +3,7 @@
 // `vite` from the root's `vite: workspace:*`, and 64 of 70 built before
 // vite did (Growth's trial 4, 2026-10-13). init adds that package's build.
 import { expect, it } from 'bun:test'
-import { migrateScripts } from '../src/workspace/migrate-scripts.js'
+import { migrateScripts } from '../src/migrate-scripts.js'
 
 const meta = (name: string, dir: string, json: Record<string, unknown>) => ({
   name,

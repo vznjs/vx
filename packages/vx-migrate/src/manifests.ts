@@ -6,7 +6,8 @@
 // per run: the members' as `discover` lists them, the rest once per
 // projects array (core hands every `project` call of a run the same one).
 import path from 'node:path'
-import { type DiscoveredProject, listPackages, type PackageMeta, type ProjectMeta } from '@vzn/vx'
+import { type DiscoveredProject, type ProjectMeta } from '@vzn/vx'
+import { listPackages, type PackageMeta } from './packages.js'
 
 /** The manifests the last `discover` read, by directory. */
 let listed = new Map<string, PackageMeta>()

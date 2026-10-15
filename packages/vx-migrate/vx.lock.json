@@ -117,7 +117,8 @@
           "passThrough": [
             "VX_NX_MODULES",
             "VX_REQUIRE_NX",
-            "VX_REQUIRE_REFTABLE"
+            "VX_REQUIRE_REFTABLE",
+            "VX_REQUIRE_NONROOT"
           ],
           "define": {
             "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -157,7 +158,8 @@
           "env": [
             "VX_NX_MODULES",
             "VX_REQUIRE_NX",
-            "VX_REQUIRE_REFTABLE"
+            "VX_REQUIRE_REFTABLE",
+            "VX_REQUIRE_NONROOT"
           ]
         },
         "outputs": {

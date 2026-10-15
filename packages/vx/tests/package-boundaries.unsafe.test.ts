@@ -122,6 +122,9 @@ describe('package boundaries', () => {
       'LocalHistoryProvider',
       'PERSISTENT_TODO',
       'PLUGIN_HOOKS',
+      // Widened 2026-10-14: package discovery left core for `@vzn/vx-migrate`,
+      // which names each member's existing config by the loader's names.
+      'PROJECT_CONFIG_FILENAMES',
       'TELEMETRY_SCHEMA_VERSION',
       'TaskLogBuffer',
       'UserError',
@@ -134,7 +137,6 @@ describe('package boundaries', () => {
       'escapeMarkdownCell',
       'executorFallback',
       'exitSignal',
-      'findManifestRoot',
       'findWorkspaceRoot',
       'foldScriptHooks',
       'isCacheHit',
@@ -144,7 +146,6 @@ describe('package boundaries', () => {
       'isLiteralPattern',
       'isPassStatus',
       'isUserError',
-      'listPackages',
       'loadProjectConfig',
       'loadResolvedProjects',
       'lockfileClaim',
@@ -167,6 +168,9 @@ describe('package boundaries', () => {
       'refuseUnknownOptions',
       'run',
       'splitTaskId',
+      // Widened 2026-10-14: the scripts mapper left core and leaves out a
+      // script whose name no task may carry, by the schema's own rule.
+      'taskNameProblem',
       // Widened (X-112): `@vzn/vx-reapi` and the executor example joined the
       // args after `--` on their own, and lost them where the local
       // executor kept them (a trailing comment).

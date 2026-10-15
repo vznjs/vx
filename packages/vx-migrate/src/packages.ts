@@ -1,24 +1,25 @@
 // Package-manager workspaces: the members `package.json#workspaces` or
-// `pnpm-workspace.yaml` list, read for `vx init` alone (its scripts mapper
-// and the root it writes `.vx/workspace.ts` at). A run never reads them:
-// a project is a directory holding a vx.config (workspace.ts).
+// `pnpm-workspace.yaml` list, and the root a migration writes
+// `.vx/workspace.ts` at. Core reads neither (M, 2026-10-14): a project is a
+// directory holding a vx.config.
 import { constants, existsSync, type Dirent } from 'node:fs'
 import { access, readdir, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
+import { PROJECT_CONFIG_FILENAMES, UserError } from '@vzn/vx'
 import {
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
+  gitTop,
   isOutOfFds,
   isPermissionError,
-  relPosix,
-  slashBraceExpansions,
-  UserError,
+  type LoadReads,
   normalizeBunGlob,
+  readOnce,
   realpathOf,
-} from '../util/index.js'
-import { gitTop } from '../handoff.js'
-import { type LoadReads, readOnce, unreadable } from './load-reads.js'
-import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
+  slashBraceExpansions,
+  unreadable,
+} from './package-fs.js'
+import { relPosix } from './paths.js'
 
 export interface PackageJson {
   name: string
@@ -50,7 +51,7 @@ export interface PackageMeta {
 const decoder = new TextDecoder()
 
 /**
- * Where `vx init` (and `@vzn/vx-migrate`) puts `.vx/workspace.ts` when
+ * Where `@vzn/vx-migrate` (and so `vx init`) puts `.vx/workspace.ts` when
  * there is none yet: the package manager's workspace root. A directory is a root
  * CANDIDATE when it contains `pnpm-workspace.yaml` or a `package.json`.
  *
@@ -165,9 +166,8 @@ export async function findManifestRoot(
     )
   }
   throw new UserError(
-    `Could not find a workspace root in any parent of ${start} ` +
-      `(looked for pnpm-workspace.yaml or package.json): run vx inside a project, ` +
-      `or create a package.json (\`bun init\` or \`npm init -y\`) and run \`vx init\``,
+    `no package.json or pnpm-workspace.yaml in ${start} or any parent, so nothing to map: ` +
+      `\`vx init\` sets up a workspace without one`,
     'VX_E_NO_WORKSPACE',
   )
 }
@@ -448,7 +448,7 @@ export async function loadPackageWorkspace(
 ): Promise<PackageWorkspace> {
   const packageGlobs = await readPackageGlobs(root, reads)
   if (packageGlobs === null) {
-    // `vx init` asks only of a root findManifestRoot found, which holds
+    // A migration asks only of a root findManifestRoot found, which holds
     // one; a direct call of this public function on a bare dir lands
     // here (D-58).
     throw new UserError(`workspace root ${root} has neither pnpm-workspace.yaml nor package.json`)
@@ -660,7 +660,7 @@ export async function listPackages(root: string): Promise<PackageMeta[]> {
 
 /**
  * The members of `workspace`, and `nameless` collects each member
- * directory whose manifest has no `name`: `vx init` names them, since
+ * directory whose manifest has no `name`: the scripts mapper names them, since
  * their scripts map to nothing.
  */
 export async function discoverPackages(

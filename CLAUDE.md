@@ -61,7 +61,7 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         stages + seams, events, logger, doctor.ts (the facts `vx info` reports)
   src/workspace/        discovery, config eval, config-schema.ts (what a config
                         may say), package graph, --filter/--affected, lockfile, migration.ts (the
-                        plan → files seam `vx init` and @vzn/vx-migrate share)
+                        plan → files seam @vzn/vx-migrate writes through)
   src/graph/            task graph + two-tier scheduler
   src/cache/            local SQLite+archive cache, layered/chained remote seam, inputs (glob
                         resolution, boundaries) + git-inputs (the git enumeration it trusts)
@@ -77,8 +77,8 @@ packages/vx-migrate     adoption, one package (2026-09-11): `turbo()` runs a Tur
                         targets are `nx-exec` lines — `src/nx-exec.cjs`, a Node bin over Nx's public
                         `runExecutor`, design docs/design/nx-unchanged-2026-09.md),
                         `turboCache()` / `nxCache()` keep a Turbo (`/v8/artifacts`) or Nx (`/v1/cache`) remote
-                        cache, and `bunx @vzn/vx-migrate` writes vx.config.ts from turbo.json or an Nx graph
-                        (core keeps `vx init`). `src/turbo/`, `src/nx/`, `src/turbo-cache/`, `src/nx-cache/`
+                        cache, and `bunx @vzn/vx-migrate` writes vx.config.ts from turbo.json, an Nx graph or
+                        package.json scripts (core `vx init` hands any repo with a manifest to it, 2026-10-14). `src/turbo/`, `src/nx/`, `src/turbo-cache/`, `src/nx-cache/`
 packages/vx-schedule-history  `schedule` plugin: order by the critical path learned from run history
 packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fingerprint` seam) and keys each
                         task on its project's own dependency closure; --affected follows. Parsers over core's

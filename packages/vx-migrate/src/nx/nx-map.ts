@@ -17,13 +17,8 @@
 // default configuration is folded into the base task.
 
 import path from 'node:path'
-import {
-  type Duration,
-  type GeneratedProject,
-  type GeneratedTask,
-  type PackageMeta,
-  UserError,
-} from '@vzn/vx'
+import { type Duration, type GeneratedProject, type GeneratedTask, UserError } from '@vzn/vx'
+import type { PackageMeta } from '../packages.js'
 import { withoutTakenBack } from '../glob-grammar.js'
 import { manifestGraph, type ManifestGraph } from '../manifest-graph.js'
 import { mapRunCommands, shellQuote } from '../nx-command.js'

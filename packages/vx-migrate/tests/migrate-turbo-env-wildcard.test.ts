@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { migrateTurbo } from '../src/migrate-turbo.js'
 
 it('a task `*` env name lists what its package spells; one nothing spells stays a todo', async () => {

@@ -1,10 +1,10 @@
 // How vx finds a workspace is a 1.0 contract surface (docs/design/
 // versioning-1.0.md): which directories are projects (a vx.config in them,
-// none under a nested workspace), which package-manager root `vx init`
-// starts from, and which config file names load, in which precedence. A
+// none under a nested workspace) and which config file names load, in
+// which precedence. A
 // repo that works today must be found the same way tomorrow. Each case
 // below builds a fixture, asks the real discovery (`findProjectConfigs`,
-// `findManifestRoot`, `loadWorkspaceConfig`), and `tests/contract/discovery.json` records the
+// `loadWorkspaceConfig`), and `tests/contract/discovery.json` records the
 // answer. A change is a reviewed diff of that file, and a changed answer is
 // a break the break law sees.
 //
@@ -16,7 +16,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 import {
-  findManifestRoot,
   findProjectConfigs,
   loadProjectConfig,
   loadWorkspaceConfig,
@@ -38,14 +37,8 @@ function fixture(files: Record<string, string>): string {
   }
   return root
 }
+
 const pkg = (name: string, extra: object = {}): string => JSON.stringify({ name, ...extra })
-const MEMBERS = {
-  'packages/a/package.json': pkg('a'),
-  'packages/a/src/x.ts': '',
-  'packages/b/package.json': pkg('b'),
-  'apps/c/package.json': pkg('c'),
-  'packages/a/nested/package.json': pkg('nested'),
-}
 
 async function projects(root: string): Promise<string[]> {
   const found = await findProjectConfigs(root)
@@ -56,36 +49,6 @@ async function projects(root: string): Promise<string[]> {
 async function firstConfig(root: string): Promise<string | null> {
   const [found] = await findProjectConfigs(root)
   return found === undefined ? null : path.basename(found.configPath)
-}
-
-const LAYOUTS: Record<string, Record<string, string>> = {
-  'pnpm-workspace.yaml': {
-    'package.json': pkg('root'),
-    'pnpm-workspace.yaml': 'packages:\n  - "packages/*"\n',
-    ...MEMBERS,
-  },
-  'package.json workspaces': {
-    'package.json': pkg('root', { workspaces: ['packages/*', 'apps/*'] }),
-    ...MEMBERS,
-  },
-  'package.json workspaces.packages': {
-    'package.json': pkg('root', { workspaces: { packages: ['apps/*'] } }),
-    ...MEMBERS,
-  },
-  'a negated glob': {
-    'package.json': pkg('root', { workspaces: ['packages/*', '!packages/b'] }),
-    ...MEMBERS,
-  },
-  'a recursive glob': {
-    'package.json': pkg('root', { workspaces: ['packages/**'] }),
-    ...MEMBERS,
-  },
-  'pnpm-workspace.yaml beside package.json workspaces': {
-    'package.json': pkg('root', { workspaces: ['apps/*'] }),
-    'pnpm-workspace.yaml': 'packages:\n  - "packages/*"\n',
-    ...MEMBERS,
-  },
-  'package.json without workspaces': { 'package.json': pkg('root'), ...MEMBERS },
 }
 
 const CONFIG = (v: number): string =>
@@ -109,13 +72,6 @@ it('each discovery case answers as tests/contract/discovery.json records', async
       'inner/p/vx.config.ts': CONFIG(7),
     }),
   )
-  for (const [name, files] of Object.entries(LAYOUTS)) {
-    const root = fixture(files)
-    const found = async (from: string): Promise<string> =>
-      path.relative(root, await findManifestRoot(path.join(root, from))) || '.'
-    live[`root from packages/a/src: ${name}`] = await found('packages/a/src')
-    live[`root from apps/c: ${name}`] = await found('apps/c')
-  }
 
   const names = ['vx.config.ts', 'vx.config.mts', 'vx.config.js', 'vx.config.mjs']
   for (const [i, file] of names.entries()) {

@@ -1,5 +1,5 @@
-// `vx init`'s last line is the next thing to type. It said `vx run build
-// --all` in a directory with no git work tree (the run refuses: vx keys
+// The scripts migration's last line is the next thing to type. It said
+// `vx run build --all` in a directory with no git work tree (the run refuses: vx keys
 // inputs on git's view) and in a workspace whose packages had no scripts
 // (the run refuses: no task declared, and its hint says run `vx init`).
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -31,7 +31,7 @@ function nextLine(root: string): string | undefined {
   const env: Record<string, string | undefined> = { ...process.env }
   delete env['npm_config_user_agent']
   const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, 'init', '--dry'],
+    cmd: [process.execPath, '--no-install', BIN, '--dry'],
     cwd: root,
     env,
     stdout: 'pipe',
@@ -45,7 +45,7 @@ function gitInit(root: string): void {
   expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)
 }
 
-describe('vx init — the next: line is a step that run would not refuse', () => {
+describe('the scripts migration — the next: line is a step that run would not refuse', () => {
   it('names git init outside a git work tree, and drops it inside one', async () => {
     const root = await workspace({ build: 'tsc' })
     expect(nextLine(root)).toBe('next: git init, then vx run build --all')

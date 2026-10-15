@@ -1,8 +1,8 @@
 // The migration seam: what any adoption tool needs once it has a plan —
 // the plan's shape, TS emission, the overwrite guard, the writes and the
-// report. `vx init` (package.json scripts, in core) and `@vzn/vx-migrate`
-// (Turbo, Nx) share it, so a generated config reads the same whichever
-// tool wrote it. Core knows no source format here: a mapper returns a
+// report. `@vzn/vx-migrate` (package.json scripts, Turbo, Nx) and any
+// other adoption tool share it, so a generated config reads the same
+// whichever tool wrote it. Core knows no source format here: a mapper returns a
 // `MigrationPlan` and this file does the rest.
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -10,13 +10,6 @@ import { unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { workspaceFileWritten } from '../handoff.js'
 import { DOT_VX_GITIGNORE, executablePath, gitEnv, relPosix, UserError } from '../util/index.js'
-import {
-  loadPackageWorkspace,
-  type PackageMeta,
-  reachesManifest,
-  unreachedHint,
-  unreachedPackages,
-} from './packages.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
 /**
@@ -34,19 +27,6 @@ export function quoteTsLiteral(s: string): string {
     .replaceAll('\n', '\\n')
     .replaceAll('\r', '\\r')}'`
 }
-
-/**
- * Task names that conventionally never exit. Every mapper guesses the same
- * way from a name — a source that SAYS a task is long-running (turbo's
- * `persistent: true`, an Nx dev-server executor) is believed instead.
- */
-export const PERSISTENT_TASK_NAMES: ReadonlySet<string> = new Set([
-  'dev',
-  'start',
-  'serve',
-  'watch',
-  'preview',
-])
 
 /**
  * A package.json script with the `pre<name>` / `post<name>` hooks npm runs
@@ -85,73 +65,6 @@ const QUOTE_ARGS =
   `for vx_s in "$@"; do vx_r=; while :; do case $vx_s in *"$vx_q"*) ` +
   `vx_r="$vx_r\${vx_s%%"$vx_q"*}'\\''"; vx_s=\${vx_s#*"$vx_q"};; *) break;; esac; done; ` +
   `vx_a="$vx_a '$vx_r$vx_s'"; done`
-
-/**
- * Where a framework's build writes by default, for the cache TODO: the
- * hint said `dist/**` to every build, `next build` included, which writes
- * `.next`. Each tool's documented default; anything else keeps `dist/**`.
- */
-const BUILD_OUTPUTS: readonly [RegExp, readonly string[]][] = [
-  [/\snext build\s/, ['.next/**', '!.next/cache/**']],
-  [/\snux[ti] build\s/, ['.output/**']],
-  [/\s(?:remix|react-router|react-scripts|docusaurus) build\s/, ['build/**']],
-  [/\sgatsby build\s/, ['public/**']],
-  [/\s(?:storybook build|build-storybook)\s/, ['storybook-static/**']],
-]
-
-/** A directory a TODO may name: relative, plain, no hidden or tool dir. */
-const OUTPUT_DIR = /^(?:\.\/)?((?![./])[\w@-][\w@./-]*?)\/?$/
-
-/**
- * The directory the command says it writes, when no tool above names one:
- * an out-dir flag (`tsc --outDir lib`, `babel -d lib`), else the
- * directories it cleans first (`del-cli distribution`, `rimraf dist
- * types`). ky's build writes `distribution/`, and the TODO said `dist/**`
- * (D-90). A file (`tsconfig.tsbuildinfo`) and `node_modules` are no output.
- */
-function namedOutputs(command: string): string[] | undefined {
-  const dir = (w: string | undefined): string | undefined => {
-    const m = w === undefined ? null : OUTPUT_DIR.exec(w.replace(/^(["'])(.*)\1$/, '$2'))
-    if (m === null) return undefined
-    const d = m[1]!
-    return /\.[a-z]+$/i.test(d) || d.split('/').includes('node_modules') ? undefined : d
-  }
-  const flag = /\s(?:--outDir|--out-dir|--outdir|-d)[\s=](\S+)/.exec(` ${command} `)
-  const out = dir(flag?.[1])
-  if (out !== undefined) return [`${out}/**`]
-  for (const segment of command.split(/[;&|()]+/)) {
-    const words = segment.trim().split(/\s+/)
-    const at =
-      words[0] === 'rimraf' || words[0] === 'del-cli' || words[0] === 'del'
-        ? 1
-        : words[0] === 'rm' || (words[0] === 'shx' && words[1] === 'rm')
-          ? words.indexOf('rm') + 1
-          : -1
-    if (at < 0) continue
-    const args = words.slice(at).filter((w) => !w.startsWith('-'))
-    // A dir the command makes again (kit's `rm -rf ./missing_ids && mkdir
-    // ./missing_ids && vite build`) is a scratch dir it prepares, not output.
-    const made = new Set([...command.matchAll(/\bmkdir\s+(?:-p\s+)?(\S+)/g)].map((m) => dir(m[1])))
-    const dirs = args
-      .map(dir)
-      .filter((d): d is string => d !== undefined)
-      .filter((d) => !made.has(d))
-    // Every cleaned path a directory vx can name, or the guess is not this.
-    return dirs.length > 0 && dirs.length === args.filter((w) => !/\.[a-z]+$/i.test(w)).length
-      ? dirs.map((d) => `${d}/**`)
-      : undefined
-  }
-  return undefined
-}
-
-/** The cache block the task that builds `command` should declare, as a TODO on it. */
-export function cacheTodo(command: string): string {
-  // Padded, separators as spaces: `next build && …` and `(next build)` match.
-  const words = ` ${command.replace(/[;&|()]/g, ' ')} `
-  const hit = BUILD_OUTPUTS.find(([re]) => re.test(words))
-  const outputs = (hit?.[1] ?? namedOutputs(command) ?? ['dist/**']).map((o) => `'${o}'`).join(', ')
-  return `cache: add \`cache: { inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] } }\` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task`
-}
 
 const isCacheTodo = (todo: string): boolean => todo.startsWith('cache: add `cache: {')
 
@@ -236,9 +149,21 @@ export interface MigrationPlan {
   notes: string[]
 }
 
+/**
+ * A project the adoption tool found: its name, directory and the vx config
+ * it already has. `packageJson.type` picks `vx.config.mts` for a CommonJS
+ * TypeScript package.
+ */
+export interface MigrationMember {
+  readonly name: string
+  readonly dir: string
+  readonly configPath: string | null
+  readonly packageJson?: object
+}
+
 export interface ApplyMigrationArgs {
   root: string
-  metas: readonly PackageMeta[]
+  metas: readonly MigrationMember[]
   plan: MigrationPlan
   /** Named in the report and the generated header, e.g. `turbo.json`. */
   source: string
@@ -247,9 +172,9 @@ export interface ApplyMigrationArgs {
   dry: boolean
   force: boolean
   /**
-   * `vx init` on a workspace with no scripts still has a job (the workspace
-   * file, and a worked example); a migration with nothing to convert is an
-   * error. Default false.
+   * A scripts migration (what `vx init` hands over) on a workspace with no
+   * scripts still has a job (the workspace file, and a worked example); a
+   * migration with nothing to convert is an error. Default false.
    */
   init?: boolean
   /** Report lines printed under the source line (e.g. "turbo.json found and not read"). */
@@ -260,6 +185,11 @@ export interface ApplyMigrationArgs {
    * of them (M-59).
    */
   unmapped?: boolean
+  /**
+   * Why an `init` plan is empty, when the tool knows (members its globs
+   * never reach): the report's one line in place of the example config.
+   */
+  emptyReason?: string
   /**
    * `ts` (default) writes `vx.config.ts` with the type-only import and
    * `satisfies`; `mjs` writes `vx.config.mjs` — the same object, untyped —
@@ -302,7 +232,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   const configName = `vx.config.${format}`
   const workspaceName = `.vx/workspace.${format}`
   const empty = plan.projects.length === 0
-  // `vx init` never overwrites a member's config: a half-adopted workspace
+  // An `init` migration never overwrites a member's config: a half-adopted workspace
   // keeps each one it has, by name, and gets the rest (M-52). It refused
   // the whole workspace, and `--force` would have replaced the hand-written
   // file; `--force` still replaces, as asked.
@@ -449,24 +379,10 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     }
   }
   const report: string[] = []
-  // Single-project mode with packages the root's missing `workspaces` never
-  // reaches: the scripts exist, the globs do not (item 248).
-  const workspace = empty ? await loadPackageWorkspace(root) : undefined
-  const unreached = workspace === undefined ? [] : await unreachedPackages(workspace)
-  // Globs that reach no package: "no scripts" was true and named nothing
-  // to fix (M-42).
-  const globs = workspace?.packageGlobs.filter((g) => g !== '.') ?? []
-  // Asked of the globs, not of `metas`: a nameless or shared-name member
-  // is matched yet absent from `metas` (M-46).
-  const noMembers =
-    workspace !== undefined && globs.length > 0 && !(await reachesManifest(workspace))
-      ? [
-          `the workspace globs (${globs.map((g) => `"${g}"`).join(', ')}) match no package.json: add a package under one, or fix the glob`,
-        ]
-      : []
-  if (empty && unreached.length > 0) {
+  const emptyReason = empty ? args.emptyReason : undefined
+  if (emptyReason !== undefined) {
     report.push(
-      `${verb}: ${unreachedHint(unreached, root)}`,
+      `${verb}: ${emptyReason}`,
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
         : dry
@@ -478,7 +394,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
       args.unmapped === true
         ? `${verb}: no package.json scripts became tasks.`
         : `${verb}: no package.json scripts to turn into tasks.`,
-      ...[...noMembers, ...(args.notes ?? []), ...ignoredNote].map((n) => `note: ${n}`),
+      ...[...(args.notes ?? []), ...ignoredNote].map((n) => `note: ${n}`),
       hasWorkspaceFile
         ? `${workspaceName} already exists.`
         : dry
@@ -554,8 +470,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
         replaced: replaced.map((f) => relPosix(root, f)),
         todos: [...todos].map(([reason, tasks]) => ({ reason, tasks })),
         notes: [
-          ...(empty && unreached.length > 0 ? [unreachedHint(unreached, root)] : []),
-          ...(empty ? noMembers : []),
+          ...(emptyReason === undefined ? [] : [emptyReason]),
           ...(args.notes ?? []),
           ...ignoredNote,
           ...plan.headerNotes,
@@ -818,12 +733,12 @@ function renderConfigFile(p: GeneratedProject, format: MigrationFormat): string 
  */
 function projectConfigName(
   dir: string,
-  metas: readonly PackageMeta[],
+  metas: readonly MigrationMember[],
   format: MigrationFormat,
 ): string {
   if (format !== 'ts' || !existsSync(path.join(dir, 'tsconfig.json'))) return `vx.config.${format}`
   const meta = metas.find((m) => m.dir === dir)
-  const manifest = meta ? (meta.packageJson as { type?: unknown }) : readManifest(dir)
+  const manifest = (meta?.packageJson as { type?: unknown } | undefined) ?? readManifest(dir)
   return manifest?.type === 'module' ? 'vx.config.ts' : 'vx.config.mts'
 }
 

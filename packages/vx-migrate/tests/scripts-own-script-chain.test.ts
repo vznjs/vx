@@ -4,7 +4,7 @@
 // outside the graph (M-41). Its parts that run a task of this package are
 // named; the chain's order may matter, so it is not turned into a group.
 import { expect, it } from 'bun:test'
-import { migrateScripts } from '../src/workspace/migrate-scripts.js'
+import { migrateScripts } from '../src/migrate-scripts.js'
 
 it("names the parts of a script that run this package's own tasks", () => {
   const scripts: Record<string, string> = {

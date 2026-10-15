@@ -1,13 +1,14 @@
-# `src/workspace/packages.ts` — package-manager members, for `vx init`
+# `src/packages.ts` — package-manager members, for a migration
 
 ## Purpose
 
 The members `package.json#workspaces` or `pnpm-workspace.yaml` list, read
-for `vx init` alone: its scripts mapper, and the root it writes
-`.vx/workspace.ts` at. A run never reads them; a project is a directory
-holding a vx.config ([`workspace.md`](./workspace.md)). A lockfile plugin
-(`@vzn/vx-lockfile`) names the members in a run, and `@vzn/vx-migrate`
-reads their manifests itself. Supports pnpm / npm / yarn / Bun
+by a migration (`bunx @vzn/vx-migrate`, and `vx init`, which runs it):
+the root it writes `.vx/workspace.ts` at, and the packages its mappers
+fill. Core's until 2026-10-14; core now reads no `package.json`. A run
+never reads them; a project is a directory holding a vx.config (core's
+`docs/modules/workspace.md`), and a lockfile plugin
+(`@vzn/vx-lockfile`) names the members in a run. Supports pnpm / npm / yarn / Bun
 workspaces, plus a single-project mode (bare `package.json` with no
 `workspaces` field).
 
@@ -74,11 +75,11 @@ export interface PackageMeta {
   configPath: string | null // absolute path to vx.config.{ts,mts,js,mjs,cts,cjs}
 }
 
-// where `vx init` and @vzn/vx-migrate put .vx/workspace.ts when there is
+// where a migration puts .vx/workspace.ts when there is
 // none: the package manager's root, by the claim rule below
 export function findManifestRoot(start: string, reads?: LoadReads, uid?: number): Promise<string>
 export function loadPackageWorkspace(root: string, reads?: LoadReads): Promise<PackageWorkspace>
-// The members, collecting each nameless member's dir into `nameless` (vx init)
+// The members, collecting each nameless member's dir into `nameless` (the scripts mapper)
 export function discoverPackages(
   workspace: PackageWorkspace,
   nameless?: string[],
@@ -86,13 +87,13 @@ export function discoverPackages(
 // discoverPackages over loadPackageWorkspace(root)
 export function listPackages(root: string): Promise<PackageMeta[]>
 
-// Workspace members whose package globs match no directory — `vx init`
-// says so with `unreachedHint`, which names them and what to check.
+// Workspace members whose package globs match no directory — the scripts
+// mapper says so with `unreachedHint`, which names them and what to check.
 export function unreachedPackages(workspace: PackageWorkspace): Promise<string[]>
 export function unreachedHint(unreached: readonly string[], root: string): string
 
 // Whether a member glob reaches any package.json but the root's,
-// addressable or not; `vx init` names globs that reach none (M-46).
+// addressable or not; the scripts mapper names globs that reach none (M-46).
 export function reachesManifest(workspace: PackageWorkspace): Promise<boolean>
 ```
 
@@ -100,7 +101,7 @@ export function reachesManifest(workspace: PackageWorkspace): Promise<boolean>
 
 ### `findManifestRoot(start)`
 
-Where `vx init` and `@vzn/vx-migrate` write `.vx/workspace.ts` when there
+Where a migration writes `.vx/workspace.ts` when there
 is none yet. Walks up from `start` to the git top-level, or to the
 filesystem root outside git, where it stops above `start` at a manifest
 another user owns (root aside). A directory is a root CANDIDATE if it
@@ -138,7 +139,7 @@ itself IS the package. Throws a `UserError` if no candidate is found.
 `unreachedPackages(workspace)` is the failure-path check for that mode:
 one shallow scan (two levels, `node_modules` and dot directories
 skipped) for the `package.json` files the missing globs never reach, and
-`unreachedHint` is the line `vx init` prints for them — the cause, the
+`unreachedHint` is the line the scripts mapper prints for them — the cause, the
 packages, the `workspaces` entry to add (the `packages` entry, where a
 `pnpm-workspace.yaml` holds pnpm's settings and no `packages:`).
 
@@ -167,7 +168,7 @@ Globs every `package.json` matching the patterns (`Bun.Glob`,
 `onlyFiles: true`, `dot: false`). For each:
 
 - Skip if no `name` field (`nameless` collects the directory for
-  `vx init`, which names one that has scripts, D-106).
+  the scripts mapper, which names one that has scripts, D-106).
 - A member outside the workspace root (`../ext/*`, an absolute glob) is
   refused naming its directory: npm and pnpm take one; move the root up
   to a directory that holds every member.
@@ -194,6 +195,6 @@ Returns the members sorted by `name`.
 
 ## Tests
 
-`tests/workspace.test.ts` (globs, manifests, the claim walk, refusals),
-`tests/workspace-*.test.ts` (one rule each), `tests/init.test.ts` (what
-`vx init` does with them).
+`tests/packages.test.ts` (globs, manifests, the claim walk, refusals),
+`tests/packages-*.test.ts` (one rule each), `tests/scripts*.test.ts` (what
+the scripts mapper does with them).

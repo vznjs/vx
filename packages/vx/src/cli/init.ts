@@ -1,35 +1,25 @@
-// `vx init [--dry [--format json]] [--force] [--mjs] [--native|--keep]` — a workspace from nowhere:
-// one vx.config.ts per package from its package.json scripts, and the
-// workspace file every run needs. In a Turbo or Nx repo it hands over to
-// `@vzn/vx-migrate` (`migrate`), which asks a terminal whether to write
-// native config; `--keep` writes only the workspace file, declaring
-// `turbo()` or `nx()`, which read the runner's own config live (`adopt`).
+// `vx init [--dry [--format json]] [--force] [--mjs] [--native|--keep]` — a workspace from nowhere.
+// Core reads no package.json (M, 2026-10-14): a repo with one (package.json
+// scripts, Turbo, Nx) is `@vzn/vx-migrate`'s, which maps it and installs
+// what it writes (`migrate`); without one, the workspace file and an empty
+// root project are written here, then the lock (`starter`).
 // `vx init --plugin <seam>` writes a runnable plugin for one seam and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
+import { gitTop, workspaceFileWritten } from '../handoff.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import { lockAfterMigration } from './lock.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isCompiledBinary } from './upgrade.js'
 import { VERSION } from '../version.js'
+import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, UserError } from '../util/index.js'
 import {
-  DOT_VX_GITATTRIBUTES,
-  DOT_VX_GITIGNORE,
-  isUserError,
-  relPosix,
-  UserError,
-} from '../util/index.js'
-import {
-  applyMigration,
-  discoverPackages,
-  findManifestRoot,
   findWorkspaceRoot,
-  type LoadReads,
-  loadPackageWorkspace,
-  migrateScripts,
+  PROJECT_CONFIG_FILENAMES,
+  vxInvocation,
   WORKSPACE_CONFIG_FILENAMES,
 } from '../workspace/index.js'
 
@@ -105,103 +95,28 @@ export async function initCmd(args: readonly string[]): Promise<number> {
       'VX_E_USAGE',
     )
   }
-  if (parsed.plugin !== undefined) return scaffoldPlugin(parsed.plugin, parsed)
-  const reads: LoadReads = new Map()
-  // `vx init` makes the .vx/workspace.ts that marks the root, so without one
-  // it starts from the package manager's root. "A workspace from nowhere"
-  // still needs a package.json, and the lookup's own refusal named no next step.
-  const root = await initRoot(reads).catch((err: unknown) => {
-    if (isUserError(err) && err.code === 'VX_E_NO_WORKSPACE') {
-      throw new UserError(
-        'vx init: no package.json here or in any parent directory; create one (`bun init` or `npm init -y`) and run vx init again',
-      )
-    }
-    throw err
-  })
-  const nameless: string[] = []
-  const workspace = await loadPackageWorkspace(root, reads)
-  const metas = await discoverPackages(workspace, nameless)
-  // `init` reads scripts only; a runner's own config beside them is the
-  // richer source (dependsOn, inputs, outputs) and was ignored without a
-  // word — the walkthrough on a Turbo repo (2026-09-09) got the scripts'
-  // TODOs and none of the edges turbo.json already declared.
-  // Turbo 2.5+ reads `turbo.jsonc` as well (item 938).
-  let turbo: string | undefined
-  for (const name of ['turbo.json', 'turbo.jsonc']) {
-    if (await Bun.file(path.join(root, name)).exists()) {
-      turbo = name
-      break
-    }
+  const cwd = process.cwd()
+  const marked = await findWorkspaceRoot(cwd).catch(() => undefined)
+  if (parsed.plugin !== undefined) return scaffoldPlugin(parsed.plugin, marked ?? cwd, parsed)
+  // The directories from here up to the workspace root, else the git
+  // top-level, else `/`: where a package manager's root or an installed
+  // vx-migrate may be.
+  const top = marked ?? (await gitTop(cwd))
+  const dirs: string[] = []
+  for (let d = cwd; ; d = path.dirname(d)) {
+    dirs.push(d)
+    if (d === top || path.dirname(d) === d) break
   }
-  // A Turbo or Nx repo already says its tasks: writing a config per package
-  // from the scripts dropped every edge turbo.json declares (the
-  // first-five-minutes walk, 2026-09-28). vx-migrate maps the runner's own
-  // config, so `vx init` is the one command (M, 2026-10-08); its `--keep`
-  // comes back here for the workspace file alone.
-  const runner: ['turbo' | 'nx', string] | undefined =
-    turbo !== undefined
-      ? ['turbo', turbo]
-      : (await Bun.file(path.join(root, 'nx.json')).exists())
-        ? ['nx', 'nx.json']
-        : undefined
-  if (runner !== undefined) {
-    if (parsed.mode === 'keep') return adopt(root, ...runner, parsed)
-    // A second `vx init` after the native migration refused to overwrite
-    // the configs it wrote, exit 1, after a package fetch: the first-run
-    // walk (2026-10-09). Set up is an answer, with the next step.
-    const existing = WORKSPACE_CONFIG_FILENAMES.find((f) => existsSync(path.join(root, f)))
-    if (
-      existing !== undefined &&
-      !parsed.force &&
-      !parsed.dry &&
-      parsed.mode === undefined &&
-      metas.some((m) => m.configPath !== null) &&
-      !readFileSync(path.join(root, existing), 'utf8').includes(`${runner[0]}(`)
-    ) {
-      process.stdout.write(
-        `vx is already set up here (${existing} and the projects' vx.config files); --force regenerates them from ${runner[1]}.\n\nnext: ${adoptionNext(root, ...runner, ['@vzn/vx'])}\n`,
-      )
-      return 0
-    }
-    return migrate(root, parsed)
-  }
-  if (parsed.mode !== undefined) {
-    throw new UserError(
-      `vx init: --${parsed.mode} answers a Turbo or Nx repo's question, and no turbo.json or nx.json is at ${relPosix(process.cwd(), root) || '.'}`,
-    )
-  }
-  const unmapped = namelessNotes(root, nameless)
-  // Only a workspace file this run writes declares it; one already here is the user's.
-  const lockfile = WORKSPACE_CONFIG_FILENAMES.some((f) => existsSync(path.join(root, f)))
-    ? undefined
-    : lockfilePlugin(root)
-  const installed =
-    lockfile === undefined ? [] : await installLockfilePlugin(root, lockfile, parsed.dry)
-  return applyMigration({
-    root,
-    metas,
-    plan: migrateScripts(
-      metas,
-      metas.some((m) => m.dir === root) ? undefined : await readRootManifest(root),
-      root,
-    ),
-    source: 'package.json scripts',
-    verb: 'vx init',
-    notes: [...(await unreadWorkspaces(root, workspace.packageGlobs)), ...unmapped, ...installed],
-    unmapped: unmapped.length > 0,
-    dry: parsed.dry,
-    json: parsed.json === true,
-    force: parsed.force,
-    init: true,
-    format: parsed.mjs ? 'mjs' : 'ts',
-    lock: lockAfterMigration,
-    plugins: lockfile === undefined ? [] : [{ pkg: LOCKFILE_PKG, factory: lockfile }],
-  })
+  const manifest = dirs.some((d) => MANIFESTS.some((f) => existsSync(path.join(d, f))))
+  if (manifest) return migrate(dirs, parsed)
+  return starter(marked ?? cwd, top === null, parsed)
 }
 
-/** Write `plugins/<seam>.ts` and its test under the workspace root (the cwd when there is none). */
-async function scaffoldPlugin(seam: string, args: InitArgs): Promise<number> {
-  const root = await initRoot(new Map()).catch(() => process.cwd())
+/** What makes a repo vx-migrate's to map: a package manager's root, a Turbo or Nx config. */
+const MANIFESTS = ['package.json', 'pnpm-workspace.yaml', 'turbo.json', 'turbo.jsonc', 'nx.json']
+
+/** Write `plugins/<seam>.ts` and its test under `root`: the workspace root, else the cwd. */
+async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promise<number> {
   const template = PLUGIN_TEMPLATES[seam]!
   const files = [
     [path.join('plugins', `${seam}.ts`), template.plugin],
@@ -230,413 +145,106 @@ async function scaffoldPlugin(seam: string, args: InitArgs): Promise<number> {
   return 0
 }
 
+const WORKSPACE =
+  "import { defineWorkspace } from '@vzn/vx'\n\nexport default defineWorkspace({ plugins: [] })\n"
+const PROJECT =
+  "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: {} })\n"
+
 /**
- * `vx init` in a Turbo or Nx repo runs `@vzn/vx-migrate`: the installed one,
- * else this version's through `bun x`. It asks a terminal native or keep,
- * installs what it writes, and runs `vx init --keep` for keep.
+ * No package.json: `.vx/workspace.ts` declaring no plugin and a root
+ * `vx.config.ts` with no task, then the lock. `@vzn/vx` resolves to the
+ * running vx (core-alias.ts), so the two load with nothing installed.
+ * A file already here is kept; `--force` replaces it.
  */
-async function migrate(root: string, args: InitArgs): Promise<number> {
+async function starter(root: string, noGit: boolean, args: InitArgs): Promise<number> {
+  if (args.mode !== undefined) {
+    throw new UserError(
+      `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no package.json here`,
+    )
+  }
+  const ext = args.mjs ? 'mjs' : 'ts'
+  const config = `vx.config.${ext}`
+  const files: { path: string; contents: string }[] = []
+  const kept: string[] = []
+  const replaced: string[] = []
+  for (const [names, name, contents] of [
+    [WORKSPACE_CONFIG_FILENAMES, `.vx/workspace.${ext}`, WORKSPACE],
+    [PROJECT_CONFIG_FILENAMES, config, PROJECT],
+  ] as const) {
+    const existing = names.find((n) => existsSync(path.join(root, n)))
+    if (existing !== undefined && !args.force) kept.push(existing)
+    else {
+      files.push({ path: name, contents })
+      if (existing !== undefined && existing !== name) replaced.push(existing)
+    }
+  }
+  // vx's own housekeeping, as a run's first cache open and `vx lock` write them.
+  for (const [name, contents] of [
+    ['.vx/.gitignore', DOT_VX_GITIGNORE],
+    ['.vx/.gitattributes', DOT_VX_GITATTRIBUTES],
+  ] as const) {
+    if (!existsSync(path.join(root, name))) files.push({ path: name, contents })
+  }
+  const vx = vxInvocation(process.env['npm_config_user_agent'], false)
+  const next = `${noGit ? 'git init, ' : ''}declare a task in ${kept.find((f) => f.startsWith('vx.config.')) ?? config}, then ${vx} lock && ${vx} run <task>`
+  if (args.json === true) {
+    process.stdout.write(
+      `${JSON.stringify({ dry: true, source: 'no package.json', files, kept, replaced, todos: [], notes: [], next })}\n`,
+    )
+    return 0
+  }
+  const report = [
+    'vx init: no package.json, so no scripts to map: a workspace with one project, the root.',
+  ]
+  const named = files.map((f) => f.path).join(', ')
+  if (files.length > 0)
+    report.push(args.dry ? `would write ${named} (dry run, nothing written).` : `wrote ${named}.`)
+  if (kept.length > 0) report.push(`kept ${kept.join(', ')}.`)
+  if (replaced.length > 0)
+    report.push(`${args.dry ? 'would replace' : 'replaced'} ${replaced.join(', ')}.`)
+  if (args.dry) {
+    for (const f of files) process.stdout.write(`── ${f.path} ──\n${f.contents}\n`)
+    process.stdout.write(`${report.join('\n')}\n\nnext: ${next}\n`)
+    return 0
+  }
+  for (const f of files) await Bun.write(path.join(root, f.path), f.contents)
+  for (const f of replaced) await unlink(path.join(root, f))
+  // The lock that follows loads the workspace file just written.
+  workspaceFileWritten()
+  process.stdout.write(`${report.join('\n')}\n\n`)
+  const locked = (await lockAfterMigration(root)) === 0
+  process.stdout.write(`\nnext: ${locked ? next : `fix the above and run vx lock, then ${next}`}\n`)
+  return 0
+}
+
+/**
+ * A repo with a package.json is `@vzn/vx-migrate`'s: the installed one,
+ * else this version's through `bun x`. It finds the root itself, asks a
+ * terminal native or keep in a Turbo or Nx repo, and installs what it writes.
+ */
+async function migrate(dirs: readonly string[], args: InitArgs): Promise<number> {
   const flags = [
     args.dry && '--dry',
     args.force && '--force',
     args.mjs && '--mjs',
-    args.mode === 'native' && '--native',
+    args.mode !== undefined && `--${args.mode}`,
     args.json === true && '--format=json',
   ].filter((f): f is string => typeof f === 'string')
-  return Bun.spawn(migrateCommand(root, flags), {
-    cwd: root,
+  return Bun.spawn(migrateCommand(dirs, flags), {
     stdio: ['inherit', 'inherit', 'inherit'],
     // A compiled vx is a Bun runtime only when told so.
     env: isCompiledBinary() ? { ...process.env, BUN_BE_BUN: '1' } : process.env,
   }).exited
 }
 
-export function migrateCommand(root: string, flags: readonly string[]): string[] {
-  const installed = path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
-  if (existsSync(installed)) return [process.execPath, '--no-install', installed, ...flags]
+export function migrateCommand(dirs: readonly string[], flags: readonly string[]): string[] {
+  for (const d of dirs) {
+    const installed = path.join(d, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
+    if (existsSync(installed)) return [process.execPath, '--no-install', installed, ...flags]
+  }
   // A source checkout is 0.0.0, which npm never had.
   const version = VERSION === '0.0.0' ? 'latest' : VERSION
   // Bun's own install output ("Slow filesystem detected…") in a pnpm or npm
   // repo reads as a stranger speaking (Growth's first-run funnel F2).
   return [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${version}`, ...flags]
-}
-
-/**
- * `vx init --keep` in a Turbo or Nx repo: `.vx/workspace.ts` declaring the plugin
- * that runs the repo as it is, nothing else, and the one command that gets
- * from here to a run.
- */
-async function adopt(
-  root: string,
-  runner: 'turbo' | 'nx',
-  source: string,
-  args: InitArgs,
-): Promise<number> {
-  const name = `.vx/workspace.${args.mjs ? 'mjs' : 'ts'}`
-  const remote = remoteCacheSignal(root, runner)
-  const cache = REMOTE_CACHE[runner]
-  const imports = remote === undefined ? runner : `${runner}, ${cache}`
-  const lockfile = lockfilePlugin(root)
-  const plugins = [
-    runner,
-    ...(remote === undefined ? [] : [cache]),
-    ...(lockfile === undefined ? [] : [lockfile]),
-  ]
-  const body = `import { ${imports} } from '@vzn/vx-migrate'\n${lockfile === undefined ? '' : `import { ${lockfile} } from '${LOCKFILE_PKG}'\n`}\nexport default { plugins: [${plugins.map((p) => `${p}()`).join(', ')}] }`
-  const text = args.mjs
-    ? `${body}\n`
-    : `import type { WorkspaceConfig } from '@vzn/vx/config'\n${body} satisfies WorkspaceConfig\n`
-  const existing = WORKSPACE_CONFIG_FILENAMES.find((f) => existsSync(path.join(root, f)))
-  if (existing !== undefined && !args.force) {
-    const declared = readFileSync(path.join(root, existing), 'utf8').includes(`${runner}(`)
-    if (!declared) {
-      throw new UserError(
-        `vx init: ${existing} exists; add ${runner}() from @vzn/vx-migrate to its plugins, or --force replaces it`,
-      )
-    }
-  } else if (args.dry) {
-    if (args.json !== true) process.stdout.write(`── ${name} ──\n${text}\n`)
-  } else {
-    if (existing !== undefined && existing !== name) await unlink(path.join(root, existing))
-    await Bun.write(path.join(root, name), text)
-  }
-  const kept = existing !== undefined && !args.force
-  const needs = [
-    '@vzn/vx',
-    '@vzn/vx-migrate',
-    ...(lockfile === undefined || kept ? [] : [LOCKFILE_PKG]),
-  ]
-  const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
-  // vx's own housekeeping, as a run's first cache open and `vx lock` write them.
-  if (!args.dry && ignore.length > 0)
-    await Bun.write(path.join(root, '.vx', '.gitignore'), DOT_VX_GITIGNORE)
-  const attributes = path.join(root, '.vx', '.gitattributes')
-  if (!args.dry && !existsSync(attributes)) await Bun.write(attributes, DOT_VX_GITATTRIBUTES)
-  const wrote = kept
-    ? `${existing} already declares ${runner}().`
-    : args.dry
-      ? `would write ${name} (dry run, nothing written).`
-      : `wrote ${name}.`
-  const cacheLine =
-    remote === undefined
-      ? runner === 'nx' && usesNxCloud(root)
-        ? 'nx.json connects Nx Cloud, whose cache vx cannot share: runs cache on this machine (nxCache() serves a self-hosted Nx cache).\n'
-        : ''
-      : kept && !readFileSync(path.join(root, existing), 'utf8').includes(`${cache}(`)
-        ? `${remote}: add ${cache}() from @vzn/vx-migrate to its plugins and vx shares that remote cache.\n`
-        : kept
-          ? ''
-          : `${cache}(): ${remote}, so vx shares that remote cache (inert where the variable is unset).\n`
-  if (args.json === true) {
-    process.stdout.write(
-      `${JSON.stringify({
-        dry: true,
-        source,
-        files: [
-          ...(kept ? [] : [{ path: name, contents: text }]),
-          ...ignore.map((p) => ({ path: p, contents: DOT_VX_GITIGNORE })),
-        ],
-        kept: kept ? [existing] : [],
-        replaced: !kept && existing !== undefined && existing !== name ? [existing] : [],
-        todos: [],
-        notes: cacheLine === '' ? [] : [cacheLine.trimEnd()],
-        next: adoptionNext(root, runner, source, needs),
-      })}\n`,
-    )
-    return 0
-  }
-  const next = adoptionNext(root, runner, source, needs)
-  process.stdout.write(
-    `vx init: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.\n` +
-      `${wrote}\n${cacheLine}\n`,
-  )
-  // A run reads only the lock; with the plugin installed it is written now,
-  // else `next` names `vx lock` after the install.
-  const code = args.dry || next.includes(' lock && ') ? 0 : await lockAfterMigration(root)
-  process.stdout.write(`next: ${next}\n`)
-  return code
-}
-
-const REMOTE_CACHE = { turbo: 'turboCache', nx: 'nxCache' } as const
-
-/**
- * nx.json names an Nx Cloud workspace (`nxCloudId`, `nxCloudAccessToken`,
- * or the legacy `nx-cloud` runner). Its wire is Nx's own, so a user who
- * expected their remote cache under vx heard nothing and ran cold.
- */
-function usesNxCloud(root: string): boolean {
-  let json: {
-    nxCloudId?: unknown
-    nxCloudAccessToken?: unknown
-    tasksRunnerOptions?: { default?: { runner?: unknown } }
-  } | null
-  try {
-    json = Bun.JSONC.parse(readFileSync(path.join(root, 'nx.json'), 'utf8')) as typeof json
-  } catch {
-    return false
-  }
-  const set = (v: unknown) => typeof v === 'string' && v !== ''
-  const runner = json?.tasksRunnerOptions?.default?.runner
-  return (
-    set(json?.nxCloudId) ||
-    set(json?.nxCloudAccessToken) ||
-    (typeof runner === 'string' && /(^|\/)nx-cloud$/.test(runner))
-  )
-}
-
-/** The variable each runner's self-hosted remote cache is set by, as its plugin reads it. */
-const REMOTE_CACHE_ENV = { turbo: 'TURBO_TOKEN', nx: 'NX_SELF_HOSTED_REMOTE_CACHE_SERVER' } as const
-
-const CI_FILES = ['.gitlab-ci.yml', '.circleci/config.yml']
-
-/**
- * Where the repo shows a remote cache its runner uses, or undefined: turbo.json's
- * enabled `remoteCache`, a `turbo link`ed `.turbo/config.json`, or a CI file that sets the runner's cache variable (a
- * local repo holds no token; CI does).
- */
-function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string | undefined {
-  if (runner === 'turbo') {
-    for (const f of ['turbo.json', 'turbo.jsonc']) {
-      let rc: unknown
-      try {
-        rc = (
-          Bun.JSONC.parse(readFileSync(path.join(root, f), 'utf8')) as { remoteCache?: unknown }
-        )?.remoteCache
-      } catch {
-        continue
-      }
-      if (typeof rc === 'object' && rc !== null) {
-        // Turned off in turbo.json is off, whatever CI sets.
-        if ((rc as { enabled?: unknown }).enabled === false) return undefined
-        return `${f} names a remoteCache`
-      }
-    }
-    // `turbo link` writes the team here (gitignored, on the machine that
-    // linked); turboCache() reads it, so a linked repo has a remote cache.
-    let linked: unknown
-    try {
-      linked = JSON.parse(readFileSync(path.join(root, '.turbo', 'config.json'), 'utf8'))
-    } catch {}
-    if (
-      typeof linked === 'object' &&
-      linked !== null &&
-      Object.entries(linked).some(
-        ([k, v]) => /^(teamid|teamslug|token)$/i.test(k) && typeof v === 'string' && v !== '',
-      )
-    ) {
-      return '.turbo/config.json links a team (turbo link)'
-    }
-  }
-  const variable = REMOTE_CACHE_ENV[runner]
-  // A line that sets it (`TURBO_TOKEN: …`, `TURBO_TOKEN=…`), not one that
-  // names it: a comment or a doc line counted as "sets" (J's lead).
-  const sets = new RegExp(`^(?!\\s*#).*\\b${variable}\\s*[:=]`, 'm')
-  const workflows = new Bun.Glob('.github/workflows/*.{yml,yaml}')
-  const files = [...workflows.scanSync({ cwd: root, dot: true })].sort().concat(CI_FILES)
-  for (const f of files) {
-    let text: string
-    try {
-      text = readFileSync(path.join(root, f), 'utf8')
-    } catch {
-      continue
-    }
-    if (sets.test(text)) return `${f} sets ${variable}`
-  }
-  return undefined
-}
-
-type PackageManager = 'pnpm' | 'yarn' | 'bun' | 'npm'
-
-const LOCKFILES: ReadonlyArray<[string, PackageManager]> = [
-  ['pnpm-lock.yaml', 'pnpm'],
-  ['yarn.lock', 'yarn'],
-  ['bun.lock', 'bun'],
-  ['bun.lockb', 'bun'],
-  ['package-lock.json', 'npm'],
-  ['npm-shrinkwrap.json', 'npm'],
-]
-
-/**
- * The `@vzn/vx-lockfile` plugin claiming the root's lockfile, named as its
- * manager: package edges (`^build`, --affected) come from it alone.
- */
-function lockfilePlugin(root: string): PackageManager | undefined {
-  return LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1]
-}
-
-const LOCKFILE_PKG = '@vzn/vx-lockfile'
-
-/**
- * Install `@vzn/vx-lockfile` with the repo's manager, pinned to this vx
- * (every @vzn package releases in lockstep), unless it is there: the
- * written workspace file imports it and `vx lock` runs straight after.
- * Returns the report's note.
- */
-async function installLockfilePlugin(
-  root: string,
-  pm: PackageManager,
-  dry: boolean,
-): Promise<string[]> {
-  if (existsSync(path.join(root, 'node_modules', LOCKFILE_PKG, 'package.json'))) return []
-  const spec = VERSION === '0.0.0' ? LOCKFILE_PKG : `${LOCKFILE_PKG}@${VERSION}`
-  const cmd = `${installCommand(root, pm)} ${spec}`
-  if (dry) return [`would run ${cmd} (dry run)`]
-  const p = Bun.spawn(['sh', '-c', cmd], { cwd: root, stdout: 'ignore', stderr: 'pipe' })
-  const [err, code] = await Promise.all([new Response(p.stderr).text(), p.exited])
-  if (code !== 0) throw new UserError(`vx init: ${cmd} failed (exit ${code}):\n${err.trimEnd()}`)
-  return [`ran ${cmd}: the workspace file imports it`]
-}
-
-/** Yarn 1 refuses `add` at a workspace root without `-W`; Berry has no such flag. */
-function installCommand(root: string, pm: PackageManager): string {
-  return pm === 'yarn' && !readText(path.join(root, 'yarn.lock')).includes('__metadata:')
-    ? `${INSTALL.yarn} -W`
-    : INSTALL[pm]
-}
-
-const INSTALL: Record<PackageManager, string> = {
-  pnpm: 'pnpm add -D -w',
-  yarn: 'yarn add -D',
-  bun: 'bun add -d',
-  npm: 'npm install -D',
-}
-
-// npx and bunx name the package: their bare `vx` is a stranger's npm package.
-const EXEC: Record<PackageManager, string> = {
-  pnpm: 'pnpm vx',
-  yarn: 'yarn vx',
-  bun: 'bunx @vzn/vx',
-  npm: 'npx @vzn/vx',
-}
-
-/**
- * Install what the workspace file imports, if missing, then run the repo's
- * build. Pinned to this vx's version: every @vzn package releases in
- * lockstep, and `latest` beside an older vx mismatched them (agent trial 2).
- */
-export function adoptionNext(
-  root: string,
-  runner: 'turbo' | 'nx',
-  source: string,
-  needs: readonly string[] = ['@vzn/vx', '@vzn/vx-migrate'],
-  version: string = VERSION,
-): string {
-  const pm = LOCKFILES.find(([f]) => existsSync(path.join(root, f)))?.[1] ?? 'npm'
-  const missing = needs.filter(
-    (p) => !existsSync(path.join(root, 'node_modules', p, 'package.json')),
-  )
-  // A global vx (no runner started this one) runs the workspace's plugins as they are.
-  const vx = process.env['npm_config_user_agent'] === undefined ? 'vx' : EXEC[pm]
-  const task = firstTask(path.join(root, source), runner)
-  const run = `${vx} run ${task} --all`
-  if (missing.length === 0) return run
-  const install = installCommand(root, pm)
-  // A source checkout is 0.0.0, which npm never had.
-  const pinned = version === '0.0.0' ? missing : missing.map((p) => `${p}@${version}`)
-  return `${install} ${pinned.join(' ')} && ${vx} lock && ${run}`
-}
-
-function readText(file: string): string {
-  try {
-    return readFileSync(file, 'utf8')
-  } catch {
-    return ''
-  }
-}
-
-/** `build` when the runner's config names it, else the first task it names. */
-function firstTask(file: string, runner: 'turbo' | 'nx'): string {
-  let text: string
-  try {
-    text = readFileSync(file, 'utf8')
-  } catch {
-    return 'build'
-  }
-  if (/"build"\s*:/.test(text)) return 'build'
-  const field = runner === 'turbo' ? '(?:tasks|pipeline)' : 'targetDefaults'
-  const first = new RegExp(`"${field}"\\s*:\\s*\\{\\s*"([^"]+)"`).exec(text)?.[1]
-  return first ?? 'build'
-}
-
-/**
- * A member whose package.json has no `name` is no project, so its scripts
- * map to nothing, and init said nothing of them (D-106).
- */
-function namelessNotes(root: string, dirs: readonly string[]): string[] {
-  const withScripts = dirs
-    .filter((dir) => {
-      const scripts = (
-        JSON.parse(readText(path.join(dir, 'package.json')).replace(/^\uFEFF/, '') || '{}') as {
-          scripts?: unknown
-        }
-      ).scripts
-      return (
-        typeof scripts === 'object' &&
-        scripts !== null &&
-        Object.values(scripts).some((v) => typeof v === 'string' && v !== '')
-      )
-    })
-    .map((dir) => relPosix(root, dir))
-    .sort()
-    // The root's own manifest is the empty relative path: a nameless
-    // single-package repo read `not mapped:  — its package.json…` (M-54).
-    .map((rel) => (rel === '' ? 'the root' : rel))
-  if (withScripts.length === 0) return []
-  const shown =
-    withScripts.slice(0, 3).join(', ') +
-    (withScripts.length > 3 ? `, and ${withScripts.length - 3} more` : '')
-  return [
-    `not mapped: ${shown} — ${withScripts.length === 1 ? 'its package.json has' : 'their package.json files have'} no "name", and vx names a project by it; give ${withScripts.length === 1 ? 'it one' : 'each one'} and run \`vx init\` again`,
-  ]
-}
-
-/**
- * `pnpm-workspace.yaml`'s `packages` decides the members, as pnpm reads it,
- * and a root `workspaces` that lists other globs was dropped without a word:
- * a bun or npm repo with a stale yaml lost those members (M-51).
- */
-async function unreadWorkspaces(root: string, globs: readonly string[]): Promise<string[]> {
-  if (!existsSync(path.join(root, 'pnpm-workspace.yaml'))) return []
-  const ws = (await readRootManifest(root))['workspaces']
-  const list = Array.isArray(ws)
-    ? ws
-    : typeof ws === 'object' &&
-        ws !== null &&
-        Array.isArray((ws as { packages?: unknown }).packages)
-      ? (ws as { packages: unknown[] }).packages
-      : undefined
-  if (list === undefined) return []
-  const pkg = list.filter((g): g is string => typeof g === 'string')
-  if ([...pkg].sort().join('\0') === [...globs].sort().join('\0')) return []
-  return [
-    `pnpm-workspace.yaml's \`packages\` lists the members, as pnpm reads them; package.json's \`workspaces\` (${pkg.map((g) => `"${g}"`).join(', ')}) is not read: if bun, npm or yarn installs this repo, copy those globs into pnpm-workspace.yaml's \`packages\`, or delete that key so package.json decides`,
-  ]
-}
-
-/** The root package.json as an object, `{}` when unreadable or not one. */
-async function readRootManifest(root: string): Promise<Record<string, unknown>> {
-  const pj: unknown = await Bun.file(path.join(root, 'package.json'))
-    .json()
-    .catch(() => ({}))
-  return typeof pj === 'object' && pj !== null && !Array.isArray(pj)
-    ? (pj as Record<string, unknown>)
-    : {}
-}
-
-/**
- * The workspace root, or where `vx init` makes one: the package manager's
- * root. A .vx/workspace.ts another user owns is not yours to re-init either.
- */
-async function initRoot(reads: LoadReads): Promise<string> {
-  const cwd = process.cwd()
-  const marked = await findWorkspaceRoot(cwd).catch(() => undefined)
-  if (marked === undefined) return findManifestRoot(cwd, reads)
-  // A nested workspace the outer one does not list is its own: the outer
-  // .vx/workspace.ts made init report the outer configs and write nothing.
-  const manifest = await findManifestRoot(cwd, reads).catch(() => marked)
-  if (manifest.startsWith(`${marked}${path.sep}`)) {
-    const nested = await loadPackageWorkspace(manifest, reads).catch(() => undefined)
-    if (nested !== undefined && nested.packageGlobs.length > 0) return manifest
-  }
-  return marked
 }

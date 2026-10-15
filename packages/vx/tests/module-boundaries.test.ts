@@ -50,7 +50,18 @@ const ALLOWED: Record<string, readonly string[]> = {
     'cache',
     'exec',
   ],
-  cli: ['util', 'config', 'version', 'settings', 'workspace', 'graph', 'cache', 'orchestrator'],
+  // `handoff`: init walks to the git top-level and says the workspace file it wrote is there.
+  cli: [
+    'util',
+    'config',
+    'version',
+    'handoff',
+    'settings',
+    'workspace',
+    'graph',
+    'cache',
+    'orchestrator',
+  ],
   index: [
     'util',
     'config',

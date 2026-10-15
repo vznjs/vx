@@ -1,4 +1,4 @@
-// A member whose package.json has no "name" is no project: `vx init`
+// A member whose package.json has no "name" is no project: the mapper
 // names it rather than leave its scripts unmapped without a word (remix's
 // packages/component/bench).
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -22,7 +22,7 @@ async function notes(members: Record<string, object | string>): Promise<string[]
         typeof pkg === 'string' ? pkg : JSON.stringify(pkg),
       )
     }
-    const proc = Bun.spawn([process.execPath, BIN, 'init', '--dry'], {
+    const proc = Bun.spawn([process.execPath, '--no-install', BIN, '--dry'], {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',

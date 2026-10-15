@@ -27,11 +27,11 @@ import {
   refuseUnknownOptions,
   type PluginOptionKinds,
   type GeneratedProject,
-  type PackageMeta,
   type ProjectMeta,
   UserError,
   type VxPlugin,
 } from '@vzn/vx'
+import type { PackageMeta } from '../packages.js'
 import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import { collectGaps } from '../plugin-gaps.js'
 import {

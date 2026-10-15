@@ -627,7 +627,6 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'JSONC',
   'Subprocess',
   'Transpiler',
-  'YAML',
   'color',
   'deepEquals',
   'env',

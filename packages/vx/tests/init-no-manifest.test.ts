@@ -1,0 +1,154 @@
+// `vx init` reads no package.json (M, 2026-10-14). With none, it writes
+// the workspace file and one empty root project, then the lock; a repo
+// with one is handed to @vzn/vx-migrate, whose scripts mapper it was.
+
+import { existsSync, realpathSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterAll, describe, expect, it } from 'bun:test'
+
+const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
+const roots: string[] = []
+afterAll(async () => {
+  for (const r of roots) await rm(r, { recursive: true, force: true })
+})
+
+async function tmp(prefix: string): Promise<string> {
+  // Real path: macOS's /tmp is a link, and a child's cwd is resolved.
+  const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), prefix)))
+  roots.push(root)
+  expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)
+  return root
+}
+
+async function vx(cwd: string, args: string[]) {
+  // The `next:` line names the runner that started vx; none here.
+  const { npm_config_user_agent: _, ...env } = process.env
+  const proc = Bun.spawn([process.execPath, BIN, ...args], {
+    cwd,
+    env,
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  return { out, err, code }
+}
+
+const WORKSPACE =
+  "import { defineWorkspace } from '@vzn/vx'\n\nexport default defineWorkspace({ plugins: [] })\n"
+const PROJECT =
+  "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: {} })\n"
+
+describe('vx init with no package.json', () => {
+  it('writes the workspace file and an empty root project, then the lock', async () => {
+    const root = await tmp('vx-init-bare-')
+    const r = await vx(root, ['init'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect([
+      await readFile(path.join(root, '.vx', 'workspace.ts'), 'utf8'),
+      await readFile(path.join(root, 'vx.config.ts'), 'utf8'),
+      existsSync(path.join(root, '.vx', '.gitignore')),
+      existsSync(path.join(root, '.vx', 'projects.lock.json')),
+      existsSync(path.join(root, 'package.json')),
+    ]).toEqual([WORKSPACE, PROJECT, true, true, false])
+    expect(r.out).toBe(
+      'vx init: no package.json, so no scripts to map: a workspace with one project, the root.\n' +
+        'wrote .vx/workspace.ts, vx.config.ts, .vx/.gitignore, .vx/.gitattributes.\n\n' +
+        'vx lock: locked 1 project config → .vx/projects.lock.json\n\n' +
+        'next: declare a task in vx.config.ts, then vx lock && vx run <task>\n',
+    )
+    // The written workspace runs: the root is the one project, `//`.
+    const show = await vx(root, ['show', '--format', 'json'])
+    expect([show.code, (JSON.parse(show.out) as { name: string }[]).map((p) => p.name)]).toEqual([
+      0,
+      ['//'],
+    ])
+  })
+
+  it('--dry --mjs writes nothing and prints the .mjs files', async () => {
+    const root = await tmp('vx-init-bare-dry-')
+    const r = await vx(root, ['init', '--dry', '--mjs'])
+    expect([r.code, r.err, existsSync(path.join(root, '.vx'))]).toEqual([0, '', false])
+    expect(r.out).toContain(`── .vx/workspace.mjs ──\n${WORKSPACE}`)
+    expect(r.out).toContain(`── vx.config.mjs ──\n${PROJECT}`)
+    expect(r.out).toContain(
+      'would write .vx/workspace.mjs, vx.config.mjs, .vx/.gitignore, .vx/.gitattributes (dry run, nothing written).',
+    )
+  })
+
+  it('keeps the files already here, and --force replaces them', async () => {
+    const root = await tmp('vx-init-bare-kept-')
+    const mine = 'export default { tasks: { hi: { exec: { command: "echo hi" } } } }\n'
+    await writeFile(path.join(root, 'vx.config.mjs'), mine)
+    const kept = await vx(root, ['init'])
+    expect([kept.code, kept.err, await readFile(path.join(root, 'vx.config.mjs'), 'utf8')]).toEqual(
+      [0, '', mine],
+    )
+    expect(kept.out).toContain('kept vx.config.mjs.')
+    const forced = await vx(root, ['init', '--force'])
+    expect([
+      forced.code,
+      existsSync(path.join(root, 'vx.config.mjs')),
+      await readFile(path.join(root, 'vx.config.ts'), 'utf8'),
+    ]).toEqual([0, false, PROJECT])
+  })
+
+  it('--native and --keep answer a Turbo or Nx question, and are refused here', async () => {
+    const root = await tmp('vx-init-bare-keep-')
+    const r = await vx(root, ['init', '--keep'])
+    expect([r.code, r.err, existsSync(path.join(root, '.vx'))]).toEqual([
+      1,
+      "vx init: --keep answers a Turbo or Nx repo's question, and there is no package.json here\n",
+      false,
+    ])
+  })
+})
+
+describe('vx init with a package.json hands over to @vzn/vx-migrate', () => {
+  // A stand-in vx-migrate records what it was asked: the suite reads no other package.
+  async function jsRepo(): Promise<string> {
+    const root = await tmp('vx-init-js-')
+    await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["packages/*"]}\n')
+    await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
+    await writeFile(
+      path.join(root, 'packages', 'a', 'package.json'),
+      '{"name":"a","scripts":{"build":"tsc"}}\n',
+    )
+    const bin = path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
+    await mkdir(path.dirname(bin), { recursive: true })
+    await writeFile(
+      bin,
+      `await Bun.write(${JSON.stringify(path.join(root, 'asked'))}, JSON.stringify({ cwd: process.cwd(), argv: process.argv.slice(2) }))\n`,
+    )
+    return root
+  }
+
+  it('from the root, with its flags; no file of its own', async () => {
+    const root = await jsRepo()
+    const r = await vx(root, ['init', '--dry', '--mjs'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect(JSON.parse(await readFile(path.join(root, 'asked'), 'utf8'))).toEqual({
+      cwd: root,
+      argv: ['--dry', '--mjs'],
+    })
+    expect(existsSync(path.join(root, '.vx'))).toBe(false)
+  })
+
+  it('from a directory below it with no package.json of its own', async () => {
+    const root = await jsRepo()
+    const docs = path.join(root, 'docs')
+    await mkdir(docs)
+    const r = await vx(docs, ['init', '--keep'])
+    expect([r.code, r.err, existsSync(path.join(docs, 'vx.config.ts'))]).toEqual([0, '', false])
+    expect(JSON.parse(await readFile(path.join(root, 'asked'), 'utf8'))).toEqual({
+      cwd: docs,
+      argv: ['--keep'],
+    })
+  })
+})

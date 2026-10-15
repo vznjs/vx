@@ -5,7 +5,7 @@
 // dependency, dev or optional entry whose key names a workspace package
 // orders it; a peer on one only reaches it.
 
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from './packages.js'
 
 export interface ManifestGraph {
   /** Packages this one builds after, sorted. */

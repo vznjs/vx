@@ -2,7 +2,7 @@
 // written config listed `@acme/ui#gen` twice.
 
 import { describe, expect, it } from 'bun:test'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { mapNxDeps } from '../src/nx/nx-deps.js'
 
 const ui: PackageMeta = {

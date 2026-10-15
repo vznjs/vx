@@ -161,6 +161,15 @@ export const PLUGIN_HOOKS = [
   'commands',
   'teardown',
 ] as const
+== const PROJECT_CONFIG_FILENAMES (src/workspace/workspace.ts)
+export const PROJECT_CONFIG_FILENAMES = [
+  'vx.config.ts',
+  'vx.config.mts',
+  'vx.config.js',
+  'vx.config.mjs',
+  'vx.config.cts',
+  'vx.config.cjs',
+]
 == const TELEMETRY_SCHEMA_VERSION (src/orchestrator/telemetry.ts)
 export const TELEMETRY_SCHEMA_VERSION = 3
 == const VERSION (src/version.ts)
@@ -214,12 +223,6 @@ export function escapeMarkdownCell(value: string): string
 export function executorFallback(reason: string): Error
 == function exitSignal (src/exec/runner.ts)
 export function exitSignal(code: number): string | undefined
-== function findManifestRoot (src/workspace/packages.ts)
-export async function findManifestRoot(
-  start: string,
-  reads: LoadReads = new Map(),
-  uid: number = process.getuid?.() ?? 0,
-): Promise<string>
 == function findWorkspaceRoot (src/workspace/workspace.ts)
 export async function findWorkspaceRoot(
   start: string,
@@ -239,8 +242,6 @@ export function isLiteralPattern(glob: string): boolean
 export function isPassStatus(status: string): boolean
 == function isUserError (src/util/errors.ts)
 export function isUserError(err: unknown): err is UserError
-== function listPackages (src/workspace/packages.ts)
-export async function listPackages(root: string): Promise<PackageMeta[]>
 == function loadProjectConfig (src/workspace/project-loader.ts)
 export async function loadProjectConfig(configPath: string): Promise<ProjectConfig>
 == function loadResolvedProjects (src/orchestrator/projects.ts)
@@ -287,6 +288,8 @@ export function refuseUnknownOptions<T>(
 export async function run(options: RunOptions): Promise<RunSummary>
 == function splitTaskId (src/util/task-id.ts)
 export function splitTaskId(id: string): [project: string, task: string]
+== function taskNameProblem (src/workspace/config-schema.ts)
+export function taskNameProblem(name: string): string | null
 == function withForwardArgs (src/exec/runner.ts)
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 == type AdmitContext (src/orchestrator/plugin.ts)
@@ -312,7 +315,7 @@ export interface AffectedReason {
 == type ApplyMigrationArgs (src/workspace/migration.ts)
 export interface ApplyMigrationArgs {
   root: string
-  metas: readonly PackageMeta[]
+  metas: readonly MigrationMember[]
   plan: MigrationPlan
   source: string
   verb: string
@@ -321,6 +324,7 @@ export interface ApplyMigrationArgs {
   init?: boolean
   notes?: readonly string[]
   unmapped?: boolean
+  emptyReason?: string
   format?: MigrationFormat
   json?: boolean
   lock?: (root: string) => Promise<number>
@@ -780,8 +784,6 @@ type KnownExecs<T extends ProjectConfig> = {
     }
   }
 }
-== type LoadReads (src/workspace/load-reads.ts)
-export type LoadReads = Map<string, Promise<Uint8Array | null>>
 == type LockfileClaimHooks (src/orchestrator/lockfile-claim.ts)
 export interface LockfileClaimHooks {
   readonly fingerprint: FingerprintClaim
@@ -828,6 +830,13 @@ export interface Logger {
 }
 == type MigrationFormat (src/workspace/migration.ts)
 export type MigrationFormat = 'ts' | 'mjs'
+== type MigrationMember (src/workspace/migration.ts)
+export interface MigrationMember {
+  readonly name: string
+  readonly dir: string
+  readonly configPath: string | null
+  readonly packageJson?: object
+}
 == type MigrationPlan (src/workspace/migration.ts)
 export interface MigrationPlan {
   headerNotes: string[]
@@ -903,23 +912,6 @@ export interface OutputView {
   mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad' | 'hash-only'
   gha?: boolean
   ci?: boolean
-}
-== type PackageJson (src/workspace/packages.ts)
-export interface PackageJson {
-  name: string
-  version?: string
-  dependencies?: Record<string, string>
-  devDependencies?: Record<string, string>
-  peerDependencies?: Record<string, string>
-  optionalDependencies?: Record<string, string>
-  workspaces?: string[] | { packages?: string[] }
-}
-== type PackageMeta (src/workspace/packages.ts)
-export interface PackageMeta {
-  name: string
-  dir: string
-  packageJson: PackageJson
-  configPath: string | null
 }
 == type PersistentConfig (src/config.ts)
 export interface PersistentConfig {
@@ -1756,4 +1748,5 @@ export interface WorkspaceRules {
 LOG_WIRE_VERSION = 1
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"
 PLUGIN_HOOKS = ["config","discover","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","output","setup","commands","teardown"]
+PROJECT_CONFIG_FILENAMES = ["vx.config.ts","vx.config.mts","vx.config.js","vx.config.mjs","vx.config.cts","vx.config.cjs"]
 TELEMETRY_SCHEMA_VERSION = 3

@@ -2,7 +2,7 @@
 // `prepack: bob build`) is named in the report: vx never runs the hook,
 // and the repo mapped with no build at all.
 import { expect, it } from 'bun:test'
-import { migrateScripts } from '../src/workspace/migrate-scripts.js'
+import { migrateScripts } from '../src/migrate-scripts.js'
 
 const meta = (name: string, dir: string, scripts: Record<string, string>) => ({
   name,

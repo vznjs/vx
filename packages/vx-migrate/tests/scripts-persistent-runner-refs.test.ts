@@ -2,7 +2,7 @@
 // `concurrently "npm:web" "npm:api"` and `run-p web api` mapped as one-shot
 // tasks, so a dependent waited on a task that never ends.
 import { expect, it } from 'bun:test'
-import { migrateScripts } from '../src/workspace/migrate-scripts.js'
+import { migrateScripts } from '../src/migrate-scripts.js'
 
 it('follows a runner to the servers it starts', () => {
   const scripts: Record<string, string> = {

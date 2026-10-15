@@ -2,7 +2,8 @@
 // `run` block (vite-plus's `vp run`) and its package.json scripts, as a
 // migration plan.
 
-import { type MigrationFormat, type MigrationPlan, type PackageMeta } from '@vzn/vx'
+import { type MigrationFormat, type MigrationPlan } from '@vzn/vx'
+import type { PackageMeta } from './packages.js'
 import { spelledNames } from './spelled-env.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { mapViteTaskWorkspace, viteTaskProjects } from './vite-task/vite-task-map.js'

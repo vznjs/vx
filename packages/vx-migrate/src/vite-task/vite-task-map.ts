@@ -7,7 +7,8 @@
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { type GeneratedProject, type GeneratedTask, type PackageMeta, UserError } from '@vzn/vx'
+import { type GeneratedProject, type GeneratedTask, UserError } from '@vzn/vx'
+import type { PackageMeta } from '../packages.js'
 import { minimatchToVx, withoutTakenBack } from '../glob-grammar.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'

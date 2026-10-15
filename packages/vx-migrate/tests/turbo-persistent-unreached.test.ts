@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { mapTurboWorkspace } from '../src/turbo/turbo-map.js'
 
 it("drops a persistent task's readiness note when no edge reaches it, keeps it when one does", async () => {

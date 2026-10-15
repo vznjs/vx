@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import type { PackageMeta } from '@vzn/vx'
+import type { PackageMeta } from '../src/packages.js'
 import { migrateNx } from '../src/migrate-nx.js'
 
 const node = (name: string, root: string) => ({

@@ -28,19 +28,97 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { taskNameProblem } from './config-schema.js'
-import type { PackageMeta } from './packages.js'
 import {
   foldScriptHooks,
   type GeneratedProject,
   type GeneratedTask,
   type MigrationPlan,
-  PERSISTENT_TASK_NAMES,
   PERSISTENT_TODO,
-  cacheTodo,
   pruneOrphanPersistentNotes,
-} from './migration.js'
-import { relPosix } from '../util/index.js'
+  taskNameProblem,
+} from '@vzn/vx'
+import type { PackageMeta } from './packages.js'
+import { relPosix } from './paths.js'
+
+/**
+ * Task names that conventionally never exit. Every mapper guesses the same
+ * way from a name — a source that SAYS a task is long-running (turbo's
+ * `persistent: true`, an Nx dev-server executor) is believed instead.
+ */
+const PERSISTENT_TASK_NAMES: ReadonlySet<string> = new Set([
+  'dev',
+  'start',
+  'serve',
+  'watch',
+  'preview',
+])
+
+/**
+ * Where a framework's build writes by default, for the cache TODO: the
+ * hint said `dist/**` to every build, `next build` included, which writes
+ * `.next`. Each tool's documented default; anything else keeps `dist/**`.
+ */
+const BUILD_OUTPUTS: readonly [RegExp, readonly string[]][] = [
+  [/\snext build\s/, ['.next/**', '!.next/cache/**']],
+  [/\snux[ti] build\s/, ['.output/**']],
+  [/\s(?:remix|react-router|react-scripts|docusaurus) build\s/, ['build/**']],
+  [/\sgatsby build\s/, ['public/**']],
+  [/\s(?:storybook build|build-storybook)\s/, ['storybook-static/**']],
+]
+
+/** A directory a TODO may name: relative, plain, no hidden or tool dir. */
+const OUTPUT_DIR = /^(?:\.\/)?((?![./])[\w@-][\w@./-]*?)\/?$/
+
+/**
+ * The directory the command says it writes, when no tool above names one:
+ * an out-dir flag (`tsc --outDir lib`, `babel -d lib`), else the
+ * directories it cleans first (`del-cli distribution`, `rimraf dist
+ * types`). ky's build writes `distribution/`, and the TODO said `dist/**`
+ * (D-90). A file (`tsconfig.tsbuildinfo`) and `node_modules` are no output.
+ */
+function namedOutputs(command: string): string[] | undefined {
+  const dir = (w: string | undefined): string | undefined => {
+    const m = w === undefined ? null : OUTPUT_DIR.exec(w.replace(/^(["'])(.*)\1$/, '$2'))
+    if (m === null) return undefined
+    const d = m[1]!
+    return /\.[a-z]+$/i.test(d) || d.split('/').includes('node_modules') ? undefined : d
+  }
+  const flag = /\s(?:--outDir|--out-dir|--outdir|-d)[\s=](\S+)/.exec(` ${command} `)
+  const out = dir(flag?.[1])
+  if (out !== undefined) return [`${out}/**`]
+  for (const segment of command.split(/[;&|()]+/)) {
+    const words = segment.trim().split(/\s+/)
+    const at =
+      words[0] === 'rimraf' || words[0] === 'del-cli' || words[0] === 'del'
+        ? 1
+        : words[0] === 'rm' || (words[0] === 'shx' && words[1] === 'rm')
+          ? words.indexOf('rm') + 1
+          : -1
+    if (at < 0) continue
+    const args = words.slice(at).filter((w) => !w.startsWith('-'))
+    // A dir the command makes again (kit's `rm -rf ./missing_ids && mkdir
+    // ./missing_ids && vite build`) is a scratch dir it prepares, not output.
+    const made = new Set([...command.matchAll(/\bmkdir\s+(?:-p\s+)?(\S+)/g)].map((m) => dir(m[1])))
+    const dirs = args
+      .map(dir)
+      .filter((d): d is string => d !== undefined)
+      .filter((d) => !made.has(d))
+    // Every cleaned path a directory vx can name, or the guess is not this.
+    return dirs.length > 0 && dirs.length === args.filter((w) => !/\.[a-z]+$/i.test(w)).length
+      ? dirs.map((d) => `${d}/**`)
+      : undefined
+  }
+  return undefined
+}
+
+/** The cache block the task that builds `command` should declare, as a TODO on it. */
+export function cacheTodo(command: string): string {
+  // Padded, separators as spaces: `next build && …` and `(next build)` match.
+  const words = ` ${command.replace(/[;&|()]/g, ' ')} `
+  const hit = BUILD_OUTPUTS.find(([re]) => re.test(words))
+  const outputs = (hit?.[1] ?? namedOutputs(command) ?? ['dist/**']).map((o) => `'${o}'`).join(', ')
+  return `cache: add \`cache: { inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] } }\` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task`
+}
 
 // `lint` is not here: a linter reads sources, and an edge to `build`
 // serialises the two for nothing (the init walkthrough, 2026-09-04).

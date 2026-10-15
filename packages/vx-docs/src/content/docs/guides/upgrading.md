@@ -9,13 +9,17 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## orchestrator: forecast from shared per-branch task timings
+## cli: vx init writes no package.json-derived config
 
-No migration note.
+vx init hands any repo with a package.json, pnpm-workspace.yaml, turbo.json or nx.json to @vzn/vx-migrate (its report says vx-migrate:, --keep installs what it declares, both runners need bunx @vzn/vx-migrate --from); with none it writes .vx/workspace.ts declaring no plugin and an empty root vx.config.ts. @vzn/vx drops findManifestRoot, listPackages, PackageMeta and LoadReads; ApplyMigrationArgs.metas is MigrationMember[]. Run bunx @vzn/vx-migrate (--from scripts beside another source) to map scripts.
 
 ## workspace: a project is a directory with a vx.config
 
 a package.json member is no project without a vx.config or a lockfile plugin (pnpm(), bun(), npm(), yarn() add the members); a project is named by its config `name`, else a plugin's, else its path (`//` for the root); two of one name are refused. Lock version 2 is refused: re-run `vx lock`. Plugin contexts drop `packageJson`, and ProjectMeta drops `packageJson` (PackageMeta keeps it for vx init).
+
+## orchestrator: forecast from shared per-branch task timings
+
+No migration note.
 
 ## cache: core keys no package file
 

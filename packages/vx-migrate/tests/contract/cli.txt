@@ -25,3 +25,4 @@ nx-env --ready-when
 nx-env (no arguments): exit 2
 vx-migrate --from turbo
 vx-migrate --from nx
+vx-migrate --from scripts
