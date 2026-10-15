@@ -31,6 +31,9 @@ export function paint(
   colors: ColorSupport,
   opts?: PaintOptions,
 ): string
+// A project's or a target's identity hue: the name folded into one palette
+// that shares no hue with a status colour (tests/framed-output.test.ts).
+export function identityColor(name: string): string
 
 // util/report.ts
 export function gradientRule(colors: ColorSupport, mark?: string): string

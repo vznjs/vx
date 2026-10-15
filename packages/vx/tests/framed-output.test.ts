@@ -49,45 +49,55 @@ function outcome(
 }
 
 describe('identity hues never read as an outcome', () => {
-  // The module states this as a deliberate constraint: identity hues sit
-  // "outside the status palette (green / red / yellow / cyan) so a task id
-  // can never read as an outcome", and the task hue is "excluded from the
-  // project palette so the two halves always read apart". Nothing held it —
-  // painting TASK green, or a project hue red, left the whole repo green,
-  // because every rendering row runs with colours off.
-  //
-  // So it is pinned as a LAW over the constants rather than as a behaviour:
-  // the guarantee IS the disjointness, and asserting a rendered escape
-  // sequence would pin the hue values themselves, which are free to change.
-  const src = readFileSync(
-    path.resolve(import.meta.dir, '..', 'src', 'report', 'framed-output.ts'),
-    'utf8',
-  )
+  // Identity hues sit "outside the status palette (green / red / yellow /
+  // cyan) so a task id can never read as an outcome". Nothing held it —
+  // painting a project hue red left the whole repo green, because every
+  // rendering row runs with colours off. So it is pinned as a LAW over the
+  // constants: the guarantee IS the disjointness.
+  const read = (...parts: string[]) =>
+    readFileSync(path.resolve(import.meta.dir, '..', 'src', ...parts), 'utf8')
+  const src = read('report', 'framed-output.ts')
   const hue = (name: string): string => {
     const m = new RegExp(`^const ${name} = '(#[0-9a-fA-F]{6})'`, 'm').exec(src)
     if (m === null) throw new Error(`no hue constant named ${name}`)
     return m[1]!.toLowerCase()
   }
-  const projectPalette = (): string[] => {
-    const block = /const PROJECT_PALETTE = \[([\s\S]*?)\] as const/.exec(src)
-    if (block === null) throw new Error('no PROJECT_PALETTE block')
+  const identityPalette = (): string[] => {
+    const block = /const IDENTITY_PALETTE = \[([\s\S]*?)\] as const/.exec(read('util', 'colors.ts'))
+    if (block === null) throw new Error('no IDENTITY_PALETTE block')
     return [...block[1]!.matchAll(/'(#[0-9a-fA-F]{6})'/g)].map((m) => m[1]!.toLowerCase())
   }
 
   it('the identity palette and the status palette share no hue', () => {
-    const status = ['ACCENT', 'SUCCESS', 'WARN', 'ERROR', 'LOCAL', 'REMOTE'].map(hue)
-    const identity = [...projectPalette(), hue('TASK')]
+    const status = ['ACCENT', 'SUCCESS', 'WARN', 'ERROR', 'ABORTED', 'LOCAL', 'REMOTE'].map(hue)
+    const identity = identityPalette()
     // Non-vacuity: a regex that silently stopped matching would otherwise
     // pass by comparing two empty sets.
-    expect(status.length).toBe(6)
+    expect(status.length).toBe(7)
     expect(identity.length).toBeGreaterThanOrEqual(7)
     expect(identity.filter((h) => status.includes(h))).toEqual([])
   })
+})
 
-  it('the task hue is excluded from the project palette, so the halves read apart', () => {
-    const palette = projectPalette()
-    expect(palette.length).toBeGreaterThanOrEqual(6)
-    expect(palette).not.toContain(hue('TASK'))
+// M, 2026-10-15: "same project same color, same target name same color".
+describe('a target hue is a function of its name', () => {
+  const on = { enabled: true }
+  const taskPart = (s: string): string => s.slice(s.indexOf('#') + 1)
+
+  it('every #build matches every other #build, across projects', () => {
+    const builds = ['web', 'docs', '@scope/ui', 'api'].map((p) =>
+      taskPart(paintIdParts(p, p, 'build', on)),
+    )
+    expect(new Set(builds).size).toBe(1)
+    expect(builds[0]!.startsWith('\x1b[0m\x1b[38;2;')).toBe(true)
+  })
+
+  it('targets of one project take their own hues, the # dim between', () => {
+    const tasks = ['build', 'link', 'test', 'lint', 'typecheck'].map((t) =>
+      taskPart(paintIdParts('web', 'web', t, on)),
+    )
+    expect(new Set(tasks.map((t) => /38;2;[0-9;]+m/.exec(t)![0])).size).toBeGreaterThan(1)
+    expect(paintIdParts('web', 'web', 'build', on)).toContain('\x1b[2m#\x1b[0m')
   })
 })
 

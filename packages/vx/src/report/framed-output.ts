@@ -27,7 +27,13 @@
 
 import { withForwardArgs } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { formatElapsed, maskedCommand, paint, type ColorSupport } from '../util/index.js'
+import {
+  formatElapsed,
+  identityColor,
+  maskedCommand,
+  paint,
+  type ColorSupport,
+} from '../util/index.js'
 import { neverStarted } from './summary.js'
 import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
 import { fileMemo, linkPaths } from './path-links.js'
@@ -35,23 +41,13 @@ import { fileMemo, linkPaths } from './path-links.js'
 const NO_COLOR: ColorSupport = { enabled: false }
 
 const ACCENT = '#06b6d4' // cyan-500 — bullets, remote-hit hint
-// Identity hues — deliberately outside the status palette (green /
-// red / yellow / cyan) so a task id can never read as an outcome.
-// Projects hash to a stable hue (same project = same color in every
-// run, list, and region row); tasks keep one fixed hue excluded from
-// the project palette so the two halves always read apart.
+// Identity hues (`identityColor`) are outside the status palette (green /
+// red / yellow / cyan) so a task id can never read as an outcome. Each
+// half of an id hashes its own name: same project, same hue; same target,
+// same hue, in every run, list and region row.
 // Section rules + the summary rule share one frame width.
 const FRAME_WIDTH = 60
 
-const PROJECT_PALETTE = [
-  '#a78bfa', // violet-400
-  '#60a5fa', // blue-400
-  '#e879f9', // fuchsia-400
-  '#818cf8', // indigo-400
-  '#c084fc', // purple-400
-  '#93c5fd', // blue-300
-] as const
-const TASK = '#f472b6' // pink-400 — task part of an id
 const SUCCESS = '#22c55e' // green-500 — success / fresh
 const WARN = '#eab308' // yellow-500 — skipped
 const ERROR = '#ef4444' // red-500 — failed
@@ -221,18 +217,9 @@ function pushBodyLines(lines: string[], text: string): void {
   for (const line of text.replace(/\n$/, '').split('\n')) lines.push(line)
 }
 
-/** Stable per-project hue: FNV-style fold of the name into the palette. */
-function projectColor(projectName: string): string {
-  let h = 0
-  for (let i = 0; i < projectName.length; i++) {
-    h = (h * 31 + projectName.charCodeAt(i)) >>> 0
-  }
-  return PROJECT_PALETTE[h % PROJECT_PALETTE.length]!
-}
-
 /**
- * `project#task` halves in distinct identity hues (never status
- * colors); the dim separator keeps them reading apart. `hueSource`
+ * `project#task` halves, each in its name's identity hue (never a status
+ * color); the dim separator keeps them reading apart. `hueSource`
  * exists for truncated display strings: the hue must hash from the
  * FULL project name so it survives truncation.
  */
@@ -245,9 +232,9 @@ export function paintIdParts(
 ): string {
   const dim = (t: string) => paint('', t, colors, { dim: true })
   return (
-    paint(projectColor(hueSource), projectText, colors, opts) +
+    paint(identityColor(hueSource), projectText, colors, opts) +
     dim('#') +
-    paint(TASK, taskText, colors, opts)
+    paint(identityColor(taskText), taskText, colors, opts)
   )
 }
 
