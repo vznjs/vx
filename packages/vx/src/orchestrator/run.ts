@@ -1544,7 +1544,6 @@ async function runOnBus(
     // nothing the suite could see, because this gate is the rule.
     await cache.drainUploads?.()
     const report = await keepRunBytes(list)
-    mark('run bytes')
     // Hand the per-run summary to the telemetry sinks + drain them. Only
     // when a sink is active (telemetry !== undefined) — otherwise this
     // whole block is skipped and the run is byte-identical to before.

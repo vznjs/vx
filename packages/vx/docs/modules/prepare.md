@@ -22,6 +22,7 @@ export interface PreparedRun {
   priorities: ReadonlyMap<string, number> // the `schedule` stage's weights; empty without one
   branch: () => string | null // the run's branch: history records it, a forecast reads it first; learned once on first ask
   cacheFor: (plugin: string) => PluginCache // each plugin's `ctx.cache`: the run's layers under its policy and scope
+  keepRunEntry: ((name: string, bytes: Uint8Array) => Promise<boolean>) | undefined // keep run bytes in the writing remotes (run-store.ts); undefined when none writes
   nodes: Map<string, TaskNode> // empty if `empty !== null`
   keyOnly: ReadonlyMap<string, TaskNode> // what --exclude-dependencies keyed but did not schedule
   /**

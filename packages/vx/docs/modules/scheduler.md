@@ -50,6 +50,7 @@ export interface TaskOutcome {
   blockedBy?: string // skipped: the failed or aborted task at the root of the block
   timedOut?: true // failed: vx's own `timeout` killed the final attempt
   failedOutput?: string // failed command: its output log (output-log.ts), first 8 KiB + last 56 KiB, masked
+  runLog?: string // run keeps bytes in a remote and this task saved no entry: its whole output log, masked
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
   inputMoved?: string // failed by inputStability.severity 'error': the input that changed ('' unnamed)
   where?: string // executor-reported placement, when not this host (telemetry-only)

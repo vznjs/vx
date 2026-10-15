@@ -93,6 +93,25 @@ and every task (`id`, `status`, `durationMs`, `key`, and `log` /
 `outputs` names when kept). `ctx.cache.getRun(name)` reads one from the
 first readable remote. Core writes no manifest: a plugin that wants a
 run record writes one from the report with `ctx.cache.put`.
+
+```ts
+interface RunReport {
+  runId: string
+  commit: string | null
+  ciRun: CiContext
+  ok: boolean
+  tasks: readonly RunReportTask[]
+}
+interface RunReportTask {
+  id: string
+  status: TaskStatus
+  durationMs: number
+  key?: string
+  log?: string
+  outputs?: string
+}
+```
+
 `tests/plugin-run-facts.test.ts`; `tests/plugin-run-record.test.ts` builds
 a run explorer's record on this API and reads it back through a verb.
 
