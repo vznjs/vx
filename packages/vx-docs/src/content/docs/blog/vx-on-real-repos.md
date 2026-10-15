@@ -63,8 +63,8 @@ Turborepo, 4.77 s vx.
 
 With `cache: { outputs: { clean: false } }` in `.vx/workspace.ts`, tsc
 keeps its build info and vx caches whatever the outputs hold. Both edit
-cells above come from that rerun (vx main f094a70, after 0.0.637; same
-machine shape, min of 3).
+cells above come from that rerun (vx f094a70, released in 0.0.638;
+same machine shape, min of 3).
 :::
 
 ### react-email vs Turborepo 2.9.14
