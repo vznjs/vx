@@ -1260,7 +1260,8 @@ export type RunEvent =
   | { kind: 'task:stdout'; node: TaskNode; chunk: string }
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
-  | { kind: 'run:status'; line: string; warn?: true }
+  | { kind: 'run:status'; line: string }
+  | { kind: 'run:status'; line: string; warn: true }
   | { kind: 'step:start'; id: string }
   | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }

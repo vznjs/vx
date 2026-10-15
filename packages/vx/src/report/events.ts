@@ -49,8 +49,9 @@ export type RunEvent =
   | { kind: 'task:stdout'; node: TaskNode; chunk: string }
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
-  /** `warn`: a warning, which the terminal prints on stderr. */
-  | { kind: 'run:status'; line: string; warn?: true }
+  | { kind: 'run:status'; line: string }
+  /** A warning, which the terminal prints on stderr. */
+  | { kind: 'run:status'; line: string; warn: true }
   | { kind: 'step:start'; id: string }
   | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
@@ -169,7 +170,7 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
         sink.taskComplete(event.node, event.outcome)
         return
       case 'run:status':
-        if (event.warn === true && sink.warn !== undefined) sink.warn(event.line)
+        if ('warn' in event && sink.warn !== undefined) sink.warn(event.line)
         else sink.status(event.line)
         return
       case 'step:start':
@@ -460,8 +461,9 @@ export type WireEvent =
   | { kind: 'task:stdout'; taskId: string; chunk: string }
   | { kind: 'task:stderr'; taskId: string; chunk: string }
   | { kind: 'task:complete'; outcome: OutcomeView }
-  /** `warn`: a warning, which the terminal prints on stderr. */
-  | { kind: 'run:status'; line: string; warn?: true }
+  | { kind: 'run:status'; line: string }
+  /** A warning, which the terminal prints on stderr. */
+  | { kind: 'run:status'; line: string; warn: true }
   | { kind: 'step:start'; id: string }
   | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
@@ -481,7 +483,7 @@ export function toWireEvent(event: RunEvent): WireEvent {
     case 'task:complete':
       return { kind: 'task:complete', outcome: projectOutcome(event.outcome) }
     case 'run:status':
-      return event.warn === true
+      return 'warn' in event
         ? { kind: 'run:status', line: event.line, warn: true }
         : { kind: 'run:status', line: event.line }
     case 'step:start':
