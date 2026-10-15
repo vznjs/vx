@@ -1019,29 +1019,6 @@ function changedSince(
 }
 
 /**
- * Is any file `before` stamped still there, unchanged? Under
- * `cache.outputs.clean: false` such a file is one the run found and never
- * wrote, so no entry may claim it as the run's output.
- */
-export function anyUntouched(before: ReadonlyMap<string, OutputStamp>): boolean {
-  for (const [f, was] of before) {
-    try {
-      const st = lstatSync(f)
-      if (
-        st.size === was.size &&
-        st.mtimeMs === was.mtimeMs &&
-        st.ino === was.ino &&
-        st.ctimeMs === was.ctimeMs
-      )
-        return true
-    } catch {
-      // Removed by the run: nothing of it is left to claim.
-    }
-  }
-  return false
-}
-
-/**
  * Up to this many paths, a clean removes synchronously: the threadpool round
  * trip per `rm`/`rmdir` cost more than the unlink itself, 0.30 ms against
  * 0.13 for one file and 1.7 against 1.5 for 128 (min of 7). Past a few

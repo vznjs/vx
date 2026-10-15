@@ -163,9 +163,6 @@ export async function ownWorkspaceOutputsSince(
   args: { workspaceRoot: string; outputs: readonly string[] },
   before: ReadonlyMap<string, OutputStamp>,
 ): Promise<string[] | undefined>
-// `cache.outputs.clean: false`: true while a stamped file survives with
-// its stamp unchanged, so the save is withheld.
-export function anyUntouched(before: ReadonlyMap<string, OutputStamp>): boolean
 export async function cleanOutputPaths(args: {
   projectDir: string
   rels: readonly string[]

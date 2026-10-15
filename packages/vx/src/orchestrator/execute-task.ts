@@ -5,7 +5,6 @@ import {
   type CacheEntry,
   type CacheLayer,
   type CachePolicy,
-  anyUntouched,
   cleanOutputs,
   committedFiles,
   cleanWorkspaceOutputs,
@@ -977,11 +976,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let stampedBefore: ReadonlyMap<string, OutputStamp> | undefined
   let wsStampedBefore: ReadonlyMap<string, OutputStamp> | undefined
   // `cache.outputs.clean: false` leaves the outputs to the first attempt's
-  // command, stamped, so a save can tell what it found and never wrote.
-  // An additive task never cleans by glob anyway.
+  // command, and the save stores whatever they hold after it, a leftover
+  // included: the user opted out of the clean-tree guarantee (M,
+  // 2026-10-15). A retry still starts clean. An additive task never cleans
+  // by glob anyway.
   const keepOutputs = !additive && (cacheCfg?.outputs.clean ?? args.cleanOutputs ?? true) === false
-  let keptBefore: ReadonlyMap<string, OutputStamp> | undefined
-  let wsKeptBefore: ReadonlyMap<string, OutputStamp> | undefined
 
   // Cache lookup. On hit, time the user-perceived restore op
   // (clean+restore+log-replay) — that's what the framed-block footer
@@ -1148,6 +1147,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     exitCode: number
     withdrawn?: true
   }> {
+    // The first attempt under `clean: false` finds its last outputs (tsc's `.tsbuildinfo`).
+    const clean = willWrite && !deferralRequested && !(keepOutputs && attempt === 1)
     // A deferred task's outputs are deliberately NOT coming, so wiping the
     // tree would replace a stale build with nothing at all. The eligibility
     // gate guarantees no key in this run can see what stays behind, and the
@@ -1156,16 +1157,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       const endStamp = span('miss: stamp outputs')
       stampedBefore ??= await stampOutputs(cleanArgs)
       endStamp()
-    } else if (
-      keepOutputs &&
-      attempt === 1 &&
-      willWrite &&
-      !deferralRequested &&
-      outputs.length > 0
-    ) {
-      keptBefore = await stampOutputs(cleanArgs)
-    } else if (willWrite && !deferralRequested && outputs.length > 0) {
-      keptBefore = undefined
+    } else if (clean && outputs.length > 0) {
       // Mark the wiped paths, exactly as the workspace twin below does. The
       // git snapshot still lists them with their committed index OIDs, and
       // resolveFiles SKIPS its existence probe for any path carrying a
@@ -1182,16 +1174,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       // glob clean deleted the upstream's files before this task, which
       // reads them, ran (A-43).
       wsStampedBefore ??= await stampWorkspaceOutputs(wsCleanArgs)
-    } else if (
-      keepOutputs &&
-      attempt === 1 &&
-      willWrite &&
-      !deferralRequested &&
-      wsOutputs.length > 0
-    ) {
-      wsKeptBefore = await stampWorkspaceOutputs(wsCleanArgs)
-    } else if (willWrite && !deferralRequested && wsOutputs.length > 0) {
-      wsKeptBefore = undefined
+    } else if (clean && wsOutputs.length > 0) {
       // Root-anchored deletions can land in other projects' dirs; mark
       // them so stale per-project git snapshots can't survive the wipe.
       const cleanedWsRels = await cleanWorkspaceOutputs(wsCleanArgs)
@@ -1580,7 +1563,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   } else if (
     effectiveExitCode === 0 &&
     willSave &&
-    !leftBehind() &&
     (await keyStillTrue()) &&
     (own = await ownOutputs()) !== undefined
   ) {
@@ -1640,18 +1622,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         wsOutputs,
       })
     }
-  }
-
-  /**
-   * A file the kept outputs held that the run left as it was: saving would
-   * file a leftover from an older build as this run's output, so nothing is
-   * saved (`cache.outputs.clean: false`).
-   */
-  function leftBehind(): boolean {
-    return (
-      (keptBefore !== undefined && anyUntouched(keptBefore)) ||
-      (wsKeptBefore !== undefined && anyUntouched(wsKeptBefore))
-    )
   }
 
   /**

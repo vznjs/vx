@@ -1,7 +1,7 @@
 // `cache.outputs.clean: false` (M, 2026-10-15): a miss leaves the declared
-// outputs in place for the command (tsc's `.tsbuildinfo`), and an entry
-// still only ever holds a tree a clean run would leave: a save is withheld
-// while a file the run found survives untouched.
+// outputs in place for the command (tsc's `.tsbuildinfo`), and the save
+// stores every file the outputs match after the run, a leftover included.
+// "You opt out of security" (M, 07:44): the clean-tree guarantee is off.
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -45,7 +45,7 @@ describe('cache.outputs.clean', () => {
   }
 
   it(
-    'false: a miss keeps what the outputs held, and withholds the save while it survives untouched',
+    'false: a miss keeps what the outputs held, and saves all of it, a leftover included',
     async () => {
       const dir = await addProject(f.root, 'app', {
         files: { 'src/a.txt': 'v1' },
@@ -55,9 +55,12 @@ describe('cache.outputs.clean', () => {
       expect(await build()).toBe('success')
       expect(await readFile(path.join(dir, 'dist/.tsbuildinfo'), 'utf8')).toBe('incremental')
       expect(existsSync(path.join(dir, 'dist/old.txt'))).toBe(true)
-      // Nothing was saved: `old.txt` is no output of this run, and an entry
-      // holding it would replay it on a machine that never built it.
-      expect(await build()).toBe('success')
+      expect(await build()).toBe('cache-hit')
+      // The leftover is in the entry: a restore on a clean tree brings it back.
+      await rm(path.join(dir, 'dist'), { recursive: true, force: true })
+      expect(await build()).toBe('cache-hit')
+      expect(await readFile(path.join(dir, 'dist/old.txt'), 'utf8')).toBe('stale')
+      expect(await readFile(path.join(dir, 'dist/a.txt'), 'utf8')).toBe('v1')
     },
     TIMEOUT,
   )
