@@ -23,7 +23,9 @@ describe.skipIf(process.platform !== 'linux')('ownRssHighWater on Linux', () => 
     let hold: Uint8Array | undefined = new Uint8Array(200 * MB).fill(1)
     expect(hold[5]).toBe(1)
     hold = undefined
-    for (let i = 0; i < 20 && status('VmRSS') > status('VmHWM') - 100 * MB; i++) {
+    // Up to 2 s: a busy CI runner returned the pages after more than 0.5 s
+    // (135 MB resident of a 235 MB peak, 28 kB short of the bar).
+    for (let i = 0; i < 80 && status('VmRSS') > status('VmHWM') - 100 * MB; i++) {
       Bun.gc(true)
       await Bun.sleep(25)
     }
