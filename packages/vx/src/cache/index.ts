@@ -15,6 +15,7 @@ export {
   type CachePolicy,
   cachesNothing,
   EXECUTED_RUNS_SQL,
+  formatCachePolicy,
   FULL_CACHE_POLICY,
   type InvocationRecord,
   KEYED_RUNS_SQL,

@@ -64,7 +64,7 @@ interface RunContextRecord {
   vxVersion: string
   command: string // the command line; what follows `--` counted, never quoted
   requestedTasks: readonly string[]
-  cachePolicy: string // e.g. 'lR,lW,rR,rW'
+  cachePolicy: string // the --cache-policy spec, e.g. 'local:rw,remote:r'
   concurrency: number
   flow: 'focused' | 'broad' | null
   workspaceId: string // from the normalized git remote (v2)

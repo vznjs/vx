@@ -1634,7 +1634,7 @@ CREATE TABLE invocations (
   run_id            TEXT PRIMARY KEY,         -- UUIDv7, == runs.run_id
   command           TEXT NOT NULL,            -- full argv, e.g. "vx run build --all"
   requested_tasks   TEXT NOT NULL,            -- JSON string[] of options.tasks
-  cache_policy      TEXT NOT NULL,            -- compact flags, e.g. "lR,lW,rR,rW"
+  cache_policy      TEXT NOT NULL,            -- the --cache-policy spec, e.g. "local:rw,remote:r"
   concurrency       INTEGER NOT NULL,
   flow              TEXT,                     -- 'focused' | 'broad' | NULL (programmatic)
   started_at        INTEGER NOT NULL,         -- ms-epoch

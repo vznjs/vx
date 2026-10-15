@@ -306,11 +306,12 @@ export interface AffectedChanges {
   changed: readonly string[]
   paths: ReadonlyMap<string, readonly string[]>
   whole: ReadonlySet<string>
+  wholeBy?: ReadonlyMap<string, string>
   nested?: readonly string[]
 }
 == type AffectedReason (src/orchestrator/affected-tasks.ts)
 export interface AffectedReason {
-  kind: 'input' | 'project' | 'package' | 'named' | 'selected'
+  kind: 'input' | 'project' | 'workspace' | 'package' | 'named' | 'selected'
   file?: string
   project?: string
   via?: string[]

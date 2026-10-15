@@ -807,13 +807,25 @@ describe('planRun() — the plan describes the run you will get', () => {
       }> = [
         // Remote axes clamped off (no remote layer), local axes survive.
         // `entries` counts BOTH cacheable tasks of the fixture graph.
-        { name: 'full', policy: FULL, plan: 'miss', recorded: 'lR,lW', entries: 2 },
-        { name: '--no-cache', policy: NO_CACHE, plan: 'no-cache', recorded: '', entries: 0 },
+        { name: 'full', policy: FULL, plan: 'miss', recorded: 'local:rw,remote:', entries: 2 },
+        {
+          name: '--no-cache',
+          policy: NO_CACHE,
+          plan: 'no-cache',
+          recorded: 'local:,remote:',
+          entries: 0,
+        },
         // Nothing is READ, so a plan claiming a hit would describe a run that
         // cannot happen; but writes refresh the cache, so it is a miss that
         // saves, not no-cache (item 991: the two entries below said so).
-        { name: '--force', policy: FORCE, plan: 'miss', recorded: 'lW', entries: 2 },
-        { name: 'local:r', policy: LOCAL_READ_ONLY, plan: 'miss', recorded: 'lR', entries: 0 },
+        { name: '--force', policy: FORCE, plan: 'miss', recorded: 'local:w,remote:', entries: 2 },
+        {
+          name: 'local:r',
+          policy: LOCAL_READ_ONLY,
+          plan: 'miss',
+          recorded: 'local:r,remote:',
+          entries: 0,
+        },
         // THE regression: reading the raw request here labelled this run
         // "cache miss — would exec" (a result that will be stored) for a run
         // in which caching is entirely off.
@@ -821,7 +833,7 @@ describe('planRun() — the plan describes the run you will get', () => {
           name: 'local:,remote:rw',
           policy: REMOTE_ONLY,
           plan: 'no-cache',
-          recorded: '',
+          recorded: 'local:,remote:',
           entries: 0,
         },
       ]
@@ -861,7 +873,7 @@ describe('planRun() — the plan describes the run you will get', () => {
         // The invariant behind the table: every fixture task has a `cache`
         // block, so the plan says "no-cache" exactly when the policy the RUN
         // recorded has no axis at all, read or write (item 991).
-        const anyAxis = inv.cache_policy !== ''
+        const anyAxis = inv.cache_policy !== 'local:,remote:'
         expect(`${label}: cached=${anyAxis}`).toBe(`${label}: cached=${c.plan !== 'no-cache'}`)
       }
     },

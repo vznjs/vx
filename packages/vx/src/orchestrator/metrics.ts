@@ -21,6 +21,10 @@ import { clampInt, MASKED, secretNamed } from '../util/index.js'
 import type { TaskInputComponent } from './task-hash.js'
 import { isPassStatus } from './telemetry.js'
 
+// A recorded `cache_policy` is the `--cache-policy` spec (`local:rw,remote:r`).
+const readsCache = (spec: string): boolean => /(?:^|,)(?:local|remote):w?r/.test(spec)
+const writesCache = (spec: string): boolean => /(?:^|,)(?:local|remote):r?w/.test(spec)
+
 // ---------------------------------------------------------------------------
 // Run listing + detail
 // ---------------------------------------------------------------------------
@@ -412,7 +416,7 @@ function unchangedKeyNote(
       p: string
     } | null
   )?.p
-  if (policy !== undefined && !policy.split(',').some((axis) => axis === 'lR' || axis === 'rR')) {
+  if (policy !== undefined && !readsCache(policy)) {
     return 'cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)'
   }
   // `get` answers null, not undefined, for no row.
@@ -438,7 +442,7 @@ function unchangedKeyNote(
       const row = db
         .query('SELECT cache_policy AS p, failed_count AS f FROM invocations WHERE run_id = ?')
         .get(id) as { p: string; f: number } | null
-      const writes = row?.p.split(',').some((axis) => axis === 'lW' || axis === 'rW') === true
+      const writes = row !== null && writesCache(row.p)
       return writes ? (row?.f ?? 0) : 0
     }
     const before = failedWithWrites(prev.runId)
@@ -472,7 +476,7 @@ function unchangedKeyNote(
               p: string
             } | null
           )?.p
-    if (prevPolicy !== undefined && !prevPolicy.split(',').some((a) => a === 'lW' || a === 'rW')) {
+    if (prevPolicy !== undefined && !writesCache(prevPolicy)) {
       return 'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit'
     }
     return 'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'

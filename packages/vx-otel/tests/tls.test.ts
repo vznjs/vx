@@ -69,7 +69,7 @@ const RUN = {
   workspaceName: 'w',
   command: 'vx run build',
   requestedTasks: ['build'],
-  cachePolicy: 'lR',
+  cachePolicy: 'local:r,remote:',
   concurrency: 1,
   flow: 'focused',
   commitSha: 'abc',

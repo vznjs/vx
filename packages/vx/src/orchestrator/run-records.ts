@@ -27,7 +27,7 @@ export interface RunRecordsInput {
   ok: boolean
   command: string
   requestedTasks: readonly string[]
-  /** Already compacted (`compactCachePolicy`), the form the header row stores. */
+  /** Already formatted (`formatCachePolicy`), the form the header row stores. */
   cachePolicy: string
   concurrency: number
   flow: InvocationRecord['flow']

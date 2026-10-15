@@ -41,7 +41,7 @@ const invocation = (runId: string): InvocationRecord => ({
   runId,
   command: 'vx run build',
   requestedTasks: '["build"]',
-  cachePolicy: 'lR,lW',
+  cachePolicy: 'local:rw,remote:',
   concurrency: 4,
   flow: null,
   startedAt: 1_000,

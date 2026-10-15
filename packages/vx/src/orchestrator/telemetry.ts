@@ -117,7 +117,7 @@ export interface RunContextRecord {
   /** The invocation command line (process.argv-derived), what follows `--` counted, not quoted. */
   command: string
   requestedTasks: readonly string[]
-  /** Compact cache-policy flags, e.g. `'lR,lW,rR,rW'`. */
+  /** The `--cache-policy` spec, e.g. `'local:rw,remote:r'`. */
   cachePolicy: string
   concurrency: number
   flow: 'focused' | 'broad' | null

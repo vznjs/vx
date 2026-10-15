@@ -37,7 +37,7 @@ function invocation(runId: string, startedAt: number): InvocationRecord {
     runId,
     command: 'vx run',
     requestedTasks: '[]',
-    cachePolicy: 'lR,lW',
+    cachePolicy: 'local:rw,remote:',
     concurrency: 1,
     flow: null,
     startedAt,

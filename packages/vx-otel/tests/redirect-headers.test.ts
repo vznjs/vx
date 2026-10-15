@@ -14,7 +14,7 @@ const RUN: RunContextRecord = {
   workspaceName: 'ws',
   command: 'vx run b',
   requestedTasks: ['b'],
-  cachePolicy: 'lR,lW',
+  cachePolicy: 'local:rw,remote:',
   concurrency: 1,
   flow: 'focused',
   commitSha: 'abc',

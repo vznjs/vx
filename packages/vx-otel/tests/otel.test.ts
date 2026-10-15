@@ -30,7 +30,7 @@ const RUN: RunContextRecord = {
   workspaceName: 'fixture-ws',
   command: 'vx run build',
   requestedTasks: ['build'],
-  cachePolicy: 'lR,lW,rR,rW',
+  cachePolicy: 'local:rw,remote:rw',
   concurrency: 4,
   flow: 'focused',
   commitSha: 'abc123',
@@ -1008,7 +1008,7 @@ describe('OTLP losslessness', () => {
     expect(a['vx.default_branch']).toBe('main')
     expect(a['vx.command']).toBe('vx run build')
     expect(a['vx.requested_tasks']).toBe('build')
-    expect(a['vx.cache_policy']).toBe('lR,lW,rR,rW')
+    expect(a['vx.cache_policy']).toBe('local:rw,remote:rw')
     expect(a['vx.concurrency']).toBe('4')
     expect(a['vx.flow']).toBe('focused')
     expect(a['vcs.ref.head.revision']).toBe('abc123')
