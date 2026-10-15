@@ -384,7 +384,7 @@ describe('run-level knobs are never folded into a cache key', () => {
     "a run with every scheduling/presentation knob set HITS a plain run's entry",
     async () => {
       // `--retry` and `--timeout` have their own single-knob pins; concurrency,
-      // continueMode, flow, outputLogs, tags and command have none.
+      // continueMode, flow, outputLogs and command have none.
       // Setting all of them at once is the cheap invariant: these describe HOW
       // a run is executed and reported, never WHAT it computes, so the key must
       // not move. Folding any one of them in turns this into `'success'`.
@@ -418,7 +418,6 @@ describe('run-level knobs are never folded into a cache key', () => {
         continueMode: 'always',
         flow: 'broad',
         outputLogs: 'none',
-        tags: { ci: 'nightly', shard: '3' },
         command: 'vx run build --retry 3',
         log: capturingLogger({ root: fixture.root, out: [], err: [] }),
       })

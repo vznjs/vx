@@ -287,7 +287,6 @@ traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.restored_rem
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.started_at: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.task_count: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.run.up_to_date_count: intValue
-traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.tag.env: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.telemetry.schema: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.version: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.run].attributes.vx.workspace.id: stringValue

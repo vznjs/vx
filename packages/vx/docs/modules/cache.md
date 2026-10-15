@@ -228,7 +228,6 @@ export interface InvocationRecord {
   os: string | null
   arch: string | null
   vxVersion: string
-  tags: string // JSON object {k:v}
 }
 
 // (Tier 3) One cache-key component row for `entry_inputs`, keyed by the
@@ -304,7 +303,7 @@ export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v38'
+export const SCHEMA_VERSION = 'v39'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -579,7 +578,7 @@ Reads via `get()` are non-blocking thanks to WAL.
 
 `recordRunBundle()` is the one run-history write: one `runs` row for
 every task — cache hits and misses, successes and failures — and one
-`invocations` header row (command, git/CI/host context, tags, run-level
+`invocations` header row (command, git/CI/host context, run-level
 counts) **atomically in one transaction**, with one shared-store
 `task_durations` row per executed success, tagged `branchSource(branch)`
 (`'branch:<name>'`, `'branch:'` with none) and the commit: what a
@@ -630,7 +629,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v43'`; `SCHEMA_VERSION` is
-`'v38'`. Bump `CACHE_VERSION` when:
+`'v39'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

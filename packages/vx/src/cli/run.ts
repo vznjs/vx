@@ -74,8 +74,6 @@ export interface RunArgs {
    * `defaultAffectedBase`). Any other string is an explicit git ref.
    */
   affected: string | undefined
-  /** `--tag k=v` pairs (repeatable). Empty key is a parse error. */
-  tags: Record<string, string>
   error?: string
 }
 
@@ -136,7 +134,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     dry: undefined,
     profile: undefined,
     affected: undefined,
-    tags: {},
   }
 
   // A Turbo or Nx spelling becomes vx's, or a refusal naming vx's.
@@ -292,13 +289,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       out.affected = ''
     } else if (a?.startsWith('--affected=')) {
       out.affected = a.slice('--affected='.length)
-    } else if (a === '--tag' || a?.startsWith('--tag=')) {
-      const raw = a === '--tag' ? before[++i] : a.slice('--tag='.length)
-      if (raw === undefined) return { ...out, error: `${a} requires a value (k=v)` }
-      // Split on the FIRST `=` so values may contain `=` (e.g. a URL).
-      const eq = raw.indexOf('=')
-      if (eq <= 0) return { ...out, error: `--tag must be k=v (got ${raw})` }
-      out.tags[raw.slice(0, eq)] = raw.slice(eq + 1)
     } else if (verb === 'watch' && a === '--poll') {
       out.poll = true
     } else if (a !== undefined && settingFlagOf(a) !== undefined) {
@@ -537,7 +527,6 @@ export async function resolveRunOptions(
     if (parsed.settings[path] !== undefined) Object.assign(opts, { [field]: parsed.settings[path] })
   }
   if (parsed.profile !== undefined) opts.profile = parsed.profile
-  if (Object.keys(parsed.tags).length > 0) opts.tags = parsed.tags
 
   return opts
 }

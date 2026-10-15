@@ -309,7 +309,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //   v38: blob_sizes moved to the store, and the store's task_outcomes
 //        holds the flaky record, so worktrees share both. The cache KEY is
 //        unchanged.
-export const SCHEMA_VERSION = 'v38'
+//   v39: invocations drops `tags` (`--tag` is gone). The cache KEY is
+//        unchanged.
+export const SCHEMA_VERSION = 'v39'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON

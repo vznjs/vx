@@ -1048,7 +1048,7 @@ describe('the otel guide names attributes the exporter actually emits', () => {
     expect(emitted.size).toBeGreaterThan(30)
     const page = section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'OpenTelemetry')
     // Backticked attribute names only, and not the prefixes it shows as
-    // shapes (`vx.tag.<k>`, `vx.log.*`) or the workspace file's name.
+    // shapes (`vx.log.*`) or the workspace file's name.
     const named = [...page.matchAll(/`(vx\.[a-z_.]+)`/g)]
       .map((m) => m[1]!)
       .filter((n) => n !== '.vx/workspace.ts' && !n.endsWith('.'))

@@ -40,7 +40,6 @@ const RUN: RunContextRecord = {
   host: null,
   os: 'linux',
   arch: 'x64',
-  tags: {},
 }
 
 function silentLogger() {

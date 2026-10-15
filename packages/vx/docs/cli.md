@@ -495,7 +495,6 @@ than run with the args unheard.
 | `--verbosity <n>`                          | int (0+)       | `0`                                                        | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--dry[=text\|json]`                       | optional value | off                                                        | Print the task graph + predicted cache hit/miss; skip execution. `VX_DEBUG_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                              | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `--tag <k=v>`                              | repeatable     | (none)                                                     | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 Mutual exclusion:
 
@@ -1041,15 +1040,6 @@ from the per-task `hrtime.bigint()` spans the runner captures.
 `cache-hit-remote`, `failed`).
 
 Default path: `profile.json` (cwd-relative).
-
-### `--tag <k=v>`
-
-Labels the invocation. Repeatable; `--tag=k=v` form too. The pair is
-split on the **first** `=`, so values may contain `=` (e.g. a URL). An
-empty key is a parse error. Tags are recorded on the run's
-`invocations` row so dashboards can filter runs by label, and reach
-telemetry as `vx.tag.<key>`; a secret value in one is masked there as
-in the task's output (see [Masking](./schema.md)).
 
 ## Sandbox
 
@@ -2381,7 +2371,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v43 · index schema v38
+  cache versions    keys vx-cache-v43 · index schema v39
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -3124,7 +3114,7 @@ consult).
 size, runs + hits in the last 24 h). For anything deeper, vx records
 every task to a `runs` table in `cache.db` (UUIDv7 `run_id`, hrtime
 wallclock spans, cpu_ms, peak RSS, status, cache_hit flag) plus one
-`invocations` header row per run (command, git/CI context, tags,
+`invocations` header row per run (command, git/CI context,
 counts). The SQLite file IS the API:
 
 ```sh

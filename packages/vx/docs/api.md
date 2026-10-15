@@ -829,7 +829,6 @@ export interface InvocationRecord {
   os: string | null
   arch: string | null
   vxVersion: string
-  tags: string
 }
 ```
 
@@ -1798,7 +1797,6 @@ export interface RunContextRecord {
   host: string | null
   os: string
   arch: string
-  tags: Readonly<Record<string, string>>
 }
 ```
 
@@ -1848,7 +1846,6 @@ export interface RunOptions {
   log?: Logger
   bus?: EventBus
   inflight?: Map<string, Promise<void>>
-  tags?: Record<string, string>
   telemetrySinks?: readonly TelemetrySink[]
   command?: string
   remoteCache?: RemoteCacheLayer
@@ -2431,7 +2428,7 @@ const · `src/orchestrator/telemetry.ts`
 Bumped when the record shape changes. Readers MUST check `v`.
 
 ```ts
-export const TELEMETRY_SCHEMA_VERSION = 3
+export const TELEMETRY_SCHEMA_VERSION = 4
 ```
 
 ## `TelemetryContext`

@@ -36,7 +36,6 @@ export interface RunArgs {
   dry: 'text' | 'json' | undefined
   profile: string | undefined // 'profile.json' default
   affected: string | undefined // '' = default base; else ref
-  tags: Record<string, string> // --tag k=v, onto the run record
   error?: string // parser-error message
 }
 

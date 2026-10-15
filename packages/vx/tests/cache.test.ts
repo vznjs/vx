@@ -2748,7 +2748,6 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       os: 'linux',
       arch: 'x64',
       vxVersion: '0.0.0',
-      tags: JSON.stringify({ team: 'core' }),
     }
   }
 
@@ -2814,7 +2813,6 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       expect(inv.exit_ok).toBe(1)
       expect(inv.hit_local_count).toBe(1)
       expect(inv.hit_remote_count).toBe(0)
-      expect(inv.tags).toBe(JSON.stringify({ team: 'core' }))
 
       // recordRunBundle does NOT touch entry_inputs — those ride the
       // save transaction (a warm run that only hits writes none).

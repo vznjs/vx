@@ -109,7 +109,6 @@ const VX_ATTR = {
   version: 'vx.version',
   dirty: 'vx.dirty',
   defaultBranch: 'vx.default_branch',
-  tagPrefix: 'vx.tag.',
   // run summary (root span only)
   runStartedAt: 'vx.run.started_at',
   runEndedAt: 'vx.run.ended_at',
@@ -395,7 +394,6 @@ export function runSpanAttributes(run: RunContextRecord, summary?: RunSummaryRec
   if (run.dirty !== null) attrs.push(boolAttr(VX_ATTR.dirty, run.dirty))
   if (run.ciProvider !== null) attrs.push(strAttr(VX_ATTR.ciProvider, run.ciProvider))
   if (run.host !== null) attrs.push(strAttr(VX_ATTR.host, run.host))
-  for (const [k, v] of Object.entries(run.tags)) attrs.push(strAttr(`${VX_ATTR.tagPrefix}${k}`, v))
   if (summary !== undefined) {
     attrs.push(
       intAttr(VX_ATTR.runStartedAt, summary.startedAt),

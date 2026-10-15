@@ -100,7 +100,6 @@ const invocation: InvocationRecord = {
   os: 'linux',
   arch: 'x64',
   vxVersion: '0.0.0',
-  tags: '{}',
 }
 
 it("a run's history waits for another process's write lock", async () => {

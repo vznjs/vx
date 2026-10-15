@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v38",
+    "version": "v39",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -106,8 +106,7 @@
       "host              TEXT,",
       "os                TEXT,",
       "arch              TEXT,",
-      "vx_version        TEXT NOT NULL,",
-      "tags              TEXT NOT NULL DEFAULT '{}'",
+      "vx_version        TEXT NOT NULL",
       ")",
       "",
       "CREATE TABLE output_dirs (",

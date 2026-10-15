@@ -41,10 +41,7 @@ describe('paintHelp', () => {
     const artifacts = helpText()
       .split('\n\n')
       .find((b) => b.startsWith('Artifacts'))!
-    expect(painted(paintHelp(artifacts, ON, paint), '#22d3ee')).toEqual([
-      '--profile[=<path>]',
-      '--tag <k=v>',
-    ])
+    expect(painted(paintHelp(artifacts, ON, paint), '#22d3ee')).toEqual(['--profile[=<path>]'])
     const selection = helpText()
       .split('\n\n')
       .find((b) => b.startsWith('Selection'))!

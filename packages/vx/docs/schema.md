@@ -609,7 +609,7 @@ replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, the hashes `vx why` gives for such a variable in
 `cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error, a plugin's warning or failure (a remote's reply; the failure masked in the error `run()` rejects with), a failed `cache.inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
-secret passed after `--`) and its `--tag`s. So are every string of a
+secret passed after `--`). So are every string of a
 task `vx show` prints (a runtime probe, `readyWhen`, the description),
 the description `--dry` and the task picker print, a runtime probe's
 command as the run history stores it and `vx why` names its row (two

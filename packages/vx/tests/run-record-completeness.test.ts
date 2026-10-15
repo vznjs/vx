@@ -256,7 +256,6 @@ function mkInvocation(runId: string): InvocationRecord {
     os: 'linux',
     arch: 'x64',
     vxVersion: '0.0.0',
-    tags: '{}',
   }
 }
 

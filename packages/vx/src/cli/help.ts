@@ -193,8 +193,6 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '',
     'Artifacts (for run):',
     '      --profile[=<path>]    Write Chrome-trace JSON (default profile.json).',
-    '      --tag <k=v>           Label this invocation (repeatable); recorded on its',
-    '                            history row.',
     '',
     'Extensions (plugins):',
     '  vx core runs tasks in-process and nothing else. A dashboard, remote',

@@ -26,7 +26,6 @@ const RUN: RunContextRecord = {
   host: 'h',
   os: 'linux',
   arch: 'x64',
-  tags: {},
 }
 
 let srv: ReturnType<typeof Bun.serve>

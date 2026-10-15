@@ -43,7 +43,6 @@ function input(outcomes: TaskOutcome[], over: Partial<RunRecordsInput> = {}): Ru
     cachePolicy: 'rw',
     concurrency: 3,
     flow: 'focused',
-    tags: { team: 'core' },
     git: { commitSha: 'abc123', branch: 'main', dirty: true },
     ci: { ci: true, provider: 'github' },
     host: { host: 'box', os: 'linux', arch: 'x64' },
@@ -163,7 +162,6 @@ describe('assembleRunRecords', () => {
       os: 'linux',
       arch: 'x64',
       vxVersion: VERSION,
-      tags: '{"team":"core"}',
     })
   })
 

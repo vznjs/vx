@@ -55,7 +55,6 @@ const ARGV: Readonly<Record<string, readonly string[]>> = {
   '--verbosity': ['1'],
   '--dry': [],
   '--profile': [],
-  '--tag': ['k=v'],
   '--older-than': ['1d'],
   '--max-size': ['1G'],
   '--dry-run': [],

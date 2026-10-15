@@ -28,7 +28,7 @@ import { maskedCommand, settleWithin, teardownTimeoutMs } from '../util/index.js
 import type { RunEvent, RunEventSubscriber } from './events.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
-export const TELEMETRY_SCHEMA_VERSION = 3
+export const TELEMETRY_SCHEMA_VERSION = 4
 
 /** Where a task's result came from, derived ONCE in core from the status. */
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
@@ -162,8 +162,6 @@ export interface RunContextRecord {
   host: string | null
   os: string
   arch: string
-  /** `--tag k=v` pairs. */
-  tags: Readonly<Record<string, string>>
 }
 
 /** One attempt of a retried task that failed and was run again. */

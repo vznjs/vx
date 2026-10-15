@@ -72,7 +72,6 @@
       "--ready-notice",
       "--retries",
       "--schedule",
-      "--tag",
       "--teardown-timeout",
       "--timeout",
       "--verbosity"
@@ -110,7 +109,6 @@
       "--ready-notice",
       "--retries",
       "--schedule",
-      "--tag",
       "--teardown-timeout",
       "--timeout"
     ],
@@ -266,9 +264,6 @@
       "2"
     ],
     "run --schedule": [],
-    "run --tag": [
-      "k=v"
-    ],
     "run --teardown-timeout": [
       "12h",
       "1d",
@@ -372,9 +367,6 @@
       "2"
     ],
     "watch --schedule": [],
-    "watch --tag": [
-      "k=v"
-    ],
     "watch --teardown-timeout": [
       "12h",
       "1d",

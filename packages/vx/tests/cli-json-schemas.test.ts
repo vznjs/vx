@@ -425,7 +425,6 @@ describe('each schema object is its source type', () => {
         os: true,
         arch: true,
         vxVersion: true,
-        tags: true,
       }),
     )
     expect(def('last', 'stats')).toEqual(['branch', 'stats', 'window'])

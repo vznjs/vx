@@ -31,7 +31,6 @@ const RUN: RunContextRecord = {
   host: 'ci-box',
   os: 'linux',
   arch: 'x64',
-  tags: {},
 }
 
 type Reply = { status: number; body: string; breakBody?: true }

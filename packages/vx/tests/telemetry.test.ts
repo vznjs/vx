@@ -66,7 +66,6 @@ const RUN: RunContextRecord = {
   host: 'host',
   os: 'linux',
   arch: 'x64',
-  tags: { env: 'test' },
 }
 
 /** A recording sink that captures everything it receives. */
