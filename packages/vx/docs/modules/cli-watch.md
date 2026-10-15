@@ -186,6 +186,16 @@ are refused too: they format one run's result.
      for every edit in a nested one (X-42). The fences are every
      project, config or not (X-57). The nested project's own config
      still passes, since it may give the project tasks.
+   - On macOS, ONE `fs.watch(root, { recursive: true })` stands for
+     the per-project arms, the root arm and the `.vx/` arm below:
+     `streamEvent` hands each event to every watched project whose real
+     directory holds it and to the root and `.vx/` listeners, each
+     deciding as its own arm did. Each FSEvents stream went live slower
+     than the one before: per project, 751 of 3000 missed the 2 s proof
+     on a macos-latest runner and polled, a full core at idle; one root
+     stream went live in 8 ms (`tests/watch-one-stream.test.ts`). A
+     project whose real directory is outside the root keeps its own arm;
+     `--poll` keeps per-project walks.
    - For the workspace root, `fs.watch(root, { recursive: false })`
      — only a file a plugin claims (a lockfile, an install setting),
      `.vx/projects.lock.json`, `.gitignore` and the workspace config (`.vx/workspace.*`, `WORKSPACE_CONFIG_FILENAMES`)
