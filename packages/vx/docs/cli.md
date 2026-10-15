@@ -3009,7 +3009,7 @@ export function mcp(): VxPlugin {
       mcp: {
         description: 'serve the run history to an AI agent over stdio',
         async run(argv, ctx) {
-          // ctx.workspaceRoot, ctx.cacheDir, ctx.concurrency, ctx.warn(...)
+          // ctx.workspaceRoot, ctx.cacheDir, ctx.concurrency, ctx.cache, ctx.warn(...)
           return 0 // the process exit code
         },
       },
@@ -3020,6 +3020,9 @@ export function mcp(): VxPlugin {
 
 The plugin's name is its package name, which `definePlugin` reads from
 `import.meta`; a plain object is refused when the workspace loads.
+`ctx.cache` reads the plugin's own entries as `setup` writes them (the
+local store, then each remote the workspace's cache plugins supply,
+under the run's scope), read-only, opened on first use.
 
 (`@vzn/vx-schedule-history` ships exactly this: `vx history`, what it
 learned per task and the reservation its `admit` hook packs.) The dispatcher tries core's verbs

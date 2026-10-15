@@ -10,6 +10,12 @@ const ctx = {
   warn() {},
   concurrency: 1,
   vx: ['vx'],
+  cache: {
+    get: async () => null,
+    put: async () => {},
+    has: async () => null,
+    hasMany: async () => null,
+  },
 }
 
 it('prints the cache directory; an argument is exit 2', async () => {

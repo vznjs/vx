@@ -355,6 +355,7 @@ type · `src/orchestrator/plugin.ts`
 export interface CommandContext extends BaseContext {
   readonly concurrency: number
   readonly vx: readonly string[]
+  readonly cache: PluginCache
 }
 ```
 

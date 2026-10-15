@@ -296,6 +296,12 @@ export interface CommandContext extends BaseContext {
    * which `vx` a PATH holds.
    */
   readonly vx: readonly string[]
+  /**
+   * This plugin's entries in the workspace's cache, as `setup` reaches them
+   * (`PluginCache`), read-only: the local store, then each remote the
+   * workspace's cache plugins supply, under the run's scope. Opened on first use.
+   */
+  readonly cache: PluginCache
 }
 
 /** `config` runs before the cache dir is known — it may be what the hook changes. */
