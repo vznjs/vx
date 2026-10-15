@@ -61,6 +61,36 @@ export function entryHolds(
   }
 }
 
+/**
+ * The run-end output-directory snapshots, taken once the directories are
+ * old enough for the snapshot's racy window. Each walk is held to its
+ * entry's rows (item 1087), read in one batch: read per snapshot, each read
+ * also flushed the snapshots before it, one transaction apiece (+110 ms at
+ * 1,000). A few walks at a time: each is an lstat + readdir per prefix; the
+ * rows land together at close, in one transaction.
+ */
+export async function recordOutputDirSnapshots(
+  cache: CacheLayer,
+  snapshots: readonly OutputDirSnapshot[],
+): Promise<void> {
+  const rowsOf = new Map<string, ReadonlyArray<{ path: string }>>()
+  for (let i = 0; i < snapshots.length; i += 900) {
+    const batch = cache.loadOutputFilesBatch(snapshots.slice(i, i + 900).map((s) => s.hash))
+    for (const [hash, rows] of batch) rowsOf.set(hash, rows)
+  }
+  for (let i = 0; i < snapshots.length; i += 32) {
+    await Promise.all(
+      snapshots
+        .slice(i, i + 32)
+        .map((s) =>
+          cache.recordOutputDirs?.(s.hash, s.projectDir, s.prefixes, (files) =>
+            s.holds(files, rowsOf.get(s.hash) ?? []),
+          ),
+        ),
+    )
+  }
+}
+
 export interface SaveMissArgs {
   node: TaskNode
   hash: string
