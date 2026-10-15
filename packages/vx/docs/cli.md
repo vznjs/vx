@@ -2084,7 +2084,7 @@ fails:
 ```
 › vx upgrade  0.0.1 → 0.0.2
 
-  pnpm add @vzn/vx@0.0.2 --save-dev in /repo
+  bun add @vzn/vx@0.0.2 in /repo
 ```
 
 vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from an npx or
