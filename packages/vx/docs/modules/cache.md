@@ -290,6 +290,7 @@ export interface RunRecord {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  remoteError?: string // v40: each failed remote read or write of its key, `; `-joined
 }
 
 export interface CacheStats {

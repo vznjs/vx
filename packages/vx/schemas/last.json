@@ -172,6 +172,7 @@
         "timedOut",
         "sandboxViolations",
         "notReady",
+        "remoteError",
         "forwarded"
       ],
       "properties": {
@@ -207,6 +208,10 @@
         "timedOut": { "type": ["boolean", "null"] },
         "sandboxViolations": { "type": ["integer", "null"] },
         "notReady": { "enum": ["timeout", "exited", "spawn", null] },
+        "remoteError": {
+          "type": ["string", "null"],
+          "description": "each failed remote read or write of the key, `; `-joined"
+        },
         "forwarded": { "type": "boolean" },
         "output": {
           "type": "string",
