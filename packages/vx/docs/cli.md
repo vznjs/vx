@@ -69,7 +69,8 @@ declare task(s): <name>.` on stderr, a run and `--dry` / `--graph` alike
 declared task (or, for `pkg#task`, a runnable spec) is within two edits,
 and with no name that near, what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
-(M-56),
+(M-56), each followed by ``A run reads the lock: after editing a
+vx.config, run `vx lock`.`` (a task just added is not in the lock yet),
 and with `Only projects outside the selection declare <name> — pass
 --all, or --filter to pick them.` when the run was scoped (the cwd's
 project, a `--filter`) and a project outside the scope declares it
@@ -2321,12 +2322,15 @@ lists core's verbs. A plugin's verb exists once its plugin is in
 No project in scope declares a requested task. The message lists the
 tasks it found; `vx show --format json` lists each project's. Check the
 spelling, and the scope: `--filter`, `--all`, or the project the working
-directory is in.
+directory is in. A run reads its configs from the lock, so a task
+added to a `vx.config` since the last `vx lock` is not there yet: run
+`vx lock`.
 
 #### `VX_E_UNKNOWN_PROJECT`
 
 `vx show` names a project the workspace does not have. A project is named
-by its `package.json` `name`; `vx show --format json` lists them.
+by its config's `name`, else by a plugin (a lockfile plugin names it from
+its `package.json`), else by its directory; `vx show --format json` lists them.
 
 #### `VX_E_NO_HISTORY`
 

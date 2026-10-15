@@ -22,7 +22,7 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 | `… has unknown field "<key>"`                      | A typo, or a Turbo or Nx key: the message lists the fields vx allows.  |
 | `dependsOn cycle`                     | Remove one `dependsOn` edge of the loop it prints.                      |
 | `dependsOn … but no such project or task is declared`  | Fix the name, or declare that task in that package.                 |
-| `no projects declare task(s)`                      | A typo, or no config declares it: `vx show` lists every task.           |
+| `no projects declare task(s)`                      | A typo, a config edited since `vx lock`, or no config declares it: `vx show` lists every task. |
 | `unknown flag`                                     | `vx run --help` lists the flags.                                        |
 | `no projects matched filter(s)`                    | A typo: the message suggests the closest name. `vx show` lists every project. |
 | `waiting for another vx run (pid …)`               | One run per workspace at a time: it starts when that one ends. Stop it, or wait. |

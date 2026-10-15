@@ -276,7 +276,9 @@ describe('cli run()', () => {
       // The control, and the whole point: the names that DO resolve are not
       // among the unresolved; they appear only as what exists (M-56). The
       // whole line, because `toContain` would pass on the fallback's wording.
-      expect(stderr).toBe('vx run: no projects declare task(s): typo-here. Tasks: build, lint.\n')
+      expect(stderr).toBe(
+        'vx run: no projects declare task(s): typo-here. Tasks: build, lint. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+      )
     } finally {
       process.chdir(origCwd)
       await rm(root, { recursive: true, force: true })

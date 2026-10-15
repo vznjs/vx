@@ -30,7 +30,7 @@ describe('the default build is no declared task', () => {
     expect(vx('run', 'build', '--all')).toEqual([
       1,
       '',
-      'vx run: no projects declare task(s): build. Tasks: test.\n',
+      'vx run: no projects declare task(s): build. Tasks: test. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
     ])
   })
 

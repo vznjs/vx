@@ -89,7 +89,7 @@ before anything starts, and lists what exists:
 
 ```sh frame="terminal"
 $ vx run build lnit --all
-vx run: no projects declare task(s): lnit. Tasks: build, test.
+vx run: no projects declare task(s): lnit. Tasks: build, test. A run reads the lock: after editing a vx.config, run `vx lock`.
 ```
 
 A typo never turns into a quiet green run that skipped your linter. Every

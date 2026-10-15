@@ -80,7 +80,7 @@ describe('a task typed as a verb', () => {
       'vx run: not inside a project: run from a project directory, or pass --all or --filter <pattern> (see `vx run --help`)\n',
     )
     expect(run(root, 'app:nope', '--all')[2]).toBe(
-      'vx run: no projects declare task(s): app:nope. Tasks: build, dev.\n',
+      'vx run: no projects declare task(s): app:nope. Tasks: build, dev. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
     )
     // Nor does one the project inherits from Object.prototype.
     expect(run(root, 'app:toString')[2]).toBe(
