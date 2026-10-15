@@ -363,7 +363,7 @@ describe('resolveCache — a plugin returns the remote, core layers it', () => {
   )
 
   it(
-    'a whole cache layer, the shape before 0.0.637, is refused with the fix named',
+    'a whole cache layer is refused: the hook returns the remote alone',
     withTwo(async (a) => {
       const old = new LayeredCache(a, noRemote)
       await expect(
@@ -373,9 +373,7 @@ describe('resolveCache — a plugin returns the remote, core layers it', () => {
           policy,
         }),
       ).rejects.toThrow(
-        "plugin 'org/old' returned a cache layer from cache: since vx 0.0.637 the hook returns " +
-          'the remote alone (a RemoteCacheLayer: has, get, put) and core layers it over the ' +
-          'local cache — return the remote you passed to LayeredCache',
+        "plugin 'org/old' returned from cache something that is not a remote cache layer: missing put()",
       )
     }),
   )

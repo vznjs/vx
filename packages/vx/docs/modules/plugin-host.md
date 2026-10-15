@@ -66,9 +66,7 @@ nothing runs and caches here.
   the remote's `access`, and names the plugin in its warnings. One
   remote is that layer; two or more are chained in declared order
   (`ChainedCache`); none leaves the local store unwrapped.
-  `REMOTE_CACHE_METHODS` is what a returned remote must carry; a whole
-  cache layer (the hook's return before 0.0.637) is refused with the
-  fix named.
+  `REMOTE_CACHE_METHODS` is what a returned remote must carry.
 - `buildAdmission(plugins, nodes, concurrency, warn)` → the scheduler's
   `admit(id, running)` predicate, or undefined when no plugin declares
   `admit` (the scheduler then tracks nothing). Every declaring plugin is
