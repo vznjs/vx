@@ -1851,7 +1851,7 @@ global vx that started the run, each the way it was installed. Each
 line names its install, and a refusal names the one that failed
 (`vx upgrade: global vx /usr/local/bin/vx: cannot write to …`); a
 project that fails leaves the global as it was. The project's vx run
-directly (`bunx vx`, a package script) has no global behind it, so only
+directly (a package script, `node_modules/.bin/vx`) has no global behind it, so only
 the project moves.
 
 ```

@@ -15,7 +15,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { generateKeyPairSync, sign } from 'node:crypto'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -701,7 +701,7 @@ describe('upgradeGlobal: the global vx that handed the run to the project', () =
       process.env['PATH'] = PATH
     }
     expect(await readFile(said, 'utf8')).toBe(
-      `${path.join(prefix, 'lib')} install -g @vzn/vx@9.9.9\n`,
+      `${realpathSync(path.join(prefix, 'lib'))} install -g @vzn/vx@9.9.9\n`,
     )
   })
 
