@@ -145,7 +145,6 @@ function genWorkspace(r: R): Obj {
         continue: maybe(r, () => pick(r, ['never', 'always'])),
         killGrace: maybe(r, () => pick(r, ['200ms', '2s'])),
         teardownTimeout: maybe(r, () => pick(r, ['0ms', '3s'])),
-        readyNotice: maybe(r, () => '10s'),
         rules: maybe(r, () =>
           fields({
             exclusiveOutputs: maybe(r, () => chance(r)),
@@ -250,7 +249,6 @@ const BAD_VALUES: Record<string, readonly unknown[]> = {
   dir: ['   '],
   schedule: ['fastest'],
   killGrace: ['0ms', 200],
-  readyNotice: ['soon'],
   download: ['some'],
   strategy: ['content'],
   severity: ['fail'],
@@ -340,7 +338,6 @@ const SCHEMAS: Schema[] = [
       'timeout',
       'retries',
       'killGrace',
-      'readyNotice',
       'download',
       'strategy',
       'severity',

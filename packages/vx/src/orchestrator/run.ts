@@ -283,7 +283,6 @@ function refuseRunOptions(options: RunOptions): void {
     ['timeout', timeout],
     ['killGrace', options.killGrace],
     ['teardownTimeout', options.teardownTimeout],
-    ['readyNotice', options.readyNotice],
   ] as const) {
     if (ms !== undefined && !(Number.isInteger(ms) && ms > 0 && ms <= MAX_TIMEOUT_MS))
       refuse(name, ms, `a positive integer of ms, at most ${MAX_TIMEOUT_MS}`)
@@ -1094,7 +1093,6 @@ async function runOnBus(
       }
       if (options.retries !== undefined) a.retries = options.retries
       if (taskTimeoutDefault !== undefined) a.timeout = taskTimeoutDefault
-      if (options.readyNotice !== undefined) a.readyNotice = options.readyNotice
       a.inputStability = inputStability
       if (cleanOutputs !== undefined) a.cleanOutputs = cleanOutputs
       if (download.modeOf.get(node.id) === 'deferred') a.download = 'deferred'

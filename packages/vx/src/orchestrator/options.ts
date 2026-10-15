@@ -167,8 +167,6 @@ export interface RunOptions {
   killGrace?: number
   /** `run.teardownTimeout` in ms from its flag; unset, `VX_RUN_TEARDOWN_TIMEOUT`, then the workspace's. */
   teardownTimeout?: number
-  /** `run.readyNotice` in ms from its flag; unset, `VX_RUN_READY_NOTICE`, then the workspace's. */
-  readyNotice?: number
   /**
    * Filter `dependsOn` expansion. `'all'` drops every edge (just the
    * requested task runs). A string array drops only those task names

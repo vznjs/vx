@@ -43,6 +43,18 @@ function bound(name: string, set: SettleBound | undefined, zero = false): number
 }
 
 /**
+ * A timer a test shortens: `VX_TEST_<name>`, a duration. Undocumented and
+ * in no settings table: the suites that prove a deadline drive it instead
+ * of waiting the real one out.
+ */
+export function testTimerMs(name: string, defaultMs: number): number {
+  const raw = process.env[`VX_TEST_${name}`]
+  if (raw === undefined || raw === '') return defaultMs
+  const n = parseDuration(raw)
+  return n !== null && n >= 0 && n <= MAX_TIMEOUT_MS ? n : defaultMs
+}
+
+/**
  * The bound on one end-of-run flush or teardown (`run.teardownTimeout`).
  * There is no "no limit": the deadline exists so a plugin's flush cannot
  * hold the run's exit hostage, so a timer past the platform's range (which

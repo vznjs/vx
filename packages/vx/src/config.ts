@@ -66,8 +66,6 @@ export interface RunSettings {
   killGrace?: Duration
   /** The bound on each plugin's end-of-run flush and teardown. Omitted → `'3s'`. */
   teardownTimeout?: Duration
-  /** How long a persistent task may take to match `readyWhen` before vx says it waits. Omitted → `'10s'`. */
-  readyNotice?: Duration
   /**
    * Graph rules checked by `vx lock` and `vx lock --check`, never by a
    * run. Each is on

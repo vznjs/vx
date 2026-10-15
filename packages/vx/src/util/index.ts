@@ -71,6 +71,7 @@ export {
   type SettleBound,
   settleWithin,
   teardownTimeoutMs,
+  testTimerMs,
 } from './settle.js'
 export { formatBytes, parseDuration, parseSize, treeBytes } from './size.js'
 export {

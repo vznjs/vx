@@ -67,7 +67,6 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       continue: true,
       killGrace: true,
       teardownTimeout: true,
-      readyNotice: true,
       rules: true,
     }),
     'run.rules': keys<NonNullable<RunSettings['rules']>>({
@@ -159,7 +158,6 @@ function workspaceSeed(): Record<string, unknown> {
       continue: 'deps-ok',
       killGrace: '2s',
       teardownTimeout: '3s',
-      readyNotice: '10s',
       rules: {
         exclusiveOutputs: true,
         upfrontKeys: true,

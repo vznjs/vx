@@ -62,6 +62,7 @@ import {
   secretNamed,
   span,
   UserError,
+  testTimerMs,
 } from '../util/index.js'
 import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS, terminateChildren } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
@@ -181,8 +182,6 @@ export interface ExecuteArgs {
    * workspace. Per-task `exec.timeout` wins. Never hashed.
    */
   timeout?: number
-  /** `run.readyNotice` (ms), resolved like `timeout`; unset, 10 s. */
-  readyNotice?: number
   /**
    * The run's `inputStability` layers around the task's own: `run` from
    * the env vars (above the task), `workspace` from `.vx/workspace` (below).
@@ -280,6 +279,8 @@ export interface ExecuteArgs {
   commandWindows?: CommandWindows
 }
 
+/** How long a server may take to match `readyWhen` before vx says it waits. */
+const READY_NOTICE_MS = 10_000
 /**
  * Dispatch a single task to one of three execution paths. Each path
  * owns its own outcome shape; the dispatcher just picks based on the
@@ -641,7 +642,7 @@ async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // whose `readyWhen` never matched showed nothing at all.
   const readyWhen = step.persistent.readyWhen
   // How long a server may take to match `readyWhen` before vx says it waits.
-  const noticeMs = args.readyNotice ?? 10_000
+  const noticeMs = testTimerMs('READY_NOTICE', READY_NOTICE_MS)
   const notice =
     readyWhen === undefined
       ? undefined

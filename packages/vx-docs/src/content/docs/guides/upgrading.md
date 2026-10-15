@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: remove --ready-notice and run.readyNotice
+
+`--ready-notice`, `run.readyNotice` and VX_RUN_READY_NOTICE are removed; the readiness notice fires after a fixed 10 s.
+
 ## cli: remove vx run --tag
 
 `vx run --tag` is removed, with RunOptions.tags and RunContextRecord.tags (TELEMETRY_SCHEMA_VERSION 4) and vx-otel's `vx.tag.<key>` attributes. The invocations table drops `tags` (SCHEMA_VERSION v39).
