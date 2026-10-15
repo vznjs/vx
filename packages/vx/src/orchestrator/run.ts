@@ -77,6 +77,7 @@ import {
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
 import { keepRunBytes } from './run-report.js'
 import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
+import { createSteps } from './steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
 import { assembleRunSummary } from './telemetry.js'
@@ -325,7 +326,10 @@ export async function run(options: RunOptions): Promise<RunSummary> {
         }
   let held = false
   try {
-    const summary = await runOnBus(options, bus, colors, terminal, takeOutput)
+    // vx's own steps are timed only where something renders them.
+    const showsSteps =
+      terminal !== null ? terminal.showsSteps : options.log?.stepStart !== undefined
+    const summary = await runOnBus(options, bus, colors, terminal, showsSteps, takeOutput)
     if (summary.persistent === undefined) return summary
     // Servers handed back still running still write: `vx watch dev` printed
     // none of its server's log while it idled, the renderer gone with this
@@ -349,9 +353,11 @@ async function runOnBus(
   bus: EventBus,
   colors: ColorSupport,
   terminal: DefaultLogger | null,
+  showsSteps: boolean,
   takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
+  const { step, stepSync } = createSteps(log, showsSteps)
   // A server's output goes through a cell of its own: a later watch cycle
   // that keeps the server points it at that cycle's bus (`RunOptions.keep`).
   const serverOuts = new Map<string, { bus: EventBus }>()
@@ -365,7 +371,7 @@ async function runOnBus(
     }
   }
 
-  const prepared = await prepareRun(options, log)
+  const prepared = await step('vx:load', () => prepareRun(options, log))
   options = withRunSettings(options, prepared.workspaceConfig)
   mark('plugin stages')
   // Every exit from here tears the plugins down: their capability
@@ -379,7 +385,7 @@ async function runOnBus(
     if (tornDown) return
     tornDown = true
     const plugins = prepared.plugins.filter((p) => p !== except)
-    await teardownPlugins(plugins, (m) => log.status(m), report)
+    await teardownPlugins(plugins, (m) => log.status(m), report, step)
   }
   // A task whose command re-enters `vx run` in the workspace running it
   // is refused. When the inner run reaches this task again it forks a run
@@ -454,6 +460,7 @@ async function runOnBus(
       cache: prepared.cacheFor,
       ci: ciContext.ci,
       branch: prepared.branch(),
+      step,
     })
   } catch (err) {
     disposePlugins?.()
@@ -597,10 +604,12 @@ async function runOnBus(
   // Taken after the early exits above (nothing they do touches a tree) and
   // before the schedule: from here on tasks clean, restore and write.
   const releaseRunLock = await abandoning(() =>
-    acquireRunLock(prepared.workspaceRoot, {
-      log: (m) => log.status(m),
-      signal: stop.signal,
-    }),
+    step('vx:run-lock', () =>
+      acquireRunLock(prepared.workspaceRoot, {
+        log: (m) => log.status(m),
+        signal: stop.signal,
+      }),
+    ),
   )
   try {
     const runStartHrTimeNs = process.hrtime.bigint()
@@ -809,18 +818,20 @@ async function runOnBus(
     // unchanged (no upfront key pass, no local probing).
     let prefetchDone: Promise<void> = Promise.resolve()
     if (prepared.hasRemoteLayer) {
-      prefetchDone = startRemotePrefetch({
-        nodes,
-        cache,
-        workspaceRoot,
-        claimedFiles: fingerprintWatch.names,
-        forwardArgs: options.forwardArgs,
-        nestedDirsByProject,
-        gitFilesCache,
-        hashCache,
-        concurrency,
-        remoteRead: policy.remoteRead,
-      })
+      prefetchDone = step('vx:prefetch', () =>
+        startRemotePrefetch({
+          nodes,
+          cache,
+          workspaceRoot,
+          claimedFiles: fingerprintWatch.names,
+          forwardArgs: options.forwardArgs,
+          nestedDirsByProject,
+          gitFilesCache,
+          hashCache,
+          concurrency,
+          remoteRead: policy.remoteRead,
+        }),
+      )
     }
 
     // Local cache short-circuit (default-on). Up-front classify: derive
@@ -841,17 +852,19 @@ async function runOnBus(
       prepared.localCache.holdsNothing()
     if (coldLocal) prewarm()
     else if (shouldShortCircuit(nodes, policy, cache)) {
-      shortCircuit = await startLocalShortCircuit({
-        nodes,
-        cache,
-        workspaceRoot,
-        claimedFiles: fingerprintWatch.names,
-        forwardArgs: options.forwardArgs,
-        nestedDirsByProject,
-        gitFilesCache,
-        hashCache,
-        concurrency,
-      })
+      shortCircuit = await step('vx:keys', () =>
+        startLocalShortCircuit({
+          nodes,
+          cache,
+          workspaceRoot,
+          claimedFiles: fingerprintWatch.names,
+          forwardArgs: options.forwardArgs,
+          nestedDirsByProject,
+          gitFilesCache,
+          hashCache,
+          concurrency,
+        }),
+      )
       // A confirmed miss runs too.
       if (sandboxed.some((n) => shortCircuit.preProbed.get(n.id)?.hit === null)) prewarm()
     }
@@ -971,7 +984,7 @@ async function runOnBus(
       (n) => n.config.exec?.command === undefined || shortCircuit.restoreTier.has(n.id),
     )
       ? new Map<string, number>()
-      : await prepared.priorities()
+      : await step('vx:schedule', () => prepared.priorities())
     mark('schedule')
     // Judged as each task finishes, against the history BEFORE this run's
     // rows land, so the row that prints next carries the verdict: nothing
@@ -1135,13 +1148,16 @@ async function runOnBus(
     // change the run's exit code — the run already happened.
     // Written again after the keep-alive wait: a kept server's crash or a
     // Ctrl-C there is the process's exit, and the first write said ok.
-    if (options.profile !== undefined) {
+    const profile = options.profile
+    if (profile !== undefined) {
       try {
-        const wrote = await writeRunProfile({
-          target: options.profile,
-          cwd: options.cwd,
-          outcomes: list,
-        })
+        const wrote = await step('vx:profile', () =>
+          writeRunProfile({
+            target: profile,
+            cwd: options.cwd,
+            outcomes: list,
+          }),
+        )
         log.status(`vx: profile written to ${wrote}`)
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -1200,8 +1216,10 @@ async function runOnBus(
     const recordFailures = (final: readonly TaskOutcome[]): void =>
       writeRunFailures(prepared.cacheDir, runId, final, (m) => log.status(m))
     if (stop.stoppedBy === undefined && !historyAfterWait) {
-      recordHistory(() => cache.recordRunBundle(records))
-      recordFailures(list)
+      stepSync('vx:history', () => {
+        recordHistory(() => cache.recordRunBundle(records))
+        recordFailures(list)
+      })
     }
     mark('record history')
     // Drain any still-in-flight background prefetches before closing the
@@ -1219,25 +1237,29 @@ async function runOnBus(
     // channel shut from under the upload — silently losing every remote
     // write with nothing but a warning. The seam's contract is that a
     // cache layer stays usable until the run's uploads have settled.
-    await prefetchDone
     // Every deferred save has settled by here: the scheduler finishes a
     // task only once its `settledOf` promise (the lane's `landed`) has,
     // so `runGraph` resolved with every save in the cache. A second
     // drain of the lane stood here until item 634; deleting it changed
     // nothing the suite could see, because this gate is the rule.
-    await cache.drainUploads?.()
+    await step('vx:uploads', async () => {
+      await prefetchDone
+      await cache.drainUploads?.()
+    })
     // An upload that failed after the rows went in: its row says so too.
     if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
       recordHistory(() => recordLateRemoteErrors(prepared.localCache, records.runs, runId))
-    const report = await keepRunBytes(list, {
-      runId,
-      commit: head.commitSha,
-      ciRun: ciContext,
-      ok,
-      workspaceRoot: prepared.workspaceRoot,
-      nestedDirsByProject: prepared.nestedDirsByProject,
-      keep: prepared.keepRunEntry,
-    })
+    const report = await step('vx:keep-run', () =>
+      keepRunBytes(list, {
+        runId,
+        commit: head.commitSha,
+        ciRun: ciContext,
+        ok,
+        workspaceRoot: prepared.workspaceRoot,
+        nestedDirsByProject: prepared.nestedDirsByProject,
+        keep: prepared.keepRunEntry,
+      }),
+    )
     // Hand the per-run summary to the telemetry sinks + drain them. Only
     // when a sink is active (telemetry !== undefined) — otherwise this
     // whole block is skipped and the run is byte-identical to before.
@@ -1256,46 +1278,51 @@ async function runOnBus(
         uploads: prepared.localCache.uploads,
       })
       telemetry.emitSummary(summary)
-      await telemetry.flush()
+      const sinks = telemetry
+      await step('vx:telemetry', () => sinks.flush())
     }
     // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
     // + time-bounded inside teardownPlugins, so a faulty plugin can neither
     // fail nor hang the run. Here on the normal path, after the drains
     // above; every other exit takes it through `teardown` too.
     // The miss path's output-directory snapshots first (miss-save.ts).
-    await recordOutputDirSnapshots(cache, outputDirSnapshots)
+    await step('vx:snapshots', () => recordOutputDirSnapshots(cache, outputDirSnapshots))
     mark('output dir snapshots')
     // Not on a stopped run: one stopped while it waited on another run's
     // lock never held it, and its prune evicted under that run (item 858).
-    if (!stop.signal.aborted) await applyCacheRetention(prepared)
+    if (!stop.signal.aborted) await step('vx:retention', () => applyCacheRetention(prepared))
     // A plugin hears the run until its teardown and nothing after: released
     // only in the finally, its handlers heard a kept server through the
     // whole keep-alive wait below (C-66). Idempotent; the finally's stay.
     disposePlugins?.()
     telemetry?.dispose()
     await teardown(undefined, report)
-    await closeCache()
+    await step('vx:close', closeCache)
     mark('close')
     printTimings()
 
     // Tear down SRT's network bridge + (on macOS) log monitor. No-op if
     // no task was sandboxed; otherwise SRT keeps proxy servers alive and
     // the next vx run would init on top of stale state.
-    await prewarming
-    if (sandboxArmer?.armed) {
-      try {
-        await resetSandbox()
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        log.status(`vx: sandbox cleanup failed: ${msg}`)
+    await step('vx:sandbox', async () => {
+      await prewarming
+      if (sandboxArmer?.armed) {
+        try {
+          await resetSandbox()
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          log.status(`vx: sandbox cleanup failed: ${msg}`)
+        }
       }
-    }
+    })
 
     // The footer is the run's last word (owner, 2026-10-06): it prints once
     // the run's own work is done, history, uploads, plugin teardown and the
     // sandbox reset included, so any warning they raise lands above it. A
     // task's own facts (flaky, blocked) ride its row. Only a kept server's
     // own output follows.
+    // The footer replaces the live region in place.
+    log.runDone?.()
     if (options.summaryTable === true) for (const line of formatOutcomeTable(list)) log.status(line)
     if (options.footer !== false)
       for (const line of formatRunSummary(list, totalMs, colors, runContext)) log.status(line)
@@ -1376,6 +1403,7 @@ async function runOnBus(
     // here), so deleting this line reddens nothing (item 635). It is the
     // floor for a throw a later change adds, not a path a row can drive.
     log.runEnd?.()
+    log.runDone?.()
     stop.detach()
     // Plugins installed at the top of run() get their bus subscriptions
     // released here. Idempotent; safe even if installPlugins threw.

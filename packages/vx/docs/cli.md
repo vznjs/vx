@@ -761,7 +761,23 @@ other persistent task`), and a non-zero exit makes the run exit 1
    local history knows the task, its row also shows its usual duration
    (its executed p50) in the cache column, fixed while the elapsed time
    counts up toward it (`3.33s running ~5.2s  solid-js#types`).
-4. **The live summary section** — the SAME meters the final footer
+4. **vx's own steps** — what vx does around the tasks, as rows of
+   their own below the worker rows: `vx:load` (configs and graph from
+   the lock), `vx:run-lock`, `<plugin>:setup`, `vx:keys` (keys and local
+   probes), `vx:prefetch`, `vx:schedule`, then after the graph
+   `vx:uploads`, `vx:history`, `vx:keep-run`, `vx:telemetry`,
+   `<plugin>:teardown`, `vx:snapshots`, `vx:retention`, `vx:close` and
+   `vx:sandbox`. A step shows once it has run 150 ms, ticking like a
+   task (`     1.2s running   vx:uploads`); no worker slot or
+   `--concurrency` holds it back. When it ends it leaves a list row
+   like a task's, with no cache column (`⏺︎ 1.2s success   vx:uploads`);
+   a quicker one shows nowhere. `:` is no task id's separator, so a
+   step never reads as a task: a project named `vx` keeps `vx#build`.
+   No step is a task: no count, bar, history row, forecast, flaky
+   verdict, `vx last` row or telemetry record holds one; `--profile`
+   and `VX_DEBUG_TIMING` time vx's stages their own way. Steps show only
+   beside a live region; a log (CI, a pipe) prints none.
+5. **The live summary section** — the SAME meters the final footer
    prints (`tasks` + `cache` bars with legends, `time`), filling in as
    the run progresses, under a bare `vx` wordmark rule. A second in,
    the `time` row adds what is left (`time  1.41s · ~3s left`): each
@@ -2990,9 +3006,9 @@ per layer: `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`. `✓` is a
 hit (outputs already on disk, whichever layer answered, so it counts
 under local), `∅` a task with no cache, `↓` is restored from that
 layer and `↑` saved to it, `✗` a task a remote read or write failed
-for, and `⇡` an upload still running (live only, always last; a run
-that ends with uploads still running keeps the footer on screen until
-they finish). Each task counts once, under its strongest state: a
+for, and `⇡` an upload still running (live only, always last). The
+region stays through vx's closing steps, worker rows gone, and the
+final footer replaces it in place. Each task counts once, under its strongest state: a
 failed remote read or write, then an upload running, then saved to a
 remote, then saved here, then restored, then fresh, then no cache; so
 a task saved here and uploaded is a remote `↑`. Each count is painted

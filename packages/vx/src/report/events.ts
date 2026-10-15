@@ -50,7 +50,10 @@ export type RunEvent =
   | { kind: 'task:stderr'; node: TaskNode; chunk: string }
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
   | { kind: 'run:status'; line: string }
+  | { kind: 'step:start'; id: string }
+  | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
+  | { kind: 'run:done' }
 
 export type RunEventSubscriber = (event: RunEvent) => void
 
@@ -112,6 +115,7 @@ export function busLogger(bus: EventBus): Logger {
   // run() reaches runEnd on its success path, in its finally and from a
   // signal; a plugin's onRunEnd hears the first only.
   let ended = false
+  let done = false
   // A status line carries plugin warnings, and a remote layer's warning
   // quotes the server's reply, which may echo what it was sent (L-40).
   const secrets = secretMask([process.env])
@@ -126,6 +130,13 @@ export function busLogger(bus: EventBus): Logger {
       if (ended) return
       ended = true
       bus.emit({ kind: 'run:end' })
+    },
+    stepStart: (id) => bus.emit({ kind: 'step:start', id }),
+    stepEnd: (id, info) => bus.emit({ kind: 'step:end', id, ...info }),
+    runDone: () => {
+      if (done) return
+      done = true
+      bus.emit({ kind: 'run:done' })
     },
   }
 }
@@ -158,8 +169,17 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
       case 'run:status':
         sink.status(event.line)
         return
+      case 'step:start':
+        sink.stepStart?.(event.id)
+        return
+      case 'step:end':
+        sink.stepEnd?.(event.id, { durationMs: event.durationMs, ok: event.ok })
+        return
       case 'run:end':
         sink.runEnd?.()
+        return
+      case 'run:done':
+        sink.runDone?.()
         return
     }
   }
@@ -438,7 +458,10 @@ export type WireEvent =
   | { kind: 'task:stderr'; taskId: string; chunk: string }
   | { kind: 'task:complete'; outcome: OutcomeView }
   | { kind: 'run:status'; line: string }
+  | { kind: 'step:start'; id: string }
+  | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
+  | { kind: 'run:done' }
 
 /** Map an in-process event to its serializable wire form. */
 export function toWireEvent(event: RunEvent): WireEvent {
@@ -455,7 +478,10 @@ export function toWireEvent(event: RunEvent): WireEvent {
       return { kind: 'task:complete', outcome: projectOutcome(event.outcome) }
     case 'run:status':
       return { kind: 'run:status', line: event.line }
+    case 'step:start':
+    case 'step:end':
     case 'run:end':
-      return { kind: 'run:end' }
+    case 'run:done':
+      return event
   }
 }

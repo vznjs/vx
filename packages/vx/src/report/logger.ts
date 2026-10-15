@@ -17,6 +17,7 @@ import {
   createOutputWriter,
   formatFailureLine,
   formatStatusRegion,
+  formatStepLine,
   type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
@@ -77,8 +78,16 @@ export interface Logger {
     startedAtMs?: number
   }): void
   taskStart?(node: TaskNode): void
-  /** Run finished (any outcome). Idempotent. */
+  /** The task graph finished (any outcome); vx's own closing steps follow. Idempotent. */
   runEnd?(): void
+  /**
+   * One of vx's own steps (`vx:keys`, `@vzn/vx-otel:setup`) began or ended.
+   * Not a task: no stat, history row or telemetry record counts it.
+   */
+  stepStart?(id: string): void
+  stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
+  /** The run's work is done; the footer follows. Idempotent. */
+  runDone?(): void
 }
 
 /** The logger `run()` builds when none is passed. */
@@ -89,6 +98,12 @@ export interface DefaultLogger extends Logger {
    * throw that never reached `runEnd`.
    */
   settle(): void
+  /**
+   * Whether vx's own steps show: only beside a live region, on a terminal.
+   * A log (CI, a pipe) stays free of rows whose presence is a timing.
+   * When false, run() never times a step (zero cost).
+   */
+  readonly showsSteps: boolean
   /**
    * Hand the live region a way to predict the run's end. Called once at
    * run start; `load` runs only if the region is still live a second in,
@@ -199,6 +214,8 @@ export function resolveOutputView(
 const FORECAST_AFTER_MS = 1000
 /** A run shorter than this ends without a desktop notification. */
 const NOTIFY_AFTER_MS = 10_000
+// A step of vx's own quicker than this shows nowhere (M, 2026-10-15).
+const STEP_SHOWN_MS = 150
 
 export function defaultLogger(
   colors: ColorSupport = detectColors(),
@@ -347,10 +364,13 @@ export function defaultLogger(
   let savedMs = 0
   // Each finished task's cache bucket by its key: its remote traffic moves it.
   const buckets = new Map<string, CacheBucket>()
-  // The run ended with uploads still running: the region stays, footer only,
-  // until they settle (M, 2026-10-15). No wait: the run's own drain is it.
-  let draining = false
-  const uploading = (): boolean => (runContext?.cache?.traffic.inFlight ?? 0) > 0
+  // The graph is done and vx's own closing steps run: the region stays,
+  // footer and step rows, until the footer replaces it (M, 2026-10-15).
+  let tail = false
+  // No footer before the run starts: vx's opening steps show alone.
+  let started = false
+  // vx's own steps running now, by id: a row once one passes STEP_SHOWN_MS.
+  const steps = new Map<string, number>()
   // Cache-miss duration spread, accumulated incrementally (the same
   // numbers the final summary computes from the outcome list).
   let spreadMax = 0
@@ -424,13 +444,9 @@ export function defaultLogger(
 
   const refresh = (force: boolean): void => {
     if (statusDead) return
-    if (draining && !uploading()) {
-      killStatus()
-      return
-    }
     const now = Date.now()
     // Twice a second at most: one pass over the unfinished graph.
-    if (forecastFn !== undefined && !draining && (force || now - etaAtMs >= 500)) {
+    if (forecastFn !== undefined && !tail && (force || now - etaAtMs >= 500)) {
       etaAtMs = now
       const running = new Map<string, number>()
       for (const s of slots) if (s !== null) running.set(s.id, s.startedMs)
@@ -459,7 +475,7 @@ export function defaultLogger(
     // The live summary IS the final summary's section, built from the
     // same formatter so the region visually becomes the printout.
     const summaryLines =
-      opts.footer === false
+      opts.footer === false || !started
         ? []
         : formatSummarySection(
             {
@@ -476,7 +492,7 @@ export function defaultLogger(
               noCache,
               savedMs,
               left: total - done,
-              ...(etaMs !== undefined && !draining ? { etaMs } : {}),
+              ...(etaMs !== undefined && !tail ? { etaMs } : {}),
               buckets,
               spread:
                 spreadCount > 0
@@ -488,6 +504,9 @@ export function defaultLogger(
             runContext,
           )
     const held = blocked === undefined ? undefined : holdRows(blocked)
+    const shownSteps: WorkerSlot[] = []
+    for (const [id, startedMs] of steps)
+      if (now - startedMs >= STEP_SHOWN_MS) shownSteps.push({ id, startedMs })
     writer.setRegion(
       formatStatusRegion(
         {
@@ -495,6 +514,7 @@ export function defaultLogger(
           slots: slots.slice(0, shownSlots),
           ...(held !== undefined ? { blocked: held } : {}),
           overflow: slotQueue.length,
+          ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
           nowMs: Date.now(),
           summaryLines,
           ...(blocks !== undefined ? { blocks } : {}),
@@ -534,6 +554,17 @@ export function defaultLogger(
     heldRows.length = 0
     for (const r of rows) heldRows.push(r?.id ?? null)
     return rows
+  }
+  const tick = (): void => {
+    if (!writer.enabled || statusDead || ticker !== null) return
+    // Keeps the per-worker elapsed time ticking between task events
+    // (the time IS the motion — there's no spinner). The writer
+    // throttles unforced redraws, and unref means a stray ticker
+    // can never hold the process open.
+    ticker = setInterval(() => {
+      refresh(false)
+    }, 100)
+    ticker.unref?.()
   }
   const killStatus = (): void => {
     if (ticker !== null) {
@@ -613,6 +644,7 @@ export function defaultLogger(
     flakyNote(outcome, colors)
 
   return {
+    showsSteps: writer.enabled,
     settle() {
       // The bus delivers one `run:end`, so the CLI's last word reaches here.
       flushKept()
@@ -628,7 +660,6 @@ export function defaultLogger(
         writer.write('\n')
         streamMidLine = false
       }
-      if (draining && !uploading()) killStatus()
       writer.write(`${line}\n`)
     },
     runStart(info) {
@@ -636,20 +667,28 @@ export function defaultLogger(
       requestedCount = info.requestedCount ?? requestedCount
       runContext = info.context
       startedAtMs = Date.now()
+      started = true
       const cap = Math.max(1, Math.min(info.concurrency ?? 10, 10))
       slots = Array.from({ length: cap }, () => null)
       shownSlots = 0
-      if (writer.enabled && !statusDead && ticker === null) {
-        // Keeps the per-worker elapsed time ticking between task events
-        // (the time IS the motion — there's no spinner). The writer
-        // throttles unforced redraws, and unref means a stray ticker
-        // can never hold the process open.
-        ticker = setInterval(() => {
-          refresh(false)
-        }, 100)
-        ticker.unref?.()
-      }
+      tick()
       refresh(true)
+    },
+    stepStart(id) {
+      steps.set(id, Date.now())
+      // Drawn by the ticker once it passes STEP_SHOWN_MS; a quicker one never is.
+      tick()
+    },
+    stepEnd(id, { durationMs, ok }) {
+      steps.delete(id)
+      if (durationMs < STEP_SHOWN_MS) return
+      if (ok ? view.mode !== 'none' && view.mode !== 'errors-only' : view.mode !== 'none')
+        emitLine(formatStepLine(id, durationMs, ok, colors))
+      refresh(true)
+    },
+    runDone() {
+      tail = false
+      killStatus()
     },
     taskStart(node) {
       if (isGroupTask(node)) return
@@ -707,12 +746,7 @@ export function defaultLogger(
     runEnd() {
       // A long run says it ended where the user is not looking. Once:
       // the status is dead after the first runEnd.
-      if (
-        signals.notify &&
-        !statusDead &&
-        !draining &&
-        Date.now() - startedAtMs >= NOTIFY_AFTER_MS
-      ) {
+      if (signals.notify && !statusDead && !tail && Date.now() - startedAtMs >= NOTIFY_AFTER_MS) {
         out.write(
           notifyEscape(
             failed > 0
@@ -721,14 +755,14 @@ export function defaultLogger(
           ),
         )
       }
-      if (!draining && !statusDead && uploading()) {
-        draining = true
+      if (!tail && !statusDead) {
+        tail = true
         slots = []
         blocked = undefined
         shownSlots = 0
         slotQueue.length = 0
         refresh(true)
-      } else killStatus()
+      } else if (!tail) killStatus()
       // Persistent tails first: they are context for whatever ran against
       // the server, so they read above the failures they explain. `none`
       // prints no per-task output and `errors-only` only failed tasks: a

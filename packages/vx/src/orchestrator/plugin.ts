@@ -685,6 +685,8 @@ export interface InstallPluginsArgs {
   ci?: boolean
   /** Default null. */
   branch?: string | null
+  /** Each setup as the step `<plugin>:setup`; default: untimed. */
+  step?: <T>(id: string, work: () => Promise<T>) => Promise<T>
 }
 
 /**
@@ -821,7 +823,8 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
     }
 
     try {
-      await plugin.setup(ctx)
+      if (args.step === undefined) await plugin.setup(ctx)
+      else await args.step(`${plugin.name}:setup`, async () => plugin.setup?.(ctx))
     } catch (err) {
       // Earlier plugins' subscriptions too: the caller never gets the
       // disposer, and a bus that outlives the run would keep them.

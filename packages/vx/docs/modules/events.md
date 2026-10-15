@@ -15,6 +15,10 @@ run removes on its way out (`orchestrator.md`).
   (`emit(event)`, `subscribe(subscriber)` returning a disposer); its
   subscribers are `RunEventSubscriber`s, `(event: RunEvent) => void`.
 - `busLogger(bus)` — `Logger`-shaped facade that emits events.
+- `step:start` / `step:end` carry one of vx's own steps (`vx:uploads`,
+  `<plugin>:setup`), emitted only where something renders them; `run:end`
+  is the graph's end and `run:done` the run's, just before the footer.
+  No step is a task: no outcome, history row or telemetry record holds one.
 - `terminalSubscriber(sink)` — drives a concrete renderer.
 - `WireEvent` + `toWireEvent` — the SERIALIZABLE projection (task ids
   instead of node back-refs; bigint ns as decimal strings), and

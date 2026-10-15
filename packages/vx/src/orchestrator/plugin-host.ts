@@ -655,12 +655,15 @@ export async function teardownPlugins(
   plugins: readonly VxPlugin[],
   warn: (message: string) => void,
   report?: RunReport,
+  step: <T>(id: string, work: () => Promise<T>) => Promise<T> = (_id, work) => work(),
 ): Promise<void> {
   for (const plugin of plugins) {
     if (plugin.teardown === undefined) continue
     const ms = teardownTimeoutMs()
     try {
-      const settled = await settleWithin(Promise.resolve(plugin.teardown(report)), ms)
+      const settled = await step(`${plugin.name}:teardown`, () =>
+        settleWithin(Promise.resolve(plugin.teardown?.(report)), ms),
+      )
       // Same rule as the flush above. A teardown that never settles has left
       // whatever it owns un-released, and the run exits anyway — silence would
       // present that as a clean shutdown.

@@ -228,13 +228,14 @@ export function paintIdParts(
   projectText: string,
   taskText: string,
   colors: ColorSupport,
-  opts: { bold?: boolean } = {},
+  opts: { bold?: boolean; sep?: '#' | ':' } = {},
 ): string {
   const dim = (t: string) => paint('', t, colors, { dim: true })
+  const { sep = '#', ...style } = opts
   return (
-    paint(identityColor(hueSource), projectText, colors, opts) +
-    dim('#') +
-    paint(identityColor(taskText), taskText, colors, opts)
+    paint(identityColor(hueSource), projectText, colors, style) +
+    dim(sep) +
+    paint(identityColor(taskText), taskText, colors, style)
   )
 }
 
