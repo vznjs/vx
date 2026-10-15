@@ -257,6 +257,38 @@ describe('ctx.cache', () => {
     expect(await c.has('huge')).toBe(false)
   })
 
+  it('an empty or odd remote body is a miss and is not kept, so a later good body is read', async () => {
+    // Security on #3580: an odd body read as empty bytes was kept locally,
+    // and write-once then hid every later good body on this machine.
+    const key = xxh3hex('vx-plugin\0org/a\0x')
+    const db = localStore().dbHandle()
+    for (const body of [
+      new Blob([]),
+      new Response(null),
+      new Response(new Uint8Array(0)),
+      'not a body' as unknown as Blob,
+    ]) {
+      const odd: RemoteCacheLayer = {
+        has: async () => true,
+        get: async () => ({ body, durationMs: undefined }),
+        put: async () => {},
+      }
+      const c = pluginCache('org/a', {
+        db,
+        policy: FULL,
+        remotes: [remoteOf(odd)],
+        scope: undefined,
+      })
+      expect(await c.get('x')).toBeNull()
+    }
+    const good = wire()
+    good.store.set(key, bytes('one'))
+    const c = pluginCache('org/a', { db, policy: FULL, remotes: [remoteOf(good)], scope: undefined })
+    expect(text(await c.get('x'))).toBe('one')
+    await c.put('empty', new Uint8Array(0))
+    expect(await c.has('empty')).toBe(false)
+  })
+
   it('a run hands schedule and setup the cache, behind a declared remote', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'vx-plugin-cache-run-'))
     dirs.push(root)

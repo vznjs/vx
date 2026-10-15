@@ -43,7 +43,9 @@ export const absentPluginCache: PluginCache // every answer absent: a context ou
   asks `has` first and skips a present key.
 - **Bounded.** An entry is at most `PLUGIN_ENTRY_MAX_BYTES`: a bigger
   `put` stores nothing, and a remote body over it is a miss, its stream
-  cancelled at the cap.
+  cancelled at the cap. An empty `put` stores nothing, and an empty or
+  odd remote body (no Blob or Response, a null body) is a miss, never
+  kept: write-once would hide every later good body on this machine.
 - **Silent.** Every failure is an absent answer (`null`, `false`, a
   skipped write), never a throw or a warning. `has` is `null` when no
   layer could answer; `hasMany` is `null` when a readable remote has no

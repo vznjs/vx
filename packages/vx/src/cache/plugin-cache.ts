@@ -19,7 +19,7 @@ export const PLUGIN_ENTRY_MAX_BYTES = 1024 * 1024
 export interface PluginCache {
   /** The bytes stored under `key`, from the first layer holding them; null when none does. */
   get(key: string): Promise<Uint8Array | null>
-  /** Store `bytes` under `key` in every layer the policy writes, where it is not already. */
+  /** Store `bytes` under `key` in every layer the policy writes, where it is not already; empty bytes store nothing. */
   put(key: string, bytes: Uint8Array): Promise<void>
   /** Whether some layer holds `key`; null when no layer could answer. */
   has(key: string): Promise<boolean | null>
@@ -50,14 +50,18 @@ function entryKey(plugin: string, name: string): string {
   return xxh3hex(`vx-plugin\0${plugin}\0${name}`)
 }
 
-/** A remote body's bytes, or null past the cap: read no further than it. */
-async function capped(body: Blob | Response): Promise<Uint8Array | null> {
+/**
+ * A remote body's bytes; null past the cap (read no further than it) and for
+ * an empty or odd body, which kept would hide every later good one: an entry
+ * is written once (Security, #3580).
+ */
+async function capped(body: unknown): Promise<Uint8Array | null> {
   if (body instanceof Blob) {
-    if (body.size > PLUGIN_ENTRY_MAX_BYTES) return null
+    if (body.size === 0 || body.size > PLUGIN_ENTRY_MAX_BYTES) return null
     return new Uint8Array(await body.arrayBuffer())
   }
-  const reader = body.body?.getReader()
-  if (reader === undefined) return new Uint8Array(0)
+  if (!(body instanceof Response) || body.body === null) return null
+  const reader = body.body.getReader()
   const chunks: Uint8Array[] = []
   let size = 0
   for (;;) {
@@ -70,6 +74,7 @@ async function capped(body: Blob | Response): Promise<Uint8Array | null> {
     }
     chunks.push(value)
   }
+  if (size === 0) return null
   const out = new Uint8Array(size)
   let at = 0
   for (const c of chunks) {
@@ -157,7 +162,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
     },
 
     async put(name, bytes) {
-      if (bytes.byteLength > PLUGIN_ENTRY_MAX_BYTES) return
+      if (bytes.byteLength === 0 || bytes.byteLength > PLUGIN_ENTRY_MAX_BYTES) return
       const key = writeKey(name)
       if (policy.localWrite) localPut(key, bytes)
       for (const { remote } of writers) {
