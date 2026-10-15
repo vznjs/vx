@@ -75,7 +75,7 @@ config key or an environment variable is missing here.
 - **Docs for agents** (`llms.txt`, `llms-full.txt`) — the whole site as markdown for coding agents. [page](https://vznjs.github.io/vx/features/llms-txt/) · post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 - **vx docs** (`vx docs`, `--limit`) — search the CLI, config and cache reference offline; it ships inside vx. [page](https://vznjs.github.io/vx/features/vx-docs/) · post: [The reference, offline](https://vznjs.github.io/vx/blog/vx-docs-offline/)
 - **Affected reasons** (`--affected --dry`) — each kept task says the changed file or the dependency chain that reached it, text or JSON. [page](https://vznjs.github.io/vx/features/affected-reasons/) · post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)
-- **Agent skill** (`skills/vx/SKILL.md`, `npx skills add vznjs/vx/packages/vx/skills/vx`) — an installable skill that teaches a coding agent to run, debug and query vx through the CLI's `--format json`; copy it from `node_modules/@vzn/vx/skills/vx/` to match the installed version. [page](https://vznjs.github.io/vx/features/agent-skill/) · post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
+- **Agent skill** (`skills/vx/SKILL.md`, `npx skills add vznjs/vx`) — an installable skill that teaches a coding agent to run, debug and query vx through the CLI's `--format json`; copy it from `node_modules/@vzn/vx/skills/vx/` to match the installed version. [page](https://vznjs.github.io/vx/features/agent-skill/) · post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 
 ## Cache
 

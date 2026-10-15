@@ -152,7 +152,7 @@ export function coreEntries(exports: Readonly<Record<string, unknown>>): readonl
   return ['index.ts', 'src', ...[...subs].sort()]
 }
 
-const PACKAGE_DATA = ['schemas', 'skills'] as const
+const PACKAGE_DATA = ['schemas'] as const
 
 async function docsPages(): Promise<string[]> {
   const { PAGES } = await import('../src/cli/docs-corpus.ts')
@@ -188,6 +188,8 @@ export async function emitMainPackage(args: { version: string; outDir: string })
   // Data the docs point installs at: the `--format json` schemas and the
   // agent skill (`node_modules/@vzn/vx/schemas/`, `…/skills/vx/SKILL.md`).
   for (const dir of PACKAGE_DATA) await cp(join(CORE, dir), join(mainDir, dir), { recursive: true })
+  // At the repo root, where `npx skills add vznjs/vx` finds it.
+  await cp(join(ROOT, 'skills'), join(mainDir, 'skills'), { recursive: true })
   // The reference `vx docs` searches, where docs-corpus.ts imports it from.
   const docs = await docsPages()
   for (const f of docs) await cp(join(CORE, f), join(mainDir, f))
@@ -218,6 +220,7 @@ export async function emitMainPackage(args: { version: string; outDir: string })
     files: [
       ...entries,
       ...PACKAGE_DATA,
+      'skills',
       ...docs,
       'launcher.sh',
       'launcher.cjs',

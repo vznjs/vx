@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## skills: drop the nested skill install path
+
+`npx skills add vznjs/vx/packages/vx/skills/vx` no longer exists; install the agent skill with `npx skills add vznjs/vx`.
+
 ## cache: drop the VX_CACHE_OUTPUTS_CLEAN variable
 
 VX_CACHE_OUTPUTS_CLEAN is no longer read. Set cache.outputs.clean in .vx/workspace.ts or on the task instead.

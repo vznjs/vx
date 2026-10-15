@@ -1,6 +1,8 @@
 ---
 name: release
 description: Cut a vx release on demand. Use when asked to release, and for the daily release routine. Writes the release note, merges it, dispatches auto-release.yml, and shares the post on Bluesky.
+metadata:
+  internal: true
 ---
 
 # Release vx

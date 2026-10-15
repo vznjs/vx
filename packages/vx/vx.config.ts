@@ -83,9 +83,10 @@ const shardTask = (i: number) => ({
     sandbox: {
       allow: {
         // The root README states counts the suite pins (the hook count,
-        // item 283): a read across the project boundary, declared here
-        // and made an input below so a README edit re-keys the shards.
-        read: ['**/*', '../../README.md'],
+        // item 283), and the agent skill lives at the root, where
+        // `npx skills add vznjs/vx` finds it: reads across the project
+        // boundary, declared here and made inputs below.
+        read: ['**/*', '../../README.md', '../../skills/'],
         systemInfo: ['vfs.disk-space'],
         machLookup: ['com.apple.FSEvents'],
       },
@@ -94,7 +95,7 @@ const shardTask = (i: number) => ({
   cache: {
     inputs: {
       files: SOURCES,
-      workspaceFiles: ['README.md'],
+      workspaceFiles: ['README.md', 'skills/**'],
     },
     outputs: { files: [] as string[] },
   },
@@ -202,8 +203,8 @@ const releaseTasks = {
             sandbox: {
               allow: {
                 // The plugin packages are discovered across packages/, and
-                // @vzn/vx ships the repo's README and LICENSE.
-                read: ['.', '../*', '../../README.md', '../../LICENSE'],
+                // @vzn/vx ships the repo's README, LICENSE and agent skill.
+                read: ['.', '../*', '../../README.md', '../../LICENSE', '../../skills/'],
                 write: ['dist/npm/'],
               },
             },
@@ -431,6 +432,7 @@ export default defineProject({
             'CONTRIBUTING.md',
             'LICENSE',
             '.claude/skills/**',
+            'skills/**',
             'vx.config.ts',
             '.vx/workspace.ts',
             ...OTHER_OUTPUTS,

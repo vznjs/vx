@@ -113,7 +113,7 @@ $ mkdir -p .claude/skills/vx
 $ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 ```
 
-Or install it with `npx skills add vznjs/vx/packages/vx/skills/vx`. The
+Or install it with `npx skills add vznjs/vx`. The
 [agents guide](../../guides/agents/) and
 [machine-readable output](../../cli/#machine-readable-output) have the
 details.

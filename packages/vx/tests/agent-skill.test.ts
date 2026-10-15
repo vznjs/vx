@@ -6,7 +6,10 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { acceptedFlags, CORE_VERBS } from '../src/cli/help.js'
 
-const SKILL = readFileSync(path.resolve(import.meta.dir, '..', 'skills', 'vx', 'SKILL.md'), 'utf8')
+const SKILL = readFileSync(
+  path.resolve(import.meta.dir, '..', '..', '..', 'skills', 'vx', 'SKILL.md'),
+  'utf8',
+)
 const shell = [...SKILL.matchAll(/```sh\n([\s\S]*?)```/g)].map((m) => m[1]!).join('')
 const commands = [...shell.matchAll(/^vx (\S+)([^\n#]*)/gm)].map((m) => ({
   verb: m[1]!,

@@ -1,6 +1,8 @@
 ---
 name: bump-cache-version
 description: Use when changing the cache key derivation or on-disk cache format. Walks the consistent set of files that must update together so existing cached entries are properly invalidated and decisions are recorded.
+metadata:
+  internal: true
 ---
 
 # Bump CACHE_VERSION
