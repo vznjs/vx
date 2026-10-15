@@ -1187,7 +1187,7 @@ run is a no-op too.
 **`clean: false`** keeps the outputs on a miss instead of wiping them
 first, for a tool that reads its own last output (tsc's
 `.tsbuildinfo`). An entry still holds only what a clean run would
-leave: a run that leaves a file it found untouched saves nothing, and
+leave: if the run leaves any old file unchanged, nothing is cached, and
 the next run executes again. A retry still starts clean, and a hit
 still restores bit-identically. Omitted → the workspace's
 `cache.outputs.clean`, else `true`.

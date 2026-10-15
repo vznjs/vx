@@ -839,9 +839,9 @@ Skipped when:
   on, so it DOES clean (the saved snapshot must be clean).
 - `cache.outputs.clean` is `false` (on the task, else the workspace's
   `cache.outputs.clean`): the command sees last run's outputs (tsc's
-  `.tsbuildinfo`). The first attempt stamps what it finds instead, and a
-  run that leaves any of it untouched saves nothing, so no entry holds
-  a file this run did not write. A retry cleans as usual; a hit still
+  `.tsbuildinfo`). The first attempt stamps what it finds instead;
+  if the run leaves any old file unchanged, nothing is cached, so no
+  entry holds a file this run did not write. A retry cleans as usual; a hit still
   cleans before its restore.
 
 A declared output the process cannot remove (a `dist/` another user
