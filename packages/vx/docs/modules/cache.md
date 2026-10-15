@@ -54,6 +54,7 @@ export interface CacheLayer {
   localHasMany?(hashes: readonly string[]): Promise<Set<string>> // the keys the local store holds; the prefetch probes the remote for the rest
   remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null> // one batched probe; null = no batch info, probe per hash
   markRemoteAbsent?(hashes: Iterable<string>): void
+  probeBeforeUpload?(hashes: Promise<readonly string[]>): void // `--force`: one batch probe per remote written but not read; a key it holds is not uploaded
   drainUploads?(): Promise<void> // await the background write-through uploads
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>

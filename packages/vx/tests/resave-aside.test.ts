@@ -60,6 +60,10 @@ describe('a re-save of a key', () => {
 
   it('never renames onto an existing artifact, serves the new bytes and leaves no aside', async () => {
     await save('first')
+    // An entry is immutable, so a re-save comes only after its row is
+    // gone (dropped as corrupt, or two writers that both found it absent).
+    cache.dbHandle().run('DELETE FROM entries WHERE hash = ?', [HASH])
+    cache.dbHandle().run('DELETE FROM artifacts WHERE hash = ?', [HASH])
     await save('second')
     const final = path.join(cacheDir, `${HASH}.tar.zst`)
     expect(renames.filter((r) => r.to === final).map((r) => r.existed)).toEqual([false, false])

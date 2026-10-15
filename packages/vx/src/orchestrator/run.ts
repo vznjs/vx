@@ -820,6 +820,7 @@ async function runOnBus(
         hashCache,
         concurrency,
         remoteRead: policy.remoteRead,
+        remoteWrite: policy.remoteWrite,
       })
     }
 

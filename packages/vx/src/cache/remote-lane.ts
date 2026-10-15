@@ -100,6 +100,13 @@ export class RemoteLane {
    */
   private readonly absent = new Set<string>()
 
+  /**
+   * A remote the run writes but does not read (`--force`): which of the
+   * run's up-front keys it already holds, from one batch probe. `found` is
+   * null when the probe failed or the remote cannot batch.
+   */
+  private presence: Promise<{ asked: Set<string>; found: Set<string> | null } | null> | undefined
+
   private readonly uploadQueue: Array<() => Promise<void>> = []
   private activeUploads = 0
   private drainWaiters: Array<() => void> = []
@@ -188,6 +195,30 @@ export class RemoteLane {
     return result as { body: Blob | Response; durationMs?: number }
   }
 
+  /** Start the batch probe `presence` reads; a lane that reads, or never writes, ignores it. */
+  probeBeforeUpload(hashes: Promise<readonly string[]>): void {
+    if (this.read || !this.write) return
+    this.presence = hashes.then(
+      async (asked) =>
+        asked.length === 0 ? null : { asked: new Set(asked), found: await this.hasMany(asked) },
+      () => null,
+    )
+  }
+
+  /**
+   * Whether this remote already holds `hash`, asked only by a lane the run
+   * does not read: an entry is immutable, so a key it holds is the same
+   * bytes and is not sent again. Answered from the batch probe when it
+   * covered the key, else by one `has`; a failure reads as absent, and the
+   * upload goes as before.
+   */
+  private async holds(hash: string): Promise<boolean> {
+    const probed = await this.presence
+    if (probed !== undefined && probed !== null && probed.found !== null && probed.asked.has(hash))
+      return probed.found.has(hash)
+    return this.has(hash)
+  }
+
   /** Queue a PUT in this remote's bounded pool; `body` is asked for when the job starts. */
   upload(
     hash: string,
@@ -196,9 +227,10 @@ export class RemoteLane {
     tally: { count: number; bytes: number; ms: number; failed: number },
   ): void {
     this.uploadQueue.push(async () => {
-      const start = performance.now()
       let release: (() => Promise<void>) | undefined
       try {
+        if (!this.read && (await this.holds(hash))) return
+        const start = performance.now()
         const got = body()
         release = got.release
         await this.remote.put(hash, got.body, { durationMs })
@@ -217,6 +249,9 @@ export class RemoteLane {
 
   /** Resolves once every queued and in-flight upload has settled. */
   async drain(): Promise<void> {
+    // A probe no upload waited on still runs: settled before the run tears
+    // the plugin down.
+    await this.presence
     if (this.activeUploads === 0 && this.uploadQueue.length === 0) return
     await new Promise<void>((resolve) => this.drainWaiters.push(resolve))
   }

@@ -1117,8 +1117,8 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
       expect(forced.outcomes[0]?.status).toBe('success')
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')
 
-      // --force WROTE the artifact: the subsequent plain run is a hit
-      // (no re-execution), restoring the refreshed 'x'.
+      // --force kept writes on (the stored key stays as it was): the
+      // subsequent plain run is a hit, no re-execution.
       const after = await run({ cwd: fixture.root, tasks: ['run'], log: silentLogger(fixture) })
       expect(after.outcomes[0]?.status).toBe('cache-hit')
       expect(await readFile(path.join(dir, 'runs.txt'), 'utf8')).toBe('x')

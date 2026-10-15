@@ -849,9 +849,9 @@ export const MORE: readonly Feature[] = [
     slug: 'cache-controls',
     title: 'The cache, your way',
     category: 'cache',
-    hook: 'Turn it off, refresh it, or choose per layer what is read and written.',
+    hook: 'Turn it off, re-run past it, or choose per layer what is read and written.',
     body: [
-      'Sometimes you need a clean build, sometimes you want to read a shared cache without writing to it. `--no-cache` turns caching off, and `--force` re-runs everything while still refreshing the cache.',
+      'Sometimes you need a clean build, sometimes you want to read a shared cache without writing to it. `--no-cache` turns caching off, and `--force` re-runs everything and saves only what the cache lacks.',
       '`--cache-policy` controls each layer: read the remote but never upload, or skip the local cache and upload only. `VX_CACHE_POLICY` sets the same spec for every run in a shell or CI job, and `cache.policy` in `.vx/workspace.ts` sets the default. The local cache is always asked first, then each remote.',
     ],
     example: {

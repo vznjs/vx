@@ -189,6 +189,10 @@ export class LayeredCache implements CacheLayer {
     }
   }
 
+  probeBeforeUpload(hashes: Promise<readonly string[]>): void {
+    for (const lane of this.lanes) lane.probeBeforeUpload(hashes)
+  }
+
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
     const localHit = await this.local.get(hash, ctx)
     if (localHit) {

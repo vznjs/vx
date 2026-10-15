@@ -904,6 +904,11 @@ describe('LayeredCache', () => {
       await reading
       expect(isInline(local, 'h-resave')).toBe(where === 'inline')
       const firstBytes = Buffer.from(storedArtifact(local, 'h-resave')!)
+      // An entry is immutable, so only a writer that checked before the
+      // first save landed (another process) re-saves the key: its row is
+      // dropped here to stand for that race.
+      local.dbHandle().run('DELETE FROM entries WHERE hash = ?', ['h-resave'])
+      local.dbHandle().run('DELETE FROM artifacts WHERE hash = ?', ['h-resave'])
       await save(local, 'second, longer than the first')
       expect(Buffer.from(storedArtifact(local, 'h-resave')!)).not.toEqual(firstBytes)
       resume()

@@ -34,6 +34,8 @@ export class ScopedCache implements CacheLayer {
   readonly hasRemote?: boolean
   readonly drainUploads?: () => Promise<void>
   readonly remoteHasMany?: (hashes: readonly string[]) => Promise<Set<string> | null>
+  /** A scoped run saves under the scope's key, so that is the key asked. */
+  readonly probeBeforeUpload?: (hashes: Promise<readonly string[]>) => void
   readonly getMany?: (
     hashes: readonly string[],
     ctx?: (hash: string) => CacheGetContext,
@@ -49,6 +51,9 @@ export class ScopedCache implements CacheLayer {
     if (inner.hasRemote !== undefined) this.hasRemote = inner.hasRemote
     if (inner.drainUploads !== undefined) this.drainUploads = () => inner.drainUploads!()
     if (inner.remoteHasMany !== undefined) this.remoteHasMany = (h) => this.scopedHasMany(h)
+    if (inner.probeBeforeUpload !== undefined)
+      this.probeBeforeUpload = (h) =>
+        inner.probeBeforeUpload!(h.then((keys) => keys.map((k) => this.own(k))))
     if (inner.getMany !== undefined) this.getMany = (h, ctx) => this.scopedGetMany(h, ctx)
   }
 

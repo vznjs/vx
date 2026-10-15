@@ -28,7 +28,9 @@ $ vx run build --all --no-cache
   time      638ms
 ```
 
-`--force` runs everything again and refreshes the cache with the result.
+`--force` runs everything again and saves what the cache lacks. (Since vx
+0.0.639, a key already stored, locally or in a remote, is kept as it is
+and not uploaded again.)
 `--no-cache` neither reads nor writes. For finer control, `--cache-policy` takes
 a read/write spec per layer:
 

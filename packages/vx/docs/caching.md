@@ -553,7 +553,12 @@ Hard invariants of the remote prefetch:
   later `get` finds it as a now-local hit — still reports
   `source: 'remote'`, so the outcome is `cache-hit-remote`.
 - **A remote-read-off policy** (`--no-cache`, `--force`, or
-  `--cache-policy=remote:`) fires no prefetch.
+  `--cache-policy=remote:`) fires no prefetch. With remote writes on
+  (`--force`), the same up-front keys go to one batch `hasMany` per
+  remote the run writes but does not read, in the background; an upload
+  of a key that remote holds is skipped (an entry is immutable) and is
+  counted nowhere. A key the batch did not cover asks `has` first; a
+  failed probe uploads, as before.
 - **Never fail.** Every remote path (get / put / ingest / prefetch)
   catches all errors and degrades to a cache miss. A remote 500, a
   network drop, a corrupt artifact, or a failed integrity check can
@@ -615,8 +620,8 @@ remote executor's own store.
 The CLI maps three flags to a policy (precedence: start all-on → apply
 `--cache-policy` → `--no-cache` forces all off → `--force` forces both reads
 off): `--no-cache` = everything off (no read, no write, no output
-clean); `--force` = reads off / writes on (re-execute and refresh the
-cache, outputs cleaned); `--cache-policy=<spec>` = explicit per-layer control.
+clean); `--force` = reads off / writes on (re-execute, outputs cleaned;
+a key already stored, locally or in a remote, is kept as it is); `--cache-policy=<spec>` = explicit per-layer control.
 Off CI, unless a spec names the remote, `remoteWrite` starts off: a key
 holds only declared inputs, so a laptop's undeclared tool or file could
 replay on CI. See `docs/cli.md` § Cache control.
@@ -665,7 +670,10 @@ is on):
    Until 2026-09-27 (A-3) the rename came first, and a commit refused
    past the busy timeout left the new bytes beside the old rows: every
    later hit on the key failed the task as a corrupt artifact.
-   A re-save (`--force`) first moves the previous artifact aside under
+   A save of a key the index already holds is skipped (an entry is
+   immutable, so `--force` rewrites nothing). A re-save (a key dropped
+   as corrupt, or two writers that both found it absent) first moves the
+   previous artifact aside under
    a temp name and unlinks it after the commit: ext4 flushes the
    incoming file when a rename replaces one, 0.55 ms a save on the main
    thread against 0.04 (a forced 1,000-task run 4.01 s → 3.46 s,

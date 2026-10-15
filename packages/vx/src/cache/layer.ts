@@ -567,6 +567,13 @@ export interface CacheLayer {
    */
   markRemoteAbsent?(hashes: Iterable<string>): void
   /**
+   * The run's up-front keys, for each remote the run writes but does not
+   * read (`--force`): one batch probe in the background, and an upload of
+   * a key the remote already holds is skipped. Only meaningful with
+   * `hasRemote`.
+   */
+  probeBeforeUpload?(hashes: Promise<readonly string[]>): void
+  /**
    * Resolve once every background write-through upload settles. The
    * orchestrator awaits it before `close()` — an upload reading layer state
    * after close would race. Only meaningful with `hasRemote`; a layer that

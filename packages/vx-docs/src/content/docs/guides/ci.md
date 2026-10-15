@@ -40,7 +40,7 @@ would run:
 | Flag                | Does                                                        |
 | ------------------- | ----------------------------------------------------------- |
 | `--no-cache`        | ignore the cache: no reads, no writes                       |
-| `--force`           | run everything, then refresh the cache                      |
+| `--force`           | run everything; save only what the cache lacks              |
 | `--concurrency <n>` | at most n tasks at once (default: the cores you may use)    |
 | `--continue`        | keep going after a failure ([modes](../configure/#tasks-and-dependencies)) |
 | `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |

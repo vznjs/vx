@@ -226,6 +226,7 @@ export interface CacheLayer {
   remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   markRemoteAbsent?(hashes: Iterable<string>): void
+  probeBeforeUpload?(hashes: Promise<readonly string[]>): void
   drainUploads?(): Promise<void>
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
@@ -286,8 +287,8 @@ type · `src/cache/policy.ts`
 
 Independent read/write control over the two cache layers (local +
 remote). Replaces the old single `noCache` boolean: each axis can be
-toggled on its own so `--force` (re-execute but still refresh the
-cache) is distinct from `--no-cache` (disable everything).
+toggled on its own so `--force` (re-execute with writes on; a key
+already stored is kept) is distinct from `--no-cache` (disable everything).
 
 The task-artifact get/save path is gated, and the local axes also gate
 the local store's file-hash writes (`cache.ts`). `recordRun`, `stats`, `prune`, key derivation, and

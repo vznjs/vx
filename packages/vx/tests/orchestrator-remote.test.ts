@@ -49,6 +49,8 @@ interface ArtifactEndpoint {
   getCounts: Map<string, number>
   /** Per-hash HEAD counts — the plan path's existence probes. */
   headCounts: Map<string, number>
+  /** Per-hash PUT counts. */
+  putCounts: Map<string, number>
   /** Max GETs observed concurrently in flight. */
   getsInFlight: () => number
   /** Number of `POST /artifacts/batch` existence probes served. */
@@ -58,10 +60,12 @@ interface ArtifactEndpoint {
 function startArtifactEndpoint(opts?: {
   getLatencyMs?: number
   failAll?: boolean
+  failBatch?: boolean
 }): ArtifactEndpoint {
   const store = new Map<string, Uint8Array>()
   const getCounts = new Map<string, number>()
   const headCounts = new Map<string, number>()
+  const putCounts = new Map<string, number>()
   let inFlight = 0
   let maxInFlight = 0
   let batchCalls = 0
@@ -74,6 +78,7 @@ function startArtifactEndpoint(opts?: {
     // Batch existence probe — one round-trip for many hashes.
     if (url.pathname === '/artifacts/batch' && req.method === 'POST') {
       batchCalls++
+      if (opts?.failBatch) return new Response('boom', { status: 500 })
       const { hashes } = (await req.json()) as { hashes: string[] }
       return Response.json({ present: hashes.filter((h) => store.has(h)) })
     }
@@ -81,6 +86,7 @@ function startArtifactEndpoint(opts?: {
     if (!m) return new Response('not found', { status: 404 })
     const hash = m[1]!
     if (req.method === 'PUT') {
+      putCounts.set(hash, (putCounts.get(hash) ?? 0) + 1)
       store.set(hash, new Uint8Array(await req.arrayBuffer()))
       return new Response(null, { status: 200 })
     }
@@ -142,6 +148,7 @@ function startArtifactEndpoint(opts?: {
     store,
     getCounts,
     headCounts,
+    putCounts,
     getsInFlight: () => maxInFlight,
     batchCalls: () => batchCalls,
   }
@@ -460,6 +467,135 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     },
     TIMEOUT,
   )
+
+  // `--force` re-executes and restores nothing, yet a key the remote holds
+  // is the same bytes by the immutable contract: re-uploading it was a PUT
+  // per task for nothing (M, 2026-10-15).
+  describe('--force', () => {
+    const seeded = async (opts?: { failBatch?: boolean }) => {
+      const fixture = await makeFixture('vx-remote-force-')
+      for (const name of ['a', 'b']) {
+        await addProject(fixture.root, name, {
+          files: { 'src/in.txt': `v-${name}` },
+          config: BUILD_CONFIG,
+        })
+      }
+      const remote = startArtifactEndpoint(opts)
+      await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: silentLogger(fixture),
+        remoteCache: remote.layer,
+      })
+      expect(remote.store.size).toBe(2)
+      remote.putCounts.clear()
+      remote.getCounts.clear()
+      return { fixture, remote }
+    }
+
+    it(
+      'a key the remote holds is not uploaded again, from one batch probe',
+      async () => {
+        const { fixture, remote } = await seeded()
+        try {
+          const batches = remote.batchCalls()
+          const forced = await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: remote.layer,
+            cacheFlags: { force: true },
+          })
+          expect(forced.ok).toBe(true)
+          expect(forced.outcomes.map((o) => o.status).sort()).toEqual(['success', 'success'])
+          expect(remote.putCounts.size).toBe(0)
+          expect(remote.batchCalls() - batches).toBe(1)
+          expect(remote.getCounts.size).toBe(0)
+        } finally {
+          await rm(fixture.root, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'a key the remote lacks is uploaded',
+      async () => {
+        const { fixture, remote } = await seeded()
+        try {
+          const [gone] = [...remote.store.keys()] as [string]
+          remote.store.delete(gone)
+          await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: remote.layer,
+            cacheFlags: { force: true },
+          })
+          expect([...remote.putCounts.entries()]).toEqual([[gone, 1]])
+        } finally {
+          await rm(fixture.root, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'a failed probe uploads, as before',
+      async () => {
+        const { fixture, remote } = await seeded({ failBatch: true })
+        try {
+          const warn = spyOn(process.stderr, 'write').mockImplementation(() => true)
+          try {
+            await run({
+              cwd: fixture.root,
+              tasks: ['build'],
+              log: silentLogger(fixture),
+              remoteCache: remote.layer,
+              cacheFlags: { force: true },
+            })
+          } finally {
+            warn.mockRestore()
+          }
+          // The batch failed; each upload asks for its own key instead.
+          expect(remote.putCounts.size).toBe(0)
+          expect(remote.headCounts.size).toBe(2)
+        } finally {
+          await rm(fixture.root, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+
+    it(
+      'the local entry under the same key is kept, not rewritten',
+      async () => {
+        const { fixture, remote } = await seeded()
+        try {
+          const db = () => new Database(path.join(fixture.root, '.vx', 'cache', 'cache.db'))
+          const before = db()
+          const stored = before.query('SELECT hash, accessed_at FROM entries ORDER BY hash').all()
+          before.close()
+          await Bun.sleep(20)
+          await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: remote.layer,
+            cacheFlags: { force: true },
+          })
+          const after = db()
+          expect(after.query('SELECT hash, accessed_at FROM entries ORDER BY hash').all()).toEqual(
+            stored,
+          )
+          after.close()
+        } finally {
+          await rm(fixture.root, { recursive: true, force: true })
+        }
+      },
+      TIMEOUT,
+    )
+  })
 
   it(
     'codegen→consumer (inputs glob over a sibling output) stays correct without prefetch',
@@ -906,10 +1042,11 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     TIMEOUT,
   )
 
-  // turborepo#3127: `--force` re-ran the task but left the remote holding
-  // the old artifact, so every other machine kept replaying it.
+  // turborepo#3127 asked `--force` to overwrite the remote's artifact. vx
+  // does not: an entry is immutable (M, 2026-10-15), so a forced run
+  // re-executes and refreshes the disk, and the key keeps its first bytes.
   it(
-    '--force uploads the re-executed artifact over the one the remote holds, and the next cold run is served it',
+    '--force re-executes but leaves the artifact the remote holds, and the next cold run is served it',
     async () => {
       const fixture = await makeFixture('vx-remote-e2e-')
       const remote = startArtifactEndpoint()
@@ -951,13 +1088,12 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(await once(FORCE)).toBe('success')
         const forced = await Bun.file(out).text()
         expect(forced).not.toBe(plain)
-        expect(puts).toHaveLength(2)
-        expect(puts[1]).toBe(puts[0])
+        expect(puts).toHaveLength(1)
 
         await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         await rm(out)
         expect(await once()).toBe('cache-hit-remote')
-        expect(await Bun.file(out).text()).toBe(forced)
+        expect(await Bun.file(out).text()).toBe(plain)
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

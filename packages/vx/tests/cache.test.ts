@@ -2164,7 +2164,7 @@ describe('Cache storage (v10)', () => {
     }
   })
 
-  it('save() overwrites a prior entry at the same hash (idempotent re-save)', async () => {
+  it('save() keeps a prior entry at the same hash: an entry is immutable', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises')
     await mkdir(projectDir, { recursive: true })
     const outFile = path.join(projectDir, 'dist', 'out.txt')
@@ -2183,8 +2183,8 @@ describe('Cache storage (v10)', () => {
       },
     })
 
-    // Second save at the same hash with different content. Must
-    // succeed (idempotent) and the read must reflect the latest write.
+    // Second save at the same hash with different content: it succeeds and
+    // writes nothing, so a read still sees the first.
     await writeFile(outFile, 'second-version-longer')
     await cache.save({
       hash: 'h-overwrite',
@@ -2199,15 +2199,15 @@ describe('Cache storage (v10)', () => {
     })
 
     const got = await cache.get('h-overwrite')
-    expect(got?.command).toBe('second')
-    expect(got?.durationMs).toBe(2)
-    expect(got?.stdout).toBe('replaced')
-    // Stored payload reflects the second-write content. Restore into a
-    // sibling dir and read the materialized file.
+    expect(got?.command).toBe('first')
+    expect(got?.durationMs).toBe(1)
+    expect(got?.stdout).toBe('')
+    // The stored payload is the first write's. Restore into a sibling dir
+    // and read the materialized file.
     const restoreDir = path.join(workspaceRoot, 'restore-target')
     await cache.restoreOutputs('h-overwrite', restoreDir)
     const stored = await readFile(path.join(restoreDir, 'dist', 'out.txt'), 'utf8')
-    expect(stored).toBe('second-version-longer')
+    expect(stored).toBe('first')
   })
 
   it('recordRun() persists cache-hit-remote with cache_hit=1', async () => {
