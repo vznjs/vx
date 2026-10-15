@@ -175,8 +175,6 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '                                  before SIGKILL (default 2s).',
     "      --teardown-timeout <duration>  The bound on each plugin's end-of-run flush",
     '                                  (default 3s).',
-    '      --ready-notice <duration>   When vx says a persistent task still waits for',
-    '                                  readyWhen (default 10s).',
     '      --continue[=<mode>]         What a failed task takes down: never | deps-ok',
     '                                  (default, skips its dependents) | always (bare',
     '                                  form; dependents run, never save).',

@@ -69,7 +69,6 @@
       "--no-cache",
       "--output-logs",
       "--profile",
-      "--ready-notice",
       "--retries",
       "--schedule",
       "--teardown-timeout",
@@ -106,7 +105,6 @@
       "--no-cache",
       "--output-logs",
       "--poll",
-      "--ready-notice",
       "--retries",
       "--schedule",
       "--teardown-timeout",
@@ -250,13 +248,6 @@
     "run --profile": [
       "*"
     ],
-    "run --ready-notice": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
     "run --retries": [
       "0",
       "1",
@@ -353,13 +344,6 @@
       "hash-only",
       "none"
     ],
-    "watch --ready-notice": [
-      "12h",
-      "1d",
-      "30m",
-      "30s",
-      "500M"
-    ],
     "watch --retries": [
       "0",
       "1",
@@ -413,7 +397,6 @@
     "VX_RUN_CONTINUE",
     "VX_RUN_KILL_GRACE",
     "VX_RUN_OUTPUT_LOGS",
-    "VX_RUN_READY_NOTICE",
     "VX_RUN_RETRIES",
     "VX_RUN_RULES_EXCLUSIVE_OUTPUTS",
     "VX_RUN_RULES_UPFRONT_KEYS",

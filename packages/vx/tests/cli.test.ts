@@ -1626,7 +1626,6 @@ describe('parseRunArgs', () => {
       '--no-cache',
       '--output-logs',
       '--profile',
-      '--ready-notice',
       '--retries',
       '--schedule',
       '--teardown-timeout',

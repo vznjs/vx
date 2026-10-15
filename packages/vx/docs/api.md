@@ -1832,7 +1832,6 @@ export interface RunOptions {
   schedule?: NonNullable<RunSettings['schedule']>
   killGrace?: number
   teardownTimeout?: number
-  readyNotice?: number
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
   footer?: boolean
@@ -1951,7 +1950,6 @@ export interface RunSettings {
   continue?: 'never' | 'deps-ok' | 'always'
   killGrace?: Duration
   teardownTimeout?: Duration
-  readyNotice?: Duration
   rules?: WorkspaceRules
 }
 ```

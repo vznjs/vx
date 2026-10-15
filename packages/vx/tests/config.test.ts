@@ -287,7 +287,6 @@ describe('defineWorkspace', () => {
         continue: 'deps-ok',
         killGrace: '2s',
         teardownTimeout: '3s',
-        readyNotice: '10s',
         rules: { exclusiveOutputs: false, upfrontKeys: false },
       },
       cache: {

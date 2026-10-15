@@ -376,7 +376,7 @@ for it to exit. Instead it considers the task "ready":
   The trailing partial line is tested too, so prompt-style banners
   without a newline (`printf 'Listening on :3000'`) count, and so does
   output read up to 250 ms after the shell exits. A server
-  not ready after 10 s (`run.readyNotice`) is said once, naming
+  not ready after 10 s is said once, naming
   the pattern it waits for, and whether `exec.timeout` bounds the wait.
 
 ```ts
@@ -1646,7 +1646,6 @@ export default defineWorkspace({
     continue: 'deps-ok',
     killGrace: '2s',
     teardownTimeout: '3s',
-    readyNotice: '10s',
     rules: {
       exclusiveOutputs: true,
       upfrontKeys: true,
@@ -1699,7 +1698,6 @@ default and where it came from.
 | `run.outputLogs` (variable or flag only)       | `VX_RUN_OUTPUT_LOGS`                | `--output-logs`      | one of 'full', 'errors-only', 'hash-only', 'none'                       | `full` on CI, else by what the run selects | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                          |
 | `run.killGrace`                                | `VX_RUN_KILL_GRACE`                 | `--kill-grace`       | a duration like '500ms', '30s' or '5m', at most 24 days                 | 2s                                         | How long a task that ignores SIGTERM gets before SIGKILL.                                                                                           |
 | `run.teardownTimeout`                          | `VX_RUN_TEARDOWN_TIMEOUT`           | `--teardown-timeout` | a duration like '500ms', '30s' or '5m', at most 24 days                 | 3s                                         | The bound on each plugin's end-of-run flush and teardown.                                                                                           |
-| `run.readyNotice`                              | `VX_RUN_READY_NOTICE`               | `--ready-notice`     | a duration like '500ms', '30s' or '5m', at most 24 days                 | 10s                                        | How long a persistent task may take to match `readyWhen` before vx says it waits.                                                                   |
 | `run.rules.exclusiveOutputs`                   | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | —                    | true or false                                                           | true                                       | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                               |
 | `run.rules.upfrontKeys`                        | `VX_RUN_RULES_UPFRONT_KEYS`         | —                    | true or false                                                           | true                                       | Refuse a task whose inputs can match another task's outputs.                                                                                        |
 | `cache.dir`                                    | `VX_CACHE_DIR`                      | `--cache-dir`        | a non-blank string                                                      | .vx/cache, entries in ~/.vx/<repo>/cache   | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                             |
@@ -1739,7 +1737,6 @@ interface RunSettings {
   continue?: 'never' | 'deps-ok' | 'always'
   killGrace?: Duration
   teardownTimeout?: Duration
-  readyNotice?: Duration
   /** Graph rules `vx lock` checks, never a run; each on unless set to false. */
   rules?: { exclusiveOutputs?: boolean; upfrontKeys?: boolean; dependencies?: DependencyRule[] }
 }
@@ -1777,11 +1774,9 @@ interface CacheSettings {
 - **`run.continue`** — what a failed task takes down: `never` stops
   dispatch, `deps-ok` (the default) skips its dependents, `always` runs
   them (`docs/cli.md` § Failure propagation).
-- **`run.killGrace`**, **`run.teardownTimeout`**, **`run.readyNotice`**
-  — the SIGTERM → SIGKILL grace (2 s), the bound on each plugin's
-  end-of-run flush and teardown (3 s; there is no "no limit"), and how
-  long a persistent task may wait for `readyWhen` before vx says what it
-  waits for (10 s).
+- **`run.killGrace`**, **`run.teardownTimeout`** — the SIGTERM →
+  SIGKILL grace (2 s) and the bound on each plugin's end-of-run flush
+  and teardown (3 s; there is no "no limit").
 - **`run.rules`** — checked by `vx lock` and `vx lock --check` only;
   no run checks them.
 - **`cache.dir`** — unset, the workspace keeps its index and history in

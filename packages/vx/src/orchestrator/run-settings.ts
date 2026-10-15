@@ -14,7 +14,6 @@ const FROM_OPTIONS = {
   timeout: 'run.timeout',
   retries: 'run.retries',
   continueMode: 'run.continue',
-  readyNotice: 'run.readyNotice',
   download: 'cache.download',
 } as const satisfies Partial<Record<keyof RunOptions, string>>
 

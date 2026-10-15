@@ -11,12 +11,12 @@ import { run } from './helpers/orchestrator.js'
 
 let notice: string | undefined
 beforeAll(() => {
-  notice = process.env['VX_RUN_READY_NOTICE']
-  process.env['VX_RUN_READY_NOTICE'] = '200ms'
+  notice = process.env['VX_TEST_READY_NOTICE']
+  process.env['VX_TEST_READY_NOTICE'] = '200ms'
 })
 afterAll(() => {
-  if (notice === undefined) delete process.env['VX_RUN_READY_NOTICE']
-  else process.env['VX_RUN_READY_NOTICE'] = notice
+  if (notice === undefined) delete process.env['VX_TEST_READY_NOTICE']
+  else process.env['VX_TEST_READY_NOTICE'] = notice
 })
 let root: string | undefined
 afterEach(async () => {

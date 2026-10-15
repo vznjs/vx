@@ -117,13 +117,6 @@ export const SETTINGS: readonly Setting[] = [
     flag: { verb: 'run', name: '--teardown-timeout' },
   },
   {
-    path: 'run.readyNotice',
-    kind: { type: 'duration', timer: true },
-    default: '10s',
-    doc: 'How long a persistent task may take to match `readyWhen` before vx says it waits.',
-    flag: { verb: 'run', name: '--ready-notice' },
-  },
-  {
     path: 'run.rules.exclusiveOutputs',
     kind: { type: 'bool' },
     default: 'true',

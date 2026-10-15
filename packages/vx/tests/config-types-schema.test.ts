@@ -48,7 +48,6 @@ const RUN = [
   'concurrency',
   'continue',
   'killGrace',
-  'readyNotice',
   'retries',
   'rules',
   'schedule',
