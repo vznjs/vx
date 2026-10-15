@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { rm } from 'node:fs/promises'
 import { makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
@@ -31,7 +32,7 @@ const vx = (...args: string[]): [number, string, string] => {
 }
 
 it('a run and its --dry refuse an undeclared task alike: one stderr line, exit 1', () => {
-  const line = 'vx run: no projects declare task(s): biuld. Did you mean build?\n'
+  const line = noticed('vx run: no projects declare task(s): biuld. Did you mean build?\n')
   expect(vx('run', 'biuld', '--all')).toEqual([1, '', line])
   expect(vx('run', 'biuld', '--all', '--dry')).toEqual([1, '', line])
 }, 30_000)
@@ -61,6 +62,8 @@ it('a task the lock does not hold yet names `vx lock` as the fix', async () => {
   })
   expect(p.exitCode).toBe(1)
   expect(p.stderr.toString()).toBe(
-    'vx run: no projects declare task(s): lint. Tasks: build. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+    noticed(
+      'vx run: no projects declare task(s): lint. Tasks: build. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+    ),
   )
 }, 30_000)

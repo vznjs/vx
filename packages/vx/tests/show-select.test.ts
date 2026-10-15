@@ -96,7 +96,7 @@ describe('vx show --filter / --affected', () => {
     const r = names('lib', '--affected')
     expect([r.code, r.err]).toEqual([
       1,
-      'vx show: --filter and --affected narrow a list: `vx show` or `vx show <task>`\n',
+      '✗ vx show  --filter and --affected narrow a list: `vx show` or `vx show <task>`\n',
     ])
   })
 })

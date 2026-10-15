@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
 import { run } from './helpers/cli.js'
+import { noticed } from './helpers/notice.js'
 
 let stderr = ''
 beforeEach(() => {
@@ -30,16 +31,18 @@ it('list, ls, gc and purge name the verb that answers them', async () => {
   const wipe =
     '`vx cache clean` with no bound clears the whole cache; `--older-than` / `--max-size` trim it'
   expect([await said('list'), await said('ls'), await said('gc'), await said('purge')]).toEqual([
-    [1, `vx cache: unknown subcommand: list — ${runs} (see \`vx cache --help\`)\n`],
-    [1, `vx cache: unknown subcommand: ls — ${runs} (see \`vx cache --help\`)\n`],
-    [1, `vx cache: unknown subcommand: gc — ${evict} (see \`vx cache --help\`)\n`],
-    [1, `vx cache: unknown subcommand: purge — ${wipe} (see \`vx cache --help\`)\n`],
+    [1, noticed(`vx cache: unknown subcommand: list — ${runs} (see \`vx cache --help\`)\n`)],
+    [1, noticed(`vx cache: unknown subcommand: ls — ${runs} (see \`vx cache --help\`)\n`)],
+    [1, noticed(`vx cache: unknown subcommand: gc — ${evict} (see \`vx cache --help\`)\n`)],
+    [1, noticed(`vx cache: unknown subcommand: purge — ${wipe} (see \`vx cache --help\`)\n`)],
   ])
 })
 
 it('a word no runner uses still names clean (control)', async () => {
   expect(await said('bogus')).toEqual([
     1,
-    'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n',
+    noticed(
+      'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n',
+    ),
   ])
 })

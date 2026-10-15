@@ -15,7 +15,7 @@ import { lockAfterMigration } from './lock.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isCompiledBinary } from './upgrade.js'
 import { VERSION } from '../version.js'
-import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError } from '../util/index.js'
+import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from '../util/index.js'
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
@@ -125,7 +125,7 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   if (!args.force) {
     for (const [rel] of files) {
       if (await Bun.file(path.join(root, rel)).exists()) {
-        process.stderr.write(`vx init: ${rel} exists; --force overwrites it\n`)
+        sayNotice('error', 'vx init', `${rel} exists. --force overwrites it`)
         return 1
       }
     }

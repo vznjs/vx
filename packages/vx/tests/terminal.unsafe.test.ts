@@ -285,7 +285,9 @@ describe('the picker outside a git work tree', () => {
       expect({ code, lines: screen.split(/\r?\n/).filter((l) => l !== '') }).toEqual({
         code: 1,
         lines: [
-          `vx requires git: ${root} is not inside a git work tree. Run 'git init' in your workspace root. (git: fatal: not a git repository (or any of the parent directories): .git)`,
+          `✗ vx run  vx requires git: ${root} is not inside a git work tree`,
+          "  Run 'git init' in your workspace root",
+          '  (git: fatal: not a git repository (or any of the parent directories): .git)',
         ],
       })
     } finally {

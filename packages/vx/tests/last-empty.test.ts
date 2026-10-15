@@ -8,9 +8,10 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-const NONE = 'vx last: no recorded runs yet — run something first\n'
+const NONE = noticed('vx last: no recorded runs yet — run something first\n')
 
 let root = ''
 beforeAll(async () => {
@@ -54,7 +55,7 @@ it('past a green run, --list --failed says none failed', () => {
 
 it('past a run, a failed or unknown one is named as before (control)', () => {
   expect([vx('last', '--failed'), vx('last', '0199')]).toEqual([
-    [1, '', 'vx last: no recorded run failed\n'],
-    [1, '', 'vx last: no recorded run 0199 (vx last --list shows recent runs)\n'],
+    [1, '', noticed('vx last: no recorded run failed\n')],
+    [1, '', noticed('vx last: no recorded run 0199 (vx last --list shows recent runs)\n')],
   ])
 }, 30_000)

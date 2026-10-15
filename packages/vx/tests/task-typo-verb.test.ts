@@ -8,6 +8,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { lock } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const TASKS = `export default { tasks: { build: { exec: { command: 'true' } }, typecheck: { exec: { command: 'true' } } } }`
@@ -26,29 +27,38 @@ afterAll(async () => {
 
 function vx(cwd: string, ...args: string[]): [number, string] {
   const p = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd })
-  return [p.exitCode, p.stderr.toString().split('\n')[0] ?? '']
+  return [p.exitCode, p.stderr.toString()]
 }
 
 it('a typo of a task names the task and the vx run that runs it', () => {
   expect(vx(root, 'biuld')).toEqual([
     1,
-    'vx: unknown command: biuld; did you mean the task `build`? vx run build --all',
+    noticed(
+      'vx: unknown command: biuld, a typo of the task `build` (did you mean vx run build --all?)',
+    ),
   ])
   expect(vx(root, 'typechek', 'lib')).toEqual([
     1,
-    'vx: unknown command: typechek; did you mean the task `typecheck`? vx run typecheck --filter lib',
+    noticed(
+      'vx: unknown command: typechek, a typo of the task `typecheck` (did you mean vx run typecheck --filter lib?)',
+    ),
   ])
   expect(vx(path.join(root, 'packages', 'app'), 'buidl')).toEqual([
     1,
-    'vx: unknown command: buidl; did you mean the task `build`? vx run build',
+    noticed('vx: unknown command: buidl, a typo of the task `build` (did you mean vx run build?)'),
   ])
 })
 
 it('a closer verb, a far word and a flag keep their own lines (controls)', () => {
   expect(vx(root, 'rnu')).toEqual([
     1,
-    'vx: unknown command: rnu. Did you mean run? (see `vx help`)',
+    noticed('vx: unknown command: rnu. Did you mean run? (see `vx help`)'),
   ])
-  expect(vx(root, 'deploy')).toEqual([1, 'vx: unknown command: deploy (see `vx help`)'])
-  expect(vx(root, '--biuld')[1]).toStartWith('vx: unknown flag: --biuld')
+  expect(vx(root, 'deploy')).toEqual([
+    1,
+    noticed(
+      'vx: unknown command: deploy (see `vx help`)\n  A plugin declared in .vx/workspace.ts can add verbs; this workspace declares none',
+    ),
+  ])
+  expect(vx(root, '--biuld')[1]).toStartWith('✗ vx  unknown flag: --biuld')
 })

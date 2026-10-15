@@ -132,7 +132,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         await chmod(ro, 0o555)
         const pruned = await vx(['cache', 'clean', '--max-size', '1K'])
         expect(pruned.code).toBe(1)
-        expect(pruned.err).toMatch(/^vx: cache directory .* is not writable \(EACCES: /)
+        expect(pruned.err).toMatch(/^✗ vx cache  cache directory .* is not writable \(EACCES: /)
         expect(pruned.err).not.toContain('\n    at ')
         const dry = await vx(['cache', 'clean', '--max-size', '1K', '--dry-run'])
         expect(`${dry.code}\n${dry.err}`).toStartWith('0\n')
@@ -151,7 +151,9 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         try {
           const ran = await vx(['run', 'build', '--all'], null, VX)
           expect(ran.code).toBe(1)
-          expect(ran.err).toMatch(/^vx: cannot create cache directory .*\.vx\/cache \(EACCES: /)
+          expect(ran.err).toMatch(
+            /^✗ vx run  cannot create cache directory .*\.vx\/cache \(EACCES: /,
+          )
           expect(ran.err).toContain('--cache-dir <path>')
           expect(ran.err).not.toContain('\n    at ')
           // A reading verb needs no cache to exist (E-38): it reads here.

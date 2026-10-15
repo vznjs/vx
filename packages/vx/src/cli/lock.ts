@@ -17,13 +17,14 @@ import {
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
-  configRefusal,
+  refusalNotice,
   DOT_VX_GITATTRIBUTES,
   isUserError,
   relPosix,
   type RefusalParts,
   secretMask,
   ui,
+  sayNotice,
 } from '../util/index.js'
 import {
   findProjectConfigs,
@@ -243,32 +244,7 @@ export async function lockAfterMigration(root: string): Promise<{ code: number; 
 
 /** The lock refused: the refusal's own parts, or its config line and frame, or its message. */
 function notWritten(message: string, parts: RefusalParts | undefined): void {
-  const head = { tone: 'error', verb: 'vx lock', headline: 'lock not written' } as const
-  if (parts !== undefined) {
-    ui.print(
-      'err',
-      ui.notice({
-        ...head,
-        what: [parts.headline, ...(parts.what ?? [])],
-        ...(parts.why !== undefined ? { why: parts.why } : {}),
-        ...(parts.fix !== undefined ? { fix: parts.fix } : {}),
-      }),
-    )
-    return
-  }
-  const c = configRefusal(message, process.cwd())
-  ui.print(
-    'err',
-    c === undefined
-      ? ui.notice({ ...head, what: [message] })
-      : ui.notice({
-          ...head,
-          what: [ui.path(c.where), c.problem],
-          ...(c.allowed !== undefined ? { why: `allowed: ${c.allowed}` } : {}),
-          code: c.frame,
-          ...(c.fix !== undefined ? { fix: c.fix } : {}),
-        }),
-  )
+  ui.print('err', refusalNotice('vx lock', message, parts, { headline: 'lock not written' }))
 }
 
 /** Names shown per note: a turbo() repo can have hundreds of bare projects. */
@@ -425,7 +401,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   const lock = await readLockfile(root)
   if (!lock) {
     const problem = `no ${LOCKFILE_NAME} at ${root} — run \`vx lock\` first`
-    if (!json) process.stderr.write(`vx lock --check: ${problem}\n`)
+    if (!json) sayNotice('error', 'vx lock --check', problem)
     return answer([problem])
   }
   const failures: string[] = []
@@ -487,12 +463,12 @@ async function checkLock(root: string, json: boolean): Promise<number> {
   }
   if (json) return answer(failures)
   if (failures.length > 0) {
-    for (const f of failures) process.stderr.write(`vx lock --check: ${f}\n`)
+    for (const f of failures) sayNotice('error', 'vx lock --check', f)
     return 1
   }
   const n = metas.length
   const audited = `${n} project${n === 1 ? '' : 's'}`
   const skipped = bare.length === 0 ? '' : `; not audited, no vx.config: ${bareNames(bare)}`
-  process.stdout.write(`vx lock --check: up to date (${audited}${skipped})\n`)
+  ui.print('out', ui.status('ok', 'vx lock --check', `up to date (${audited}${skipped})`))
   return 0
 }

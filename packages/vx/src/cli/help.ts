@@ -5,6 +5,8 @@ import {
   maskedLine,
   nearest,
   paint,
+  refusalNotice,
+  ui,
   wantsJson,
   type ColorSupport,
 } from '../util/index.js'
@@ -450,7 +452,7 @@ export function refuse(
   code: string,
 ): number {
   const line = `vx ${verb}: ${message}`
-  process.stderr.write(`${line}\n`)
+  ui.print('err', refusalNotice(`vx ${verb}`, message))
   if (wantsJson(args)) process.stdout.write(errorDocument(code, maskedLine(line)))
   return 1
 }

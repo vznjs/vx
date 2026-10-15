@@ -6,6 +6,7 @@ import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TEST = `export default { tasks: { test: { exec: { command: 'echo t' } } } }`
@@ -30,25 +31,27 @@ describe('the default build is no declared task', () => {
     expect(vx('run', 'build', '--all')).toEqual([
       1,
       '',
-      'vx run: no projects declare task(s): build. Tasks: test. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+      noticed(
+        'vx run: no projects declare task(s): build. Tasks: test. A run reads the lock: after editing a vx.config, run `vx lock`.\n',
+      ),
     ])
   })
 
   it('`vx build` and `vx biuld` are unknown commands, not a hint to that run', () => {
-    expect(vx('build')[2].split('\n')[0]).toBe('vx: unknown command: build (see `vx help`)')
-    expect(vx('biuld')[2].split('\n')[0]).toBe('vx: unknown command: biuld (see `vx help`)')
+    expect(vx('build')[2].split('\n')[0]).toBe('✗ vx  unknown command: build')
+    expect(vx('biuld')[2].split('\n')[0]).toBe('✗ vx  unknown command: biuld')
     // Control: a declared task is still hinted.
     expect(vx('test')).toEqual([
       1,
       '',
-      'vx: `test` is a task here, not a command: vx run test --all\n',
+      noticed('vx: `test` is a task here, not a command (did you mean vx run test --all?)\n'),
     ])
   })
 
   it('`vx show build` names no project; `vx show` still counts it', () => {
     const [code, out, err] = vx('show', 'build')
     expect([code, out]).toEqual([1, ''])
-    expect(err.split('\n')[0]).toStartWith('vx show: unknown project or task: "build"')
+    expect(err.split('\n')[0]).toStartWith('✗ vx show  unknown project or task: "build"')
     expect(
       vx('show', 'test')[1]
         .split('\n')

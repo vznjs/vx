@@ -8,6 +8,7 @@ import { gitIn, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.j
 import { parseLastArgs } from '../src/cli/last.js'
 import { formatRunList, formatTaskRows } from '../src/cli/last.js'
 import type { RunSummaryRow } from '../src/orchestrator/index.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -111,7 +112,9 @@ describe('vx last (e2e)', () => {
       const shared = await vx(root, ['last', ids[0]!.slice(0, common)])
       expect({ code: shared.code, err: shared.err }).toEqual({
         code: 1,
-        err: `vx last: run id ${ids[0]!.slice(0, common)} is the start of 2 runs — type more of it:\n  ${ids[0]}\n  ${ids[1]}\n`,
+        err: noticed(
+          `vx last: run id ${ids[0]!.slice(0, common)} is the start of 2 runs — type more of it:\n  ${ids[0]}\n  ${ids[1]}\n`,
+        ),
       })
     },
     TIMEOUT,
@@ -319,10 +322,9 @@ describe('vx last (e2e)', () => {
       expect(r.code).not.toBe(0)
       expect(r.err).toContain('no recorded run no-such-run')
       expect(r.err).toContain('--list')
-      // `bin.ts` owns the `vx: ` prefix, and a message that already names
-      // the tool used to get it twice — `vx: vx last: …` (2026-09-04).
-      expect(r.err).not.toContain('vx: vx ')
-      expect(r.err.trimStart()).toStartWith('vx last: ')
+      // `bin.ts` names the verb once, and a message that already named the
+      // tool used to get it twice: `vx: vx last: …` (2026-09-04).
+      expect(r.err).toStartWith('✗ vx last  no recorded run')
     },
     TIMEOUT,
   )
@@ -359,7 +361,7 @@ describe('vx last (e2e)', () => {
         const r = await vx(clean, ['last', '--failed'])
         expect({ code: r.code, err: r.err.trim() }).toEqual({
           code: 1,
-          err: 'vx last: no recorded run failed',
+          err: '✗ vx last  no recorded run failed',
         })
       } finally {
         await rm(clean, { recursive: true, force: true })

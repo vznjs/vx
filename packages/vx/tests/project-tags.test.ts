@@ -93,11 +93,11 @@ describe('--filter tag:<pattern>', () => {
       const r = await vx(root, ['run', 'build', '--filter', 'tag:scope:wbe', '--dry=json'])
       expect(r.code).toBe(1)
       expect(r.err).toContain(
-        'no projects matched filter(s): tag:scope:wbe. Did you mean tag:scope:web?',
+        'no projects matched filter(s): tag:scope:wbe\n\n  fix  tag:scope:web',
       )
       const far = await vx(root, ['run', 'build', '--filter', 'tag:zzzzzz', '--dry=json'])
       expect(far.err).toContain(
-        'no projects matched filter(s): tag:zzzzzz. Tags: scope:web, type:app, type:docs, type:lib',
+        'no projects matched filter(s): tag:zzzzzz\n\n  Tags: scope:web, type:app, type:docs, type:lib',
       )
     },
     PARITY_TIMEOUT,

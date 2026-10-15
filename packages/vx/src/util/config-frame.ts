@@ -7,8 +7,9 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
-// `<file>: tasks.<path>[:] …`, or a top-level `<file> has unknown field …`.
-const HEAD = /^(\/[^\n]*?\/vx\.config\.[cm]?[jt]s)(?:: (tasks\.[^\s:]+)(:?))? /
+// `<file>: tasks.<path>[:] …`, or a top-level `<file> has unknown field …`,
+// from a project's vx.config or the workspace's .vx/workspace.ts.
+const HEAD = /^(\/[^\n]*?\/(?:vx\.config|\.vx\/workspace)\.[cm]?[jt]s)(?:: (tasks\.[^\s:]+)(:?))? /
 
 /**
  * The message with its file named at `line:col`, relative to `cwd`, and a

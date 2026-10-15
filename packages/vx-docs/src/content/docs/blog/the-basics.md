@@ -41,7 +41,9 @@ agent's shell there is nobody to pick, so vx lists the tasks and exits:
 
 ```sh frame="terminal"
 $ vx run | cat
-vx run: missing task name (stdin is not a TTY, so no picker; tasks here: build, test)
+✗ vx run  missing task name (stdin is not a TTY, so no picker; tasks here: build, test)
+
+  see vx run --help
 ```
 
 Off a terminal the live progress region is gone too. The log gets plain

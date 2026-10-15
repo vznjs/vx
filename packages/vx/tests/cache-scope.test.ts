@@ -569,7 +569,7 @@ describe('cache.policy', () => {
         expect(await refusal(`{ cache: { policy: 'local:x' } }`)).toBe(
           ".vx/workspace: `cache.policy`: invalid flag 'x' for 'local': expected 'r' and/or 'w'",
         )
-        expect(await refusal(`{ cacheScope: 'pr-1' }`)).toContain('has unknown field "cacheScope"')
+        expect(await refusal(`{ cacheScope: 'pr-1' }`)).toContain('unknown field "cacheScope"')
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

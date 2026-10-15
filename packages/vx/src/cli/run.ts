@@ -23,7 +23,7 @@ import {
 } from '../cache/index.js'
 import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from './select.js'
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
-import { parseDecimalInt } from '../util/index.js'
+import { parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
 import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
 
@@ -556,7 +556,7 @@ export async function resolveRunOptions(
       // scope. An empty project list keeps the bare tasks unselected
       // while the anchored ones still run.
       if (anchoredTasks.length === 0) return { nothingSelected: resolved.empty }
-      process.stderr.write(`vx: ${resolved.empty} — running ${anchoredTasks.join(', ')} only\n`)
+      sayNotice('info', 'vx run', `${resolved.empty} — running ${anchoredTasks.join(', ')} only`)
       projects = []
     } else {
       projects = resolved.names
@@ -665,7 +665,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     // Every run needs git: refused here, not after the user has chosen.
     const refusal = gitRefusal(await findWorkspaceRoot(cwd))
     if (refusal !== undefined) {
-      process.stderr.write(`${refusal.message}\n`)
+      sayLine('error', refusal.message, 'vx run')
       return 1
     }
     const load = parsed.cacheDir !== undefined ? { cacheDir: parsed.cacheDir } : {}
@@ -679,7 +679,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       if ('error' in selected)
         return refuse('run', args, selected.error, selected.code ?? 'VX_E_USAGE')
       if ('empty' in selected) {
-        process.stderr.write(`vx run: ${selected.empty}\n`)
+        sayNotice('info', 'vx run', selected.empty)
         return 0
       }
       only = new Set(selected.names)
@@ -695,7 +695,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   const resolved = await resolveRunOptions(parsed, cwd, tasks, 'run', scopeOut)
   if ('error' in resolved) return refuse('run', args, resolved.error, resolved.code ?? 'VX_E_USAGE')
   if ('nothingSelected' in resolved) {
-    process.stderr.write(`vx run: ${resolved.nothingSelected}\n`)
+    sayNotice('info', 'vx run', resolved.nothingSelected)
     return 0
   }
   const opts = resolved
@@ -715,8 +715,10 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   if (parsed.dry !== undefined || parsed.graph !== undefined) {
     const plan = await planRun(opts)
     if (plan.unresolvedTasks !== undefined && plan.unresolvedTasks.length > 0) {
-      process.stderr.write(
-        `vx run: no projects declare task(s): ${plan.unresolvedTasks.join(', ')}.${plan.unresolvedHint ?? ''}\n`,
+      sayNotice(
+        'error',
+        'vx run',
+        `no projects declare task(s): ${plan.unresolvedTasks.join(', ')}.${plan.unresolvedHint ?? ''}`,
       )
       return 1
     }
@@ -724,14 +726,14 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       // The run's own line: a dry run that guessed from the scope alone
       // said no affected project declared a task one did (X-141).
       if (plan.noneAffected !== undefined) {
-        process.stderr.write(`${plan.noneAffected}\n`)
+        sayLine('info', plan.noneAffected, 'vx run')
         return 0
       }
       if (opts.selectedByDiff === true) {
-        process.stderr.write(`vx run: no affected project declares task(s): ${tasks.join(', ')}.\n`)
+        sayNotice('info', 'vx run', `no affected project declares task(s): ${tasks.join(', ')}`)
         return 0
       }
-      process.stderr.write(`vx run: no projects declare task(s): ${tasks.join(', ')}.\n`)
+      sayNotice('error', 'vx run', `no projects declare task(s): ${tasks.join(', ')}`)
       return 1
     }
     if (parsed.graph !== undefined) {
@@ -747,7 +749,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
           await Bun.write(target, out)
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          process.stderr.write(`vx run: failed to write graph to ${target}: ${message}\n`)
+          sayNotice('error', 'vx run', `failed to write graph to ${target}: ${message}`)
           return 1
         }
       }
@@ -813,7 +815,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         // Same contract as --summarize / --profile: the run already
         // happened, so a write failure is reported, not fatal.
         const message = err instanceof Error ? err.message : String(err)
-        process.stderr.write(`vx: failed to write report to ${target}: ${message}\n`)
+        sayNotice('warn', 'vx run', `failed to write report to ${target}: ${message}`)
       }
     }
   }

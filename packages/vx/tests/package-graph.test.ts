@@ -177,7 +177,7 @@ describe('`^task` needs an edge source', () => {
         )
         expect([run.exitCode, run.stderr.toString().split('\n')[0]]).toEqual([
           1,
-          'vx: app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns `deps`',
+          '✗ vx run  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns `deps`',
         ])
       } finally {
         await rm(root, { recursive: true, force: true })

@@ -40,7 +40,7 @@ describe('a bare vx', () => {
     expect(await run([])).toBe(1)
     expect({ stdout, stderr }).toEqual({
       stdout: '',
-      stderr: `vx: no .vx/workspace.ts in ${process.cwd()} or a parent — run \`vx init\` to create one; \`vx help\` lists the verbs\n`,
+      stderr: `✗ vx  no .vx/workspace.ts in ${process.cwd()} or a parent\n\n  see vx help\n\n  fix  vx init\n`,
     })
   })
 

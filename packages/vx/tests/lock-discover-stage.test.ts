@@ -94,7 +94,7 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   )
   const check = await vx(root, ['lock', '--check'])
   expect(check.out).toBe(
-    'vx lock --check: up to date (2 projects; not audited, no vx.config: mapped)\n',
+    '✓ vx lock --check  up to date (2 projects; not audited, no vx.config: mapped)\n',
   )
   const json = await vx(root, ['lock', '--check', '--format', 'json'])
   expect(JSON.parse(json.out).notAudited).toBe(1)

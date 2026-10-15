@@ -18,7 +18,7 @@ import { createPublicKey, verify } from 'node:crypto'
 import { access, chmod, chown, link, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
-import { UserError } from '../util/index.js'
+import { UserError, sayNotice } from '../util/index.js'
 import { VERSION } from '../version.js'
 
 const REGISTRY = 'https://registry.npmjs.org'
@@ -551,8 +551,10 @@ async function upgradeManaged(install: ManagedInstall, tag: string | undefined):
 export async function upgradeCmd(args: readonly string[]): Promise<number> {
   const unknown = args.find((a) => a.startsWith('-'))
   if (unknown !== undefined) {
-    process.stderr.write(
-      `vx upgrade: unknown flag: ${unknown}${flagHint('upgrade', unknown)}${seeHelp('upgrade')}\n`,
+    sayNotice(
+      'error',
+      'vx upgrade',
+      `unknown flag: ${unknown}${flagHint('upgrade', unknown)}${seeHelp('upgrade')}`,
     )
     return 1
   }
@@ -560,7 +562,7 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
   // the first one went in (`vx upgrade v0.0.22 v0.0.23`).
   const [tag, extra] = args
   if (extra !== undefined) {
-    process.stderr.write(`vx upgrade: unexpected argument: ${extra}${seeHelp('upgrade')}\n`)
+    sayNotice('error', 'vx upgrade', `unexpected argument: ${extra}${seeHelp('upgrade')}`)
     return 1
   }
   if (!isCompiledBinary()) {

@@ -35,6 +35,7 @@ import {
   type SigningKey,
 } from '../src/cli/upgrade.js'
 import { UserError } from '../src/util/index.js'
+import { noticed } from './helpers/notice.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-upgrade-'))
 const FAKE = '#!/bin/sh\necho fake-vx\n'
@@ -660,7 +661,9 @@ describe('vx upgrade (CLI)', () => {
     )
     expect(code).toBe(1)
     expect(err).toBe(
-      'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull (npm installs update with: npm install -g @vzn/vx@latest)\n',
+      noticed(
+        'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull (npm installs update with: npm install -g @vzn/vx@latest)\n',
+      ),
     )
   })
 
@@ -682,6 +685,6 @@ describe('vx upgrade (CLI)', () => {
       before,
     )
     expect(code).toBe(1)
-    expect(err).toBe('vx upgrade: unexpected argument: v2 (see `vx upgrade --help`)\n')
+    expect(err).toBe(noticed('vx upgrade: unexpected argument: v2 (see `vx upgrade --help`)\n'))
   })
 })

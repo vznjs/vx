@@ -125,7 +125,7 @@ describe('vx why names what moved the key', () => {
       })
       expect([unknown.exitCode, unknown.stderr.toString().trim()]).toEqual([
         1,
-        'vx why: no recorded run zzz (vx last --list shows recent runs)',
+        '✗ vx why  no recorded run zzz (vx last --list shows recent runs)',
       ])
     },
     TIMEOUT,

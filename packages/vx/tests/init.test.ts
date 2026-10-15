@@ -12,6 +12,7 @@ import { migrateCommand, parseInitArgs } from '../src/cli/init.js'
 import { VERSION } from '../src/version.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import { vxInvocation } from '../src/workspace/migration.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 20_000
@@ -149,7 +150,7 @@ describe('vx init hands a repo with a package.json to @vzn/vx-migrate', () => {
       await addPackage(root, 'app', { build: 'tsc' })
       const r = await vx(root, ['init', '--bogus'])
       expect(r.code).toBe(1)
-      expect(r.err).toContain('vx init: unknown flag: --bogus')
+      expect(r.err).toContain('unknown flag: --bogus')
       expect(r.out).toBe('')
       expect(existsSync(path.join(root, '.vx/workspace.ts'))).toBe(false)
     } finally {
@@ -187,7 +188,7 @@ describe('vx run with no vx config', () => {
       const r = await vx(root, ['run', 'build', '--all'])
       expect(r.code).not.toBe(0)
       expect(`${r.out}${r.err}`).toContain(
-        'No directory holds a vx.config — run `vx init` to write them, then `vx lock`.',
+        'No directory holds a vx.config — run `vx init` to write them, then `vx lock`',
       )
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -235,12 +236,14 @@ describe('vx init --plugin <seam>', () => {
         const again = await vx(root, ['init', '--plugin', 'key'])
         expect([again.code, again.err]).toEqual([
           1,
-          'vx init: plugins/key.ts exists; --force overwrites it\n',
+          noticed('vx init: plugins/key.ts exists. --force overwrites it\n'),
         ])
         const bad = await vx(root, ['init', '--plugin', 'nope'])
         expect([bad.code, bad.err]).toEqual([
           1,
-          `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope') (see \`vx init --help\`)\n`,
+          noticed(
+            `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope') (see \`vx init --help\`)\n`,
+          ),
         ])
         // --dry writes nothing.
         const dry = await vx(root, ['init', '--plugin=graph', '--dry'])
@@ -265,7 +268,9 @@ describe('vx init --plugin <seam>', () => {
         expect([mjs.code, mjs.out, mjs.err]).toEqual([
           1,
           '',
-          'vx init: --mjs does not combine with --plugin: the plugin templates are TypeScript (see `vx init --help`)\n',
+          noticed(
+            'vx init: --mjs does not combine with --plugin: the plugin templates are TypeScript (see `vx init --help`)\n',
+          ),
         ])
         const ok = await vx(root, ['init', '--plugin', 'cache', '--dry'])
         expect([ok.code, ok.err]).toEqual([0, ''])

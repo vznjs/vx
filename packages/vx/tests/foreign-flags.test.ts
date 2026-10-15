@@ -14,6 +14,7 @@ import {
   renderForeignFlags,
   translateForeign,
 } from '../src/cli/foreign-flags.js'
+import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
@@ -386,7 +387,7 @@ describe('Turbo and Nx flags on vx run', () => {
       argvs.map((argv) => [
         argv,
         1,
-        `${FOREIGN_VERBS[argv[0] === 'help' ? argv[1]! : argv[0]!]}\n`,
+        noticed(`vx: ${FOREIGN_VERBS[argv[0] === 'help' ? argv[1]! : argv[0]!]}`, 'info'),
       ]),
     )
   })
