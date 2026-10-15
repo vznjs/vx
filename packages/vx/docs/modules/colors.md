@@ -106,5 +106,8 @@ Reports and notices are built from these by [`ui`](ui.md).
 - `paint` no-op when disabled.
 - `paint` emits sequences when enabled.
 
+`tests/term-dumb.test.ts`: `TERM=dumb` gets no colour unless
+`FORCE_COLOR` asks, and `createOutputWriter` draws no live region on it.
+
 `tests/ci-output.test.ts`: a piped run with `FORCE_COLOR=0` or `=false`
 carries no escape sequence, and the task still sees the value as set.
