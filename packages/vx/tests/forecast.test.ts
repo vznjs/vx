@@ -221,6 +221,7 @@ describe('the logger asks for a forecast only a second in', () => {
     await Bun.sleep(lastsMs)
     const region = out.text()
     log.runEnd?.()
+    log.runDone?.()
     return { asked, region, all: out.text() }
   }
 
