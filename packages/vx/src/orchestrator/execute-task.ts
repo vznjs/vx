@@ -1,4 +1,3 @@
-import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig, InputStability } from '../config.js'
 import {
   ArtifactVanishedError,
@@ -19,15 +18,6 @@ import {
   type TaskInputComponent,
 } from '../cache/index.js'
 import {
-  buildIsolatedEnv,
-  packageManagerPath,
-  PM_EXEC_ENV,
-  VX_RUN_TASK_ENV,
-  VX_RUN_WORKSPACE_ENV,
-  runPersistent,
-  withForwardArgs,
-  releaseBridges,
-  wrapSandboxedCommand,
   signalExitCode,
   isLocalExecutor,
   isExecutorFallback,
@@ -39,7 +29,6 @@ import {
   type SandboxViolation,
   type TaskExecutor,
   type TaskInputs,
-  PersistentReadyError,
   sandboxReads,
   maskCaptured,
   BoundedCapture,
@@ -54,7 +43,6 @@ import { isGroupTask, RestoreDemoted, type TaskNode, type TaskOutcome } from '..
 import {
   killGraceMs,
   MASKED,
-  parseDuration,
   maskedEmitter,
   outputMatcher,
   printable,
@@ -63,16 +51,14 @@ import {
   secretNamed,
   span,
   UserError,
-  testTimerMs,
 } from '../util/index.js'
-import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS, terminateChildren } from './signals.js'
+import { forwardedSignal, SIGNAL_SHUTDOWN_GRACE_MS } from './signals.js'
 import { executorLabel, nameExecutorFailure } from './plugin-host.js'
 import type { CommandWindows } from './command-windows.js'
 import {
   commandWriteReach,
   mayWriteFingerprint,
   type Placeholder,
-  placeholderSweeper,
   reachedWithheld,
   sandboxRequestFor,
   sandboxReadable,
@@ -103,6 +89,14 @@ import {
 } from './task-hash.js'
 import { getContext } from './remote-prefetch.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
+import { executePersistentTask } from './persistent-task.js'
+import {
+  forgetUndeclaredWrites,
+  isAborted,
+  taskBinDirs,
+  taskEnv,
+  taskTimeoutMs,
+} from './task-process.js'
 
 export interface ExecuteArgs {
   node: TaskNode
@@ -279,13 +273,12 @@ export interface ExecuteArgs {
   commandWindows?: CommandWindows
 }
 
-/** How long a server may take to match `readyWhen` before vx says it waits. */
-const READY_NOTICE_MS = 10_000
 /**
  * Dispatch a single task to one of three execution paths. Each path
  * owns its own outcome shape; the dispatcher just picks based on the
- * task's config shape (group vs persistent vs cached). Sharing
- * helpers (`taskEnv`, `effectiveForwardArgs`) live below.
+ * task's config shape (group vs persistent vs cached). The persistent
+ * path is persistent-task.ts; what both spawning paths share is
+ * task-process.ts.
  */
 export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
   if (isGroupTask(args.node)) return executeGroupTask(args)
@@ -473,294 +466,6 @@ function sameUpstream(live: TaskOutcome[], upfront: TaskOutcome[]): boolean {
     if (a === undefined || a.node.id !== b.node.id || a.hash !== b.hash) return false
   }
   return true
-}
-
-/**
- * Persistent task: dev server / file watcher / daemon. Spawn, wait
- * for ready (regex match or immediate), stash the subprocess in the
- * orchestrator-owned registry, return success. The orchestrator
- * SIGTERMs the registry at end-of-run.
- *
- * Never reads or writes the cache — the project loader rejects
- * `cache + persistent` at config-load time, so by the time we get
- * here, `cache` is guaranteed undefined.
- *
- * Never routed through an executor: a persistent task is local by
- * construction (its port lives on this machine).
- */
-async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutcome> {
-  const { node, log } = args
-  // Type narrowing: the dispatcher checks `exec.persistent` before
-  // calling us, so `exec` and `exec.persistent` are both present.
-  const step = node.config.exec as ExecConfig & {
-    persistent: NonNullable<ExecConfig['persistent']>
-  }
-  const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
-  const env = taskEnv(node, step, args.workspaceRoot)
-  const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  // Keyed like an uncached task (its whole project), so a cached dependant
-  // behind a dev server re-runs when the server's sources change; with no
-  // key the dependant folded nothing of it and replayed a stale e2e (A-17).
-  const hash =
-    args.noDependants === true
-      ? undefined
-      : (args.upfrontKey ??
-        (await computeTaskHash({
-          node,
-          upstream: args.upstream,
-          workspaceRoot: args.workspaceRoot,
-          cache: args.cache,
-          forwardArgs: args.forwardArgs,
-          nestedProjectDirs: args.nestedProjectDirs,
-          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-          ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
-        })))
-
-  // The args after `--` reach a server as they reach any task. A readyWhen
-  // server once got none — "so the matcher sees the unmodified output",
-  // though the args change the command, not what the matcher reads — and
-  // `vx run dev -- --port 4000` on the documented Vite task dropped the
-  // port in silence (item 1060).
-  const plainCommand = withForwardArgs(step.command, effectiveForwardArgs)
-  // A persistent task declaring `exec.sandbox` runs inside it like any
-  // other: the same grants, the same walls. What it cannot have is the
-  // violation REPORT — that reads the trace after the child exits, and a
-  // server exits when the run tears it down. Enforced, not reported.
-  // (Until 2026-09-09 the block was accepted and silently ignored.)
-  let command = plainCommand
-  let bridgeTag: string | undefined
-  let signalChannel = false
-  // The empty files the request pre-created for a literal write grant; a
-  // server that never writes one gets it taken back when it exits, and a
-  // server that dies before readiness is told the directory spelling — the
-  // same trap and the same answer as a one-shot task's (sandbox-request.ts).
-  let placeholders: Placeholder[] = []
-  if (step.sandbox !== undefined) {
-    await args.armSandbox?.()
-    // A persistent task never declares `cache` (the loader refuses it), so
-    // it keeps the whole linked grant: no key of its can be stale.
-    const sb = await sandboxRequestFor(
-      node,
-      step.sandbox,
-      args.workspaceRoot,
-      undefined,
-      args.nestedProjectDirs,
-      args.cacheDir,
-    )
-    placeholders = sb.placeholders
-    // A wrap that refuses (a port the host holds) leaves the server unspawned
-    // and the placeholders vx made for it in the project for every later run.
-    const wrapped = await wrapSandboxedCommand({
-      command: plainCommand,
-      cwd: node.projectDir,
-      env,
-      ...sb.sandbox,
-      server: true,
-    }).catch(async (err: unknown) => {
-      await sweepPlaceholders(placeholders)
-      throw err
-    })
-    command = wrapped.wrapped
-    bridgeTag = wrapped.tag
-    signalChannel = wrapped.forwardsSignals
-  }
-  // A server's output masked as a one-shot task's is (L-11); `readyWhen`
-  // is matched on the raw chunks, before this. Its held tail is flushed by
-  // the idle timer: a server never ends on the way to a flush.
-  const serverSecrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
-  const serverOut = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStdout(node, t))
-  const serverErr = serverSecrets && maskedEmitter(serverSecrets, (t) => log.taskStderr(node, t))
-  // A server writes until the run stops it: its window stays open.
-  args.commandWindows?.open(node.id, node.projectDir, commandWriteReach(node, args.workspaceRoot))
-  const persistentOpts: Parameters<typeof runPersistent>[0] = {
-    command,
-    cwd: node.projectDir,
-    env,
-    onStdout: serverOut ? (chunk) => serverOut.push(chunk) : (chunk) => log.taskStdout(node, chunk),
-    onStderr: serverErr ? (chunk) => serverErr.push(chunk) : (chunk) => log.taskStderr(node, chunk),
-    ...(args.liveChildren !== undefined ? { liveChildren: args.liveChildren } : {}),
-    ...(args.track !== undefined
-      ? { onSpawn: (pid: number) => void args.track!(node.id, pid) }
-      : {}),
-    ...(signalChannel ? { signalChannel } : {}),
-    ...(args.terminal === true ? { terminal: true } : {}),
-  }
-  if (step.persistent.readyWhen !== undefined) {
-    persistentOpts.readyWhen = step.persistent.readyWhen
-  }
-  // For a persistent task the timeout bounds the readiness wait. Per-task
-  // `exec.timeout` wins; else the run-level default (env/workspace/--timeout).
-  const effectiveTimeout = taskTimeoutMs(step) ?? args.timeout
-  if (effectiveTimeout !== undefined) {
-    persistentOpts.timeoutMs = effectiveTimeout
-  }
-
-  // A stop that landed during the awaits above (the key, the sandbox's
-  // arming, request and wrap) leaves nothing to kill yet: spawned now, the
-  // server came up after the teardown and held the run's exit 7 s.
-  if (args.stopSignal?.aborted === true) {
-    if (bridgeTag !== undefined) releaseBridges(bridgeTag)
-    await placeholderSweeper(placeholders)()
-    return {
-      node,
-      status: 'aborted',
-      // The signal a spawned server would have been sent (a hang-up forwards SIGTERM).
-      exitCode: signalExitCode(forwardedSignal(args.stopSignal.reason)),
-      durationMs: 0,
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
-    }
-  }
-  const spawn = runPersistent(persistentOpts)
-  // The host side of a port bridge lives exactly as long as the server:
-  // released on the child's exit, whether the run tore it down or it died.
-  // A placeholder the server never wrote goes back the same way.
-  // ONE sweep, shared by the exit handler and the readiness failure below
-  // — whichever asks second must get the SAME list. A second sweep cannot
-  // produce it: the first one's `rm` already happened, so the file is gone
-  // and `sweepPlaceholders` skips it. Collecting both lists and unioning
-  // them does not close that, because the union only covers an exit
-  // handler that FINISHED; one still between its `rm` and its return has
-  // published nothing yet, and the readiness path then reports no
-  // placeholder at all. The failure then says only "File exists", which is
-  // the message the hint exists to explain (seen under the gate's parallel
-  // load, and reproduced deterministically by delaying each side, item 450).
-  const sweptUntouched = placeholderSweeper(placeholders)
-  if (bridgeTag !== undefined || placeholders.length > 0) {
-    const tag = bridgeTag
-    const onExit = async (): Promise<void> => {
-      if (tag !== undefined) releaseBridges(tag)
-      await sweptUntouched()
-    }
-    // A spawn that failed has no child to wait on: release now, or the
-    // tag would hold the sandbox's reset for the rest of the process.
-    if (spawn.child === undefined) void onExit()
-    else void spawn.child.exited.then(onExit, onExit)
-  }
-  // Said once if readiness is slow: a dependency's output is hidden unless
-  // it fails, and with no `exec.timeout` the wait never ends, so a run
-  // whose `readyWhen` never matched showed nothing at all.
-  const readyWhen = step.persistent.readyWhen
-  // How long a server may take to match `readyWhen` before vx says it waits.
-  const noticeMs = testTimerMs('READY_NOTICE', READY_NOTICE_MS)
-  const notice =
-    readyWhen === undefined
-      ? undefined
-      : setTimeout(() => {
-          if (isAborted(args.stopSignal)) return
-          const after = noticeMs < 1000 ? `${noticeMs} ms` : `${noticeMs / 1000} s`
-          const unbounded = effectiveTimeout === undefined ? ', with no exec.timeout' : ''
-          log.status(
-            `vx: ${node.id} not ready after ${after}: waiting for a line matching /${serverSecrets?.mask(readyWhen) ?? readyWhen}/ (readyWhen)${unbounded}`,
-          )
-        }, noticeMs)
-  if (notice !== undefined) {
-    const quiet = (): void => clearTimeout(notice)
-    void spawn.ready.then(quiet, quiet)
-  }
-  try {
-    await spawn.ready
-  } catch (err) {
-    // A shell that exited before ready can leave its group running
-    // (`server & …; exit`): never registered, so no teardown reached it,
-    // and it held its port against the next `vx watch` cycle's server.
-    if (err instanceof PersistentReadyError && err.reason === 'exited')
-      await terminateChildren(() => [spawn.child])
-    // A server the run's stop killed while it started is aborted, as any
-    // task the stop kills (item 962): it read `failed (never ready:
-    // exited, exit 130)` with a recap after every Ctrl-C (C-62). The stop
-    // aborts before it kills, so it is set by the time the child is gone.
-    // Read through a call: the early return above narrows `aborted` to
-    // false, but the stop can land during `spawn.ready`.
-    if (isAborted(args.stopSignal)) {
-      return {
-        node,
-        status: 'aborted',
-        exitCode: err instanceof PersistentReadyError ? (err.exitCode ?? 1) : 1,
-        durationMs: spawn.readyMs(),
-        wallclockStartNs,
-        wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
-      }
-    }
-    const message = err instanceof Error ? err.message : String(err)
-    // The task's OWN stream, not the process's: the frame is where a
-    // reader looks for why a task failed, and a run with a custom logger
-    // (an embedder) never saw a bare stderr write at all.
-    log.taskStderr(node, `\n[vx] ${node.id}: persistent task failed to become ready: ${message}\n`)
-    // A server is never traced, so the sandbox's refusals reach no report:
-    // a dev server that died on a file outside its grants read only as the
-    // tool's own "not found" (2026-10-03). Said for a sandboxed server that
-    // exited failing, which is the shape a refusal takes.
-    if (
-      step.sandbox !== undefined &&
-      err instanceof PersistentReadyError &&
-      err.reason === 'exited' &&
-      err.exitCode !== 0
-    ) {
-      log.taskStderr(
-        node,
-        `[vx] ${node.id} ran in the sandbox, which reports nothing for a server: a path outside ` +
-          `its grants reads as missing (ENOENT), a refused write as read-only (EROFS). Check ` +
-          `exec.sandbox.allow, or run the command as a one-shot sandboxed task to see what it was refused.\n`,
-      )
-    }
-    // The server is dead or being torn down, so the sweep on its exit may
-    // already be running: ask the shared one rather than starting a second.
-    for (const p of await sweptUntouched()) {
-      log.taskStderr(node, `${untouchedPlaceholderLine(node.projectDir, p)}\n`)
-    }
-    // The reason rides the outcome (every label reads it), and a child that
-    // exited before ready keeps its own exit code rather than a made-up 1.
-    // One the readiness timeout is killing reports the signal's, as an
-    // ordinary timeout does (X-24).
-    // A readiness timeout rejects once the group is gone (runner.ts), so a
-    // server that ignored the TERM holds no port into the next `vx watch`
-    // cycle, and a second signal here would cut a one-shot handler short.
-    const ready = err instanceof PersistentReadyError ? err : undefined
-    return {
-      node,
-      status: 'failed',
-      // A server that traps the TERM and exits 0 still timed out, as a
-      // one-shot task that does so reports 143 (X-116).
-      exitCode:
-        ready?.reason === 'timeout'
-          ? (await spawn.child.exited) || signalExitCode('SIGTERM')
-          : (ready?.exitCode ?? 1),
-      durationMs: spawn.readyMs(),
-      ...(ready !== undefined ? { notReady: ready.reason } : {}),
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
-    }
-  }
-
-  // Ready only once the stop had landed: a trap that prints the marker on
-  // the way down, or a race with the signal. The stop is killing it (it
-  // is in `liveChildren`), and it served nobody, as a one-shot that exits
-  // 0 on the stop is aborted (item 962).
-  if (isAborted(args.stopSignal)) {
-    return {
-      node,
-      status: 'aborted',
-      exitCode: signalExitCode(forwardedSignal(args.stopSignal!.reason)),
-      durationMs: spawn.readyMs(),
-      wallclockStartNs,
-      wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
-    }
-  }
-  args.persistentRegistry?.set(node.id, spawn.child)
-  forgetUndeclaredWrites(args, undeclaredWriteReach(node, args.workspaceRoot))
-  if (mayWriteFingerprint(node, args.workspaceRoot, claimedFiles(args))) {
-    args.fingerprintWatch?.wrote()
-  }
-  return {
-    node,
-    status: 'success',
-    exitCode: 0,
-    durationMs: spawn.readyMs(),
-    ...(hash !== undefined ? { hash } : {}),
-    wallclockStartNs,
-    wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
-  }
 }
 
 /**
@@ -1785,75 +1490,4 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         }
       : {}),
   }
-}
-
-/**
- * Drop the run's facts about files a task may have written without
- * declaring them (`undeclaredWriteReach`): the project's git snapshot and
- * its index OIDs. The next reader
- * re-enumerates the project (one `git ls-files`) and hashes its files by
- * content; the per-declaration file-list memos are keyed on the snapshot
- * array, so they miss with it (item 743).
- */
-function forgetUndeclaredWrites(args: ExecuteArgs, reach: 'none' | 'project' | 'workspace'): void {
-  if (reach === 'none') return
-  if (reach === 'workspace') {
-    args.gitFilesCache?.clear()
-    return
-  }
-  args.gitFilesCache?.delete(args.node.projectDir)
-  args.gitFilesCache?.invalidateWorkspacePartition()
-}
-
-/** The two bin directories a task's PATH starts with: its own, then the root's (once when they coincide). */
-function taskBinDirs(node: TaskNode, workspaceRoot: string): string[] {
-  const bins = [path.join(node.projectDir, 'node_modules', '.bin')]
-  const rootBin = path.join(workspaceRoot, 'node_modules', '.bin')
-  // Identical when the root is itself a project — dedupe rather than list it
-  // twice, so PATH reads the same either way.
-  if (rootBin !== bins[0]) bins.push(rootBin)
-  return bins
-}
-
-/**
- * Build the child-process env for one task. Same arguments at every call site
- * (persistent + cached). Two `node_modules/.bin` directories are prepended to
- * PATH: the project's own, then the WORKSPACE ROOT's. Never a sibling
- * project's, and never an arbitrary ancestor — that is the project-isolation
- * rule, and the root is not a sibling.
- *
- * The root entry is where a monorepo's shared tooling actually lives: declare
- * `oxlint` once as a root devDependency and every member's `.bin` is empty of
- * it. Without the root on PATH such a task exits 127, which is what this
- * repo's own gate did the moment core stopped BEING the root and the two
- * paths stopped coinciding. It also removes a divergence that mattered more:
- * the REAPI executor already rebuilds both entries in the action's command,
- * so a task that resolved on a worker failed on the machine that submitted
- * it. npm/pnpm/yarn all put the ancestor chain on PATH for the same reason.
- */
-function taskEnv(node: TaskNode, step: ExecConfig, workspaceRoot: string): NodeJS.ProcessEnv {
-  const bins = taskBinDirs(node, workspaceRoot)
-  const env = buildIsolatedEnv({
-    passThrough: step.env?.passThrough ?? [],
-    define: step.env?.define ?? {},
-    source: process.env,
-    binPaths: bins,
-  })
-  env[VX_RUN_WORKSPACE_ENV] = workspaceRoot
-  env[VX_RUN_TASK_ENV] = node.id
-  // A task's own passThrough or define wins.
-  if (env[PM_EXEC_ENV] === undefined) {
-    const manager = packageManagerPath(workspaceRoot)
-    if (manager !== null) env[PM_EXEC_ENV] = manager
-  }
-  return env
-}
-
-/** A task's own `exec.timeout` in ms; the schema has checked its form. */
-function taskTimeoutMs(step: ExecConfig): number | undefined {
-  return step.timeout === undefined ? undefined : parseDuration(step.timeout)!
-}
-
-function isAborted(signal: AbortSignal | undefined): boolean {
-  return signal?.aborted === true
 }
