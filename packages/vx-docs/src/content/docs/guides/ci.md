@@ -45,7 +45,6 @@ would run:
 | `--concurrency <n>` | at most n tasks at once (default: the cores you may use)    |
 | `--continue`        | keep going after a failure ([modes](../configure/#tasks-and-dependencies)) |
 | `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |
-| `--summarize`       | write a JSON summary of the run                             |
 
 Every flag: [the CLI reference](../../cli/).
 

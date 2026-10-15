@@ -64,7 +64,6 @@
       "--exclude-dependencies",
       "--filter",
       "--force",
-      "--format",
       "--graph",
       "--help",
       "--kill-grace",
@@ -74,7 +73,6 @@
       "--ready-notice",
       "--retries",
       "--schedule",
-      "--summarize",
       "--tag",
       "--teardown-timeout",
       "--timeout",
@@ -239,10 +237,6 @@
       "false",
       "true"
     ],
-    "run --format": [
-      "json",
-      "pretty"
-    ],
     "run --graph": [
       "*"
     ],
@@ -276,9 +270,6 @@
       "2"
     ],
     "run --schedule": [],
-    "run --summarize": [
-      "*"
-    ],
     "run --tag": [
       "k=v"
     ],

@@ -40,8 +40,6 @@ export interface RunOptions {
   readyNotice?: number // run.readyNotice in ms
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
-  summarize?: string
-  json?: boolean // --format json: the terminal renderer writes stderr; RunSummary.json carries the document
   footer?: boolean // false: no footer, live or printed, and no blank line opening the task log (vx watch)
   profile?: string
   handleSignals?: boolean
@@ -64,7 +62,6 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent // { ids, stop(), servers }: what holdPersistent handed back
   refused?: string // why the run refused to start (ok false, nothing ran); the caller prints it, vx run on stderr
-  json?: RunSummaryJson // the --summarize document, when RunOptions.json asked for it
 }
 ```
 

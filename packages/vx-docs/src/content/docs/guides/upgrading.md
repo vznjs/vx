@@ -9,9 +9,13 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: remove vx run --summarize and --format json
+
+`vx run --summarize` and `vx run --format json` are removed, with schemas/summary.json. Read a run's result with `vx last --format json`; `vx run --dry=json` still prints the plan. RunOptions.summarize/json, RunSummary.json and OutputContext.json are gone.
+
 ## cli: remove vx run --report and --report-file
 
-`vx run --report` and `--report-file` are gone. For a GitHub job summary declare `github()` from `@vzn/vx-ci` in `.vx/workspace.ts`. `escapeMarkdownCell` and the `RunResult` type left the `@vzn/vx` façade.
+`vx run --report` and `--report-file` are removed; use `github()` from @vzn/vx-ci for the job summary.
 
 ## plugin: keep a CI run's bytes and hand plugins a run report
 

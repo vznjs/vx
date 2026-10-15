@@ -124,7 +124,7 @@ If no task name is given:
   `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`,
   naming the cwd project's tasks, else every project's (twelve, then
   `and N more`); outside a workspace it reads `vx run <task>, e.g. vx run build`.
-- **Under `--format json` or `--dry=json`**, on a terminal too — the
+- **Under `--dry=json`**, on a terminal too — the
   same refusal (`a JSON answer opens no picker; …`), with the
   `VX_E_USAGE` error document on stdout: a program cannot pick.
 
@@ -495,16 +495,14 @@ than run with the args unheard.
 | `--verbosity <n>`                          | int (0+)       | `0`                                                        | `1` or more prints a per-task table (groups left out) after the framed blocks, above the footer. `--verbosity=<n>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `--dry[=text\|json]`                       | optional value | off                                                        | Print the task graph + predicted cache hit/miss; skip execution. `VX_DEBUG_TIMING=1` prints the stage table here as it does for a run.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `--graph[=<path>]`                         | optional value | off                                                        | Emit Graphviz DOT (stdout if no path, its directory made if missing); skip execution. A path it cannot write is one line and exit 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `--format <fmt>`                           | value          | `pretty`                                                   | `json` prints the `--summarize` document on stdout when the run ends and moves every other line to stderr ([Machine-readable output](#machine-readable-output)). `--format=<fmt>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `--summarize[=<path>]`                     | optional value | off                                                        | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                              | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `--tag <k=v>`                              | repeatable     | (none)                                                     | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 Mutual exclusion:
 
 - `--dry` and `--graph` — both skip execution; pick one.
-- `--dry` or `--graph` with `--summarize` or `--profile` — each needs a
-  real run to write about.
+- `--dry` or `--graph` with `--profile` — it needs a real run to write
+  about.
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits
@@ -528,7 +526,7 @@ name is the verb, and would change what `vx build` means the day one
 was declared.
 
 **Optional-value flags take their value with `=` only.** `--affected`,
-`--exclude-dependencies`, `--dry`, `--graph`, `--summarize` and
+`--exclude-dependencies`, `--dry`, `--graph` and
 `--profile` are all valid bare, so a following word is
 read as a task name (a `--graph` word ending `.svg`, `.png`, `.json`
 and the like is refused, see § Turbo and Nx flags) — `vx run --affected build` means "run
@@ -560,9 +558,9 @@ workers. A duration flag (`--timeout`, `--kill-grace`,
 `--teardown-timeout`, `--ready-notice`) takes its unit (`500ms`, `30s`,
 `10m`): a bare `500` is refused, naming both readings.
 
-An empty `=` value means "no value" on four flags, which then act like
-their bare forms: `--profile=` writes `profile.json`, `--summarize=`
-writes `<cacheDir>/runs/<run_id>.json`, `--graph=` prints to stdout and
+An empty `=` value means "no value" on three flags, which then act like
+their bare forms: `--profile=` writes `profile.json`, `--graph=` prints
+to stdout and
 `--affected=` uses the default base. Every other flag refuses an empty
 value: `--dry=`, `--continue=` and
 `--exclude-dependencies=` as well as the ones with no bare form
@@ -1023,135 +1021,11 @@ Node `fillcolor` varies by predicted status (green = local hit,
 sky-blue = remote hit, orange = miss, gray = no-cache, fuchsia =
 group, white = not started). Edges are unstyled.
 
-## Run artifacts (`--summarize`, `--profile`)
+## Run artifacts (`--profile`)
 
-Both flags add a side-effect after a real run completes. Errors
+`--profile` adds a side-effect after a real run completes. Errors
 writing the artifact are surfaced via `vx: failed to write …` but
 don't change the run's exit code — the run already happened.
-
-### `--summarize[=<path>]`
-
-Writes a per-run JSON file; `schemas/summary.json` is its JSON Schema:
-
-```json
-{
-  "runId": "01a0e3ef-206c-708d-95bf-c2b07211adf6",
-  "ok": true,
-  "exitCode": 0,
-  "startedAt": "2026-09-27T17:34:54.572Z",
-  "endedAt": "2026-09-27T17:34:54.586Z",
-  "totalMs": 14.123643,
-  "savedMs": 9,
-  "tasks": [
-    {
-      "id": "a#build",
-      "project": "a",
-      "task": "build",
-      "status": "cache-hit",
-      "exitCode": 0,
-      "durationMs": 3,
-      "hash": "48007ccadd42ed7d",
-      "storedDurationMs": 9,
-      "storedCpuMs": 2.059,
-      "wallclockStartNs": "9456491",
-      "wallclockEndNs": "12902888"
-    }
-  ],
-  "aborted": [],
-  "summary": {
-    "successful": 1,
-    "failed": 0,
-    "skipped": 0,
-    "cachedLocal": 1,
-    "restoredLocal": 0,
-    "restoredRemote": 0,
-    "upToDate": 1,
-    "cachedRemote": 0,
-    "aborted": 0,
-    "total": 1
-  }
-}
-```
-
-`runId` is a UUIDv7. Default path: `<cacheDir>/runs/<run_id>.json`. hrtime fields are
-strings (bigints serialized as strings) to preserve ns precision
-through JSON. `cpuMs` / `peakRssBytes` are what the task's own
-execution used and appear on executed rows only (`peakRssBytes` only
-when the task's peak rose above vx's own footprint — a lighter task's
-figure would be vx's, handed back by the kernel; a Linux sandboxed task
-reports neither, since what bwrap's pid namespace used never reaches vx);
-`restored` appears on a hit only: `true` when its outputs were restored,
-`false` when they were already up to date. A hit's `durationMs`
-is the restore it cost, and what the PRODUCING execution used rides the
-artifact and appears under its own keys, `storedDurationMs` /
-`storedCpuMs` / `storedPeakRssBytes` (the work the hit skipped) — a
-remote worker's peak is never presented as this run's. `savedMs` is
-their sum over the hits, the footer's `saved` as a number. `admissionHeldMs` appears on a row
-only when an `admit` policy (a plugin's — `@vzn/vx-schedule-history`
-packs learned reservations) refused the task while a worker was free:
-the wait from that first refusal to its dispatch, the plugin's hand on
-the run. The footer's `info` row sums the waits, task-seconds:
-`admit held 3 tasks, 4.2s in all` (85 held tasks can read 4783s beside
-a 160 s run).
-
-**`ok` / `exitCode`** are the run's verdict — the same value the CLI
-exits with: a stopping signal's code (130 for Ctrl-C), and with a kept
-server, its exit (the file is written again when the server ends). Gate on these rather than re-deriving a pass from the
-buckets: a run can be red without a single failed task (see `aborted`).
-
-**`tasks[]` and `summary` describe the same population**, so
-`tasks.length === summary.total` always holds. Group tasks (no `exec`)
-are in neither — they do no work.
-
-**`aborted[]`** lists tasks whose attempt ended while the run was
-stopping (Ctrl-C, a signal to vx), with their exit code, and tasks the stop reached before they started, with
-exit 1, `durationMs: 0` and no `wallclockStartNs`. Neither joins an
-outcome bucket or `total`, but they make the run red, so they are
-listed separately and counted as `summary.aborted`.
-
-**`noCache: true`** marks a task no cache answered for: it declares no
-`cache` block (it executes every run by design), or the run's `--cache-policy`
-read and wrote nothing (`--no-cache`), so a hit rate should leave it out
-of the denominator. The key is present only when true; every other row is
-unchanged. Its `hash` is still set: dependents fold it.
-
-**`notReady`** is present only on a failed persistent task: why it never
-became ready — `timeout` (the readiness deadline fired; `exitCode` is
-the kill's, 143 or 137 after the grace, and 143 for a server that
-traps the TERM and exits 0, as an ordinary timeout's),
-`exited` (the child exited first; `exitCode` is then its own) or `spawn`
-(the spawn itself failed). Every label reads it, `failed (never ready:
-timed out, exit 143)`. A server the run's stop (a Ctrl-C) killed while it started is
-`aborted`, not failed, as any task the stop kills; so is one that
-became ready only after the stop.
-
-**`sandboxViolations`** is present only on a sandboxed task with a
-SANDBOX VIOLATIONS section — the count of its denials (vx's own notes
-there count none), and the reason the task failed (its exit is forced to 1
-when it was 0); every label counts it, `failed (exit 1, 2 sandbox
-violations)`.
-
-**`timedOut: true`** is present only on a `failed` row vx's own
-`timeout` killed: its exit is the shell's 143, and every label reads
-`failed (timed out, exit 143)` rather than a signal.
-
-**`blockedBy`** is present only on a `skipped` row: the id of the failed
-(or aborted) task at the root of what blocked it, through any chain of
-skips between — what the skipped row prints, for a script.
-A fail-fast skip has none.
-
-**`flaky: { passes, failures, attempts }`** is present only on a task
-this run proved flaky (its row's `flaky` note, typed): `passes` and
-`failures` count the outcomes on record for this exact `hash`, this run
-included, and `attempts` is what this run took. A consumer gating on
-`status: "failed"` can tell a break (no `flaky` key) from a flake
-without reading the history. Every other row is byte-identical.
-
-**`durationMs` is always what THIS run spent on the task.** For a cache
-hit that is the probe + restore, not the exec time the entry was stored
-with — so it is small even for an expensive task. The work a hit
-_skipped_ is a different number; the footer's time saved is the surface
-that reports it.
 
 ### `--profile[=<path>]`
 
@@ -1474,9 +1348,9 @@ The following flags are rejected (parser exits 1 before the initial
 run):
 
 - `--dry` / `--graph` — those skip execution; nothing to watch.
-- `--summarize` / `--profile` — would overwrite their target per cycle.
-- `--verbosity <n>` (n > 0) / `--format json` — both
-  format ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
+- `--profile` — would overwrite its target per cycle.
+- `--verbosity <n>` (n > 0) — formats
+  ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
   is accepted: it asks for what watch already prints.)
 
 A requested persistent task (`exec.persistent`, a dev server) starts
@@ -2145,7 +2019,7 @@ copy to the source.
 | turbo  | `--graph`                                         | same    | `--graph[=<file>.dot]`                                                                                                                            |
 | turbo  | `--force[=<bool>]`                                | same    | `--force`: skip cache reads, keep writes                                                                                                          |
 | turbo  | `--affected`                                      | same    | `--affected[=<base>]`                                                                                                                             |
-| turbo  | `--summarize[=<bool>]`                            | same    | `--summarize[=<path>]`                                                                                                                            |
+| turbo  | `--summarize`                                     | refuse  | use `vx last --format json` for the run's JSON record                                                                                             |
 | turbo  | `--output-logs=new-only`                          | refuse  | use `--output-logs=full` (a hit replays its log) or `errors-only`                                                                                 |
 | turbo  | `--output-logs <v>`                               | same    | `--output-logs full\|errors-only\|hash-only\|none`                                                                                                |
 | turbo  | `--no-cache`                                      | same    | `--no-cache` reads nothing either; Turbo's (reads, no writes) is `--cache-policy local:r,remote:r`                                                |
@@ -2174,8 +2048,8 @@ copy to the source.
 | turbo  | `--env-mode <v>`                                  | refuse  | vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`                                                    |
 | turbo  | `--framework-inference <v>`                       | refuse  | under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`                                                       |
 | turbo  | `--global-deps <v>`                               | refuse  | declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)                                                |
-| turbo  | `--json`                                          | refuse  | use `--format json` for the run's result on stdout, `--dry=json` for the plan                                                                     |
-| turbo  | `--log-file`                                      | refuse  | use `--summarize[=<path>]` for the run's JSON record                                                                                              |
+| turbo  | `--json`                                          | refuse  | use `vx last --format json` for the run's result, `--dry=json` for the plan                                                                       |
+| turbo  | `--log-file`                                      | refuse  | use `vx last --format json` for the run's JSON record                                                                                             |
 | turbo  | `--preflight`                                     | refuse  | set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`                                                                                      |
 | turbo  | `--remote-cache-timeout <v>`                      | refuse  | set `turboCache({ timeoutMs })` or `TURBO_REMOTE_CACHE_TIMEOUT`                                                                                   |
 | turbo  | `--single-package`                                | refuse  | a repo with no workspaces is one project already: drop it                                                                                         |
@@ -2217,9 +2091,8 @@ copy to the source.
 ## Machine-readable output
 
 `vx show`, `vx info`, `vx why`, `vx last` and `vx cache clean` take
-`--format json`. Each prints one JSON document on one line, as
-`vx run --format json` does, whose shape is a
-checked-in JSON Schema (draft 2020-12) shipped with the package:
+`--format json`. Each prints one JSON document on one line, whose shape
+is a checked-in JSON Schema (draft 2020-12) shipped with the package:
 `schemas/show.json`, `schemas/info.json`, `schemas/why.json`,
 `schemas/last.json`, `schemas/cache.json`
 (`node_modules/@vzn/vx/schemas/` in an install). Every object closes its
@@ -2231,13 +2104,9 @@ schemas: each `{ … }` a verb's section shows is an object its schema
 closes with those keys, each object the verb prints whole is shown, and
 `vx info`'s field list is its schema's top level.
 
-`vx run --format json` prints, when the run ends, the `--summarize`
-document (`schemas/summary.json`: `runId`, `ok`, `exitCode`, one row per
-task with its status, exit code and key). Everything else the run writes,
-the frame and the tasks' output with it, goes to stderr, so
-`vx run build --all --format json | jq .ok` reads only the result. It
-refuses `--dry` (use `--dry=json`) and a bare `--graph`, which print on
-stdout too.
+A run's result as JSON is `vx last --format json`, read after the run
+from the run history: one row per task with its status, key and cache
+result. `vx run --dry=json` prints the plan.
 
 ### Error codes
 
@@ -3153,7 +3022,7 @@ running a group focused surfaces its real member tasks instead.
 **Nothing below the footer.** The footer is the run's last word.
 What a run has to say about one task rides that task's row; what it
 says about the run (a server that died, outputs left remote, a file
-`--summarize` / `--profile` wrote, a history, upload, plugin or sandbox
+`--profile` wrote, a history, upload, plugin or sandbox
 warning) prints above the footer: it prints once the run's closing work
 is done, the `VX_DEBUG_TIMING=1` table included. Cache housekeeping
 (`cache.retention`) prints nothing. Only a kept server's own output

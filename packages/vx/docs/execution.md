@@ -303,8 +303,7 @@ terminal and a task succeeding or failing. Read it alongside
     2. Run summary footer (projects / tasks / cache meters + info +
        time + result) — counts only real tasks (with `exec`); group tasks
        don't pollute the totals; failure frames replay just above it.
-    3. Optional --summarize JSON (default <cacheDir>/runs/<run_id>.json)
-       and --profile Chrome-trace JSON (default profile.json).
+    3. Optional --profile Chrome-trace JSON (default profile.json).
     4. recordRunBundle — one transaction writing a `runs` row per real
        task plus the `invocations` header row (command, git/CI/host
        context, tags, counts). Group + aborted tasks skipped; a run
@@ -325,9 +324,7 @@ terminal and a task succeeding or failing. Read it alongside
        alive, Ctrl-C reaps the process group. That first exit ends the
        session: the others are torn down (SIGTERM, grace, SIGKILL) and
        a non-zero exit makes the run exit 1, so a script's `vx run dev`
-       fails when the server it started fell over. That server then reads
-       `failed` with its own exit in the rewritten `--summarize`; one a
-       Ctrl-C stopped does not. Under
+       fails when the server it started fell over. Under
        `holdPersistent` (the watch loop) run() instead returns them on
        `RunSummary.persistent`, still running, for the caller to stop;
        one that dies on its own after that is said, its `stop()` is not.
@@ -641,23 +638,17 @@ The two flags differ only in output format:
   `formatGraphDot`.
 
 Mutually exclusive: `--dry` and `--graph` together is a parse error.
-Combining either with `--summarize` or `--profile` is a parse error
-(those need a real run).
+Combining either with `--profile` is a parse error (it needs a real
+run).
 
 ## Run artifacts
 
-- **`--summarize[=<path>]`** — per-run JSON to
-  `<cacheDir>/runs/<run_id>.json` by default (or the explicit path).
-  Mirrors the `runs` table shape — one task entry per real task, hits
-  included, with status, hash, duration, cpu_ms, peak RSS, hrtime spans
-  (bigint serialized as strings to preserve ns precision).
 - **`--profile[=<path>]`** — Chrome-trace JSON of every task's
   wallclock span. Default path: `profile.json` (cwd-relative). One
   `tid` per project so concurrent tasks render on distinct lanes.
   Open with `chrome://tracing` or https://ui.perfetto.dev.
 
-Writers live in `orchestrator/run-artifacts.ts:writeRunSummary` /
-`writeRunProfile`. A write error is surfaced via `log.status` and does
+The writer is `orchestrator/run-artifacts.ts:writeRunProfile`. A write error is surfaced via `log.status` and does
 not change the run's exit code — the run already happened. A CI job
 summary is `@vzn/vx-ci`'s.
 

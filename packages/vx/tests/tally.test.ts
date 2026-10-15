@@ -1,8 +1,6 @@
-// The shared outcome tally: ONE fold, two surfaces. `summary.ts` (the
-// terminal footer) and `run-artifacts.ts` (the `--summarize` JSON) describe
-// the same run out of these numbers. A copy of the partition with no group
-// filter once counted every organizational node as a successful task. These
-// pin the bucket rules both consumers derive from.
+// The outcome tally the terminal footer (`summary.ts`) is built from. A copy
+// of the partition with no group filter once counted every organizational
+// node as a successful task. These pin the bucket rules.
 
 import { describe, expect, it } from 'bun:test'
 import { tallyOutcomes, type Tally } from '../src/orchestrator/tally.js'
@@ -107,11 +105,7 @@ describe('tallyOutcomes — bucket rules', () => {
     expect(tallyOutcomes([])).toEqual(ZERO)
   })
 
-  it('exposes exactly the ten documented fields', () => {
-    // `writeRunSummary` serializes this object VERBATIM as `summary` in the
-    // `--summarize` artifact, which CI jobs gate on. Adding, dropping or
-    // renaming a field is a change to a documented machine-readable payload,
-    // not an internal refactor.
+  it('exposes exactly the ten fields', () => {
     expect(Object.keys(tallyOutcomes([])).sort()).toEqual([...Object.keys(ZERO)].sort())
   })
 

@@ -24,6 +24,9 @@ flowchart LR
 
 ## The result on stdout, the logs on stderr
 
+(Since vx 0.0.639, `vx run --format json` is gone: `vx last --format
+json` reads the run's result back from run history.)
+
 `vx run --format json` prints one JSON document when the run ends. The
 frame and the tasks' output go to stderr, so a pipe sees only the
 result.
@@ -53,7 +56,7 @@ $ vx run build --all --format json 2>/dev/null
 ## Every shape has a schema
 
 Each JSON document has a checked-in JSON Schema, shipped in the package
-at `node_modules/@vzn/vx/schemas/`: `summary.json`, `plan.json`,
+at `node_modules/@vzn/vx/schemas/`: `plan.json`,
 `show.json`, `info.json`, `why.json`, `last.json` and `cache.json`.
 Every object closes its key set, so a new field is a schema change, never
 a surprise. A test holds each verb's output to its schema, so stdout

@@ -21,8 +21,8 @@ const SHELLS: readonly CompletionShell[] = ['bash', 'zsh', 'fish']
 /**
  * `--help` and every flag the verb accepts. Not every `--flag` its help cut
  * mentions: the cut's prose names other verbs' flags, and `vx watch`
- * completed only `--dry --graph --summarize --profile`, the four its line
- * says it refuses, while `vx show` offered `--run` and `--list`.
+ * completed only the flags its help line says it refuses, while `vx show`
+ * offered `--run` and `--list`.
  */
 export function verbFlags(verb: string): string[] {
   return [...new Set(['--help', ...acceptedFlags(verb)])]

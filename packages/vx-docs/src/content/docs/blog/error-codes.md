@@ -9,12 +9,12 @@ tags:
 excerpt: 'Under --format json, a refusal is a JSON line with a stable code and a link to its fix. An agent branches on VX_E_UNKNOWN_TASK, not on the wording of a sentence, and vx docs <code> prints the fix offline.'
 ---
 
-An agent that runs `vx run build --format json` reads stdout. When vx
+An agent that runs `vx run build --dry=json` reads stdout. When vx
 refused the run, stdout used to be empty, and the reason sat on stderr
 as prose. Now the refusal is on stdout too, as one JSON line:
 
 ```sh frame="terminal"
-$ vx run biuld --all --format json
+$ vx run biuld --all --dry=json
 {"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
 ```
 

@@ -406,8 +406,7 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       one status line names it and its code, the others are torn down
       the same way, and a non-zero exit fails the run. Ctrl-C reaps
       them; an embedder aborts through `RunOptions.signal`.
-   8. Summary + optional artifacts: `--summarize` (per-run JSON),
-      `--profile` (Chrome-trace JSON).
+   8. Summary + optional `--profile` (Chrome-trace JSON).
    9. `cache.recordRunBundle({ runs, invocation })` — every real
       task's row plus one invocation header row, in one transaction.
       Group and `aborted` tasks are skipped; a run a signal stopped
@@ -647,20 +646,19 @@ the entry-save transaction; it powers the per-component "why did this
 re-run?" diff. Group tasks (no `exec`) and `aborted` tasks are not
 recorded.
 
-The same per-task wallclock has three surface forms today:
+The same per-task wallclock has two surface forms today:
 
-| Surface            | Where                                              | When written          |
-| ------------------ | -------------------------------------------------- | --------------------- |
-| `runs` table       | `<cacheDir>/cache.db`                              | every `vx run` end    |
-| `--summarize` JSON | `<cacheDir>/runs/<run_id>.json` (or explicit path) | opt-in per invocation |
-| `--profile` trace  | `profile.json` (or explicit path)                  | opt-in per invocation |
+| Surface           | Where                             | When written          |
+| ----------------- | --------------------------------- | --------------------- |
+| `runs` table      | `<cacheDir>/cache.db`             | every `vx run` end    |
+| `--profile` trace | `profile.json` (or explicit path) | opt-in per invocation |
 
-The summarize JSON mirrors the `runs` table shape; the profile JSON is
+`vx last --format json` reads the `runs` table; the profile JSON is
 Chrome-trace format (one `ph: 'X'` event per task with `ts` and `dur`
 in microseconds, one `tid` per project so overlapping tasks render on
 distinct lanes — open in `chrome://tracing` or
 https://ui.perfetto.dev). See
-[`cli.md` § Run artifacts](./cli.md#run-artifacts---summarize---profile).
+[`cli.md` § Run artifacts](./cli.md#run-artifacts---profile).
 
 CI scripts that want live numbers can `sqlite3 cache.db` directly, or
 read `vx last` / `vx why --format json`. In **core** there is no HTTP

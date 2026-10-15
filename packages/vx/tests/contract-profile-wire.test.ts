@@ -1,6 +1,6 @@
 // `--profile` writes a Chrome-trace JSON that tools read (Perfetto, a
 // script summing `args.cpuMs`), but contract-cli-wire records only
-// `--dry=json`, `--summarize` and `--graph`: renaming `args.exitCode` or
+// `--dry=json` and `--graph`: renaming `args.exitCode` or
 // dropping `tid` passed every contract test. This renders the profile
 // from outcomes that set every field it reads, records its shape (each
 // key path and the JSON types at it) in `tests/contract/profile-wire.json`,

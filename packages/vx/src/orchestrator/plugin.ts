@@ -462,12 +462,10 @@ export interface CacheContext extends BaseContext {
 }
 
 export interface OutputContext extends BaseContext {
-  /** Core would write to a terminal: stdout (stderr under `json`) is a TTY. */
+  /** Core would write to a terminal: stdout is a TTY. */
   readonly isTTY: boolean
   /** The run is on CI (`CI` set, or a provider core detects). */
   readonly ci: boolean
-  /** `--format json`: stdout carries the machine-readable result. */
-  readonly json: boolean
 }
 
 export interface ExecutorContext extends BaseContext {

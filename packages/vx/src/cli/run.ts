@@ -2,7 +2,7 @@ import path from 'node:path'
 import { isatty } from 'node:tty'
 import { cacheScopeError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
-import { flagHint, formatValue, refuse, seeHelp } from './help.js'
+import { flagHint, refuse, seeHelp } from './help.js'
 import {
   planRun,
   run as runOrchestrator,
@@ -68,10 +68,7 @@ export interface RunArgs {
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
-  /** `--format json`: the run's result document on stdout, every other line on stderr. */
-  format: 'pretty' | 'json'
   graph: string | undefined
-  summarize: string | undefined
   profile: string | undefined
   /**
    * `--affected[=<base>]`. When undefined the flag wasn't passed.
@@ -139,9 +136,7 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
-    format: 'pretty',
     graph: undefined,
-    summarize: undefined,
     profile: undefined,
     affected: undefined,
     tags: {},
@@ -288,25 +283,17 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         return { ...out, error: `--dry must be text or json (got ${fmt})` }
       }
       out.dry = fmt
-    } else if (a === '--format' || a?.startsWith('--format=')) {
-      const f = formatValue(a === '--format' ? before[++i] : a.slice('--format='.length), verb)
-      if (typeof f !== 'string') return { ...out, error: f.error }
-      out.format = f
     } else if (a === '--graph') {
       out.graph = ''
     } else if (a?.startsWith('--graph=')) {
       out.graph = a.slice('--graph='.length)
-    } else if (a === '--summarize') {
-      out.summarize = ''
-    } else if (a?.startsWith('--summarize=')) {
-      out.summarize = a.slice('--summarize='.length)
     } else if (a === '--profile') {
       out.profile = 'profile.json'
     } else if (a?.startsWith('--profile=')) {
       // An optional-value flag: an empty `=` means "no value given", so it
       // takes the same documented default as the bare form. Resolving ''
       // against cwd would name the cwd DIRECTORY and die with EISDIR after
-      // the whole run — and `--summarize=` already degrades to its default.
+      // the whole run.
       out.profile = a.slice('--profile='.length) || 'profile.json'
     } else if (a === '--affected') {
       out.affected = ''
@@ -369,25 +356,13 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
   if (out.dry !== undefined && out.graph !== undefined) {
     return { ...out, error: '--dry and --graph are mutually exclusive' }
   }
-  // Every flag that promises a file about the run: the planning branch
-  // returns before any of them is written (item 992).
-  const needsRun = out.summarize !== undefined || out.profile !== undefined
-  const runOnly = '--summarize / --profile need a real run'
-  if (out.dry !== undefined && needsRun) {
-    return { ...out, error: `--dry skips execution; ${runOnly}` }
+  // A profile is about a run: the planning branch returns before it is
+  // written (item 992).
+  if (out.dry !== undefined && out.profile !== undefined) {
+    return { ...out, error: '--dry skips execution; --profile needs a real run' }
   }
-  if (out.graph !== undefined && needsRun) {
-    return { ...out, error: `--graph skips execution; ${runOnly}` }
-  }
-  if (out.format === 'json') {
-    // Each of these prints something else on stdout, which the document owns.
-    if (out.dry !== undefined)
-      return { ...out, error: '--format json runs the tasks; --dry=json prints the plan' }
-    if (out.graph === '')
-      return {
-        ...out,
-        error: '--format json and --graph both print on stdout; give --graph a file',
-      }
+  if (out.graph !== undefined && out.profile !== undefined) {
+    return { ...out, error: '--graph skips execution; --profile needs a real run' }
   }
   return out
 }
@@ -574,8 +549,6 @@ export async function resolveRunOptions(
   for (const [path, field] of SETTING_OPTIONS) {
     if (parsed.settings[path] !== undefined) Object.assign(opts, { [field]: parsed.settings[path] })
   }
-  if (parsed.summarize !== undefined) opts.summarize = parsed.summarize
-  if (parsed.format === 'json') opts.json = true
   if (parsed.profile !== undefined) opts.profile = parsed.profile
   if (Object.keys(parsed.tags).length > 0) opts.tags = parsed.tags
 
@@ -601,7 +574,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   if (tasks.length === 0) {
     // A JSON answer is for a program, which cannot pick from a menu: an
     // agent on a pty waited at the picker forever.
-    const forProgram = parsed.format === 'json' || parsed.dry === 'json'
+    const forProgram = parsed.dry === 'json'
     if (!process.stdin.isTTY || forProgram) {
       const names = await taskNamesHere(cwd)
       const shown = (names ?? []).slice(0, TASKS_SHOWN)
@@ -669,13 +642,14 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   // graph + probe the cache; the difference is just the formatter.
   if (parsed.dry !== undefined || parsed.graph !== undefined) {
     const plan = await planRun(opts)
+    // Refused as a run refuses: `--dry=json` gets the error document.
     if (plan.unresolvedTasks !== undefined && plan.unresolvedTasks.length > 0) {
-      sayNotice(
-        'error',
-        'vx run',
+      return refuse(
+        'run',
+        args,
         `no projects declare task(s): ${plan.unresolvedTasks.join(', ')}.${plan.unresolvedHint ?? ''}`,
+        'VX_E_UNKNOWN_TASK',
       )
-      return 1
     }
     if (plan.tasks.length === 0) {
       // The run's own line: a dry run that guessed from the scope alone
@@ -688,8 +662,12 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         sayNotice('info', 'vx run', `no affected project declares task(s): ${tasks.join(', ')}`)
         return 0
       }
-      sayNotice('error', 'vx run', `no projects declare task(s): ${tasks.join(', ')}`)
-      return 1
+      return refuse(
+        'run',
+        args,
+        `no projects declare task(s): ${tasks.join(', ')}`,
+        'VX_E_UNKNOWN_TASK',
+      )
     }
     if (parsed.graph !== undefined) {
       const out = formatGraphDot(plan)
@@ -725,7 +703,6 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     const unknown = summary.refused.startsWith('no projects declare')
     return refuse('run', args, summary.refused, unknown ? 'VX_E_UNKNOWN_TASK' : 'VX_E_REFUSED')
   }
-  if (summary.json !== undefined) process.stdout.write(`${JSON.stringify(summary.json)}\n`)
   return summary.ok ? 0 : 1
 }
 

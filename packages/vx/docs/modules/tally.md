@@ -1,11 +1,9 @@
-# `src/orchestrator/tally.ts` — shared outcome tally
+# `src/orchestrator/tally.ts` — outcome tally
 
 ## Purpose
 
-Both the end-of-run terminal summary (`summary.ts:formatRunSummary`)
-and the `--summarize` JSON writer (`run-artifacts.ts:writeRunSummary`)
-need the same per-run counts. Centralising them prevents drift between
-the two surfaces.
+The per-run counts the end-of-run footer (`summary.ts:formatRunSummary`)
+is built from, group tasks excluded.
 
 ## Public surface
 
@@ -47,13 +45,11 @@ every consumer stays in sync.
 ## Why this lives in `orchestrator/` and not `graph/`
 
 `TaskOutcome` (and the scheduler that produces it) live in `graph/`,
-but the tally is a presentation-layer concern — it's consumed by the
-two run-summary writers. Keeping it under `orchestrator/` keeps the
+but the tally is a presentation-layer concern — the footer consumes it. Keeping it under `orchestrator/` keeps the
 graph layer scheduler-only.
 
 ## Tests
 
-Covered transitively by `tests/summary.test.ts` (formatRunSummary
-exercises every status branch + group-task exclusion) and
-`tests/run-artifacts.test.ts` (the summary block in `--summarize`
-JSON has full per-status coverage including group exclusion).
+`tests/tally.test.ts` pins the bucket rules; `tests/summary.test.ts`
+(formatRunSummary) exercises every status branch + group-task
+exclusion.

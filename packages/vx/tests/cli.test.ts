@@ -580,7 +580,6 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
   // miss is a lookup that failed, and this run looked nothing up.
   for (const flag of ['--no-cache', '--cache-policy=local:']) {
     it(`${flag}: the plan and the run both call the task no-cache`, async () => {
-      const { readFile } = await import('node:fs/promises')
       let stdout = ''
       vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
         stdout += String(chunk)
@@ -591,12 +590,9 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       expect(await run(['run', '--all', 'hello', flag, '--dry'])).toBe(0)
       expect(stdout).toContain('no-cache (would exec)')
       stdout = ''
-      const args = ['run', '--all', 'hello', flag, '--summarize=s.json']
-      expect(await run(args)).toBe(0)
+      expect(await run(['run', '--all', 'hello', flag])).toBe(0)
       expect(stdout).toMatch(/\n {12}local 1○\n/)
       expect(stdout).not.toContain('miss')
-      const row = JSON.parse(await readFile('s.json', 'utf8')).tasks[0]
-      expect([row.id, row.noCache]).toEqual(['one#hello', true])
     })
   }
 
@@ -1079,14 +1075,9 @@ describe('vx watch command (parser-side validation)', () => {
     expect(stderr).toContain('--dry / --graph are not supported in watch mode')
   })
 
-  it('rejects watch with --summarize', async () => {
-    expect(await run(['watch', 'build', '--summarize'])).toBe(1)
-    expect(stderr).toContain('--summarize / --profile are not supported')
-  })
-
   it('rejects watch with --profile', async () => {
     expect(await run(['watch', 'build', '--profile'])).toBe(1)
-    expect(stderr).toContain('--summarize / --profile are not supported')
+    expect(stderr).toContain('--profile is not supported')
   })
 
   it('surfaces parser errors with the watch prefix', async () => {
@@ -1524,7 +1515,6 @@ describe('parseRunArgs', () => {
     expect(r.verbosity).toBe(0)
     expect(r.dry).toBeUndefined()
     expect(r.graph).toBeUndefined()
-    expect(r.summarize).toBeUndefined()
     expect(r.profile).toBeUndefined()
     expect(r.forwardArgs).toEqual([])
   })
@@ -1656,7 +1646,6 @@ describe('parseRunArgs', () => {
       '--exclude-dependencies',
       '--filter',
       '--force',
-      '--format',
       '--graph',
       '--kill-grace',
       '--no-cache',
@@ -1665,7 +1654,6 @@ describe('parseRunArgs', () => {
       '--ready-notice',
       '--retries',
       '--schedule',
-      '--summarize',
       '--tag',
       '--teardown-timeout',
       '--timeout',
@@ -1884,24 +1872,14 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--dry', '--graph']).error).toMatch(/mutually exclusive/)
   })
 
-  it('parses --summarize (default path) and --summarize=<path>', () => {
-    expect(parseRunArgs(['build', '--summarize']).summarize).toBe('')
-    expect(parseRunArgs(['build', '--summarize=out.json']).summarize).toBe('out.json')
-  })
-
   it('parses --profile (default profile.json) and --profile=<path>', () => {
     expect(parseRunArgs(['build', '--profile']).profile).toBe('profile.json')
     expect(parseRunArgs(['build', '--profile=trace.json']).profile).toBe('trace.json')
   })
 
-  it('rejects --summarize / --profile with --dry or --graph', () => {
-    expect(parseRunArgs(['build', '--dry', '--summarize']).error).toMatch(/need a real run/)
-    expect(parseRunArgs(['build', '--graph', '--profile']).error).toMatch(/need a real run/)
-  })
-
-  it('rejects --graph with --summarize and --dry with --profile (planning skips execution)', () => {
-    expect(parseRunArgs(['build', '--graph', '--summarize']).error).toMatch(/need a real run/)
-    expect(parseRunArgs(['build', '--dry', '--profile']).error).toMatch(/need a real run/)
+  it('rejects --profile with --dry or --graph (planning skips execution)', () => {
+    expect(parseRunArgs(['build', '--graph', '--profile']).error).toMatch(/needs a real run/)
+    expect(parseRunArgs(['build', '--dry', '--profile']).error).toMatch(/needs a real run/)
   })
 
   it('parses --retries <n> / --retries=<n> and validates it', () => {

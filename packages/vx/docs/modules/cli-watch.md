@@ -144,11 +144,11 @@ watched and what it already holds reported (`watch-tree-linux.test.ts`).
 `watchCmd` reuses `cli/run.ts:parseRunArgs` so every `vx run` flag
 that makes sense for a loop is supported. Rejected with exit 1:
 
-| Flag                        | Reason                                         |
-| --------------------------- | ---------------------------------------------- |
-| `--dry` / `--graph`         | They skip execution; nothing to watch.         |
-| `--summarize` / `--profile` | Would overwrite their target file every cycle. |
-| (no task name)              | Watch needs an explicit task — no picker.      |
+| Flag                | Reason                                       |
+| ------------------- | -------------------------------------------- |
+| `--dry` / `--graph` | They skip execution; nothing to watch.       |
+| `--profile`         | Would overwrite its target file every cycle. |
+| (no task name)      | Watch needs an explicit task — no picker.    |
 
 Everything else (`--all`, `--filter`, `--affected`, `--concurrency`,
 `--no-cache`, `--exclude-dependencies`, forwarded `--` args) passes
@@ -416,7 +416,7 @@ on, as the cache keys decide.
 `tests/cli.test.ts`:
 
 - `vx watch` with no task → exits 1.
-- `--dry` / `--graph` / `--summarize` / `--profile` rejected.
+- `--dry` / `--graph` / `--profile` / `--verbosity` rejected.
 - Parser errors prefixed with `vx watch:`.
 - **End-to-end re-run**: fixture workspace with one task that
   `cat`s a source file; assertion writes the file mid-watch and

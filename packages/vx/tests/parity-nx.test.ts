@@ -337,17 +337,11 @@ describe('Nx parity — cache control and failure handling', () => {
       await writeFile(path.join(root, 'green'), '')
       const green = await summarized(root, ['lib#fail'])
       expect(green.code).toBe(0)
-      expect(green.tasks.get('lib#fail')?.['flaky']).toBeUndefined()
       expect(green.text).not.toContain('flaky -')
       // `--force`: the pass was cached, and a hit executes nothing.
       await unlink(path.join(root, 'green'))
       const relapse = await summarized(root, ['lib#fail', '--force'])
       expect(relapse.tasks.get('lib#fail')?.['status']).toBe('failed')
-      expect(relapse.tasks.get('lib#fail')?.['flaky']).toEqual({
-        passes: 1,
-        failures: 2,
-        attempts: 1,
-      })
       expect(relapse.text).toContain('flaky - passed 1× before')
     },
     TIMEOUT,

@@ -16,7 +16,7 @@ import type { RunContext } from './summary.js'
 /**
  * A task no cache answered for: it declares no `cache`, or the run's policy
  * read and wrote nothing. Its run is `no-cache`, never a miss, on every
- * surface — `--dry`'s plan, the frame, the footer, `--report`, `--summarize`.
+ * surface — `--dry`'s plan, the frame, the footer, the run history.
  */
 export function ranNoCache(o: { node: TaskNode; cacheOff?: boolean }): boolean {
   return o.node.config.cache === undefined || o.cacheOff === true
@@ -234,9 +234,8 @@ export interface OutcomeView {
   durationMs: number
   /**
    * Group node (no `exec`) — organizational, not work. `TaskView` carries
-   * this too, but a consumer that only holds outcomes (the `--report`
-   * writer) has no node to ask, and counting groups as executed tasks is
-   * exactly how it drifted from the terminal and `--summarize`.
+   * this too, but a consumer that only holds outcomes has no node to ask,
+   * and counting groups as executed tasks drifts from the terminal.
    */
   isGroup?: boolean
   /** Executed with no `cache` block: never consulted the cache, not a miss. */

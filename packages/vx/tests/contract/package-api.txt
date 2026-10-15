@@ -957,7 +957,6 @@ export interface OutcomeView {
 export interface OutputContext extends BaseContext {
   readonly isTTY: boolean
   readonly ci: boolean
-  readonly json: boolean
 }
 == type OutputDirRow (src/cache/layer.ts)
 export interface OutputDirRow {
@@ -1279,8 +1278,6 @@ export interface RunOptions {
   readyNotice?: number
   excludeDependencies?: 'all' | readonly string[]
   forwardArgs?: readonly string[]
-  summarize?: string
-  json?: boolean
   footer?: boolean
   profile?: string
   handleSignals?: boolean
@@ -1394,20 +1391,6 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent
   refused?: string
-  json?: RunSummaryJson
-}
-== type RunSummaryJson (src/orchestrator/run-artifacts.ts)
-export interface RunSummaryJson {
-  runId: string
-  ok: boolean
-  exitCode: number
-  startedAt: string
-  endedAt: string
-  totalMs: number
-  savedMs: number
-  tasks: SummaryTaskJson[]
-  aborted: SummaryTaskJson[]
-  summary: Tally
 }
 == type RunSummaryRecord (src/orchestrator/telemetry.ts)
 export interface RunSummaryRecord {
@@ -1485,44 +1468,6 @@ export interface SchemaReset {
 }
 == type Style (src/util/ui.ts)
 type Style = Tone | 'dim' | 'bold' | 'id'
-== type SummaryTaskJson (src/orchestrator/run-artifacts.ts)
-export interface SummaryTaskJson {
-  id: string
-  project: string
-  task: string
-  status: TaskOutcome['status']
-  exitCode: number
-  durationMs: number
-  hash: string | null
-  restored?: boolean
-  noCache?: true
-  flaky?: { passes: number; failures: number; attempts: number }
-  cpuMs?: number
-  peakRssBytes?: number
-  storedDurationMs?: number
-  storedCpuMs?: number
-  storedPeakRssBytes?: number
-  admissionHeldMs?: number
-  blockedBy?: string
-  timedOut?: true
-  sandboxViolations?: number
-  notReady?: 'timeout' | 'exited' | 'spawn'
-  wallclockStartNs?: string
-  wallclockEndNs?: string
-}
-== type Tally (src/orchestrator/tally.ts)
-export interface Tally {
-  successful: number
-  failed: number
-  skipped: number
-  cachedLocal: number
-  restoredLocal: number
-  restoredRemote: number
-  upToDate: number
-  cachedRemote: number
-  aborted: number
-  total: number
-}
 == type TaskConfig (src/config.ts)
 export interface TaskConfig {
   description?: string

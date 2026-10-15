@@ -79,8 +79,8 @@ reach.
   does not exit the loop. That matches `turbo watch` and `nx watch`.
 - Ctrl-C prints `vx watch: stopped`, tears down the in-flight cycle's
   children and exits 0 only once they are gone.
-- Flags that describe one run (`--dry`, `--graph`, `--summarize`,
-  `--profile`, `--verbosity` above 0, `--format`) are
+- Flags that describe one run (`--dry`, `--graph`, `--profile`,
+  `--verbosity` above 0) are
   rejected up front, because a loop has no single run.
 - A persistent task starts once and stays up across cycles; each cycle
   re-runs what it depends on, as the keys decide. It restarts only when

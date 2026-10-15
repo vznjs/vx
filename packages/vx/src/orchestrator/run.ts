@@ -122,16 +122,11 @@ import {
   shutdownPersistent,
   takeHeldServers,
 } from './persistent.js'
-import {
-  runSummaryJson,
-  writeRunProfile,
-  writeRunSummary,
-  type RunSummaryJson,
-} from './run-artifacts.js'
+import { writeRunProfile } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { commandWindows } from './command-windows.js'
 import { formatOutcomeTable, formatRunSummary } from './summary.js'
-import { detectFlaky, type FlakyCandidate, type FlakyFinding } from './failure-mode.js'
+import { detectFlaky, type FlakyCandidate } from './failure-mode.js'
 import { createMissExplainer } from './miss-reason.js'
 import type { HeldServer, RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
@@ -324,17 +319,12 @@ export async function run(options: RunOptions): Promise<RunSummary> {
   // See docs/design/event-stream-2026-06.md.
   const terminal =
     options.log === undefined
-      ? defaultLogger(
-          colors,
-          resolveOutputView(options),
-          options.json === true ? process.stderr : process.stdout,
-          {
-            coalesce: true,
-            ...(options.tty === true ? { tty: true } : {}),
-            ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
-            ...(options.footer === false ? { footer: false } : {}),
-          },
-        )
+      ? defaultLogger(colors, resolveOutputView(options), process.stdout, {
+          coalesce: true,
+          ...(options.tty === true ? { tty: true } : {}),
+          ...(options.forwardArgs !== undefined ? { forwardArgs: options.forwardArgs } : {}),
+          ...(options.footer === false ? { footer: false } : {}),
+        })
       : null
   const sink = options.log ?? terminal!
   // An injected bus already has surfaces subscribed; we add the terminal
@@ -941,14 +931,12 @@ async function runOnBus(
 
     // Asked only when a plugin declares `output`: a plain run pays nothing.
     if (takeOutput !== undefined && prepared.plugins.some((p) => p.output !== undefined)) {
-      const json = options.json === true
       const claimed = await claimOutput(prepared.plugins, {
         workspaceRoot,
         cacheDir,
         warn: (m: string) => log.status(m),
-        isTTY: (json ? process.stderr : process.stdout).isTTY === true,
+        isTTY: process.stdout.isTTY === true,
         ci: ciContext.ci,
-        json,
       })
       if (claimed !== undefined) takeOutput(claimed)
     }
@@ -1166,7 +1154,6 @@ async function runOnBus(
     // rows land, so the row that prints next carries the verdict: nothing
     // prints below the footer. A hit or a skip asks nothing; a green miss
     // is one probe of the failed-row index.
-    const flaky: FlakyFinding[] = []
     const historyDb = prepared.localCache.dbHandle()
     const cacheOff = cachesNothing(policy)
     const judgeFlaky = (o: TaskOutcome): void => {
@@ -1175,7 +1162,6 @@ async function runOnBus(
       try {
         const found = detectFlaky(historyDb, candidates)[0]
         if (found === undefined) return
-        flaky.push(found)
         o.flaky = { passes: found.passes, failures: found.failures }
       } catch {
         // History is observability: an unreadable one judges nothing.
@@ -1405,45 +1391,6 @@ async function runOnBus(
       }
       return { runId, commit: head.commitSha, ciRun: ciContext, ok, tasks }
     }
-    let json: RunSummaryJson | undefined
-    const summarize = async (runOk: boolean, final = list): Promise<void> => {
-      if (options.json === true) {
-        json = runSummaryJson({
-          runId,
-          startedAtMs: endedAtMsAtStart,
-          endedAtMs,
-          totalMs,
-          ok: runOk,
-          ...(stoppedBy !== undefined && { exitCode: signalExitCode(stoppedBy) }),
-          outcomes: final,
-          flaky,
-        })
-      }
-      if (options.summarize === undefined) return
-      // The rewrite after the keep-alive wait says nothing: the footer is
-      // the run's last word.
-      const quiet = final !== list
-      try {
-        const wrote = await writeRunSummary({
-          target: options.summarize,
-          cacheDir,
-          cwd: options.cwd,
-          runId,
-          startedAtMs: endedAtMsAtStart,
-          endedAtMs,
-          totalMs,
-          ok: runOk,
-          ...(stoppedBy !== undefined && { exitCode: signalExitCode(stoppedBy) }),
-          outcomes: final,
-          flaky,
-        })
-        if (!quiet) log.status(`vx: summary written to ${wrote}`)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        log.status(`vx: failed to write summary: ${msg}`)
-      }
-    }
-    await summarize(ok)
     if (options.profile !== undefined) {
       try {
         const wrote = await writeRunProfile({
@@ -1715,12 +1662,9 @@ async function runOnBus(
       // shutdown of a server that reads it as "quit now" (WD-16).
       if (stopRun.signal.aborted) await aborting?.catch(() => {})
       else await terminateChildren(() => keepAlive.children)
-      // The server that ended the session on its own, not cleanly, failed:
-      // the rewritten summary said `ok: false` over every task `success`
-      // and `failed: 0`, and so did the outcomes `--report` renders (C-53).
+      // The server that ended the session on its own, not cleanly, failed.
       if (!stopRun.signal.aborted && first.code !== 0) failServer(node.id, first.code)
       const final = [...outcomes.values()]
-      await summarize(ok && first.code === 0, final)
       if (historyAfterWait) {
         recordHistory(() => {
           // A writer's open: another vx version may have reset the index
@@ -1734,10 +1678,10 @@ async function runOnBus(
         })
         recordFailures(final)
       }
-      return { ok: ok && first.code === 0, outcomes: final, ...(json && { json }) }
+      return { ok: ok && first.code === 0, outcomes: final }
     }
 
-    return { ok, outcomes: list, ...(json && { json }) }
+    return { ok, outcomes: list }
   } finally {
     // Idempotent. The status-line ticker starts in runStart, and every
     // call between it and the success path's runEnd is crash-isolated

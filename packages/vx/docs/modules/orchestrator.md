@@ -48,7 +48,7 @@ export function acquireRunLock(
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy,
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
-//   summarize?, footer? (false: none), profile?, tags?, command?, log?, bus?,
+//   footer? (false: none), profile?, tags?, command?, log?, bus?,
 //   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
 //   holdPersistent? (return the requested persistent tasks still running),
 //   keep? (an earlier run's hand-back: keep each server whose task is unchanged)
@@ -58,7 +58,6 @@ export interface RunSummary {
   outcomes: TaskOutcome[]
   persistent?: HeldPersistent // { ids, stop(), servers }, set only under holdPersistent
   refused?: string // why the run refused to start; the caller prints it
-  json?: RunSummaryJson // the --summarize document, when RunOptions.json asked for it
 }
 ```
 

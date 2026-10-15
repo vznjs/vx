@@ -34,9 +34,7 @@ export interface RunArgs {
   forwardArgs: string[] // everything after `--`
   verbosity: number
   dry: 'text' | 'json' | undefined
-  format: 'pretty' | 'json' // --format json: the result document on stdout, the rest on stderr
   graph: string | undefined // '' = stdout; else path
-  summarize: string | undefined // '' = default path; else path
   profile: string | undefined // 'profile.json' default
   affected: string | undefined // '' = default base; else ref
   tags: Record<string, string> // --tag k=v, onto the run record
@@ -74,7 +72,7 @@ refusal points at: `vx watch` reads the same flags, M-58):
 
 1. Split on the first `--` — everything after is `forwardArgs`.
 2. Loop the prefix: recognize each flag form. Optional-value flags
-   (`--dry`, `--graph`, `--summarize`, `--profile`, `--affected`,
+   (`--dry`, `--graph`, `--profile`, `--affected`,
    `--exclude-dependencies`) accept either the bare form or `=<value>`.
 3. A setting's flag (`src/settings.ts` names each one, its verb and its
    kind) parses by that kind into `settings` at the setting's path.
@@ -84,8 +82,8 @@ refusal points at: `vx watch` reads the same flags, M-58):
    in `help.ts`, which every verb's refusal shares; it reads the help
    text, so there is no second list to drift).
 5. Mutually-exclusive combinations checked at the end:
-   `--dry` + `--graph`; either + `--summarize` / `--profile` (they skip
-   execution; the artifacts need a real run). `--no-cache` beats
+   `--dry` + `--graph`; either + `--profile` (they skip execution; the
+   profile needs a real run). `--no-cache` beats
    `--force`, both layered over a `--cache-policy` spec.
 
 ## Scope resolution
@@ -180,8 +178,8 @@ the duration right-aligned.
   `tests/task-hash-derive.test.ts`).
 
 The picker (TTY input mocked) is `tests/cli-picker.test.ts`; `--graph`
-to a file is `tests/run-output-paths.test.ts`; `--summarize` /
-`--profile` emission is `tests/run-artifacts.test.ts`.
+to a file is `tests/run-output-paths.test.ts`; `--profile`
+emission is `tests/run-artifacts.test.ts`.
 
 ## Replacing this module
 

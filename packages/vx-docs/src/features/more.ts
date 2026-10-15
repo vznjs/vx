@@ -342,30 +342,6 @@ export const MORE: readonly Feature[] = [
     },
   },
   {
-    slug: 'run-json',
-    title: 'Every run as JSON',
-    category: 'output',
-    hook: 'A JSON file per run, with each task’s result and the time the cache saved.',
-    body: [
-      'Dashboards and scripts want data, not log lines. `--summarize` writes one JSON document per run: status, timing, hash and cache result for every task.',
-      '`savedMs` is the time the cache saved, the number to show when someone asks what caching buys you.',
-    ],
-    example: {
-      lang: 'sh',
-      code: 'vx run build --all --summarize=run.json',
-    },
-    image: 'run-json.png',
-    imageAlt: 'A run’s JSON summary with savedMs.',
-    docs: {
-      label: '--summarize',
-      href: 'cli/#vx-run',
-    },
-    deepDive: {
-      label: 'See inside a run',
-      href: 'blog/see-inside-a-run/',
-    },
-  },
-  {
     slug: 'run-tags',
     title: 'Label your runs',
     category: 'output',
@@ -657,14 +633,14 @@ export const MORE: readonly Feature[] = [
     slug: 'error-codes',
     title: 'Errors an agent can branch on',
     category: 'insight',
-    hook: 'Under `--format json`, a refusal is a JSON line with a stable code.',
+    hook: 'Asked for JSON, a refusal is a JSON line with a stable code.',
     body: [
       'An agent that has to match the wording of an error message breaks when the message improves. vx gives every refusal a code that stays the same.',
       'Unknown task, bad config, a graph cycle, no workspace: each has its own code, and a `docs` link to the fix. Offline, `vx docs <code>` prints the same fix.',
     ],
     example: {
       lang: 'text',
-      code: '$ vx run biuld --all --format json\n{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}',
+      code: '$ vx run biuld --all --dry=json\n{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}',
     },
     image: 'error-codes.png',
     imageAlt: 'A refusal as a JSON line with a stable code.',
@@ -683,12 +659,12 @@ export const MORE: readonly Feature[] = [
     category: 'insight',
     hook: 'Every JSON document vx prints has a published JSON Schema.',
     body: [
-      'Parsing output is safer with a contract. vx ships a JSON Schema for each document: the run summary, `show`, `info`, `why`, `last`, `cache` and errors.',
+      'Parsing output is safer with a contract. vx ships a JSON Schema for each document: the plan, `show`, `info`, `why`, `last`, `cache` and errors.',
       'Generate types from them, validate in a test, or hand them to an agent so it knows each field before it reads one.',
     ],
     example: {
       lang: 'text',
-      code: 'node_modules/@vzn/vx/schemas/\n  summary.json  show.json  info.json  why.json\n  last.json     cache.json  plan.json  error.json',
+      code: 'node_modules/@vzn/vx/schemas/\n  plan.json  show.json   info.json  why.json\n  last.json  cache.json  error.json',
     },
     image: 'json-schemas.png',
     imageAlt: 'The JSON Schemas shipped with vx.',
@@ -760,7 +736,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'sh',
-      code: 'vx run build --all --affected=HEAD --dry\nvx run test --all --affected=main --dry --format json',
+      code: 'vx run build --all --affected=HEAD --dry\nvx run test --all --affected=main --dry=json',
     },
     image: 'affected-reasons.png',
     imageAlt: 'Affected tasks with the file that brought each in.',

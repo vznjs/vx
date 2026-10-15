@@ -514,7 +514,7 @@ describe('Turbo parity — failures, output and reports', () => {
   )
 
   it(
-    "`--summarize` writes a per-run JSON with every task's status, hash and timing",
+    "`vx last --format json` reads back every task's status, hash and timing",
     async () => {
       const r = await summarized(root, ['lint', '--all'])
       expect(r.code).toBe(0)

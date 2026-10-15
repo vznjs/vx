@@ -60,7 +60,7 @@ describe('the output stage', () => {
       pluginSource(
         'org/tui',
         `{ output(ctx) {
-          process.stdout.write('ctx ' + [ctx.isTTY, ctx.ci, ctx.json].join(' ') + '\\n')
+          process.stdout.write('ctx ' + [ctx.isTTY, ctx.ci].join(' ') + '\\n')
           return ${PRINTER}
         } }`,
       ),
@@ -70,7 +70,7 @@ describe('the output stage', () => {
     expect(r.code).toBe(0)
     const lines = r.stdout.split('\n')
     expect(lines.slice(0, 5)).toEqual([
-      'ctx false false false',
+      'ctx false false',
       'start 1',
       'out pkg-a#hello hi',
       'done pkg-a#hello success',

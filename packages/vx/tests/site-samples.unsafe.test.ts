@@ -558,10 +558,10 @@ describe('the watch-mode post states what watch.ts does', () => {
   })
   it('its rejected-flags sentence names every flag the loop refuses', () => {
     const refused = new Set<string>()
-    for (const m of src.matchAll(/vx watch: ([^\n]*?) are not supported in watch mode/g)) {
+    for (const m of src.matchAll(/vx watch: ([^\n]*?) (?:is|are) not supported in watch mode/g)) {
       for (const f of m[1]!.matchAll(/--[\w-]+/g)) refused.add(f[0])
     }
-    expect(refused.size).toBeGreaterThan(5)
+    expect(refused.size).toBeGreaterThan(2)
     const sentence = /Flags that describe one run \(([^)]*)\)/.exec(page)
     expect(sentence).not.toBeNull()
     const named = new Set([...sentence![1]!.matchAll(/--[\w-]+/g)].map((m) => m[0]))

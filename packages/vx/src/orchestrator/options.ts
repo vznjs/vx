@@ -9,7 +9,6 @@ import type { AffectedReason } from './affected-tasks.js'
 import type { EventBus } from './events.js'
 import type { TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
-import type { RunSummaryJson } from './run-artifacts.js'
 import type { AffectedChanges, ProjectEntry, ProjectMeta } from '../workspace/index.js'
 import type { RunSettings } from '../config.js'
 
@@ -179,18 +178,6 @@ export interface RunOptions {
   /** Forwarded to the last step of each task's exec array (shell-quoted). */
   forwardArgs?: readonly string[]
   /**
-   * If set, write a per-run JSON summary at end of run. Empty string
-   * picks the default path `<cacheDir>/runs/<run_id>.json`; anything
-   * else is treated as the literal file path (cwd-relative).
-   */
-  summarize?: string
-  /**
-   * `vx run --format json`: the terminal renderer writes stderr, and the
-   * run hands back `RunSummary.json`, the `--summarize` document, for the
-   * caller to print on stdout.
-   */
-  json?: boolean
-  /**
    * `false`: no footer, live or printed, and no blank line opening the
    * task log; the run is its task rows (`vx watch`, which frames each
    * cycle with its own line).
@@ -330,8 +317,6 @@ export interface RunSummary {
    * caller prints it; `vx run` writes it to stderr.
    */
   refused?: string
-  /** The `--summarize` document, when `RunOptions.json` asked for it. */
-  json?: RunSummaryJson
 }
 
 export interface HeldPersistent {

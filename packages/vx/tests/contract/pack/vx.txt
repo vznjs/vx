@@ -21,7 +21,6 @@ schemas/last.json
 schemas/lock.json
 schemas/plan.json
 schemas/show.json
-schemas/summary.json
 schemas/why.json
 skills/vx/SKILL.md
 src/bin.ts

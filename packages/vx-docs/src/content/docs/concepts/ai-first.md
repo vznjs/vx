@@ -17,7 +17,7 @@ has: `npx skills add vznjs/vx`. Every question has a command:
 | --------------------------------------------- | ---------------------------------------------------- |
 | What can I run here?                          | `vx show --format json`                              |
 | What would run, and why?                      | `vx run test --dry=json`                             |
-| Run these tasks and tell me how it went.      | `vx run test --format json`                          |
+| Run these tasks and tell me how it went.      | `vx run test`, then `vx last --format json`          |
 | Why did the run fail, at which file and line? | `vx last --failed --format json`                     |
 | What did a task print?                        | `vx last --log app#test`                             |
 | Why did this task run again?                  | `vx why app#test --format json`                      |
@@ -35,8 +35,8 @@ it and the shell.
 `vx show`, `vx info`, `vx why`, `vx last` and `vx cache clean` take
 `--format json`. Each prints one document whose shape is a JSON Schema
 shipped in the package, and every object closes its key set, so a new
-field is a schema change, never a surprise. `vx run --format json`
-prints the run's result; `vx run --dry=json` prints the plan before
+field is a schema change, never a surprise. `vx last --format json`
+prints the last run's result; `vx run --dry=json` prints the plan before
 anything runs. See [Machine-readable output](../../cli/#machine-readable-output).
 
 ## Errors you can branch on
@@ -46,7 +46,7 @@ such as `VX_E_UNKNOWN_TASK` or `VX_E_CYCLE`. The code stays; the
 message may change. See [Error codes](../../cli/#error-codes).
 
 ```text
-$ vx run nope --all --format json
+$ vx run nope --all --dry=json
 {"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): nope. Tasks: build.","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
 ```
 

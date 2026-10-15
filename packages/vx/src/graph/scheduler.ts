@@ -79,8 +79,8 @@ export interface TaskOutcome {
    * How long an `admit` policy held this task after it was ready with a
    * free worker — the wait the plugin, not the count gate, imposed. Set
    * only when a policy refused it at least once (so a run with no policy
-   * carries the field on no outcome); `--summarize` rows, the event
-   * stream and the summary footer show it.
+   * carries the field on no outcome); the event stream and the summary
+   * footer show it.
    */
   admissionHeldMs?: number
   /**
@@ -136,7 +136,7 @@ export interface TaskOutcome {
    * On a `skipped` outcome: the task at the ROOT of what blocked it — the
    * failed (or aborted) upstream, followed through any chain of skips
    * between. Absent when the skip was fail-fast's (no upstream failed).
-   * The footer, `--summarize`, the telemetry record and the run row all
+   * The footer, the telemetry record and the run row all
    * read this one field (item 267).
    */
   blockedBy?: string

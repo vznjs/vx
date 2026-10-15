@@ -127,20 +127,26 @@ export async function planned(
   return (await dry(root, args, env)).map((t) => t.id).sort()
 }
 
-/** A `--summarize` run: the tasks by id, plus the exit code. */
+/**
+ * A run, then its rows as `vx last --format json` reads them back: the tasks
+ * by id (`noCache` where the task declares no cache), plus the exit code.
+ */
 export async function summarized(
   root: string,
   args: readonly string[],
   env: Record<string, string> = {},
 ): Promise<{ code: number; tasks: Map<string, Record<string, unknown>>; text: string }> {
-  const file = path.join(root, `summary-${Date.now()}-${Math.random().toString(36).slice(2)}.json`)
-  // Before any `--`: everything after it is the task's, not vx's.
-  const dash = args.indexOf('--')
-  const own = dash === -1 ? args : args.slice(0, dash)
-  const forwarded = dash === -1 ? [] : args.slice(dash)
-  const r = await vx(root, ['run', ...own, `--summarize=${file}`, ...forwarded], env)
-  const payload = JSON.parse(await Bun.file(file).text()) as {
-    tasks: Array<Record<string, unknown> & { id: string }>
-  }
-  return { code: r.code, tasks: new Map(payload.tasks.map((t) => [t.id, t])), text: r.out + r.err }
+  const r = await vx(root, ['run', ...args], env)
+  // The history lives in the run's cache directory.
+  const at = args.indexOf('--cache-dir')
+  const dir = at === -1 ? [] : ['--cache-dir', args[at + 1]!]
+  const last = await vx(root, ['last', '--format', 'json', ...dir], env)
+  const rows = (JSON.parse(last.out) as { tasks: Array<Record<string, unknown>> }).tasks
+  const tasks = new Map(
+    rows.map((t) => [
+      `${String(t['project'])}#${String(t['task'])}`,
+      { ...t, ...(t['cached'] === false ? { noCache: true } : {}) },
+    ]),
+  )
+  return { code: r.code, tasks, text: r.out + r.err }
 }

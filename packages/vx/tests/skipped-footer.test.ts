@@ -5,6 +5,7 @@
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import path from 'node:path'
+import { lastRun } from './helpers/last-run.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -52,14 +53,11 @@ describe('a skipped task', () => {
     expect(r.text.trimEnd().split('\n').at(-1)).toMatch(/^ {2}time {6}/)
   })
 
-  it('the summarize row names the blocker; a failed row carries none', async () => {
-    const out = path.join(root, 's.json')
-    vx(root, ['run', 'build', '--all', `--summarize=${out}`])
-    const rows = (JSON.parse(await Bun.file(out).text()) as { tasks: Record<string, unknown>[] })
-      .tasks
-    const byId = new Map(rows.map((r) => [r['id'], r]))
+  it('the history row names the blocker; a failed row carries none', () => {
+    vx(root, ['run', 'build', '--all'])
+    const byId = new Map(lastRun(root).map((r) => [r.id, r]))
     expect(byId.get('app#build')?.['blockedBy']).toBe('lib#build')
-    expect(byId.get('lib#build')?.['blockedBy']).toBeUndefined()
+    expect(byId.get('lib#build')?.['blockedBy']).toBeNull()
   })
 
   // CONTROL: nothing skipped, no skipped row.

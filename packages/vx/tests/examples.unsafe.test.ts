@@ -17,6 +17,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
+import { lastStatus } from './helpers/last-run.js'
 import { npmWorkspaceLock } from './helpers/npm-checkout.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
@@ -66,32 +67,24 @@ function commit(root: string): void {
   }
 }
 
-let n = 0
-/** One `vx run <task> --all`: its exit, each task's status from --summarize,
+/** One `vx run <task> --all`: its exit, each task's status from `vx last`,
  *  and the summary's cache legend (`local 3↑`). */
 function run(
   root: string,
   task: string,
 ): { exit: number; status: Record<string, string>; cache: string } {
-  const summary = path.join(path.dirname(root), `${path.basename(root)}-${n++}.json`)
   const r = Bun.spawnSync({
-    cmd: [process.execPath, BIN, 'run', task, '--all', `--summarize=${summary}`],
+    cmd: [process.execPath, BIN, 'run', task, '--all'],
     cwd: root,
     env: { ...process.env, CI: 'true' },
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const tasks = (
-    JSON.parse(readFileSync(summary, 'utf8')) as {
-      tasks: { id: string; status: string }[]
-    }
-  ).tasks
-  rmSync(summary, { force: true })
   const lines = r.stdout.toString().split('\n')
   const cache = lines[lines.findIndex((l) => l.startsWith('  cache ')) + 1]?.trim() ?? ''
   return {
     exit: r.exitCode,
-    status: Object.fromEntries(tasks.map((t) => [t.id, t.status])),
+    status: lastStatus(root),
     cache,
   }
 }
@@ -231,27 +224,15 @@ describe('examples/ci', () => {
       GITHUB_REF_NAME: ref.split('/').slice(2).join('/'),
       GITHUB_EVENT_PATH: event,
     })
-    const summary = `${event}-${n++}.json`
     const r = Bun.spawnSync({
-      cmd: [
-        process.execPath,
-        BIN,
-        ...args,
-        ...(args[0] === 'run' ? [`--summarize=${summary}`] : []),
-      ],
+      cmd: [process.execPath, BIN, ...args],
       cwd: root,
       env,
       stdout: 'pipe',
       stderr: 'pipe',
     })
     if (args[0] !== 'run') return { exit: r.exitCode, status: {} }
-    const tasks = (
-      JSON.parse(readFileSync(summary, 'utf8')) as {
-        tasks: { id: string; status: string }[]
-      }
-    ).tasks
-    rmSync(summary, { force: true })
-    return { exit: r.exitCode, status: Object.fromEntries(tasks.map((t) => [t.id, t.status])) }
+    return { exit: r.exitCode, status: lastStatus(root, env) }
   }
 
   it('runs the lines the workflow runs', () => {
