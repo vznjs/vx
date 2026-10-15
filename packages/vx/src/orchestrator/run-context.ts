@@ -14,6 +14,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { executablePath, gitEnv, relPosix, ulid, xxh3hex } from '../util/index.js'
+import { resolveSetting } from '../settings.js'
 
 export interface GitContext {
   /** `git rev-parse HEAD`, or null outside a repo / on failure. */
@@ -505,4 +506,19 @@ export function captureWorkspaceIdentity(
   } catch {
     return { id: xxh3hex(workspaceRoot), name: base, ...where }
   }
+}
+
+/**
+ * The run's branch: `run.branch` (the flag given, else `VX_RUN_BRANCH`,
+ * else the workspace's), else HEAD's, else the CI provider's for a
+ * detached checkout. What run history records and a forecast reads first.
+ */
+export function currentBranch(
+  workspaceRoot: string,
+  workspace?: unknown,
+  flag?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const set = resolveSetting('run.branch', workspace, flag, env).value as string | undefined
+  return set ?? captureGitContext(workspaceRoot, null, env).branch
 }

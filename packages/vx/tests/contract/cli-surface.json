@@ -36,6 +36,7 @@
       "--plugin"
     ],
     "last": [
+      "--branch",
       "--cache-dir",
       "--failed",
       "--format",
@@ -52,6 +53,7 @@
     "run": [
       "--affected",
       "--all",
+      "--branch",
       "--cache-dir",
       "--cache-download",
       "--cache-policy",
@@ -95,6 +97,7 @@
     "watch": [
       "--affected",
       "--all",
+      "--branch",
       "--cache-dir",
       "--cache-download",
       "--cache-policy",
@@ -168,6 +171,7 @@
       "schedule",
       "telemetry"
     ],
+    "last --branch": [],
     "last --cache-dir": [
       "*"
     ],
@@ -188,6 +192,9 @@
       "pretty"
     ],
     "run --affected": [
+      "*"
+    ],
+    "run --branch": [
       "*"
     ],
     "run --cache-dir": [
@@ -316,6 +323,9 @@
     "watch --affected": [
       "*"
     ],
+    "watch --branch": [
+      "*"
+    ],
     "watch --cache-dir": [
       "*"
     ],
@@ -426,6 +436,7 @@
     "VX_HANDED_OFF",
     "VX_LOCK_REVIEW_FILES",
     "VX_RUN_AFFECTED_BASE",
+    "VX_RUN_BRANCH",
     "VX_RUN_CONCURRENCY",
     "VX_RUN_CONTINUE",
     "VX_RUN_KILL_GRACE",

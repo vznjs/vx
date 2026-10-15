@@ -343,7 +343,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     files.push({
       relPath: relPosix(root, abs),
       abs,
-      contents: renderConfigFile(p, format),
+      contents: renderConfigFile(ownConfigNamed(p, names.get(p.dir)!, format), format),
     })
   }
   for (const f of plan.extraFiles) {
@@ -825,6 +825,30 @@ function projectConfigName(
   const meta = metas.find((m) => m.dir === dir)
   const manifest = meta ? (meta.packageJson as { type?: unknown }) : readManifest(dir)
   return manifest?.type === 'module' ? 'vx.config.ts' : 'vx.config.mts'
+}
+
+/**
+ * The plan takes the config back from an output as `!vx.config.<format>`;
+ * where the file written is the `.mts`, the take-back names it, or a `*`
+ * output covers it and `vx lock` refuses the config (medusa, 80 of 84).
+ */
+function ownConfigNamed(
+  p: GeneratedProject,
+  name: string,
+  format: MigrationFormat,
+): GeneratedProject {
+  const planned = `!vx.config.${format}`
+  if (name === `vx.config.${format}`) return p
+  return {
+    ...p,
+    tasks: p.tasks.map((t) => {
+      const outputs = (t.task?.['cache'] as { outputs?: { files?: unknown } } | undefined)?.outputs
+      if (!Array.isArray(outputs?.files) || !outputs.files.includes(planned)) return t
+      const cache = t.task!['cache'] as Record<string, unknown>
+      const files = outputs.files.map((f: unknown) => (f === planned ? `!${name}` : f))
+      return { ...t, task: { ...t.task, cache: { ...cache, outputs: { ...outputs, files } } } }
+    }),
+  }
 }
 
 function readManifest(dir: string): { type?: unknown } | undefined {

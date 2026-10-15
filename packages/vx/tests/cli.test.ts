@@ -1298,12 +1298,12 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       const cmd = startWatch(['watch', '--all', 'hello'])
       await waitFor(() => stdout.includes('watching 1 project'))
       await writeFile(path.join(workspaceRoot, 'packages', 'one', 'src', 'index.txt'), 'v1')
-      await waitFor(() => /re-running\.\.\./.test(stdout))
+      await waitFor(() => /^changed /m.test(stdout))
       // Long enough for a runaway loop (cycles take ~30 ms) to show itself.
       await new Promise((r) => setTimeout(r, 600))
       process.emit('SIGINT')
       expect(await cmd).toBe(0)
-      const reRuns = (stdout.match(/re-running\.\.\./g) ?? []).length
+      const reRuns = (stdout.match(/^changed /gm) ?? []).length
       // The edit, plus at most one run its own write re-triggered before
       // the bytes were known.
       expect(reRuns).toBeLessThanOrEqual(2)
@@ -1350,8 +1350,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       process.emit('SIGINT')
       const code = await cmd
       expect(code).toBe(0)
-      expect(stdout).toContain('vx watch: initial run')
-      expect(stdout).toMatch(/re-running\.\.\./)
+      expect(stdout).toMatch(/^changed /m)
       expect(stdout).toContain('v0')
       expect(stdout).toContain('v1')
       // Silence the stderr-may-have-content lint by referencing it.
@@ -1401,7 +1400,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       // count of 1 on macOS CI (run 37089948846) did not say which path
       // started the cycle (M-70).
       await new Promise((r) => setTimeout(r, 400))
-      expect(stdout.split('\n').filter((l) => l.includes('re-running...'))).toEqual([])
+      expect(stdout.split('\n').filter((l) => l.startsWith('changed '))).toEqual([])
 
       process.emit('SIGINT')
       await cmd
@@ -1440,7 +1439,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
 
       // Wait an extra debounce window to ensure no further cycles.
       await new Promise((r) => setTimeout(r, 300))
-      const reRunCount = (stdout.match(/re-running\.\.\./g) ?? []).length
+      const reRunCount = (stdout.match(/^changed /gm) ?? []).length
       // Allow up to 2 cycles in case the burst spanned two debounce
       // windows; the contract is "doesn't fire 5 cycles for 5 edits".
       expect(reRunCount).toBeGreaterThanOrEqual(1)
@@ -1478,7 +1477,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       // Touch the claimed lockfile at the root. Should trigger a cycle
       // even though no project dir saw the change.
       await writeFile(path.join(workspaceRoot, 'bun.lock'), '# lockfile bump')
-      await waitFor(() => stdout.includes('re-running'))
+      await waitFor(() => /^changed /m.test(stdout))
 
       process.emit('SIGINT')
       await cmd
@@ -1546,7 +1545,7 @@ describe('vx watch end-to-end against a real fixture workspace', () => {
       })
 
       const cmd = startWatch(['watch', '--all', 'hello', '--output-logs', 'full'])
-      await waitFor(() => stdout.includes('watching the workspace root'))
+      await waitFor(() => stdout.includes('watching '))
 
       // A change in a ROOT SUBDIR (not any project dir, not a lockfile)
       // must trigger a cycle — the per-project watchers can't see it.
@@ -1727,6 +1726,7 @@ describe('parseRunArgs', () => {
     expect([...documentedFlags('run')].sort()).toEqual([
       '--affected',
       '--all',
+      '--branch',
       '--cache-dir',
       '--cache-download',
       '--cache-policy',

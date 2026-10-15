@@ -62,7 +62,8 @@ vx why app#build --format json   # which input changed, down to the root cause
 ## Run history
 
 ```sh
-vx last --stats --format json            # per task: p50/p99, pass and hit rate, failure mode, peak RSS
+vx last --stats --format json            # per task: p50 (the live estimate's), p99, pass and hit rate, failure mode, peak RSS
+vx last --stats --branch main --format json  # p50 from main's timings
 vx last --stats app#build --format json  # one task; a task name covers every project
 vx last --list --format json             # recent runs, newest first
 ```

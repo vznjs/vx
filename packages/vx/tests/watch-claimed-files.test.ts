@@ -21,14 +21,14 @@ describe('vx watch and claimed root files', () => {
   it('a file a plugin added mid-watch claims is an event from then on', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await Bun.write(path.join(f.root, '.vx/workspace.mjs'), claimant('org/claimant'))
     await until(() => w.out().includes('CLAIMANT-LOADED'), 'the cycle under the new plugin')
-    await until(() => w.out().split('vx watch: watching').length === 3, 'the re-arm after it')
+    await until(() => w.out().split('watching ').length === 3, 'the re-arm after it')
     await writeFile(path.join(f.root, 'custom.lock'), 'v1\n')
     await until(() => w.cycles() === 2, 'the cycle for the claimed file')
-    expect(w.out()).toContain('root custom.lock; re-running...')
+    expect(w.out()).toContain('changed root custom.lock')
   }, 40_000)
 
   // Control: claimed from the start, the file is an event (item 971's path).
@@ -36,7 +36,7 @@ describe('vx watch and claimed root files', () => {
     await Bun.write(path.join(f.root, '.vx/workspace.mjs'), claimant('org/claimant'))
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await writeFile(path.join(f.root, 'custom.lock'), 'v1\n')
     await until(() => w.cycles() === 1, 'the cycle for the claimed file')

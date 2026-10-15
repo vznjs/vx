@@ -47,7 +47,7 @@ describe('vx watch and .gitignore', () => {
       await writeFile(path.join(root, at), 'gen.txt\n')
       w = startWatch(root)
       const ww = w
-      await until(() => ww.out().includes('vx watch: watching'), 'watching')
+      await until(() => ww.out().includes('watching '), 'watching')
       expect(await runs(log)).toBe(1)
       await writeFile(path.join(root, at), '\n')
       await until(async () => (await runs(log)) === 2, 'the re-run')
@@ -76,7 +76,7 @@ describe('vx watch //#task', () => {
     const ww = w
     const exited = await Promise.race([
       ww.proc.exited,
-      until(() => ww.out().includes('vx watch: watching'), 'watching').then(() => 'watching'),
+      until(() => ww.out().includes('watching '), 'watching').then(() => 'watching'),
     ])
     expect({ exited, err: ww.err() }).toEqual({ exited: 'watching', err: '' })
     await writeFile(path.join(root, 'tools', 't.txt'), '2\n')

@@ -41,11 +41,11 @@ describe("vx watch over a project's parent made again", () => {
   it('a parent removed, then made again, is watched again', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await recreate(f.root, true, gone(w))
     await until(
-      () => w.out().split('watching 1 project(s)').length === 3,
+      () => w.out().split('watching 1 project ').length === 3,
       'the re-arm after the parent came back',
     )
     const before = await executions(f.log)
@@ -60,11 +60,11 @@ describe("vx watch over a project's parent made again", () => {
   it('a parent made again inside one window is watched again', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await recreate(f.root, false)
     await until(() => w.cycles() >= 1, 'the cycle for the parent made again')
-    await until(() => w.out().split('vx watch: watching').length >= 3, 'its re-arm')
+    await until(() => w.out().split('watching ').length >= 3, 'its re-arm')
     const before = await executions(f.log)
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a3\n')
     await until(
@@ -78,10 +78,10 @@ describe("vx watch over a project's parent made again", () => {
   it('a project added under a parent made again joins once locked', async () => {
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
     await recreate(f.root, false)
-    await until(() => w.out().split('vx watch: watching').length >= 3, 'the re-arm')
+    await until(() => w.out().split('watching ').length >= 3, 'the re-arm')
     const dir = path.join(f.root, 'packages', 'later')
     await mkdir(dir)
     await writeFile(
@@ -93,7 +93,7 @@ describe("vx watch over a project's parent made again", () => {
       env: { ...process.env, VX_LOCK_REVIEW_FILES: 'false' },
     })
     expect(lock.exitCode).toBe(0)
-    await until(() => w.out().includes('watching 2 project(s)'), 'the new project joining')
+    await until(() => w.out().includes('watching 2 projects'), 'the new project joining')
   }, 40_000)
 })
 
@@ -115,7 +115,7 @@ describe('vx watch over a nested project whose ancestor is made again', () => {
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a1\n')
     const w = startWatch(root)
     try {
-      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await until(() => w.out().includes('watching '), 'the watching marker')
       const copy = await mkdtemp(path.join(os.tmpdir(), 'vx-apps-copy-'))
       await cp(path.join(root, 'apps'), path.join(copy, 'apps'), { recursive: true })
       await rm(path.join(root, 'apps'), { recursive: true, force: true })
@@ -123,7 +123,7 @@ describe('vx watch over a nested project whose ancestor is made again', () => {
       await cp(path.join(copy, 'apps'), path.join(root, 'apps'), { recursive: true })
       await rm(copy, { recursive: true, force: true })
       await until(
-        () => w.out().split('watching 1 project(s)').length === 3,
+        () => w.out().split('watching 1 project ').length === 3,
         'the re-arm after apps/ came back',
       )
       const before = await executions(log)
@@ -162,13 +162,13 @@ describe('vx watch over a nested project whose ancestor is made again', () => {
       await rm(copy, { recursive: true, force: true })
     }
     try {
-      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await until(() => w.out().includes('watching '), 'the watching marker')
       await swap('apps')
-      await until(() => w.out().split('vx watch: watching').length >= 3, 'the re-arm')
-      const armed = w.out().split('watching 1 project(s)').length
+      await until(() => w.out().split('watching ').length >= 3, 'the re-arm')
+      const armed = w.out().split('watching 1 project ').length
       await swap(path.join('apps', 'web'), gone(w))
       await until(
-        () => w.out().split('watching 1 project(s)').length > armed,
+        () => w.out().split('watching 1 project ').length > armed,
         'the re-arm after apps/web came back',
       )
       const before = await executions(log)
@@ -206,12 +206,11 @@ describe('vx watch over a config import directory made again', () => {
     const runs = async (): Promise<string[]> =>
       (await readFile(log, 'utf8')).split('\n').filter(Boolean)
     try {
-      await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+      await until(() => w.out().includes('watching '), 'the watching marker')
       // Each re-arm prints this line (the startup one carries a suffix).
       // The removal's cycle re-arms too, so the restore's re-arm is the
       // second: on macOS an edit before it landed in an unwatched gap.
-      const rearms = (): number =>
-        w.out().match(/^vx watch: watching 1 project\(s\)$/gm)?.length ?? 0
+      const rearms = (): number => w.out().match(/^watching 1 project · /gm)?.length ?? 0
       const copy = await mkdtemp(path.join(os.tmpdir(), 'vx-shared-copy-'))
       await cp(path.join(root, 'shared'), path.join(copy, 'shared'), { recursive: true })
       await rm(path.join(root, 'shared'), { recursive: true, force: true })

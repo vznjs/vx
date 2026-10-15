@@ -34,7 +34,7 @@ it('an edit in a project added mid-watch, made while its first cycle still runs,
   )
   w = startWatch(root)
   const ww = w
-  await until(() => ww.out().includes('vx watch: watching'), 'watching')
+  await until(() => ww.out().includes('watching '), 'watching')
   await rm(marker, { force: true })
   await addProject(root, 'fresh', {
     config: `export default { tasks: { build: {
@@ -56,7 +56,7 @@ it('an edit in a project added mid-watch, made while its first cycle still runs,
   )
   // The cycle is still in slow#build's sleep.
   await writeFile(path.join(root, 'packages', 'fresh', 'src', 'a.txt'), '2')
-  await until(() => ww.out().includes('watching 2 project(s)'), 'the re-arm')
+  await until(() => ww.out().includes('watching 2 projects'), 'the re-arm')
   await Bun.sleep(SETTLE_MS * 2)
   expect(await runs()).toEqual(['fresh 1', 'fresh 2'])
 }, 40_000)

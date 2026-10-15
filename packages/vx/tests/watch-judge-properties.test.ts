@@ -52,7 +52,8 @@ it('a judgement starts a cycle exactly when a fired path differs from what the l
         for (const f of fired) now.set(f, existsSync(f) ? await readFile(f, 'utf8') : null)
         const changed = fired.filter((f) => now.get(f) !== known.get(f))
         const live = changed.filter((f) => now.get(f) !== null)
-        const label = judge.judge()
+        const said = judge.judge()
+        const label = said?.replace(/ \(\+\d+ more\)$/, '')
         const at = `seed 9521 #${iter} round ${round}`
         if (changed.length === 0 && label !== undefined)
           broken.push(`${at}: ${label} with nothing changed`)
@@ -62,6 +63,9 @@ it('a judgement starts a cycle exactly when a fired path differs from what the l
           broken.push(`${at}: named ${label}, which did not change`)
         if (label !== undefined && live.length > 0 && !live.some((f) => path.basename(f) === label))
           broken.push(`${at}: named gone ${label} over a live change`)
+        const more = (live.length > 0 ? live.length : changed.length) - 1
+        if (label !== undefined && said !== (more > 0 ? `${label} (+${more} more)` : label))
+          broken.push(`${at}: said ${said} for ${more} more`)
         for (const f of fired) known.set(f, now.get(f)!)
       }
     } finally {

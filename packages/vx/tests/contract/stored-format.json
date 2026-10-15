@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v35",
+    "version": "v36",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -13,6 +13,9 @@
       "CREATE INDEX runs_run_id     ON runs(run_id)",
       "",
       "CREATE INDEX runs_started_at ON runs(started_at)",
+      "",
+      "CREATE INDEX task_durations_task",
+      "ON task_durations(project, task, source, id)",
       "",
       "CREATE TABLE artifacts (",
       "hash  TEXT PRIMARY KEY,",
@@ -163,6 +166,16 @@
       "CREATE TABLE store_meta (",
       "key   TEXT PRIMARY KEY,",
       "value TEXT NOT NULL",
+      ")",
+      "",
+      "CREATE TABLE task_durations (",
+      "id          INTEGER PRIMARY KEY AUTOINCREMENT,",
+      "project     TEXT NOT NULL,",
+      "task        TEXT NOT NULL,",
+      "source      TEXT NOT NULL,",
+      "sha         TEXT,",
+      "duration_ms INTEGER NOT NULL,",
+      "recorded_at INTEGER NOT NULL",
       ")",
       ""
     ]

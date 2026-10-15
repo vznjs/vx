@@ -58,7 +58,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     // every edit inside the new project was silence.
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     const bDir = await addProject(
@@ -82,7 +82,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       async () => (await executions(f.log)) === 2,
       'the cycle after the package was added',
     )
-    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'the re-armed set')
+    await until(() => w.out().includes('watching 2 projects'), 'the re-armed set')
     await Bun.sleep(SETTLE_MS)
     expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b1\n')
 
@@ -98,7 +98,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     await rm(bDir, { recursive: true, force: true })
     relock()
     await until(
-      () => w.out().split('watching 2 project(s)').at(-1)!.includes('watching 1 project(s)'),
+      () => w.out().split('watching 2 projects').at(-1)!.includes('watching 1 project '),
       'the set without b',
     )
     await Bun.sleep(SETTLE_MS)
@@ -126,13 +126,10 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(
-      () => w.out().includes('vx watch: watching the workspace root'),
-      'the root-watcher marker',
-    )
+    await until(() => w.out().includes('watching '), 'the root-watcher marker')
     expect(await executions(f.log)).toBe(1)
 
-    await writeFile(path.join(f.root, 'build.log'), 'vx watch: initial run...\n')
+    await writeFile(path.join(f.root, 'build.log'), 'watching 1 project\n')
     await mkdir(path.join(f.root, 'coverage'), { recursive: true })
     await writeFile(path.join(f.root, 'coverage', 'lcov.info'), 'TN:\n')
     await Bun.sleep(SETTLE_MS)
@@ -153,7 +150,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     // A cycle runs what `vx run` runs — the scope plus its dependencies —
     // so the watched dirs must be the same set. Before `watchedProjects`
     // the per-project arm watched the filter's answer only, and this edit
-    // was never an event: the loop printed "watching 1 project(s)" and
+    // was never an event: the loop printed "watching 1 project " and
     // sat there. Differential: with the closure removed, the wait below
     // times out.
     await writeFile(path.join(f.root, 'edges.json'), JSON.stringify({ 'packages/app': [] }))
@@ -186,7 +183,7 @@ describe('vx watch loop (e2e): the watched set', () => {
 
     f.watch = startWatch(f.root, ['--filter', 'app'])
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'both projects watched')
+    await until(() => w.out().includes('watching 2 projects'), 'both projects watched')
     const lines = async () => (await readFile(f.log, 'utf8')).split('\n').filter((l) => l !== '')
     expect(await lines()).toEqual(['lib', 'run'])
 
@@ -217,7 +214,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     await lib('lib-b')
     f.watch = startWatch(f.root, ['--filter', 'lib-*'])
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'the two libs watched')
+    await until(() => w.out().includes('watching 2 projects'), 'the two libs watched')
     const lines = async () =>
       (await readFile(f.log, 'utf8'))
         .split('\n')
@@ -271,7 +268,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
     f.watch = startWatch(f.root, ['--filter', 'app'])
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching 1 project(s)'), 'app alone watched')
+    await until(() => w.out().includes('watching 1 project '), 'app alone watched')
     const lines = async () => (await readFile(f.log, 'utf8')).split('\n').filter((l) => l !== '')
     expect(await lines()).toEqual(['run'])
 
@@ -279,7 +276,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       path.join(f.root, 'edges.json'),
       JSON.stringify({ 'packages/app': ['packages/lib'] }),
     )
-    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'lib joins the set')
+    await until(() => w.out().includes('watching 2 projects'), 'lib joins the set')
     await Bun.sleep(SETTLE_MS)
     const afterDep = await lines()
 
@@ -298,7 +295,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     await writeFile(path.join(f.root, 'tsconfig.base.json'), '{"a":1}\n')
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching 1 project(s)'), 'the per-project arm')
+    await until(() => w.out().includes('watching 1 project '), 'the per-project arm')
     await initialOnly(w, f.log)
 
     await writeFile(
@@ -313,10 +310,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       }\n`,
     )
     relock()
-    await until(
-      () => w.out().includes('vx watch: watching the workspace root'),
-      'the swap to the root watcher',
-    )
+    await until(() => w.out().split('\nwatching ').length >= 3, 'the swap to the root watcher')
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(2)
 
@@ -346,7 +340,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching 1 project(s)'), 'the per-project arm')
+    await until(() => w.out().includes('watching 1 project '), 'the per-project arm')
     await initialOnly(w, f.log)
 
     await writeFile(
@@ -354,10 +348,7 @@ describe('vx watch loop (e2e): the watched set', () => {
       inputs(", workspaceFiles: ['tsconfig.base.json']"),
     )
     relock()
-    await until(
-      () => w.out().includes('vx watch: watching the workspace root'),
-      'the swap to the root watcher',
-    )
+    await until(() => w.out().split('\nwatching ').length >= 3, 'the swap to the root watcher')
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(2)
 
@@ -371,7 +362,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     // the cycle that arms the project.
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     const bDir = await addProject(f.root, 'b', 'export default {\n')
@@ -392,7 +383,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
     relock()
     await until(async () => (await executions(f.log)) === 2, 'the cycle after the fix')
-    await until(() => w.out().includes('vx watch: watching 2 project(s)'), 'b joins the set')
+    await until(() => w.out().includes('watching 2 projects'), 'b joins the set')
     await Bun.sleep(SETTLE_MS)
     expect(await readFile(path.join(bDir, 'dist', 'out.txt'), 'utf8')).toBe('b1\n')
 

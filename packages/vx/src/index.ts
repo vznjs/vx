@@ -56,7 +56,7 @@ export { run, planRun, prepareRun } from './orchestrator/index.js'
 // The per-task duration history a `schedule` plugin learns from
 // (`@vzn/vx-schedule-history` does; a plugin package reaches core only
 // through this façade, which is what put these here).
-export { LocalHistoryProvider } from './orchestrator/index.js'
+export { currentBranch, LocalHistoryProvider } from './orchestrator/index.js'
 export type {
   HistoryProvider,
   HistoryTable,

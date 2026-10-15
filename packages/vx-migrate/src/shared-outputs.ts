@@ -211,7 +211,12 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
     )
     if (group.length === 0) continue
     const all = [a, ...group]
-    const keeper = all.find((c) => c.hasUpstreamEdge) ?? all[0]!
+    // `build` is the product Turbo and Nx repos run: typescript-eslint's
+    // typecheck (with `^typecheck`) writes declarations into build's dist,
+    // and keeping typecheck left every build uncached (Growth parity,
+    // 2026-10-14).
+    const keeper =
+      all.find((c) => c.name === 'build') ?? all.find((c) => c.hasUpstreamEdge) ?? all[0]!
     const kept: Cached[] = [keeper]
     for (const c of all) {
       if (c === keeper) continue

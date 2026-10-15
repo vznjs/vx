@@ -384,6 +384,8 @@ export interface AdmitContext {
 export interface ScheduleHookContext extends BaseContext {
   /** The run's local cache handle — its `dbHandle()` holds the run history a policy can learn from. */
   readonly localCache: Cache
+  /** The run's branch (`currentBranch`), the timings a forecast reads first: pass it to `LocalHistoryProvider`. */
+  readonly branch: string | null
 }
 
 /** A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns. */

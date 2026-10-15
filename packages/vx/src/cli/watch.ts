@@ -199,7 +199,6 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // config is loaded, and the loop arms with the run as its cycle in
   // flight. Unarmed, a server that never got ready held the initial run
   // for good, and the fix to it was never heard (X-139).
-  process.stdout.write('vx watch: initial run...\n\n')
   let loop: Promise<void> | undefined
   const initial: InitialCycle = {
     cycle: watchCycle(opts, stop.signal, () => {
@@ -209,6 +208,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
     }),
     held: Promise.resolve(undefined),
   }
+  const openingTasks = (): number | undefined => initial.cycle.tasks
   // A run that throws (a config that does not parse) is a failed cycle, as
   // it is once the loop runs: watch keeps watching, so the fix re-runs.
   // Uncaught, it ended watch at start while the same break mid-watch did
@@ -270,6 +270,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       opts,
       held,
       initial,
+      tasks: openingTasks,
       stop: stop.signal,
       workspaceRoot,
       projects: watched,
@@ -332,6 +333,8 @@ interface WatchLoopArgs {
   held: HeldPersistent | undefined
   /** The initial run, still in flight: the loop's first cycle. */
   initial: InitialCycle | undefined
+  /** The initial run's task count, once it has started. */
+  tasks: () => number | undefined
   /** Aborted by the SIGINT/SIGTERM handlers `watchCmd` installed; the loop drains its cycle and resolves. */
   stop: AbortSignal
   workspaceRoot: string
@@ -466,7 +469,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // only after, it fell in the gap and ran nothing (X-138). The re-read
             // after the run stays, for what the run itself changed.
             if (reread) await rearm(false)
-            process.stdout.write(`\nvx watch: ${label}; re-running...\n\n`)
+            process.stdout.write(`\nchanged ${label}\n`)
             if (stop.aborted) break
             restartTimings()
             // On the mtime clock, as the arm is: from `Date.now()` a write the
@@ -483,6 +486,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
               interruptIfWaiting,
             )
             const cycle = await runOrchestrator(current.opts)
+            lastTasks = current.tasks ?? lastTasks
             current = undefined
             held = cycle.persistent
             // What this cycle did not take (a server whose task did not run).
@@ -740,10 +744,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     armAncestors()
   }
 
-  const watchingLine = (count: number): string =>
-    workspaceWide
-      ? 'vx watch: watching the workspace root (workspaceFiles inputs in use)'
-      : `vx watch: watching ${count} project(s)`
+  // Said once the loop is armed, and again after a cycle that re-read the
+  // watched set (a member came or went, the lock or a plugin changed).
+  let lastTasks: number | undefined
+  const sayWatching = (count: number): void => {
+    const tasks = lastTasks === undefined ? '' : ` · ${lastTasks} task${lastTasks === 1 ? '' : 's'}`
+    process.stdout.write(`watching ${count} project${count === 1 ? '' : 's'}${tasks}\n`)
+  }
 
   const rearm = async (say = true): Promise<void> => {
     let next: Rediscovered
@@ -791,7 +798,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     // A new arm proves delivery like the first ones: an edit in the new
     // project right after this cycle is seen, not lost in the gap.
     await pool.proved()
-    if (say) process.stdout.write(`${watchingLine(next.projects.length)}\n`)
+    if (say) sayWatching(next.projects.length)
   }
 
   armMode(projects)
@@ -872,7 +879,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     interruptIfWaiting()
   }
 
-  process.stdout.write(`\n${watchingLine(projects.length)}; press Ctrl+C to stop\n`)
+  lastTasks = args.tasks()
+  sayWatching(projects.length)
 
   return await new Promise<void>((resolve) => {
     const cleanup = async (): Promise<void> => {

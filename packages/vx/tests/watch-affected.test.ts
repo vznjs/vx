@@ -36,7 +36,7 @@ describe('vx watch --affected (e2e)', () => {
 
     f.watch = startWatch(f.root, ['--affected=HEAD'])
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     expect(await executions(f.log)).toBe(0)
 
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')

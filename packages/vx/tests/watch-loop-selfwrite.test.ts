@@ -32,7 +32,7 @@ describe('vx watch loop (e2e): a file the task rewrites every run', () => {
     await writeFile(path.join(f.root, '.gitignore'), 'run.pid\n')
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await Bun.sleep(SETTLE_MS)
     await initialOnly(w, f.log)
 
@@ -52,21 +52,21 @@ describe('vx watch loop (e2e): a file the task rewrites every run', () => {
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(runs)
     expect(w.cycles()).toBe(runs - 1)
-    expect(w.out()).toContain('vx watch: app dist/out.txt; re-running...')
-    expect(w.out()).not.toContain('run.pid; re-running')
+    expect(w.out()).toContain('changed app dist/out.txt')
+    expect(w.out()).not.toContain('changed app run.pid')
   }, 40_000)
 
   it('not ignored and not declared, the loop re-runs on it and says so once', async () => {
     await writeFile(path.join(f.dir, 'vx.config.mjs'), selfWriting(f.log))
     f.watch = startWatch(f.root)
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await Bun.sleep(SETTLE_MS)
     await initialOnly(w, f.log)
 
     await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
     await until(async () => (await executions(f.log)) >= 6, 'the self-started cycles')
-    expect(w.out()).toContain('vx watch: app run.pid; re-running...')
+    expect(w.out()).toContain('changed app run.pid')
     await until(() => w.out().includes(NOTICE), 'the notice')
     await Bun.sleep(SETTLE_MS)
     // Once: the storm goes on (the remedy is the user's), the line does not.
@@ -74,7 +74,7 @@ describe('vx watch loop (e2e): a file the task rewrites every run', () => {
     // And on the third self-started cycle, as it says: two of them ran
     // before it (E-20's sweep moved the threshold with the suite green).
     const before = w.out().split(NOTICE)[0]!
-    expect(before.split('app run.pid; re-running...').length - 1).toBe(2)
+    expect(before.split('changed app run.pid').length - 1).toBe(2)
     expect(w.out()).toContain('add it to .gitignore')
   }, 40_000)
 })

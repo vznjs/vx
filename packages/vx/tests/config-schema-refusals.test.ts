@@ -32,6 +32,16 @@ function taskRefusal(task: unknown): string | null {
   }
 }
 
+// A branch is the checkout's, never the config's (M, 2026-10-14): a
+// committed one would mislabel every other branch's runs.
+describe('run.branch in the workspace config', () => {
+  it('is refused as an unknown key', () => {
+    expect(refusal({ run: { branch: 'main' } })).toBe(
+      `${WS}: \`run\` has unknown field "branch" (allowed: affectedBase, concurrency, continue, killGrace, readyNotice, retries, rules, schedule, teardownTimeout, timeout)`,
+    )
+  })
+})
+
 // Item 1099: a command of whitespace alone passed as non-empty and ran as
 // a no-op success, cached.
 describe('an empty command in any spelling', () => {

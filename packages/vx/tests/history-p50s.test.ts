@@ -126,11 +126,13 @@ it('answers the p50 and resource maxima loadFor answers for each task', async ()
     const history = new LocalHistoryProvider(cache.dbHandle(), recent)
     const full = await history.loadFor(ids)
     const got = await history.resourcesFor(ids)
+    // The forecast reads past the window (p50sFor); the maxima stay in it.
+    const p50s = await history.p50sFor(ids)
     const expected = ids.flatMap((id): Array<[string, TaskResources]> => {
       const h = full.get(id)
-      if (h === undefined) return []
+      if (h === undefined) return p50s.has(id) ? [[id, { p50DurationMs: p50s.get(id) }]] : []
       const r: TaskResources = {
-        p50DurationMs: h.p50DurationMs,
+        p50DurationMs: p50s.get(id),
         ...(h.maxPeakRssBytes !== undefined ? { maxPeakRssBytes: h.maxPeakRssBytes } : {}),
         ...(h.maxCpuParallelism !== undefined ? { maxCpuParallelism: h.maxCpuParallelism } : {}),
       }

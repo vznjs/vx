@@ -38,7 +38,7 @@ describe('vx watch cycle window (e2e)', () => {
     )
     f.watch = startWatch(f.root, ['--all'], { BUN_OPTIONS: `--preload ${shim}` }, 'show')
     const w = f.watch
-    await until(() => w.out().includes('vx watch: watching'), 'the watching marker')
+    await until(() => w.out().includes('watching '), 'the watching marker')
     await initialOnly(w, f.log)
 
     await writeFile(path.join(f.dir, '.env.local'), 'A=2\n')
@@ -49,7 +49,7 @@ describe('vx watch cycle window (e2e)', () => {
       w
         .out()
         .split('\n')
-        .filter((l) => l.includes('re-running')),
-    ).toEqual(['vx watch: app .env.local; re-running...'])
+        .filter((l) => l.startsWith('changed ')),
+    ).toEqual(['changed app .env.local'])
   }, 40_000)
 })

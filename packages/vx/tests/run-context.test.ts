@@ -7,6 +7,7 @@ import {
   captureGitContext,
   captureHostContext,
   captureWorkspaceIdentity,
+  currentBranch,
   detectCi,
   normalizeRemoteUrl,
 } from '../src/orchestrator/run-context.js'
@@ -154,6 +155,44 @@ describe('captureGitContext', () => {
     expect(ctx.commitSha).toBeNull()
     expect(ctx.branch).toBeNull()
     expect(ctx.dirty).toBeNull()
+  })
+})
+
+describe('currentBranch', () => {
+  let dir: string
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), 'vx-branch-'))
+    git(dir, ['init', '-q', '-b', 'main'])
+    git(dir, ['config', 'user.email', 'test@example.com'])
+    git(dir, ['config', 'user.name', 'Test'])
+    git(dir, ['-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init'])
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  const workspace = { run: { branch: 'from-workspace' } }
+  const env = { VX_RUN_BRANCH: 'from-env', GITHUB_HEAD_REF: 'from-ci' }
+
+  it('takes the flag over every other rung', () => {
+    expect(currentBranch(dir, workspace, 'from-flag', env)).toBe('from-flag')
+  })
+
+  it('takes VX_RUN_BRANCH over git', () => {
+    expect(currentBranch(dir, workspace, undefined, env)).toBe('from-env')
+  })
+
+  it('never takes a branch from the workspace config', () => {
+    expect(currentBranch(dir, workspace, undefined, {})).toBe('main')
+  })
+
+  it("falls back to git's branch, then the CI provider's", () => {
+    expect(currentBranch(dir, {}, undefined, { GITHUB_HEAD_REF: 'from-ci' })).toBe('main')
+    git(dir, ['checkout', '--detach', '-q', 'HEAD'])
+    expect(currentBranch(dir, {}, undefined, { GITHUB_HEAD_REF: 'from-ci' })).toBe('from-ci')
+    expect(currentBranch(dir, {}, undefined, {})).toBeNull()
   })
 })
 

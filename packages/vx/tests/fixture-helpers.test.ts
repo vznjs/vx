@@ -33,6 +33,7 @@ import {
   silentLogger,
   STAMP_CMD,
 } from './helpers/orchestrator-fixture.js'
+import { lock } from './helpers/orchestrator.js'
 import { packagesSource, pluginOrigin, pluginSource, testPlugin } from './helpers/plugin.js'
 import {
   executions,
@@ -108,6 +109,29 @@ describe('makeWorkspace', () => {
     ])
     expect(git('status', '--porcelain')).toBe('')
     expect(git('log', '--format=%s').trim()).toBe('init')
+  })
+})
+
+describe('lock', () => {
+  it('concurrent locks keep the env each config is evaluated under, and restore it after', async () => {
+    // abort.test.ts runs two runs at once; one restoring the env mid-way
+    // through the other's config evaluation made vx refuse that config.
+    const before = process.env['VX_LOCK_REVIEW_FILES']
+    delete process.env['VX_LOCK_REVIEW_FILES']
+    try {
+      const roots = await Promise.all(
+        [0, 1, 2].map(async () => {
+          const root = track(await makeWorkspace())
+          await addProject(root, 'app', 'export default { tasks: {} }')
+          return root
+        }),
+      )
+      await Promise.all(roots.map((r) => lock(r)))
+      expect(process.env['VX_LOCK_REVIEW_FILES']).toBeUndefined()
+    } finally {
+      if (before === undefined) delete process.env['VX_LOCK_REVIEW_FILES']
+      else process.env['VX_LOCK_REVIEW_FILES'] = before
+    }
   })
 })
 
