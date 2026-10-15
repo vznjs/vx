@@ -122,7 +122,8 @@ import { assembleRunRecords } from './run-records.js'
 import {
   hasEnded,
   selectKeepAlive,
-  serverConfig,
+  holdServers,
+  sessionEnd,
   shutdownPersistent,
   takeHeldServers,
 } from './persistent.js'
@@ -135,7 +136,7 @@ import {
   type FlakyCandidate,
   LocalHistoryProvider,
 } from '../history/index.js'
-import type { HeldServer, RunOptions, RunSummary } from './options.js'
+import type { RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
 import { resolveSetting } from '../settings.js'
 
@@ -1463,57 +1464,18 @@ async function runOnBus(
     // ended the session and its code — the summary above said `success`
     // for it, and an exit 1 with no word about why is a mystery in a log.
     if (keepAlive.children.length > 0 && hold) {
-      const held = keepAlive.children
-      // A held server that dies on its own is said, as the foreground's
-      // keep-alive says it: `vx watch` sat on "watching" over a dead dev
-      // server. The holder's own stop() is not such a death.
-      let stopping = false
-      // Taken by a later run (`RunOptions.keep`): kept or stopped there.
-      const handed = new Set<ReturnType<typeof Bun.spawn>>()
-      const servers = new Map<string, HeldServer>()
-      keepAlive.nodes.forEach((n, i) => {
-        const child = held[i]!
-        servers.set(n.id, {
-          child,
-          config: serverConfig(n, options.forwardArgs),
-          out: serverOuts.get(n.id) ?? { bus },
-          handOver: () => void handed.add(child),
-        })
-        // One that died during the graph was said then.
-        if (hasEnded(child)) return
-        void child.exited.then((code) => {
-          if (!stopping && !handed.has(child) && code !== 0)
-            log.status(`vx: ${n.id} exited with code ${code}`)
-        })
-      })
       return {
         ok,
         outcomes: list,
-        persistent: {
-          ids: keepAlive.nodes.map((n) => n.id),
-          servers,
-          stop: (signal) => {
-            stopping = true
-            return terminateChildren(() => held.filter((c) => !handed.has(c)), signal)
-          },
-        },
+        persistent: holdServers(keepAlive, {
+          forwardArgs: options.forwardArgs,
+          outOf: (id) => serverOuts.get(id) ?? { bus },
+          warn: (m) => log.status(m),
+        }),
       }
     }
     if (keepAlive.children.length > 0) {
-      // A server kept only as a dependency that exits 0 is a daemon that
-      // forked and returned (schema.md), not the end of the session: a
-      // `db: 'docker compose up -d'` under `app#dev` stopped the dev server
-      // right after the summary (WD-3). It ends the wait only as the last.
-      const first = await new Promise<{ code: number; i: number }>((resolve) => {
-        let left = keepAlive.children.length
-        keepAlive.children.forEach((c, i) => {
-          void c.exited.then((code) => {
-            left--
-            const n = keepAlive.nodes[i]!
-            if (code !== 0 || n.requested || n.surfaced === true || left === 0) resolve({ code, i })
-          })
-        })
-      })
+      const first = await sessionEnd(keepAlive)
       const node = keepAlive.nodes[first.i]!
       // Only the ones still up are stopped: a kept server already dead was
       // counted as one (WD-11).

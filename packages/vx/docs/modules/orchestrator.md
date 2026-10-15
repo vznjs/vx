@@ -138,7 +138,7 @@ export interface RunSummary {
     reset during the session is reset back silently, as a run's open does.
     Under `RunOptions.holdPersistent` (the watch loop) the same
     selection applies outside the foreground, and run() returns at
-    once with the kept tasks on `RunSummary.persistent`: the caller
+    once with the kept tasks on `RunSummary.persistent` (`holdServers`): the caller
     owns them and its `stop()` is the same teardown. One that dies on
     its own after that is named (`vx: <id> exited with code <n>`,
     #2442), so a watch loop idling over a dead server says so; the
@@ -173,8 +173,9 @@ export interface RunSummary {
     teardowns read and keeps the run's bytes in a remote that takes
     its writes; `cache.close()`, sandbox teardown.
 16. **Keep-alive block.** If the user requested a persistent task,
-    block on its exit AFTER everything above — Ctrl-C reaps the
-    process group; the run stays in the foreground on purpose.
+    block on its exit AFTER everything above (`sessionEnd` picks the
+    exit that ends the session) — Ctrl-C reaps the process group; the
+    run stays in the foreground on purpose.
 
 `planRun()` mirrors steps 1–3 via the same `prepareRun`, then
 delegates to `orchestrator/plan.ts:plan(...)` inside a try/finally
