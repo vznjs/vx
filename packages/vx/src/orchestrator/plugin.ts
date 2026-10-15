@@ -23,6 +23,7 @@ import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { maskedLine, nearest, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, RunStartInfo } from './events.js'
+import type { CiContext } from './run-context.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 import type { Logger } from './logger.js'
 
@@ -253,6 +254,19 @@ export interface PluginSetupContext extends BaseContext {
   readonly ci: boolean
   /** The run's branch (`currentBranch`): `run.branch`, else git's, else the CI provider's. */
   readonly branch: string | null
+  /** This run's id: the `run_id` its history rows and telemetry carry. */
+  readonly runId: string
+  /** `HEAD`'s commit, null outside a git worktree. */
+  readonly commit: string | null
+  /** What the CI provider says about this run: provider, run URL, pipeline, job, attempt. */
+  readonly ciRun: CiContext
+  /**
+   * The files a task's declared outputs match on disk now, workspace-relative
+   * and sorted: `outputs.files` in its project, `outputs.workspaceFiles` from
+   * the root. A failed task's are what it left behind; core saves none of
+   * them. Globbed on each call, so call it only for the tasks you need.
+   */
+  outputsOf(node: TaskNode): Promise<readonly string[]>
   /**
    * Subscribe a lifecycle handler; it leaves with the run. A throw or a
    * rejection warns once and switches the plugin's handlers off for the run.
@@ -645,6 +659,14 @@ export interface InstallPluginsArgs {
   ci?: boolean
   /** Default null. */
   branch?: string | null
+  /** Default `''`. */
+  runId?: string
+  /** Default null. */
+  commit?: string | null
+  /** Default: not on CI. */
+  ciRun?: CiContext
+  /** Default: no task has outputs. */
+  outputsOf?: (node: TaskNode) => Promise<readonly string[]>
 }
 
 /**
@@ -704,6 +726,10 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       cache: args.cache?.(plugin.name) ?? absentPluginCache,
       ci: args.ci ?? false,
       branch: args.branch ?? null,
+      runId: args.runId ?? '',
+      commit: args.commit ?? null,
+      ciRun: args.ciRun ?? { ci: false, provider: null },
+      outputsOf: args.outputsOf ?? (async () => []),
       // A subscription made past the hooks leaves with the run like a
       // hook's does: the bus can outlive the run (`RunOptions.bus`), and
       // one left behind hears every later run on it (item 635).

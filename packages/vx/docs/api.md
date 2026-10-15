@@ -1495,6 +1495,10 @@ export interface PluginSetupContext extends BaseContext {
   readonly cache: PluginCache
   readonly ci: boolean
   readonly branch: string | null
+  readonly runId: string
+  readonly commit: string | null
+  readonly ciRun: CiContext
+  outputsOf(node: TaskNode): Promise<readonly string[]>
   on<K extends PluginHookName>(hook: K, handler: PluginHookHandlers[K]): void
 }
 ```

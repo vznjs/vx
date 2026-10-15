@@ -12,6 +12,8 @@ import {
   type CachePolicy,
   cachesNothing,
   formatCachePolicy,
+  resolveOutputs,
+  resolveWorkspaceOutputs,
   stopRuntimeProbes,
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
@@ -50,6 +52,7 @@ import {
   isFsRefusal,
   isUserError,
   detectColors,
+  relPosix,
   type ColorSupport,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
@@ -455,6 +458,12 @@ async function runOnBus(
   // the plugin. A plugin without `setup` subscribes nothing.
   let disposePlugins: (() => void) | undefined
   let telemetry: TelemetryHandle | undefined
+  // One run-id per `vx run` invocation. Every task in the resulting graph
+  // carries it so analytics queries can group by invocation; plugins get it
+  // in setup with the commit and CI facts, read once here for the run.
+  const runId = ulid()
+  const head = captureGitContext(prepared.workspaceRoot)
+  const ciContext = detectCi(process.env)
   try {
     disposePlugins = await installPlugins({
       plugins: prepared.plugins,
@@ -463,8 +472,27 @@ async function runOnBus(
       cacheDir: prepared.cacheDir,
       warn: (m) => log.status(m),
       cache: prepared.cacheFor,
-      ci: detectCi(process.env).ci,
+      ci: ciContext.ci,
       branch: prepared.branch(),
+      runId,
+      commit: head.commitSha,
+      ciRun: ciContext,
+      outputsOf: async (node) => {
+        const declared = node.config.cache?.outputs
+        if (declared === undefined) return []
+        const [own, ws] = await Promise.all([
+          resolveOutputs({
+            projectDir: node.projectDir,
+            outputs: declared.files,
+            nestedProjectDirs: prepared.nestedDirsByProject.get(node.projectName) ?? [],
+          }),
+          resolveWorkspaceOutputs({
+            workspaceRoot: prepared.workspaceRoot,
+            outputs: declared.workspaceFiles ?? [],
+          }),
+        ])
+        return [...new Set([...own, ...ws].map((p) => relPosix(prepared.workspaceRoot, p)))].sort()
+      },
     })
   } catch (err) {
     disposePlugins?.()
@@ -726,9 +754,6 @@ async function runOnBus(
     }),
   )
   try {
-    // One run-id per `vx run` invocation. Every task in the resulting
-    // graph carries it so analytics queries can group by invocation.
-    const runId = ulid()
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
     const remoteCacheEnabled = prepared.hasRemoteLayer
@@ -759,10 +784,10 @@ async function runOnBus(
     // second status spawn.
     // `run.branch` names the branch over git's (`prepared.branch`).
     const gitContext = {
-      ...captureGitContext(workspaceRoot, gitFilesCache.worktreeDirty),
+      ...head,
+      dirty: gitFilesCache.worktreeDirty,
       branch: prepared.branch(),
     }
-    const ciContext = detectCi(process.env)
     const hostContext = captureHostContext()
 
     // The canonical run-context record — the same git/CI/host data the

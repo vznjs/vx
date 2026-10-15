@@ -114,7 +114,17 @@ async function runPlugin(
 ): Promise<ReadonlyMap<string, number> | undefined> {
   const plugin = scheduleHistoryPlugin({ resources: false })
   const base = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn: () => {} }
-  await plugin.setup!({ ...base, cache: shared, ci: opts.ci, branch: opts.branch, on: () => {} })
+  await plugin.setup!({
+    ...base,
+    cache: shared,
+    ci: opts.ci,
+    branch: opts.branch,
+    runId: 'r1',
+    commit: null,
+    ciRun: { ci: opts.ci, provider: opts.ci ? 'generic' : null },
+    outputsOf: async () => [],
+    on: () => {},
+  })
   const nodes = new Map(opts.ids.map((id) => [id, node(id)]))
   const weights = await plugin.schedule!(nodes, {
     ...base,
