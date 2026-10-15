@@ -28,7 +28,8 @@ below.
   then the scope's. A default artifact a remote ingest refuses is a miss
   there, and the scope's key is asked next (Security F6). A batch probe
   that finds only the scope's key marks the default key absent, so its
-  GET is skipped.
+  GET is skipped. A `get` whose scope key alone is local asks it first, so a
+  local hit costs no remote GET for the default key.
 - **Writes** (`save`, `ingest`) go to the scope's key only. Whether a run
   writes at all is the policy's call.
 - **Callers speak task keys.** The key that served each one (a hit's, or

@@ -12,8 +12,9 @@
 // GET per key.
 //
 // HARD SCOPE: this runs ONLY when a remote layer is configured. It
-// NEVER touches the local cache (no local get / no isOutputsCurrent /
-// no stat pass) — it derives keys and probes REMOTE only. Local-only
+// asks the local index only which keys it holds (no local get / no
+// isOutputsCurrent), and probes the remote for the rest: a run the local
+// cache answers makes no remote call (M, 2026-10-15). Local-only
 // runs are byte-identical to before; the caller gates on the layer's
 // own `hasRemote`, so a third-party remote layer gets the overlap too.
 // The two batch-probe hooks are OPTIONAL on the contract: a remote layer
@@ -75,8 +76,11 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   // would 404. When the remote can't batch (`null` — an older remote, reads
   // disabled, or a layer that doesn't implement the hook at all), fall back to
   // prefetching every stable key, exactly as before.
-  let toPrefetch = stableKeys
-  const uniqueHashes = [...new Set(stableKeys.map((k) => k.hash))]
+  const held =
+    (await args.cache.localHasMany?.([...new Set(stableKeys.map((k) => k.hash))])) ?? null
+  let toPrefetch = held === null ? stableKeys : stableKeys.filter((k) => !held.has(k.hash))
+  if (toPrefetch.length === 0) return
+  const uniqueHashes = [...new Set(toPrefetch.map((k) => k.hash))]
   const present = (await args.cache.remoteHasMany?.(uniqueHashes)) ?? null
   if (present !== null) {
     args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))
@@ -85,7 +89,7 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
     // economy: deleting it alone GETs nothing extra, deleting both GETs
     // every absent key. What it decides is which hashes the pump asks
     // the layer for, and that is what the row pins (item 643, 645).
-    toPrefetch = stableKeys.filter((k) => present.has(k.hash))
+    toPrefetch = toPrefetch.filter((k) => present.has(k.hash))
     if (toPrefetch.length === 0) return
   }
 
