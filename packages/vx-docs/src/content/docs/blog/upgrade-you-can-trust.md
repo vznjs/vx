@@ -60,7 +60,9 @@ for a global install, and the project's own manager for a dependency, so
 
 ```sh frame="terminal"
 $ vx upgrade
-vx upgrade: 0.0.635 → 0.0.640: running pnpm add @vzn/vx@0.0.640 --save-dev (in /repo)
+› vx upgrade  0.0.635 → 0.0.640
+
+  pnpm add @vzn/vx@0.0.640 --save-dev in /repo
 ```
 
 vx never installs Node or a package manager for you.

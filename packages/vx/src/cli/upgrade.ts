@@ -18,7 +18,7 @@ import { createPublicKey, verify } from 'node:crypto'
 import { access, chmod, chown, link, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
-import { UserError, sayNotice } from '../util/index.js'
+import { UserError, sayNotice, ui } from '../util/index.js'
 import { VERSION } from '../version.js'
 
 const REGISTRY = 'https://registry.npmjs.org'
@@ -522,7 +522,7 @@ async function targetVersion(tag: string | undefined): Promise<string> {
 async function upgradeManaged(install: ManagedInstall, tag: string | undefined): Promise<number> {
   const version = await targetVersion(tag)
   if (version === VERSION) {
-    process.stdout.write(`vx upgrade: already at ${VERSION} — nothing to do\n`)
+    ui.print('out', ui.status('info', 'vx upgrade', `already at ${VERSION}`))
     return 0
   }
   const argv = upgradeArgv(install, version)
@@ -532,8 +532,10 @@ async function upgradeManaged(install: ManagedInstall, tag: string | undefined):
       `vx upgrade: this vx was installed by ${argv[0]}, which is not on PATH — vx does not install package managers; run it yourself: ${argv.join(' ')} (in ${install.cwd})`,
     )
   }
-  process.stdout.write(
-    `vx upgrade: ${VERSION} → ${version}: running ${argv.join(' ')} (in ${install.cwd})\n`,
+  ui.print(
+    'out',
+    ui.status('info', 'vx upgrade', `${VERSION} → ${version}`),
+    ui.text([ui.cmd(argv.join(' ')), ui.dim(` in ${install.cwd}`)]),
   )
   const proc = Bun.spawnSync({
     cmd: [bin, ...argv.slice(1)],
@@ -581,7 +583,11 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
     dest,
     () =>
       releaseBinary(pkg, spec, (version) =>
-        process.stdout.write(`vx upgrade: ${VERSION} → ${version} (${dest})\n`),
+        ui.print(
+          'out',
+          ui.status('info', 'vx upgrade', `${VERSION} → ${version}`),
+          ui.text(ui.dim(dest)),
+        ),
       ),
     // The replaced binary's own version: the new build speaks for itself
     // rather than this process guessing, and one that cannot is rolled back.
@@ -590,10 +596,11 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
       return installed !== ''
     },
   )
-  process.stdout.write(
+  ui.print(
+    'out',
     replaced
-      ? `vx upgrade: installed ${installed}\n`
-      : `vx upgrade: already at ${VERSION} — nothing to do\n`,
+      ? ui.status('ok', 'vx upgrade', `installed ${installed.replace(/^vx /, '')}`)
+      : ui.status('info', 'vx upgrade', `already at ${VERSION}`),
   )
   return 0
 }
