@@ -4,7 +4,9 @@
 // drift into opposite verdicts on identical data. Both build on
 // `mixedOutcomeKeysSql` + `failureModeOf`, so the rule cannot fork again.
 // The per-run detector (`detectFlaky`) and the doctor's list (`flakyTasks`)
-// read the same per-key projection (`keyOutcomesSql`).
+// read the same per-key projection (`keyOutcomesSql`) over the shared
+// store's flaky record (`task_outcomes`, v38), so every worktree of a repo
+// judges a key on what all of them saw.
 
 import type { Database } from 'bun:sqlite'
 import { KEYED_RUNS_SQL } from '../cache/index.js'
@@ -16,6 +18,9 @@ import { isCacheHit, TASK_STATUSES } from './telemetry.js'
 const HIT_STATUSES = `(${TASK_STATUSES.filter(isCacheHit)
   .map((s) => `'${s}'`)
   .join(', ')})`
+
+/** The shared store's flaky record: what `detectFlaky` and `flakyTasks` read. */
+const OUTCOMES = 'task_outcomes'
 
 export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
 
@@ -33,6 +38,10 @@ export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
  * projection.
  */
 function keyOutcomesSql(source: string, where = ''): string {
+  // The flaky record keeps only rows that observed their key (run-history.ts
+  // `observesKey`), so it carries none of the filter's columns.
+  const keyed =
+    source === OUTCOMES ? '1' : `${KEYED_RUNS_SQL} AND cached IS NOT 0 AND blocked_by IS NULL`
   return `SELECT project, task, hash, SUM(failed) AS failures, SUM(passed) AS passes,
        SUM(retried) AS retried_failures,
        SUM(CASE WHEN failed = 1 AND id > first_pass THEN 1 ELSE 0 END) AS relapses
@@ -41,10 +50,10 @@ function keyOutcomesSql(source: string, where = ''): string {
          FROM (SELECT project, task, hash, id,
              CASE WHEN status = 'failed' THEN 1 ELSE 0 END AS failed,
              CASE WHEN status = 'success' AND attempts > 1 THEN attempts - 1 ELSE 0 END AS retried,
-             CASE WHEN status = 'success' OR status IN ${HIT_STATUSES} OR cache_hit = 1
+             CASE WHEN status = 'success' OR status IN ${HIT_STATUSES}${source === OUTCOMES ? '' : ' OR cache_hit = 1'}
                THEN 1 ELSE 0 END AS passed
            FROM ${source}
-           WHERE ${KEYED_RUNS_SQL} AND cached IS NOT 0 AND blocked_by IS NULL${where}))
+           WHERE ${keyed}${where}))
        GROUP BY project, task, hash`
 }
 
@@ -136,9 +145,9 @@ const keyOf = (c: { project: string; task: string; hash: string }): string =>
  * failures is a recovery, not a flake. The counts fold this run in.
  *
  * The cost follows the run's colour. No candidate (every task a hit or a
- * skip): no query. A green miss: one probe of the `runs_failed` partial
- * index for the keys that ever failed — failures are the rare rows, so the
- * probe is microseconds however long the history. Only a key that DID fail
+ * skip): no query. A green miss: one probe of the `task_outcomes_hash`
+ * index for the keys that ever failed — a key holds a handful of rows, so
+ * the probe is microseconds however long the history. Only a key that DID fail
  * before, or a task failing now, pays the projection scan over its own
  * keys, and a run that is failing has more to look at than a scan.
  */
@@ -149,8 +158,8 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
   chunked(passedNow, (chunk) => {
     const rows = db
       .query(
-        `SELECT DISTINCT project, task, hash FROM runs
-         WHERE status = 'failed' AND blocked_by IS NULL AND hash IN (${chunk.map(() => '?').join(', ')})`,
+        `SELECT DISTINCT project, task, hash FROM ${OUTCOMES}
+         WHERE status = 'failed' AND hash IN (${chunk.map(() => '?').join(', ')})`,
       )
       .all(...chunk.map((c) => c.hash)) as { project: string; task: string; hash: string }[]
     for (const r of rows) everFailed.add(keyOf(r))
@@ -162,7 +171,7 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
   const counts = new Map<string, { passes: number; failures: number; relapses: number }>()
   chunked(suspects, (chunk) => {
     const rows = db
-      .query(keyOutcomesSql('runs', ` AND hash IN (${chunk.map(() => '?').join(', ')})`))
+      .query(keyOutcomesSql(OUTCOMES, ` AND hash IN (${chunk.map(() => '?').join(', ')})`))
       .all(...chunk.map((c) => c.hash)) as {
       project: string
       task: string
@@ -212,7 +221,7 @@ export function flakyTasks(db: Database): FlakyTask[] {
     .query(
       `SELECT project, task, COUNT(*) AS keys, SUM(passes) AS passes, SUM(failures) AS failures
        FROM (SELECT project, task, passes, failures + retried_failures AS failures
-             FROM (${keyOutcomesSql('runs')})
+             FROM (${keyOutcomesSql(OUTCOMES)})
              WHERE relapses > 0 OR retried_failures > 0)
        GROUP BY project, task
        ORDER BY failures DESC, passes DESC, project, task`,

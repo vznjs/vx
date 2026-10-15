@@ -22,7 +22,8 @@ vx defines it narrowly, and the narrow definition is the feature.
 A task is **flaky** when one of two things is on record:
 
 - its exact cache key **failed after it had passed**, this run
-  included (a cache hit counts as a pass; it replayed one), or
+  included (a key's first cache hit counts as a pass; later hits replay
+  it), or
 - it needed a **retry** this run (`exec.retries` or `--retries`) and then
   passed.
 
@@ -55,14 +56,14 @@ mode, so it does not learn to shrug at a repeated failure on changing inputs.
 
 The information was already there. Every cache entry records its key,
 its outcome and its run. Asking "has this key ever had the other
-outcome" is one probe of the failed-row index on a green miss, and
-nothing at all on a run that executed nothing. There is no upload
-because there is nothing to upload to; the history is the local
-`cache.db` that `vx why` and `vx last` already read.
+outcome" is one index probe on a green miss, and nothing at all on a
+run that executed nothing. There is no upload because there is nothing
+to upload to; the record lives in the repo's local store under
+`~/.vx`, so every worktree of the repo reads what the others saw.
 
 That is also why it works on the first day. A service-side detector
 needs a fleet of runs before it can say anything. vx's needs the second
-run of the same key on your machine.
+run of the same key on your machine, in any of its worktrees.
 
 ## What it is not
 

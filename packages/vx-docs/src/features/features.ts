@@ -618,7 +618,7 @@ export default defineProject({
     category: 'ci',
     hook: 'Local and free: the same key failing after it passed is called flaky.',
     body: [
-      'A task is flaky when its exact cache key failed after it had passed, or when it needed a retry. Its row says so, from the local run history alone, and `vx info` keeps the standing list.',
+      'A task is flaky when its exact cache key failed after it had passed, or when it needed a retry. Its row says so, from the record on this machine alone, shared by every worktree of the repo, and `vx info` keeps the standing list.',
       'Failing on new inputs is a break, not a flake, and carries no note.',
     ],
     example: {

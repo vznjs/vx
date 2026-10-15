@@ -34,6 +34,31 @@ const RUNS_PER_INSERT = 40
 /** Rows per `task_durations` INSERT: 6 variables each, under 999. */
 const DURATIONS_PER_INSERT = 160
 
+/** Rows per `task_outcomes` INSERT: 6 variables each, under 999. */
+const OUTCOMES_PER_INSERT = 160
+
+/**
+ * Whether a run says anything of its key, so the flaky record may keep it:
+ * keyed, cached, and not run behind a failure (its bytes were not the key's).
+ */
+const keyed = (r: RunRecord): boolean =>
+  r.hash !== undefined && r.hash !== '' && r.cached !== false && r.blockedBy == null
+
+/** A hit, as the orchestrator marks one (`isCacheHit`, run-records.ts). */
+const isHit = (r: RunRecord): boolean => r.cacheHit === true
+
+/**
+ * Of a JSON array of hashes, those the record holds a pass of: one index
+ * probe each (0.6 ms for 1,000; a join reading every row of each key was
+ * 5.7 ms at 20 runs of history). A hit's row is kept only when its key has
+ * none: a hit replays a pass, and the first is what a later failure
+ * relapses from (an entry adopted from its artifact, or older than the
+ * record, has no executed row). By hash alone, as the entry it replays is.
+ */
+const PASSED_HASHES = `
+      SELECT j.value AS hash FROM json_each(?) AS j
+      WHERE EXISTS (SELECT 1 FROM task_outcomes AS o WHERE o.hash = j.value AND o.status <> 'failed')`
+
 /** A local run's `task_durations.source`: its branch, `''` when it had none. */
 export const branchSource = (branch: string | null): string => `branch:${branch ?? ''}`
 
@@ -75,6 +100,7 @@ export class RunHistory {
       .transaction(() => {
         this.insertRuns(runs)
         this.insertDurations(runs, branchSource(null), null)
+        this.insertOutcomes(runs)
       })
       .immediate()
   }
@@ -89,6 +115,45 @@ export class RunHistory {
       this.db
         .query(
           `INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at) VALUES ${Array(block.length).fill('(?, ?, ?, ?, ?, ?)').join(', ')}`,
+        )
+        .run(...params)
+    }
+  }
+
+  /**
+   * The flaky record's rows: every executed outcome, and a key's first hit,
+   * in the order given (a batch may hold one key's history).
+   */
+  private insertOutcomes(runs: readonly RunRecord[]): void {
+    const rows = runs.filter(
+      (r) => keyed(r) && (isHit(r) || r.status === 'success' || r.status === 'failed'),
+    )
+    const hits = rows.filter(isHit)
+    let passed: Set<string> | undefined
+    if (hits.length > 0) {
+      const found = this.db.query(PASSED_HASHES).all(JSON.stringify(hits.map((r) => r.hash))) as {
+        hash: string
+      }[]
+      passed = new Set(found.map((f) => f.hash))
+    }
+    const kept: RunRecord[] = []
+    for (const r of rows) {
+      if (isHit(r)) {
+        if (passed!.has(r.hash!)) continue
+        passed!.add(r.hash!)
+      } else if (r.status === 'success') {
+        passed?.add(r.hash!)
+      }
+      kept.push(r)
+    }
+    for (let i = 0; i < kept.length; i += OUTCOMES_PER_INSERT) {
+      const block = kept.slice(i, i + OUTCOMES_PER_INSERT)
+      const params: SQLQueryBindings[] = []
+      for (const r of block)
+        params.push(r.project, r.task, r.hash!, r.status, r.attempts ?? null, r.startedAt)
+      this.db
+        .query(
+          `INSERT INTO task_outcomes(project, task, hash, status, attempts, recorded_at) VALUES ${Array(block.length).fill('(?, ?, ?, ?, ?, ?)').join(', ')}`,
         )
         .run(...params)
     }
@@ -134,6 +199,7 @@ export class RunHistory {
           branchSource(bundle.invocation.branch),
           bundle.invocation.commitSha,
         )
+        this.insertOutcomes(bundle.runs)
       })
       .immediate()
   }
@@ -149,6 +215,7 @@ export class RunHistory {
     this.db.prepare('DELETE FROM runs WHERE started_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM invocations WHERE started_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM task_durations WHERE recorded_at < ?').run(cutoff)
+    this.db.prepare('DELETE FROM task_outcomes WHERE recorded_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM plugin_blobs WHERE at < ?').run(cutoff)
   }
 }
