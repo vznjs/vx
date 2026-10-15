@@ -829,6 +829,7 @@ export const MORE: readonly Feature[] = [
     body: [
       'If `test` reads `dist/**` that `build` writes, its key depends on what `build` produces, and no one can know it until `build` runs. Plans and remote caches stop working.',
       'The `upfrontKeys` rule, on by default, makes `vx lock` refuse that overlap and name the fix: exclude the output from the glob. The dependency’s key already reaches the reader through `dependsOn`.',
+      'An output git ignores is no overlap: a key reads only what git lists, so `**/*` beside a gitignored `**/dist/**` keys before the build. A tracked output is still refused.',
     ],
     example: {
       lang: 'text',

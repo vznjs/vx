@@ -13,7 +13,15 @@
 
 import { isGroupTask, outputTakenBack, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
-import { isLiteralPattern, normalizeGlob, relPosix } from '../util/index.js'
+import {
+  checkIgnore,
+  ignoreProbes,
+  isLiteralPattern,
+  normalizeGlob,
+  relPosix,
+  taskGlob,
+  wholeIgnored,
+} from '../util/index.js'
 import { commandWriteReach, mayWriteFingerprint, undeclaredWriteReach } from './sandbox-request.js'
 import { foldedDeps } from './keyed-projects.js'
 import {
@@ -116,6 +124,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     if (list === undefined) outputsOf.set(n.projectName, [...files])
     else list.push(...files)
   }
+  const readableOf = readableOutputs(outputsOf, args.nodes, args.workspaceRoot, args.gitFilesCache)
   const rewritersById = new Map<string, ProjectSet>()
   const unfoldedById = new Map<string, ProjectSet>()
   const wsRewriters = new Set<string>()
@@ -277,6 +286,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
         {
           wide: unfolded === undefined ? wide : wide === undefined ? unfolded : wide.or(unfolded),
           outputsOf,
+          readableOf,
         },
       )
     if (unstable) unstableById.add(id)
@@ -297,6 +307,87 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       args.uncachedKeys?.set(id, hash)
   }
   return stableKeys
+}
+
+/**
+ * The same-project outputs a reader's inputs reach, root-relative, each with
+ * its project dir and project-relative glob: the outputs the gate would key
+ * a reader late over, unless git ignores them (`askIgnoredOutputs`).
+ */
+export function gatedOutputs(
+  nodes: ReadonlyMap<string, TaskNode>,
+  workspaceRoot: string,
+): Map<string, { projectDir: string; glob: string }> {
+  const out = new Map<string, { projectDir: string; glob: string }>()
+  const outputsOf = new Map<string, string[]>()
+  for (const n of nodes.values()) {
+    const files = n.config.cache?.outputs.files ?? []
+    if (files.length === 0) continue
+    const list = outputsOf.get(n.projectName)
+    if (list === undefined) outputsOf.set(n.projectName, [...files])
+    else list.push(...files)
+  }
+  if (outputsOf.size === 0) return out
+  for (const n of nodes.values()) {
+    const inputs = n.config.cache?.inputs?.files
+    const outputs = outputsOf.get(n.projectName)
+    if (inputs === undefined || outputs === undefined || isGroupTask(n)) continue
+    const back = inputs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
+    const rel = relPosix(workspaceRoot, n.projectDir)
+    for (const o of outputs) {
+      if (o.startsWith('!')) continue
+      const rooted = rel === '' ? o : `${rel}/${o}`
+      if (out.has(rooted) || (back.length > 0 && outputTakenBack(o, back))) continue
+      if (workspaceInputsReach(inputs, [literalPrefix(o)])) {
+        out.set(rooted, { projectDir: n.projectDir, glob: o })
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Asks git which of `gated` it ignores, started beside the run's
+ * enumeration; the call it returns settles `files.ignoredOutputs` once that
+ * enumeration is in, whose listing says whether a tracked or re-included
+ * file lies under a glob. Nothing gated: no spawn.
+ */
+export function askIgnoredOutputs(
+  gated: ReadonlyMap<string, { projectDir: string; glob: string }>,
+  workspaceRoot: string,
+): (files: GitFilesCache) => Promise<void> {
+  if (gated.size === 0) return async () => {}
+  const paths = [...gated.keys()].flatMap((g) => ignoreProbes(g)?.paths ?? [])
+  const asked = paths.length === 0 ? Promise.resolve(null) : checkIgnore(workspaceRoot, paths)
+  return async (files) => {
+    files.ignoredOutputs = wholeIgnored(gated.keys(), await asked, (g) => {
+      const { projectDir, glob } = gated.get(g)!
+      const listed = files.get(projectDir)
+      return listed === undefined || listed.some((f) => taskGlob(glob).match(f))
+    })
+  }
+}
+
+/** `outputsOf` less what git ignores whole; the same map when it ignores none. */
+function readableOutputs(
+  outputsOf: ReadonlyMap<string, string[]>,
+  nodes: ReadonlyMap<string, TaskNode>,
+  workspaceRoot: string,
+  files: GitFilesCache,
+): ReadonlyMap<string, readonly string[]> {
+  const ignored = files.ignoredOutputs
+  if (ignored.size === 0) return outputsOf
+  const dirOf = new Map<string, string>()
+  for (const n of nodes.values()) dirOf.set(n.projectName, relPosix(workspaceRoot, n.projectDir))
+  const out = new Map<string, readonly string[]>()
+  for (const [project, outputs] of outputsOf) {
+    const rel = dirOf.get(project)!
+    out.set(
+      project,
+      outputs.filter((o) => !ignored.has(rel === '' ? o : `${rel}/${o}`)),
+    )
+  }
+  return out
 }
 
 const probesAfterWritesOf = new WeakMap<ReadonlyMap<string, TaskNode>, ReadonlySet<string>>()
@@ -452,6 +543,8 @@ export function dependsOnSiblingOutputs(
     wide: ProjectNames | undefined
     /** Each project's declared `outputs.files`, over all its tasks. */
     outputsOf: ReadonlyMap<string, readonly string[]>
+    /** The same less what git ignores whole: no key reads those. */
+    readableOf?: ReadonlyMap<string, readonly string[]>
   },
 ): boolean {
   const cache = node.config.cache
@@ -473,8 +566,10 @@ export function dependsOnSiblingOutputs(
     // key: `['**/*', '!dist/**']` beside a `dist/**` producer keys the same
     // before and after it, which is what `run.rules.upfrontKeys` asks a config
     // to write (X-54).
+    // Nor is an output git ignores whole: a key reads only what git lists.
+    const readable = sameProject.readableOf?.get(node.projectName) ?? outputs
     const back = inputs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
-    const reach = back.length === 0 ? outputs : outputs.filter((o) => !outputTakenBack(o, back))
+    const reach = back.length === 0 ? readable : readable.filter((o) => !outputTakenBack(o, back))
     if (reach.length > 0 && workspaceInputsReach(inputs, reach.map(literalPrefix))) return true
     // Nor where it WRITES inside another task's tree: restored ahead of
     // that producer, its restore raced the producer's clean and extract

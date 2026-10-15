@@ -226,8 +226,13 @@ other task's `outputs.workspaceFiles`, which may land in any project
 (X-135). The test is `outputsOverlap`, so only a proven overlap is
 refused; the stability gate keeps the "may reach" cases preliminary. An
 output the reader's own `!` entries take back whole (`outputTakenBack`)
-does not count, nor do its own outputs. A group has no outputs and no
-key of its own, so the default build (`**`) is exempt. Each domain runs
+does not count, nor do its own outputs, nor an output git ignores
+whole: the overlaps found are collected, one per output, and git is
+asked once for all of them (`refuseUnlessIgnored`: one `git
+check-ignore` over each output's directory, `util/git-ignored.ts`, and a
+`git ls-files` for a glob that reaches below it, which must list no file
+the glob matches). Undecided, or no work tree: refused. A group has no
+outputs and no key of its own, so the default build (`**`) is exempt. Each domain runs
 through `overlapCandidates`, so it is not all pairs: 4,000 tasks in one
 project check in milliseconds. The index is kept per side, readers and
 writers, and pairs across sides only (X-101): filed together, 5,000

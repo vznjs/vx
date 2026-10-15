@@ -1,7 +1,10 @@
 import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
+  checkIgnoreSync,
+  ignoreProbes,
   isLiteralPattern,
+  listedSync,
   normalizeGlob,
   relPosix,
   splitNegations,
@@ -9,6 +12,7 @@ import {
   taskGlob,
   refusal,
   UserError,
+  wholeIgnored,
   wholeSubtreePrefixes,
 } from '../util/index.js'
 import type { PackageGraph, ProjectEntry } from '../workspace/index.js'
@@ -1550,6 +1554,8 @@ interface Side {
   reads: boolean
   /** The project's root-relative dir for rebased `files` globs. */
   rel?: string
+  /** The root-relative dir project-relative `globs` sit in, for git. */
+  anchor?: string | undefined
 }
 
 /**
@@ -1583,6 +1589,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
   let projectReaders = false
   let rootReaders = false
   const memo: TakeBackMemo = { bySide: new Map(), byList: new Map() }
+  const found: Found = new Map()
   const bucket = (name: string): Side[] => {
     let list = byProject.get(name)
     if (list === undefined) byProject.set(name, (list = []))
@@ -1594,7 +1601,8 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
     const outFiles = positives(cache.outputs.files)
     const outWs = positives(cache.outputs.workspaceFiles ?? [])
     if (outFiles.length > 0) {
-      bucket(n.projectName).push({ node: n, globs: outFiles, reads: false })
+      const anchor = workspaceRoot === undefined ? undefined : relPosix(workspaceRoot, n.projectDir)
+      bucket(n.projectName).push({ node: n, globs: outFiles, reads: false, anchor })
       filesWriters.push(n)
     }
     if (outWs.length > 0) {
@@ -1623,7 +1631,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
         (s) => s.globs,
         (s) => s.reads,
       )) {
-        readsOutputs(memo, sides[i]!, sides[j]!, 'files')
+        readsOutputs(memo, found, sides[i]!, sides[j]!, 'files')
       }
     }
   }
@@ -1641,10 +1649,20 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
       (s) => s.globs,
       (s) => s.reads,
     )) {
-      readsOutputs(memo, sides[i]!, sides[j]!, 'files')
+      readsOutputs(memo, found, sides[i]!, sides[j]!, 'files')
     }
   }
-  if (!rootReaders) return
+  if (rootReaders) readsRootedOutputs(memo, found, rooted, filesWriters, workspaceRoot)
+  refuseUnlessIgnored(found, workspaceRoot)
+}
+
+function readsRootedOutputs(
+  memo: TakeBackMemo,
+  found: Found,
+  rooted: Side[],
+  filesWriters: readonly TaskNode[],
+  workspaceRoot: string | undefined,
+): void {
   if (workspaceRoot !== undefined) {
     for (const node of filesWriters) {
       const rel = relPosix(workspaceRoot, node.projectDir)
@@ -1659,8 +1677,37 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
     (s) => s.globs,
     (s) => s.reads,
   )) {
-    readsOutputs(memo, rooted[i]!, rooted[j]!, 'workspaceFiles')
+    readsOutputs(memo, found, rooted[i]!, rooted[j]!, 'workspaceFiles')
   }
+}
+
+/** Each overlapped output, root-relative, and the refusal it meets; the first pair found per output. */
+type Found = Map<string, () => UserError>
+
+/**
+ * An output git ignores is no overlap (M, 2026-10-15): a key reads only what
+ * git lists, so such an output never reaches it. Asked of git once, for
+ * every overlapped output together; an output git cannot speak for (no work
+ * tree, a glob no few paths stand for) is refused as before. The answer
+ * holds for the lock; a run's stability gate asks git again for itself.
+ */
+function refuseUnlessIgnored(found: Found, workspaceRoot: string | undefined): void {
+  if (found.size === 0) return
+  if (workspaceRoot !== undefined) {
+    const asks = [...found.keys()].map(ignoreProbes)
+    const paths = asks.flatMap((a) => a?.paths ?? [])
+    const ignored = checkIgnoreSync(workspaceRoot, paths)
+    let listed: string[] | null | undefined
+    const pass = wholeIgnored(found.keys(), ignored, (g) => {
+      listed ??= listedSync(workspaceRoot, [
+        ...new Set(asks.flatMap((a) => (a?.deep === true ? [a.dir] : []))),
+      ])
+      return listed === null || listed.some((f) => taskGlob(g).match(f))
+    })
+    for (const [g, refuse] of found) if (!pass.has(g)) throw refuse()
+    return
+  }
+  throw found.values().next().value!()
 }
 
 /**
@@ -1707,6 +1754,7 @@ function takenBack(
 
 function readsOutputs(
   memo: TakeBackMemo,
+  found: Found,
   x: Side,
   y: Side,
   field: 'files' | 'workspaceFiles',
@@ -1715,21 +1763,28 @@ function readsOutputs(
   const [reader, writer] = x.reads ? [x, y] : [y, x]
   const at = reader.rel === undefined || reader.rel === '' ? '' : `${reader.rel}/`
   for (const go of writer.globs) {
-    if (takenBack(memo, reader, field, go)) continue
+    const rooted =
+      writer.anchor === undefined || writer.anchor === '' ? go : `${writer.anchor}/${go}`
+    if (found.has(rooted) || takenBack(memo, reader, field, go)) continue
     for (const gi of reader.globs) {
       if (!outputsOverlap(gi, go)) continue
       const shown =
         writer.rel === undefined || writer.rel === '' ? go : go.slice(writer.rel.length + 1)
       const out = at !== '' && go.startsWith(at) ? go.slice(at.length) : go
-      throw new UserError(
-        `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in cache.inputs.${field}, which matches ` +
-          `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
-          `another task's outputs (the dependency's key already cascades through dependsOn). ` +
-          `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
-          `cache.inputs.${field}, or set run.rules.upfrontKeys: false in .vx/workspace.ts to ` +
-          `let it wait for its producer.`,
-        'VX_E_INPUT_IS_OUTPUT',
+      found.set(
+        rooted,
+        () =>
+          new UserError(
+            `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in cache.inputs.${field}, which matches ` +
+              `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
+              `another task's outputs (the dependency's key already cascades through dependsOn). ` +
+              `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
+              `cache.inputs.${field}, or set run.rules.upfrontKeys: false in .vx/workspace.ts to ` +
+              `let it wait for its producer.`,
+            'VX_E_INPUT_IS_OUTPUT',
+          ),
       )
+      break
     }
   }
 }
