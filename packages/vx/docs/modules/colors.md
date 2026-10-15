@@ -27,6 +27,8 @@ export interface PaintOptions {
 }
 
 export function detectColors(stream?: NodeJS.WriteStream): ColorSupport
+// `TERM=dumb`: no colour (unless FORCE_COLOR) and no live region (status-line.ts).
+export function dumbTerminal(): boolean
 export function paint(
   color: string,
   text: string,
