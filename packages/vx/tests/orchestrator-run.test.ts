@@ -408,7 +408,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }),
       ).rejects.toThrow(
         new Error(
-          'vx lock: .vx/projects.lock.json not written: two projects are named "dup": packages/a and packages/b — give one another `name` in its vx.config',
+          '✗ vx lock  lock not written\n\n  two projects are named "dup": packages/a and packages/b — give one another `name` in its vx.config',
         ),
       )
     },

@@ -38,7 +38,12 @@ function nextLine(root: string): string | undefined {
     stderr: 'pipe',
   })
   expect({ code: r.exitCode, err: r.stderr.toString() }).toEqual({ code: 0, err: '' })
-  return r.stdout.toString().trimEnd().split('\n').at(-1)
+  return r.stdout
+    .toString()
+    .trimEnd()
+    .split('\n')
+    .at(-1)
+    ?.replace(/^ {2}next {6}/, 'next: ')
 }
 
 function gitInit(root: string): void {

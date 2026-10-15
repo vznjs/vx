@@ -42,7 +42,7 @@ describe('vx-migrate --no-install', () => {
   })
 
   it('names `vx lock` in the next line, since no lock was written', () => {
-    const next = out.split('\n').find((l) => l.startsWith('next: '))
+    const next = out.split('\n').find((l) => l.startsWith('  next '))
     expect(next).toBeDefined()
     expect(next).toContain('vx lock')
   })

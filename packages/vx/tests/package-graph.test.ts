@@ -147,9 +147,9 @@ describe('`^task` needs an edge source', () => {
         gitIn(root)('add', '-A')
         // `vx lock` builds the graph, so it refuses before any run can.
         const r = await vx(root, ['run', 'build', '--all', '--dry=json'])
-        expect([r.code, r.err.split('\n')[0]]).toEqual([
+        expect([r.code, r.err.split('\n')[2]]).toEqual([
           1,
-          'vx lock: .vx/projects.lock.json not written: app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns `deps`',
+          '  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns `deps`',
         ])
       } finally {
         await rm(root, { recursive: true, force: true })

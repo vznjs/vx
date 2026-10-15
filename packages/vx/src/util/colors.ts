@@ -13,6 +13,11 @@ const RESET = '\x1b[0m'
 const BOLD = '\x1b[1m'
 const DIM = '\x1b[2m'
 
+// State hues every report shares with the run summary.
+export const SUCCESS = '#22c55e'
+export const WARN = '#eab308'
+export const ERROR = '#ef4444'
+
 export interface ColorSupport {
   enabled: boolean
 }

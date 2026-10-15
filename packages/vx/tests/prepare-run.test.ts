@@ -249,7 +249,7 @@ describe('scoped config loading reaches every project a run can need', () => {
       await pkg('broken', 'export default { tasks: 42 }')
 
       await expect(lock(root)).rejects.toThrow(
-        `vx lock: .vx/projects.lock.json not written: ${path.join(root, 'packages', 'broken', 'vx.config.mjs')}: ` +
+        `✗ vx lock  lock not written\n\n  ${path.join(root, 'packages', 'broken', 'vx.config.mjs')}: ` +
           '`tasks` must be an object keyed by task name',
       )
       await expect(prepare({ projects: ['app'], locked: true })).rejects.toThrow(
@@ -352,7 +352,7 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
       await pkg('web', cfg(task('build')))
 
       await expect(lock(root)).rejects.toThrow(
-        'vx lock: .vx/projects.lock.json not written: app#typo: dependsOn ^biuld but no project in the workspace declares biuld',
+        '✗ vx lock  lock not written\n\n  app#typo: dependsOn ^biuld but no project in the workspace declares biuld',
       )
       await typoLocked()
       const err = await refusal({ tasks: ['app#typo'], locked: true })

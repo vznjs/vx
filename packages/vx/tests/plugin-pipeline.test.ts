@@ -27,7 +27,7 @@ import type { TaskNode } from '../src/graph/index.js'
 
 const TIMEOUT = 20_000
 // A graph stage breaks the graph `vx lock` builds too, so the lock refuses first.
-const LOCK_REFUSED = 'vx lock: .vx/projects.lock.json not written: '
+const LOCK_REFUSED = '✗ vx lock  lock not written\n\n  '
 let root: string
 
 beforeEach(async () => {

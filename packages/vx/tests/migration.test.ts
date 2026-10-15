@@ -172,8 +172,8 @@ describe('applyMigration', () => {
       ]),
     )
     const lines = stdout.split('\n')
-    expect(lines).toContain('1 task migrated clean, 1 TODO:')
-    expect(lines).toContain('  app#e2e: why')
+    expect(lines).toContain('  tasks     1 clean · 1 todo')
+    expect(lines).toContain('  todo      app#e2e: why')
   })
 
   it('a reason several tasks share prints once, under their ids', async () => {
@@ -186,40 +186,32 @@ describe('applyMigration', () => {
       ]),
     )
     const lines = stdout.split('\n')
-    const at = lines.indexOf('0 tasks migrated clean, 3 TODOs:')
+    const at = lines.indexOf('  tasks     3 todo')
     expect(lines.slice(at + 1, at + 4)).toEqual([
-      '  app#dev, lib#dev:',
-      '    set readyWhen',
-      '  app#e2e: why',
+      '  todo      app#dev, lib#dev:',
+      '              set readyWhen',
+      '            app#e2e: why',
     ])
     // Past five ids the rest is a count: the generated files name each.
     stdout = ''
     const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((n) => task(n, exec('x'), ['r']))
     await apply(plan([['app', many]]), { force: true })
-    expect(stdout.split('\n')).toContain('  app#a, app#b, app#c, app#d, app#e and 2 more:')
+    expect(stdout.split('\n')).toContain(
+      '  todo      app#a, app#b, app#c, app#d, app#e and 2 more:',
+    )
   })
 
-  it('says a cache block makes the second run hit when no task caches', async () => {
-    const hint =
-      'no task caches yet: uncomment the cache line in each TODO task with its real globs, and a second run hits'
+  // Every fact said once (M, 2026-10-15): the cache TODO already says the
+  // task always runs without the block; a line after it said it again.
+  it('says the cache TODO once, with no second line about caching', async () => {
     mkdirSync(path.join(root, 'app'))
     await apply(
       plan([
         ['app', [task('build', exec('next build'), [cacheTodo("'.next/**', '!.next/cache/**'")])]],
       ]),
     )
-    expect(stdout.split('\n')).toContain(hint)
-    // A task that already caches: the run can hit, and the line would mislead.
-    stdout = ''
-    const built = { ...exec('tsc'), cache: { inputs: { files: [] }, outputs: { files: [] } } }
-    await apply(
-      plan([['app', [task('build', built), task('pack', exec('x'), [cacheTodo("'dist/**'")])]]]),
-      {
-        force: true,
-      },
-    )
-    expect(stdout).toContain('1 task migrated clean, 1 TODO:')
-    expect(stdout.split('\n')).not.toContain(hint)
+    const rows = stdout.split('\n').filter((l) => /cache/.test(l))
+    expect(rows).toEqual([`  todo      app#build: ${cacheTodo("'.next/**', '!.next/cache/**'")}`])
   })
 
   it('puts the suggested cache block in the task, commented', async () => {
@@ -244,16 +236,16 @@ describe('applyMigration', () => {
     expect(lines[lines.indexOf(suggested[0]!) - 1]).toBe('    build: {')
   })
 
-  it('no TODOs is plural and takes no colon', async () => {
+  it('a run with no TODO names only the clean count', async () => {
     mkdirSync(path.join(root, 'app'))
     await apply(plan([['app', [task('build', exec('tsc')), task('lint', exec('x'))]]]))
-    expect(stdout.split('\n')).toContain('2 tasks migrated clean, 0 TODOs')
+    expect(stdout.split('\n')).toContain('  tasks     2 clean')
   })
 
   it('a dry run says nothing was written', async () => {
     mkdirSync(path.join(root, 'app'))
     await apply(plan([['app', [task('build', exec('tsc'))]]]), { dry: true })
-    expect(stdout.split('\n')).toContain('files (dry run, nothing written):')
+    expect(stdout.split('\n')).toContain('  dry run   nothing written')
     expect(existsSync(path.join(root, 'app', 'vx.config.ts'))).toBe(false)
   })
 
@@ -263,12 +255,12 @@ describe('applyMigration', () => {
     await apply(plan([['app', [task('lint', exec('x')), task('build', exec('tsc'))]]]), {
       force: true,
     })
-    expect(stdout.trimEnd().split('\n').at(-1)).toBe('next: vx lock, then vx run build --all')
+    expect(stdout.trimEnd().split('\n').at(-1)).toBe('  next      vx lock, then vx run build --all')
     stdout = ''
     await apply(plan([['app', [task('lint', exec('x')), task('test', exec('y'))]]]), {
       force: true,
     })
-    expect(stdout.trimEnd().split('\n').at(-1)).toBe('next: vx lock, then vx run lint --all')
+    expect(stdout.trimEnd().split('\n').at(-1)).toBe('  next      vx lock, then vx run lint --all')
   })
 
   it("writes a plan's import lines and a raw expression as code, not as strings (D-22)", async () => {
@@ -370,7 +362,7 @@ describe('a written config passes the repo’s own checks', () => {
       ),
     ).toEqual([true, true, true])
     expect(existsSync(path.join(root, 'cjs', 'vx.config.ts'))).toBe(false)
-    expect(stdout).toContain('turbo.json → vx.config.mts, vx.config.ts')
+    expect(stdout).toContain('  files     cjs/vx.config.mts\n            esm/vx.config.ts\n')
   })
 
   // medusa: the mapping takes the config back as `!vx.config.ts`, and a
@@ -397,7 +389,7 @@ describe('a written config passes the repo’s own checks', () => {
     expect(readFileSync(path.join(root, '.prettier-args'), 'utf8').trim()).toBe(
       '--write a/vx.config.ts .vx/workspace.ts',
     )
-    expect(stdout).toContain('note: formatted 2 files with prettier\n')
+    expect(stdout).toContain('  note      formatted 2 files with prettier\n')
   })
 
   it('a dry run formats nothing', async () => {
@@ -417,7 +409,7 @@ describe('a written config passes the repo’s own checks', () => {
     expect(await apply(plan([['a', [task('build', null)]]]))).toBe(0)
     expect(existsSync(path.join(root, 'a', 'vx.config.ts'))).toBe(true)
     expect(stdout).toContain(
-      'note: prettier did not format the written files (exit 2): no parser\n',
+      '  note      prettier did not format the written files (exit 2): no parser\n',
     )
   })
 })

@@ -171,6 +171,9 @@ describe('package boundaries', () => {
       // Widened 2026-10-14: the scripts mapper left core and leaves out a
       // script whose name no task may carry, by the schema's own rule.
       'taskNameProblem',
+      // Widened 2026-10-15: plugins draw output with core's components, so
+      // every surface shares one look (M: logs are designed like UI).
+      'ui',
       // Widened (X-112): `@vzn/vx-reapi` and the executor example joined the
       // args after `--` on their own, and lost them where the local
       // executor kept them (a trailing comment).

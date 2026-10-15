@@ -73,14 +73,15 @@ export default {
 
 ```text
 $ npx @vzn/vx init --keep
-vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
-vx-migrate: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
-vx-migrate: turbo.json found — turbo() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
-wrote .vx/workspace.ts.
 
-vx lock: locked 0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
+─ vx-migrate 0.0.637 ─────────────────────────────────────────
+  from      turbo.json, run by turbo() from @vzn/vx-migrate
+  ran       npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
+  files     .vx/workspace.ts
+  lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
+  note      a temporary start: vx init --native writes native config
 
-next: npx @vzn/vx run build --all
+  next      npx @vzn/vx run build --all
 ```
 
 The install uses your lockfile's manager (`pnpm add -D -w …` beside
@@ -105,19 +106,17 @@ turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remot
 
 ```text
 $ bunx @vzn/vx-migrate
-vx-migrate: npm uninstall @vzn/vx-migrate
-vx-migrate: turbo.json → vx.config.ts
-note: dropped turbo() from .vx/workspace.ts
-note: removed @vzn/vx-migrate (npm uninstall @vzn/vx-migrate)
 
-3 tasks migrated clean, 0 TODOs
-files written:
-  packages/app/vx.config.ts
-  packages/lib/vx.config.ts
+─ vx-migrate 0.0.637 ─────────────────────────────────────────
+  from      turbo.json
+  config    dropped turbo() from .vx/workspace.ts
+  ran       npm uninstall @vzn/vx-migrate
+  tasks     3 clean
+  files     packages/app/vx.config.ts
+            packages/lib/vx.config.ts
+  lock      2 project configs → .vx/projects.lock.json
 
-vx lock: locked 2 project configs → .vx/projects.lock.json
-
-next: bunx @vzn/vx run build --all
+  next      bunx @vzn/vx run build --all
 ```
 
 The first run after it misses every task once: the lockfile plugin it
@@ -170,7 +169,7 @@ the goal. Each line and its comment is what a test runs and sees on each commit
 npm install && git init && git add -A && git commit -m init
 npx @vzn/vx run test --all      # 3 miss: lib#build, app#build, app#test
 npx @vzn/vx run test --all      # 3 up-to-date
-bunx @vzn/vx-migrate       # 3 tasks migrated clean, 0 TODOs
+bunx @vzn/vx-migrate       # tasks 3 clean
 git add -A && git commit -m migrate
 npx @vzn/vx run test --all      # 3 up-to-date: the written configs derive the same keys
 echo "import { npm } from '@vzn/vx-lockfile'; export default { plugins: [npm()] }" > .vx/workspace.ts   # drop turbo(); npm() keeps the edges
@@ -260,34 +259,34 @@ export default {
 
 ```text
 $ npx @vzn/vx init --keep
-vx-migrate: npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history (what the written files import)
-vx-migrate: installed @vzn/vx-lockfile @vzn/vx-schedule-history (npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history)
-vx-migrate: nx.json found — nx() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.
-wrote .vx/workspace.ts.
 
-vx lock: locked 0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
+─ vx-migrate 0.0.637 ─────────────────────────────────────────
+  from      nx.json, run by nx() from @vzn/vx-migrate
+  ran       npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
+  files     .vx/workspace.ts
+            .vx/.gitignore
+  lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
+  note      a temporary start: vx init --native writes native config
 
-next: npx @vzn/vx run build --all
+  next      npx @vzn/vx run build --all
 ```
 
 `bunx @vzn/vx-migrate`, like `vx init`, reports what it wrote, then locks the configs:
 
 ```text
 $ bunx @vzn/vx-migrate
-vx-migrate: npm uninstall @vzn/vx-migrate
-vx-migrate: nx graph → vx.config.ts
-note: dropped nx() from .vx/workspace.ts
-note: removed @vzn/vx-migrate (npm uninstall @vzn/vx-migrate)
-note: migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 
-2 tasks migrated clean, 0 TODOs
-files written:
-  packages/app/vx.config.ts
-  packages/lib/vx.config.ts
+─ vx-migrate 0.0.637 ─────────────────────────────────────────
+  from      nx graph
+  config    dropped nx() from .vx/workspace.ts
+  ran       npm uninstall @vzn/vx-migrate
+  tasks     2 clean
+  files     packages/app/vx.config.ts
+            packages/lib/vx.config.ts
+  lock      2 project configs → .vx/projects.lock.json
+  note      migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 
-vx lock: locked 2 project configs → .vx/projects.lock.json
-
-next: bunx @vzn/vx run build --all
+  next      bunx @vzn/vx run build --all
 ```
 
 `packages/lib/vx.config.ts`, as written (the `define` names are the

@@ -20,9 +20,11 @@ import {
   applyMigration,
   findWorkspaceRoot,
   isUserError,
+  VERSION,
   type MigrationFormat,
   type MigrationPlan,
   UserError,
+  ui,
 } from '@vzn/vx'
 import { migrateScripts } from './migrate-scripts.js'
 import type { LoadReads } from './package-fs.js'
@@ -220,8 +222,14 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     metas.some((m) => m.configPath !== null) &&
     !readFileSync(path.join(root, existing), 'utf8').includes(`${runner}(`)
   ) {
-    process.stdout.write(
-      `vx is already set up here (${existing} and the projects' vx.config files); --force regenerates them from ${runnerFile}.\n\nnext: ${adoptionNext(root, runner, runnerFile, ['@vzn/vx'])}\n`,
+    ui.print(
+      'out',
+      ui.report(`vx-migrate ${VERSION}`, [
+        ['kept', `${existing} and the projects' vx.config files`],
+        ['note', `vx is already set up here; --force regenerates them from ${runnerFile}`],
+        null,
+        ['next', adoptionNext(root, runner, runnerFile, ['@vzn/vx'])],
+      ]),
     )
     return 0
   }
@@ -352,7 +360,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     runner === 'vite-task'
       ? undefined
       : remoteCacheNote(root, runner, finalWorkspace.includes(`${REMOTE_CACHE[runner]}(`))
-  const headerNotes =
+  const steps: Step[] =
     refused || bare
       ? []
       : [
@@ -371,7 +379,6 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
             parsed,
             needsSelf ? [] : ['@vzn/vx-migrate'],
           )),
-          ...(cacheNote === undefined ? [] : [cacheNote]),
         ]
   return applyMigration({
     root,
@@ -379,7 +386,8 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     plan,
     source,
     verb: 'vx-migrate',
-    notes: headerNotes,
+    steps,
+    notes: refused || bare || cacheNote === undefined ? [] : [cacheNote],
     dry: parsed.dry,
     json: parsed.json === true,
     force: parsed.force,
@@ -393,12 +401,23 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
  * Core's `vx lock`, run where the configs were written: the step `vx init`
  * ends with, through the core this repo resolves.
  */
-async function lockWorkspace(root: string): Promise<number> {
-  return await Bun.spawn([process.execPath, '--no-install', coreBin(root), 'lock'], {
+async function lockWorkspace(root: string): Promise<{ code: number; said: string }> {
+  const p = Bun.spawn([process.execPath, '--no-install', coreBin(root), 'lock'], {
     cwd: root,
-    stdio: ['ignore', 'inherit', 'inherit'],
-  }).exited
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  const [out, err, code] = await Promise.all([
+    new Response(p.stdout).text(),
+    new Response(p.stderr).text(),
+    p.exited,
+  ])
+  // A success's warnings print above the report; a refusal is said whole.
+  if (code === 0) process.stderr.write(err)
+  return { code, said: code === 0 ? out : out + err }
 }
+
+/** A report row: what the tool did, e.g. `['ran', 'bun add -d …']`. */
+type Step = readonly [label: string, value: string]
 
 /** The `vx` entry of the core this repo resolves. */
 function coreBin(root: string): string {
@@ -440,7 +459,7 @@ const ADOPTION_PLUGINS = new Set(['@vzn/vx-migrate#turbo', '@vzn/vx-migrate#nx']
 
 /**
  * A `--keep` adoption's workspace file, written over for a native one.
- * Returns the report's line; writes nothing under `--dry`.
+ * Returns the report's row; writes nothing under `--dry`.
  */
 async function rewriteWorkspace(
   root: string,
@@ -448,41 +467,41 @@ async function rewriteWorkspace(
   text: string,
   before: readonly WorkspacePlugin[],
   dry: boolean,
-): Promise<string[]> {
+): Promise<Step[]> {
   if (readFileSync(path.join(root, file), 'utf8') === text) return []
   const dropped = before.filter((p) => ADOPTION_PLUGINS.has(`${p.pkg}#${p.factory}`))
   const names = dropped.map((p) => `${p.factory}()`).join(', ')
   if (dry)
-    return [`would ${dropped.length > 0 ? `drop ${names} from` : 'rewrite'} ${file} (dry run)`]
+    return [['config', `would ${dropped.length > 0 ? `drop ${names} from` : 'rewrite'} ${file}`]]
   await Bun.write(path.join(root, file), text)
-  return [`${dropped.length > 0 ? `dropped ${names} from` : 'rewrote'} ${file}`]
+  return [['config', `${dropped.length > 0 ? `dropped ${names} from` : 'rewrote'} ${file}`]]
 }
 
 /**
  * Install what the written files import and remove what they no longer
- * do. Returns the report's lines; changes nothing under `--dry`.
+ * do. Returns the report's rows; changes nothing under `--dry`.
  */
 async function prepareRepo(
   root: string,
   wanted: readonly string[],
   args: MigrateArgs,
   unwanted: readonly string[] = [],
-): Promise<string[]> {
+): Promise<Step[]> {
   if (args.noInstall === true) return []
-  const notes: string[] = []
+  const steps: Step[] = []
   const version = ownVersion()
   const missing = missingPackages(root, wanted, version)
   if (missing.length > 0) {
-    if (args.dry) notes.push(`would install ${missing.join(' ')} (dry run)`)
-    else notes.push(`installed ${missing.join(' ')} (${await install(root, missing, version)})`)
+    steps.push(
+      args.dry ? ['install', missing.join(' ')] : ['ran', await install(root, missing, version)],
+    )
   }
   // Last: the package removed may be the one running this.
   const listed = listedPackages(root, unwanted)
   if (listed.length > 0) {
-    if (args.dry) notes.push(`would remove ${listed.join(' ')} (dry run)`)
-    else notes.push(`removed ${listed.join(' ')} (${await uninstall(root, listed)})`)
+    steps.push(args.dry ? ['remove', listed.join(' ')] : ['ran', await uninstall(root, listed)])
   }
-  return notes
+  return steps
 }
 
 /**
@@ -515,13 +534,13 @@ async function keep(
   const extended = before === undefined ? null : extendWorkspaceFile(before, all)
   const text = before === undefined ? renderWorkspaceFile(all, format) : (extended ?? before)
   const declares = before === undefined || extended !== null
-  for (const note of await prepareRepo(
+  const steps = await prepareRepo(
     root,
     [...new Set(['@vzn/vx', '@vzn/vx-migrate', ...(declares ? all.map((p) => p.pkg) : [])])],
     args,
-  )) {
-    ;(args.json ? process.stderr : process.stdout).write(`vx-migrate: ${note}\n`)
-  }
+  )
+  if (args.json)
+    for (const [label, value] of steps) process.stderr.write(`vx-migrate: ${label}: ${value}\n`)
   const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
   if (!args.dry) {
     if (before === undefined) {
@@ -537,14 +556,15 @@ async function keep(
       ? undefined
       : remoteCacheNote(root, runner, text.includes(`${cache}(`))
   const added = before === undefined ? [] : undeclared(before, all).map((p) => `${p.factory}()`)
-  const wrote =
+  const wrote: Step =
     before === undefined
-      ? args.dry
-        ? `would write ${name} (dry run, nothing written).`
-        : `wrote ${name}.`
+      ? ['files', [name, ...ignore].join('\n')]
       : text === before
-        ? `${existing} already declares ${runner}().`
-        : `${args.dry ? 'would declare' : 'declared'} ${added.join(', ')} in ${existing}.`
+        ? ['kept', `${existing} (declares ${runner}())`]
+        : [
+            'config',
+            `${args.dry ? 'would declare' : 'declared'} ${added.join(', ')} in ${existing}`,
+          ]
   const next = adoptionNext(root, runner, source, [
     ...new Set(['@vzn/vx', '@vzn/vx-migrate', ...(declares ? all.map((p) => p.pkg) : [])]),
   ])
@@ -569,17 +589,40 @@ async function keep(
     )
     return 0
   }
-  process.stdout.write(
-    `${args.dry && before === undefined ? `── ${name} ──\n${text}\n` : ''}` +
-      `vx-migrate: ${source} found — ${runner}() from @vzn/vx-migrate, a temporary start until vx init --native writes native config.\n` +
-      `${wrote}\n${cacheLine === undefined ? '' : `${cacheLine}\n`}\n`,
-  )
+  if (args.dry && before === undefined) process.stdout.write(`── ${name} ──\n${text}\n`)
   // A run reads only the lock; with the plugins installed it is written
   // now, else `next` names `vx lock` after the install.
-  const locks = !args.dry && !next.includes(' lock && ')
-  const code = locks ? await lockWorkspace(root) : 0
-  process.stdout.write(`${locks ? '\n' : ''}next: ${next}\n`)
-  return code
+  const lock = !args.dry && !next.includes(' lock && ') ? await lockWorkspace(root) : undefined
+  if (lock !== undefined && lock.code !== 0) process.stderr.write(lock.said)
+  const rows: ui.FieldRow[] = [
+    ['from', `${source}, run by ${runner}() from @vzn/vx-migrate`],
+    ...(args.dry ? [['dry run', 'nothing written'] as const] : []),
+    ...steps,
+    wrote,
+    ...(lock === undefined ? [] : [lockRow(lock)]),
+    [
+      'note',
+      'a temporary start: vx init --native writes native config',
+      ...(cacheLine === undefined ? [] : [cacheLine]),
+    ],
+    null,
+    [
+      'next',
+      lock === undefined || lock.code === 0 ? next : `fix the above, then vx lock and ${next}`,
+    ],
+  ]
+  ui.print('out', ui.report(`vx-migrate ${VERSION}`, rows))
+  return lock?.code ?? 0
+}
+
+/** `vx lock`'s outcome as the report's row. */
+function lockRow(lock: { code: number; said: string }): ui.FieldRow {
+  return [
+    'lock',
+    lock.code === 0
+      ? lock.said.trim().replace(/^✓ vx lock\s+/, '')
+      : ui.tone('error', 'not written'),
+  ]
 }
 
 /** `.vx/.gitignore`'s text, as core writes it: the machine-local cache stays out of git. */
@@ -683,12 +726,8 @@ async function scripts(
     plan,
     source: 'package.json scripts',
     verb: 'vx-migrate',
-    notes: [
-      ...noMembers,
-      ...(await unreadWorkspaces(root, workspace.packageGlobs)),
-      ...unmapped,
-      ...installed,
-    ],
+    notes: [...noMembers, ...(await unreadWorkspaces(root, workspace.packageGlobs)), ...unmapped],
+    steps: installed,
     unmapped: unmapped.length > 0,
     ...(unreached.length > 0 ? { emptyReason: unreachedHint(unreached, root) } : {}),
     dry: args.dry,

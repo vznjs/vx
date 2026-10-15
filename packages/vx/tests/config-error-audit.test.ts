@@ -35,13 +35,16 @@ const run = async (config: string) => {
   return { code, err: err.replaceAll(root, '<root>').trim() }
 }
 
-const REFUSED = 'vx lock: .vx/projects.lock.json not written: '
+const REFUSED = '✗ vx lock  lock not written\n\n  '
 
 /** A schema refusal as printed: the file at the field's line and column, then that line. */
 const framed =
-  (col: number, said: string) =>
+  (col: number, problem: string, more: { allowed?: string; fix?: string } = {}) =>
   (config: string): string =>
-    `${REFUSED}p/vx.config.ts:1:${col}${said}\n\n> 1 | ${config.trim()}\n    | ${' '.repeat(col - 1)}^`
+    `${REFUSED}p/vx.config.ts:1:${col}\n  ${problem}` +
+    (more.allowed === undefined ? '' : `\n  allowed: ${more.allowed}`) +
+    `\n\n  > 1 | ${config.trim()}\n      | ${' '.repeat(col - 1)}^` +
+    (more.fix === undefined ? '' : `\n\n  fix  ${more.fix}`)
 
 const task = (fields: string) => `export default { tasks: { build: { ${fields} } } }\n`
 const CACHE_IN = "inputs: { files: ['src/**'] }"
@@ -60,22 +63,22 @@ it.each([
   [
     'an unknown top-level field',
     'export default { taskz: {} }\n',
-    framed(18, ' has unknown field "taskz" (allowed: name, tags, tasks) — did you mean tasks?'),
+    framed(18, 'unknown field "taskz"', { allowed: 'name, tags, tasks', fix: 'use tasks' }),
   ],
   [
     'a command of the wrong type',
     task('exec: { command: 42 }'),
-    framed(44, ': tasks.build.exec.command must be a non-empty string'),
+    framed(44, 'tasks.build.exec.command must be a non-empty string'),
   ],
   [
     'a string `cache.outputs`',
     task(`exec: { command: 'x' }, cache: { ${CACHE_IN}, outputs: 'dist' }`),
-    framed(100, ': tasks.build.cache.outputs must be an object — `outputs: { files: [...] }`'),
+    framed(100, 'tasks.build.cache.outputs must be an object — `outputs: { files: [...] }`'),
   ],
   [
     'a string `cache.inputs`',
     task(`exec: { command: 'x' }, cache: { inputs: 'src/**', outputs: { files: [] } }`),
-    framed(69, ': tasks.build.cache.inputs must be an object — `inputs: { files: [...] }`'),
+    framed(69, 'tasks.build.cache.inputs must be an object — `inputs: { files: [...] }`'),
   ],
   [
     'a missing `cache.outputs`',
@@ -87,7 +90,7 @@ it.each([
     task("exec: { command: 'x' }, dependsOn: '^build'"),
     framed(
       60,
-      ": tasks.build.dependsOn must be an array of strings (Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')",
+      "tasks.build.dependsOn must be an array of strings (Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name')",
     ),
   ],
   [
@@ -95,7 +98,7 @@ it.each([
     task("exec: { command: 'x', timeout: 5000 }"),
     framed(
       58,
-      ": tasks.build.exec.timeout takes a duration with its unit, like '5000ms' or '5s' (got 5000)",
+      "tasks.build.exec.timeout takes a duration with its unit, like '5000ms' or '5s' (got 5000)",
     ),
   ],
 ] as Array<[string, string, string | ((config: string) => string)]>)(

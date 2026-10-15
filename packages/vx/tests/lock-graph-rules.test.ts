@@ -63,9 +63,7 @@ describe('vx lock checks the graph rules', () => {
       const r = vx(root, ['lock'])
       expect({
         code: r.code,
-        said:
-          r.err.includes('.vx/projects.lock.json not written') &&
-          r.err.includes('both declare the output'),
+        said: r.err.includes('lock not written') && r.err.includes('both write'),
         written: existsSync(path.join(root, '.vx/projects.lock.json')),
       }).toEqual({ code: 1, said: true, written: false })
     },

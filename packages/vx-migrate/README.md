@@ -230,7 +230,7 @@ It is the one command a repo needs (`pnpx @vzn/vx-migrate` in a pnpm repo works 
 - Native or keep, a remote cache the repo shows is declared: `turboCache()` for turbo.json's enabled `remoteCache`, a `turbo link`ed `.turbo/config.json` or a CI file (`.github/workflows/*`, `.gitlab-ci.yml`, `.circleci/config.yml`) setting `TURBO_TOKEN`; `nxCache()` for one setting `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. The report names the file that showed it. Nx Cloud (`nxCloudId`, `nxCloudAccessToken`, the `nx-cloud` runner) is named instead: vx does not speak its wire.
 - With no `.vx/workspace.*` yet, it writes one declaring the plugins the repo calls for (`src/workspace-plugins.ts`): the remote cache above, the `@vzn/vx-lockfile` factory for the lockfile (`pnpm()`, `bun()`, `npm()`, `yarn()`), `scheduleHistoryPlugin()`, and `github()` when `.github/workflows` exists, from `@vzn/vx-ci`, each installed beside `@vzn/vx` at vx-migrate's own version. Keep adds them to the file it writes, or to one already in that shape; any other workspace file is the user's and left alone. Native over a file vx wrote (a keep adoption's) rewrites it: `turbo()` and `nx()` go, since the configs written replace them, and the other plugins stay.
 - It installs what the written files import with the repo's own manager (`packageManager`, else the lockfile): `@vzn/vx`, the declared plugins' packages, and `@vzn/vx-migrate` for keep or when a written task runs its `nx-exec` or `nx-env` bin (`pnpm add -D -w`, `yarn add -D -W` on Yarn 1 and without `-W` on Yarn 2+, `bun add -d`, `npm install -D`). A package the root both lists and has installed at vx-migrate's own version is left alone; any other is installed at that version. Native removes a listed `@vzn/vx-migrate` when nothing written needs it (no `nx-exec` / `nx-env` task, no `turboCache()` or `nxCache()` left in the workspace file): `pnpm remove -w`, `yarn remove` (`-W` on Yarn 1), `bun remove`, `npm uninstall`. `--no-install` skips both.
-- Native, once the files are written, it ends with `vx lock`: `.vx/projects.lock.json` is written and the graph rules are checked, in one line before `next:`. A refusal is printed and the configs stay written (exit 0). `--no-install` skips it, since the plugins the workspace file declares are not installed yet, and `next:` then starts with `vx lock`.
+- Native, once the files are written, it ends with `vx lock`: `.vx/projects.lock.json` is written and the graph rules are checked, its line the report's `lock` row. A refusal prints above the report and the configs stay written (exit 0). `--no-install` skips it, since the plugins the workspace file declares are not installed yet, and `next` then starts with `vx lock`.
 
 A Lerna repo is an Nx one: Lerna 6+ runs `lerna run` on Nx's task runner over the graph `nx graph` exports, nx.json or not, so a `lerna.json` with no nx.json and no turbo.json is mapped from that graph, and keep writes the workspace file declaring `nx()`. Lerna is the installed one, else the root manifest's range; with neither, the lerna.json is another tool's (lerna-lite reads it too, and runs no Nx). A root whose scripts never `lerna run` runs its tasks another way and publishes with Lerna (webdriverio: `run-s`, `pnpm -r`), so its scripts stay the source. Not where Lerna runs its own runner: `useNx: false`, or Lerna 5 without `useNx: true`; those map their scripts. Beside turbo.json, Turbo runs the tasks and Lerna only publishes: turbo.json is the source.
 
@@ -239,6 +239,8 @@ Your `package.json` scripts are never edited. `--dry` installs nothing and says 
 `--dry` prints the files instead of writing them; `--force` overwrites existing ones; `--mjs` writes `vx.config.mjs` (and `vx-preset.mjs`) instead of `.ts` — the same objects with no type import and no `satisfies`, for a package whose own `tsconfig` includes every `.ts` under it and would compile the config into its dist (TanStack/query, 2026-09-11).
 
 Every source hands a plan to core's migration seam (`applyMigration` from `@vzn/vx`), which renders, refuses to overwrite without `--force`, writes and reports. Anything a source cannot say becomes a `TODO(vx-migrate)` comment, never a silent wrong value.
+
+The report reads like a run's footer: a blank line, the `─ vx-migrate <version> ───` rule, then one dim label per row and each fact once: `from` (the source), `ran` (each install or removal command), `tasks` (clean in green, todo in yellow), `todo`, `files`, `kept`, `replaced`, `lock`, `note`, and last, after a blank line, `next` in bold. A terminal sees the install command while it runs, on a line the report replaces; the manager's own output prints only when it fails.
 
 ### Turbo
 
@@ -297,7 +299,7 @@ package.json and re-run") rather than "no scripts" or "run vx init". A
 workspace whose globs match no `package.json` gets a note naming them
 (M-42); a nameless member, or two sharing a name, is matched and
 named on its own line instead (M-46). When such skipped scripts are all there
-is, the report opens `no package.json scripts became tasks.` rather than
+is, the report's `tasks` row reads `none: no package.json script became a task` rather than
 saying there are none (M-59). When `pnpm-workspace.yaml` lists the
 members and the root `package.json`'s `workspaces` lists other globs,
 the note names the unread list (M-51): pnpm reads only the yaml, while
@@ -386,7 +388,7 @@ config every later command refuses, and a `__proto__` script is written
 as a computed key, since a literal `__proto__:` sets the prototype. An
 existing `.vx/workspace.*` in any extension the loader reads (`.mts`
 included) is kept, and `--force` REPLACES a package's config of another
-extension (`replaced:` in the report) rather than writing a second one
+extension (`replaced` in the report) rather than writing a second one
 the loader would choose between by its order (item 1033). Without
 `--force`, it never overwrites: a package that already has a vx
 config keeps it, untouched, the rest get theirs, and the report lists

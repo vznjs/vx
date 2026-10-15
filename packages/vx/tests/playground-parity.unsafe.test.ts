@@ -754,7 +754,7 @@ describe("the page evaluates a config's text as the CLI does (item 699)", () => 
       const want = name === 'a function' ? NOT_AN_OBJECT_FUNCTION : NOT_AN_OBJECT
       expect(page).toEqual({ ok: false, error: want })
       expect(cli.stderr.replace(file, 'vx.config.mjs')).toBe(
-        `vx lock: .vx/projects.lock.json not written: ${want}\n`,
+        `✗ vx lock  lock not written\n\n  ${want}\n`,
       )
     })
   }
@@ -827,7 +827,7 @@ describe('a config is JSON data on the page as in the CLI (item 701)', () => {
       expect(cli.exitCode).toBe(1)
       // The CLI names the same refusal at its line, a frame under it.
       expect(cli.stderr).toStartWith(
-        `vx lock: .vx/projects.lock.json not written: ${refusal(`${path.relative(ws, file)}:2:48`)}\n\n`,
+        `✗ vx lock  lock not written\n\n  ${refusal(`${path.relative(ws, file)}:2:48`).replace(': ', '\n  ')}\n\n`,
       )
       expect(worker).toBe(refusal(file))
       expect(page).toEqual({ ok: false, error: refusal('vx.config.mjs') })
@@ -1232,10 +1232,12 @@ describe('the labs plan what the CLI plans, before and after each fix (item 704)
       if (typeof plans === 'string') {
         it(`${name}: the page shows the refusal the CLI prints`, () => {
           const { cli, page } = results.get(lab)![i]!
-          expect(cli).toEqual({
-            ok: false,
-            error: `vx lock: .vx/projects.lock.json not written: ${plans}\n`,
-          })
+          // The CLI draws the refusal as a notice; the page shows its message.
+          // Both name the same tasks.
+          if (cli.ok) throw new Error('the CLI planned')
+          expect(cli.error).toStartWith('✗ vx lock  lock not written\n\n')
+          const ids = (s: string): string[] => [...s.matchAll(/\S+#\S+/g)].map((m) => m[0]).sort()
+          expect(ids(cli.error)).toEqual(ids(plans))
           expect(page).toEqual({ ok: false, error: plans })
         })
         continue

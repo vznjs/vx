@@ -90,7 +90,7 @@ it('the bare-project note names only projects a plugin gives tasks', async () =>
   const lock = await vx(root, ['lock'])
   expect(`${lock.code}\n${lock.err}`).toStartWith('0\n')
   expect(lock.out).toBe(
-    'vx lock: locked 2 project configs → .vx/projects.lock.json (no vx.config, so not locked: mapped)\n',
+    '✓ vx lock  2 project configs → .vx/projects.lock.json (no vx.config, so not locked: mapped)\n',
   )
   const check = await vx(root, ['lock', '--check'])
   expect(check.out).toBe(

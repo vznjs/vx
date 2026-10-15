@@ -1,6 +1,5 @@
 import type { TaskNode, TaskOutcome } from '../graph/index.js'
 import { settingEnv } from '../settings.js'
-import { detectColors, type ColorSupport } from './colors.js'
 import {
   formatFrameClose,
   formatFrameOpen,
@@ -30,6 +29,8 @@ import {
   resetTail,
   tailText,
   type Tail,
+  detectColors,
+  type ColorSupport,
 } from '../util/index.js'
 import { isCacheHit } from './telemetry.js'
 import { failedLabel, outcomeWord, ranNoCache } from './events.js'

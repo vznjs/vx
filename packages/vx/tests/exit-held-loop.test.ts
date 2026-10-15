@@ -56,7 +56,7 @@ it(
     )
     expect({ code: r.code, out: r.out, err: r.err }).toEqual({
       code: 0,
-      out: 'vx lock: locked 1 project config → .vx/projects.lock.json\n',
+      out: '✓ vx lock  1 project config → .vx/projects.lock.json\n',
       err: '',
     })
   },
@@ -73,7 +73,7 @@ it(
     expect({ code: r.code, out: r.out, err: r.err }).toEqual({
       code: 1,
       out: '',
-      err: `vx lock: .vx/projects.lock.json not written: Project config ${r.file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)\n`,
+      err: `✗ vx lock  lock not written\n\n  Project config ${r.file} did not finish evaluating within 300ms (VX_CONFIG_WORKER_TIMEOUT)\n`,
     })
   },
   HANG_MS + 5_000,

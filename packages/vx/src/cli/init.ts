@@ -15,7 +15,7 @@ import { lockAfterMigration } from './lock.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
 import { isCompiledBinary } from './upgrade.js'
 import { VERSION } from '../version.js'
-import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, UserError } from '../util/index.js'
+import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError } from '../util/index.js'
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
@@ -193,27 +193,26 @@ async function starter(root: string, noGit: boolean, args: InitArgs): Promise<nu
     )
     return 0
   }
-  const report = [
-    'vx init: no package.json, so no scripts to map: a workspace with one project, the root.',
-  ]
-  const named = files.map((f) => f.path).join(', ')
-  if (files.length > 0)
-    report.push(args.dry ? `would write ${named} (dry run, nothing written).` : `wrote ${named}.`)
-  if (kept.length > 0) report.push(`kept ${kept.join(', ')}.`)
-  if (replaced.length > 0)
-    report.push(`${args.dry ? 'would replace' : 'replaced'} ${replaced.join(', ')}.`)
+  const rows: ui.FieldRow[] = [['from', 'no package.json: one project, the root']]
+  if (args.dry) rows.push(['dry run', 'nothing written'])
+  if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])
+  if (kept.length > 0) rows.push(['kept', ...kept])
+  if (replaced.length > 0) rows.push(['replaced', ...replaced])
   if (args.dry) {
     for (const f of files) process.stdout.write(`── ${f.path} ──\n${f.contents}\n`)
-    process.stdout.write(`${report.join('\n')}\n\nnext: ${next}\n`)
+    ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0
   }
   for (const f of files) await Bun.write(path.join(root, f.path), f.contents)
   for (const f of replaced) await unlink(path.join(root, f))
   // The lock that follows loads the workspace file just written.
   workspaceFileWritten()
-  process.stdout.write(`${report.join('\n')}\n\n`)
-  const locked = (await lockAfterMigration(root)) === 0
-  process.stdout.write(`\nnext: ${locked ? next : `fix the above and run vx lock, then ${next}`}\n`)
+  const lock = await lockAfterMigration(root)
+  rows.push(['lock', lock.code === 0 ? lock.said.replace(/^locked /, '') : 'not written'], null, [
+    'next',
+    lock.code === 0 ? next : `fix the above, then vx lock and ${next}`,
+  ])
+  ui.print('out', ui.report(`vx init ${VERSION}`, rows))
   return 0
 }
 

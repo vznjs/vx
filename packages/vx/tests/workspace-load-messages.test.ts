@@ -51,7 +51,7 @@ it('a config importing a missing file names the specifier', async () => {
     await vx({ 'p/vx.config.ts': "import x from './nope.ts'\nexport default x\n" }, ['lock']),
   ).toEqual({
     code: 1,
-    err: "vx lock: .vx/projects.lock.json not written: Project config <root>/p/vx.config.ts: cannot find './nope.ts'",
+    err: "✗ vx lock  lock not written\n\n  Project config <root>/p/vx.config.ts: cannot find './nope.ts'",
     planned: false,
   })
 })

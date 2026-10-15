@@ -29,7 +29,10 @@ async function notes(members: Record<string, object | string>): Promise<string[]
     })
     const out = await new Response(proc.stdout).text()
     expect(await proc.exited).toBe(0)
-    return out.split('\n').filter((l) => l.startsWith('note: not mapped:'))
+    return out
+      .split('\n')
+      .map((l) => l.slice(12))
+      .filter((l) => l.startsWith('not mapped:'))
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -48,7 +51,7 @@ it('names the nameless members whose scripts map to nothing', async () => {
       e: '\uFEFF{ "scripts": { "build": "tsc" } }',
     }),
   ).toEqual([
-    'note: not mapped: packages/a, packages/e — their package.json files have no "name", and vx names a project by it; give each one and run `vx init` again',
+    'not mapped: packages/a, packages/e — their package.json files have no "name", and vx names a project by it; give each one and run `vx init` again',
   ])
   // Every member nameless: the report that maps nothing says it too.
   expect(
@@ -59,6 +62,6 @@ it('names the nameless members whose scripts map to nothing', async () => {
       d: { scripts: { x: 'y' } },
     }),
   ).toEqual([
-    'note: not mapped: packages/a, packages/b, packages/c, and 1 more — their package.json files have no "name", and vx names a project by it; give each one and run `vx init` again',
+    'not mapped: packages/a, packages/b, packages/c, and 1 more — their package.json files have no "name", and vx names a project by it; give each one and run `vx init` again',
   ])
 }, 30_000)

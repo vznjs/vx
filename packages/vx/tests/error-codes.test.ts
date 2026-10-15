@@ -93,7 +93,7 @@ async function refusal(
   }
   expect(doc.ok).toBe(false)
   expect(doc.error.docs).toBe(`https://vznjs.github.io/vx/cli/#${doc.error.code.toLowerCase()}`)
-  expect(r.stderr).toStartWith('vx')
+  expect(r.stderr).toMatch(/^(✗ )?vx/)
   expect(doc.error.message.length).toBeGreaterThan(0)
   return doc.error.code
 }
@@ -137,14 +137,14 @@ describe('a refusal under --format json', () => {
     }
     const refused = (why: string): [number, string, string] => [
       1,
-      `vx lock: .vx/projects.lock.json not written: ${why}\n`,
+      `✗ vx lock  lock not written\n\n  ${why}\n`,
       'VX_E_REFUSED',
     ]
     expect(said).toEqual({
       cycle: refused('dependsOn cycle: p#x -> p#y -> p#x — remove one edge of the loop'),
       dependsOn: refused('p#d: dependsOn p#ghost but no such task is declared'),
       outputOverlap: refused(
-        'p#p and p#q both declare the output "dist/**" in cache.outputs.files — vx cleans a task\'s declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other\'s output and the run still reports success. Give each task its own output path.',
+        "p#p and p#q both write dist/**\n  vx clears a task's outputs before it runs, so one deletes the other's\n\n  fix  give each task its own output path",
       ),
       inputIsOutput: refused(
         'p#s: every file "src/**" in cache.inputs.files selects is also its own output — vx removes a task\'s outputs before it runs, so the task would delete its own sources. A task that rewrites files in place (a formatter) declares no outputs.',
@@ -153,7 +153,7 @@ describe('a refusal under --format json', () => {
       config: [
         1,
         expect.stringMatching(
-          /^vx lock: \.vx\/projects\.lock\.json not written: packages\/p\/vx\.config\.mjs:1:59: /,
+          /^✗ vx lock  lock not written\n\n  packages\/p\/vx\.config\.mjs:1:59\n/,
         ),
         'VX_E_REFUSED',
       ],

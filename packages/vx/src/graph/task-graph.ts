@@ -7,6 +7,7 @@ import {
   splitNegations,
   staticPrefix,
   taskGlob,
+  refusal,
   UserError,
   wholeSubtreePrefixes,
 } from '../util/index.js'
@@ -1420,8 +1421,19 @@ function collide(
       // `run.rules.exclusiveOutputs` is off (X-53). Without an edge the two run
       // in either order, and the refusal below stands.
       const [up, down] = reaches(b.id, a.id) ? [a, b] : reaches(a.id, b.id) ? [b, a] : []
+      const parts = {
+        headline: `${a.id} and ${b.id} both write ${ga === gb ? ga : `${ga} / ${gb}`}`,
+        ...(field === 'files' ? {} : { what: ['in cache.outputs.workspaceFiles'] }),
+        why: "vx clears a task's outputs before it runs, so one deletes the other's",
+      }
       if (up !== undefined && exclusive)
-        throw new UserError(`${head}. ${EXCLUSIVE_OUTPUTS_FIX}`, 'VX_E_OUTPUT_OVERLAP')
+        throw refusal(
+          {
+            ...parts,
+            fix: 'give each task its own output path, or set run.rules.exclusiveOutputs: false in .vx/workspace.ts',
+          },
+          { code: 'VX_E_OUTPUT_OVERLAP', message: `${head}. ${EXCLUSIVE_OUTPUTS_FIX}` },
+        )
       if (up !== undefined && down !== undefined) {
         const downGlobs = splitNegations(
           (field === 'files'
@@ -1432,9 +1444,12 @@ function collide(
         ;(up.outputsAddedToBy ??= []).push(...(downGlobs ?? []))
         return
       }
-      throw new UserError(
-        `${head} and the run still reports success. Give each task its own output path.`,
-        'VX_E_OUTPUT_OVERLAP',
+      throw refusal(
+        { ...parts, fix: 'give each task its own output path' },
+        {
+          code: 'VX_E_OUTPUT_OVERLAP',
+          message: `${head} and the run still reports success. Give each task its own output path.`,
+        },
       )
     }
   }

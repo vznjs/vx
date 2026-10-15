@@ -115,7 +115,7 @@ describe('a project is a directory with a vx.config', () => {
       const r = vx(root, 'lock')
       expect([r.code, r.err.trim()]).toEqual([
         1,
-        'vx lock: .vx/projects.lock.json not written: two projects are named "same": a and b — give one another `name` in its vx.config',
+        '✗ vx lock  lock not written\n\n  two projects are named "same": a and b — give one another `name` in its vx.config',
       ])
     },
     TIMEOUT,

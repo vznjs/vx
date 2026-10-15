@@ -13,6 +13,8 @@ export {
   isPermissionError,
   isUserError,
   PERMISSION_HINT,
+  refusal,
+  type RefusalParts,
   UserError,
   gitSpawnRefusal,
   isExecutableMissing,
@@ -21,7 +23,11 @@ export {
   OUT_OF_FDS_HINT,
   wantsJson,
 } from './errors.js'
-export { configErrorFrame } from './config-frame.js'
+export { configErrorFrame, configRefusal } from './config-frame.js'
+export { detectColors, ERROR, paint, SUCCESS, WARN, type ColorSupport } from './colors.js'
+export { gradientRule } from './report.js'
+import * as ui from './ui.js'
+export { ui }
 export { xxh3, xxh3hex } from './hash.js'
 export {
   beginRun,

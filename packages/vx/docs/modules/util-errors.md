@@ -12,8 +12,16 @@ errors keep the stack so we can debug them.
 ```ts
 export class UserError extends Error {
   readonly code: string // VX_E_…, default VX_E_REFUSED
+  parts?: RefusalParts // the terminal form, when a verb renders it as a notice
   constructor(message: string, code?: string)
 }
+export interface RefusalParts {
+  readonly headline: string
+  readonly what?: readonly string[]
+  readonly why?: string
+  readonly fix?: string
+}
+export function refusal(parts: RefusalParts, opts?: { code?; message? }): UserError // message defaults to the parts joined
 export function isUserError(err: unknown): err is UserError // by name, across a copy boundary (below)
 export function errorCode(err: unknown): string // the stable code of anything bin.ts catches
 export function wantsJson(argv: readonly string[]): boolean // --format json, --format=json, --dry=json, before `--`
@@ -37,6 +45,7 @@ export function notAWorkTree(cwd: string, stderr?: string): UserError // the one
 
 // src/util/config-frame.ts: a config refusal at its `line:col`, with the source under it; undefined when it names no field
 export function configErrorFrame(message: string, cwd: string): string | undefined
+export function configRefusal(message: string, cwd: string): ConfigRefusal | undefined // { where, problem, allowed?, fix?, frame }: the same, in a notice's parts
 ```
 
 `UserError` instances have `.name === 'UserError'`. `bin.ts` prints

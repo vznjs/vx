@@ -1,4 +1,4 @@
-# `src/orchestrator/colors.ts` — ANSI color gate
+# `src/util/colors.ts` — ANSI color gate
 
 ## Purpose
 
@@ -10,6 +10,11 @@ gets plain text, regardless of TTY / env.
 ## Public surface
 
 ```ts
+// State hues the run summary and every report share.
+export const SUCCESS = '#22c55e'
+export const WARN = '#eab308'
+export const ERROR = '#ef4444'
+
 export interface ColorSupport {
   enabled: boolean
 }
@@ -26,6 +31,9 @@ export function paint(
   colors: ColorSupport,
   opts?: PaintOptions,
 ): string
+
+// util/report.ts
+export function gradientRule(colors: ColorSupport, mark?: string): string
 ```
 
 ## Detection rules
@@ -72,6 +80,8 @@ hex codes, etc.). We use `'ansi-16m'` (24-bit truecolor) deliberately:
 modern terminal supports truecolor. We don't downgrade for legacy
 terminals — accents are the only UI use case, and "no color" is the
 safe fallback.
+
+Reports and notices are built from these by [`ui`](ui.md).
 
 ## Tests
 

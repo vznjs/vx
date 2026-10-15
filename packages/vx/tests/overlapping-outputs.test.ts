@@ -132,7 +132,7 @@ describe('overlapping outputs under the default rules', () => {
         })
         expect(refused.exitCode).toBe(1)
         expect(refused.stderr.toString()).toMatch(
-          /^vx lock: \.vx\/projects\.lock\.json not written: app#build and app#individual both declare the output .* run\.rules\.exclusiveOutputs: false/,
+          /^✗ vx lock  lock not written\n\n  app#build and app#individual both write .*\n\n  fix .* run\.rules\.exclusiveOutputs: false/s,
         )
         // The rules are the lock's to check: a lock written while the rule
         // was off still plans the pair once the rule is back on.

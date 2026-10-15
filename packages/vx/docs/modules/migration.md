@@ -58,7 +58,8 @@ export interface ApplyMigrationArgs {
   emptyReason?: string // init: why the plan is empty, the report's line in place of the example
   format?: MigrationFormat // default 'ts'
   json?: boolean // with dry: one JSON document (schemas/init.json) for files + report
-  lock?: (root: string) => Promise<number> // after the write: vx lock's step; a refusal is printed, exit stays 0
+  lock?: (root: string) => Promise<{ code: number; said: string }> // after the write: vx lock's step, its line the `lock` row; a refusal prints above the report, exit stays 0
+  steps?: readonly (readonly [label: string, value: string])[] // what the tool did first, e.g. ['ran', 'bun add -d …']
   plugins?: readonly WorkspacePlugin[] // { pkg, factory }: what the written workspace file declares
 }
 export function applyMigration(args: ApplyMigrationArgs): Promise<number>
@@ -91,7 +92,7 @@ export function foldScriptHooks(
 export function taskNameProblem(name: string): string | null
 
 // Core-internal (src/workspace/index.ts): how the user runs vx, for a
-// `next:` line — the runner in `npm_config_user_agent`, else `vx`.
+// `next` row — the runner in `npm_config_user_agent`, else `vx`.
 export function vxInvocation(userAgent: string | undefined, installed: boolean): string
 ```
 
@@ -108,9 +109,9 @@ export function vxInvocation(userAgent: string | undefined, installed: boolean):
   output's `!vx.config.ts` take-back there becomes `!vx.config.mts`.
 - After the write, the files go through the first formatter the root's
   `node_modules/.bin` holds (prettier, biome, oxfmt, dprint), as Nx's
-  generators do, so the repo's own format check passes them; a `note:`
-  says which, or the error a failing one printed. Not under `dry`.
-- A written file `.gitignore` drops gets a `note:`: the `!file` line
+  generators do, so the repo's own format check passes them; a `note`
+  row says which, or the error a failing one printed. Not under `dry`.
+- A written file `.gitignore` drops gets a `note`: the `!file` line
   that keeps it, or, inside an ignored directory (an old `/.vx/` line),
   that directory, since no `!` line re-includes a file there. vx never
   edits `.gitignore`.
