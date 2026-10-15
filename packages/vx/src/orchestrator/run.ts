@@ -104,10 +104,9 @@ import {
   locallyPlaced,
 } from './placement.js'
 import {
-  captureDefaultBranch,
+  telemetryRunContext,
   captureGitContext,
   captureHostContext,
-  captureWorkspaceIdentity,
   detectCi,
 } from './run-context.js'
 import { startRemotePrefetch } from './remote-prefetch.js'
@@ -775,16 +774,8 @@ async function runOnBus(
     // but declines still pays — its answer is only knowable by asking.
     const hasTelemetryPlugin = prepared.plugins.some((p) => p.telemetry !== undefined)
     if (hasTelemetryPlugin || options.telemetrySinks !== undefined) {
-      // Workspace identity (telemetry v2), paid only when a telemetry
-      // consumer can exist — a plain run never reaches here. The remote URL
-      // is the enumeration's `git var -l`: a spawn here cost ~4 ms.
-      const wsIdentity = captureWorkspaceIdentity(
-        workspaceRoot,
-        gitFilesCache.configValue('remote.origin.url'),
-      )
-      runContextRecord = {
+      runContextRecord = telemetryRunContext({
         runId,
-        vxVersion: VERSION,
         // An embedder's `command` is redacted as the argv is: it passed a
         // token after `--` to every sink verbatim (C-67).
         // Masked as the stored line is: a flag's secret value sits before
@@ -792,29 +783,16 @@ async function runOnBus(
         command: maskInvocation(
           invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
         ),
-        requestedTasks: [...options.tasks],
+        requestedTasks: options.tasks,
         cachePolicy: formatCachePolicy(policy),
         concurrency,
         flow: options.flow ?? null,
-        commitSha: gitContext.commitSha,
-        branch: gitContext.branch,
-        defaultBranch: captureDefaultBranch(process.env, workspaceRoot),
-        dirty: gitContext.dirty,
-        ci: ciContext.ci,
-        ciProvider: ciContext.provider,
-        ...(ciContext.runUrl !== undefined ? { ciRunUrl: ciContext.runUrl } : {}),
-        ...(ciContext.change !== undefined ? { ciChange: ciContext.change } : {}),
-        ...(ciContext.pipeline !== undefined ? { ciPipeline: ciContext.pipeline } : {}),
-        ...(ciContext.job !== undefined ? { ciJob: ciContext.job } : {}),
-        ...(ciContext.attempt !== undefined ? { ciAttempt: ciContext.attempt } : {}),
-        host: hostContext.host,
-        os: hostContext.os,
-        arch: hostContext.arch,
-        workspaceId: wsIdentity.id,
-        workspaceName: wsIdentity.name,
-        ...(wsIdentity.repository !== undefined ? { repository: wsIdentity.repository } : {}),
-        ...(wsIdentity.path !== undefined ? { workspacePath: wsIdentity.path } : {}),
-      }
+        git: gitContext,
+        ci: ciContext,
+        host: hostContext,
+        workspaceRoot,
+        originUrl: gitFilesCache.configValue('remote.origin.url'),
+      })
       telemetry = await subscribeTelemetry(
         prepared.plugins,
         bus,

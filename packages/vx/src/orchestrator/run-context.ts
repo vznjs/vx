@@ -15,6 +15,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { executablePath, gitEnv, relPosix, ulid, xxh3hex } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
+import { VERSION } from '../version.js'
+import type { RunContextRecord } from './telemetry.js'
 
 export interface GitContext {
   /** `git rev-parse HEAD`, or null outside a repo / on failure. */
@@ -521,4 +523,57 @@ export function currentBranch(
 ): string | null {
   const set = resolveSetting('run.branch', workspace, flag, env).value as string | undefined
   return set ?? captureGitContext(workspaceRoot, null, env).branch
+}
+
+export interface TelemetryRunContextArgs {
+  runId: string
+  /** The invocation, already masked. */
+  command: string
+  requestedTasks: readonly string[]
+  cachePolicy: string
+  concurrency: number
+  flow: RunContextRecord['flow']
+  git: GitContext
+  ci: CiContext
+  host: HostContext
+  workspaceRoot: string
+  /** `remote.origin.url` as the run's enumeration read it; see `captureWorkspaceIdentity`. */
+  originUrl: string | null | undefined
+}
+
+/**
+ * The run-context record telemetry sinks receive: the invocation header's
+ * git/CI/host data shaped as the export contract. Paid only when a sink can
+ * exist: the workspace identity may write `.vx/cache/workspace-id`.
+ */
+export function telemetryRunContext(a: TelemetryRunContextArgs): RunContextRecord {
+  const ws = captureWorkspaceIdentity(a.workspaceRoot, a.originUrl)
+  const { ci } = a
+  return {
+    runId: a.runId,
+    vxVersion: VERSION,
+    command: a.command,
+    requestedTasks: [...a.requestedTasks],
+    cachePolicy: a.cachePolicy,
+    concurrency: a.concurrency,
+    flow: a.flow,
+    commitSha: a.git.commitSha,
+    branch: a.git.branch,
+    defaultBranch: captureDefaultBranch(process.env, a.workspaceRoot),
+    dirty: a.git.dirty,
+    ci: ci.ci,
+    ciProvider: ci.provider,
+    ...(ci.runUrl !== undefined ? { ciRunUrl: ci.runUrl } : {}),
+    ...(ci.change !== undefined ? { ciChange: ci.change } : {}),
+    ...(ci.pipeline !== undefined ? { ciPipeline: ci.pipeline } : {}),
+    ...(ci.job !== undefined ? { ciJob: ci.job } : {}),
+    ...(ci.attempt !== undefined ? { ciAttempt: ci.attempt } : {}),
+    host: a.host.host,
+    os: a.host.os,
+    arch: a.host.arch,
+    workspaceId: ws.id,
+    workspaceName: ws.name,
+    ...(ws.repository !== undefined ? { repository: ws.repository } : {}),
+    ...(ws.path !== undefined ? { workspacePath: ws.path } : {}),
+  }
 }
