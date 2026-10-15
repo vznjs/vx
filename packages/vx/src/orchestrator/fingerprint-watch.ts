@@ -12,7 +12,7 @@
 import { readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { FILE_HASH_RACY_MS, racyWindowMs } from '../cache/index.js'
-import type { Logger } from './logger.js'
+import type { Logger } from '../report/index.js'
 
 export class FingerprintWatch {
   private pending = false

@@ -2,7 +2,7 @@
 // a miss it printed "0 cached (0%)" on a run in which no task has a cache
 // block.
 import { describe, expect, it } from 'bun:test'
-import { formatRunSummary } from '../src/orchestrator/summary.js'
+import { formatRunSummary } from '../src/report/summary.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 

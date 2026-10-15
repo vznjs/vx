@@ -21,7 +21,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { planRun } from './helpers/orchestrator.js'
 import type { RunPlan } from '../src/orchestrator/index.js'
-import { defaultLogger } from '../src/orchestrator/logger.js'
+import { defaultLogger } from '../src/report/logger.js'
 
 const PROJECT_COUNT = 2000
 // Requested tasks (bare names fan out across the whole workspace): build +

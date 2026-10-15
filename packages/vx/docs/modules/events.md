@@ -1,4 +1,4 @@
-# `src/orchestrator/events.ts` — run event bus + wire contract
+# `src/report/events.ts` — run event bus + wire contract
 
 ## Purpose
 
@@ -11,7 +11,8 @@ run removes on its way out (`orchestrator.md`).
 
 ## Public surface
 
-- `createEventBus()` — synchronous, order-preserving fan-out; its
+- `createEventBus(): EventBus` — synchronous, order-preserving fan-out
+  (`emit(event)`, `subscribe(subscriber)` returning a disposer); its
   subscribers are `RunEventSubscriber`s, `(event: RunEvent) => void`.
 - `busLogger(bus)` — `Logger`-shaped facade that emits events.
 - `terminalSubscriber(sink)` — drives a concrete renderer.

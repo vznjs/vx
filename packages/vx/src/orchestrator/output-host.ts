@@ -2,8 +2,8 @@
 // to telemetry-host.ts. With no plugin declaring the hook nothing here runs,
 // and core's renderer is the run's, byte for byte.
 
-import { terminalSubscriber, type RunEventSubscriber } from './events.js'
-import type { Logger } from './logger.js'
+import { terminalSubscriber, type RunEventSubscriber } from '../report/index.js'
+import type { Logger } from '../report/index.js'
 import type { OutputContext, VxPlugin } from './plugin.js'
 
 const REQUIRED = ['status', 'taskStdout', 'taskStderr', 'taskComplete'] as const

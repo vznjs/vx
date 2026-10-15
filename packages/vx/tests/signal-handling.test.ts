@@ -14,7 +14,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { describePid, isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { terminateChildren } from '../src/orchestrator/signals.js'
 

@@ -10,7 +10,7 @@ import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
 import { PASS_STATUSES } from '../history/index.js'
 import { splitTaskId } from '../util/index.js'
-import { fileLocations, fileMemo, type OutputLocation } from './path-links.js'
+import { fileLocations, fileMemo, type OutputLocation } from '../report/index.js'
 
 /** Failed runs whose output is kept; run ids are UUIDv7, so names sort by age. */
 const KEPT = 50

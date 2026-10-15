@@ -9,7 +9,7 @@ import {
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { prepareRun } from './helpers/orchestrator.js'
-import { defaultLogger } from '../src/orchestrator/logger.ts'
+import { defaultLogger } from '../src/report/logger.ts'
 
 function makeWorkspace(): Promise<string> {
   return makeWorkspaceRoot({ prefix: 'vx-prepare-perf-', rootName: 'root' })

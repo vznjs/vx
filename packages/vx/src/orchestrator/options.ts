@@ -6,9 +6,8 @@ import type { CacheFlags, CachePolicy, RemoteCacheLayer } from '../cache/index.j
 import type { ContinueMode } from '../graph/index.js'
 import type { TaskOutcome } from '../graph/index.js'
 import type { AffectedReason } from './affected-tasks.js'
-import type { EventBus } from './events.js'
+import type { EventBus, Logger } from '../report/index.js'
 import type { TelemetrySink } from './telemetry.js'
-import type { Logger } from './logger.js'
 import type { AffectedChanges, ProjectEntry, ProjectMeta } from '../workspace/index.js'
 import type { RunSettings } from '../config.js'
 

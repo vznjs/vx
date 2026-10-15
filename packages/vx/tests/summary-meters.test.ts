@@ -26,7 +26,7 @@
 // ones where rounding and the correction interact.
 
 import { describe, expect, it } from 'bun:test'
-import { formatSummarySection, type SummaryStats } from '../src/orchestrator/summary.js'
+import { formatSummarySection, type SummaryStats } from '../src/report/summary.js'
 import { rng } from './helpers/rng.js'
 
 const BAR_WIDTH = 50

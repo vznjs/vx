@@ -10,7 +10,7 @@
 import { readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { probeSandbox } from '../src/exec/index.js'
 import { addProject, gitInitCommit, makeWorkspace } from './helpers/workspace.js'

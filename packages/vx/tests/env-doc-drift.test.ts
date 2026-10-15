@@ -45,7 +45,7 @@ describe('docs/cli.md § Environment variables vx reads matches what core reads'
 describe('docs/cli.md § Environment variables names the CI variables core reads', () => {
   it('names each one the output view and the CI detection read', () => {
     const src = (rel: string): string => readFileSync(path.join(pkg, 'src', rel), 'utf8')
-    const logger = src('orchestrator/logger.ts')
+    const logger = src('report/logger.ts')
     const view = logger.slice(logger.indexOf('export function resolveOutputView('))
     const read = new Set(
       Array.from(view.slice(0, view.indexOf('\n}\n')).matchAll(/env\['(\w+)'\]/g), (m) => m[1]!),

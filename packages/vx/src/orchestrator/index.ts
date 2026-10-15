@@ -36,26 +36,7 @@ export { exitSignal, shellQuote } from '../exec/index.js'
 export { forwardedSignal } from './signals.js'
 // `vx cache clean` waits for a run on the workspace before it evicts.
 export { acquireRunLock } from './run-lock.js'
-export { defaultLogger, resolveOutputView } from './logger.js'
-export type { Logger, OutputView } from './logger.js'
 export type { RunPlan, PlannedTask, PlanPrediction, CacheStatus } from './plan.js'
-export {
-  createEventBus,
-  wireForwarder,
-  toWireEvent,
-  projectNode,
-  projectOutcome,
-  outcomeWord,
-} from './events.js'
-export type {
-  EventBus,
-  RunEvent,
-  RunEventSubscriber,
-  RunStartInfo,
-  WireEvent,
-  TaskView,
-  OutcomeView,
-} from './events.js'
 export {
   installPlugins,
   type CacheContext,
@@ -144,6 +125,5 @@ export {
   type TaskLog,
   taskLog,
 } from './run-failures.js'
-export type { OutputLocation } from './path-links.js'
 export { resolveRunId, shortRunId } from './run-id.js'
 export { collectInfo, type CollectInfoOptions, type InfoFacts } from './doctor.js'

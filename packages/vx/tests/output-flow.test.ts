@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { detectFlow } from '../src/cli/run.js'
 import { run as cliRun } from './helpers/cli.js'
-import { defaultLogger, resolveOutputView } from '../src/orchestrator/logger.js'
+import { defaultLogger, resolveOutputView } from '../src/report/logger.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 
 describe('detectFlow', () => {

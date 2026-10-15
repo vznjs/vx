@@ -65,7 +65,21 @@ import { admitTasks, taintTracker } from './admission.js'
 import { unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
-import { busLogger, createEventBus, terminalSubscriber, type EventBus } from './events.js'
+import {
+  busLogger,
+  createEventBus,
+  createForecast,
+  defaultLogger,
+  type DefaultLogger,
+  type EventBus,
+  formatOutcomeTable,
+  formatPersistentList,
+  formatRunSummary,
+  type Logger,
+  plainOutput,
+  resolveOutputView,
+  terminalSubscriber,
+} from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport, type RunReportTask } from './plugin.js'
 import { decodeOutputLog } from './output-log.js'
 import { buildAdmission, executorLabel, resolveExecutors, teardownPlugins } from './plugin-host.js'
@@ -74,10 +88,6 @@ import { claimOutput, guardedOutput } from './output-host.js'
 import { assembleRunSummary } from './telemetry.js'
 import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
-import { defaultLogger, type DefaultLogger, resolveOutputView, type Logger } from './logger.js'
-import { plainOutput } from './plain-output.js'
-import { formatPersistentList } from './framed-output.js'
-import { createForecast } from './forecast.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
 import { prepareRun, type PreparedRun } from './prepare.js'
@@ -125,7 +135,6 @@ import {
 import { writeRunProfile } from './run-artifacts.js'
 import { createSaveLane } from './save-lane.js'
 import { commandWindows } from './command-windows.js'
-import { formatOutcomeTable, formatRunSummary } from './summary.js'
 import {
   createMissExplainer,
   detectFlaky,

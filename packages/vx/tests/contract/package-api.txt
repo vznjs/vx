@@ -605,7 +605,7 @@ export interface DiscoveredProject {
 }
 == type Duration (src/config.ts)
 export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
-== type EventBus (src/orchestrator/events.ts)
+== type EventBus (src/report/events.ts)
 export interface EventBus {
   emit(event: RunEvent): void
   subscribe(subscriber: RunEventSubscriber): () => void
@@ -865,7 +865,7 @@ export interface LockfileImporter {
 export interface LockSettings {
   reviewFiles?: boolean
 }
-== type Logger (src/orchestrator/logger.ts)
+== type Logger (src/report/logger.ts)
 export interface Logger {
   status(line: string): void
   taskStdout(node: TaskNode, chunk: string): void
@@ -919,7 +919,7 @@ type OptionKind<V> = [V] extends [string]
         : [V] extends [object]
           ? 'object'
           : 'any'
-== type OutcomeView (src/orchestrator/events.ts)
+== type OutcomeView (src/report/events.ts)
 export interface OutcomeView {
   taskId: string
   status: TaskOutcome['status']
@@ -969,7 +969,7 @@ export interface OutputFileRow {
   ino?: number
   ctimeMs?: number
 }
-== type OutputView (src/orchestrator/logger.ts)
+== type OutputView (src/report/logger.ts)
 export interface OutputView {
   mode: 'full' | 'errors-only' | 'none' | 'focused' | 'broad' | 'hash-only'
   gha?: boolean
@@ -1189,7 +1189,7 @@ export interface ResolvedSandboxConfig {
     network?: readonly string[]
   }
 }
-== type RunContext (src/orchestrator/summary.ts)
+== type RunContext (src/report/summary.ts)
 export interface RunContext {
   version: string
   packageCount: number
@@ -1232,7 +1232,7 @@ export interface RunContextRecord {
   os: string
   arch: string
 }
-== type RunEvent (src/orchestrator/events.ts)
+== type RunEvent (src/report/events.ts)
 export type RunEvent =
   | { kind: 'run:start'; info: RunStartInfo }
   | { kind: 'task:start'; node: TaskNode }
@@ -1241,7 +1241,7 @@ export type RunEvent =
   | { kind: 'task:complete'; node: TaskNode; outcome: TaskOutcome }
   | { kind: 'run:status'; line: string }
   | { kind: 'run:end' }
-== type RunEventSubscriber (src/orchestrator/events.ts)
+== type RunEventSubscriber (src/report/events.ts)
 export type RunEventSubscriber = (event: RunEvent) => void
 == type RunOptions (src/orchestrator/options.ts)
 export interface RunOptions {
@@ -1366,7 +1366,7 @@ export interface RunStage {
   startedAt: number
   endedAt: number
 }
-== type RunStartInfo (src/orchestrator/events.ts)
+== type RunStartInfo (src/report/events.ts)
 export interface RunStartInfo {
   total: number
   concurrency?: number
@@ -1641,7 +1641,7 @@ export interface TaskTelemetry {
   wallclockStartNs?: string
   wallclockEndNs?: string
 }
-== type TaskView (src/orchestrator/events.ts)
+== type TaskView (src/report/events.ts)
 export interface TaskView {
   id: string
   project: string

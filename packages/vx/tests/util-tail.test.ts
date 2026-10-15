@@ -5,7 +5,7 @@
 // at ~100 MiB/s while a 64 KiB cap sat unused, because the cap only engaged
 // once the task became READY. This module was extracted so one bound covers
 // the whole lifetime, and `exec/runner.ts`'s second, unread copy was deleted
-// rather than kept in sync. `orchestrator/logger.ts` is the sole holder.
+// rather than kept in sync. `report/logger.ts` is the sole holder.
 //
 // Four properties are load-bearing, and the file is organised around them:
 //

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { wireForwarder, type WireEvent } from '../src/orchestrator/index.js'
+import { wireForwarder, type WireEvent } from '../src/report/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 
 function mkNode(id: string, group = false): TaskNode {

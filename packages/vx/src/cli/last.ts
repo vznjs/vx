@@ -20,12 +20,12 @@ import {
 import {
   currentBranch,
   exitSignal,
-  outcomeWord,
   resolveRunId,
   runFailures,
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
+import { outcomeWord } from '../report/index.js'
 import { formatElapsed, refusal, splitTaskId, UserError, sayNotice, ui } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'

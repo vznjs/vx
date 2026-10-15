@@ -5,8 +5,8 @@ import {
   flakyNote,
   formatTaskAbortedLine,
   formatTaskExecutedLine,
-} from '../src/orchestrator/framed-output.js'
-import { formatRunSummary } from '../src/orchestrator/summary.js'
+} from '../src/report/framed-output.js'
+import { formatRunSummary } from '../src/report/summary.js'
 import { formatElapsed } from '../src/util/index.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'

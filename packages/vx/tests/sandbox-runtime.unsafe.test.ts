@@ -58,7 +58,8 @@ import {
   refusedWritesOutside,
   reportableViolations,
 } from '../src/exec/sandbox-violations.js'
-import { type Logger, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
+import { type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { isAlive, waitForDead } from './helpers/alive.js'

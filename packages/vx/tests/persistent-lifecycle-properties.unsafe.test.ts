@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { isAlive, waitForDead } from './helpers/alive.js'
 import { rng } from './helpers/rng.js'

@@ -17,7 +17,8 @@ import {
   TIMEOUT,
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
-import { run as coreRun, type Logger } from '../src/orchestrator/index.js'
+import { run as coreRun } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/report/index.js'
 import { lock, run } from './helpers/orchestrator.js'
 import { summarized, vx } from './helpers/parity.js'
 

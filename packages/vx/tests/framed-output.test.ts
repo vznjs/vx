@@ -10,7 +10,7 @@ import {
   formatTaskHitLine,
   formatTaskSkippedLine,
   paintIdParts,
-} from '../src/orchestrator/framed-output.js'
+} from '../src/report/framed-output.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -60,7 +60,7 @@ describe('identity hues never read as an outcome', () => {
   // the guarantee IS the disjointness, and asserting a rendered escape
   // sequence would pin the hue values themselves, which are free to change.
   const src = readFileSync(
-    path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'framed-output.ts'),
+    path.resolve(import.meta.dir, '..', 'src', 'report', 'framed-output.ts'),
     'utf8',
   )
   const hue = (name: string): string => {
@@ -108,7 +108,7 @@ describe('a project hue is a function of its name', () => {
     expect(Object.values(here).every((s) => s.startsWith('\x1b[38;2;'))).toBe(true)
     expect(painted([...names].reverse())).toEqual(here)
 
-    const module = path.resolve(import.meta.dir, '..', 'src', 'orchestrator', 'framed-output.ts')
+    const module = path.resolve(import.meta.dir, '..', 'src', 'report', 'framed-output.ts')
     const script = `
       const { paintIdParts } = await import(${JSON.stringify(module)})
       const out = {}

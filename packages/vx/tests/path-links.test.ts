@@ -1,5 +1,5 @@
 // A failed task's paths become terminal links to the file under the
-// task's project (`orchestrator/path-links.ts`), only in a terminal known
+// task's project (`report/path-links.ts`), only in a terminal known
 // to open them (`terminalLinks`).
 
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -7,9 +7,9 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os'
 import path from 'node:path'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
-import { formatTaskBlock } from '../src/orchestrator/framed-output.js'
-import { fileMemo, linkPaths } from '../src/orchestrator/path-links.js'
-import { terminalLinks } from '../src/orchestrator/terminal-signals.js'
+import { formatTaskBlock } from '../src/report/framed-output.js'
+import { fileMemo, linkPaths } from '../src/report/path-links.js'
+import { terminalLinks } from '../src/report/terminal-signals.js'
 
 const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-links-')))
 const dir = path.join(root, 'pkg')

@@ -1,4 +1,4 @@
-# `src/orchestrator/framed-output.ts` — Turbo-style framed blocks
+# `src/report/framed-output.ts` — Turbo-style framed blocks
 
 ## Purpose
 

@@ -17,7 +17,7 @@ import {
   type TelemetryContext,
   type TelemetrySink,
 } from '../src/orchestrator/index.js'
-import { createEventBus } from '../src/orchestrator/events.js'
+import { createEventBus } from '../src/report/events.js'
 import { run } from './helpers/orchestrator.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
 

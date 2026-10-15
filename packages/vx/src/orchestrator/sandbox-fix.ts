@@ -124,19 +124,3 @@ export function sandboxFix(
     if (fix[k].size > 0) out[k] = [...new Set([...fix[k]].map(mask))].sort()
   return Object.keys(out).length > 0 ? out : undefined
 }
-
-/**
- * The fix as the config line it is: `exec.sandbox.allow: { read: ['a'] }`,
- * or undefined when every denial was a withheld credential path.
- */
-export function sandboxFixLine({
-  withheld: _,
-  inputs: __,
-  ...fix
-}: SandboxFix): string | undefined {
-  if (Object.keys(fix).length === 0) return undefined
-  const parts = Object.entries(fix).map(
-    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${p}'`).join(', ')}]`,
-  )
-  return `exec.sandbox.allow: { ${parts.join(', ')} }`
-}

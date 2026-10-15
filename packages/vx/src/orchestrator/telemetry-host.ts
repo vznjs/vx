@@ -11,7 +11,7 @@
 //
 // See docs/design/observability-architecture-2026-06.md §1, §3.
 
-import type { EventBus } from './events.js'
+import type { EventBus } from '../report/index.js'
 import type { TaskNode } from '../graph/index.js'
 import type {
   RunContextRecord,

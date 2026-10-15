@@ -1,4 +1,4 @@
-# `src/orchestrator/logger.ts` — pluggable logging surface
+# `src/report/logger.ts` — pluggable logging surface
 
 ## Purpose
 
@@ -77,6 +77,14 @@ export function fileLocations(
   isFile: (abs: string) => boolean,
 ): OutputLocation[]
 export function fileMemo(): (abs: string) => boolean
+
+// forecast.ts: the live ETA from history p50s; the later of the longest
+// unfinished chain and the unfinished work spread over the workers.
+export function createForecast(
+  nodes: ReadonlyMap<string, TaskNode>,
+  p50s: ReadonlyMap<string, number>,
+  concurrency: number,
+): Forecast
 ```
 
 ## View resolution (priority order)

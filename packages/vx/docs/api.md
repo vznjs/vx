@@ -1034,7 +1034,7 @@ export const LOG_WIRE_VERSION = 1
 
 ## `Logger`
 
-type · `src/orchestrator/logger.ts`
+type · `src/report/logger.ts`
 
 ```ts
 export interface Logger {
@@ -1132,7 +1132,7 @@ export function normalizeGlob(glob: string): string
 
 ## `OutcomeView`
 
-type · `src/orchestrator/events.ts`
+type · `src/report/events.ts`
 
 Serializable projection of a TaskOutcome (no node ref, ns as strings).
 
@@ -1237,7 +1237,7 @@ export function outputsOverlap(rawA: string, rawB: string): boolean
 
 ## `OutputView`
 
-type · `src/orchestrator/logger.ts`
+type · `src/report/logger.ts`
 
 The default logger's per-task output policy. Resolved once per run
 from (in priority order) the explicit `--output-logs` override, a
@@ -1950,7 +1950,7 @@ export interface RunSettings {
 
 ## `RunStartInfo`
 
-type · `src/orchestrator/events.ts`
+type · `src/report/events.ts`
 
 Payload of the `run:start` event — mirrors the Logger.runStart hook.
 
@@ -2396,7 +2396,7 @@ export interface TaskTelemetry {
 
 ## `TaskView`
 
-type · `src/orchestrator/events.ts`
+type · `src/report/events.ts`
 
 Display projection of a TaskNode — exactly the fields renderers read.
 

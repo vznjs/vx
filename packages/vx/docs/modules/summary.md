@@ -1,4 +1,4 @@
-# `src/orchestrator/summary.ts` — end-of-run summary lines
+# `src/report/summary.ts` — end-of-run summary lines
 
 ## Purpose
 

@@ -26,7 +26,7 @@ one join at flush, so a chatty server costs one array push per chunk;
 a single chunk over the cap is the one place a copy happens. `dropped`
 is non-zero exactly when the tail is partial.
 
-`orchestrator/logger.ts` is the sole holder: one tail per persistent
+`report/logger.ts` is the sole holder: one tail per persistent
 task from `taskStart` for the rest of the run, covering the pre-ready
 window and everything after with one mechanism. A second pre-ready
 copy in `exec/runner.ts` was deleted rather than kept in sync — two

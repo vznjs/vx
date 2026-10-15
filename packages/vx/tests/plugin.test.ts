@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { definePlugin } from '../src/index.js'
-import { createEventBus, installPlugins, type Plugin } from '../src/orchestrator/index.js'
+import { installPlugins, type Plugin } from '../src/orchestrator/index.js'
+import { createEventBus } from '../src/report/index.js'
 
 function fakeNode(id = 'a#b'): TaskNode {
   const [projectName, taskName] = id.split('#') as [string, string]

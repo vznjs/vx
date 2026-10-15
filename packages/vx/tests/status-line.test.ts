@@ -11,8 +11,8 @@ import {
   formatStatusRegion,
   type StatusStream,
   type WorkerSlot,
-} from '../src/orchestrator/status-line.js'
-import { defaultLogger } from '../src/orchestrator/logger.js'
+} from '../src/report/status-line.js'
+import { defaultLogger } from '../src/report/logger.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 
 const CLEAR = '\x1b[2K\r'
