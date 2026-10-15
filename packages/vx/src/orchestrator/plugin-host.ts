@@ -507,15 +507,6 @@ export async function resolveCache(
     if (plugin.cache === undefined) continue
     const remote = await safe(plugin, 'cache', () => plugin.cache!(ctx))
     if (remote === undefined) continue
-    // The hook returned a whole layer until 0.0.637: name the fix, not the
-    // three methods such a layer happens to have.
-    if (isRecordLike(remote) && typeof remote['restoreOutputs'] === 'function') {
-      throw new UserError(
-        `plugin '${plugin.name}' returned a cache layer from cache: since vx 0.0.637 the hook ` +
-          'returns the remote alone (a RemoteCacheLayer: has, get, put) and core layers it over ' +
-          'the local cache — return the remote you passed to LayeredCache',
-      )
-    }
     assertShape(plugin, 'cache', remote, REMOTE_CACHE_METHODS, 'a remote cache layer')
     const access = remote.access
     const own: CachePolicy = {
@@ -545,10 +536,6 @@ export async function resolveCache(
       method === 'save' ? 'the other layers still save' : 'a miss there; the next layer answers'
     ctx.warn(`[vx] ${owners[i]} failed in cache ${method}: ${m}; ${then}`)
   })
-}
-
-function isRecordLike(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null
 }
 
 /** The plugin each resolved executor came from, so a hook of it that throws is named. */
