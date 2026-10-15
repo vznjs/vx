@@ -6,4 +6,5 @@ schemas/history.json
 src/critical-path.ts
 src/history-view.ts
 src/index.ts
+src/shared-timings.ts
 src/timings-file.ts
