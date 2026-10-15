@@ -38,12 +38,23 @@ export interface RunRecordsInput {
   host: HostContext
   /** Build the telemetry mirror; a run with no sink allocates none. */
   withTelemetry: boolean
+  /** The run's remote failures by key, so far (`Cache.traffic`). */
+  remoteTraffic?: ReadonlyMap<string, { failures: readonly string[] }>
 }
 
 export interface RunRecords {
   runs: RunRecord[]
   invocation: InvocationRecord
   telemetryTasks: TaskTelemetry[]
+}
+
+/** A key's remote failures as its `runs` row stores them; none when it met none. */
+function remoteErrorOf(
+  traffic: ReadonlyMap<string, { failures: readonly string[] }> | undefined,
+  hash: string | undefined,
+): string | undefined {
+  const failures = hash === undefined ? undefined : traffic?.get(hash)?.failures
+  return failures === undefined || failures.length === 0 ? undefined : failures.join('; ')
 }
 
 /**
@@ -71,6 +82,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     if (o.status === 'aborted') continue
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
     const blockedBy = o.blockedBy ?? input.tainted?.get(o.node.id)
+    const remoteError = remoteErrorOf(input.remoteTraffic, o.hash)
     runs.push({
       ...(o.hash !== undefined ? { hash: o.hash } : {}),
       project: o.node.projectName,
@@ -113,6 +125,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
       ...(o.timedOut === true ? { timedOut: true as const } : {}),
       ...(o.sandboxViolations !== undefined ? { sandboxViolations: o.sandboxViolations } : {}),
       ...(o.notReady !== undefined ? { notReady: o.notReady } : {}),
+      ...(remoteError !== undefined ? { remoteError } : {}),
     })
     if (o.status === 'failed') failedCount++
     if (o.status === 'cache-hit') hitLocalCount++
@@ -153,4 +166,24 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     vxVersion: VERSION,
   }
   return { runs, invocation, telemetryTasks }
+}
+
+/**
+ * The remote failures uploads met after the run's rows went in (the uploads
+ * drain later): each row whose text is now short of its key's is rewritten.
+ */
+export function recordLateRemoteErrors(
+  cache: {
+    readonly traffic: { readonly keys: ReadonlyMap<string, { failures: readonly string[] }> }
+    recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
+  },
+  runs: readonly RunRecord[],
+  runId: string,
+): void {
+  const late: [string, string][] = []
+  for (const r of runs) {
+    const now = remoteErrorOf(cache.traffic.keys, r.hash)
+    if (now !== undefined && now !== r.remoteError) late.push([r.hash!, now])
+  }
+  if (late.length > 0) cache.recordRemoteErrors(runId, late)
 }

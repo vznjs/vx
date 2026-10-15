@@ -20,7 +20,14 @@ import {
   type StatusStream,
   type WorkerSlot,
 } from './status-line.js'
-import { formatSummarySection, neverStarted, ranUnsaved, type RunContext } from './summary.js'
+import {
+  cacheBucketOf,
+  formatSummarySection,
+  neverStarted,
+  ranUnsaved,
+  type CacheBucket,
+  type RunContext,
+} from './summary.js'
 import { isGroupTask } from '../graph/index.js'
 import {
   appendTail,
@@ -338,6 +345,12 @@ export function defaultLogger(
   let notSaved = 0
   let skippedCount = 0
   let savedMs = 0
+  // Each finished task's cache bucket by its key: its remote traffic moves it.
+  const buckets = new Map<string, CacheBucket>()
+  // The run ended with uploads still running: the region stays, footer only,
+  // until they settle (M, 2026-10-15). No wait: the run's own drain is it.
+  let draining = false
+  const uploading = (): boolean => (runContext?.cache?.traffic.inFlight ?? 0) > 0
   // Cache-miss duration spread, accumulated incrementally (the same
   // numbers the final summary computes from the outcome list).
   let spreadMax = 0
@@ -411,9 +424,13 @@ export function defaultLogger(
 
   const refresh = (force: boolean): void => {
     if (statusDead) return
+    if (draining && !uploading()) {
+      killStatus()
+      return
+    }
     const now = Date.now()
     // Twice a second at most: one pass over the unfinished graph.
-    if (forecastFn !== undefined && (force || now - etaAtMs >= 500)) {
+    if (forecastFn !== undefined && !draining && (force || now - etaAtMs >= 500)) {
       etaAtMs = now
       const running = new Map<string, number>()
       for (const s of slots) if (s !== null) running.set(s.id, s.startedMs)
@@ -459,7 +476,8 @@ export function defaultLogger(
               noCache,
               savedMs,
               left: total - done,
-              ...(etaMs !== undefined ? { etaMs } : {}),
+              ...(etaMs !== undefined && !draining ? { etaMs } : {}),
+              buckets,
               spread:
                 spreadCount > 0
                   ? { maxMs: spreadMax, minMs: spreadMin, sumMs: spreadSum, count: spreadCount }
@@ -610,6 +628,7 @@ export function defaultLogger(
         writer.write('\n')
         streamMidLine = false
       }
+      if (draining && !uploading()) killStatus()
       writer.write(`${line}\n`)
     },
     runStart(info) {
@@ -688,7 +707,12 @@ export function defaultLogger(
     runEnd() {
       // A long run says it ended where the user is not looking. Once:
       // the status is dead after the first runEnd.
-      if (signals.notify && !statusDead && Date.now() - startedAtMs >= NOTIFY_AFTER_MS) {
+      if (
+        signals.notify &&
+        !statusDead &&
+        !draining &&
+        Date.now() - startedAtMs >= NOTIFY_AFTER_MS
+      ) {
         out.write(
           notifyEscape(
             failed > 0
@@ -697,7 +721,14 @@ export function defaultLogger(
           ),
         )
       }
-      killStatus()
+      if (!draining && !statusDead && uploading()) {
+        draining = true
+        slots = []
+        blocked = undefined
+        shownSlots = 0
+        slotQueue.length = 0
+        refresh(true)
+      } else killStatus()
       // Persistent tails first: they are context for whatever ran against
       // the server, so they read above the failures they explain. `none`
       // prints no per-task output and `errors-only` only failed tasks: a
@@ -880,6 +911,8 @@ export function defaultLogger(
           const qi = slotQueue.findIndex((s) => s.id === node.id)
           if (qi >= 0) slotQueue.splice(qi, 1)
         }
+        const bucket = outcome.hash === undefined ? undefined : cacheBucketOf(outcome)
+        if (bucket !== undefined) buckets.set(outcome.hash!, bucket)
         switch (outcome.status) {
           case 'success':
             succeeded++

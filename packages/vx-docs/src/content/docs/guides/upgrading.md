@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## report: count remote failures and live uploads in the footer
+
+`RunContext.cache.uploads` is replaced by `RunContext.cache.traffic`: uploads in flight and each key's remote failures. The runs table adds `remote_error` (SCHEMA_VERSION v40).
+
 ## cache: one LayeredCache over every declared remote
 
 `CacheLayer.save` no longer takes `skipLocalWrite`. Only core's own ChainedCache set it; a caller passing it drops the field.

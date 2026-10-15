@@ -1093,6 +1093,46 @@ describe('LayeredCache', () => {
       ])
     })
 
+    // The footer's `remote N✗ M⇡` counts tasks, and `vx last` names each
+    // one's failure (M, 2026-10-15): so a read's failure is the key's too.
+    it("each failure lands on its task's key, read and write alike; a batch probe's on none", async () => {
+      const layered = layeredOver(
+        local,
+        failing((call) => new Error(`${call} said 500`)),
+        { onRemoteError: () => {} },
+      )
+      await layered.remoteHasMany(['h1', 'h2'])
+      expect(await layered.get('h1')).toBeNull()
+      await saveSample(layered, 'h-up')
+      await layered.drainUploads()
+      expect(local.traffic.inFlight).toBe(0)
+      expect([...local.traffic.keys]).toEqual([
+        ['h1', { uploading: 0, landed: false, failures: ['download: get said 500'] }],
+        ['h-up', { uploading: 0, landed: false, failures: ['upload: put said 500'] }],
+      ])
+      closeAndReopen(layered)
+    })
+
+    it('an upload is in flight on its key until it lands', async () => {
+      let land!: () => void
+      const landed = new Promise<void>((resolve) => (land = resolve))
+      const layered = layeredOver(local, {
+        has: async () => false,
+        get: async () => null,
+        put: () => landed,
+      })
+      // saveSample drains, so it settles only once the PUT lands.
+      const saving = saveSample(layered, 'h-up')
+      while (local.traffic.inFlight === 0) await Bun.sleep(1)
+      expect(local.traffic.inFlight).toBe(1)
+      expect(local.traffic.keys.get('h-up')).toEqual({ uploading: 1, landed: false, failures: [] })
+      land()
+      await saving
+      expect(local.traffic.inFlight).toBe(0)
+      expect(local.traffic.keys.get('h-up')).toEqual({ uploading: 0, landed: true, failures: [] })
+      closeAndReopen(layered)
+    })
+
     it('one failure class is said once, and close() counts the requests held back', async () => {
       const errors: Error[] = []
       const layered = layeredOver(

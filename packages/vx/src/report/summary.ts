@@ -61,9 +61,12 @@ function segmentBar(
   }
   return segments
     .map((seg, i) =>
-      paint(seg.color, (seg.glyph ?? '\u25b0').repeat(cells[i]!), colors, {
-        ...(seg.dim === true ? { dim: true } : {}),
-      }),
+      // An empty segment paints nothing: no escape pair around no cell.
+      cells[i] === 0
+        ? ''
+        : paint(seg.color, (seg.glyph ?? '\u25b0').repeat(cells[i]!), colors, {
+            ...(seg.dim === true ? { dim: true } : {}),
+          }),
     )
     .join('')
 }
@@ -106,6 +109,67 @@ export interface SummaryStats {
   savedMs?: number
   /** A run of groups only: their names, so `0 tasks` says why. */
   emptyGroups?: readonly string[]
+  /** Each finished task's cache bucket by its key, so its remote traffic can move it. */
+  buckets?: ReadonlyMap<string, CacheBucket>
+}
+
+/** The cache bar segment a finished task fills before its remote traffic is weighed. */
+export type CacheBucket =
+  | 'miss'
+  | 'noCache'
+  | 'upToDate'
+  | 'restoredLocal'
+  | 'restoredRemote'
+  | 'saved'
+
+/** A finished task's own cache bucket; none for a group, a skip or an abort. */
+export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
+  if (isGroupTask(o.node)) return undefined
+  switch (o.status) {
+    case 'success':
+      return ranNoCache(o) ? 'noCache' : o.saved === true ? 'saved' : 'miss'
+    case 'failed':
+      return ranNoCache(o) ? 'noCache' : 'miss'
+    case 'cache-hit':
+      return o.restored === false ? 'upToDate' : 'restoredLocal'
+    case 'cache-hit-remote':
+      return o.restored === false ? 'upToDate' : 'restoredRemote'
+    default:
+      return undefined
+  }
+}
+
+type Buckets = Record<CacheBucket | 'uploaded' | 'uploading' | 'remoteFailed', number>
+
+/**
+ * The cache bar's segments, each task in one (M, 2026-10-15). With layers
+ * named, a saved task leaves the misses, and a task with remote traffic
+ * leaves its own bucket for its strongest remote state: a failed read or
+ * write, then an upload still running, then one that landed. Without, the
+ * plain legend's buckets.
+ */
+function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets {
+  const saved = layers === undefined ? 0 : (stats.saved ?? 0)
+  const b: Buckets = {
+    miss: stats.miss - saved,
+    noCache: stats.noCache ?? 0,
+    upToDate: stats.upToDate,
+    restoredLocal: stats.restoredLocal,
+    restoredRemote: stats.restoredRemote,
+    saved,
+    uploaded: 0,
+    uploading: 0,
+    remoteFailed: 0,
+  }
+  if (layers?.remote !== true || stats.buckets === undefined) return b
+  for (const [hash, k] of layers.traffic.keys) {
+    const from = stats.buckets.get(hash)
+    // Still running: it counts once it ends.
+    if (from === undefined) continue
+    b[from]--
+    b[k.failures.length > 0 ? 'remoteFailed' : k.uploading > 0 ? 'uploading' : 'uploaded']++
+  }
+  return b
 }
 
 /**
@@ -131,8 +195,12 @@ export interface RunContext {
     localWrite: boolean
     /** A remote layer exists and the policy reads or writes it. */
     remote: boolean
-    /** The run's uploads, filled as each lands (a live ref). */
-    uploads: { count: number; failed: number }
+    /** The run's remote traffic per key, filled as it happens (a live ref). */
+    traffic: {
+      /** Uploads queued or running. */
+      readonly inFlight: number
+      readonly keys: ReadonlyMap<string, { uploading: number; failures: readonly string[] }>
+    }
     /** Tasks whose outputs are still in the remote store. */
     notDownloaded: () => number
   }
@@ -230,37 +298,48 @@ export function formatSummarySection(
   // Cache meter + numbers: per layer when the run context names its
   // layers, else miss · no-cache · up-to-date · local · remote.
   if (miss + noCache + hits + left + stats.skipped > 0) {
+    const layers = context?.cache
+    const b = cacheBuckets(stats, layers)
     const cacheBar = segmentBar(
       [
-        { n: miss, color: ERROR },
-        { n: noCache, color: '', dim: true },
-        { n: stats.upToDate, color: SUCCESS },
-        { n: stats.restoredLocal, color: LOCAL },
-        { n: stats.restoredRemote, color: REMOTE },
+        { n: b.miss, color: ERROR },
+        { n: b.noCache, color: '', dim: true },
+        { n: b.upToDate, color: SUCCESS },
+        { n: b.restoredLocal, color: LOCAL },
+        { n: b.saved, color: LOCAL },
+        { n: b.restoredRemote, color: REMOTE },
+        { n: b.uploaded, color: REMOTE },
+        { n: b.uploading, color: ACCENT },
+        { n: b.remoteFailed, color: ERROR },
         { n: stats.skipped, color: WARN },
         remainder,
       ],
       colors,
     )
     const cacheParts: string[] = []
-    const layers = context?.cache
     if (layers !== undefined) {
       // Per layer (M, 2026-10-15): `✓` fresh (outputs already on disk, from
       // either layer) and `∅` no cache, both local; `↓` restored from a
-      // layer, `↑` saved to it.
-      const n = (count: number, glyph: string): string[] => (count > 0 ? [`${count}${glyph}`] : [])
+      // layer, `↑` saved to it; `✗` a remote read or write failed, `⇡` still
+      // uploading. Each count is its bar segment's, glyph and number in its colour.
+      const n = (count: number, glyph: string, color: string, dim = false): string[] =>
+        count > 0 ? [paint(color, `${count}${glyph}`, colors, dim ? { dim: true } : {})] : []
       const local = [
-        ...(layers.local ? n(stats.upToDate, '\u2713') : []),
-        ...n(noCache, '\u2205'),
-        ...(layers.local ? n(stats.restoredLocal, '\u2193') : []),
-        ...(layers.localWrite ? n(stats.saved ?? 0, '\u2191') : []),
+        ...(layers.local ? n(b.upToDate, '\u2713', SUCCESS) : []),
+        ...n(b.noCache, '\u2205', '', true),
+        ...(layers.local ? n(b.restoredLocal, '\u2193', LOCAL) : []),
+        ...(layers.localWrite ? n(b.saved, '\u2191', LOCAL) : []),
       ]
-      if (local.length > 0) cacheParts.push(paint(LOCAL, `local ${local.join(' ')}`, colors))
-      const remote = [...n(stats.restoredRemote, '\u2193'), ...n(layers.uploads.count, '\u2191')]
+      // The layer words are dim; only the counts carry colour (M, 2026-10-15).
+      if (local.length > 0) cacheParts.push(`${dim('local')} ${local.join(' ')}`)
+      const remote = [
+        ...n(b.restoredRemote, '\u2193', REMOTE),
+        ...n(b.uploaded, '\u2191', REMOTE),
+        ...n(b.remoteFailed, '\u2717', ERROR),
+        ...n(b.uploading, '\u21e1', ACCENT),
+      ]
       if (layers.remote && remote.length > 0)
-        cacheParts.push(paint(REMOTE, `remote ${remote.join(' ')}`, colors))
-      if (layers.uploads.failed > 0)
-        cacheParts.push(paint(ERROR, `${layers.uploads.failed} \u2191 failed`, colors))
+        cacheParts.push(`${dim('remote')} ${remote.join(' ')}`)
       if ((stats.notSaved ?? 0) > 0)
         cacheParts.push(paint(WARN, `${stats.notSaved} not saved`, colors))
       const notDownloaded = layers.notDownloaded()
@@ -447,11 +526,22 @@ export function formatRunSummary(
           }
         : {}),
       ...(emptyGroups.length > 0 ? { emptyGroups } : {}),
+      buckets: bucketsOf(outcomes),
     },
     totalMs,
     colors,
     context,
   )
+}
+
+/** Each finished task's cache bucket by its key. */
+function bucketsOf(outcomes: readonly TaskOutcome[]): Map<string, CacheBucket> {
+  const out = new Map<string, CacheBucket>()
+  for (const o of outcomes) {
+    const bucket = o.hash === undefined ? undefined : cacheBucketOf(o)
+    if (bucket !== undefined) out.set(o.hash!, bucket)
+  }
+  return out
 }
 
 /**

@@ -1470,7 +1470,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v39', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v40', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes and plugin_blobs live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1527,7 +1527,8 @@ CREATE TABLE runs (
   timed_out           INTEGER,          -- 1 when vx's own timeout killed it
   sandbox_violations  INTEGER,          -- the sandbox's violation count
   not_ready           TEXT,             -- 'timeout' | 'exited' | 'spawn' (persistent task)
-  restored            INTEGER           -- v31, on a hit: 1 = outputs restored, 0 = up to date
+  restored            INTEGER,          -- v31, on a hit: 1 = outputs restored, 0 = up to date
+  remote_error        TEXT              -- v40: each remote read or write of the key that failed
 );
 
 -- Two indexes, both append-only under a run's inserts: every row of a run

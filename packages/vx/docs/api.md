@@ -83,6 +83,7 @@ class · `src/cache/cache.ts`
 export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
+  readonly traffic: RemoteTraffic
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
@@ -147,6 +148,7 @@ export class Cache implements CacheLayer {
   recordRun(run: RunRecord): void
   recordRuns(runs: readonly RunRecord[]): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async evictIfDue(
     policy: { maxAgeMs?: number; maxBytes?: number },
@@ -1891,6 +1893,7 @@ export interface RunRecord {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  remoteError?: string
 }
 ```
 

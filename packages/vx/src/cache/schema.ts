@@ -98,7 +98,10 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       not_ready           TEXT,
       -- v31: on a hit, 1 when outputs were restored, 0 when the disk
       -- already matched (up-to-date); NULL on every other status.
-      restored            INTEGER
+      restored            INTEGER,
+      -- v40: each remote read or write of the key that failed, as
+      -- 'upload: <message>', '; '-joined; NULL when none did.
+      remote_error        TEXT
     );
     -- Two whole-table indexes only, and both APPEND: every row of a run carries the
     -- same run_id and a started_at newer than everything before it, so

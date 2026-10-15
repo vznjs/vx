@@ -321,6 +321,7 @@ function reasonParts(t: RunSummaryRow): string {
   } else if (t.status === 'skipped' && t.blockedBy !== null) {
     parts.push(`after ${t.blockedBy} failed`)
   }
+  if (t.remoteError !== null) parts.push(`remote \u2717 ${t.remoteError}`)
   return parts.map((p) => `  ${p}`).join('')
 }
 

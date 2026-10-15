@@ -2,6 +2,7 @@
 export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
+  readonly traffic: RemoteTraffic
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
@@ -66,6 +67,7 @@ export class Cache implements CacheLayer {
   recordRun(run: RunRecord): void
   recordRuns(runs: readonly RunRecord[]): void
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async evictIfDue(
     policy: { maxAgeMs?: number; maxBytes?: number },
@@ -1166,6 +1168,17 @@ export interface RemoteCacheLayer {
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
+== type RemoteKeyTraffic (src/cache/cache.ts)
+export interface RemoteKeyTraffic {
+  uploading: number
+  landed: boolean
+  failures: string[]
+}
+== type RemoteTraffic (src/cache/cache.ts)
+export interface RemoteTraffic {
+  inFlight: number
+  readonly keys: Map<string, RemoteKeyTraffic>
+}
 == type ResolvedSandboxConfig (src/exec/sandbox-runtime.ts)
 export interface ResolvedSandboxConfig {
   allowRead: readonly string[]
@@ -1199,7 +1212,10 @@ export interface RunContext {
     local: boolean
     localWrite: boolean
     remote: boolean
-    uploads: { count: number; failed: number }
+    traffic: {
+      readonly inFlight: number
+      readonly keys: ReadonlyMap<string, { uploading: number; failures: readonly string[] }>
+    }
     notDownloaded: () => number
   }
   workspaceProjectCount?: number
@@ -1320,6 +1336,7 @@ export interface RunRecord {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  remoteError?: string
 }
 == type RunReport (src/orchestrator/plugin.ts)
 export interface RunReport {

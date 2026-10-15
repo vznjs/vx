@@ -312,7 +312,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        unchanged.
 //   v39: invocations drops `tags` (`--tag` is gone). The cache KEY is
 //        unchanged.
-export const SCHEMA_VERSION = 'v39'
+//   v40: runs.remote_error — each remote read or write of a task's key that
+//        failed, for `vx last`. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v40'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -789,6 +791,23 @@ export interface UploadTally {
   failed: number
 }
 
+/** One task's traffic with the remotes this run, by its key. */
+export interface RemoteKeyTraffic {
+  /** Its uploads queued or running. */
+  uploading: number
+  /** An upload of it landed on a remote. */
+  landed: boolean
+  /** Each distinct remote read or write of it that failed: `upload: <message>`. */
+  failures: string[]
+}
+
+/** The run's remote traffic per key: what the footer's remote part counts, task by task. */
+export interface RemoteTraffic {
+  /** Uploads queued or running across every remote. */
+  inFlight: number
+  readonly keys: Map<string, RemoteKeyTraffic>
+}
+
 export class Cache implements CacheLayer {
   /** This IS the local layer — there is nothing slower behind it. */
   readonly hasRemote = false
@@ -798,6 +817,8 @@ export class Cache implements CacheLayer {
    * so the run can report them without a method on the layer seam.
    */
   readonly uploads: UploadTally = { count: 0, bytes: 0, ms: 0, failed: 0 }
+  /** The same remotes' traffic per key, filled by the same `LayeredCache`. */
+  readonly traffic: RemoteTraffic = { inFlight: 0, keys: new Map() }
 
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>
@@ -2628,6 +2649,9 @@ export class Cache implements CacheLayer {
   }
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     return this.guard(() => this.history.recordRunBundle(bundle))
+  }
+  recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void {
+    return this.guard(() => this.history.recordRemoteErrors(runId, errors))
   }
   stats(opts: CacheStatsOptions = {}): CacheStats {
     return this.guard(() => this.statsOf(opts))

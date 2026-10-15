@@ -102,7 +102,8 @@ describe('cache.scope', () => {
         await runScoped(fixture, layer, undefined, 'v1')
         const legend = (): string =>
           fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
-        expect(legend()).toBe('local 1↑ · remote 1↑')
+        // Each task counts once, under its strongest state: saved here and uploaded is `remote ↑`.
+        expect(legend()).toBe('remote 1↑')
         fixture.log.length = 0
         await runScoped(fixture, layer, undefined, 'v1')
         expect(legend()).toBe('remote 1↓')

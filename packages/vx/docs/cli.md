@@ -2393,7 +2393,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v43 · index schema v39
+  cache versions    keys vx-cache-v43 · index schema v40
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -2654,7 +2654,9 @@ command that exits 137 on its own reads the same). Where the run's
 footer gave a reason, the row ends with it instead: `timed out`,
 `never ready: exited`, `2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
-as before). Rows run failures first, then what executed or was
+as before). A task whose key met a remote failure ends with it, read or
+write alike: `remote ✗ download: connection refused; upload: 503` (the
+v40 column, `remoteError` in `--format json`). Rows run failures first, then what executed or was
 skipped, then hits; past sixteen hits the rest fold into one line with
 their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
@@ -2981,17 +2983,26 @@ A broad run looks like:
 ```
 
 The three bars are meters: `projects` is what the run covered against
-the workspace, `tasks` is failed / success / skipped, `cache` is miss /
-no-cache / up-to-date / local / remote (a skipped task rides it too, so
-the two bars fill alike; its count is on the tasks legend only). Its
-legend reads per layer: `local 1✓ 1∅ 2↓ 4↑ · remote 3↓ 4↑`.
-`✓` is a fresh hit (outputs already on disk, whichever layer answered,
-so it counts under local), `∅` a task with no cache, `↓` is restored
-from that layer and `↑` saved to it (local `↑` counts only tasks that ran here; remote `↑` counts
-uploads that landed). A layer shows only when the run's
-`--cache-policy` uses it. `N not saved` (ran, succeeded, saved nothing),
-`N not downloaded` (outputs left in the remote store) and `N ↑ failed`
-show only when non-zero. The
+the workspace, `tasks` is failed / success / skipped, `cache` has a
+segment per legend state (a skipped task rides it too, so the two bars
+fill alike; its count is on the tasks legend only). Its legend reads
+per layer: `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`. `✓` is a fresh
+hit (outputs already on disk, whichever layer answered, so it counts
+under local), `∅` a task with no cache, `↓` is restored from that
+layer and `↑` saved to it, `✗` a task a remote read or write failed
+for, and `⇡` an upload still running (live only, always last; a run
+that ends with uploads still running keeps the footer on screen until
+they finish). Each task counts once, under its strongest state: a
+failed remote read or write, then an upload running, then saved to a
+remote, then saved here, then restored, then fresh, then no cache; so
+a task saved here and uploaded is a remote `↑`. Each count is painted
+in its segment's colour, number and glyph alike: `✓` green, `∅` dim,
+local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
+`local` and `remote` words are dim. A layer shows only when the run's
+`--cache-policy` uses it. `N not saved` (ran, succeeded, saved
+nothing), `N not downloaded` (outputs left in the remote store) and
+every count show only when non-zero. `vx last` names each remote
+failure on its task's row. The
 `time` row is the wall time, then what the cache saved (the hits' stored
 exec times, never the restore), then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a

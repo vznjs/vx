@@ -131,7 +131,7 @@ export class LayeredCache implements CacheLayer {
     readonly local: Cache,
     remotes: readonly ResolvedRemote[],
   ) {
-    this.lanes = remotes.map((r) => new RemoteLane(r))
+    this.lanes = remotes.map((r) => new RemoteLane(r, local.traffic))
     this.readable = this.lanes.filter((l) => l.read)
   }
 

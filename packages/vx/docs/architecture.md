@@ -637,6 +637,7 @@ transaction (`recordRunBundle`), one row per real task (hits included) to the
 | `sandbox_violations`                      | the sandbox's violation count on a failure                                |
 | `not_ready`                               | a persistent task that never became ready: `timeout` / `exited` / `spawn` |
 | `restored`                                | on a hit: 1 when outputs were restored, 0 when they were already in place |
+| `remote_error`                            | each failed remote read or write of the key, `; `-joined (v40)            |
 
 The `invocations` header row carries the command line, requested
 tasks, compact cache policy, concurrency, flow, duration, task /

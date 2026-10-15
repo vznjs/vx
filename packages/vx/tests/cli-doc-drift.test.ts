@@ -294,7 +294,7 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
             local: true,
             localWrite: true,
             remote: false,
-            uploads: { count: 0, failed: 0 },
+            traffic: { inFlight: 0, keys: new Map() },
             notDownloaded: () => 0,
           },
         },

@@ -4,6 +4,7 @@
 // class with the endpoint named. The order across remotes, the local store
 // and provenance are `LayeredCache`'s; nothing here knows another remote.
 
+import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { RemoteCacheLayer } from './layered-cache.js'
 
 /** One remote, resolved: its wire and what the run's policy and its `access` let it do. */
@@ -112,7 +113,10 @@ export class RemoteLane {
    */
   private readonly reported = new Map<string, { cause: string; repeats: number }>()
 
-  constructor(resolved: ResolvedRemote) {
+  constructor(
+    resolved: ResolvedRemote,
+    private readonly traffic: RemoteTraffic,
+  ) {
     this.remote = resolved.remote
     this.read = resolved.read
     this.write = resolved.write
@@ -195,6 +199,9 @@ export class RemoteLane {
     body: () => { body: Blob; release?: () => Promise<void> },
     tally: { count: number; bytes: number; ms: number; failed: number },
   ): void {
+    const key = this.trafficOf(hash)
+    key.uploading++
+    this.traffic.inFlight++
     this.uploadQueue.push(async () => {
       const start = performance.now()
       let release: (() => Promise<void>) | undefined
@@ -205,11 +212,14 @@ export class RemoteLane {
         tally.count++
         tally.bytes += got.body.size
         tally.ms += Math.round(performance.now() - start)
+        key.landed = true
       } catch (err) {
         tally.failed++
         this.report('upload', hash, err)
       } finally {
         await release?.()
+        key.uploading--
+        this.traffic.inFlight--
       }
     })
     this.pump()
@@ -243,6 +253,13 @@ export class RemoteLane {
   report(op: RemoteOp, subject: string | { batch: string }, err: unknown): void {
     const e = err instanceof Error ? err : new Error(String(err))
     const hash = typeof subject === 'string' ? subject : undefined
+    // A batch probe's failure is no one task's: each of its hashes is asked
+    // again on its own, and that ask is the one counted.
+    if (hash !== undefined) {
+      const failures = this.trafficOf(hash).failures
+      const said = `${op}: ${e.message}`
+      if (!failures.includes(said)) failures.push(said)
+    }
     const cls = failureClass(e, hash)
     const seen = this.reported.get(cls)
     if (seen !== undefined) {
@@ -253,6 +270,15 @@ export class RemoteLane {
     const what = typeof subject === 'string' ? subject : subject.batch
     const where = this.endpoint === undefined ? '' : ` ${PREPOSITION[op]} ${this.endpoint}`
     this.emit(new Error(`${op} ${what}${where} failed: ${e.message}`, { cause: e }))
+  }
+
+  private trafficOf(hash: string): RemoteKeyTraffic {
+    let key = this.traffic.keys.get(hash)
+    if (key === undefined) {
+      key = { uploading: 0, landed: false, failures: [] }
+      this.traffic.keys.set(hash, key)
+    }
+    return key
   }
 
   private pump(): void {

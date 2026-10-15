@@ -168,7 +168,7 @@ describe('formatRunSummary', () => {
     expect(lines).toContain('  info      8 workers · local + remote cache')
   })
 
-  describe('the cache legend reads per layer: = fresh, ↓ restored, ↑ saved (M, 2026-10-15)', () => {
+  describe('the cache legend reads per layer: ✓ fresh, ↓ restored, ↑ saved, ✗ failed, ⇡ uploading (M, 2026-10-15)', () => {
     const cached = (
       id: string,
       status: TaskOutcome['status'],
@@ -176,6 +176,7 @@ describe('formatRunSummary', () => {
     ): TaskOutcome => ({
       ...outcome(id, status),
       node: { id, config: { exec: { command: 'noop' }, cache: {} } } as unknown as TaskNode,
+      hash: `h-${id}`,
       ...extra,
     })
     const run = [
@@ -188,49 +189,109 @@ describe('formatRunSummary', () => {
       cached('g#build', 'cache-hit', { restored: false }),
       outcome('h#dev', 'success'),
     ]
-    const legend = (
-      layers: { local?: boolean; localWrite?: boolean; remote?: boolean },
-      uploads = { count: 2, failed: 0 },
-      notDownloaded = 0,
-    ): string => {
-      const lines = formatRunSummary(
-        run,
-        10,
-        { enabled: false },
-        {
-          version: '0.0.0',
-          packageCount: 1,
-          remoteCacheEnabled: layers.remote === true,
-          cache: {
-            local: layers.local ?? true,
-            localWrite: layers.localWrite ?? true,
-            remote: layers.remote ?? true,
-            uploads,
-            notDownloaded: () => notDownloaded,
-          },
-        },
+    type Traffic = Record<string, { uploading?: number; failures?: string[] }>
+    const trafficOf = (t: Traffic) => {
+      const keys = new Map(
+        Object.entries(t).map(([id, k]) => [
+          `h-${id}`,
+          { uploading: k.uploading ?? 0, failures: k.failures ?? [] },
+        ]),
       )
+      let inFlight = 0
+      for (const k of keys.values()) inFlight += k.uploading
+      return { inFlight, keys }
+    }
+    const footer = (
+      layers: { local?: boolean; localWrite?: boolean; remote?: boolean },
+      traffic: Traffic = { 'a#build': {}, 'b#build': {} },
+      notDownloaded = 0,
+      colors = { enabled: false },
+    ): string[] =>
+      formatRunSummary(run, 10, colors, {
+        version: '0.0.0',
+        packageCount: 1,
+        remoteCacheEnabled: layers.remote !== false,
+        cache: {
+          local: layers.local ?? true,
+          localWrite: layers.localWrite ?? true,
+          remote: layers.remote ?? true,
+          traffic: trafficOf(traffic),
+          notDownloaded: () => notDownloaded,
+        },
+      })
+    const legend = (...args: Parameters<typeof footer>): string => {
+      const lines = footer(...args)
       return lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
     }
 
-    it('fresh and no-cache count under local; ↑ is what landed', () => {
-      expect(legend({})).toBe('local 2✓ 1∅ 1↓ 2↑ · remote 1↓ 2↑ · 1 not saved')
+    it('each task counts once: an upload that landed moves a saved task to remote ↑', () => {
+      expect(legend({})).toBe('local 2✓ 1∅ 1↓ · remote 1↓ 2↑ · 1 not saved')
+      expect(legend({}, {})).toBe('local 2✓ 1∅ 1↓ 2↑ · remote 1↓ · 1 not saved')
     })
 
-    it('a failed upload and outputs left remote are counted apart', () => {
-      expect(legend({}, { count: 1, failed: 1 }, 3)).toBe(
-        'local 2✓ 1∅ 1↓ 2↑ · remote 1↓ 1↑ · 1 ↑ failed · 1 not saved · 3 not downloaded',
+    it('a failed read or write is one ✗ count; ⇡ is an upload still running, last', () => {
+      const traffic = {
+        'a#build': { failures: ['upload: 503'] },
+        'b#build': { uploading: 1 },
+        'd#build': { failures: ['download: connection refused'] },
+      }
+      expect(legend({}, traffic, 3)).toBe(
+        'local 2✓ 1∅ 1↓ · remote 2✗ 1⇡ · 1 not saved · 3 not downloaded',
+      )
+    })
+
+    it('a failure outranks an upload still running on another remote', () => {
+      expect(legend({}, { 'a#build': { uploading: 1, failures: ['upload: 500'] } })).toBe(
+        'local 2✓ 1∅ 1↓ 1↑ · remote 1↓ 1✗ · 1 not saved',
+      )
+    })
+
+    it('a task still running is not counted until it ends', () => {
+      expect(legend({}, { 'z#build': { uploading: 1 } })).toBe(
+        'local 2✓ 1∅ 1↓ 2↑ · remote 1↓ · 1 not saved',
       )
     })
 
     it('a layer the run did not use is not shown', () => {
-      expect(legend({ remote: false }, { count: 0, failed: 0 })).toBe(
-        'local 2✓ 1∅ 1↓ 2↑ · 1 not saved',
-      )
+      expect(legend({ remote: false }, {})).toBe('local 2✓ 1∅ 1↓ 2↑ · 1 not saved')
     })
 
     it('local ↑ shows only when the policy writes the local layer', () => {
-      expect(legend({ localWrite: false })).toBe('local 2✓ 1∅ 1↓ · remote 1↓ 2↑ · 1 not saved')
+      expect(legend({ localWrite: false }, {})).toBe('local 2✓ 1∅ 1↓ · remote 1↓ · 1 not saved')
+    })
+
+    it('the bar has a segment per state, each legend count painted in its colour', () => {
+      const traffic = {
+        'a#build': { failures: ['upload: 503'] },
+        'b#build': { uploading: 1 },
+      }
+      const lines = footer({}, traffic, 0, { enabled: true })
+      const at = lines.findIndex((l) => l.includes('cache'))
+      const rgb = (hex: string) => Bun.color(hex, 'ansi-16m')!
+      // A run of cells per segment, in bar order: the colour, then how many.
+      const cell = new RegExp(`((?:${'\x1b'}\\[[0-9;]*m)+)(▰+)`, 'g')
+      const runs = [...lines[at]!.matchAll(cell)].map((m) => [
+        m[1]!.replaceAll('\x1b[0m', ''),
+        m[2]!.length,
+      ])
+      const RED = rgb('#ef4444')
+      const GREEN = rgb('#22c55e')
+      const SKY = rgb('#38bdf8')
+      const BLUE = rgb('#2563eb')
+      const CYAN = rgb('#06b6d4')
+      // c miss · h no cache · e g fresh · f local ↓ · d remote ↓ · b ⇡ · a ✗
+      expect(runs.map(([c]) => c)).toEqual([RED, '\x1b[2m', GREEN, SKY, BLUE, CYAN, RED])
+      expect(runs.map(([, n]) => n)).toEqual([7, 6, 13, 6, 6, 6, 6])
+      const legendLine = lines[at + 1]!
+      expect(legendLine).toContain(`${GREEN}2✓`)
+      expect(legendLine).toContain(`\x1b[2m1∅`)
+      expect(legendLine).toContain(`${SKY}1↓`)
+      expect(legendLine).toContain(`${BLUE}1↓`)
+      expect(legendLine).toContain(`${RED}1✗`)
+      expect(legendLine).toContain(`${CYAN}1⇡`)
+      // The layer words are dim, never a layer colour (M, 2026-10-15).
+      expect(legendLine).toContain('\x1b[2mlocal\x1b[0m')
+      expect(legendLine).toContain('\x1b[2mremote\x1b[0m')
     })
 
     it('CONTROL: with no run context the legend is the plain one', () => {
@@ -478,7 +539,7 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
           local: true,
           localWrite: true,
           remote: false,
-          uploads: { count: 0, failed: 0 },
+          traffic: { inFlight: 0, keys: new Map() },
           notDownloaded: () => 0,
         },
       },

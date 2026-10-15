@@ -208,6 +208,8 @@ export interface RunRecord {
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
+  /** Each remote read or write of its key that failed, `upload: <message>`, `; `-joined (v40). */
+  remoteError?: string
 }
 
 /**

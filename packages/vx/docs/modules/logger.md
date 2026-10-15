@@ -162,7 +162,11 @@ ends. A failure logs a permanent one-liner the moment it lands
 (`formatFailureLine`) and the full frame replays at `runEnd`. The
 region is rewritten in place, throttled with forced redraws on task
 events, and removed permanently at `runEnd` (and on the first
-requested-task start in focused mode). Every ordinary write clears it
+requested-task start in focused mode). A run that ends with uploads
+still running (`RunContext.cache.traffic.inFlight`) keeps the region,
+footer only, its worker rows gone, until they settle (`draining`): the
+ticker or the next line removes it then, so the final footer prints
+under no region (M, 2026-10-15; `tests/upload-region.test.ts`). Every ordinary write clears it
 first, writes, then redraws, so it never interleaves with content.
 
 ## Programmatic logger
