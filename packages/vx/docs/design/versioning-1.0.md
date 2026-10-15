@@ -110,8 +110,11 @@ vendored upstream schemas, the `--format json` schemas in `schemas/`,
 `vx-mcp`'s tools record, `vx-otel`'s OTLP wire, `vx-migrate`'s command
 lines and `vx-ci`'s check run — against the same file at the last
 `v*` tag, each read its own way (`contractBreaks` in
-`scripts/api-break.ts`): the API records by section, a pack list or a
-record of leaves by what it lost (a changed value is lost too), the
+`scripts/api-break.ts`): the API records by declaration (one moved to
+another file is the same declaration), a pack list by
+the files it lost outside `src/` or among its package's `exports` and
+`bin` targets (no other `src/` file can be imported, so moving one is
+internal), a record of leaves by what it lost (a changed value is lost too), the
 config schema by the fields and accepted values it lost (a reworded
 refusal is not a break), its rules by the combinations it lost, an
 output schema by the properties, `required` entries, types and enum
