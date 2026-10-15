@@ -282,7 +282,7 @@ export default defineWorkspace({ plugins: [hello()] })
 a `Logger`, the object `run({ log })` takes, and it receives every line
 and task chunk vx would have printed, the summary included. Return
 `undefined` to leave vx's own output. The first plugin that returns one
-draws the run. `ctx.isTTY`, `ctx.ci` and `ctx.json` say where it would
+draws the run. `ctx.isTTY` and `ctx.ci` say where it would
 draw; decline off a terminal so pipes, CI and agents read what they
 always did. A `Logger` that throws hands the rest of the run back to
 vx's renderer, with one warning.
@@ -293,7 +293,7 @@ import { definePlugin, type VxPlugin } from '@vzn/vx'
 export function dots(): VxPlugin {
   return definePlugin(import.meta, {
     output(ctx) {
-      if (!ctx.isTTY || ctx.ci || ctx.json) return undefined
+      if (!ctx.isTTY || ctx.ci) return undefined
       return {
         status: (line) => process.stdout.write(`${line}\n`),
         taskStdout: () => {},

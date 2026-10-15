@@ -736,7 +736,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'sh',
-      code: 'vx run build --all --affected=HEAD --dry\nvx run test --all --affected=main --dry --format json',
+      code: 'vx run build --all --affected=HEAD --dry\nvx run test --all --affected=main --dry=json',
     },
     image: 'affected-reasons.png',
     imageAlt: 'Affected tasks with the file that brought each in.',
