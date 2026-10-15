@@ -162,22 +162,21 @@ post is visible there and skipped by the build.
 
 ### Release posts
 
-Each release gets a note in `src/content/docs/releases/`, written before it is cut
-(`.claude/skills/release/SKILL.md`); the first ten batch the per-merge
-releases up to v0.0.625. A post holds at most ten changes a user would
-notice, each a `##` section with one example and its PR links, then
-Breaking changes (every `old → new` rename and removal; the code keeps
-no aliases before 1.0), How to update and Learn more. The title is the
-story, the cover's headline without its accent brackets (`Runs that
-explain themselves`); the version is metadata, shown as a `v0.0.625`
-chip beside the date, read from the slug. Every post has a
-cover (`src/assets/blog/vx-0-0-<version>.png`, 1200×630) and shows
-rather than tells: a terminal frame per example, a bar chart for every
-before/after number, a mermaid diagram where a change has a shape. The
-slug is `vx-0-0-<version>`, the tag `release`, and the date the
-release's day. A feature big enough to show gets its own blog post
-first; the note summarizes it and links there. Old `/blog/vx-0-0-*/`
-URLs redirect (`astro.config.mjs`).
+Each release gets a post in `src/content/docs/releases/`, written before it
+is cut (`.claude/skills/release/SKILL.md`); the first ten batch the
+per-merge releases up to v0.0.625. A post is a release story, not a
+changelog: an intro on what changed and why, one `##` per notable
+feature (the problem it solves, what it does now, one example, a link
+on), Other noteworthy changes, a short Breaking changes list (every
+`old → new` rename and removal; the code keeps no aliases before 1.0)
+and How to update. The title is the story, the cover's headline without
+its accent brackets (`A core that knows no language`); the version is
+metadata, shown as a `v0.0.637` chip beside the date, read from the
+slug. Every post has a cover (`src/assets/blog/vx-0-0-<version>.png`,
+1200×630). The slug is `vx-0-0-<version>`, the tag `release`, and the
+date the release's day. The GitHub release's body is the post
+(`release-notes.yml` keeps it current). Old `/blog/vx-0-0-*/` URLs
+redirect (`astro.config.mjs`).
 
 ## Commands
 
