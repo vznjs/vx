@@ -2529,10 +2529,10 @@ $ vx show
   bare     packages/bare  no vx config
 ```
 
-`vx show <project>` opens with a report naming the project: its `dir`,
-its `tags`, and `config  none` for a package with no config file. Then
-it prints a block per task, headed by its `project#task`, with every field the run
-reads: description, command (`(group)` for group tasks), `dependsOn`,
+A report naming the project opens it: its `dir`, its `tags`, and
+`config  none` for a package with no config file. Then
+`vx show <project>` prints a block per task, headed by its
+`project#task`, with every field the run reads: description, command (`(group)` for group tasks), `dependsOn`,
 `timeout`, `retries`, `env.passThrough` / `env.define` / `env.secret`,
 `remote`, `sandbox`, `persistent`, `interactive` (`yes` / `no`), and the
 cache block
