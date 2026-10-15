@@ -2,7 +2,7 @@
 // the workspace file and one empty root project, then the lock; a repo
 // with one is handed to @vzn/vx-migrate, whose scripts mapper it was.
 
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -15,7 +15,8 @@ afterAll(async () => {
 })
 
 async function tmp(prefix: string): Promise<string> {
-  const root = await mkdtemp(path.join(os.tmpdir(), prefix))
+  // Real path: macOS's /tmp is a link, and a child's cwd is resolved.
+  const root = realpathSync(await mkdtemp(path.join(os.tmpdir(), prefix)))
   roots.push(root)
   expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)
   return root
