@@ -1,4 +1,3 @@
-import path from 'node:path'
 import { isatty } from 'node:tty'
 import { cacheScopeError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
@@ -22,7 +21,7 @@ import { affectedFilterFor, findCwdSelection, pickTask, resolveFilters } from '.
 import { nxTargetHint, taskNamesHere } from './task-verb.js'
 import { parseDecimalInt, sayNotice, sayLine } from '../util/index.js'
 import { kindHint, parseSettingValue, type Setting, SETTINGS, settingRefusal } from '../settings.js'
-import { formatGraphDot, formatPlanJson, formatPlanText } from './plan-format.js'
+import { formatPlanJson, formatPlanText } from './plan-format.js'
 
 export interface RunArgs {
   /** Failure propagation (`--continue[=never|deps-ok|always]`). */
@@ -68,7 +67,6 @@ export interface RunArgs {
   forwardArgs: string[]
   verbosity: number
   dry: 'text' | 'json' | undefined
-  graph: string | undefined
   profile: string | undefined
   /**
    * `--affected[=<base>]`. When undefined the flag wasn't passed.
@@ -136,7 +134,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     forwardArgs: [],
     verbosity: 0,
     dry: undefined,
-    graph: undefined,
     profile: undefined,
     affected: undefined,
     tags: {},
@@ -283,10 +280,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         return { ...out, error: `--dry must be text or json (got ${fmt})` }
       }
       out.dry = fmt
-    } else if (a === '--graph') {
-      out.graph = ''
-    } else if (a?.startsWith('--graph=')) {
-      out.graph = a.slice('--graph='.length)
     } else if (a === '--profile') {
       out.profile = 'profile.json'
     } else if (a?.startsWith('--profile=')) {
@@ -353,16 +346,10 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
   out.cache = applyCacheFlags(cachePolicy, flags)
   if (!cacheFlag && envSpec === undefined) out.cacheFlags = flags
 
-  if (out.dry !== undefined && out.graph !== undefined) {
-    return { ...out, error: '--dry and --graph are mutually exclusive' }
-  }
   // A profile is about a run: the planning branch returns before it is
   // written (item 992).
   if (out.dry !== undefined && out.profile !== undefined) {
     return { ...out, error: '--dry skips execution; --profile needs a real run' }
-  }
-  if (out.graph !== undefined && out.profile !== undefined) {
-    return { ...out, error: '--graph skips execution; --profile needs a real run' }
   }
   return out
 }
@@ -638,9 +625,8 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     ...args.map(shellQuote),
   ].join(' ')
 
-  // Planning paths short-circuit execution. Both build the full task
-  // graph + probe the cache; the difference is just the formatter.
-  if (parsed.dry !== undefined || parsed.graph !== undefined) {
+  // Planning short-circuits execution: the full task graph + a cache probe.
+  if (parsed.dry !== undefined) {
     const plan = await planRun(opts)
     // Refused as a run refuses: `--dry=json` gets the error document.
     if (plan.unresolvedTasks !== undefined && plan.unresolvedTasks.length > 0) {
@@ -669,24 +655,7 @@ export async function runCmd(args: readonly string[]): Promise<number> {
         'VX_E_UNKNOWN_TASK',
       )
     }
-    if (parsed.graph !== undefined) {
-      const out = formatGraphDot(plan)
-      if (parsed.graph === '') {
-        process.stdout.write(out)
-      } else {
-        // The graph is the command's one product, so a path it cannot write
-        // is exit 1, said in one line as the other output paths say theirs:
-        // a directory or an unreachable path printed a raw stack (item 993).
-        const target = path.resolve(cwd, parsed.graph)
-        try {
-          await Bun.write(target, out)
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          sayNotice('error', 'vx run', `failed to write graph to ${target}: ${message}`)
-          return 1
-        }
-      }
-    } else if (parsed.dry === 'json') {
+    if (parsed.dry === 'json') {
       process.stdout.write(formatPlanJson(plan, scopeOut.affectedBase))
     } else {
       process.stdout.write(formatPlanText(plan))

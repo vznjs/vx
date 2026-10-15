@@ -199,7 +199,7 @@ to `.git/hooks` and a declared directory under it wrote a hook.
 
 ## The existence probe confirms the artifact, not just the entry
 
-`has()` — what `vx run --dry` and `--graph` use to predict hit vs miss —
+`has()` — what `vx run --dry` uses to predict hit vs miss —
 reads the ActionCache entry AND checks the artifact blob is still in the
 CAS. The second call is not redundant, because servers disagree: measured
 against both, bazel-remote validates an ActionResult's referenced blobs

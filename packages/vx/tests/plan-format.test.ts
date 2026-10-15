@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { formatGraphDot, formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
+import { formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import type { CacheStatus, PlannedTask, RunPlan } from '../src/orchestrator/plan.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
@@ -219,62 +219,6 @@ describe('formatPlanJson', () => {
   })
 })
 
-describe('formatGraphDot', () => {
-  // A task name is any object key in a config, so a quote, a backslash or a
-  // newline reaches the DOT writer. Turbo pins the HTML variant of this
-  // (`test_graph_to_html_escapes_task_names`); vx shipped the unescaped
-  // form twice in sibling formatters. Every quoted ID must close where the
-  // writer meant it to: one statement per line, balanced quotes.
-  it('escapes quotes, backslashes and newlines in task ids and labels', () => {
-    const wild = 'a#say "hi"\\now\nthen'
-    const plan: RunPlan = {
-      tasks: [task('a#build', 'miss', 'aaaaaaaa', []), task(wild, 'miss', 'bbbbbbbb', ['a#build'])],
-    }
-    const out = formatGraphDot(plan)
-    const quoted = /"((?:[^"\\]|\\.)*)"/g
-    for (const line of out.split('\n')) {
-      // Strip every well-formed quoted ID; a stray `"` left behind is one the
-      // writer failed to escape.
-      expect(line.replace(quoted, '')).not.toContain('"')
-      expect(line.includes('\n')).toBe(false)
-    }
-    expect(out).toContain('"a#say \\"hi\\"\\\\now\\nthen"')
-    expect(out).toContain('"a#build" -> "a#say \\"hi\\"\\\\now\\nthen";')
-  })
-
-  it('emits a valid digraph with edges + per-status fillcolor', () => {
-    const plan: RunPlan = {
-      tasks: [
-        task('a#build', 'miss', 'aaaaaaaa', []),
-        task('a#test', 'hit-local', 'bbbbbbbb', ['a#build']),
-      ],
-    }
-    const out = formatGraphDot(plan)
-    expect(out.startsWith('digraph TaskGraph {')).toBe(true)
-    expect(out.trimEnd().endsWith('}')).toBe(true)
-    expect(out).toContain('"a#build" -> "a#test";')
-    expect(out).toContain('"a#build"')
-    expect(out).toContain('label="a#build\\naaaaaaaa"')
-    // miss → orange, hit-local → green.
-    expect(out).toContain('fillcolor="#fed7aa"')
-    expect(out).toContain('fillcolor="#bbf7d0"')
-  })
-
-  it('includes group nodes so the rendered graph still shows them', () => {
-    const plan: RunPlan = {
-      tasks: [
-        task('a#build', 'miss', 'aaaaaaaa', []),
-        task('a#ci', 'group', 'cccccccc', ['a#build']),
-      ],
-    }
-    const out = formatGraphDot(plan)
-    expect(out).toContain('"a#ci"')
-    expect(out).toContain('"a#build" -> "a#ci";')
-    // group → fuchsia
-    expect(out).toContain('fillcolor="#f5d0fe"')
-  })
-})
-
 describe('placement in the plan', () => {
   // `exec.remote` is otherwise invisible: nothing in a run's output tells a
   // user which executor a task landed on, so a mis-declared pin reads exactly
@@ -315,8 +259,8 @@ describe('placement in the plan', () => {
 
 describe('docs/modules/plan-format.md shows what the formatters print', () => {
   // The page showed a "no-cache — opts out" row, a group row the text form
-  // hides, a four-task plan summed as three, and a DOT document with a
-  // header, colours and labels the formatter never wrote (item 313,
+  // hides, a four-task plan summed as three, and a DOT document the
+  // formatter never wrote (item 313,
   // 2026-09-16). Each sample is the formatter on the same fixture.
   const page = readFileSync(
     path.resolve(import.meta.dir, '..', 'docs', 'modules', 'plan-format.md'),
@@ -388,12 +332,5 @@ describe('docs/modules/plan-format.md shows what the formatters print', () => {
 
   it('the JSON sample is the lint task alone', () => {
     expect(fenced.find((b) => b.lang === 'json')!.body).toBe(formatPlanJson({ tasks: [lint] }))
-  })
-
-  it('the DOT sample is lint and a test that depends on it', () => {
-    const plan: RunPlan = {
-      tasks: [lint, planned('@vzn/vx#test', '68595e49f0e1d2c3', 'miss', ['@vzn/vx#lint'])],
-    }
-    expect(fenced.find((b) => b.lang === 'dot')!.body).toBe(formatGraphDot(plan))
   })
 })

@@ -46,8 +46,6 @@ const nxPattern = (p: string): string => {
   return p
 }
 
-const GRAPH_IMAGE = /\.(svg|png|jpe?g|pdf|json|html|mermaid)$/i
-
 export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
   {
     runner: 'turbo',
@@ -100,18 +98,9 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
   {
     runner: 'turbo',
     names: ['--graph'],
-    value: true,
-    when: (v) => v !== undefined && GRAPH_IMAGE.test(v),
-    shown: '`--graph=<file>.svg|png|json|html|…`',
-    outcome: 'refuse',
-    vx: 'vx writes Graphviz DOT only: `--graph=<file>.dot`, then `dot -Tsvg`',
-  },
-  {
-    runner: 'turbo',
-    names: ['--graph'],
     value: false,
-    outcome: 'same',
-    vx: '`--graph[=<file>.dot]`',
+    outcome: 'refuse',
+    vx: '`--dry=json` prints the planned task graph, each task with its deps',
   },
   {
     runner: 'turbo',
@@ -662,7 +651,7 @@ export const FOREIGN_VERBS: Readonly<Record<string, string>> = {
     '`nx run-many` is `vx run <task> --all` here; -t, -p, --exclude and --parallel work as they are',
   affected:
     '`nx affected` is `vx run <task> --affected` here; -t, --base and --exclude work as they are',
-  graph: '`nx graph` is `vx run <task> --graph[=<file>.dot]` here: the task graph as Graphviz DOT',
+  graph: '`nx graph` is `vx run <task> --dry=json` here: the planned task graph as JSON',
   ls: '`turbo ls` is `vx show` here: every project, its directory and its task count',
   query:
     '`turbo query` has no vx form: `vx run <task> --dry=json` prints the planned graph as JSON',

@@ -23,7 +23,7 @@ short-circuit), schedules execution two-tier, manages persistent
 subprocesses, writes optional artifacts, and records the run history.
 
 Companion modules: [`plan.md`](./plan.md) for the read-only
-`--dry` / `--graph` mirror; [`prepare.md`](./prepare.md) for the
+`--dry` mirror; [`prepare.md`](./prepare.md) for the
 shared setup; [`local-shortcircuit.md`](./local-shortcircuit.md) /
 [`remote-prefetch.md`](./remote-prefetch.md) for the acceleration
 passes; [`plugin.md`](./plugin.md) / [`telemetry.md`](./telemetry.md)

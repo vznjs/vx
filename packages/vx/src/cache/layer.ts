@@ -580,7 +580,7 @@ export interface CacheLayer {
    * artifact read, no remote download, no local ingest, no accessed_at
    * bump (on the remote side the layer decides the call: an HTTP HEAD, or
    * REAPI's `getActionResult` + `findMissingBlobs`). Planning
-   * (`--dry` / `--graph`) predicts hits with this instead of `get` so a
+   * (`--dry`) predicts hits with this instead of `get` so a
    * dry run can't pull N artifacts over the network. Remote errors
    * degrade to `null` — an existence probe never fails anything.
    */

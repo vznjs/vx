@@ -1,4 +1,4 @@
-// Formatters for `--dry-run` (human / JSON) and `--graph` (DOT).
+// Formatters for `--dry` (human / JSON).
 
 import type { AffectedReason, CacheStatus, RunPlan } from '../orchestrator/index.js'
 import { formatElapsed, maskedCommand } from '../util/index.js'
@@ -186,42 +186,6 @@ export function formatPlanJson(plan: RunPlan, affectedBase?: string): string {
   )
 }
 
-/**
- * Render the task graph as a Graphviz DOT document. Includes group
- * nodes — they're real nodes in the graph (just not real units of
- * work), and a `--graph` consumer wants to see the whole structure.
- *
- * Layout: `rankdir=LR`. Node fillcolor varies by predicted cache
- * status so a quick visual scan tells you which boxes get to skip
- * actual work.
- */
-export function formatGraphDot(plan: RunPlan): string {
-  const lines: string[] = ['digraph TaskGraph {', '  rankdir=LR;', '  node [shape=box];']
-  for (const t of plan.tasks) {
-    const color = dotColor(t.cacheStatus)
-    lines.push(
-      `  ${dotString(t.node.id)} [label=${dotString(`${t.node.id}\n${t.hash.slice(0, 8)}`)}, style="filled", fillcolor="${color}"];`,
-    )
-  }
-  for (const t of plan.tasks) {
-    for (const dep of t.deps) {
-      lines.push(`  ${dotString(dep)} -> ${dotString(t.node.id)};`)
-    }
-  }
-  lines.push('}')
-  return lines.join('\n') + '\n'
-}
-
-/**
- * A DOT double-quoted ID. A task name is any object key in a config, so
- * `"`, `\` and a newline are all reachable; unescaped they end the
- * string early and the document stops parsing. `\n` is DOT's own line
- * break inside a label.
- */
-function dotString(s: string): string {
-  return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, '\\n')}"`
-}
-
 function symbolFor(s: CacheStatus): string {
   switch (s) {
     case 'hit-local':
@@ -253,22 +217,5 @@ function describe(s: CacheStatus): string {
       return 'group task'
     case 'not-started':
       return 'not started (unneeded)'
-  }
-}
-
-function dotColor(s: CacheStatus): string {
-  switch (s) {
-    case 'hit-local':
-      return '#bbf7d0' // green-200
-    case 'hit-remote':
-      return '#bae6fd' // sky-200
-    case 'miss':
-      return '#fed7aa' // orange-200
-    case 'no-cache':
-      return '#e5e7eb' // gray-200
-    case 'group':
-      return '#f5d0fe' // fuchsia-200
-    case 'not-started':
-      return '#ffffff'
   }
 }

@@ -358,7 +358,7 @@ would run:
     },
     image: 'dry-run.png',
     imageAlt: 'vx run --dry listing predicted hits and misses.',
-    docs: { label: 'Planning mode', href: 'cli/#planning-mode---dry---graph' },
+    docs: { label: 'Planning mode', href: 'cli/#planning-mode---dry' },
     deepDive: { label: 'Cascade through inputs', href: 'blog/cascade-through-inputs/' },
   },
   {

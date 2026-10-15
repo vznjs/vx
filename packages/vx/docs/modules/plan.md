@@ -1,10 +1,10 @@
-# `src/orchestrator/plan.ts` — `--dry` / `--graph` planning
+# `src/orchestrator/plan.ts` — `--dry` planning
 
 ## Purpose
 
 Walk the task graph, compute every task's cache key, and probe the
 cache to predict what `vx run` would do — _without executing_. Drives
-the `--dry`, `--dry=json`, and `--graph` output formats.
+the `--dry` and `--dry=json` output formats.
 
 ## Public surface
 

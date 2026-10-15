@@ -1,9 +1,8 @@
-// Where `vx run` writes the files a flag names, end to end: every output
-// path makes its directory, and one it cannot write is said in one line,
-// never a stack (item 993).
+// Where `vx run` writes the file a flag names, end to end: the output path
+// makes its directory (item 993).
 
 import { existsSync } from 'node:fs'
-import { mkdir, rm } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -33,24 +32,10 @@ function vx(...args: string[]): { code: number; err: string } {
 
 describe('output paths (item 993)', () => {
   it(
-    '--profile and --graph make their directories',
+    '--profile makes its directory',
     () => {
       expect(vx('--profile=np/p.json').code).toBe(0)
       expect(existsSync(path.join(root, 'np/p.json'))).toBe(true)
-      expect(vx('--graph=ng/g.dot').code).toBe(0)
-      expect(existsSync(path.join(root, 'ng/g.dot'))).toBe(true)
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'a --graph path it cannot write is one line and exit 1, not a stack',
-    async () => {
-      await mkdir(path.join(root, 'gdir'))
-      const r = vx('--graph=gdir')
-      expect(r.code).toBe(1)
-      expect(r.err).toMatch(/^✗ vx run {2}failed to write graph to .*gdir: .*EISDIR/)
-      expect(r.err.trim().split('\n')).toHaveLength(1)
     },
     TIMEOUT,
   )

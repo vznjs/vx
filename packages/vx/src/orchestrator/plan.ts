@@ -1,6 +1,6 @@
 // Planning: walk the task graph, compute every task's cache key, and
 // probe the cache to predict what would happen if `vx run` actually
-// ran. Used by `--dry-run` (preview output) and `--graph` (DOT export).
+// ran. Used by `--dry`.
 //
 // No TASK execution happens: no task spawn, no cleanOutputs, no
 // restoreOutputs. Cache probing uses the byte-free `cache.has()`

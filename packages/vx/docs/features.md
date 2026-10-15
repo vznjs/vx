@@ -61,7 +61,6 @@ config key or an environment variable is missing here.
 ## Plan and explain
 
 - **Dry run** (`--dry`) — the task graph and the predicted hits and misses, text or JSON (with the predicted wall time and its critical path), nothing runs. [page](https://vznjs.github.io/vx/features/dry-run/) · post: [See the plan before you run it](https://vznjs.github.io/vx/blog/dry-run/)
-- **Graph** (`--graph`) — the task graph as Graphviz DOT. [page](https://vznjs.github.io/vx/features/task-graph/) · post: [See inside a run](https://vznjs.github.io/vx/blog/see-inside-a-run/)
 - **vx why** (`vx why`, `--run`) — why a task re-ran, down to the file, env var or config that changed, and the task that wrote a moved input. [page](https://vznjs.github.io/vx/features/vx-why/) · post: [Why did this re-run?](https://vznjs.github.io/vx/blog/why-did-this-rerun/)
 - **vx show** (`vx show`) — every project, a project's or a task's resolved config, read from the lock as a run reads it. [page](https://vznjs.github.io/vx/features/vx-show/) · post: [See what a task really is](https://vznjs.github.io/vx/blog/vx-show/)
 - **vx last** (`vx last`, `--list`, `--failed`, `--log`, `--stats`, `--branch`) — replay a recorded run's summary, list recent runs, print one task's output, or per-task history stats (p50 as the live estimate forecasts it on a branch, p99, pass and hit rate, failure mode, peak RSS). [page](https://vznjs.github.io/vx/features/vx-last/) · post: [The last run, on request](https://vznjs.github.io/vx/blog/vx-last/)

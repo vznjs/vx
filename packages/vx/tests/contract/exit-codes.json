@@ -5,7 +5,6 @@
   "run: an unknown flag: vx run build --no-such-flag": 1,
   "run: nothing affected since the ref: vx run build --affected=HEAD": 0,
   "run: --dry=json: vx run build --all --dry=json": 0,
-  "run: --graph to an unwritable path: vx run build --all --graph=package.json/g.dot": 1,
   "an unknown verb: vx no-such-verb": 1,
   "watch: a rejected flag: vx watch build --all --dry": 1,
   "watch: nothing affected since the ref: vx watch build --affected=HEAD": 0,

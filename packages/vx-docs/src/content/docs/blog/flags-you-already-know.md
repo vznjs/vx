@@ -65,6 +65,9 @@ $ vx graph
 `nx graph` is `vx run <task> --graph[=<file>.dot]` here: the task graph as Graphviz DOT
 ```
 
+(Since vx 0.0.639, `--graph` is gone: `vx graph` points to
+`vx run <task> --dry=json`, the planned graph as JSON.)
+
 ## One table, held by a test
 
 Every row lives in one table, rendered into the CLI reference, and a

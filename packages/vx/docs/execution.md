@@ -24,7 +24,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       PROCESS — always. (A whole-run `backend` seam existed until
  │       2026-08; it moved the scheduler server-side, which is why it
  │       went. Per-task placement is the `executor` capability.)
- │       --dry / --graph short-circuit into planRun instead.
+ │       --dry short-circuits into planRun instead.
  │
  ├─ Prepare (src/orchestrator/prepare.ts:prepareRun — shared with planRun)
  │    1. findWorkspaceRoot(cwd) — the directory of the nearest
@@ -611,9 +611,9 @@ snapshot is clean). `--cache-policy=<spec>` gives per-layer control. Full
 semantics: [`cli.md` § Cache control](./cli.md#cache-control---cache-policy---no-cache---force)
 and [`caching.md` § Cache policy](./caching.md#cache-policy-readwrite-axes).
 
-## Planning paths (`--dry`, `--graph`)
+## Planning path (`--dry`)
 
-Both short-circuit execution. The planner (`orchestrator/plan.ts`)
+`--dry` short-circuits execution. The planner (`orchestrator/plan.ts`)
 runs the same setup steps — workspace discovery, config load, package
 graph, task graph — and the same per-task hash derivation, then
 probes the cache. The probe is read-only; against a remote layer it
@@ -621,8 +621,6 @@ is an existence check only (no artifact download, no ingest). The one
 deliberate side effect: `cache.inputs.runtime` / `workspaceRuntime`
 probe commands DO run, because predicting a key requires resolving
 them — keep runtime inputs side-effect-free.
-
-The two flags differ only in output format:
 
 - `--dry[=text|json]` → text (default) or JSON list of predicted
   outcomes per task: `hit-local`, `hit-remote`, `miss`, `no-cache`,
@@ -633,13 +631,8 @@ The two flags differ only in output format:
   executors is a plugin-factory call, the same class the cache capability
   already makes at plan time; a plugin that throws costs the label, never
   the plan.
-- `--graph[=<path>]` → Graphviz DOT, colored by predicted status.
-  Pipe to `dot` for SVG/PNG render. Formatter:
-  `formatGraphDot`.
-
-Mutually exclusive: `--dry` and `--graph` together is a parse error.
-Combining either with `--profile` is a parse error (it needs a real
-run).
+  Combining it with `--profile` is a parse error (the profile needs a
+  real run).
 
 ## Run artifacts
 

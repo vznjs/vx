@@ -63,7 +63,7 @@ them.** The runner derives it from the project graph and the task
 dependencies, then schedules it. It is the thing to read when a run does
 something surprising.
 
-- vx: the task graph (`vx run --graph`, `vx run --dry=json`)
+- vx: the task graph (`vx run --dry=json`)
 - Turborepo: the Task Graph ([package and task graphs](https://turborepo.com/docs/core-concepts/package-and-task-graph#task-graph))
 - Nx: the task graph ([glossary](https://nx.dev/docs/reference/glossary#graph))
 - Bazel: the [action graph](https://bazel.build/reference/glossary#action-graph)

@@ -355,7 +355,7 @@ never branches on layering.
      `pkg#task`.
 
    Then it calls `run()` directly — a run always executes in THIS
-   process. `--dry` / `--graph` short-circuit into `planRun` instead.
+   process. `--dry` short-circuit into `planRun` instead.
 
 5. **`orchestrator/run.ts:run()`** is called with `RunOptions`.
    From here:
@@ -533,7 +533,7 @@ technically possible but was rejected:
    load time. Either choice leaks a magic rule.
 2. It collapses two distinct phases of the run (config load → task
    graph build → task execute) into one mutual recursion, making
-   the `--dry` / `--graph` planning paths conceptually fuzzier.
+   the `--dry` planning paths conceptually fuzzier.
 3. Bun's TS-source-import already covers the common case for
    essentially zero cost. Forcing a bootstrap path is a heavyweight
    solution to a problem the runtime already solves.
@@ -592,7 +592,7 @@ GET per key. Writes go to local synchronously; the remote PUT is a
 fire-and-forget background upload drained before `cache.close()`, so
 upload latency never blocks the next task. Remote errors fire
 `onRemoteError` (logged) but never throw — no remote failure of any
-kind may fail the run. `--dry` / `--graph` use a lightweight remote
+kind may fail the run. `--dry` use a lightweight remote
 existence probe (`RemoteCacheLayer.has`) instead of `get` — planning
 never downloads or ingests artifacts.
 

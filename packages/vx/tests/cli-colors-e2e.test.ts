@@ -95,7 +95,6 @@ describe('vx paints only a run, and only as the env asks', () => {
         ['last'],
         ['last', '--list'],
         ['run', 'build', '--all', '--dry'],
-        ['run', 'build', '--all', '--graph'],
         ['help'],
         ['version'],
       ]

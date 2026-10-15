@@ -1,5 +1,5 @@
 // The quickstart's Run block is a sequence a reader types from the
-// workspace root. `vx run build` and `vx run build --graph` refused there
+// workspace root. `vx run build` refused there
 // ("not inside a project") until the block said where to stand: each line
 // here runs in the directory the block's `cd` lines leave it in.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -93,7 +93,7 @@ describe('the quickstart Run block', () => {
     expect(sh(root, ['git', 'commit', '-qam', 'two']).code).toBe(0)
 
     const lines = runBlock(readFileSync(PAGE, 'utf8'))
-    expect(lines.filter((l) => l.startsWith('vx run ')).length).toBeGreaterThanOrEqual(5)
+    expect(lines.filter((l) => l.startsWith('vx run ')).length).toBeGreaterThanOrEqual(4)
     let cwd = root
     const results: [string, number | null][] = []
     for (const line of lines) {

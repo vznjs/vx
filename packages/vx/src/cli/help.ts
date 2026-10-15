@@ -190,7 +190,6 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Planning (for run — skips execution):',
     "      --dry[=text|json]    Print the task graph and each task's predicted hit",
     '                           or miss.',
-    '      --graph[=<path>]     Emit Graphviz DOT (stdout if no path).',
     '',
     'Artifacts (for run):',
     '      --profile[=<path>]    Write Chrome-trace JSON (default profile.json).',
@@ -217,9 +216,9 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     'Watch mode:',
     '  vx watch <task>            Initial run, then re-run on filesystem changes.',
     '                             Uses the same flags as `vx run` except --dry /',
-    '                             --graph / --profile / --verbosity (they plan or',
-    '                             report one run), plus --poll (watch.poll: poll',
-    '                             instead of the OS watcher). Press Ctrl+C to stop.',
+    '                             --profile / --verbosity (they plan or report one',
+    '                             run), plus --poll (watch.poll: poll instead of',
+    '                             the OS watcher). Press Ctrl+C to stop.',
     '                             Cache means most re-runs are near-zero cost',
     '                             (cache hits restore outputs + replay logs).',
     '',
@@ -395,12 +394,7 @@ export function documentedFlags(verb: string, text = helpText()): string[] {
  * The `vx run` flags `vx watch` refuses: each plans or reports ONE run
  * (`watchRefusal` in watch.ts, held to this list by a test).
  */
-export const WATCH_REFUSED_FLAGS: readonly string[] = [
-  '--dry',
-  '--graph',
-  '--profile',
-  '--verbosity',
-]
+export const WATCH_REFUSED_FLAGS: readonly string[] = ['--dry', '--profile', '--verbosity']
 
 /**
  * The flags one verb accepts: those on its own Usage line, and for a verb

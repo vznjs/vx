@@ -534,30 +534,6 @@ export const MORE: readonly Feature[] = [
     },
   },
   {
-    slug: 'task-graph',
-    title: 'Draw the task graph',
-    category: 'insight',
-    hook: 'Export the graph as Graphviz DOT and see what depends on what.',
-    body: [
-      'A graph you cannot see is a graph you guess about. `--graph` prints the tasks a run would execute and their edges as DOT, colored by cache state.',
-      'Pipe it to Graphviz for a picture, or write it to a file. Nothing runs.',
-    ],
-    example: {
-      lang: 'sh',
-      code: 'vx run build --filter @demo/web --graph\nvx run build --all --graph=graph.dot',
-    },
-    image: 'task-graph.png',
-    imageAlt: 'The task graph rendered from DOT.',
-    docs: {
-      label: '--graph',
-      href: 'cli/#vx-run',
-    },
-    deepDive: {
-      label: 'See inside a run',
-      href: 'blog/see-inside-a-run/',
-    },
-  },
-  {
     slug: 'vx-info',
     title: 'Know your workspace',
     category: 'insight',

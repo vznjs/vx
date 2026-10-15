@@ -34,7 +34,6 @@ export interface RunArgs {
   forwardArgs: string[] // everything after `--`
   verbosity: number
   dry: 'text' | 'json' | undefined
-  graph: string | undefined // '' = stdout; else path
   profile: string | undefined // 'profile.json' default
   affected: string | undefined // '' = default base; else ref
   tags: Record<string, string> // --tag k=v, onto the run record
@@ -72,7 +71,7 @@ refusal points at: `vx watch` reads the same flags, M-58):
 
 1. Split on the first `--` — everything after is `forwardArgs`.
 2. Loop the prefix: recognize each flag form. Optional-value flags
-   (`--dry`, `--graph`, `--profile`, `--affected`,
+   (`--dry`, `--profile`, `--affected`,
    `--exclude-dependencies`) accept either the bare form or `=<value>`.
 3. A setting's flag (`src/settings.ts` names each one, its verb and its
    kind) parses by that kind into `settings` at the setting's path.
@@ -82,8 +81,8 @@ refusal points at: `vx watch` reads the same flags, M-58):
    in `help.ts`, which every verb's refusal shares; it reads the help
    text, so there is no second list to drift).
 5. Mutually-exclusive combinations checked at the end:
-   `--dry` + `--graph`; either + `--profile` (they skip execution; the
-   profile needs a real run). `--no-cache` beats
+   `--dry` + `--profile` (planning skips execution; the profile needs a
+   real run). `--no-cache` beats
    `--force`, both layered over a `--cache-policy` spec.
 
 ## Scope resolution
@@ -129,19 +128,17 @@ picker; tasks here: …)`: `taskNamesHere(cwd)` (`cli/task-verb.ts`) names
 
 ## Planning short-circuit
 
-If `--dry` or `--graph` is set:
+If `--dry` is set:
 
 1. `planRun(opts)` — same setup as `run` but stops before the
    scheduler.
 2. Pick a formatter from `cli/plan-format.ts`:
    - `--dry=json` → `formatPlanJson(plan, affectedBase)` → stdout.
    - `--dry=text` (default) → `formatPlanText(plan)` → stdout.
-   - `--graph=''` → `formatGraphDot(plan)` → stdout.
-   - `--graph=<path>` → `formatGraphDot(plan)` → `Bun.write(path, ...)`.
 3. A requested name that matched no project (`plan.unresolvedTasks`),
    or an empty plan → exits 1 with `no projects declare task(s): …`
    (plus `Did you mean <task>?` when a declared task, or for `pkg#task`
-   a runnable spec, is within two edits), before any DOT / JSON is
+   a runnable spec, is within two edits), before any JSON is
    written. An empty plan from an `--affected` or diff filter exits 0
    (`no affected project declares task(s): …`).
 
@@ -172,14 +169,14 @@ the duration right-aligned.
 - Scope resolution matrix (default / `--all` / `--filter` /
   `pkg#task`).
 - `--affected` end-to-end against a git fixture.
-- Planning paths (`--dry` text/json, `--graph` stdout).
+- Planning paths (`--dry` text/json).
 - Verbose summary formatting.
 - Forwarded args (cache-key folding tested in
   `tests/task-hash-derive.test.ts`).
 
-The picker (TTY input mocked) is `tests/cli-picker.test.ts`; `--graph`
-to a file is `tests/run-output-paths.test.ts`; `--profile`
-emission is `tests/run-artifacts.test.ts`.
+The picker (TTY input mocked) is `tests/cli-picker.test.ts`; `--profile`
+to a file is `tests/run-output-paths.test.ts` and its emission
+`tests/run-artifacts.test.ts`.
 
 ## Replacing this module
 

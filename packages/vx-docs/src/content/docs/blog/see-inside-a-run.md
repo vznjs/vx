@@ -67,6 +67,9 @@ nightly run is easy to tell from a pull request.
 
 ## The graph, for Graphviz
 
+(Since vx 0.0.639, `--graph` is gone: `--dry=json` lists each task with
+its deps.)
+
 ```sh frame="terminal"
 $ vx run build --filter @demo/web --graph
 digraph TaskGraph {
