@@ -283,7 +283,12 @@ describe('ctx.cache', () => {
     }
     const good = wire()
     good.store.set(key, bytes('one'))
-    const c = pluginCache('org/a', { db, policy: FULL, remotes: [remoteOf(good)], scope: undefined })
+    const c = pluginCache('org/a', {
+      db,
+      policy: FULL,
+      remotes: [remoteOf(good)],
+      scope: undefined,
+    })
     expect(text(await c.get('x'))).toBe('one')
     await c.put('empty', new Uint8Array(0))
     expect(await c.has('empty')).toBe(false)
