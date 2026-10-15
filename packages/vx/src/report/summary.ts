@@ -9,6 +9,7 @@ import { isCacheHit } from '../graph/index.js'
 import { outcomeLabel, projectOutcome, ranNoCache } from './events.js'
 import { isGroupTask } from '../graph/index.js'
 import {
+  barWidth,
   ERROR,
   formatElapsed,
   gradientRule,
@@ -28,7 +29,6 @@ const ABORTED = '#f97316' // orange-500: red's neighbour, not a failure
 const NOT_RUN = '#a855f7' // purple-500: stopped before it began, apart from every other state
 const ACCENT = '#06b6d4' // cyan-500: the live region's running word
 
-const BAR_WIDTH = 50
 /**
  * Stacked state meter: one ▰ run per bucket, proportional cells via
  * largest-remainder, every non-zero bucket guaranteed at least one
@@ -41,9 +41,10 @@ function segmentBar(
 ): string {
   const total = segments.reduce((sum, seg) => sum + seg.n, 0)
   if (total === 0) return ''
-  const exact = segments.map((seg) => (seg.n / total) * BAR_WIDTH)
+  const width = barWidth(colors)
+  const exact = segments.map((seg) => (seg.n / total) * width)
   const cells = exact.map(Math.floor)
-  let leftover = BAR_WIDTH - cells.reduce((sum, c) => sum + c, 0)
+  let leftover = width - cells.reduce((sum, c) => sum + c, 0)
   const order = exact
     .map((e, i) => ({ i, frac: e - Math.floor(e) }))
     .sort((x, y) => y.frac - x.frac)
@@ -264,13 +265,14 @@ export function formatSummarySection(
   if (context !== undefined) {
     const wsTotal = context.workspaceProjectCount
     if (wsTotal !== undefined && wsTotal > 0) {
+      const width = barWidth(colors)
       const cells = Math.min(
-        BAR_WIDTH,
-        Math.max(1, Math.round((context.packageCount / wsTotal) * BAR_WIDTH)),
+        width,
+        Math.max(1, Math.round((context.packageCount / wsTotal) * width)),
       )
       const bar =
         paint(WARN, '▰'.repeat(cells), colors) +
-        paint('', '▱'.repeat(BAR_WIDTH - cells), colors, { dim: true })
+        paint('', '▱'.repeat(width - cells), colors, { dim: true })
       lines.push(
         row('projects', bar),
         legend([paint(WARN, `${context.packageCount} affected`, colors), dim(`${wsTotal} total`)]),

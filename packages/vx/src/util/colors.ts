@@ -20,6 +20,8 @@ export const ERROR = '#ef4444'
 
 export interface ColorSupport {
   enabled: boolean
+  /** The terminal's width, read live; none off a terminal. Bars and rules fit it. */
+  readonly columns?: number | undefined
 }
 
 export interface PaintOptions {
@@ -38,10 +40,18 @@ export interface PaintOptions {
  * set `FORCE_COLOR=0` (nx#35292's bug).
  */
 export function detectColors(stream: NodeJS.WriteStream = process.stdout): ColorSupport {
-  if (process.env['NO_COLOR']) return { enabled: false }
   const force = process.env['FORCE_COLOR']
-  if (force !== undefined) return { enabled: force !== '0' && force !== 'false' }
-  return { enabled: stream.isTTY === true }
+  const enabled = process.env['NO_COLOR']
+    ? false
+    : force !== undefined
+      ? force !== '0' && force !== 'false'
+      : stream.isTTY === true
+  return {
+    enabled,
+    get columns() {
+      return stream.isTTY === true ? stream.columns : undefined
+    },
+  }
 }
 
 // Bun.color() is pure for a given (hex, mode) pair but does FFI work

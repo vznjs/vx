@@ -566,6 +566,7 @@ export interface CiContext {
 == type ColorSupport (src/util/colors.ts)
 export interface ColorSupport {
   enabled: boolean
+  readonly columns?: number | undefined
 }
 == type CommandContext (src/orchestrator/plugin.ts)
 export interface CommandContext extends BaseContext {

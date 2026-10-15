@@ -204,7 +204,8 @@ function pushOutputSection(
 function sectionLine(title: string, color: string, colors: ColorSupport): string {
   const corner = (s: string) => paint('', s, colors, { dim: true })
   const label = paint(color, title, colors, { bold: true })
-  const rule = corner('─'.repeat(Math.max(1, FRAME_WIDTH - 4 - title.length)))
+  const width = Math.min(FRAME_WIDTH, colors.columns ?? FRAME_WIDTH)
+  const rule = corner('─'.repeat(Math.max(1, width - 4 - title.length)))
   return `${corner('├─')} ${label} ${rule}`
 }
 

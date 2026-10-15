@@ -860,6 +860,59 @@ describe('signal handling during vx run (e2e)', () => {
     TIMEOUT,
   )
 
+  // A Ctrl-C after a failure printed the failure's frame at once, then the
+  // tasks the stop aborted as rows below it: the list ran on past the
+  // diagnostics that should close the log (DX bug hunt, 2026-10-15).
+  it(
+    'the rows a Ctrl-C aborts list above the failure frames, as every row does',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              lint: { exec: { command: 'echo LINT-BROKE >&2; exit 1' } },
+              slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } },
+            },
+          }
+        `,
+      )
+      const proc = Bun.spawn(
+        [process.execPath, BIN, 'run', 'lint', 'slow', '--all', '--continue'],
+        {
+          cwd: fixture.root,
+          // CI's grouped flow prints each frame as its task ends, by design.
+          env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      // The failure's row is out before the stop.
+      const reader = proc.stdout.getReader()
+      let out = ''
+      while (!out.includes('app#lint')) {
+        const { value, done } = await reader.read()
+        if (done) break
+        out += new TextDecoder().decode(value)
+      }
+      proc.kill('SIGINT')
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        out += new TextDecoder().decode(value)
+      }
+      expect(await proc.exited).toBe(130)
+      const aborted = out.search(/aborted +app#slow/)
+      const frame = out.indexOf('┌─ app#lint')
+      expect(aborted).toBeGreaterThan(-1)
+      expect(frame).toBeGreaterThan(-1)
+      expect(aborted).toBeLessThan(frame)
+    },
+    TIMEOUT,
+  )
+
   // nx#33460, nx#32438: a continuous task's own child, trapping every
   // signal it could get, outlived Ctrl-C.
   it(
@@ -1144,7 +1197,7 @@ describe('forwardSignals in a process of its own', () => {
         const done = new Promise((r) => { finish = r })
         forwardSignals({
           enabled: true,
-          log: { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {}, runEnd: () => note('runEnd') },
+          log: { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {}, runEnd: () => note('runEnd'), runDone: () => note('runDone') },
           cache: { close: () => note('close') },
           stop: (signal) => { note('stop ' + signal); finish() },
           done,
@@ -1173,7 +1226,7 @@ describe('forwardSignals in a process of its own', () => {
         proc.kill('SIGINT')
         expect(await proc.exited).toBe(130)
         expect(readFileSync(path.join(dir, 'events.txt'), 'utf8')).toBe(
-          'runEnd\nstop SIGINT\nclose\n',
+          'runDone\nstop SIGINT\nrunEnd\nclose\n',
         )
         expect(await Promise.all(pids.map((p) => waitForDead(p, 3_000)))).toEqual([true, true])
       } finally {

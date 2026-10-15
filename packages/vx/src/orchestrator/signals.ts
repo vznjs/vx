@@ -125,6 +125,13 @@ export function forwardSignals(args: {
 }): SignalForwarding {
   const everyChild = (): Child[] => [...args.liveChildren, ...args.persistentRegistry.values()]
   const exit = (signal: StopSignal): never => {
+    // The run's own end already flushed the log; a second signal cut it
+    // short, so the failure frames it holds print now (idempotent).
+    try {
+      args.log.runEnd?.()
+    } catch {
+      // teardown must not throw on the way out
+    }
     for (const child of everyChild()) killTree(child, 'SIGKILL')
     try {
       args.cache.close()
@@ -152,10 +159,10 @@ export function forwardSignals(args: {
     stopping = signal
     claimExitForSignal()
     // Clear the live worker/status region BEFORE exiting so a TTY isn't
-    // left with a frozen region in the scrollback. runEnd is idempotent
-    // and a no-op for non-TTY loggers.
+    // left with a frozen region in the scrollback. Only the region: the
+    // tasks this stop aborts still list as rows, above the failure frames
+    // the run's own end prints.
     try {
-      args.log.runEnd?.()
       args.log.runDone?.()
     } catch {
       // teardown must not throw on the way out
