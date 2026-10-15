@@ -42,6 +42,9 @@ const ALLOWED: Record<string, readonly string[]> = {
   // `history`: read-only SQL over what runs left behind; it never runs,
   // renders or writes a run, so it reaches nothing that does.
   history: ['util', 'graph', 'cache'],
+  // `report`: renders the outcomes it is handed; it never runs a task or
+  // reads the cache, so it reaches neither orchestrator nor cache.
+  report: ['util', 'settings', 'exec', 'graph'],
   orchestrator: [
     'util',
     'config',
@@ -53,6 +56,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     'cache',
     'exec',
     'history',
+    'report',
   ],
   // `handoff`: init walks to the git top-level and says the workspace file it wrote is there.
   cli: [
@@ -66,6 +70,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     'cache',
     'history',
     'orchestrator',
+    'report',
   ],
   index: [
     'util',
@@ -78,6 +83,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     'exec',
     'history',
     'orchestrator',
+    'report',
   ],
   // `index`: bin lazy-loads the façade so a plugin's `@vzn/vx` resolves
   // to this copy (registerCoreAlias). `version`: a lone `--version` is
@@ -95,6 +101,7 @@ const CONTRACTED: readonly string[] = [
   'graph',
   'history',
   'orchestrator',
+  'report',
   'cli',
 ]
 

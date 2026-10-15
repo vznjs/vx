@@ -5,7 +5,8 @@
 // as Ctrl-C would and the loop starts the next one; a cycle running any
 // other work is never stopped.
 
-import { createEventBus, type RunOptions } from '../orchestrator/index.js'
+import { type RunOptions } from '../orchestrator/index.js'
+import { createEventBus } from '../report/index.js'
 
 export interface WatchCycle {
   /** The options for this cycle's run: its own bus and a stop of its own beside watch's. */

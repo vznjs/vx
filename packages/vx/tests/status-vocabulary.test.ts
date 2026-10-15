@@ -190,7 +190,7 @@ describe('the callers that used to hand-roll it', () => {
   // predicate — which is what actually changed.
   it.each([
     ['the run verdict', 'src/orchestrator/run.ts', 'isPassStatus'],
-    ['the terminal logger', 'src/orchestrator/logger.ts', 'isCacheHit'],
+    ['the terminal logger', 'src/report/logger.ts', 'isCacheHit'],
   ])('%s uses the shared predicate', async (_label, file, fn) => {
     const src = await read(file)
     expect({ file, uses: src.includes(`${fn}(`) }).toEqual({ file, uses: true })

@@ -4,8 +4,8 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
-import type { Logger } from '../src/orchestrator/logger.js'
-import { plainOutput } from '../src/orchestrator/plain-output.js'
+import type { Logger } from '../src/report/logger.js'
+import { plainOutput } from '../src/report/plain-output.js'
 
 const A = { id: 'a#build' } as TaskNode
 const B = { id: 'b#build' } as TaskNode

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger } from '../src/report/index.js'
 import {
   busLogger,
   failedLabel,
@@ -13,7 +13,7 @@ import {
   wireForwarder,
   type RunEvent,
   type WireEvent,
-} from '../src/orchestrator/events.js'
+} from '../src/report/events.js'
 
 function mkNode(partial: {
   id: string

@@ -25,7 +25,7 @@ import {
   taskGlob,
   wholeSubtreePrefixes,
 } from '../util/index.js'
-import type { Logger } from './logger.js'
+import type { Logger } from '../report/index.js'
 import type { TaskInputComponent } from '../cache/index.js'
 
 /** A snapshot request for `recordOutputDirs`, taken at run end. */

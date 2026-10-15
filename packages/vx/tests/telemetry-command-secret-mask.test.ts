@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 import { type TelemetryRecord } from '../src/index.js'
 import { run } from './helpers/orchestrator.js'
-import { defaultLogger } from '../src/orchestrator/logger.js'
+import { defaultLogger } from '../src/report/logger.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 const SECRET = 'supersecretvalue123'

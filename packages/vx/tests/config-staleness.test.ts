@@ -29,7 +29,7 @@ import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { loadProjectConfig, loadProjectConfigs } from '../src/workspace/project-loader.js'
 import { configEvalWorkerCount } from '../src/workspace/config-eval.js'
-import { type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 
 const TIMEOUT = 30_000

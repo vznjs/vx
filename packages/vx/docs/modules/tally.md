@@ -1,4 +1,4 @@
-# `src/orchestrator/tally.ts` — outcome tally
+# `src/report/tally.ts` — outcome tally
 
 ## Purpose
 

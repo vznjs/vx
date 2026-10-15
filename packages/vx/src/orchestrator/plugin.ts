@@ -22,10 +22,9 @@ import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
 import { maskedLine, nearest, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
-import type { EventBus, RunStartInfo } from './events.js'
+import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
 import type { CiContext } from './run-context.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
-import type { Logger } from './logger.js'
 
 /**
  * A vx plugin. Contributes any subset of the run-level capabilities —

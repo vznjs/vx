@@ -13,7 +13,7 @@
 
 import type { CacheLayer, CachePolicy, GitFilesCache } from '../cache/index.js'
 import { cachesNothing, FULL_CACHE_POLICY } from '../cache/index.js'
-import { ranNoCache } from './events.js'
+import { ranNoCache } from '../report/index.js'
 import { idleServers, isGroupTask, runGraph, type TaskNode } from '../graph/index.js'
 import type { AffectedReason } from './affected-tasks.js'
 import type { HistoryProvider } from '../history/index.js'

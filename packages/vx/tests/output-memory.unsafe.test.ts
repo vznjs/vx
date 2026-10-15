@@ -21,7 +21,7 @@ import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'bun:test'
 
 const TIMEOUT = 60_000
-const LOGGER = path.join(import.meta.dir, '..', 'src', 'orchestrator', 'logger.ts')
+const LOGGER = path.join(import.meta.dir, '..', 'src', 'report', 'logger.ts')
 const RUNNER = path.join(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
 
 /** Run a probe script, awaited, and read back the `heap_mib=<n>` it prints. */

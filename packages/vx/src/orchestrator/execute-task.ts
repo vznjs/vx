@@ -91,7 +91,7 @@ import { sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
-import type { Logger } from './logger.js'
+import type { Logger } from '../report/index.js'
 import {
   computeGroupHash,
   computeTaskHash,

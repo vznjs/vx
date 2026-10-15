@@ -167,11 +167,11 @@ Turbo-aware cache server can transit our blobs unchanged.
 
 ### Output presentation
 
-| Pattern                                              | Source                                           | vx source                                           |
-| ---------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------- |
-| Framed per-task blocks (`┌─ … └─`)                   | Turbo                                            | `src/orchestrator/framed-output.ts`                 |
-| End-of-run summary footer (task/cache meters + time) | Turbo-adjacent (vx renders meters, not a banner) | `src/orchestrator/summary.ts`                       |
-| Per-task output buffered until task finishes         | Turbo                                            | `src/orchestrator/framed-output.ts` ("Turbo-style") |
+| Pattern                                              | Source                                           | vx source                                     |
+| ---------------------------------------------------- | ------------------------------------------------ | --------------------------------------------- |
+| Framed per-task blocks (`┌─ … └─`)                   | Turbo                                            | `src/report/framed-output.ts`                 |
+| End-of-run summary footer (task/cache meters + time) | Turbo-adjacent (vx renders meters, not a banner) | `src/report/summary.ts`                       |
+| Per-task output buffered until task finishes         | Turbo                                            | `src/report/framed-output.ts` ("Turbo-style") |
 
 (There is no `>>> FULL TURBO`-style all-cached banner — a fully-green
 cache meter carries the message.)

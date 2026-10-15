@@ -12,8 +12,8 @@ import {
   flakyNote,
   formatTaskExecutedLine,
   formatTaskHitLine,
-} from '../src/orchestrator/framed-output.js'
-import { formatFailureLine } from '../src/orchestrator/status-line.js'
+} from '../src/report/framed-output.js'
+import { formatFailureLine } from '../src/report/status-line.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { FOREIGN_VERBS } from '../src/cli/foreign-flags.js'
 import { REMOTE_CACHE_METHODS } from '../src/orchestrator/plugin-host.js'
@@ -1452,13 +1452,13 @@ describe('the tasks guide states which wildcards dependsOn takes', () => {
 // struck one glyph a docblock invented and never grepped the class; this is
 // the grep, over the three places that enumerate the set.
 describe('the documented glyph set is the set the renderer prints', () => {
-  const ORCH = path.resolve(import.meta.dir, '..', 'src', 'orchestrator')
+  const REPORT = path.resolve(import.meta.dir, '..', 'src', 'report')
   /** Characters in the grid's glyph ranges, from any text. */
   const glyphsIn = (text: string): Set<string> =>
     new Set(text.match(/[\u23fa\u25ba\u25fc\u21e2\u21e3\u2298\u29bf\u25b8]/g) ?? [])
 
   it('framed-output.ts emits six, and the docblock beside it names those six', () => {
-    const framed = readFileSync(path.join(ORCH, 'framed-output.ts'), 'utf8')
+    const framed = readFileSync(path.join(REPORT, 'framed-output.ts'), 'utf8')
     const decl = /function glyphShape\(o: TaskOutcome\): string \{([\s\S]*?)\n\}/.exec(framed)
     expect(decl).not.toBeNull()
     const emitted = new Set(

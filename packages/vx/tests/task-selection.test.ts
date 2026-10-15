@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { writeLocalWorkspace } from './helpers/local-workspace.js'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger } from '../src/report/index.js'
 import { lock, planRun, run } from './helpers/orchestrator.js'
 import { resolveRunOptions, parseRunArgs } from '../src/cli/run.js'
 

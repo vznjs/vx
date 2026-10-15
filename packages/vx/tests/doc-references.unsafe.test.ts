@@ -244,7 +244,7 @@ describe('docs/parity.md names suites that exist and the versions its suites cit
 
 describe("architecture.md's orchestrator inventory is the directory", () => {
   const doc = readFileSync(path.join(pkg, 'docs', 'architecture.md'), 'utf8')
-  const start = doc.indexOf('| Layer                  | Files')
+  const start = doc.search(/\| Layer +\| Files/)
   const table = doc.slice(start, doc.indexOf('```mermaid', start))
 
   it('names every file in src/orchestrator but its index', () => {

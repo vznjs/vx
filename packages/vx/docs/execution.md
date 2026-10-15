@@ -545,13 +545,13 @@ The colors / framing modules:
 - `util/colors.ts` — ANSI truecolor (`ansi-16m`), gated by
   `NO_COLOR` / `FORCE_COLOR` / `isTTY`. Programmatic-logger callers
   always see plain text.
-- `orchestrator/framed-output.ts` — the `┌─` frames, the glyph grid
+- `report/framed-output.ts` — the `┌─` frames, the glyph grid
   (`formatTaskRow`), one-liners, persistent markers.
-- `orchestrator/status-line.ts` — the serialized writer + the worker
+- `report/status-line.ts` — the serialized writer + the worker
   region.
-- `orchestrator/logger.ts` — composes them; resolves the output view
+- `report/logger.ts` — composes them; resolves the output view
   and applies the per-flow visibility policy.
-- `orchestrator/summary.ts` — the closing footer (wordmark rule,
+- `report/summary.ts` — the closing footer (wordmark rule,
   projects/tasks/cache meters, info and time rows).
 
 ## Concurrency

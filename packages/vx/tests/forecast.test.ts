@@ -1,19 +1,19 @@
-// The live run's forecast (`orchestrator/forecast.ts`), the terminal
+// The live run's forecast (`report/forecast.ts`), the terminal
 // escapes that carry it (`terminal-signals.ts`), and the logger's promise
 // that a run ending inside a second never reads history for it.
 
 import { describe, expect, it, spyOn } from 'bun:test'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
-import { createForecast } from '../src/orchestrator/forecast.js'
-import { defaultLogger } from '../src/orchestrator/logger.js'
-import { formatStatusRegion, type StatusStream } from '../src/orchestrator/status-line.js'
-import { formatSummarySection } from '../src/orchestrator/summary.js'
+import { createForecast } from '../src/report/forecast.js'
+import { defaultLogger } from '../src/report/logger.js'
+import { formatStatusRegion, type StatusStream } from '../src/report/status-line.js'
+import { formatSummarySection } from '../src/report/summary.js'
 import {
   notifyEscape,
   PROGRESS_CLEAR,
   progressEscape,
   terminalSignals,
-} from '../src/orchestrator/terminal-signals.js'
+} from '../src/report/terminal-signals.js'
 
 const node = (id: string, deps: string[] = [], group = false): TaskNode =>
   ({

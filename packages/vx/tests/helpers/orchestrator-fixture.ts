@@ -5,7 +5,7 @@
 // the two policy shapes the CLI flags resolve to, and a stamp command whose
 // output changes on every real execution.
 
-import type { Logger } from '../../src/orchestrator/index.js'
+import type { Logger } from '../../src/report/index.js'
 import type { EdgeMap } from './plugin.js'
 import { makeWorkspace as makeWorkspaceRoot } from './workspace.js'
 

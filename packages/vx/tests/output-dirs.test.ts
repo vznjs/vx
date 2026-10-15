@@ -28,7 +28,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Cache, OUTPUT_DIRS_CAP, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 import { run } from './helpers/orchestrator.js'
-import { defaultLogger } from '../src/orchestrator/logger.js'
+import { defaultLogger } from '../src/report/logger.js'
 import { wholeSubtreePrefixes } from '../src/util/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 

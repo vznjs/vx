@@ -11,7 +11,7 @@ import { gitInit } from './helpers/workspace.js'
 import { Cache } from '../src/cache/index.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import type { ExecuteRequest, TaskExecutor } from '../src/exec/index.js'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger } from '../src/report/index.js'
 import { executeTask } from '../src/orchestrator/execute-task.js'
 
 const quiet: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }

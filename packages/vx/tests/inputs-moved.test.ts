@@ -20,8 +20,9 @@ import {
   startGitEnumeration,
 } from '../src/cache/index.js'
 import type { TaskNode } from '../src/graph/index.js'
-import type { Logger, RunSummary } from '../src/orchestrator/index.js'
-import { failedLabel } from '../src/orchestrator/events.js'
+import type { RunSummary } from '../src/orchestrator/index.js'
+import type { Logger } from '../src/report/index.js'
+import { failedLabel } from '../src/report/events.js'
 import { run } from './helpers/orchestrator.js'
 import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'

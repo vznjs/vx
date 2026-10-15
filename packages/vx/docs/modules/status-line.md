@@ -1,4 +1,4 @@
-# `orchestrator/status-line.ts` — dynamic worker region
+# `report/status-line.ts` — dynamic worker region
 
 The live status display for interactive runs. **Not a TUI**: a
 region redrawn in place with cursor-up + clear-line escapes — no

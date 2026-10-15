@@ -9,7 +9,7 @@ import path from 'node:path'
 import { writeRunProfile } from '../src/orchestrator/run-artifacts.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
-import { type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 

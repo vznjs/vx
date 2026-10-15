@@ -3,7 +3,7 @@
 // node as a successful task. These pin the bucket rules.
 
 import { describe, expect, it } from 'bun:test'
-import { tallyOutcomes, type Tally } from '../src/orchestrator/tally.js'
+import { tallyOutcomes, type Tally } from '../src/report/tally.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../src/graph/index.js'
 
 const ZERO: Tally = {

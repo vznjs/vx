@@ -28,7 +28,7 @@ import {
   type TaskStatus,
 } from '../graph/index.js'
 import { maskedCommand, settleWithin, teardownTimeoutMs } from '../util/index.js'
-import type { RunEvent, RunEventSubscriber } from './events.js'
+import type { RunEvent, RunEventSubscriber } from '../report/index.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
 export const TELEMETRY_SCHEMA_VERSION = 4

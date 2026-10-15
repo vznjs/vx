@@ -11,7 +11,7 @@ import { machineParallelism, UserError } from '../util/index.js'
 import { isLocalExecutor, selectExecutor, type TaskExecutor } from '../exec/index.js'
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { resolveDownloadModes } from './download-policy.js'
-import type { Logger } from './logger.js'
+import type { Logger } from '../report/index.js'
 import { executorLabel, resolveExecutors } from './plugin-host.js'
 import type { prepareRun } from './prepare.js'
 

@@ -6,7 +6,7 @@
 // needs a cap, and the cap has to be honest — a truncated log that reads as
 // complete is worse than one that says what it lost.
 //
-// `orchestrator/logger.ts` is the sole holder: it registers a tail per
+// `report/logger.ts` is the sole holder: it registers a tail per
 // persistent task at taskStart and keeps one for the rest of the run, so a
 // single mechanism covers both the pre-ready window and everything after.
 // `exec/runner.ts` used to keep a SECOND pre-ready copy fed from the same

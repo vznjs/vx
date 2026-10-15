@@ -6,7 +6,7 @@
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { run } from './helpers/orchestrator.js'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger } from '../src/report/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 

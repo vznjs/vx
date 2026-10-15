@@ -15,20 +15,20 @@ import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { deriveCacheSource } from '../src/graph/index.js'
 import { run } from './helpers/orchestrator.js'
 import { invocationCommand } from '../src/orchestrator/run.js'
-import { busLogger, createEventBus } from '../src/orchestrator/events.js'
+import { busLogger, createEventBus } from '../src/report/events.js'
 import {
   assembleRunSummary,
   createTelemetrySource,
   subscribeTelemetry,
   TELEMETRY_SCHEMA_VERSION,
   type RunContextRecord,
-  type RunEvent,
   type RunSummaryRecord,
   type TaskTelemetry,
   type TelemetryRecord,
   type TelemetrySink,
   type VxPlugin,
 } from '../src/orchestrator/index.js'
+import { type RunEvent } from '../src/report/index.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
 
 function mkNode(id: string, command?: string): TaskNode {

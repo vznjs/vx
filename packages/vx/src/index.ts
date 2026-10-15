@@ -68,14 +68,8 @@ export type { AffectedChanges } from './workspace/index.js'
 // docs/cli.md § Programmatic API listed all three (item 387, 2026-09-19).
 export type { RunPlan, PlannedTask } from './orchestrator/index.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './orchestrator/index.js'
-export type {
-  CacheFlags,
-  CachePolicy,
-  Logger,
-  OutputView,
-  RunOptions,
-  RunSummary,
-} from './orchestrator/index.js'
+export type { CacheFlags, CachePolicy, RunOptions, RunSummary } from './orchestrator/index.js'
+export type { Logger, OutputView } from './report/index.js'
 // `splitTaskId` is on the façade because the alternative is what happened:
 // with only `taskId()` to JOIN an id and nothing exported to SPLIT one,
 // consumers roll their own `split('#', 2)` and drift from the graph, which
@@ -174,8 +168,8 @@ export type {
   RunReportTask,
   PluginHookName,
   PluginHookHandlers,
-  RunStartInfo,
 } from './orchestrator/index.js'
+export type { RunStartInfo } from './report/index.js'
 // The per-task execution contract a plugin's `executor` capability returns.
 // (`runCommand` / `runSandboxed`, the local executor's own primitives, left
 // the façade 2026-09-10: no executor plugin built on them — `@vzn/vx-reapi`
@@ -231,4 +225,4 @@ export type {
 } from './orchestrator/index.js'
 
 // The serializable per-task views.
-export type { TaskView, OutcomeView } from './orchestrator/index.js'
+export type { TaskView, OutcomeView } from './report/index.js'

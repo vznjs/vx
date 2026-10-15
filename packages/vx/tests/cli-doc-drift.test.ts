@@ -14,13 +14,13 @@ import { describe, expect, it } from 'bun:test'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { SETTINGS } from '../src/settings.js'
 import { CACHE_VERSION, SCHEMA_VERSION } from '../src/cache/index.js'
-import { formatRunSummary } from '../src/orchestrator/summary.js'
+import { formatRunSummary } from '../src/report/summary.js'
 import { parseInfoArgs } from '../src/cli/info.js'
 import {
   formatTaskBlock,
   formatTaskExecutedLine,
   formatTaskHitLine,
-} from '../src/orchestrator/framed-output.js'
+} from '../src/report/framed-output.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 

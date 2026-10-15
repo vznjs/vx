@@ -34,6 +34,10 @@ export function paint(
 
 // util/report.ts
 export function gradientRule(colors: ColorSupport, mark?: string): string
+
+// report/plain-output.ts: `sink` with terminal escapes stripped from task
+// output, for a pipe, CI or `NO_COLOR` (tasks run with `FORCE_COLOR`).
+export function plainOutput(sink: Logger): Logger
 ```
 
 ## Detection rules

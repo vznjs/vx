@@ -16,7 +16,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
-import { type Logger } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/report/index.js'
 import { lock, planRun, run } from './helpers/orchestrator.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 

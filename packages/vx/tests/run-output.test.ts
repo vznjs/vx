@@ -7,7 +7,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { BoundedCapture, droppedOutputLine } from '../src/exec/runner.js'
 import { decodeOutputLog, failedOutputLog } from '../src/orchestrator/output-log.js'
-import { fileLocations } from '../src/orchestrator/path-links.js'
+import { fileLocations } from '../src/report/path-links.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 

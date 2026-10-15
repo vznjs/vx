@@ -24,11 +24,8 @@ import { gitInitCommit } from './helpers/workspace.js'
 import { teardownPlugins } from '../src/orchestrator/plugin-host.js'
 import { type Logger } from '../src/index.js'
 import { lock, planRun, run } from './helpers/orchestrator.js'
-import {
-  createEventBus,
-  planRun as planFromLock,
-  run as runFromLock,
-} from '../src/orchestrator/index.js'
+import { planRun as planFromLock, run as runFromLock } from '../src/orchestrator/index.js'
+import { createEventBus } from '../src/report/index.js'
 import { pluginSource, testPlugin } from './helpers/plugin.js'
 
 /** Short enough that a hung plugin does not hold the suite for 3s. */

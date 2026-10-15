@@ -4,12 +4,8 @@ import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { gitInitCommit } from './helpers/workspace.js'
-import {
-  run as coreRun,
-  type Logger,
-  type RunOptions,
-  type RunSummary,
-} from '../src/orchestrator/index.js'
+import { run as coreRun, type RunOptions, type RunSummary } from '../src/orchestrator/index.js'
+import { type Logger } from '../src/report/index.js'
 import { lock, run } from './helpers/orchestrator.js'
 
 /** Two runs over one lock: the helper's lock flips process.env while it runs, and a concurrent lock refuses that as a config changing a built-in. */

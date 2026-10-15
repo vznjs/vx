@@ -4,7 +4,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { formatRunSummary } from '../src/orchestrator/summary.js'
+import { formatRunSummary } from '../src/report/summary.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 
@@ -134,7 +134,7 @@ describe('module pages state what their file does since the fix', () => {
   })
 
   it("logger.md: a kept server's output streams under its id after the summary (#2054)", () => {
-    expect(src('orchestrator/logger.ts')).toContain('formatKeptLines(')
+    expect(src('report/logger.ts')).toContain('formatKeptLines(')
     expect(page('modules/logger.md')).toMatch(
       /streams below the summary a line at a time under its id/,
     )

@@ -16,7 +16,7 @@
 import { signalExitCode } from '../exec/index.js'
 import { claimExitForSignal, hangupIgnored, killGraceMs, settleWithin } from '../util/index.js'
 import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
-import type { Logger } from './logger.js'
+import type { Logger } from '../report/index.js'
 
 /**
  * How long a SIGTERMed child gets before SIGKILL on the way out. The

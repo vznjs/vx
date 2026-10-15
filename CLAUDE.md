@@ -58,7 +58,9 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
                         continue-taint), execute-task (+ miss-save,
                         sandbox-request), task-hash,
                         projects.ts (the staged config load every reader shares), plugin
-                        stages + seams, events, logger, doctor.ts (the facts `vx info` reports)
+                        stages + seams, doctor.ts (the facts `vx info` reports)
+  src/report/           the run event stream + terminal output: logger, frames, status line, summary,
+                        forecast, plain output (renders outcomes; never runs or reads the cache)
   src/history/          what runs leave behind, read back (read-only SQL): the duration table, flakiness,
                         the `vx last` / `vx why` queries, a miss's key diff
   src/workspace/        discovery, config eval, config-schema.ts (what a config

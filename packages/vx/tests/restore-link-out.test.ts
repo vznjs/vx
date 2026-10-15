@@ -14,7 +14,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promise
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { waitForProducers } from './helpers/local-workspace.js'

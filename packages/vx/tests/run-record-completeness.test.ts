@@ -30,7 +30,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
 import { Cache, type InvocationRecord, type RunRecord } from '../src/cache/index.js'
-import type { Logger } from '../src/orchestrator/index.js'
+import type { Logger } from '../src/report/index.js'
 import {
   cacheKeyDiff,
   LocalHistoryProvider,

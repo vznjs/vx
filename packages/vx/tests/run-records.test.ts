@@ -9,7 +9,7 @@ import { describe, expect, it } from 'bun:test'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { assembleRunRecords, type RunRecordsInput } from '../src/orchestrator/run-records.js'
-import { formatRunSummary } from '../src/orchestrator/summary.js'
+import { formatRunSummary } from '../src/report/summary.js'
 import { VERSION } from '../src/version.js'
 
 const EXEC = { exec: { command: 'noop' } }

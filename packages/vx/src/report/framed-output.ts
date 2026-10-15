@@ -31,7 +31,6 @@ import { formatElapsed, maskedCommand, paint, type ColorSupport } from '../util/
 import { neverStarted } from './summary.js'
 import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
 import { fileMemo, linkPaths } from './path-links.js'
-import { sandboxFixLine } from './sandbox-fix.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
@@ -703,4 +702,20 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
     default:
       return o.status
   }
+}
+
+/**
+ * The fix as the config line it is: `exec.sandbox.allow: { read: ['a'] }`,
+ * or undefined when every denial was a withheld credential path.
+ */
+function sandboxFixLine({
+  withheld: _,
+  inputs: __,
+  ...fix
+}: NonNullable<TaskOutcome['sandboxFix']>): string | undefined {
+  if (Object.keys(fix).length === 0) return undefined
+  const parts = Object.entries(fix).map(
+    ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${p}'`).join(', ')}]`,
+  )
+  return `exec.sandbox.allow: { ${parts.join(', ')} }`
 }
