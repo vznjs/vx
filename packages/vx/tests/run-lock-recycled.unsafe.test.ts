@@ -53,10 +53,12 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
     dir = await real.mkdtemp(path.join(os.tmpdir(), 'vx-run-lock-'))
     lockDirOf = lockDir()
   })
-  beforeEach(() => {
+  beforeEach(async () => {
     lines = []
     polls = 0
     reads.length = 0
+    // A failed row's lock would fail every row after it with EEXIST.
+    await real.rm(lockDir(), { recursive: true, force: true })
   })
   afterAll(async () => {
     await real.rm(dir, { recursive: true, force: true })
@@ -73,7 +75,7 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
     Promise.race([p, Bun.sleep(1_000).then(() => 'waiting' as const)])
 
   /** A wait on a live holder that must still be waiting after `n` polls. */
-  async function waitsFor(end: () => void, n = 3): Promise<void> {
+  async function waitsFor(end: () => unknown, n = 3): Promise<void> {
     let acquired = false
     const pending = acquireRunLock('/w/app', { dir, log }).then((r) => {
       acquired = true
@@ -81,7 +83,7 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
     })
     await polled(n)
     expect(acquired).toBe(false)
-    end()
+    await end()
     await (
       await pending
     )()
@@ -163,6 +165,19 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
   })
 
   /**
+   * Resolves once the shell `pid` has exec'd `sleep`. Until then dash reaps
+   * a background child that dies, so a holder killed in that window was
+   * gone before it could be read as a zombie.
+   */
+  async function execed(pid: number): Promise<void> {
+    const deadline = Date.now() + 4_000
+    while (realFs.readFileSync(`/proc/${pid}/comm`, 'utf8') !== 'sleep\n') {
+      expect(Date.now()).toBeLessThan(deadline)
+      await Bun.sleep(5)
+    }
+  }
+
+  /**
    * A process whose parent never reaps it (`sleep`, as a container's pid 1
    * that never waits): killed, it stays a zombie until the parent goes.
    */
@@ -175,6 +190,7 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
     let text = ''
     while (!text.includes('\n')) text += new TextDecoder().decode((await reader.read()).value)
     reader.releaseLock()
+    await execed(reaper.pid)
     return { pid: Number(text.trim()), reaper }
   }
 
@@ -212,7 +228,7 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
     try {
       await real.mkdir(lockDir())
       await real.writeFile(path.join(lockDir(), `h-${pid}-${startOf(pid)}-1`), '')
-      await waitsFor(() => void zombie(pid))
+      await waitsFor(() => zombie(pid))
     } finally {
       reaper.kill()
     }
@@ -251,6 +267,7 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
           expect(Date.now()).toBeLessThan(deadline)
           await Bun.sleep(20)
         }
+        await execed(reaper.pid)
         await zombie(Number(realFs.readFileSync(pidFile, 'utf8')))
         await real.rm(path.join(app, 'started'))
         await real.writeFile(path.join(app, 'release'), '')
