@@ -17,6 +17,7 @@ import {
   type Setting,
   SETTING_GROUPS,
   SETTINGS,
+  settingEnv,
 } from '../src/settings.js'
 import { validateWorkspace } from '../src/workspace/index.js'
 import { acceptedFlags } from '../src/cli/help.js'
@@ -46,6 +47,19 @@ describe('the settings list', () => {
     expect(envName('debug.timing')).toBe('VX_DEBUG_TIMING')
   })
 
+  it('reads no variable for cache.outputs.clean: config only (M, 2026-10-15)', () => {
+    const env = { VX_CACHE_OUTPUTS_CLEAN: 'false' }
+    expect(settingEnv('cache.outputs.clean', env)).toBeUndefined()
+    expect(
+      resolveSetting(
+        'cache.outputs.clean',
+        { cache: { outputs: { clean: true } } },
+        undefined,
+        env,
+      ),
+    ).toEqual({ value: true, source: 'workspace' })
+  })
+
   it('derives no variable vx sets for tasks, and no two settings share one', () => {
     const names = SETTINGS.map((s) => envName(s.path))
     expect(names.filter((n) => TASK_MARKERS.includes(n))).toEqual([])
@@ -53,7 +67,10 @@ describe('the settings list', () => {
   })
 
   it('names every VX_ variable src reads', () => {
-    const known = new Set([...SETTINGS.map((s) => envName(s.path)), ...TASK_MARKERS])
+    const known = new Set([
+      ...SETTINGS.filter((s) => s.env !== false).map((s) => envName(s.path)),
+      ...TASK_MARKERS,
+    ])
     const stray: string[] = []
     for (const file of sources(SRC)) {
       if (file.endsWith(`${path.sep}settings.ts`)) continue
@@ -261,7 +278,7 @@ function settingsTable(): string {
     const flag =
       s.flag === undefined ? '—' : `\`${s.flag.verb === 'watch' ? 'vx watch ' : ''}${s.flag.name}\``
     const what = s.doc + (s.task !== undefined ? ` A task's own \`${s.task}\` beats it.` : '')
-    return `| \`${s.path}\`${s.config === false ? ' (variable or flag only)' : ''} | \`${envName(s.path)}\` | ${flag} | ${cell(kindHint(s.kind))} | ${cell(s.default)} | ${cell(what)} |`
+    return `| \`${s.path}\`${s.config === false ? ' (variable or flag only)' : ''} | ${s.env === false ? '—' : `\`${envName(s.path)}\``} | ${flag} | ${cell(kindHint(s.kind))} | ${cell(s.default)} | ${cell(what)} |`
   })
   return [
     '| Setting | Variable | Flag | Value | Default | What it does |',
@@ -272,7 +289,7 @@ function settingsTable(): string {
 
 /** The table docs/cli.md § Environment variables holds: each variable vx reads. */
 function variablesTable(): string {
-  const rows = SETTINGS.map(
+  const rows = SETTINGS.filter((s) => s.env !== false).map(
     (s) =>
       `| \`${envName(s.path)}\` | [\`${s.path}\`](schema.md#settings) | ${s.doc.replace(/\|/g, '\\|')} |`,
   )
