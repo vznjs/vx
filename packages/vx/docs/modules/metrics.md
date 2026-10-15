@@ -38,7 +38,7 @@ InputWriter         // { taskId, file, writers: the tasks running when the file 
 in the index:
 
 ```ts
-writeRunFailures(cacheDir, runId, outcomes): void // at run end; only when an outcome carries failedOutput; newest 50 kept
+writeRunFailures(cacheDir, runId, outcomes, warn): void // at run end; only when an outcome carries failedOutput; newest 50 kept; a refused write warns
 runFailures(cacheDir, db, runId?): RunFailures | null // default the latest failed run
 taskLog(cacheDir, db, taskId, runId?): TaskLog | null // default the latest run that recorded the task
 

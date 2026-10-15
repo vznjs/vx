@@ -53,7 +53,7 @@ import {
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
-import type { OutputDirSnapshot, SaveFacts } from './miss-save.js'
+import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
 import { unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { excludedTaint } from './excluded-keys.js'
@@ -1208,17 +1208,9 @@ async function runOnBus(
     // cache closes: its history is written once the wait has decided, or it
     // read `ok` over the exit 1 and fed the flaky list a pass (X-23).
     const historyAfterWait = keepAlive.children.length > 0 && !hold && stop.stoppedBy === undefined
-    // A failed task's output, for `vx last` and an agent: files beside the
-    // index, so a refused write (a full disk, a read-only cache dir) costs
-    // only that output.
-    const recordFailures = (final: readonly TaskOutcome[]): void => {
-      try {
-        writeRunFailures(prepared.cacheDir, runId, final)
-      } catch (err) {
-        if (!isFsRefusal(err)) throw err
-        log.status(`[vx] failed tasks' output not kept: ${err.message} — the verdict above stands`)
-      }
-    }
+    // A failed task's output, for `vx last` and an agent (run-failures.ts).
+    const recordFailures = (final: readonly TaskOutcome[]): void =>
+      writeRunFailures(prepared.cacheDir, runId, final, (m) => log.status(m))
     if (stop.stoppedBy === undefined && !historyAfterWait) {
       recordHistory(() => cache.recordRunBundle(records))
       recordFailures(list)
@@ -1279,31 +1271,8 @@ async function runOnBus(
     // + time-bounded inside teardownPlugins, so a faulty plugin can neither
     // fail nor hang the run. Here on the normal path, after the drains
     // above; every other exit takes it through `teardown` too.
-    // The miss path's output-directory snapshots, taken now that the
-    // directories are old enough for the snapshot's racy window (see
-    // miss-save.ts). A few at a time: each is an lstat + readdir per
-    // prefix; the rows land together at close, in one transaction.
-    // Each walk is held to its entry's rows (item 1087), read here in one
-    // batch: read per snapshot, each read also flushed the snapshots before
-    // it, one transaction apiece (+110 ms at 1,000).
-    const snapshotRows = new Map<string, ReadonlyArray<{ path: string }>>()
-    for (let i = 0; i < outputDirSnapshots.length; i += 900) {
-      const batch = cache.loadOutputFilesBatch(
-        outputDirSnapshots.slice(i, i + 900).map((s) => s.hash),
-      )
-      for (const [hash, rows] of batch) snapshotRows.set(hash, rows)
-    }
-    for (let i = 0; i < outputDirSnapshots.length; i += 32) {
-      await Promise.all(
-        outputDirSnapshots
-          .slice(i, i + 32)
-          .map((s) =>
-            cache.recordOutputDirs?.(s.hash, s.projectDir, s.prefixes, (files) =>
-              s.holds(files, snapshotRows.get(s.hash) ?? []),
-            ),
-          ),
-      )
-    }
+    // The miss path's output-directory snapshots first (miss-save.ts).
+    await recordOutputDirSnapshots(cache, outputDirSnapshots)
     mark('output dir snapshots')
     // Not on a stopped run: one stopped while it waited on another run's
     // lock never held it, and its prune evicted under that run (item 858).

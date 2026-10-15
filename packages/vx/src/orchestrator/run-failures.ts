@@ -9,7 +9,7 @@ import path from 'node:path'
 import { isGroupTask, type TaskOutcome } from '../graph/index.js'
 import { decodeOutputLog } from './output-log.js'
 import { PASS_STATUSES } from '../history/index.js'
-import { splitTaskId } from '../util/index.js'
+import { isFsRefusal, splitTaskId } from '../util/index.js'
 import { fileLocations, fileMemo, type OutputLocation } from '../report/index.js'
 
 /** Failed runs whose output is kept; run ids are UUIDv7, so names sort by age. */
@@ -78,14 +78,26 @@ function failuresOf(outcomes: readonly TaskOutcome[]): StoredFailure[] {
 /**
  * Write the run's failures, when any outcome carries output, and drop all
  * but the newest `KEPT` files. Atomic: a reader sees the whole file or none.
+ * A refused write (a full disk, a read-only cache dir) costs only this
+ * output: `warn` says so and the run's verdict stands.
  */
 export function writeRunFailures(
   cacheDir: string,
   runId: string,
   outcomes: readonly TaskOutcome[],
+  warn: (message: string) => void,
 ): void {
   const tasks = failuresOf(outcomes)
   if (tasks.length === 0) return
+  try {
+    keep(cacheDir, runId, tasks)
+  } catch (err) {
+    if (!isFsRefusal(err)) throw err
+    warn(`[vx] failed tasks' output not kept: ${err.message} — the verdict above stands`)
+  }
+}
+
+function keep(cacheDir: string, runId: string, tasks: TaskFailure[]): void {
   const dir = dirOf(cacheDir)
   mkdirSync(dir, { recursive: true })
   const file = path.join(dir, `${runId}.json`)

@@ -26,6 +26,10 @@ export interface OutputDirSnapshot {
 export function entryHolds(
   node: TaskNode,
 ): (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean
+export async function recordOutputDirSnapshots(
+  cache: CacheLayer,
+  snapshots: readonly OutputDirSnapshot[],
+): Promise<void> // at run end: every entry's rows in one batch read, then the walks, 32 at a time
 
 export interface SaveMissArgs {
   node: TaskNode
