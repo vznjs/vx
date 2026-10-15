@@ -1,14 +1,19 @@
-import type { ColorSupport, paint as Paint } from '../orchestrator/index.js'
-import { CORE_VERBS, errorDocument, maskedLine, nearest, wantsJson } from '../util/index.js'
+import {
+  CORE_VERBS,
+  detectColors,
+  errorDocument,
+  maskedLine,
+  nearest,
+  paint,
+  wantsJson,
+  type ColorSupport,
+} from '../util/index.js'
 
 export async function printHelp(
   pluginCommands: readonly string[] = [],
   verb?: string,
 ): Promise<void> {
   const text = verb === undefined ? helpText(pluginCommands) : verbHelpText(verb)
-  // The orchestrator is already loaded by the plugin-verb lookup every
-  // caller awaits first, so this import costs `vx --version` nothing.
-  const { detectColors, paint } = await import('../orchestrator/index.js')
   process.stdout.write(paintHelp(text, helpColors(process.stdout, detectColors), paint))
 }
 
@@ -33,7 +38,7 @@ const TERM = '#22d3ee' // cyan-400 — a flag, a selector, an example
  * `(for <verb>)` dim), `vx <verb>` bold cyan, and the term an option or
  * example line opens with cyan. Prose and continuation lines stay plain.
  */
-export function paintHelp(text: string, colors: ColorSupport, paint: typeof Paint): string {
+export function paintHelp(text: string, colors: ColorSupport, paint: Paint): string {
   if (!colors.enabled) return text
   const lines = text.split('\n')
   return lines
@@ -449,3 +454,5 @@ export function refuse(
   if (wantsJson(args)) process.stdout.write(errorDocument(code, maskedLine(line)))
   return 1
 }
+
+type Paint = typeof paint

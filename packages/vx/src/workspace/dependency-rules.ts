@@ -1,5 +1,5 @@
 import type { DependencyRule } from '../config.js'
-import { UserError } from '../util/index.js'
+import { refusal } from '../util/index.js'
 import { compileNameGlob } from './filter.js'
 import type { PackageGraph } from './package-graph.js'
 
@@ -40,9 +40,17 @@ export function checkDependencyRules(
     }
   }
   if (broken.length === 0) return
-  throw new UserError(
-    `${broken.length === 1 ? '1 dependency breaks' : `${broken.length} dependencies break`} run.rules.dependencies:\n${broken.map((b) => `  ${b}`).join('\n')}\nDrop the dependency, or change the project's tags or the rule.`,
-    'VX_E_DEPENDENCY_RULE',
+  const headline = `${broken.length === 1 ? '1 dependency breaks' : `${broken.length} dependencies break`} run.rules.dependencies`
+  throw refusal(
+    {
+      headline,
+      what: broken,
+      fix: "drop the dependency, or change the project's tags or the rule",
+    },
+    {
+      code: 'VX_E_DEPENDENCY_RULE',
+      message: `${headline}:\n${broken.map((b) => `  ${b}`).join('\n')}\nDrop the dependency, or change the project's tags or the rule.`,
+    },
   )
 }
 

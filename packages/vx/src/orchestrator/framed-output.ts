@@ -27,8 +27,7 @@
 
 import { withForwardArgs } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { formatElapsed, maskedCommand } from '../util/index.js'
-import { paint, type ColorSupport } from './colors.js'
+import { formatElapsed, maskedCommand, paint, type ColorSupport } from '../util/index.js'
 import { neverStarted } from './summary.js'
 import { outcomeLabel, ranNoCache, skippedReason } from './events.js'
 import { fileMemo, linkPaths } from './path-links.js'

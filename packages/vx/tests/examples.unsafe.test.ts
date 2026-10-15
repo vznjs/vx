@@ -157,10 +157,17 @@ describe('examples/turbo', () => {
     })
     expect(migrate.exitCode).toBe(0)
     const out = migrate.stdout.toString()
-    said.push(out.split('\n').find((l) => l.includes('migrated'))!)
-    expect(out.slice(out.indexOf('files written:')).split('\n').slice(1, 3)).toEqual([
-      '  packages/app/vx.config.ts',
-      '  packages/lib/vx.config.ts',
+    const lines = out.split('\n')
+    said.push(
+      lines
+        .find((l) => l.startsWith('  tasks '))!
+        .trim()
+        .replace(/\s+/, ' '),
+    )
+    const files = lines.findIndex((l) => l.startsWith('  files '))
+    expect(lines.slice(files, files + 2)).toEqual([
+      '  files     packages/app/vx.config.ts',
+      '            packages/lib/vx.config.ts',
     ])
     expect(readFileSync(path.join(root, '.vx/workspace.ts'), 'utf8')).toBe(workspace)
     commit(root)

@@ -157,13 +157,18 @@ describe('vx lock', () => {
       })
       expect({
         code: r.exitCode,
-        err: r.stderr.toString().split('\n').slice(0, 2),
+        err: r.stderr.toString().split('\n'),
         written: existsSync(path.join(root, '.vx/projects.lock.json')),
       }).toEqual({
         code: 1,
         err: [
-          'vx lock: .vx/projects.lock.json not written: 1 dependency breaks run.rules.dependencies:',
+          '✗ vx lock  lock not written',
+          '',
+          '  1 dependency breaks run.rules.dependencies',
           "  lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies",
+          '',
+          "  fix  drop the dependency, or change the project's tags or the rule",
+          '',
         ],
         written: false,
       })

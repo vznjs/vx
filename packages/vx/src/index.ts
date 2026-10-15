@@ -124,6 +124,8 @@ export {
   quoteTsLiteral,
   taskNameProblem,
 } from './workspace/index.js'
+// Output components: a plugin draws its lines with core's, so they look alike.
+export { ui } from './util/index.js'
 export type {
   ApplyMigrationArgs,
   MigrationFormat,

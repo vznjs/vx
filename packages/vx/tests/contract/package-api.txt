@@ -136,12 +136,21 @@ export class TaskLogBuffer {
 == class UserError (src/util/errors.ts)
 export class UserError extends Error {
   readonly code: string
+  parts?: RefusalParts
   constructor(message: string)
   constructor(message: string, code: string)
   constructor(message: string, code = 'VX_E_REFUSED')
 }
+== const cmd (src/util/ui.ts)
+export const cmd = (text: string): Inline => ({ style: 'bold', text })
+== const dim (src/util/ui.ts)
+export const dim = (text: string): Inline => ({ style: 'dim', text })
+== const id (src/util/ui.ts)
+export const id = (text: string): Inline => ({ style: 'id', text })
 == const LOG_WIRE_VERSION (src/orchestrator/task-log-buffer.ts)
 export const LOG_WIRE_VERSION = 1
+== const path (src/util/ui.ts)
+export const path = (text: string): Inline => ({ style: 'bold', text })
 == const PERSISTENT_TODO (src/workspace/migration.ts)
 export const PERSISTENT_TODO =
   'persistent task — set persistent.readyWhen (regex matched against output) so ' +
@@ -175,10 +184,14 @@ export const PROJECT_CONFIG_FILENAMES = [
 ]
 == const TELEMETRY_SCHEMA_VERSION (src/orchestrator/telemetry.ts)
 export const TELEMETRY_SCHEMA_VERSION = 3
+== const tone (src/util/ui.ts)
+export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 == const VERSION (src/version.ts)
 export const VERSION: string = pkg.version
 == function applyMigration (src/workspace/migration.ts)
 export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
+== function code (src/util/ui.ts)
+export function code(frame: string): Block
 == function currentBranch (src/orchestrator/run-context.ts)
 export function currentBranch(
   workspaceRoot: string,
@@ -226,11 +239,15 @@ export function escapeMarkdownCell(value: string): string
 export function executorFallback(reason: string): Error
 == function exitSignal (src/exec/runner.ts)
 export function exitSignal(code: number): string | undefined
+== function fields (src/util/ui.ts)
+export function fields(rows: readonly FieldRow[]): Block
 == function findWorkspaceRoot (src/workspace/workspace.ts)
 export async function findWorkspaceRoot(
   start: string,
   uid: number = process.getuid?.() ?? 0,
 ): Promise<string>
+== function fix (src/util/ui.ts)
+export function fix(action: Inline): Block
 == function foldScriptHooks (src/workspace/migration.ts)
 export function foldScriptHooks(
   pre: string | undefined,
@@ -258,14 +275,20 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 export function machineMemoryBytes(probe: CgroupProbe = {}): number
 == function machineParallelism (src/util/cgroup.ts)
 export function machineParallelism(probe: CgroupProbe = {}): number
+== function next (src/util/ui.ts)
+export function next(command: Inline): Block
 == function normalizeGlob (src/util/paths.ts)
 export function normalizeGlob(glob: string): string
+== function notice (src/util/ui.ts)
+export function notice(p: NoticeParts): Block
 == function outputsOverlap (src/graph/task-graph.ts)
 export function outputsOverlap(rawA: string, rawB: string): boolean
 == function planRun (src/orchestrator/run.ts)
 export async function planRun(options: RunOptions): Promise<RunPlan>
 == function prepareRun (src/orchestrator/prepare.ts)
 export async function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
+== function print (src/util/ui.ts)
+export function print(stream: 'out' | 'err', ...blocks: Block[]): void
 == function pruneOrphanPersistentNotes (src/workspace/migration.ts)
 export function pruneOrphanPersistentNotes(
   projects: readonly {
@@ -287,12 +310,24 @@ export function refuseUnknownOptions<T>(
   options: unknown,
   kinds: PluginOptionKinds<T>,
 ): void
+== function render (src/util/ui.ts)
+export function render(blocks: readonly Block[], colors: ColorSupport): string
+== function report (src/util/ui.ts)
+export function report(mark: string, rows: readonly FieldRow[]): Block
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
 == function splitTaskId (src/util/task-id.ts)
 export function splitTaskId(id: string): [project: string, task: string]
+== function status (src/util/ui.ts)
+export function status(t: Tone, verb: string, headline: Inline): Block
+== function table (src/util/ui.ts)
+export function table(columns: readonly string[], rows: readonly (readonly Inline[])[]): Block
 == function taskNameProblem (src/workspace/config-schema.ts)
 export function taskNameProblem(name: string): string | null
+== function text (src/util/ui.ts)
+export function text(...items: Inline[]): Block
+== function why (src/util/ui.ts)
+export function why(line: Inline): Block
 == function withForwardArgs (src/exec/runner.ts)
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
 == type AdmitContext (src/orchestrator/plugin.ts)
@@ -331,7 +366,8 @@ export interface ApplyMigrationArgs {
   emptyReason?: string
   format?: MigrationFormat
   json?: boolean
-  lock?: (root: string) => Promise<number>
+  lock?: (root: string) => Promise<{ code: number; said: string }>
+  steps?: readonly (readonly [label: string, value: string])[]
   plugins?: readonly WorkspacePlugin[]
 }
 == type At (src/config.ts)
@@ -341,6 +377,10 @@ interface BaseContext {
   readonly workspaceRoot: string
   readonly cacheDir: string
   warn(message: string): void
+}
+== type Block (src/util/ui.ts)
+export interface Block {
+  readonly lines: (colors: ColorSupport) => string[]
 }
 == type CacheConfig (src/config.ts)
 export interface CacheConfig {
@@ -523,6 +563,10 @@ export interface CiContext {
   job?: string
   attempt?: number
 }
+== type ColorSupport (src/util/colors.ts)
+export interface ColorSupport {
+  enabled: boolean
+}
 == type CommandContext (src/orchestrator/plugin.ts)
 export interface CommandContext extends BaseContext {
   readonly concurrency: number
@@ -638,6 +682,8 @@ export interface FailedAttempt {
 }
 == type FailureMode (src/orchestrator/failure-mode.ts)
 export type FailureMode = 'stable' | 'flaky-recoverable' | 'flaky-fatal'
+== type FieldRow (src/util/ui.ts)
+export type FieldRow = readonly [label: string, ...values: Inline[]] | null
 == type FingerprintChange (src/orchestrator/plugin.ts)
 export interface FingerprintChange {
   readonly file: string
@@ -723,6 +769,8 @@ export interface IngestMeta {
   inputComponents?: readonly TaskInputRow[]
   outputs?: DeclaredOutputs
 }
+== type Inline (src/util/ui.ts)
+export type Inline = string | { readonly style: Style; readonly text: string } | readonly Inline[]
 == type InputChanges (src/graph/scheduler.ts)
 export interface InputChanges {
   count: number
@@ -850,6 +898,16 @@ export interface MigrationPlan {
   projects: GeneratedProject[]
   extraFiles: { relPath: string; contents: string }[]
   notes: string[]
+}
+== type NoticeParts (src/util/ui.ts)
+export interface NoticeParts {
+  tone: Tone
+  verb: string
+  headline: Inline
+  what?: readonly Inline[]
+  why?: Inline
+  code?: string
+  fix?: Inline
 }
 == type OptionKind (src/orchestrator/plugin.ts)
 type OptionKind<V> = [V] extends [string]
@@ -1091,6 +1149,13 @@ export interface RawExpr {
 export interface ReachGraph {
   readonly material: readonly string[]
   readonly edges: ReadonlyArray<readonly number[]>
+}
+== type RefusalParts (src/util/errors.ts)
+export interface RefusalParts {
+  readonly headline: string
+  readonly what?: readonly string[]
+  readonly why?: string
+  readonly fix?: string
 }
 == type RemoteCacheLayer (src/cache/layered-cache.ts)
 export interface RemoteCacheLayer {
@@ -1396,6 +1461,8 @@ export interface SchemaReset {
   from: string
   to: string
 }
+== type Style (src/util/ui.ts)
+type Style = Tone | 'dim' | 'bold' | 'id'
 == type SummaryTaskJson (src/orchestrator/run-artifacts.ts)
 export interface SummaryTaskJson {
   id: string
@@ -1682,6 +1749,8 @@ export interface TelemetrySink {
   onRunSummary?(summary: RunSummaryRecord): void
   flush?(signal: AbortSignal): Promise<void>
 }
+== type Tone (src/util/ui.ts)
+export type Tone = 'ok' | 'warn' | 'error' | 'info'
 == type UploadTally (src/cache/cache.ts)
 export interface UploadTally {
   count: number
@@ -1770,3 +1839,4 @@ PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched a
 PLUGIN_HOOKS = ["config","discover","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","output","setup","commands","teardown"]
 PROJECT_CONFIG_FILENAMES = ["vx.config.ts","vx.config.mts","vx.config.js","vx.config.mjs","vx.config.cts","vx.config.cjs"]
 TELEMETRY_SCHEMA_VERSION = 3
+ui = {}

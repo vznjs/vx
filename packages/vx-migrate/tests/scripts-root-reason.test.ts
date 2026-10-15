@@ -42,6 +42,7 @@ async function rootNote(rootScripts: Record<string, string>): Promise<string[]> 
   expect(r.exitCode).toBe(0)
   return (r.stdout.toString() + r.stderr.toString())
     .split('\n')
+    .map((l) => l.slice(12))
     .filter((l) => l.startsWith('root (the workspace root)'))
 }
 

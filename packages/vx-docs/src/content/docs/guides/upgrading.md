@@ -9,7 +9,11 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## orchestrator: record the cache policy as the --cache-policy spec
+## util: output components for every verb and plugin
+
+vx lock prints `✓ vx lock N project configs → .vx/projects.lock.json` and refuses as `✗ vx lock lock not written` with what, why and the fix under it. applyMigration's lock option returns { code, said }.
+
+## orchestrator: name --affected's workspace file, policy as spec
 
 cachePolicy in run history and telemetry records reads `local:rw,remote:r`, the --cache-policy spec, not `lR,lW`.
 

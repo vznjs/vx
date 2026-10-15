@@ -168,7 +168,6 @@ export function install(
     pm === 'pnpm'
       ? `; if pnpm refused a version published within its minimumReleaseAge, list ${packages.join(', ')} under minimumReleaseAgeExclude in pnpm-workspace.yaml`
       : '',
-    ' (what the written files import)',
   )
 }
 
@@ -205,10 +204,12 @@ async function runManager(
   argv: string[],
   what: string,
   ranHint = '',
-  why = '',
 ): Promise<string> {
   const line = argv.join(' ')
-  process.stdout.write(`vx-migrate: ${line}${why}\n`)
+  // The report's `install` row says what ran; a terminal sees it while it
+  // runs, on a line the report then takes the place of.
+  const live = process.stdout.isTTY === true
+  if (live) process.stdout.write(`\n  ${line.slice(0, (process.stdout.columns ?? 80) - 4)} …`)
   // The manager's own output (progress, deprecations, audit, postinstalls)
   // is shown only when it fails: mid-init it buried the report (Growth's
   // first-run funnel F3, 2026-10-13).
@@ -237,6 +238,7 @@ async function runManager(
       failed = `: ${(e2 as Error).message}`
     }
   }
+  if (live) process.stdout.write('\r\x1b[2K\x1b[1A')
   if (code !== 0) {
     process.stderr.write(said)
     throw new UserError(

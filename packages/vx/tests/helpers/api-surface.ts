@@ -171,7 +171,7 @@ function classSurface(lines: readonly string[], start: number): string[] {
   return out
 }
 
-type Kind = 'type' | 'function' | 'class' | 'const'
+type Kind = 'type' | 'function' | 'class' | 'const' | 'namespace'
 
 interface Declaration {
   name: string
@@ -249,6 +249,16 @@ function resolve(file: string, name: string, seen = new Set<string>()): Declarat
   if (own !== undefined) return own
   const bound = bindings(m).get(name)
   if (bound !== undefined) return resolve(bound[1], bound[0], seen)
+  // `import * as ui` then `export { ui }`: the module's own exports, as one.
+  const ns = namespaces(m).get(name)
+  if (ns !== undefined)
+    return {
+      name,
+      kind: 'namespace',
+      file: ns,
+      text: exportedDeclarations(ns).flatMap((d) => d.text),
+      line: 0,
+    }
   for (const t of starExports(m)) {
     const d = resolve(t, name, seen)
     if (d !== undefined) return d

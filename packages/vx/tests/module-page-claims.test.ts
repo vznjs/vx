@@ -253,7 +253,7 @@ describe('a module page lists exactly the fields its interface has', () => {
 // whole run.
 describe("migration.md's overwrite guard says a scripts migration keeps a member's config", () => {
   it('the page names the kept list the report prints', () => {
-    expect(src('workspace/migration.ts')).toContain("'kept (each already has a vx config):'")
+    expect(src('workspace/migration.ts')).toContain("rows.push(['kept', ...keptLines])")
     const guard = blocks('modules/migration.md', 'Nothing is overwritten without')
     expect(guard).toHaveLength(1)
     expect(guard[0]).toContain(

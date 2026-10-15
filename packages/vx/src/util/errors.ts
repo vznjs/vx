@@ -13,6 +13,8 @@ export class UserError extends Error {
    * does not. `VX_E_REFUSED` is any refusal without a code of its own.
    */
   readonly code: string
+  /** The refusal laid out for a terminal (`refusal`); the message is the same in one line. */
+  parts?: RefusalParts
   // Two signatures, not an optional parameter: the package-api record
   // keeps the one-argument form every plugin already calls.
   constructor(message: string)
@@ -22,6 +24,34 @@ export class UserError extends Error {
     this.name = 'UserError'
     this.code = code
   }
+}
+
+/** A refusal in parts, as `ui.notice` draws it: one fact a line, why, and the fix. */
+export interface RefusalParts {
+  readonly headline: string
+  readonly what?: readonly string[]
+  readonly why?: string
+  readonly fix?: string
+}
+
+/**
+ * A UserError whose terminal form is `parts`. Its message, what JSON and
+ * logs carry, is `message` when given, else the parts in one line.
+ */
+export function refusal(
+  parts: RefusalParts,
+  opts: { code?: string; message?: string } = {},
+): UserError {
+  const message =
+    opts.message ??
+    [
+      [parts.headline, ...(parts.what ?? [])].join(': '),
+      ...(parts.why !== undefined ? [parts.why] : []),
+      ...(parts.fix !== undefined ? [parts.fix] : []),
+    ].join('; ')
+  const err = new UserError(message, opts.code ?? 'VX_E_REFUSED')
+  err.parts = parts
+  return err
 }
 
 // A refusal that opens with the config that caused it: the schema's

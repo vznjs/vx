@@ -1787,8 +1787,8 @@ add directories (X-143). Before writing, it
 builds the graph of every task the workspace declares, `graph` stage
 included, and checks the graph rules (`run.rules`), which no run
 checks, `dependencies` (which projects a project may depend on,
-`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `vx lock: .vx/projects.lock.json not written:
-<the rule's refusal>` and writes nothing.
+`VX_E_DEPENDENCY_RULE`) among them: a broken one prints `✗ vx lock  lock not written`
+with the rule's refusal under it and writes nothing.
 
 ```
 vx lock              # Evaluate all vx.config.* now; write .vx/projects.lock.json.
@@ -1842,7 +1842,7 @@ A project with no `vx.config.*` — its tasks from a plugin's `project`
 stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing
 to freeze: the lock records nothing for it, `--check` does not audit
 it, and a run still loads its tasks live. Both verbs name such
-projects that have tasks (`locked 0 project configs → .vx/projects.lock.json (no
+projects that have tasks (`0 project configs → .vx/projects.lock.json (no
 vx.config, so not locked: app, lib)`, five names then `and N more`),
 so an empty lock on a plugin-only workspace never reads like an audit.
 One with no task (core's default `build` aside) is not named.

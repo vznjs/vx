@@ -69,7 +69,8 @@ export interface ApplyMigrationArgs {
   emptyReason?: string
   format?: MigrationFormat
   json?: boolean
-  lock?: (root: string) => Promise<number>
+  lock?: (root: string) => Promise<{ code: number; said: string }>
+  steps?: readonly (readonly [label: string, value: string])[]
   plugins?: readonly WorkspacePlugin[]
 }
 ```
@@ -2518,6 +2519,45 @@ export interface TelemetrySink {
 }
 ```
 
+## `ui`
+
+namespace · `src/util/ui.ts`
+
+```ts
+export type Tone = 'ok' | 'warn' | 'error' | 'info'
+export type Inline = string | { readonly style: Style; readonly text: string } | readonly Inline[]
+export interface Block {
+  readonly lines: (colors: ColorSupport) => string[]
+}
+export const id = (text: string): Inline => ({ style: 'id', text })
+export const path = (text: string): Inline => ({ style: 'bold', text })
+export const cmd = (text: string): Inline => ({ style: 'bold', text })
+export const dim = (text: string): Inline => ({ style: 'dim', text })
+export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
+export function status(t: Tone, verb: string, headline: Inline): Block
+export function text(...items: Inline[]): Block
+export function why(line: Inline): Block
+export type FieldRow = readonly [label: string, ...values: Inline[]] | null
+export function fields(rows: readonly FieldRow[]): Block
+export function fix(action: Inline): Block
+export function next(command: Inline): Block
+export function report(mark: string, rows: readonly FieldRow[]): Block
+export function table(columns: readonly string[], rows: readonly (readonly Inline[])[]): Block
+export function code(frame: string): Block
+export interface NoticeParts {
+  tone: Tone
+  verb: string
+  headline: Inline
+  what?: readonly Inline[]
+  why?: Inline
+  code?: string
+  fix?: Inline
+}
+export function notice(p: NoticeParts): Block
+export function render(blocks: readonly Block[], colors: ColorSupport): string
+export function print(stream: 'out' | 'err', ...blocks: Block[]): void
+```
+
 ## `UserError`
 
 class · `src/util/errors.ts`
@@ -2525,6 +2565,7 @@ class · `src/util/errors.ts`
 ```ts
 export class UserError extends Error {
   readonly code: string
+  parts?: RefusalParts
   constructor(message: string)
   constructor(message: string, code: string)
   constructor(message: string, code = 'VX_E_REFUSED')

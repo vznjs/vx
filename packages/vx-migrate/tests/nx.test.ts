@@ -1561,7 +1561,7 @@ describe('nx() under vx lock', () => {
     async () => {
       expect(vx('lock')).toEqual({
         code: 0,
-        out: 'vx lock: locked 0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib, ws)\n',
+        out: '✓ vx lock  0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib, ws)\n',
         err: '',
       })
       const first = vx('run', 'build', '--all')

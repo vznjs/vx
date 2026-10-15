@@ -34,12 +34,13 @@ $ cat packages/app/package.json
 {"name":"app","scripts":{"prebuild":"rimraf dist","build":"tsc","postbuild":"node scripts/copy.js"}}
 
 $ vx init --dry
-vx init: package.json scripts → vx.config.ts
-note: each script became a task with its command verbatim; caching needs declared inputs and outputs, so no task got a cache block
 
-0 tasks migrated clean, 2 TODOs:
-  app#build: npm ran `prebuild` and `postbuild` around this script without being asked; folded into the command in that order
-  app#build: cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs …
+─ vx-migrate 0.0.637 ─────────────────────────────────────────
+  from      package.json scripts
+  dry run   nothing written
+  tasks     1 todo
+  todo      app#build: npm ran `prebuild` and `postbuild` around this script without being asked; folded into the command in that order
+            app#build: cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs …
 ```
 
 Each part runs in its own subshell, so the chain stops at the first

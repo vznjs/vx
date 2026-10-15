@@ -4,57 +4,31 @@
 // aren't real work and would inflate "N total" misleadingly.
 
 import type { TaskOutcome } from '../graph/index.js'
-import { paint, type ColorSupport } from './colors.js'
 import { tallyOutcomes } from './tally.js'
 import { isCacheHit } from './telemetry.js'
 import { outcomeLabel, projectOutcome, ranNoCache } from './events.js'
 import { isGroupTask } from '../graph/index.js'
-import { formatElapsed } from '../util/index.js'
+import {
+  ERROR,
+  formatElapsed,
+  gradientRule,
+  paint,
+  SUCCESS,
+  WARN,
+  type ColorSupport,
+} from '../util/index.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
 
-const SUCCESS = '#22c55e'
-const WARN = '#eab308'
 // Cache provenance hues (owner): local light blue, remote dark blue —
 // yellow is skipped's color on both meters.
 const LOCAL = '#38bdf8' // sky-400
 const REMOTE = '#2563eb' // blue-600
-const ERROR = '#ef4444'
 const ABORTED = '#f97316' // orange-500: red's neighbour, not a failure
 const NOT_RUN = '#a855f7' // purple-500: stopped before it began, apart from every other state
 const ACCENT = '#06b6d4' // cyan-500: the live region's running word
 
 const BAR_WIDTH = 50
-// Brand gradient for the rule: identity violet → pink (the project /
-// task hues), faded across the dash run. Plain dashes when colors
-// are off.
-const GRADIENT_FROM = [0xa7, 0x8b, 0xfa] as const
-const GRADIENT_TO = [0xf4, 0x72, 0xb6] as const
-// Rule ends flush with the bars: 2 indent + 8 label + 2 gap + 50 cells.
-const RULE_DASHES = 57
-
-/** Total visible rule width: `\u2500 <mark> ` + dashes. Shared by summary + header. */
-function gradientRule(colors: ColorSupport, mark = 'vx'): string {
-  const head = `\u2500 `
-  const dashes = '\u2500'.repeat(Math.max(8, RULE_DASHES + 2 - mark.length))
-  if (!colors.enabled) return `${head}${mark} ${dashes}`
-  const chunks = 8
-  const per = Math.ceil(RULE_DASHES / chunks)
-  let out = ''
-  for (let i = 0; i < chunks; i++) {
-    const seg = dashes.slice(i * per, (i + 1) * per)
-    if (seg.length === 0) break
-    const f = i / (chunks - 1)
-    const hex = `#${GRADIENT_FROM.map((c, j) =>
-      Math.round(c + (GRADIENT_TO[j]! - c) * f)
-        .toString(16)
-        .padStart(2, '0'),
-    ).join('')}`
-    out += paint(hex, seg, colors)
-  }
-  return `${paint(`#${GRADIENT_FROM.map((c) => c.toString(16).padStart(2, '0')).join('')}`, head, colors)}${paint('', mark, colors, { bold: true })} ${out}`
-}
-
 /**
  * Stacked state meter: one ▰ run per bucket, proportional cells via
  * largest-remainder, every non-zero bucket guaranteed at least one

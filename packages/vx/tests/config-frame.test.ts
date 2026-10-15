@@ -90,11 +90,11 @@ describe('vx lock prints a config refusal with its frame', () => {
       })
       expect(r.exitCode).toBe(1)
       const err = r.stderr.toString()
-      expect(err.split('\n')[0]).toStartWith(
-        'vx lock: .vx/projects.lock.json not written: packages/b/vx.config.mjs:7:15: tasks.lint.exec has unknown field "comand"',
+      expect(err).toStartWith(
+        '✗ vx lock  lock not written\n\n  packages/b/vx.config.mjs:7:15\n  tasks.lint.exec has unknown field "comand"',
       )
       expect(err).toContain(
-        "> 7 |       exec: { comand: 'x', timeout: -1 },\n    |               ^\n",
+        "  > 7 |       exec: { comand: 'x', timeout: -1 },\n      |               ^\n",
       )
     } finally {
       await rm(root, { recursive: true, force: true })

@@ -88,3 +88,31 @@ function locate(
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+/** A config refusal laid out for `ui.notice`: where, what, the allowed set, the fix, the frame. */
+export interface ConfigRefusal {
+  where: string
+  problem: string
+  allowed?: string
+  fix?: string
+  frame: string
+}
+
+/** `configErrorFrame`'s answer in parts, or undefined when it has none. */
+export function configRefusal(message: string, cwd: string): ConfigRefusal | undefined {
+  const framed = configErrorFrame(message, cwd)
+  if (framed === undefined) return undefined
+  const cut = framed.indexOf('\n\n')
+  const line = framed.slice(0, cut)
+  const frame = framed.slice(cut + 2)
+  const at = /^(\S+?:\d+:\d+):? (.*)$/s.exec(line)
+  if (at === null) return { where: line, problem: '', frame }
+  const said = /^(.*?)(?: \(allowed: ([^)]*)\))?(?: — did you mean ([^?]+)\?)?$/s.exec(at[2]!)!
+  return {
+    where: at[1]!,
+    problem: said[1]!.replace(/^has /, ''),
+    ...(said[2] !== undefined ? { allowed: said[2] } : {}),
+    ...(said[3] !== undefined ? { fix: `use ${said[3]}` } : {}),
+    frame,
+  }
+}

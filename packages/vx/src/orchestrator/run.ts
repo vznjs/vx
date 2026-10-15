@@ -49,6 +49,8 @@ import {
   secretMask,
   isFsRefusal,
   isUserError,
+  detectColors,
+  type ColorSupport,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
@@ -66,7 +68,6 @@ import { claimOutput, guardedOutput } from './output-host.js'
 import { assembleRunSummary, isPassStatus } from './telemetry.js'
 import type { RunContextRecord } from './telemetry.js'
 import { defaultLogger, type DefaultLogger, resolveOutputView, type Logger } from './logger.js'
-import { detectColors, type ColorSupport } from './colors.js'
 import { plainOutput } from './plain-output.js'
 import { formatPersistentList } from './framed-output.js'
 import { createForecast } from './forecast.js'

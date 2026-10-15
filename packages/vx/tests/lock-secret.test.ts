@@ -58,10 +58,12 @@ describe('vx lock and a secret in an evaluated config', () => {
     expect(r).toEqual({
       code: 1,
       err:
-        'vx lock: .vx/projects.lock.json is committed, and these configs evaluated to a secret value:\n' +
+        '✗ vx lock  lock not written\n\n' +
+        '  these configs evaluated to a secret value\n' +
         '  a: tasks.deploy.exec.command holds $API_TOKEN\n' +
         '  a: tasks.deploy.exec.env.define.NPM_AUTH holds $GH_PAT\n' +
-        'let the shell expand it ($API_TOKEN in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n',
+        '  the lock is committed, so the secret would be too\n\n' +
+        '  fix  let the shell expand it ($API_TOKEN in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n',
       written: false,
     })
   })
@@ -69,9 +71,11 @@ describe('vx lock and a secret in an evaluated config', () => {
   it('the hint names the variable that leaked, not a fixed one', async () => {
     const r = await lock(INTERPOLATED, { API_TOKEN: '', GH_PAT: 'ghp_patvalue456' })
     expect(r.err).toBe(
-      'vx lock: .vx/projects.lock.json is committed, and these configs evaluated to a secret value:\n' +
+      '✗ vx lock  lock not written\n\n' +
+        '  these configs evaluated to a secret value\n' +
         '  a: tasks.deploy.exec.env.define.NPM_AUTH holds $GH_PAT\n' +
-        'let the shell expand it ($GH_PAT in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n',
+        '  the lock is committed, so the secret would be too\n\n' +
+        '  fix  let the shell expand it ($GH_PAT in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n',
     )
   })
 

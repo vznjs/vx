@@ -46,20 +46,25 @@ async function vx(root: string, args: string[]): Promise<VxResult> {
  */
 function todosOf(out: string): Map<string, string[]> {
   const lines = out.split('\n')
-  const start = lines.findIndex((l) => / TODOs?:$/.test(l))
+  const start = lines.findIndex((l) => l.startsWith('  todo  '))
+  const row: string[] = []
+  for (let i = start; start !== -1 && i < lines.length; i++) {
+    if (i > start && !lines[i]!.startsWith(' '.repeat(12))) break
+    row.push(lines[i]!.slice(12))
+  }
   const map = new Map<string, string[]>()
   const add = (id: string, reason: string): void => {
     map.set(id, [...(map.get(id) ?? []), reason])
   }
-  for (let i = start + 1; i < lines.length && lines[i]!.startsWith('  '); i++) {
-    const line = lines[i]!
-    const grouped = /^  (\S+#\S+(?:, \S+#\S+)*)(?: and \d+ more)?:$/.exec(line)
+  for (let i = 0; i < row.length; i++) {
+    const line = row[i]!
+    const grouped = /^(\S+#\S+(?:, \S+#\S+)*)(?: and \d+ more)?:$/.exec(line)
     if (grouped !== null) {
-      for (const id of grouped[1]!.split(', ')) add(id, lines[i + 1]!.slice(4))
+      for (const id of grouped[1]!.split(', ')) add(id, row[i + 1]!.slice(2))
       i++
       continue
     }
-    const single = /^  (\S+#\S+): (.*)$/.exec(line)
+    const single = /^(\S+#\S+): (.*)$/.exec(line)
     if (single !== null) add(single[1]!, single[2]!)
   }
   return map
@@ -373,7 +378,8 @@ describe('vx migrate (turbo)', () => {
     async () => {
       const r = await vx(root, ['--mjs', '--force'])
       expect(r.code).toBe(0)
-      expect(r.out).toContain('turbo.json → vx.config.mjs')
+      expect(r.out).toContain('  files     ')
+      expect(r.out).toContain('vx.config.mjs\n')
       expect(r.out).toContain('vx-preset.mjs')
       const preset = await Bun.file(path.join(root, 'vx-preset.mjs')).text()
       expect(preset).toContain('export const globalInputs')
@@ -401,8 +407,7 @@ describe('vx migrate (turbo)', () => {
     // persistent and nothing depends on it, so its readiness note is no
     // TODO: it counts as clean (item 602). Each package's `deploy` (no
     // script anywhere) is an empty group, clean.
-    expect(result.out).toContain('7 tasks migrated clean')
-    expect(result.out).toContain('4 TODO')
+    expect(result.out).toContain('  tasks     7 clean · 2 todo\n')
     const todos = todosOf(result.out)
     expect([...todos.keys()].sort()).toEqual(['app#build', 'lib#build'])
     expect(todos.get('app#build')!.map((r) => r.split(' ')[0])).toEqual(['dependsOn', 'env'])
@@ -419,9 +424,12 @@ describe('vx migrate (turbo)', () => {
     'says it is set up; asked --native again, refuses to overwrite without --force',
     async () => {
       const again = await vx(root, [])
-      expect([again.code, again.out.split('\n')[0]]).toEqual([
+      expect([again.code, again.out.split('\n').slice(2, 4)]).toEqual([
         0,
-        "vx is already set up here (.vx/workspace.ts and the projects' vx.config files); --force regenerates them from turbo.json.",
+        [
+          "  kept      .vx/workspace.ts and the projects' vx.config files",
+          '  note      vx is already set up here; --force regenerates them from turbo.json',
+        ],
       ])
       const native = await vx(root, ['--native'])
       expect(native.code).toBe(1)
@@ -609,7 +617,7 @@ describe('vx migrate (nx) with no exported graph', () => {
         await fakeNxCli(root)
         const r = await vx(root, ['--dry'])
         expect([r.code, r.err]).toEqual([0, ''])
-        expect(r.out).toContain('vx-migrate: nx graph → vx.config.ts')
+        expect(r.out).toContain('  from      nx graph\n')
         expect(r.out).toContain('packages/pkg-a/vx.config.ts')
         expect(await nxCalls(root)).toBe(1)
       } finally {
@@ -700,16 +708,11 @@ describe('vx migrate (lerna)', () => {
           const r = await vx(root, ['--dry'])
           expect(
             mapped
-              ? [
-                  r.code,
-                  r.err,
-                  r.out.includes('vx-migrate: nx graph → vx.config.ts'),
-                  await nxCalls(root),
-                ]
+              ? [r.code, r.err, r.out.includes('  from      nx graph\n'), await nxCalls(root)]
               : [
                   r.code,
                   r.err,
-                  r.out.includes('vx-migrate: package.json scripts → vx.config.ts'),
+                  r.out.includes('  from      package.json scripts\n'),
                   await nxCalls(root),
                 ],
           ).toEqual([0, '', true, mapped ? 1 : 0])
@@ -731,11 +734,7 @@ describe('vx migrate (lerna)', () => {
       })
       try {
         const r = await vx(root, ['--dry'])
-        expect([r.code, r.err, r.out.includes('vx-migrate: turbo.json → vx.config.ts')]).toEqual([
-          0,
-          '',
-          true,
-        ])
+        expect([r.code, r.err, r.out.includes('  from      turbo.json\n')]).toEqual([0, '', true])
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -1238,7 +1237,7 @@ describe('vx migrate source detection', () => {
         expect(r.code).toBe(0)
         const config = await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))
         expect(config.tasks!.build!.exec?.command).toBe('tsc')
-        expect(`${r.out}${r.err}`).toContain('vx-migrate: turbo.jsonc → vx.config.ts')
+        expect(`${r.out}${r.err}`).toContain('  from      turbo.jsonc\n')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -1289,7 +1288,7 @@ describe('vx migrate source detection', () => {
         await addPackage(root, 'a', { build: 'tsc' })
         const r = await vx(root, ['--dry'])
         expect([r.code, r.err]).toEqual([0, ''])
-        expect(r.out).toContain('vx-migrate: package.json scripts → vx.config.ts')
+        expect(r.out).toContain('  from      package.json scripts\n')
       } finally {
         await rm(root, { recursive: true, force: true })
       }

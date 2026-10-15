@@ -548,7 +548,7 @@ Status and Cache columns.
 
 The colors / framing modules:
 
-- `orchestrator/colors.ts` — ANSI truecolor (`ansi-16m`), gated by
+- `util/colors.ts` — ANSI truecolor (`ansi-16m`), gated by
   `NO_COLOR` / `FORCE_COLOR` / `isTTY`. Programmatic-logger callers
   always see plain text.
 - `orchestrator/framed-output.ts` — the `┌─` frames, the glyph grid

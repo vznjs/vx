@@ -69,7 +69,7 @@ describe('vx lock (e2e)', () => {
       await addProject(root, 'app', ENV_CONFIG)
       // Control: every project configured — no note on either line.
       const lockAll = await vx(root, ['lock'], {})
-      expect(lockAll.out).toBe('vx lock: locked 1 project config → .vx/projects.lock.json\n')
+      expect(lockAll.out).toBe('✓ vx lock  1 project config → .vx/projects.lock.json\n')
       expect((await vx(root, ['lock', '--check'], {})).out).toBe(
         'vx lock --check: up to date (1 project)\n',
       )
@@ -78,7 +78,7 @@ describe('vx lock (e2e)', () => {
       await addProject(root, 'bare')
       const lock = await vx(root, ['lock'], {})
       expect(lock.code).toBe(0)
-      expect(lock.out).toBe('vx lock: locked 1 project config → .vx/projects.lock.json\n')
+      expect(lock.out).toBe('✓ vx lock  1 project config → .vx/projects.lock.json\n')
       const check = await vx(root, ['lock', '--check'], {})
       expect(check.code).toBe(0)
       expect(check.out).toBe('vx lock --check: up to date (1 project)\n')

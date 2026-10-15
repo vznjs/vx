@@ -17,11 +17,13 @@ import {
 } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
-  configErrorFrame,
+  configRefusal,
   DOT_VX_GITATTRIBUTES,
   isUserError,
   relPosix,
+  type RefusalParts,
   secretMask,
+  ui,
 } from '../util/index.js'
 import {
   findProjectConfigs,
@@ -84,7 +86,7 @@ export async function lockCmd(args: readonly string[]): Promise<number> {
 
 /**
  * Projects with tasks and no vx.config: a plugin's tasks, which load live
- * in every run, so both verbs name them — `locked 0 project configs`
+ * in every run, so both verbs name them — `0 project configs`
  * on a turbo() repo read like an audit of something (2026-09-16). One with
  * no task is left out: solidjs/solid's solid-ssr, which has no script Turbo
  * runs, read as a project whose tasks come live from the plugin `project` stage.
@@ -100,13 +102,14 @@ function bareProjects(all: readonly ProjectMeta[], tasked: ReadonlySet<string>):
 export async function lockWorkspace(
   root: string,
   warn: (message: string) => void = warnToStderr,
+  say: (line: string) => void = (line) => ui.print('out', ui.status('ok', 'vx lock', line)),
 ): Promise<number> {
   const check = await audit(root, warn)
   if (check.broken !== null) {
-    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${framed(check.broken)}\n`)
+    notWritten(check.broken, check.brokenParts)
     return 1
   }
-  return await writeLock(root, check)
+  return await writeLock(root, check, say)
 }
 
 /**
@@ -194,7 +197,8 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
         rules,
       })
   } catch (err) {
-    if (isUserError(err)) return { ...out, broken: err.message }
+    if (isUserError(err))
+      return { ...out, broken: err.message, ...(err.parts ? { brokenParts: err.parts } : {}) }
     throw err
   }
   return out
@@ -203,6 +207,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
 interface GraphCheck {
   /** A graph rule's refusal, or a config that does not load; null when sound. */
   broken: string | null
+  brokenParts?: RefusalParts
   /** The lock the configs evaluate to here. */
   fresh: Lockfile
   /** Every project, as a run discovers them from `fresh`. */
@@ -220,23 +225,50 @@ function configured(all: readonly ProjectMeta[]): ConfiguredMeta[] {
 }
 
 /**
- * `vx init`'s last step: the lock, as `vx lock` writes it. A refusal (a
- * graph rule, a config that does not load) is printed and leaves the
- * written configs in place.
+ * `vx init`'s last step: the lock, as `vx lock` writes it, its line
+ * returned for the report's `lock` row. A refusal (a graph rule, a config
+ * that does not load) is printed and leaves the written configs in place.
  */
-export async function lockAfterMigration(root: string): Promise<number> {
+export async function lockAfterMigration(root: string): Promise<{ code: number; said: string }> {
+  let said = ''
   try {
-    return await lockWorkspace(root)
+    const code = await lockWorkspace(root, warnToStderr, (line) => (said = line))
+    return { code, said }
   } catch (err) {
     if (!isUserError(err)) throw err
-    process.stderr.write(`vx lock: ${LOCKFILE_NAME} not written: ${framed(err.message)}\n`)
-    return 1
+    notWritten(err.message, err.parts)
+    return { code: 1, said }
   }
 }
 
-/** A config refusal as a run used to print it: path:line:col and the source line. */
-function framed(message: string): string {
-  return configErrorFrame(message, process.cwd()) ?? message
+/** The lock refused: the refusal's own parts, or its config line and frame, or its message. */
+function notWritten(message: string, parts: RefusalParts | undefined): void {
+  const head = { tone: 'error', verb: 'vx lock', headline: 'lock not written' } as const
+  if (parts !== undefined) {
+    ui.print(
+      'err',
+      ui.notice({
+        ...head,
+        what: [parts.headline, ...(parts.what ?? [])],
+        ...(parts.why !== undefined ? { why: parts.why } : {}),
+        ...(parts.fix !== undefined ? { fix: parts.fix } : {}),
+      }),
+    )
+    return
+  }
+  const c = configRefusal(message, process.cwd())
+  ui.print(
+    'err',
+    c === undefined
+      ? ui.notice({ ...head, what: [message] })
+      : ui.notice({
+          ...head,
+          what: [ui.path(c.where), c.problem],
+          ...(c.allowed !== undefined ? { why: `allowed: ${c.allowed}` } : {}),
+          code: c.frame,
+          ...(c.fix !== undefined ? { fix: c.fix } : {}),
+        }),
+  )
 }
 
 /** Names shown per note: a turbo() repo can have hundreds of bare projects. */
@@ -296,7 +328,11 @@ async function writeIfMissing(file: string, text: string): Promise<void> {
   }
 }
 
-async function writeLock(root: string, check: GraphCheck): Promise<number> {
+async function writeLock(
+  root: string,
+  check: GraphCheck,
+  say: (line: string) => void,
+): Promise<number> {
   const metas = configured(check.all)
   const bare = bareProjects(check.all, check.tasked)
   // By project name, as the refusal names them.
@@ -311,11 +347,12 @@ async function writeLock(root: string, check: GraphCheck): Promise<number> {
   for (const l of secretsIn(Object.fromEntries(reviews.map((r) => [r.name, r.config]))))
     if (!named.has(l.at)) leaks.push(l)
   if (leaks.length > 0) {
-    process.stderr.write(
-      `vx lock: ${LOCKFILE_NAME} is committed, and these configs evaluated to a secret value:\n` +
-        leaks.map((l) => `  ${l.at}\n`).join('') +
-        `let the shell expand it ($${leaks[0]!.name} in the command, the name in exec.env.passThrough) instead of reading process.env in the config\n`,
-    )
+    notWritten('', {
+      headline: 'these configs evaluated to a secret value',
+      what: leaks.map((l) => l.at),
+      why: 'the lock is committed, so the secret would be too',
+      fix: `let the shell expand it ($${leaks[0]!.name} in the command, the name in exec.env.passThrough) instead of reading process.env in the config`,
+    })
     return 1
   }
   await writeLockfile(root, check.fresh)
@@ -324,9 +361,7 @@ async function writeLock(root: string, check: GraphCheck): Promise<number> {
     writeIfMissing(path.join(root, '.vx', '.gitattributes'), DOT_VX_GITATTRIBUTES),
   ])
   const n = metas.length
-  process.stdout.write(
-    `vx lock: locked ${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}\n`,
-  )
+  say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
   return 0
 }
 

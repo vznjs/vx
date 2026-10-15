@@ -322,7 +322,7 @@ describe('vx-migrate ends with the lock', () => {
       const r = await migrate(root, env, [])
       expect([r.code, r.err]).toEqual([0, ''])
       expect(r.out).toContain(
-        '\nvx lock: locked 2 project configs → .vx/projects.lock.json\n\nnext: ',
+        '\n  lock      2 project configs → .vx/projects.lock.json\n\n  next  ',
       )
       expect(await Bun.file(path.join(root, '.vx/projects.lock.json')).exists()).toBe(true)
     } finally {
@@ -375,7 +375,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           false,
         ])
         expect(r.out).toContain(
-          'note: installed @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history (pnpm add -D -w',
+          '  ran       pnpm add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history',
         )
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -508,9 +508,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           dry.code,
           noInstall.code,
           await calls(root),
-          dry.out.includes(
-            'note: would install @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history (dry run)',
-          ),
+          dry.out.includes('  install   @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history\n'),
         ]).toEqual([0, 0, '', true])
         expect(await readFile(path.join(root, 'package.json'), 'utf8')).toBe(before)
       } finally {
@@ -538,14 +536,12 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           'turbo.json',
           true,
         ])
-        expect(plan.notes).toContain(
-          'would install @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history (dry run)',
-        )
+        expect(plan.notes).toContain('install: @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history')
         expect([kept.source, kept.files.map((f) => f.path)]).toEqual([
           'turbo.json',
           ['.vx/workspace.ts', '.vx/.gitignore'],
         ])
-        expect(keep.err).toContain('vx-migrate: would install')
+        expect(keep.err).toContain('vx-migrate: install: ')
         expect(wet.err).toBe('vx-migrate: --format json prints the plan, so it needs --dry\n')
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -643,7 +639,7 @@ describe('vx init in a Turbo repo', () => {
           expect([
             r.code,
             r.err,
-            r.out.includes('vx-migrate: turbo.json → vx.config.ts'),
+            r.out.includes('  tasks     '),
             await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
             ws.includes('turbo()'),
           ]).toEqual([0, '', !keep, !keep, keep])
@@ -712,7 +708,7 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
     const ran = path.join(root, 'real', 'ran')
     const out = existsSync(ran)
       ? readFileSync(ran, 'utf8').trim()
-      : r.stdout.toString().split('\n').slice(1, 2)[0]!
+      : r.stdout.toString().split('\n')[0]!
     await rm(root, { recursive: true, force: true })
     return out
   }
@@ -729,8 +725,8 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
 
   it("shows the manager's own output only when it fails", async () => {
     await probe('', '#!/bin/sh\necho deprecated-noise\n')
-    expect(said).not.toContain('deprecated-noise')
-    expect(said).toContain('vx-migrate: pnpm add -D -w @vzn/vx (what the written files import)')
+    // Off a terminal nothing prints: the report's `ran` row names the command.
+    expect(said).toBe('')
     await probe('', '#!/bin/sh\necho why-it-failed >&2\nexit 1\n')
     expect(said).toContain('why-it-failed')
   })
