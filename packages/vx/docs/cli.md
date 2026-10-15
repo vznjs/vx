@@ -1393,7 +1393,10 @@ run...` precedes it.
    heard from its nearest directory that exists and each one above it,
    and a watch whose
    directory was replaced is armed again (an OS watch holds the deleted
-   one; `watch-recreated-dirs.test.ts`). Under `--filter` or
+   one; `watch-recreated-dirs.test.ts`). There, a project directory
+   that is still the same one starts no cycle: a task writing at its
+   top level moved its mtime, which macOS reports to the parent
+   (`watch-project-dir-write.test.ts`). Under `--filter` or
    `--affected` the scope is the one resolved at start, and a new
    project joins it only as a dependency of it. A task's own declared outputs (`cache.outputs.files`,
    `outputs.workspaceFiles`; a plugin's `project` stage counts, as in

@@ -244,6 +244,10 @@ git checkout packages`) was no event to its own arm, nor to the
      FSEvents reports no child of a watched directory removed with it,
      so on macOS the parent's arm alone never heard `packages/` go. A
      project's parent's `.gitignore` is heard there too, as the root's is.
+     A project directory still the inode these arms first saw is no
+     change there (`heldDirs`): its own arm judges what is in it, and a
+     task's write at its top level started a second cycle on macOS
+     (`tests/watch-project-dir-write.test.ts`).
    - Filter out `node_modules` / `.git` / `.vx/cache` path segments,
      `.tsbuildinfo` / `~` suffixes (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger
