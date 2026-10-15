@@ -26,6 +26,7 @@ export {
 export { configErrorFrame, configRefusal } from './config-frame.js'
 export {
   detectColors,
+  dumbTerminal,
   ERROR,
   identityColor,
   paint,

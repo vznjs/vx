@@ -7,7 +7,7 @@ alternate screen, no cursor addressing beyond that.
 ## OutputWriter
 
 `createOutputWriter(stream, opts)` is the serialization point for
-**all** logger stdout. Inert (pure passthrough) on non-TTY streams and
+**all** logger stdout. Inert (pure passthrough) on non-TTY streams, under `TERM=dumb`, and
 when disabled (CI). When active:
 
 - `setRegion(lines)` / `setStatus(line)` replace the display; unforced

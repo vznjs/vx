@@ -2371,6 +2371,9 @@ or `; projects and tasks: …` (M-57).
 
 An empty target (`vx show ''`) is refused: omit it to list every project.
 
+In a workspace with no project, the list is empty and `vx show` says so
+on stderr (`no projects`) and names `vx init`.
+
 Exit codes: `0` success; `1` parse error or unknown target.
 
 Two runs on one workspace take turns: the second waits for the first's
@@ -3118,6 +3121,7 @@ ANSI truecolor (`ansi-16m`) sequences, gated by env:
 | `FORCE_COLOR=0` / `=false`  | Force off, on a TTY too.                                 |
 | `FORCE_COLOR=…` (any other) | Force on — `1`, `true`, `2`, `3`, the empty string, etc. |
 | (neither)                   | On iff `stdout.isTTY`.                                   |
+| `TERM=dumb`                 | Off unless `FORCE_COLOR` forces it, and no live region.  |
 
 `0` and `false` are `FORCE_COLOR`'s "off" by the convention
 supports-color, chalk and Node follow; until 2026-09-24 vx read every

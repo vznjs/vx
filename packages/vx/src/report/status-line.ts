@@ -5,7 +5,7 @@
 // ordinary write erases the status display first, writes its content,
 // then redraws, so the display can never interleave with task output.
 
-import { paint, type ColorSupport } from '../util/index.js'
+import { dumbTerminal, paint, type ColorSupport } from '../util/index.js'
 import { formatTaskRow, paintIdParts, TIME_COL } from './framed-output.js'
 import type { BlockedTask } from './forecast.js'
 
@@ -86,7 +86,7 @@ export function createOutputWriter(
   stream: StatusStream,
   opts: OutputWriterOptions = {},
 ): OutputWriter {
-  const enabled = (opts.enabled ?? true) && stream.isTTY === true
+  const enabled = (opts.enabled ?? true) && stream.isTTY === true && !dumbTerminal()
   const minRedrawMs = opts.minRedrawMs ?? 100
   const forceFloorMs = opts.forceFloorMs ?? 30
   const now = opts.now ?? Date.now

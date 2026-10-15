@@ -27,6 +27,8 @@ export interface PaintOptions {
 }
 
 export function detectColors(stream?: NodeJS.WriteStream): ColorSupport
+// `TERM=dumb`: no colour (unless FORCE_COLOR) and no live region (status-line.ts).
+export function dumbTerminal(): boolean
 export function paint(
   color: string,
   text: string,
@@ -51,12 +53,12 @@ export function plainOutput(sink: Logger): Logger
 
 Standard env precedence:
 
-| Env                              | Result                         |
-| -------------------------------- | ------------------------------ |
-| `NO_COLOR=<non-empty>`           | off — overrides `FORCE_COLOR`  |
-| `FORCE_COLOR=0` / `false`        | off, even on a TTY             |
-| `FORCE_COLOR=<any other>` or `=` | on                             |
-| neither                          | on iff `stream.isTTY === true` |
+| Env                              | Result                                                  |
+| -------------------------------- | ------------------------------------------------------- |
+| `NO_COLOR=<non-empty>`           | off — overrides `FORCE_COLOR`                           |
+| `FORCE_COLOR=0` / `false`        | off, even on a TTY                                      |
+| `FORCE_COLOR=<any other>` or `=` | on                                                      |
+| neither                          | on iff `stream.isTTY === true` and `TERM` is not `dumb` |
 
 `0` and `false` are the convention's "off" (supports-color, chalk,
 Node); reading any non-empty `FORCE_COLOR` as on painted a piped CI log
@@ -103,6 +105,9 @@ Reports and notices are built from these by [`ui`](ui.md).
   unset, each on a TTY and piped, with and without `NO_COLOR`.
 - `paint` no-op when disabled.
 - `paint` emits sequences when enabled.
+
+`tests/term-dumb.test.ts`: `TERM=dumb` gets no colour unless
+`FORCE_COLOR` asks, and `createOutputWriter` draws no live region on it.
 
 `tests/ci-output.test.ts`: a piped run with `FORCE_COLOR=0` or `=false`
 carries no escape sequence, and the task still sees the value as set.

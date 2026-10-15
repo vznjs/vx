@@ -34,7 +34,7 @@ export interface PaintOptions {
  *   NO_COLOR non-empty          → off (overrides FORCE_COLOR)
  *   FORCE_COLOR=0 or =false     → off, even on a TTY
  *   FORCE_COLOR any other value → on (the empty string too)
- *   else: on iff stdout is a TTY.
+ *   else: on iff stdout is a TTY that is not `TERM=dumb`.
  * `0` and `false` are the convention's "off" (supports-color, chalk,
  * Node); reading every non-empty value as on painted a piped CI log that
  * set `FORCE_COLOR=0` (nx#35292's bug).
@@ -45,13 +45,21 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
     ? false
     : force !== undefined
       ? force !== '0' && force !== 'false'
-      : stream.isTTY === true
+      : stream.isTTY === true && !dumbTerminal()
   return {
     enabled,
     get columns() {
       return stream.isTTY === true ? stream.columns : undefined
     },
   }
+}
+
+/**
+ * `TERM=dumb` (Emacs `M-x shell`, some CI log viewers) can neither paint
+ * nor move the cursor: vx prints to it as off a terminal.
+ */
+export function dumbTerminal(): boolean {
+  return process.env['TERM'] === 'dumb'
 }
 
 // Bun.color() is pure for a given (hex, mode) pair but does FFI work
