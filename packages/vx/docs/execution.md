@@ -326,10 +326,8 @@ terminal and a task succeeding or failing. Read it alongside
        session: the others are torn down (SIGTERM, grace, SIGKILL) and
        a non-zero exit makes the run exit 1, so a script's `vx run dev`
        fails when the server it started fell over. That server then reads
-       `failed` with its own exit in the rewritten `--summarize` and in the
-       report `--report-file` writes; one a Ctrl-C stopped does not. The
-       stdout `--report` prints above the footer, so it reads as the
-       footer does, before the wait. Under
+       `failed` with its own exit in the rewritten `--summarize`; one a
+       Ctrl-C stopped does not. Under
        `holdPersistent` (the watch loop) run() instead returns them on
        `RunSummary.persistent`, still running, for the caller to stop;
        one that dies on its own after that is said, its `stop()` is not.
@@ -543,8 +541,7 @@ Every surface uses one outcome vocabulary: task axis `success` /
 `failed` / `skipped` / `aborted` (+ `running` live), cache axis
 `miss` / `up-to-date` (fresh) / `local` / `remote`. The `--verbosity 1`
 table spells the combinations out as `success` / `restored-local` /
-`restored-remote` / `up-to-date`; `--report` keeps the two axes as its
-Status and Cache columns.
+`restored-remote` / `up-to-date`.
 
 The colors / framing modules:
 
@@ -644,9 +641,8 @@ The two flags differ only in output format:
   `formatGraphDot`.
 
 Mutually exclusive: `--dry` and `--graph` together is a parse error.
-Combining either with `--summarize`, `--profile`, `--report` or
-`--report-file` is a parse error (those need a real run; the last two
-were accepted and wrote nothing until item 992).
+Combining either with `--summarize` or `--profile` is a parse error
+(those need a real run).
 
 ## Run artifacts
 
@@ -659,16 +655,11 @@ were accepted and wrote nothing until item 992).
   wallclock span. Default path: `profile.json` (cwd-relative). One
   `tid` per project so concurrent tasks render on distinct lanes.
   Open with `chrome://tracing` or https://ui.perfetto.dev.
-- **`--report[=markdown]`** — a markdown table to stdout
-  above the footer (CI step summaries), through `RunOptions.beforeFooter`.
-- **`--report-file <path>`** — the same report APPENDED to `<path>`
-  (`$GITHUB_STEP_SUMMARY`).
 
 Writers live in `orchestrator/run-artifacts.ts:writeRunSummary` /
-`writeRunProfile` and `orchestrator/run-report.ts`. A `--summarize` or
-`--profile` write error is surfaced via `log.status`, a `--report-file`
-one on stderr (`cli/run.ts`); neither changes the run's exit code — the
-run already happened.
+`writeRunProfile`. A write error is surfaced via `log.status` and does
+not change the run's exit code — the run already happened. A CI job
+summary is `@vzn/vx-ci`'s.
 
 ## Why each rule
 

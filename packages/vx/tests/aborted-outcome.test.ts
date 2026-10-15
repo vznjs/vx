@@ -178,11 +178,6 @@ describe('a task killed by a shutdown signal', () => {
       // footer counts it in the total.
       expect(r.out).toMatch(/\n└─ r#doomed ── \([\d.]+m?s\) aborted\n/)
       expect(r.out).toContain('\n            1 success · 1 aborted · 2 total\n')
-
-      const rep = vx(root, 'run', 'fine', 'doomed', '--report=markdown')
-      expect(rep.out).toContain('\n## vx run — interrupted\n')
-      expect(rep.out).toContain('**2 tasks** · 1 success · 0 failed · 0 cached · 1 aborted · ')
-      expect(rep.out).toMatch(/\|\s*r#doomed\s*\|\s*aborted\s*\|/)
     },
     TIMEOUT,
   )
@@ -224,7 +219,7 @@ describe('a task killed by a shutdown signal', () => {
   )
 
   it(
-    'leaves a run with nothing aborted byte-identical — no aborted row or count, no report column',
+    'leaves a run with nothing aborted byte-identical — no aborted row or count',
     async () => {
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
@@ -239,7 +234,7 @@ describe('a task killed by a shutdown signal', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-qm', 'init')
 
-      const r = vx(root, 'run', 'fine', '--report=markdown')
+      const r = vx(root, 'run', 'fine')
       expect(r.code).toBe(0)
       expect(r.out).not.toMatch(/not run/)
       expect(r.out).not.toMatch(/aborted/)

@@ -342,30 +342,6 @@ export const MORE: readonly Feature[] = [
     },
   },
   {
-    slug: 'markdown-report',
-    title: 'A run report for your PR',
-    category: 'output',
-    hook: 'A short markdown report of the run, ready for a pull request or a job summary.',
-    body: [
-      'A wall of CI log is the wrong thing to read on a pull request. vx writes a compact report: what ran, what failed, what the cache saved.',
-      '`--report` prints it; `--report-file` appends it to a file, such as GitHub’s `$GITHUB_STEP_SUMMARY`, where it shows on the job page.',
-    ],
-    example: {
-      lang: 'sh',
-      code: 'vx run build test --all --report-file "$GITHUB_STEP_SUMMARY"',
-    },
-    image: 'markdown-report.png',
-    imageAlt: 'A markdown run report on a GitHub job page.',
-    docs: {
-      label: '--report',
-      href: 'cli/#vx-run',
-    },
-    deepDive: {
-      label: 'Output that fits the run',
-      href: 'blog/output-that-fits-the-run/',
-    },
-  },
-  {
     slug: 'run-json',
     title: 'Every run as JSON',
     category: 'output',

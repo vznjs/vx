@@ -9,7 +9,7 @@
 //
 // Also pins the verb typo hint, which shares the edit-distance helper.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
@@ -55,16 +55,12 @@ describe('a task without a cache block is `no-cache`, never `miss`', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('row words, legend and report column all agree', async () => {
-    const report = path.join(root, 'report.md')
-    const r = vx(root, ['run', 'build', '--all', `--report-file=${report}`])
+  it('row words and legend agree', () => {
+    const r = vx(root, ['run', 'build', '--all'])
     expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
     expect(r.out).toMatch(/success miss {5}cached#build/)
     expect(r.out).toMatch(/success no-cache plain#build/)
     expect(r.out).toContain('local 1○ 1↑')
-    const md = await readFile(report, 'utf8')
-    expect(md).toMatch(/cached#build +\| success +\| miss/)
-    expect(md).toMatch(/plain#build +\| success +\| no-cache/)
     // `--summarize` builds its own rows (a documented payload) and carries no
     // cache word; changing that shape is a decision, not a relabel.
   })

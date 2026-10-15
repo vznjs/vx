@@ -499,15 +499,12 @@ than run with the args unheard.
 | `--summarize[=<path>]`                     | optional value | off                                                        | Write per-run JSON to `<cacheDir>/runs/<run_id>.json` (or the explicit path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `--profile[=<path>]`                       | optional value | off (`profile.json` when set)                              | Write Chrome-trace JSON of the run's wallclock spans.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `--tag <k=v>`                              | repeatable     | (none)                                                     | Label this invocation. Recorded on the run's `invocations` row so dashboards can filter runs. `--tag=k=v` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `--report[=markdown]`                      | optional value | off                                                        | At the end of the run, print a markdown run report to stdout, above the footer. Only `markdown` is supported (`json` is reserved).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `--report-file <path>`                     | value          | off                                                        | After the run, APPEND the same markdown report to `<path>`, making its directory as the other output paths do. Use this for `$GITHUB_STEP_SUMMARY` — redirecting stdout captures the whole run log too. `--report-file=<path>` form too.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 Mutual exclusion:
 
 - `--dry` and `--graph` — both skip execution; pick one.
-- `--dry` or `--graph` with `--summarize`, `--profile`, `--report` or
-  `--report-file` — each needs a real run to write about. `--report` and
-  `--report-file` were accepted and silently wrote nothing until item 992.
+- `--dry` or `--graph` with `--summarize` or `--profile` — each needs a
+  real run to write about.
 
 Unknown flags are a parse error (`unknown flag: --foo`), naming the
 nearest flag the verb accepts when one is within two edits
@@ -531,8 +528,8 @@ name is the verb, and would change what `vx build` means the day one
 was declared.
 
 **Optional-value flags take their value with `=` only.** `--affected`,
-`--exclude-dependencies`, `--dry`, `--graph`, `--summarize`, `--profile`,
-and `--report` are all valid bare, so a following word is
+`--exclude-dependencies`, `--dry`, `--graph`, `--summarize` and
+`--profile` are all valid bare, so a following word is
 read as a task name (a `--graph` word ending `.svg`, `.png`, `.json`
 and the like is refused, see § Turbo and Nx flags) — `vx run --affected build` means "run
 `build`, affected scope", and there is no way to tell that apart from
@@ -547,9 +544,9 @@ Pass bare `--exclude-dependencies` for the first, omit the flag for the
 second.
 
 Value flags (`--filter`, `--concurrency`, `--output-logs`,
-`--verbosity`, `--cache-dir`, `--report-file`, …)
+`--verbosity`, `--cache-dir`, …)
 accept both `--flag value` and `--flag=value`. In the space form,
-`--cache-dir` and `--report-file` reject a value
+`--cache-dir` rejects a value
 starting with `-`: that is always a swallowed flag (an unquoted empty
 shell variable), never a path or task id. Use the `=` form for a literal
 leading dash.
@@ -567,7 +564,7 @@ An empty `=` value means "no value" on four flags, which then act like
 their bare forms: `--profile=` writes `profile.json`, `--summarize=`
 writes `<cacheDir>/runs/<run_id>.json`, `--graph=` prints to stdout and
 `--affected=` uses the default base. Every other flag refuses an empty
-value: `--dry=`, `--report=`, `--continue=` and
+value: `--dry=`, `--continue=` and
 `--exclude-dependencies=` as well as the ones with no bare form
 (`--retries=`, `--timeout=`, `--cache-dir=`, `--filter=`, `--cache-policy=`).
 
@@ -691,8 +688,7 @@ What the shapes mean in each column:
   everything, the blocker included (`⊘ skipped app#deploy • blocked by
 lib#build`; a fail-fast skip, which nothing blocked, carries no
   suffix). Every view that lists tasks prints it, a dependency's
-  included: nothing prints below the footer. `--report` reads the same fact into the status cell,
-  `skipped (blocked by lib#build)`.
+  included: nothing prints below the footer.
 - **`frame, or one-liner if quiet`** — a cache hit with stored stdout is
   worth a frame (the output is the point); a hit with nothing to replay
   compresses to one line, which is what keeps a 2000-task warm run
@@ -1154,7 +1150,7 @@ without reading the history. Every other row is byte-identical.
 **`durationMs` is always what THIS run spent on the task.** For a cache
 hit that is the probe + restore, not the exec time the entry was stored
 with — so it is small even for an expensive task. The work a hit
-_skipped_ is a different number; `--report`'s "N saved" is the surface
+_skipped_ is a different number; the footer's time saved is the surface
 that reports it.
 
 ### `--profile[=<path>]`
@@ -1191,82 +1187,6 @@ from the per-task `hrtime.bigint()` spans the runner captures.
 `cache-hit-remote`, `failed`).
 
 Default path: `profile.json` (cwd-relative).
-
-### `--report[=markdown]`
-
-At the end of a real run, prints a markdown run report to **stdout**,
-just above the footer: nothing prints below the footer. The report
-itself is machine-clean. One header line of
-totals plus a table, one row per task:
-
-```markdown
-## vx run — passed
-
-**3 tasks** · 3 success · 0 failed · 2 cached (1 up-to-date, 1 restored) · 1.23s total · 2.65s saved
-
-| Task      | Status  | Cache      | Duration |
-| --------- | ------- | ---------- | -------- |
-| web#build | success | miss       | 1.23s    |
-| web#test  | success | local      | 5ms      |
-| api#test  | success | up-to-date | 3ms      |
-```
-
-`Status` is the task outcome (`success` / `failed (exit N)`, with the
-signal an exit above 128 stands for, `failed (exit 137, 128 + SIGKILL)`,
-or a timeout's reason, `failed (timed out, exit 143)`, a persistent
-task's `never ready: …`, or a sandboxed task's violation count, or
-`skipped`, naming what blocked it: `skipped (blocked by lib#build)`);
-`Cache` is its provenance (`miss` / `no-cache` for a task no cache
-answered for — no `cache` block, or a `--no-cache` / `--cache-policy=local:` run —
-which never consulted one / `local` / `remote` / `up-to-date` /
-`—`). A stopped run (a Ctrl-C teardown) reads `## vx run — interrupted`,
-and its tasks keep the terminal's words: one the signal killed is
-`aborted` with its time so far, one the stop reached before it ran is
-`not run` with no time. Both count in the header's task total, listed
-as `1 aborted · 1 not run`, so a red report with no failing row still
-says why. Group tasks (no `exec`) get neither — they are not
-work, and the header's counts match the terminal summary and
-`--summarize` exactly.
-
-The two durations in the header mean different things, and the
-distinction is the point:
-
-- **`N total`** sums `Duration` over the tasks that actually EXECUTED,
-  an aborted task's time so far included — the time this run spent.
-- **`N saved`** sums the exec times the cache hits SKIPPED, read from
-  each entry as it was stored (above, 2.01s and 640ms). It is
-  deliberately not the hits' `Duration` column, which is the restore
-  they cost this run: summing that reported a task taking 2.01s cold
-  as "6ms saved".
-
-Only `markdown` is supported today (`json` is reserved; a bad value is a
-parse error). Built purely from the run's outcomes after it returns — it
-adds zero cost when both flags are absent.
-
-### `--report-file <path>`
-
-Writes the same markdown report to a file instead of (or as well as)
-stdout, and is the form to use for a CI step summary:
-
-```sh
-vx run ci --report-file="$GITHUB_STEP_SUMMARY"
-```
-
-**Do not redirect stdout for this.** The report itself is machine-clean,
-but stdout is not vx's alone — the status logger writes frames, meter
-bars and `::group::` workflow commands to the same stream, so
-`--report=markdown >> "$GITHUB_STEP_SUMMARY"` puts the entire run log
-into the step summary above the table.
-
-The report is **appended**, never truncated: `$GITHUB_STEP_SUMMARY` is a
-shared, append-only file that other steps in the same job also write to,
-so overwriting it would silently discard their content. Passing both
-flags writes the report to stdout AND appends it to the file. A run
-stopped by Ctrl-C or SIGTERM still writes both, its stopped tasks
-`aborted`. A write
-failure is reported (`vx: failed to write report to …`) but does not
-change the exit code — the run already happened, the same contract
-`--summarize` and `--profile` follow.
 
 ### `--tag <k=v>`
 
@@ -1555,7 +1475,7 @@ run):
 
 - `--dry` / `--graph` — those skip execution; nothing to watch.
 - `--summarize` / `--profile` — would overwrite their target per cycle.
-- `--report` / `--report-file` / `--verbosity <n>` (n > 0) / `--format json` — all
+- `--verbosity <n>` (n > 0) / `--format json` — both
   format ONE run's result; a watch loop has no single run to report. (`--verbosity 0`
   is accepted: it asks for what watch already prints.)
 
@@ -2316,8 +2236,8 @@ document (`schemas/summary.json`: `runId`, `ok`, `exitCode`, one row per
 task with its status, exit code and key). Everything else the run writes,
 the frame and the tasks' output with it, goes to stderr, so
 `vx run build --all --format json | jq .ok` reads only the result. It
-refuses `--dry` (use `--dry=json`), a bare `--graph` and
-`--report=markdown`, which print on stdout too.
+refuses `--dry` (use `--dry=json`) and a bare `--graph`, which print on
+stdout too.
 
 ### Error codes
 
@@ -3121,9 +3041,8 @@ Colors are the two conventions in § Output format › Colors (`NO_COLOR`,
 `FORCE_COLOR`). A truthy `CI` picks the CI output flow and
 `GITHUB_ACTIONS` its `::group::` framing (§ Output); the run's
 `invocations` row records the provider, the first truthy of
-`GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`: `--report`
-prints to stdout, and `--report-file=<path>` appends to a file, so on
-Actions pass `--report-file="$GITHUB_STEP_SUMMARY"`. A sandboxed
+`GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE`, `CIRCLECI`, then `CI`. Core never reads `GITHUB_STEP_SUMMARY`; the job summary is
+`@vzn/vx-ci`'s. A sandboxed
 task's temp dir sits under `CLAUDE_CODE_TMPDIR` (else `CLAUDE_TMPDIR`,
 else `/tmp/claude`), the sandbox runtime's own convention
 (`docs/modules/sandbox-runtime.md`).

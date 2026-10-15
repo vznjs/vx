@@ -48,7 +48,7 @@ export function acquireRunLock(
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy,
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
-//   summarize?, beforeFooter? (text above the footer), footer? (false: none), profile?, tags?, command?, log?, bus?,
+//   summarize?, footer? (false: none), profile?, tags?, command?, log?, bus?,
 //   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
 //   holdPersistent? (return the requested persistent tasks still running),
 //   keep? (an earlier run's hand-back: keep each server whose task is unchanged)

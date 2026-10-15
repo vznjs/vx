@@ -45,8 +45,6 @@ describe('paintHelp', () => {
       '--format <fmt>',
       '--summarize[=<path>]',
       '--profile[=<path>]',
-      '--report[=markdown]',
-      '--report-file <path>',
       '--tag <k=v>',
     ])
     const selection = helpText()

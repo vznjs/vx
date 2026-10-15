@@ -123,7 +123,6 @@ const SHAPES: ReadonlyArray<[page: string, source: string, name: string]> = [
   ['plan', 'orchestrator/plan.ts', 'RunPlan'],
   ['plan', 'orchestrator/plan.ts', 'PlanArgs'],
   ['tally', 'orchestrator/tally.ts', 'Tally'],
-  ['tally', 'orchestrator/tally.ts', 'TallyItem'],
   ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'LockfileClaimOptions'],
   ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'LockfileClaimHooks'],
   ['lockfile-claim', 'orchestrator/lockfile-claim.ts', 'ReachGraph'],

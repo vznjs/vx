@@ -40,8 +40,6 @@ export interface RunArgs {
   profile: string | undefined // 'profile.json' default
   affected: string | undefined // '' = default base; else ref
   tags: Record<string, string> // --tag k=v, onto the run record
-  report: 'markdown' | undefined // --report[=markdown]
-  reportFile: string | undefined // --report-file <path>
   error?: string // parser-error message
 }
 
@@ -86,9 +84,8 @@ refusal points at: `vx watch` reads the same flags, M-58):
    in `help.ts`, which every verb's refusal shares; it reads the help
    text, so there is no second list to drift).
 5. Mutually-exclusive combinations checked at the end:
-   `--dry` + `--graph`; either + `--summarize` / `--profile` /
-   `--report` / `--report-file` (they skip execution; the artifacts need
-   a real run). `--no-cache` beats
+   `--dry` + `--graph`; either + `--summarize` / `--profile` (they skip
+   execution; the artifacts need a real run). `--no-cache` beats
    `--force`, both layered over a `--cache-policy` spec.
 
 ## Scope resolution
@@ -155,7 +152,7 @@ If `--dry` or `--graph` is set:
 `--verbosity 1` (any value above 0) sets `RunOptions.summaryTable`:
 the run prints a per-task table after the framed blocks and above the
 footer (nothing prints below it), one row per task with a command —
-groups are left out, as the footer and `--report` leave them. The
+groups are left out, as the footer leaves them. The
 status column is `outcomeLabel`, the one vocabulary every surface uses:
 
 ```

@@ -1,4 +1,3 @@
-import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { isatty } from 'node:tty'
 import { cacheScopeError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
@@ -6,13 +5,11 @@ import { translateForeign } from './foreign-flags.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   planRun,
-  formatRunReportMarkdown,
-  projectOutcome,
   run as runOrchestrator,
   shellQuote,
   type RunOptions,
 } from '../orchestrator/index.js'
-import type { ContinueMode, TaskOutcome } from '../graph/index.js'
+import type { ContinueMode } from '../graph/index.js'
 import {
   applyCacheFlags,
   type CacheFlags,
@@ -84,14 +81,6 @@ export interface RunArgs {
   affected: string | undefined
   /** `--tag k=v` pairs (repeatable). Empty key is a parse error. */
   tags: Record<string, string>
-  /** `--report[=markdown]`. Undefined when the flag wasn't passed. */
-  report: 'markdown' | undefined
-  /**
-   * `--report-file=<path>`. Undefined when the flag wasn't passed. Writes
-   * the same markdown as `--report`, but to a file — because redirecting
-   * vx's stdout captures the whole run log, not just the report.
-   */
-  reportFile: string | undefined
   error?: string
 }
 
@@ -156,8 +145,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     profile: undefined,
     affected: undefined,
     tags: {},
-    report: undefined,
-    reportFile: undefined,
   }
 
   // A Turbo or Nx spelling becomes vx's, or a refusal naming vx's.
@@ -332,27 +319,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       const eq = raw.indexOf('=')
       if (eq <= 0) return { ...out, error: `--tag must be k=v (got ${raw})` }
       out.tags[raw.slice(0, eq)] = raw.slice(eq + 1)
-    } else if (a === '--report-file' || a?.startsWith('--report-file=')) {
-      const v = a === '--report-file' ? before[++i] : a.slice('--report-file='.length)
-      if (v === undefined || v === '') return { ...out, error: `--report-file requires a path` }
-      // Same reasoning as --cache-dir: a path is an arbitrary string, so
-      // nothing about its shape rejects a swallowed flag. A path starting
-      // with `-` needs the `=` form.
-      if (a === '--report-file' && v.startsWith('-')) {
-        return {
-          ...out,
-          error: `--report-file requires a path (got flag ${v}; a path that starts with - needs --report-file=${v})`,
-        }
-      }
-      out.reportFile = v
-    } else if (a === '--report') {
-      out.report = 'markdown'
-    } else if (a?.startsWith('--report=')) {
-      const fmt = a.slice('--report='.length)
-      if (fmt !== 'markdown') {
-        return { ...out, error: `--report must be markdown (got ${fmt})` }
-      }
-      out.report = fmt
     } else if (verb === 'watch' && a === '--poll') {
       out.poll = true
     } else if (a !== undefined && settingFlagOf(a) !== undefined) {
@@ -403,16 +369,10 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
   if (out.dry !== undefined && out.graph !== undefined) {
     return { ...out, error: '--dry and --graph are mutually exclusive' }
   }
-  // Every flag that promises a file or a section about the run: the
-  // planning branch returns before any of them is written, and
-  // `--report-file="$GITHUB_STEP_SUMMARY" --dry` exited 0 having written
-  // nothing (item 992).
-  const needsRun =
-    out.summarize !== undefined ||
-    out.profile !== undefined ||
-    out.report !== undefined ||
-    out.reportFile !== undefined
-  const runOnly = '--summarize / --profile / --report / --report-file need a real run'
+  // Every flag that promises a file about the run: the planning branch
+  // returns before any of them is written (item 992).
+  const needsRun = out.summarize !== undefined || out.profile !== undefined
+  const runOnly = '--summarize / --profile need a real run'
   if (out.dry !== undefined && needsRun) {
     return { ...out, error: `--dry skips execution; ${runOnly}` }
   }
@@ -427,11 +387,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
       return {
         ...out,
         error: '--format json and --graph both print on stdout; give --graph a file',
-      }
-    if (out.report === 'markdown')
-      return {
-        ...out,
-        error: '--format json and --report=markdown both print on stdout; use --report-file',
       }
   }
   return out
@@ -761,25 +716,6 @@ export async function runCmd(args: readonly string[]): Promise<number> {
     return 0
   }
 
-  // The report prints above the footer: nothing prints below it (owner).
-  // Rendered once, however many sinks asked for it; a kept server's crash
-  // after the footer re-renders the file's copy (C-53).
-  const wantsReport = parsed.report === 'markdown' || parsed.reportFile !== undefined
-  let reported: { outcomes: readonly TaskOutcome[]; md: string } | undefined
-  if (wantsReport) {
-    opts.beforeFooter = (outcomes, ok) => {
-      reported = {
-        outcomes,
-        md: formatRunReportMarkdown({ ok, outcomes: outcomes.map(projectOutcome) }),
-      }
-      // `--report` writes stdout. The report ITSELF is machine-clean, but
-      // stdout is not vx's alone — the status logger writes there too, so
-      // `--report=markdown >> "$GITHUB_STEP_SUMMARY"` captures every frame,
-      // meter bar and `::group::` command above the table. `--report-file`
-      // is the redirect-free form.
-      return parsed.report === 'markdown' ? reported.md : ''
-    }
-  }
   // A run executes in THIS process, always. Where an individual task's
   // command runs is the `executor` capability's business (per task, with
   // the scheduler, cache, retries and telemetry unchanged above it); there
@@ -788,36 +724,6 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   if (summary.refused !== undefined) {
     const unknown = summary.refused.startsWith('no projects declare')
     return refuse('run', args, summary.refused, unknown ? 'VX_E_UNKNOWN_TASK' : 'VX_E_REFUSED')
-  }
-  if (wantsReport) {
-    const md =
-      reported?.outcomes === summary.outcomes
-        ? reported.md
-        : formatRunReportMarkdown({
-            ok: summary.ok,
-            outcomes: summary.outcomes.map(projectOutcome),
-          })
-    if (parsed.reportFile !== undefined) {
-      const target = path.resolve(cwd, parsed.reportFile)
-      try {
-        // APPEND, not overwrite: the flag exists for `$GITHUB_STEP_SUMMARY`,
-        // which GitHub documents as append-only and which other steps in the
-        // same job also write to. Truncating it would silently destroy their
-        // content, and would make replacing the documented `>>` recipe a
-        // behaviour change rather than a drop-in.
-        // Its directory made first, as `--summarize`, `--profile` and
-        // `--graph` make theirs: `nr/r.md` failed alone of the four (item 993).
-        // Sync: on a Ctrl-C the signal path exits once stdout drains, and
-        // an awaited write lost the race every time (E-23).
-        mkdirSync(path.dirname(target), { recursive: true })
-        appendFileSync(target, md)
-      } catch (err) {
-        // Same contract as --summarize / --profile: the run already
-        // happened, so a write failure is reported, not fatal.
-        const message = err instanceof Error ? err.message : String(err)
-        sayNotice('warn', 'vx run', `failed to write report to ${target}: ${message}`)
-      }
-    }
   }
   if (summary.json !== undefined) process.stdout.write(`${JSON.stringify(summary.json)}\n`)
   return summary.ok ? 0 : 1

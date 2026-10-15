@@ -1,25 +1,11 @@
-// The shared outcome tally: ONE fold, three surfaces.
-//
-// `summary.ts` (the terminal footer), `run-artifacts.ts` (the `--summarize`
-// JSON) and `run-report.ts` (`--report=markdown`) all describe the same run
-// out of these numbers. The report used to carry its own copy of the
-// partition and it drifted: it had no group filter (it could not have one —
-// `OutcomeView` carried no `isGroup`), so every organizational node was
-// counted as a successful task and rendered as a row claiming
-// `success | miss | 0ms`.
-//
-// So the load-bearing property here is not any single count but that the two
-// entry points AGREE: `tallyOutcomes` (live `TaskOutcome`s, group-ness read
-// off the node) and `tallyViews` (the serializable `OutcomeView`, group-ness
-// carried as a flag) must answer identically for the same run. The
-// equivalence block below is that guard — driven through the real
-// `projectOutcome` projection, so a drift in EITHER the fold or the
-// projection fails it. The rest pins the bucket rules the three consumers
-// derive from.
+// The shared outcome tally: ONE fold, two surfaces. `summary.ts` (the
+// terminal footer) and `run-artifacts.ts` (the `--summarize` JSON) describe
+// the same run out of these numbers. A copy of the partition with no group
+// filter once counted every organizational node as a successful task. These
+// pin the bucket rules both consumers derive from.
 
 import { describe, expect, it } from 'bun:test'
-import { projectOutcome } from '../src/orchestrator/events.js'
-import { tallyOutcomes, tallyViews, type Tally, type TallyItem } from '../src/orchestrator/tally.js'
+import { tallyOutcomes, type Tally } from '../src/orchestrator/tally.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../src/graph/index.js'
 
 const ZERO: Tally = {
@@ -116,13 +102,9 @@ const MATRIX: readonly Shape[] = STATUSES.flatMap((status) =>
   ),
 )
 
-const label = (s: Shape): string =>
-  `${s.status} restored=${String(s.restored)} group=${String(s.group === true)}`
-
 describe('tallyOutcomes — bucket rules', () => {
   it('an empty run is all zeros', () => {
     expect(tallyOutcomes([])).toEqual(ZERO)
-    expect(tallyViews([])).toEqual(ZERO)
   })
 
   it('exposes exactly the ten documented fields', () => {
@@ -287,7 +269,6 @@ describe('tallyOutcomes — bucket rules', () => {
     expect(second).toEqual(ZERO)
     expect(second).not.toBe(first)
     expect(first).toEqual(tally({ total: 1, successful: 1, aborted: 1 }))
-    expect(tallyViews([])).not.toBe(tallyViews([]))
   })
 })
 
@@ -322,48 +303,10 @@ describe('group tasks are excluded from every count', () => {
     expect(withGroups).toEqual(withoutGroups)
     expect(withGroups.total).toBe(2)
   })
-
-  it('tallyViews: an absent isGroup reads as "not a group"; only true excludes', () => {
-    // Group-ness crosses the wire as an OPTIONAL flag (`projectOutcome` sets
-    // it only for groups), so "absent" has to mean a real task — otherwise
-    // every task from a serve that predates the field vanishes from the
-    // report's totals.
-    expect(tallyViews([{ status: 'success' }])).toEqual(tally({ total: 1, successful: 1 }))
-    expect(tallyViews([{ status: 'success', isGroup: false }])).toEqual(
-      tally({ total: 1, successful: 1 }),
-    )
-    expect(tallyViews([{ status: 'success', isGroup: true }])).toEqual(ZERO)
-  })
-
-  it('tallyViews: accepts the minimal structural item', () => {
-    // `TallyItem` is deliberately structural (declared here rather than
-    // importing `OutcomeView`, which would close an events → summary → tally
-    // cycle). A surface must be able to hand it a bare `{ status }`.
-    const items: TallyItem[] = [{ status: 'failed' }, { status: 'cache-hit', restored: true }]
-    expect(tallyViews(items)).toEqual(
-      tally({ total: 2, failed: 1, successful: 1, cachedLocal: 1, restoredLocal: 1 }),
-    )
-  })
 })
 
-describe('tallyOutcomes and tallyViews agree', () => {
-  it('for every status × restored × group combination, one at a time', () => {
-    // Per-shape so a drift names the shape that broke rather than a delta on
-    // an aggregate. The view side goes through the REAL `projectOutcome`, so
-    // this also guards the projection: if it stopped emitting `isGroup`, the
-    // report would silently start counting umbrella nodes again.
-    for (const s of MATRIX) {
-      const o = mkOutcome('pkg#t', s)
-      expect({ shape: label(s), ...tallyViews([projectOutcome(o)]) }).toEqual({
-        shape: label(s),
-        ...tallyOutcomes([o]),
-      })
-    }
-  })
-
-  it('and over the whole matrix at once, with the exact expected numbers', () => {
-    // Asserting the aggregate explicitly keeps the equivalence above from
-    // being vacuously true (two all-zero tallies would "agree" perfectly).
+describe('tallyOutcomes over the whole matrix', () => {
+  it('gives the exact expected numbers', () => {
     const all = MATRIX.map((s, i) => mkOutcome(`pkg#t${i}`, s))
     const expected = tally({
       total: 15, // 5 counted statuses × 3 restored variants; the 18 groups drop out
@@ -378,7 +321,6 @@ describe('tallyOutcomes and tallyViews agree', () => {
       aborted: 3,
     })
     expect(tallyOutcomes(all)).toEqual(expected)
-    expect(tallyViews(all.map(projectOutcome))).toEqual(expected)
   })
 })
 
@@ -428,21 +370,5 @@ describe('invariants the summary and report derive from', () => {
     // A hit is a success by definition; the report prints both
     // ("N success · M cached") off one run, so M > N would be nonsense.
     expect(t.cachedLocal + t.cachedRemote).toBeLessThanOrEqual(t.successful)
-  })
-})
-
-describe('degradations', () => {
-  it('KNOWN: an unrecognised status is counted in total but lands in no bucket', () => {
-    // Pins CURRENT behaviour, and it is a (low-severity) defect: `fold` has
-    // no `else`, so a status this binary does not know — reachable only when
-    // a NEWER serve returns an `OutcomeView` over the wire, since nothing
-    // validates the union on decode — increments `total` and nothing else.
-    // The summary then derives one phantom miss for it and prints a tasks
-    // legend whose buckets sum to less than the "N total" beside them.
-    // The honest fix is to leave `total` alone for a status with no bucket;
-    // update this expectation when that lands.
-    const t = tallyViews([{ status: 'timed-out' } as unknown as TallyItem])
-    expect(t).toEqual(tally({ total: 1 }))
-    expect(t.successful + t.failed + t.skipped).toBe(0)
   })
 })

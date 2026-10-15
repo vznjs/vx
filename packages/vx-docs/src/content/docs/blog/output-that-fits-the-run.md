@@ -54,18 +54,9 @@ from:
 
 ## A report for the pull request
 
-`--report-file` appends a markdown report to a file when the run ends:
-a pass or fail headline, counts, time saved, and one row per task with
-its status, cache result and duration. Point it at
-`$GITHUB_STEP_SUMMARY` and the run shows up on the job's summary page:
-
-```sh frame="terminal"
-$ vx run build test --all --report-file "$GITHUB_STEP_SUMMARY"
-```
-
-`--report` prints the same markdown to stdout instead. The
+(Since vx 0.0.639, `--report` and `--report-file` are gone: the
 [@vzn/vx-ci plugin](https://vznjs.github.io/vx/blog/results-on-github/)
-goes further, with a check run on the commit.
+writes the job summary, with a check run on the commit.)
 
 ## The run as a timeline
 

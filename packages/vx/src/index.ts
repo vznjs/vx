@@ -211,15 +211,7 @@ export type {
 // consumer rolls its own Set of status literals — and a Set has no
 // compile-time tripwire when the union gains a member, so it silently answers
 // "no" for the new one.
-// `escapeMarkdownCell` is on the façade for the same demonstrated need: a
-// plugin that renders a run as a markdown table takes the same unvalidated
-// task names core does, and the cloud job summary shipped without the escape.
-export {
-  escapeMarkdownCell,
-  TELEMETRY_SCHEMA_VERSION,
-  isCacheHit,
-  isPassStatus,
-} from './orchestrator/index.js'
+export { TELEMETRY_SCHEMA_VERSION, isCacheHit, isPassStatus } from './orchestrator/index.js'
 // `TaskLogBuffer` is on the façade on the same demonstrated need: EVERY
 // telemetry sink that ships build output has to bound it, and the retention
 // rules (per-task tail, per-run budget, failures never evicted by successes,
@@ -242,5 +234,5 @@ export type {
   TelemetrySink,
 } from './orchestrator/index.js'
 
-// The serializable run result and its per-task views (what `run()` returns).
-export type { RunResult, TaskView, OutcomeView } from './orchestrator/index.js'
+// The serializable per-task views.
+export type { TaskView, OutcomeView } from './orchestrator/index.js'

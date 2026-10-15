@@ -593,10 +593,10 @@ describe('flags that format ONE run are refused, not silently ignored', () => {
     vi.restoreAllMocks()
   })
 
-  // `--report` / `--report-file` / `--verbosity` are consumed by `runCmd`
-  // alone, so a watch loop used to accept and silently drop them. The flag NAME
-  // and the REASON are asserted separately on purpose: pinning the exact prose
-  // has already broken these tests once, when a third flag joined the message.
+  // `--verbosity` / `--format` are consumed by `runCmd` alone, so a watch loop
+  // used to accept and silently drop them. The flag NAME and the REASON are
+  // asserted separately on purpose: pinning the exact prose broke these tests
+  // once, when a flag joined the message.
   //
   // NB `--verbosity 0` is deliberately NOT refused — it asks for the output
   // watch already gives, which is why the check is `> 0` rather than
@@ -606,8 +606,7 @@ describe('flags that format ONE run are refused, not silently ignored', () => {
   // failures). A unit for it would have to reach a real orchestrator run, so
   // this file deliberately stops at the refusals.
   it.each([
-    ['--report', ['build', '--report']],
-    ['--report-file', ['build', '--report-file=/tmp/x.md']],
+    ['--format', ['build', '--format', 'json']],
     ['--verbosity', ['build', '--verbosity', '2']],
   ])('refuses %s', async (flag, argv) => {
     expect(await watchCmd(argv)).toBe(1)

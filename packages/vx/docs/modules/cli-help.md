@@ -77,8 +77,8 @@ gap before its description.
   `--teardown-timeout`, `--ready-notice`, `--output-logs`,
   `--cache-download`, `--verbosity`.
 - `Planning (for run — skips execution)` — `--dry`, `--graph`.
-- `Artifacts (for run)` — `--summarize`, `--profile`, `--report`,
-  `--report-file`, `--tag`.
+- `Artifacts (for run)` — `--format`, `--summarize`, `--profile`,
+  `--tag`.
 - `Extensions (plugins)` — what plugins are for (remote cache,
   distributed execution, telemetry) and the plugin guide's URL.
 - `Turbo and Nx spellings (for run)` — what `turbo run` / `nx run-many` flags do here; the table is cli.md § Turbo and Nx flags.

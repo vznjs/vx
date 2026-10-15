@@ -132,13 +132,9 @@ jobs:
       # verdict, stats, failures and the per-task table, so a red run says
       # WHICH task failed on the PR page instead of only in the log.
       #
-      # `--report-file="$GITHUB_STEP_SUMMARY"` used to be passed here and was
-      # REMOVED when the plugin landed: both write the same file, so the page
-      # carried two tables. The plugin is the surface now; core's
-      # `--report=markdown` / `--report-file` remain for workspaces that want
-      # the table without declaring a plugin. Neither needs `if: always()` —
-      # vx writes before exiting, so a FAILING run still lands its summary and
-      # the step's exit code still gates the job.
+      # It needs no `if: always()`: vx writes before exiting, so a FAILING
+      # run still lands its summary and the step's exit code still gates the
+      # job.
       #
       # VX_REQUIRE_SANDBOX turns an unavailable OS sandbox into a test FAILURE
       # instead of a skip. The runner action installs bwrap + socat + strace, so

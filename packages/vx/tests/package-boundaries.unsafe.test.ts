@@ -134,7 +134,6 @@ describe('package boundaries', () => {
       'definePlugin',
       'defineProject',
       'defineWorkspace',
-      'escapeMarkdownCell',
       'executorFallback',
       'exitSignal',
       'findWorkspaceRoot',

@@ -174,7 +174,6 @@
   "run-output-coalesce.test.ts": 190,
   "run-output-paths.test.ts": 353,
   "run-record-completeness.test.ts": 503,
-  "run-report.test.ts": 6,
   "runner.test.ts": 6318,
   "runtime-inputs.test.ts": 1312,
   "runtime-probe-exit.test.ts": 5400,

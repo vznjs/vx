@@ -191,13 +191,6 @@ export interface RunOptions {
    */
   json?: boolean
   /**
-   * Text printed just above the run's footer, given the outcomes the
-   * footer counts, after the `summaryTable`: nothing prints below the
-   * footer (owner), so a caller's end-of-run report (`--report`) rides
-   * here. Not called on a refused run.
-   */
-  beforeFooter?: (outcomes: readonly TaskOutcome[], ok: boolean) => string
-  /**
    * `false`: no footer, live or printed, and no blank line opening the
    * task log; the run is its task rows (`vx watch`, which frames each
    * cycle with its own line).

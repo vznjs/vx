@@ -329,7 +329,7 @@ export function skippedReason(blockedBy: string | undefined): string {
 }
 
 /** `skipped (blocked by lib#build)`, or a bare `skipped` for fail-fast's. */
-export function skippedLabel(blockedBy: string | undefined): string {
+function skippedLabel(blockedBy: string | undefined): string {
   const why = skippedReason(blockedBy)
   return why === '' ? 'skipped' : `skipped (${why})`
 }

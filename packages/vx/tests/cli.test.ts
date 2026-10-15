@@ -6,7 +6,6 @@ import { parseDuration, parsePruneArgs, parseSize } from '../src/cli/cache.js'
 import { parseRunArgs } from '../src/cli/run.js'
 import { run } from './helpers/cli.js'
 import { lock } from './helpers/orchestrator.js'
-import { formatRunReportMarkdown } from '../src/orchestrator/index.js'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
@@ -592,9 +591,8 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
       expect(await run(['run', '--all', 'hello', flag, '--dry'])).toBe(0)
       expect(stdout).toContain('no-cache (would exec)')
       stdout = ''
-      const args = ['run', '--all', 'hello', flag, '--report=markdown', '--summarize=s.json']
+      const args = ['run', '--all', 'hello', flag, '--summarize=s.json']
       expect(await run(args)).toBe(0)
-      expect(stdout).toContain('| one#hello | success | no-cache |')
       expect(stdout).toMatch(/\n {12}local 1○\n/)
       expect(stdout).not.toContain('miss')
       const row = JSON.parse(await readFile('s.json', 'utf8')).tasks[0]
@@ -968,7 +966,7 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     const lines = stdout.split('\n')
     const header = lines.findIndex((l) => l.startsWith('TASK'))
     const rows = lines.slice(header + 2, lines.indexOf('', header))
-    // The footer and --report count no group; a `success 0ms` row for one
+    // The footer counts no group; a `success 0ms` row for one
     // invented a task with no command.
     expect(rows.map((r) => r.split(/\s+/)[0])).toEqual(['one#hello'])
     // Nothing prints below the footer (owner rule).
@@ -1038,147 +1036,6 @@ describe('cli run() end-to-end against a real fixture workspace', () => {
     ])
     expect(code).toBe(0)
     expect(stdout).toMatch(/forwarded: hello world/)
-  })
-
-  it('--report=markdown prints a markdown table to stdout', async () => {
-    let stdout = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      stdout += String(chunk)
-      return true
-    })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-
-    const code = await run(['run', '--all', 'hello', '--report=markdown'])
-    expect(code).toBe(0)
-    // Header + the table with one row for the task.
-    expect(stdout).toContain('## vx run')
-    expect(stdout).toContain('| Task | Status | Cache | Duration |')
-    expect(stdout).toMatch(/\| one#hello \| success \| miss \|/)
-  })
-
-  // Nothing prints below the footer (owner): the report came after its
-  // `result` row. The table (X-64) prints first, then the report.
-  it('--report and the --verbosity table print above the footer', async () => {
-    let stdout = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      stdout += String(chunk)
-      return true
-    })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-
-    const code = await run(['run', '--all', 'hello', '--report=markdown', '--verbosity=1'])
-    expect(code).toBe(0)
-    const report = stdout.indexOf('| Task | Status | Cache | Duration |')
-    const table = stdout.indexOf('TASK')
-    const footer = stdout.indexOf('  time ')
-    expect([report > 0, table > 0, footer > 0]).toEqual([true, true, true])
-    expect([table < report, report < footer]).toEqual([true, true])
-    expect(stdout.slice(footer).trimEnd().split('\n')).toHaveLength(1)
-  })
-
-  it('bare --report defaults to markdown', async () => {
-    let stdout = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      stdout += String(chunk)
-      return true
-    })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-
-    const code = await run(['run', '--all', 'hello', '--report'])
-    expect(code).toBe(0)
-    expect(stdout).toContain('| Task | Status | Cache | Duration |')
-  })
-
-  // The documented step-summary recipe was `--report=markdown >> $FILE`, but
-  // the status logger writes to stdout too, so the redirect captured frames,
-  // meter bars and `::group::` commands above the table. `--report-file`
-  // writes the report and nothing else.
-  it('--report-file writes ONLY the report — no frames, no meters', async () => {
-    const path = await import('node:path')
-    const { readFile } = await import('node:fs/promises')
-    let stdout = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      stdout += String(chunk)
-      return true
-    })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-
-    const target = path.join(workspaceRoot, 'summary.md')
-    const code = await run([
-      'run',
-      '--all',
-      'hello',
-      '--output-logs',
-      'full',
-      `--report-file=${target}`,
-    ])
-    expect(code).toBe(0)
-    const written = await readFile(target, 'utf8')
-    expect(written).toContain('| Task | Status | Cache | Duration |')
-    expect(written).toMatch(/\| one#hello \| success \| miss \|/)
-    // The whole point: everything the logger printed to stdout stays out.
-    expect(written).not.toContain('┌─')
-    expect(written).not.toContain('▰')
-    expect(written).not.toContain('$ echo hello-cli')
-    expect(written.startsWith('## vx run')).toBe(true)
-    // …and stdout did carry that noise, so the assertion above is not
-    // passing because the run printed nothing.
-    expect(stdout).toContain('┌─')
-    // No `--report`, so the table is NOT also on stdout.
-    expect(stdout).not.toContain('| Task | Status | Cache | Duration |')
-  })
-
-  it('--report-file appends, so a shared step summary is never truncated', async () => {
-    const path = await import('node:path')
-    const { readFile, writeFile } = await import('node:fs/promises')
-    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-
-    const target = path.join(workspaceRoot, 'summary.md')
-    await writeFile(target, 'FROM-AN-EARLIER-STEP\n')
-    expect(await run(['run', '--all', 'hello', `--report-file=${target}`])).toBe(0)
-    expect(await run(['run', '--all', 'hello', `--report-file=${target}`])).toBe(0)
-    const written = await readFile(target, 'utf8')
-    // Another step's content survives — GitHub documents the summary file as
-    // append-only and several steps write to it.
-    expect(written).toContain('FROM-AN-EARLIER-STEP')
-    expect(written.match(/^## vx run/gm)?.length).toBe(2)
-  })
-
-  it('--report and --report-file together write both sinks', async () => {
-    const path = await import('node:path')
-    const { readFile } = await import('node:fs/promises')
-    let stdout = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      stdout += String(chunk)
-      return true
-    })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-
-    const target = path.join(workspaceRoot, 'summary.md')
-    const code = await run([
-      'run',
-      '--all',
-      'hello',
-      '--report=markdown',
-      `--report-file=${target}`,
-    ])
-    expect(code).toBe(0)
-    expect(stdout).toContain('| Task | Status | Cache | Duration |')
-    expect(await readFile(target, 'utf8')).toContain('| Task | Status | Cache | Duration |')
-  })
-
-  it('no --report flag prints no markdown table', async () => {
-    let stdout = ''
-    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
-      stdout += String(chunk)
-      return true
-    })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-
-    const code = await run(['run', '--all', 'hello'])
-    expect(code).toBe(0)
-    expect(stdout).not.toContain('| Task | Status | Cache | Duration |')
   })
 })
 
@@ -1806,8 +1663,6 @@ describe('parseRunArgs', () => {
       '--output-logs',
       '--profile',
       '--ready-notice',
-      '--report',
-      '--report-file',
       '--retries',
       '--schedule',
       '--summarize',
@@ -2049,27 +1904,6 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--dry', '--profile']).error).toMatch(/need a real run/)
   })
 
-  it('rejects --report / --report-file with --dry or --graph (item 992)', () => {
-    // Accepted and ignored, `--report-file="$GITHUB_STEP_SUMMARY" --dry`
-    // exited 0 having written nothing.
-    const refusals = [
-      ['--dry', '--report'],
-      ['--dry', '--report-file=r.md'],
-      ['--graph', '--report'],
-      ['--graph=g.dot', '--report-file=r.md'],
-    ].map((flags) => parseRunArgs(['build', ...flags]).error)
-    const tail =
-      'skips execution; --summarize / --profile / --report / --report-file need a real run'
-    expect(refusals).toEqual([
-      `--dry ${tail}`,
-      `--dry ${tail}`,
-      `--graph ${tail}`,
-      `--graph ${tail}`,
-    ])
-    // Control: a real run takes both.
-    expect(parseRunArgs(['build', '--report', '--report-file=r.md']).error).toBeUndefined()
-  })
-
   it('parses --retries <n> / --retries=<n> and validates it', () => {
     expect(parseRunArgs(['build', '--retries', '3']).settings['run.retries']).toBe(3)
     expect(parseRunArgs(['build', '--retries=0']).settings['run.retries']).toBe(0)
@@ -2196,38 +2030,6 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--tag', '=ci']).error).toMatch(/--tag must be k=v/)
     expect(parseRunArgs(['build', '--tag=']).error).toMatch(/--tag must be k=v/)
     expect(parseRunArgs(['build', '--tag=novalue']).error).toMatch(/--tag must be k=v/)
-  })
-
-  it('parses --report and --report=markdown', () => {
-    expect(parseRunArgs(['build', '--report']).report).toBe('markdown')
-    expect(parseRunArgs(['build', '--report=markdown']).report).toBe('markdown')
-  })
-
-  it('defaults --report to undefined', () => {
-    expect(parseRunArgs(['build']).report).toBeUndefined()
-  })
-
-  it('parses --report-file in both forms, and never as --report', () => {
-    expect(parseRunArgs(['build', '--report-file=out.md']).reportFile).toBe('out.md')
-    expect(parseRunArgs(['build', '--report-file', 'out.md']).reportFile).toBe('out.md')
-    // `--report-file` must not be swallowed by the `--report` branch — the
-    // report would then go to stdout and the path become a task name.
-    expect(parseRunArgs(['build', '--report-file=out.md']).report).toBeUndefined()
-    expect(parseRunArgs(['build', '--report-file=out.md']).tasks).toEqual(['build'])
-    expect(parseRunArgs(['build']).reportFile).toBeUndefined()
-  })
-
-  it('rejects an empty or flag-shaped --report-file value', () => {
-    expect(parseRunArgs(['build', '--report-file=']).error).toMatch(/--report-file requires a path/)
-    expect(parseRunArgs(['build', '--report-file']).error).toMatch(/--report-file requires a path/)
-    expect(parseRunArgs(['build', '--report-file', '--all']).error).toBe(
-      '--report-file requires a path (got flag --all; a path that starts with - needs --report-file=--all)',
-    )
-  })
-
-  it('rejects a non-markdown --report value (json reserved)', () => {
-    expect(parseRunArgs(['build', '--report=json']).error).toMatch(/--report must be markdown/)
-    expect(parseRunArgs(['build', '--report=foo']).error).toMatch(/--report must be markdown/)
   })
 })
 
@@ -2452,177 +2254,6 @@ describe('vx cache clean command', () => {
     })
     expect(await run(['cache', 'clen'])).toBe(1)
     expect(stderr).toContain('fix  clean')
-  })
-})
-
-describe('formatRunReportMarkdown', () => {
-  it('renders a totals header and one table row per task', () => {
-    const md = formatRunReportMarkdown({
-      ok: true,
-      outcomes: [
-        { taskId: 'web#build', status: 'success', exitCode: 0, durationMs: 1234 },
-        { taskId: 'web#test', status: 'cache-hit', exitCode: 0, durationMs: 5, restored: true },
-        {
-          taskId: 'api#test',
-          status: 'cache-hit-remote',
-          exitCode: 0,
-          durationMs: 3,
-          restored: false,
-        },
-      ],
-    })
-    expect(md).toContain('## vx run — passed')
-    expect(md).toContain('**3 tasks**')
-    expect(md).toContain('3 success')
-    expect(md).toContain('2 cached')
-    expect(md).toContain('| Task | Status | Cache | Duration |')
-    expect(md).toContain('| web#build | success | miss | 1.23s |')
-    expect(md).toContain('| web#test | success | local | 5ms |')
-    // remote hit with restored:false materialized nothing → up-to-date.
-    expect(md).toContain('| api#test | success | up-to-date | 3ms |')
-  })
-
-  it('marks the header failed and renders the exit code', () => {
-    const md = formatRunReportMarkdown({
-      ok: false,
-      outcomes: [
-        { taskId: 'web#build', status: 'failed', exitCode: 2, durationMs: 40 },
-        { taskId: 'web#test', status: 'skipped', exitCode: 0, durationMs: 0 },
-      ],
-    })
-    expect(md).toContain('## vx run — failed')
-    expect(md).toContain('1 failed')
-    expect(md).toContain('1 skipped')
-    expect(md).toContain('| web#build | failed (exit 2) | miss | 40ms |')
-    expect(md).toContain('| web#test | skipped | — | 0ms |')
-  })
-
-  it('counts aborted tasks in the total and names them', () => {
-    const md = formatRunReportMarkdown({
-      ok: true,
-      outcomes: [
-        { taskId: 'web#build', status: 'success', exitCode: 0, durationMs: 10 },
-        {
-          taskId: 'web#dev',
-          status: 'aborted',
-          exitCode: 143,
-          durationMs: 99,
-          wallclockStartNs: '1',
-        },
-      ],
-    })
-    // Every task counts, as on the terminal. Named too: a run carrying one exits
-    // non-zero, and a report that shows only green rows leaves that red undiagnosable.
-    expect(md).toContain('**2 tasks**')
-    expect(md).toContain('1 aborted')
-    expect(md).toContain('| web#dev | aborted | — | 99ms |')
-  })
-
-  it('escapes pipes and newlines so a hostile task name cannot break the table', () => {
-    const md = formatRunReportMarkdown({
-      ok: true,
-      outcomes: [
-        { taskId: 'p1#evil|col', status: 'success', exitCode: 0, durationMs: 3 },
-        { taskId: 'p1#evil\nrow', status: 'success', exitCode: 0, durationMs: 4 },
-      ],
-    })
-    const rows = md.split('\n').filter((l) => l.startsWith('| p1#'))
-    // Two tasks → exactly two rows: an unescaped newline splits one into two.
-    expect(rows.length).toBe(2)
-    // Every row keeps the header's 4 columns: an unescaped `|` adds a 5th.
-    for (const row of rows) {
-      expect(row.split(/(?<!\\)\|/).length - 2).toBe(4)
-    }
-    expect(md).toContain('| p1#evil\\|col | success | miss | 3ms |')
-    expect(md).toContain('| p1#evil row | success | miss | 4ms |')
-  })
-
-  // "N saved" is the report's headline claim and it summed the wrong number:
-  // a cache hit's `durationMs` is the RESTORE this run paid, not the exec time
-  // the entry was stored with. Measured on a real fixture, a task that takes
-  // 2.01s cold reported "6ms saved".
-  it('"saved" sums the STORED exec time, not the restore cost', () => {
-    const md = formatRunReportMarkdown({
-      ok: true,
-      outcomes: [
-        {
-          taskId: 'web#build',
-          status: 'cache-hit',
-          exitCode: 0,
-          durationMs: 6,
-          storedDurationMs: 2006,
-          restored: true,
-        },
-        {
-          taskId: 'api#build',
-          status: 'cache-hit-remote',
-          exitCode: 0,
-          durationMs: 4,
-          storedDurationMs: 1000,
-          restored: true,
-        },
-      ],
-    })
-    // 2006 + 1000 = 3.01s of work skipped — not the 10ms it cost to restore.
-    expect(md).toContain('3.01s saved')
-    expect(md).not.toContain('10ms saved')
-    // The per-task Duration column stays what THIS run spent.
-    expect(md).toContain('| web#build | success | local | 6ms |')
-  })
-
-  it('claims no saving for a hit that does not know what it skipped', () => {
-    // Only reachable across a version skew. Substantiating "saved" with the
-    // restore cost is the defect; saying nothing is the honest degrade.
-    const md = formatRunReportMarkdown({
-      ok: true,
-      outcomes: [
-        { taskId: 'web#build', status: 'cache-hit', exitCode: 0, durationMs: 7, restored: true },
-      ],
-    })
-    expect(md).not.toContain('saved')
-    expect(md).toContain('1 cached')
-  })
-
-  // Three surfaces describe one run. The terminal summary and `--summarize`
-  // share `tallyOutcomes` and so cannot disagree; the report had its own copy
-  // with no group filter (it could not have one — `OutcomeView` carried no
-  // `isGroup`), so every organizational node was counted as a successful task
-  // AND rendered as a row claiming `success | miss | 0ms`.
-  it('excludes group tasks from the totals and from the table', () => {
-    const md = formatRunReportMarkdown({
-      ok: true,
-      outcomes: [
-        { taskId: 'pkg#real', status: 'success', exitCode: 0, durationMs: 6 },
-        { taskId: 'pkg#grp', status: 'success', exitCode: 0, durationMs: 0, isGroup: true },
-      ],
-    })
-    expect(md).toContain('**1 task**')
-    expect(md).toContain('1 success')
-    expect(md).toContain('| pkg#real | success | miss | 6ms |')
-    expect(md).not.toContain('pkg#grp')
-  })
-
-  it('a group node never contributes a duration or a cache bucket', () => {
-    const md = formatRunReportMarkdown({
-      ok: true,
-      outcomes: [
-        {
-          taskId: 'pkg#hit',
-          status: 'cache-hit',
-          exitCode: 0,
-          durationMs: 3,
-          storedDurationMs: 500,
-          restored: true,
-        },
-        // A group's rolled-up outcome reads `success` with 0ms; counting it
-        // would report 2 tasks / 2 success for one task's worth of work.
-        { taskId: 'pkg#ci', status: 'success', exitCode: 0, durationMs: 0, isGroup: true },
-      ],
-    })
-    expect(md).toContain('**1 task**')
-    expect(md).toContain('1 cached')
-    expect(md).toContain('500ms saved')
-    expect(md).toContain('0ms total') // the group added no executed time
   })
 })
 

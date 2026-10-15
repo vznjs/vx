@@ -1,12 +1,7 @@
 // Pure markdown rendering: RunSummaryRecord -> a GitHub Actions job summary.
-// Purpose-built for the job-summary surface (verdict headline, stats line,
-// failures called out above the table) rather than reusing core's
-// `--report=markdown` table — a job summary is a landing page, not a cell
-// grid. `escapeMarkdownCell` comes from core's façade: task names are the
-// same unvalidated strings core renders, and the old cloud job summary
-// shipped without the escape once already.
+// A job summary is a landing page (verdict headline, stats line, failures
+// called out above the table), not a cell grid.
 import {
-  escapeMarkdownCell,
   exitSignal,
   isCacheHit,
   isPassStatus,
@@ -82,6 +77,19 @@ export function truncateUtf8(text: string, maxBytes: number, suffix: string): st
   // Back up off a continuation byte, so the cut never splits a character.
   while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--
   return new TextDecoder().decode(bytes.subarray(0, end)) + suffix
+}
+
+/**
+ * `value` as one table cell: task names are unvalidated, and the old cloud
+ * job summary shipped without the escape once. A pipe splits the row unless
+ * an ODD run of backslashes precedes it (GFM reads `\\` as one escaped
+ * backslash), so a pipe after an odd run is already escaped. A lone `\r`
+ * ends a line too.
+ */
+function escapeMarkdownCell(value: string): string {
+  return value
+    .replace(/(\\*)\|/g, (pipe, run: string) => (run.length % 2 === 0 ? `${run}\\|` : pipe))
+    .replace(/\r\n|\r|\n/g, ' ')
 }
 
 /**
