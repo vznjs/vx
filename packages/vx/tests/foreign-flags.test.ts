@@ -122,6 +122,12 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
     ['--parallel'],
     '--parallel (turbo): vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once',
   ],
+  // `turbo run --parallel build`: Nx's value is a number or a boolean, so
+  // the task name is not read as one (it refused "--concurrency … got build").
+  [
+    ['--parallel', 'build'],
+    '--parallel (turbo): vx always honours `dependsOn`; `--concurrency <n>` sets how many run at once',
+  ],
   [['--scope', 'app'], '--scope (turbo): use `--filter <pkg>`'],
   [['--since=main'], "--since (turbo): use `--filter '[<ref>]'` or `--affected=<ref>`"],
   [['--remote-only'], '--remote-only (turbo): use `--cache-policy local:,remote:rw`'],
