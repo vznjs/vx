@@ -68,7 +68,7 @@ function commit(root: string): void {
 
 let n = 0
 /** One `vx run <task> --all`: its exit, each task's status from --summarize,
- *  and the summary's cache legend (`3 miss`). */
+ *  and the summary's cache legend (`local 3↑`). */
 function run(
   root: string,
   task: string,

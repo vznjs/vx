@@ -1200,6 +1200,13 @@ export interface RunContext {
   packageCount: number
   concurrency?: number
   remoteCacheEnabled: boolean
+  cache?: {
+    local: boolean
+    localWrite: boolean
+    remote: boolean
+    uploads: { count: number; failed: number }
+    notDownloaded: () => number
+  }
   workspaceProjectCount?: number
 }
 == type RunContextRecord (src/orchestrator/telemetry.ts)
@@ -1614,6 +1621,7 @@ export interface TaskOutcome {
   inputMoved?: string
   where?: string
   outputs?: 'deferred'
+  saved?: true
   wallclockStartNs?: bigint
   wallclockEndNs?: bigint
   restored?: boolean

@@ -276,6 +276,7 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
       status: 'success',
       exitCode: 0,
       durationMs: 5200,
+      saved: true,
     }
     const rendered = [
       formatTaskHitLine(hit.node, hit),
@@ -290,6 +291,13 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
           remoteCacheEnabled: false,
           concurrency: 8,
           workspaceProjectCount: 3,
+          cache: {
+            local: true,
+            localWrite: true,
+            remote: false,
+            uploads: { count: 0, failed: 0 },
+            notDownloaded: () => 0,
+          },
         },
       ),
     ].join('\n')

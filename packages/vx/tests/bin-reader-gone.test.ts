@@ -75,6 +75,6 @@ describe('bin.ts: a reader that leaves does not fail the run', () => {
       env: { ...process.env, NO_COLOR: '1' },
     })
     expect(again.exitCode).toBe(0)
-    expect(`${again.stdout.toString()}${again.stderr.toString()}`).toMatch(/up-to-date|hit/)
+    expect(`${again.stdout.toString()}${again.stderr.toString()}`).toMatch(/local 1●/)
   }, 30_000)
 })
