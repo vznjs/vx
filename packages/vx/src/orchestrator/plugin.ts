@@ -338,6 +338,13 @@ export interface ProjectHookContext extends BaseContext {
    * process.
    */
   readonly projects: readonly ProjectMeta[]
+  /**
+   * True when `vx lock` (or `--check`) visits: the one pass that checks the
+   * configs, so the place to report what a plugin's mapping could not say.
+   * A run checks nothing (the lock model), so such a report there repeats
+   * on every run.
+   */
+  readonly lock: boolean
 }
 
 export interface GraphHookContext extends BaseContext {

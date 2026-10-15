@@ -432,7 +432,7 @@
   {
     "key": "nx.json sync",
     "status": "not-supported",
-    "reason": "Global sync generators never run; under `nx()` vx warns once per run to run `nx sync`, and a migration notes keeping their output by hand."
+    "reason": "Global sync generators never run; under `nx()` `vx lock` warns to run `nx sync`, and a migration notes keeping their output by hand."
   },
   {
     "key": "nx.json migrate",

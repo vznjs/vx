@@ -159,6 +159,7 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       closure: false,
       configs: lock,
       warn,
+      lock: true,
     })
     for (const entry of projects.values()) resolved.set(entry.name, entry.config)
     const names = new Set<string>()

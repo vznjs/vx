@@ -25,8 +25,11 @@ let saved: {
 }
 const listeners = new Set<string[]>()
 
-/** Writes the lock for the workspace `cwd` is in; a refusal throws its line. */
-export async function lock(cwd: string): Promise<void> {
+/**
+ * Writes the lock for the workspace `cwd` is in; a refusal throws its line.
+ * `warn` gets what `vx lock` warns (a plugin's mapping gaps).
+ */
+export async function lock(cwd: string, warn: (line: string) => void = () => {}): Promise<void> {
   const root = await findWorkspaceRoot(cwd)
   const said: string[] = []
   if (active++ === 0) {
@@ -44,7 +47,7 @@ export async function lock(cwd: string): Promise<void> {
   }
   listeners.add(said)
   try {
-    const code = await lockWorkspace(root, () => {})
+    const code = await lockWorkspace(root, warn)
     if (code !== 0) throw new Error(said.join('').trim())
   } finally {
     listeners.delete(said)

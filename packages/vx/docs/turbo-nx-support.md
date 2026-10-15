@@ -104,7 +104,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `useInferencePlugins` | mapped, with a note | Applied by Nx when it builds the graph; vx sees the targets that result. |
 | `analytics` | not applicable | Nx usage analytics. |
 | `release` | not applicable | Nx versioning and publishing; `nx-release-publish` targets still run through `nx-exec`. |
-| `sync` | not supported | Global sync generators never run; under `nx()` vx warns once per run to run `nx sync`, and a migration notes keeping their output by hand. |
+| `sync` | not supported | Global sync generators never run; under `nx()` `vx lock` warns to run `nx sync`, and a migration notes keeping their output by hand. |
 | `migrate` | not applicable | Settings for `nx migrate`. |
 | `conformance` | not applicable | Nx Powerpack conformance rules. |
 | `owners` | not applicable | Nx Powerpack CODEOWNERS generation. |

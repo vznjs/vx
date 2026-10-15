@@ -163,6 +163,8 @@ interface LoadProjectsBase {
    */
   configs: () => Promise<Lockfile>
   warn: (message: string) => void
+  /** `vx lock`'s audit: the `project` stage's `ctx.lock`. */
+  lock?: boolean
   /**
    * Entries a load in this same process already produced with the same
    * cache dir and lock (the CLI's selection pass, which stages every
@@ -323,6 +325,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
             name: meta.name,
             dir: meta.dir,
             projects: args.projectMetas,
+            lock: args.lock === true,
           },
           (plugin) =>
             validateProjectConfig(

@@ -404,7 +404,8 @@ async function index(
   trackedFiles: () => Promise<readonly string[] | null>,
   executors: NxExecutors | undefined,
 ): Promise<AdoptionMapping> {
-  const notes = [...loadNotes]
+  const notes: string[] = []
+  const live = [...loadNotes]
   const tracked = await trackedFiles()
   const configs = new Map(
     metas.flatMap((m) =>
@@ -458,7 +459,7 @@ async function index(
     if (!uses(bin)) continue
     loadsNx = true
     if (!(await Bun.file(path.join(root, 'node_modules', '.bin', bin)).exists())) {
-      notes.push(
+      live.push(
         `${what} through \`${bin}\`, which is not in node_modules/.bin — add ` +
           "@vzn/vx-migrate to the workspace's devDependencies so its bin is on every task's PATH",
       )
@@ -470,7 +471,7 @@ async function index(
     loadsNx &&
     !(await Bun.file(path.join(root, 'node_modules', 'nx', 'package.json')).exists())
   ) {
-    notes.push(
+    live.push(
       'nx-exec and nx-env load Nx from the workspace, and node_modules/nx is not there — ' +
         'install nx, or those tasks fail',
     )
@@ -480,6 +481,7 @@ async function index(
     gaps: collectGaps(
       mapped.projects.filter((p) => byName.has(p.name)),
       notes,
+      live,
     ),
   }
 }

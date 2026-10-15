@@ -61,6 +61,7 @@ interface Held {
   ][]
   readonly notes: string[]
   readonly todos: [string, string[]][]
+  readonly live: string[]
 }
 
 /** `map()`, or the mapping it returned last under the same `parts`. */
@@ -78,7 +79,7 @@ export async function cachedMapping(
   if (held?.key === key) {
     return {
       byName: new Map(held.byName),
-      gaps: { notes: held.notes, todos: new Map(held.todos) },
+      gaps: { notes: held.notes, todos: new Map(held.todos), live: held.live },
     }
   }
   const mapping = await map()
@@ -93,6 +94,7 @@ export async function cachedMapping(
     ]),
     notes: [...mapping.gaps.notes],
     todos: [...mapping.gaps.todos].map(([todo, ids]) => [todo, [...ids]]),
+    live: [...mapping.gaps.live],
   }
   // Best-effort, and whole or absent: a reader never sees half a file, and
   // a cache dir it cannot write costs the next run a mapping, not the run.
