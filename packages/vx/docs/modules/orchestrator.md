@@ -108,7 +108,7 @@ export interface RunSummary {
    dedupes identical-hash tasks across concurrent delegated runs, and
    under `continueMode: 'always'` the taint of an upstream failure is
    tracked so the task's save is withheld.
-10. **Persistent cleanup** (`persistent.ts`). `selectKeepAlive` picks
+10. **Persistent cleanup** (`persistent.ts`, `disposeServers`). `selectKeepAlive` picks
     the persistent tasks the user REQUESTED (or that were surfaced), and
     every persistent task a kept one depends on (directly or through
     groups: `vx run dev --filter app` keeps the `api#dev` its `app#dev`
@@ -119,7 +119,7 @@ export interface RunSummary {
     Before the SIGTERM it returns the children that already ended on
     their own, not cleanly (`CrashedPersistent`: a non-zero exit or a
     signal): each fails the run, its outcome becomes `failed` with that
-    code (a kept server that has already died likewise, item 1071), and
+    code (`failServer`; a kept server that has already died likewise, item 1071), and
     a status line after the summary names it
     (`vx: <id> exited with code <n> before the run stopped it`, item
     892). One that died while the graph still ran was also named at that
