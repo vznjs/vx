@@ -289,6 +289,9 @@ describe('formatRunSummary', () => {
       expect(legendLine).toContain(`${BLUE}1↓`)
       expect(legendLine).toContain(`${RED}1✗`)
       expect(legendLine).toContain(`${CYAN}1⇡`)
+      // The layer words are dim, never a layer colour (M, 2026-10-15).
+      expect(legendLine).toContain('\x1b[2mlocal\x1b[0m')
+      expect(legendLine).toContain('\x1b[2mremote\x1b[0m')
     })
 
     it('CONTROL: with no run context the legend is the plain one', () => {

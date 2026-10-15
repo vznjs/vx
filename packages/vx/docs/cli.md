@@ -2996,8 +2996,9 @@ they finish). Each task counts once, under its strongest state: a
 failed remote read or write, then an upload running, then saved to a
 remote, then saved here, then restored, then fresh, then no cache; so
 a task saved here and uploaded is a remote `↑`. Each count is painted
-in its segment's colour: `✓` green, `∅` dim, local blue, remote dark
-blue, `✗` and a miss red, `⇡` cyan. A layer shows only when the run's
+in its segment's colour, number and glyph alike: `✓` green, `∅` dim,
+local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
+`local` and `remote` words are dim. A layer shows only when the run's
 `--cache-policy` uses it. `N not saved` (ran, succeeded, saved
 nothing), `N not downloaded` (outputs left in the remote store) and
 every count show only when non-zero. `vx last` names each remote

@@ -149,7 +149,8 @@ the live gray remainder. A task counts under its strongest state:
 state is its key's entry in `traffic.keys` (failures, then uploads
 running, then one landed), which moves it. A task still running is
 counted once it ends. The legend's numbers are the segments', each in
-its segment's colour; the `local` and `remote` words are their layer's.
+its segment's colour, number and glyph alike; the `local` and `remote`
+words are dim (M, 2026-10-15).
 A state that shares a colour gets no new one: `↓` and `↑` of a layer
 are its colour. Under `NO_COLOR` the glyphs carry the meaning. An empty
 segment paints nothing. With no run context, the plain legend's

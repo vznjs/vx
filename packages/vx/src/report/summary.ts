@@ -321,7 +321,7 @@ export function formatSummarySection(
       // Per layer (M, 2026-10-15): `✓` fresh (outputs already on disk, from
       // either layer) and `∅` no cache, both local; `↓` restored from a
       // layer, `↑` saved to it; `✗` a remote read or write failed, `⇡` still
-      // uploading. Each count is its bar segment's, in its colour.
+      // uploading. Each count is its bar segment's, glyph and number in its colour.
       const n = (count: number, glyph: string, color: string, dim = false): string[] =>
         count > 0 ? [paint(color, `${count}${glyph}`, colors, dim ? { dim: true } : {})] : []
       const local = [
@@ -330,7 +330,8 @@ export function formatSummarySection(
         ...(layers.local ? n(b.restoredLocal, '\u2193', LOCAL) : []),
         ...(layers.localWrite ? n(b.saved, '\u2191', LOCAL) : []),
       ]
-      if (local.length > 0) cacheParts.push(`${paint(LOCAL, 'local', colors)} ${local.join(' ')}`)
+      // The layer words are dim; only the counts carry colour (M, 2026-10-15).
+      if (local.length > 0) cacheParts.push(`${dim('local')} ${local.join(' ')}`)
       const remote = [
         ...n(b.restoredRemote, '\u2193', REMOTE),
         ...n(b.uploaded, '\u2191', REMOTE),
@@ -338,7 +339,7 @@ export function formatSummarySection(
         ...n(b.uploading, '\u21e1', ACCENT),
       ]
       if (layers.remote && remote.length > 0)
-        cacheParts.push(`${paint(REMOTE, 'remote', colors)} ${remote.join(' ')}`)
+        cacheParts.push(`${dim('remote')} ${remote.join(' ')}`)
       if ((stats.notSaved ?? 0) > 0)
         cacheParts.push(paint(WARN, `${stats.notSaved} not saved`, colors))
       const notDownloaded = layers.notDownloaded()
