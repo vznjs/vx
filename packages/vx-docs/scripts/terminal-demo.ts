@@ -141,6 +141,9 @@ const BASIC_LOCK = {
 
 function run(): string {
   const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-demo-')))
+  // Its own home: the shared store is `~/.vx/<repo id>`, and an earlier
+  // demo's commit can carry the same id, so its cold run would hit.
+  const home = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'vx-demo-home-')))
   try {
     cpSync(path.join(ROOT, 'examples/basic'), root, { recursive: true })
     mkdirSync(path.join(root, 'node_modules/@vzn'), { recursive: true })
@@ -167,7 +170,7 @@ function run(): string {
       const r = Bun.spawnSync({
         cmd: [process.execPath, path.join(ROOT, 'packages/vx/src/bin.ts'), 'run', 'ci', '--all'],
         cwd: root,
-        env: { ...process.env, FORCE_COLOR: '1', NO_COLOR: undefined, CI: undefined },
+        env: { ...process.env, HOME: home, FORCE_COLOR: '1', NO_COLOR: undefined, CI: undefined },
       })
       if (r.exitCode !== 0) throw new Error(`${pass} run failed: ${r.stderr.toString()}`)
       // The source checkout reports version 0.0.0; the rule keeps its width.
@@ -182,6 +185,7 @@ function run(): string {
     return render(lines)
   } finally {
     rmSync(root, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true })
   }
 }
 
