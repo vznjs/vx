@@ -4,6 +4,8 @@
 // internal ones. Here only feat, fix and perf are listed, a breaking change
 // (`type!:` or a `BREAKING CHANGE:` footer) heads the notes, and the rest is
 // one count. The same commits choose the version (`nextVersion`).
+// A release with a post on the site gets the post instead (`postNotes`),
+// so GitHub tells the same story; the commit list is the fallback.
 //
 //   bun packages/vx/scripts/release-notes.ts <from-ref> <to-ref>
 //   bun packages/vx/scripts/release-notes.ts --next <last-tag> <to-ref>
@@ -87,6 +89,25 @@ export function commitsBetween(from: string, to: string, cwd?: string): Commit[]
   })
   if (r.exitCode !== 0) throw new Error(`git log ${range} failed: ${r.stderr.toString().trim()}`)
   return parseLog(r.stdout.toString())
+}
+
+export const SITE = 'https://vznjs.github.io/vx/'
+
+/** The site's release post for `version` (`0.0.637`), relative to the repo root. */
+export const postPath = (version: string): string =>
+  `packages/vx-docs/src/content/docs/releases/vx-${version.replaceAll('.', '-')}.md`
+
+/**
+ * A release post as a GitHub release body: its title as the heading,
+ * the frontmatter dropped, site-relative links made absolute, and a
+ * link back to the post.
+ */
+export function postNotes(post: string, version: string): string {
+  const m = /^---\n([\s\S]*?)\n---\n/.exec(post)
+  const title = m ? /^title: '?(.*?)'?$/m.exec(m[1]!)?.[1]?.replaceAll("''", "'") : undefined
+  const body = (m ? post.slice(m[0].length) : post).trim().replaceAll('](../../', `](${SITE}`)
+  const url = `${SITE}releases/vx-${version.replaceAll('.', '-')}/`
+  return `${title ? `# ${title}\n\n` : ''}${body}\n\n[Read it on the site](${url})\n`
 }
 
 /** `git log --format=%s%x00%b%x1e` output → commits. */

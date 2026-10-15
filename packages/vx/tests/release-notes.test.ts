@@ -1,6 +1,13 @@
 // The notes auto-release.yml writes for each release (scripts/release-notes.ts).
 import { describe, expect, it } from 'bun:test'
-import { nextVersion, parseLog, releaseNotes } from '../scripts/release-notes.js'
+import {
+  nextVersion,
+  parseLog,
+  postNotes,
+  postPath,
+  releaseNotes,
+} from '../scripts/release-notes.js'
+import { stale } from '../scripts/release-sync.js'
 
 const c = (subject: string, body = ''): { subject: string; body: string } => ({ subject, body })
 
@@ -87,5 +94,53 @@ describe('nextVersion', () => {
     expect(nextVersion('', [c('feat: a')])).toBe('0.0.1')
     // Cutting 0.1.0 is the owner's (roadmap-1.0.md, item 1.4).
     expect(nextVersion('v0.0.100', [c('feat!: a')])).toBe('0.0.101')
+  })
+})
+
+describe('postNotes', () => {
+  const post = [
+    '---',
+    "title: 'A core that knows no language'",
+    'tags:',
+    '  - release',
+    '---',
+    '',
+    'Intro. See [CI](../../guides/ci/#lock) and [below](#breaking-changes).',
+    '',
+  ].join('\n')
+
+  it('is the post under its title, links absolute, ending with a link to the post', () => {
+    expect(postNotes(post, '0.0.637')).toBe(
+      [
+        '# A core that knows no language',
+        '',
+        'Intro. See [CI](https://vznjs.github.io/vx/guides/ci/#lock) and [below](#breaking-changes).',
+        '',
+        '[Read it on the site](https://vznjs.github.io/vx/releases/vx-0-0-637/)',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('finds the post by version', () => {
+    expect(postPath('0.0.637')).toBe('packages/vx-docs/src/content/docs/releases/vx-0-0-637.md')
+  })
+})
+
+describe('stale', () => {
+  const post = "---\ntitle: 'T'\n---\nBody.\n"
+  const want = postNotes(post, '0.0.3')
+
+  it('rewrites only a release whose post says something else', () => {
+    expect(
+      stale(
+        [
+          { id: 1, tag_name: 'v0.0.1', body: 'changelog' },
+          { id: 2, tag_name: 'v0.0.2', body: 'changelog' },
+          { id: 3, tag_name: 'v0.0.3', body: want.replaceAll('\n', '\r\n') },
+        ],
+        (v) => (v === '0.0.1' ? undefined : post),
+      ).map((r) => r.id),
+    ).toEqual([2])
   })
 })

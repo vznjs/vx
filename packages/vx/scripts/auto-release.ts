@@ -1,8 +1,8 @@
 // auto-release.yml's one step, the `release.auto` task: release a commit
 // whose CI went green on main, VX_RELEASE_SHA or, when that is empty, the
 // newest such commit (greenCommit). It tags it with the next version and creates
-// the GitHub release as a draft, both from the Conventional Commits since the last tag
-// (release-notes.ts), then dispatches release.yml and npm.yml: a release
+// the GitHub release as a draft, its body the release post at that commit or,
+// with none, the Conventional Commits since the last tag (release-notes.ts), then dispatches release.yml and npm.yml: a release
 // created with the workflow token fires no `release` event in other
 // workflows, so the two that build and publish it are started explicitly.
 // npm.yml runs as itself, which is what its npm Trusted Publishers are
@@ -15,7 +15,7 @@
 //   [VX_RELEASE_SHA=<sha>] GH_TOKEN=… GITHUB_REPOSITORY=owner/repo bun scripts/auto-release.ts
 
 import { env } from './env.ts'
-import { commitsBetween, nextVersion, releaseNotes } from './release-notes.ts'
+import { commitsBetween, nextVersion, postNotes, postPath, releaseNotes } from './release-notes.ts'
 
 /** `git <args>`: whether it exited 0, and its stdout. */
 export type Git = (args: readonly string[]) => { ok: boolean; out: string }
@@ -123,6 +123,7 @@ async function main(): Promise<void> {
       throw new Error(`POST ${route}: ${res.status} ${res.statusText}\n${await res.text()}`)
     }
   }
+  const post = git(['show', `${sha}:${postPath(version)}`])
   console.log(`releasing ${sha} as v${version} (after ${last || 'no tag'})`)
   // The tag first, then the release as a draft on it: npm.yml checks the
   // tag out, and an immutable release takes assets only while it is a
@@ -131,7 +132,7 @@ async function main(): Promise<void> {
   await api('releases', {
     tag_name: `v${version}`,
     name: `v${version}`,
-    body: releaseNotes(commits),
+    body: post.ok ? postNotes(post.out, version) : releaseNotes(commits),
     draft: true,
   })
   for (const { workflow, inputs } of dispatches(version)) {
