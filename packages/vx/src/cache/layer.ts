@@ -247,8 +247,6 @@ export interface InvocationRecord {
   os: string | null
   arch: string | null
   vxVersion: string
-  /** JSON object `{k:v}` of `--tag` pairs. */
-  tags: string
 }
 
 /**

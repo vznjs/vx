@@ -70,7 +70,6 @@ function record(branch: string | null, task: string, ms: number, hit = false): v
     os: null,
     arch: null,
     vxVersion: '0.0.0',
-    tags: '{}',
   }
   cache.recordRunBundle({ runs: [run], invocation })
 }

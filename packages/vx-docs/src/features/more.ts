@@ -342,30 +342,6 @@ export const MORE: readonly Feature[] = [
     },
   },
   {
-    slug: 'run-tags',
-    title: 'Label your runs',
-    category: 'output',
-    hook: 'Tag a run, like `env=nightly`, and find it again in history and dashboards.',
-    body: [
-      'A nightly build, a release run and a developer’s run look the same in a list. A tag tells them apart.',
-      '`--tag key=value` is recorded with the run, so history queries and telemetry plugins can filter on it.',
-    ],
-    example: {
-      lang: 'sh',
-      code: 'vx run build --all --tag env=nightly --tag branch=main',
-    },
-    image: 'run-tags.png',
-    imageAlt: 'A run labelled with tags.',
-    docs: {
-      label: '--tag',
-      href: 'cli/#vx-run',
-    },
-    deepDive: {
-      label: 'See inside a run',
-      href: 'blog/see-inside-a-run/',
-    },
-  },
-  {
     slug: 'stage-timing',
     title: 'See where vx spends its time',
     category: 'output',

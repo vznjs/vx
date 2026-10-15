@@ -48,7 +48,7 @@ export function acquireRunLock(
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy,
 //   retries?, excludeDependencies?, forwardArgs?, outputLogs?, flow?,
-//   footer? (false: none), profile?, tags?, command?, log?, bus?,
+//   footer? (false: none), profile?, command?, log?, bus?,
 //   inflight?, handleSignals?, signal? (AbortSignal: tear the run down and return),
 //   holdPersistent? (return the requested persistent tasks still running),
 //   keep? (an earlier run's hand-back: keep each server whose task is unchanged)
@@ -164,7 +164,7 @@ export interface RunSummary {
     (`run-records.ts`). One pass over the outcomes builds the `runs`
     rows (one per real task; group + `aborted` skipped), the
     `invocations` header row (command, policy, git/CI/host context,
-    tags, counts) and, only when a sink is active, the per-task
+    counts) and, only when a sink is active, the per-task
     telemetry mirror — so all three carry the same task count by
     construction. Written in one transaction.
 14. **Telemetry summary.** When a sink is active: build + emit the

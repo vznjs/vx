@@ -206,17 +206,6 @@ function maskInvocation(command: string): string {
 }
 
 /**
- * A run's `--tag`s, stored on its history row and handed to telemetry
- * (`vx.tag.<key>`): a tag that carries a secret is masked as the
- * invocation line that spells it is (L-38).
- */
-function maskTags(tags: Readonly<Record<string, string>>): Record<string, string> {
-  const mask = secretMask([process.env])
-  if (mask === null) return { ...tags }
-  return Object.fromEntries(Object.entries(tags).map(([k, v]) => [mask.mask(k), mask.mask(v)]))
-}
-
-/**
  * The command line a run hands to its telemetry sinks, with what follows
  * `--` counted, not quoted. Those are the task's arguments,
  * often a token (`-- --token=…`), and the line reached an OTLP span, the
@@ -809,7 +798,7 @@ async function runOnBus(
         vxVersion: VERSION,
         // An embedder's `command` is redacted as the argv is: it passed a
         // token after `--` to every sink verbatim (C-67).
-        // Masked as the stored line is: `--tag key=$DEPLOY_KEY` sits before
+        // Masked as the stored line is: a flag's secret value sits before
         // the `--` the count covers (L-44).
         command: maskInvocation(
           invocationCommand(options.command?.split(' ') ?? process.argv.slice(1)),
@@ -836,7 +825,6 @@ async function runOnBus(
         workspaceName: wsIdentity.name,
         ...(wsIdentity.repository !== undefined ? { repository: wsIdentity.repository } : {}),
         ...(wsIdentity.path !== undefined ? { workspacePath: wsIdentity.path } : {}),
-        tags: maskTags(options.tags ?? {}),
       }
       telemetry = await subscribeTelemetry(
         prepared.plugins,
@@ -1429,7 +1417,6 @@ async function runOnBus(
         concurrency,
         flow: options.flow ?? null,
         forwardArgs: options.forwardArgs,
-        tags: maskTags(options.tags ?? {}),
         git: gitContext,
         ci: ciContext,
         host: hostContext,

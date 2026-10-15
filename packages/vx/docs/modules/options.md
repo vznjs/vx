@@ -51,7 +51,6 @@ export interface RunOptions {
   log?: Logger
   bus?: EventBus // an embedder's bus; the run's own when absent
   inflight?: Map<string, Promise<void>> // admission's cross-run in-flight table
-  tags?: Record<string, string> // onto the run record
   telemetrySinks?: readonly TelemetrySink[] // an embedder's sinks, ahead of the plugins'
   command?: string // the invocation as recorded (`vx run …`)
   remoteCache?: RemoteCacheLayer // an injected remote layer; wins over the cache seam

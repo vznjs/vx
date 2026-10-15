@@ -42,7 +42,6 @@ const RUN: RunContextRecord = {
   host: 'ci-box',
   os: 'linux',
   arch: 'x64',
-  tags: { env: 'prod' },
 }
 
 /** Every field: a new one is a type error here until the pin below names it. */
@@ -248,7 +247,6 @@ describe('OTLP builders', () => {
     expect(m['vx.ci']).toBe(true)
     expect(m['vx.ci.provider']).toBe('github')
     expect(m['vx.concurrency']).toBe('4') // intValue as string
-    expect(m['vx.tag.env']).toBe('prod')
   })
 
   it('omits null git fields', () => {
@@ -927,7 +925,6 @@ describe('OTLP losslessness', () => {
       'repository',
       'requestedTasks',
       'runId',
-      'tags',
       'vxVersion',
       'workspaceId',
       'workspaceName',
@@ -1020,9 +1017,8 @@ describe('OTLP losslessness', () => {
     expect(a['vx.os']).toBe('linux')
     expect(a['vx.arch']).toBe('x64')
     expect(a['vx.version']).toBe('1.2.3')
-    expect(a['vx.tag.env']).toBe('prod')
     // The schema version a reader must check before trusting any of the above.
-    expect(a['vx.telemetry.schema']).toBe('3')
+    expect(a['vx.telemetry.schema']).toBe('4')
   })
 
   it('carries the run tallies when the summary is known', () => {

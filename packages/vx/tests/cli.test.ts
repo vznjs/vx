@@ -1629,7 +1629,6 @@ describe('parseRunArgs', () => {
       '--ready-notice',
       '--retries',
       '--schedule',
-      '--tag',
       '--teardown-timeout',
       '--timeout',
       '--verbosity',
@@ -1916,14 +1915,13 @@ describe('parseRunArgs', () => {
     )
     // Each value-taking flag says what the value is, not only that it is missing.
     expect(
-      ['--concurrency', '--cache-policy', '--verbosity', '--tag'].map(
+      ['--concurrency', '--cache-policy', '--verbosity'].map(
         (f) => parseRunArgs(['build', f]).error,
       ),
     ).toEqual([
       "--concurrency requires a value (a positive integer, or a share of the cores like '50%')",
       '--cache-policy requires a value (a spec like local:r, local:rw, remote:, or local:,remote:rw)',
       '--verbosity requires a value (a non-negative integer)',
-      '--tag requires a value (k=v)',
     ])
   })
 
@@ -1947,32 +1945,6 @@ describe('parseRunArgs', () => {
       'pkg#deploy',
       'lint',
     ])
-  })
-
-  it('parses --tag k=v (space form) and is repeatable', () => {
-    const r = parseRunArgs(['build', '--tag', 'env=ci', '--tag', 'branch=main'])
-    expect(r.error).toBeUndefined()
-    expect(r.tags).toEqual({ env: 'ci', branch: 'main' })
-  })
-
-  it('parses --tag=k=v (equals form)', () => {
-    expect(parseRunArgs(['build', '--tag=env=ci']).tags).toEqual({ env: 'ci' })
-  })
-
-  it('--tag splits on the first = so values may contain =', () => {
-    expect(parseRunArgs(['build', '--tag=url=https://x?a=b']).tags).toEqual({
-      url: 'https://x?a=b',
-    })
-  })
-
-  it('defaults --tag to an empty object', () => {
-    expect(parseRunArgs(['build']).tags).toEqual({})
-  })
-
-  it('rejects --tag with an empty key', () => {
-    expect(parseRunArgs(['build', '--tag', '=ci']).error).toMatch(/--tag must be k=v/)
-    expect(parseRunArgs(['build', '--tag=']).error).toMatch(/--tag must be k=v/)
-    expect(parseRunArgs(['build', '--tag=novalue']).error).toMatch(/--tag must be k=v/)
   })
 })
 

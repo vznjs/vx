@@ -1,8 +1,7 @@
 // Telemetry carries the run's command line (`vx.command` on the OTLP run
 // span, the GitHub job summary). What follows `--` is counted, but a
-// secret before it (`--tag key=$DEPLOY_KEY`) was sent whole: the stored
-// invocation and the tags were masked (L-35, L-38), this line was not
-// (L-44).
+// secret before it (`--branch $DEPLOY_KEY`) was sent whole: the stored
+// invocation was masked (L-35), this line was not (L-44).
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -41,7 +40,7 @@ it('the command line telemetry receives is masked', async () => {
     await run({
       cwd: root,
       tasks: ['a#deploy'],
-      command: `vx run a#deploy --tag key=${SECRET} -- --x`,
+      command: `vx run a#deploy --branch ${SECRET} -- --x`,
       log: defaultLogger({ enabled: false }, { mode: 'focused' }, { write: () => true }),
       handleSignals: false,
       telemetrySinks: [{ onRecord: (rec) => void records.push(rec) }],
@@ -51,7 +50,7 @@ it('the command line telemetry receives is masked', async () => {
     else process.env.DEPLOY_KEY = prev
   }
   expect(records.flatMap((r) => (r.kind === 'run.start' ? [r.run.command] : []))).toEqual([
-    'vx run a#deploy --tag key=*** -- <1 argument>',
+    'vx run a#deploy --branch *** -- <1 argument>',
   ])
   expect(JSON.stringify(records).includes(SECRET)).toBe(false)
 })

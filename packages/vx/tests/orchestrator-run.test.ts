@@ -1362,7 +1362,6 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         tasks: ['build'],
         flow: 'broad',
         command: 'vx run build --all',
-        tags: { team: 'core', env: 'ci' },
         branch: 'feature/named',
         log: silentLogger(fixture),
       })
@@ -1380,8 +1379,6 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
         expect(inv.task_count).toBe(1)
         expect(inv.failed_count).toBe(0)
         expect(inv.exit_ok).toBe(1)
-        // Tags round-trip; committed fixture repo gives a real sha/branch.
-        expect(JSON.parse(inv.tags as string)).toEqual({ team: 'core', env: 'ci' })
         expect(inv.vx_version).toBeTruthy()
         // `--branch` names the branch the history records, over git's.
         expect(inv.branch).toBe('feature/named')

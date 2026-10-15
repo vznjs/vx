@@ -3,7 +3,7 @@
 ## Purpose
 
 THE versioned, serializable contract every telemetry consumer speaks
-(`TELEMETRY_SCHEMA_VERSION = 3`). Exporters (otel, a custom sink) receive
+(`TELEMETRY_SCHEMA_VERSION = 4`). Exporters (otel, a custom sink) receive
 these records instead of re-deriving facts from the rendering-oriented
 `WireEvent` stream — `cacheSource` is derived once, git/CI/host context
 is pre-folded, bigint wallclock spans are decimal strings.
@@ -54,7 +54,7 @@ is pre-folded, bigint wallclock spans are decimal strings.
 
 ## Records
 
-What a sink receives, field by field (`TELEMETRY_SCHEMA_VERSION` 3;
+What a sink receives, field by field (`TELEMETRY_SCHEMA_VERSION` 4;
 held to the source by `telemetry-doc.test.ts`). An optional field is
 additive: a consumer treats it as absent when a producer predates it.
 
@@ -85,7 +85,6 @@ interface RunContextRecord {
   host: string | null
   os: string
   arch: string
-  tags: Readonly<Record<string, string>> // `--tag k=v`
 }
 
 interface TaskTelemetry {

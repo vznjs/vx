@@ -135,8 +135,7 @@ export function listRuns(db: Database, args: ListRunsArgs = {}): RunSummaryRow[]
 
 /**
  * One `vx run` invocation header — every `invocations` column, camelCased,
- * `tags` parsed to a `Record<string,string>` and `dirty`/`ci`/`exitOk`
- * surfaced as booleans. The SPA's
+ * `dirty`/`ci`/`exitOk` surfaced as booleans. The SPA's
  * existing fields (runId / startedAt / endedAt / taskCount / failedCount /
  * hitCount / totalDurationMs) are all present, so existing views keep working.
  */
@@ -170,7 +169,6 @@ export interface InvocationDetail {
   os: string | null
   arch: string | null
   vxVersion: string
-  tags: Record<string, string>
 }
 
 interface InvocationRawRow {
@@ -201,7 +199,6 @@ interface InvocationRawRow {
   os: string | null
   arch: string | null
   vxVersion: string
-  tags: string
 }
 
 const INVOCATION_COLUMNS = `
@@ -214,22 +211,13 @@ const INVOCATION_COLUMNS = `
   restored_remote_count AS restoredRemoteCount,
   exit_ok AS exitOk,
   commit_sha AS commitSha, branch, dirty, ci, ci_provider AS ciProvider,
-  host, os, arch, vx_version AS vxVersion, tags`
+  host, os, arch, vx_version AS vxVersion`
 
 function mapInvocation(r: InvocationRawRow): InvocationDetail {
   let requestedTasks: string[] = []
   try {
     const parsed = JSON.parse(r.requestedTasks) as unknown
     if (Array.isArray(parsed)) requestedTasks = parsed.map(String)
-  } catch {}
-  let tags: Record<string, string> = {}
-  try {
-    const parsed = JSON.parse(r.tags) as unknown
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      tags = Object.fromEntries(
-        Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
-      )
-    }
   } catch {}
   return {
     runId: r.runId,
@@ -259,7 +247,6 @@ function mapInvocation(r: InvocationRawRow): InvocationDetail {
     os: r.os,
     arch: r.arch,
     vxVersion: r.vxVersion,
-    tags,
   }
 }
 

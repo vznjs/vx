@@ -1470,7 +1470,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v38', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v39', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes and plugin_blobs live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1628,7 +1628,7 @@ CREATE TABLE output_dirs (
 
 -- v22 (Tier 3): one header row per `vx run` invocation. The `runs`
 -- table is per-task; this is the per-invocation record carrying the
--- command, git/CI/host context, tags, and run-level counts. Recorded
+-- command, git/CI/host context, and run-level counts. Recorded
 -- atomically alongside `runs` via recordRunBundle (one transaction).
 CREATE TABLE invocations (
   run_id            TEXT PRIMARY KEY,         -- UUIDv7, == runs.run_id
@@ -1657,8 +1657,7 @@ CREATE TABLE invocations (
   host              TEXT,                     -- os.hostname()
   os                TEXT,                     -- process.platform
   arch              TEXT,                     -- process.arch
-  vx_version        TEXT NOT NULL,
-  tags              TEXT NOT NULL DEFAULT '{}' -- JSON object {k:v} from --tag
+  vx_version        TEXT NOT NULL
 );
 CREATE INDEX invocations_started ON invocations(started_at);
 CREATE INDEX invocations_branch  ON invocations(branch);
@@ -2141,7 +2140,7 @@ breaking footer).
   migration), so this costs one cold rebuild.
 - **SCHEMA v21 → v22 (no `CACHE_VERSION` bump)**: Tier-3 dashboard
   tables — `invocations` (one header row per `vx run` with command,
-  git/CI/host context, tags, and run-level counts, recorded with `runs`
+  git/CI/host context, and run-level counts, recorded with `runs`
   via `Cache.recordRunBundle`) and `entry_inputs` (one row per cache-key
   component, keyed by the cache-ENTRY hash — the input-fingerprint
   moat). `entry_inputs` is written **inside the entry-save transaction,

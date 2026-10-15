@@ -71,7 +71,6 @@ function mkInvocation(args: Partial<InvocationRecord> & { runId: string }): Invo
     os: args.os ?? 'linux',
     arch: args.arch ?? 'x64',
     vxVersion: args.vxVersion ?? '0.0.0',
-    tags: args.tags ?? '{}',
   }
 }
 
@@ -290,7 +289,6 @@ describe('getInvocation', () => {
           ci: true,
           ciProvider: 'gitlab',
           exitOk: false,
-          tags: JSON.stringify({ team: 'core' }),
         }),
       })
       const inv = getInvocation(cache.dbHandle(), 'r-1')!
@@ -300,7 +298,6 @@ describe('getInvocation', () => {
       expect(inv.ci).toBe(true)
       expect(inv.ciProvider).toBe('gitlab')
       expect(inv.exitOk).toBe(false)
-      expect(inv.tags).toEqual({ team: 'core' })
     })
   })
 

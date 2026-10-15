@@ -65,7 +65,6 @@ const invocation = (runId: string): InvocationRecord => ({
   os: null,
   arch: null,
   vxVersion: '0.0.0',
-  tags: '{}',
 })
 
 describe('a run bundle of 85 rows (two full blocks and five)', () => {

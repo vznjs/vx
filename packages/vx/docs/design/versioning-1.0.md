@@ -84,7 +84,7 @@ Keyed by name: `tasks`, `tasks.<name>.exec.env.define`.
   `fingerprint`, `schedule`, `admit`, `executor`, `cache`, `telemetry`,
   `output`, `setup`, `commands`, `teardown`. A plugin is
   `definePlugin(import.meta, hooks)`, and its name is its package's.
-- **Telemetry records**, schema version 3. The kinds are `run.start`,
+- **Telemetry records**, schema version 4. The kinds are `run.start`,
   `task.start`, `task.log`, `task.sample`, `task.end` and `run.end`; each record
   carries the version as `v`.
 - **Types.** Every type `@vzn/vx` exports is frozen with every type it

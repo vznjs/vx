@@ -94,7 +94,6 @@ const invocation: InvocationRecord = {
   os: 'the-os',
   arch: 'the-arch',
   vxVersion: '9.9.9',
-  tags: '{"k":"v"}',
 }
 
 describe('the run history stores each field in its own column', () => {
@@ -187,7 +186,7 @@ describe('the run history stores each field in its own column', () => {
                   started_at, ended_at, total_duration_ms, task_count, failed_count,
                   hit_count, hit_local_count, hit_remote_count,
                   up_to_date_count, restored_local_count, restored_remote_count, exit_ok, commit_sha,
-                  branch, dirty, ci, ci_provider, host, os, arch, vx_version, tags
+                  branch, dirty, ci, ci_provider, host, os, arch, vx_version
            FROM invocations`,
         )
         .all()
@@ -220,7 +219,6 @@ describe('the run history stores each field in its own column', () => {
           os: 'the-os',
           arch: 'the-arch',
           vx_version: '9.9.9',
-          tags: '{"k":"v"}',
         },
       ])
     } finally {

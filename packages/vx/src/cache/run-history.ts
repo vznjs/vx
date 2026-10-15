@@ -80,9 +80,9 @@ export class RunHistory {
         up_to_date_count, restored_local_count, restored_remote_count,
         exit_ok,
         commit_sha, branch, dirty, ci, ci_provider,
-        host, os, arch, vx_version, tags
+        host, os, arch, vx_version
       )
-      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?,  ?, ?, ?,  ?, ?, ?, ?, ?,  ?, ?, ?,  ?,  ?, ?, ?, ?, ?,  ?, ?, ?, ?)
       ON CONFLICT(run_id) DO NOTHING
     `,
     )
@@ -287,6 +287,5 @@ function bindInvocation(inv: InvocationRecord): SQLQueryBindings[] {
     inv.os,
     inv.arch,
     inv.vxVersion,
-    inv.tags,
   ]
 }

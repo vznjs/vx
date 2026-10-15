@@ -64,7 +64,7 @@ async function documentedFlags(): Promise<Set<string>> {
 }
 
 describe('vx help names every flag the run parser accepts', () => {
-  // Four flags (--continue, --tag and two since removed) were parsed and
+  // Four flags (--continue and three since removed) were parsed and
   // documented in cli.md but absent from `vx help` until 2026-09-16 (item
   // 300): the reference was pinned to the parser, the help was not.
   it('every parser flag appears in help.ts', async () => {

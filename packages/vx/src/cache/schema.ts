@@ -199,7 +199,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
     );
     -- v22 (Tier 3): one header row per vx-run invocation. The runs
     -- table is per-task; this is the per-invocation record that
-    -- carries git/CI/host context, the command, tags, and run-level
+    -- carries git/CI/host context, the command, and run-level
     -- counts so the dashboard never reconstructs a header with a
     -- lossy GROUP BY over runs.
     CREATE TABLE IF NOT EXISTS main.invocations (
@@ -230,8 +230,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       host              TEXT,
       os                TEXT,
       arch              TEXT,
-      vx_version        TEXT NOT NULL,
-      tags              TEXT NOT NULL DEFAULT '{}'
+      vx_version        TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS main.invocations_started ON invocations(started_at);
     CREATE INDEX IF NOT EXISTS main.invocations_branch  ON invocations(branch);

@@ -107,8 +107,7 @@
         "host",
         "os",
         "arch",
-        "vxVersion",
-        "tags"
+        "vxVersion"
       ],
       "properties": {
         "runId": { "type": "string" },
@@ -146,8 +145,7 @@
         "host": { "type": ["string", "null"] },
         "os": { "type": ["string", "null"] },
         "arch": { "type": ["string", "null"] },
-        "vxVersion": { "type": "string" },
-        "tags": { "type": "object", "additionalProperties": { "type": "string" } }
+        "vxVersion": { "type": "string" }
       }
     },
     "task": {

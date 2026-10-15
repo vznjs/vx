@@ -46,8 +46,8 @@ same as JSON.
 
 ## What the run did, as JSON
 
-(Since vx 0.0.639, `--summarize` is gone: `vx last --format json` reads
-the run back from run history, a row per task.)
+(Since vx 0.0.639, `--summarize` and `--tag` are gone: `vx last --format
+json` reads the run back from run history, a row per task.)
 
 `--summarize` writes one JSON file per run, under the cache directory or
 at the path you give:

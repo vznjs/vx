@@ -215,8 +215,8 @@ platform claim or a timed test, and add new lessons there.
 
 ## Live invariants (verify in source before quoting)
 
-- `CACHE_VERSION` `vx-cache-v43`, core `SCHEMA_VERSION` `v38`,
-  `TELEMETRY_SCHEMA_VERSION` 3. Bump `CACHE_VERSION` when stored bytes are
+- `CACHE_VERSION` `vx-cache-v43`, core `SCHEMA_VERSION` `v39`,
+  `TELEMETRY_SCHEMA_VERSION` 4. Bump `CACHE_VERSION` when stored bytes are
   wrong under an unchanged key or the container changes; a key-derivation
   fix whose old key was already wrong is self-healing and does not bump.
 - Key derivation: xxh3 seed-chained parts (seed fed forward: Bun reads 32

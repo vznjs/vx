@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: remove vx run --tag
+
+`vx run --tag` is removed, with RunOptions.tags and RunContextRecord.tags (TELEMETRY_SCHEMA_VERSION 4) and vx-otel's `vx.tag.<key>` attributes. The invocations table drops `tags` (SCHEMA_VERSION v39).
+
 ## cli: remove vx run --graph
 
 `vx run --graph` is removed. Use `vx run <task> --dry=json` (each task carries `deps`) and render it yourself.

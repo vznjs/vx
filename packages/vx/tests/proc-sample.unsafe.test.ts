@@ -120,7 +120,6 @@ const RUN: RunContextRecord = {
   host: 'h',
   os: 'linux',
   arch: 'x64',
-  tags: {},
 }
 
 describe('the telemetry source samples a tracked task', () => {

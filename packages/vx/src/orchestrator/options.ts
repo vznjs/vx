@@ -264,12 +264,6 @@ export interface RunOptions {
    */
   inflight?: Map<string, Promise<void>>
   /**
-   * `--tag k=v` pairs (Tier-3). Persisted on the run's `invocations`
-   * row (JSON object) so dashboards can filter runs by label, a secret
-   * value masked (L-38). CLI parsing is the CLI's job.
-   */
-  tags?: Record<string, string>
-  /**
    * Additional observe-only telemetry sinks, merged with whatever the
    * workspace plugins contribute. The embedder seam: a host executing
    * runs on behalf of others (a daemon recording delegated runs

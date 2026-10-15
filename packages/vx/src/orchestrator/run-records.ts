@@ -32,7 +32,6 @@ export interface RunRecordsInput {
   concurrency: number
   flow: InvocationRecord['flow']
   forwardArgs?: readonly string[] | undefined
-  tags: Record<string, string>
   git: GitContext
   ci: CiContext
   host: HostContext
@@ -151,7 +150,6 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     os: input.host.os,
     arch: input.host.arch,
     vxVersion: VERSION,
-    tags: JSON.stringify(input.tags),
   }
   return { runs, invocation, telemetryTasks }
 }

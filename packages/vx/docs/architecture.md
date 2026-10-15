@@ -202,7 +202,7 @@ zero-overhead.
 ## The telemetry contract
 
 `orchestrator/telemetry.ts` is THE canonical, versioned export shape
-(`TELEMETRY_SCHEMA_VERSION = 3`) every exporter reads — OTel, the
+(`TELEMETRY_SCHEMA_VERSION = 4`) every exporter reads — OTel, the
 GitHub plugin, or a third-party sink:
 
 - **`TelemetryRecord`** — streaming, one per lifecycle event
@@ -213,7 +213,7 @@ GitHub plugin, or a third-party sink:
   CPU, RSS, wallclock spans).
 - **`RunSummaryRecord`** — one per run at run:end: the invocation
   header (`RunContextRecord`: command, cache policy, git/CI/host
-  context, tags) plus the full `tasks[]` list. What the HTTP exporters
+  context) plus the full `tasks[]` list. What the HTTP exporters
   primarily speak. The command replaces everything after `--` with
   `-- <N arguments>` (task arguments can hold tokens); local history
   (`vx last`) keeps the full line.
@@ -638,8 +638,7 @@ transaction (`recordRunBundle`), one row per real task (hits included) to the
 The `invocations` header row carries the command line, requested
 tasks, compact cache policy, concurrency, flow, duration, task /
 failed / hit counts (by layer, and up-to-date vs restored local / remote), exit status, git
-commit/branch/dirty, CI provider, host/os/arch, vx version, and
-`--tag` pairs. A third table, `entry_inputs`, stores one row per
+commit/branch/dirty, CI provider, host/os/arch and vx version. A third table, `entry_inputs`, stores one row per
 cache-key component per entry (file OIDs, env values, runtime
 outputs, upstream hashes, …) — written only on a cache miss inside
 the entry-save transaction; it powers the per-component "why did this

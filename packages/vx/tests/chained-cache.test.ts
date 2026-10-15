@@ -45,7 +45,6 @@ function invocation(runId: string): InvocationRecord {
     os: null,
     arch: null,
     vxVersion: '0.0.0',
-    tags: '{}',
   }
 }
 
