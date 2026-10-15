@@ -48,15 +48,6 @@ export interface RunRecords {
   telemetryTasks: TaskTelemetry[]
 }
 
-/**
- * Every non-group, non-aborted outcome gets a row. An outcome with NO hash
- * (a `skipped` task never probed the cache; a `persistent` one is never
- * cacheable) used to be dropped because `runs.hash` is NOT NULL — which
- * made a failing persistent task record `0 tasks, 0 failures` on a run the
- * terminal called red, and a failed task with a skipped dependent record
- * 1 of 2. `bindRun` stores `''` for those instead; the key-diff readers
- * guard it.
- */
 /** A key's remote failures as its `runs` row stores them; none when it met none. */
 function remoteErrorOf(
   traffic: ReadonlyMap<string, { failures: readonly string[] }> | undefined,
@@ -66,6 +57,15 @@ function remoteErrorOf(
   return failures === undefined || failures.length === 0 ? undefined : failures.join('; ')
 }
 
+/**
+ * Every non-group, non-aborted outcome gets a row. An outcome with NO hash
+ * (a `skipped` task never probed the cache; a `persistent` one is never
+ * cacheable) used to be dropped because `runs.hash` is NOT NULL — which
+ * made a failing persistent task record `0 tasks, 0 failures` on a run the
+ * terminal called red, and a failed task with a skipped dependent record
+ * 1 of 2. `bindRun` stores `''` for those instead; the key-diff readers
+ * guard it.
+ */
 export function assembleRunRecords(input: RunRecordsInput): RunRecords {
   const { outcomes, runId, startedAtMs, endedAtMs } = input
   const runs: RunRecord[] = []
