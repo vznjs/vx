@@ -89,6 +89,7 @@ src/exec/sandbox-paths.ts
 src/exec/sandbox-runtime.ts
 src/exec/sandbox-violations.ts
 src/graph/dependency-spec.ts
+src/graph/folds.ts
 src/graph/index.ts
 src/graph/priorities.ts
 src/graph/scheduler.ts
