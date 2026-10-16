@@ -1133,6 +1133,15 @@ function detectOutputCollisions(
 }
 
 /**
+ * What a task's `!` output entries take back (A-44). A glob of the other
+ * task's that one takes back whole is a path this task never cleans or
+ * captures, so the pair cannot collide there.
+ */
+function takenBackOf(n: TaskNode, field: 'files' | 'workspaceFiles'): string[] {
+  return splitNegations(n.config.cache?.outputs[field] ?? []).negative
+}
+
+/**
  * `collide` for a root-anchored output against another project's `files`
  * output rebased to the root. With an edge the dependant adds to its
  * upstream's tree, and the upstream is told the dependant's globs in its
@@ -1150,9 +1159,12 @@ function collideAcross(
   exclusive: boolean,
 ): void {
   if (neverWritesLocally(ws) || neverWritesLocally(files)) return
+  const wsBack = takenBackOf(ws, 'workspaceFiles')
+  const filesBack = takenBackOf(files, 'files').map((g) => (rel === '' ? g : `${rel}/${g}`))
   for (const ga of wsGlobs) {
     for (const gb of rebased) {
-      if (!outputsOverlap(ga, gb)) continue
+      if (!outputsOverlap(ga, gb) || outputTakenBack(gb, wsBack) || outputTakenBack(ga, filesBack))
+        continue
       const head =
         `${ws.id} declares the output ${JSON.stringify(ga)} in cache.outputs.workspaceFiles, ` +
         `inside ${files.id}'s ${JSON.stringify(gb.slice(rel === '' ? 0 : rel.length + 1))} in ` +
@@ -1409,9 +1421,12 @@ function collide(
   exclusive: boolean,
 ): void {
   if (neverWritesLocally(a) || neverWritesLocally(b)) return
+  const aBack = takenBackOf(a, field)
+  const bBack = takenBackOf(b, field)
   for (const ga of aGlobs ?? []) {
     for (const gb of bGlobs ?? []) {
-      if (!outputsOverlap(ga, gb)) continue
+      if (!outputsOverlap(ga, gb) || outputTakenBack(gb, aBack) || outputTakenBack(ga, bBack))
+        continue
       const head =
         `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
         (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +

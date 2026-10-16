@@ -171,6 +171,8 @@ interface Cached {
   name: string
   files: string[]
   hasUpstreamEdge: boolean
+  /** Globs of a sibling's this task's `!` entries take back (`separable`). */
+  back: Set<string>
 }
 
 function cachedOutputs(t: GeneratedTask, index: number): Cached | null {
@@ -186,8 +188,31 @@ function cachedOutputs(t: GeneratedTask, index: number): Cached | null {
   const deps = task['dependsOn']
   const hasUpstreamEdge =
     Array.isArray(deps) && deps.some((d) => typeof d === 'string' && d.startsWith('^'))
-  return { index, name: t.name, files: strings, hasUpstreamEdge }
+  return { index, name: t.name, files: strings, hasUpstreamEdge, back: new Set() }
 }
+
+/**
+ * Can the keeper's `ga` give `gb`'s tree back? Only when `ga` is a
+ * directory at any depth (`**\/dist`, `**\/dist/**`) and `gb`'s literal
+ * head names no such directory: the two meet only at a `dist` nested in
+ * `gb`'s tree, which is the sibling's. solid's build outputs `**\/dist`
+ * beside types' `types/**`; Turbo caches both, and uncaching types made
+ * vx the slower of the two.
+ */
+function separable(ga: string, gb: string): boolean {
+  const name = /^\*\*\/([^*?[\]{}()!/\\]+)(?:\/\*\*)?$/.exec(ga)?.[1]
+  if (name === undefined) return false
+  const head: string[] = []
+  for (const seg of gb.replace(/^(\.\/)+/, '').split('/')) {
+    if (!isLiteralPattern(seg) || seg === '') break
+    head.push(seg)
+  }
+  return head.length > 0 && !head.includes(name)
+}
+
+/** Does keeper `k`'s `ga` still reach `gb` once its `!` entries are read? */
+const hits = (k: Cached, ga: string, gb: string): boolean =>
+  !k.back.has(gb) && outputsOverlap(ga, gb)
 
 /**
  * Uncache every task whose declared outputs overlap a keeper's, in place,
@@ -220,14 +245,28 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
     const kept: Cached[] = [keeper]
     for (const c of all) {
       if (c === keeper) continue
-      const clash = kept.find((k) =>
-        c.files.some((gb) => k.files.some((ga) => outputsOverlap(ga, gb))),
-      )
+      const clash = kept.find((k) => c.files.some((gb) => k.files.some((ga) => hits(k, ga, gb))))
       if (clash === undefined) {
         kept.push(c)
         continue
       }
       const t = tasks[c.index]!
+      const pairs = kept.flatMap((k) =>
+        c.files.flatMap((gb) =>
+          k.files.filter((ga) => hits(k, ga, gb)).map((ga) => ({ k, ga, gb })),
+        ),
+      )
+      if (pairs.every((p) => separable(p.ga, p.gb))) {
+        for (const { k, gb } of pairs) {
+          if (k.back.has(gb)) continue
+          k.back.add(gb)
+          ;(tasks[k.index]!.task!['cache'] as { outputs: { files: string[] } }).outputs.files.push(
+            `!${gb}`,
+          )
+        }
+        kept.push(c)
+        continue
+      }
       // tsc's incremental state is no product: create-t3-turbo's build and
       // typecheck both output `.cache/tsbuildinfo.json`, and typecheck ran
       // uncached on every first run (Growth funnel F8). Left to the keeper,
@@ -236,7 +275,7 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
       // the keeper's tsbuildinfo calls built, missing or not, so its save
       // could be a partial dist.
       const sharedFiles = c.files.filter((gb) =>
-        kept.some((k) => k.files.some((ga) => outputsOverlap(ga, gb))),
+        kept.some((k) => k.files.some((ga) => hits(k, ga, gb))),
       )
       if (
         sharedFiles.length === c.files.length &&
@@ -249,7 +288,7 @@ export function resolveSharedOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
         continue
       }
       dropped.add(c.index)
-      const shared = c.files.find((gb) => clash.files.some((ga) => outputsOverlap(ga, gb)))!
+      const shared = c.files.find((gb) => clash.files.some((ga) => hits(clash, ga, gb)))!
       delete t.task!['cache']
       t.todos.push(
         `declares the output ${JSON.stringify(shared)} that ${JSON.stringify(clash.name)} also ` +
