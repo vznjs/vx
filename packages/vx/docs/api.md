@@ -141,6 +141,7 @@ export class Cache implements CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
+    outputDirs?: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
@@ -251,6 +252,7 @@ export interface CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
+    outputDirs?: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]

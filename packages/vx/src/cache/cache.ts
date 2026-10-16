@@ -2126,6 +2126,7 @@ export class Cache implements CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
+    outputDirs?: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
@@ -2296,6 +2297,7 @@ export class Cache implements CacheLayer {
   private outputsOf(args: {
     projectDir: string
     outputFiles: string[]
+    outputDirs?: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
   }): Map<string, string> {
@@ -2328,6 +2330,7 @@ export class Cache implements CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
+    outputDirs?: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     readable?: ((real: string) => boolean) | undefined
@@ -2352,6 +2355,7 @@ export class Cache implements CacheLayer {
       key: args.hash,
       stdout: args.entry.stdout ?? '',
       outputs: this.outputsOf(args),
+      dirs: args.outputDirs?.map((d) => `outputs/${relPosix(args.projectDir, d)}`),
       exec: usageOfEntry(args.entry),
       within: args.projectDir,
       readable: args.readable,
@@ -2492,7 +2496,7 @@ export class Cache implements CacheLayer {
             : `artifact was stored under another key (${scanned.key})`,
         )
       }
-      assertArtifactNames(hash, scanned.entries, meta.outputs)
+      assertArtifactNames(hash, scanned.entries, meta.outputs, scanned.dirs)
     } catch (err) {
       if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
       if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
@@ -2524,6 +2528,16 @@ export class Cache implements CacheLayer {
       }
       if (rowPath === null) continue
       outputFileRows.push([rowPath, e.size, e.mode & 0o777, Math.floor(e.mtimeMs)])
+    }
+    // An empty directory's row is its rel with a trailing slash: the hit's
+    // check asks only that a directory stands there.
+    for (const d of scanned.dirs) {
+      outputFileRows.push([
+        `${d.startsWith('outputs/') ? d.slice('outputs/'.length) : d}/`,
+        0,
+        0,
+        0,
+      ])
     }
     const stdoutText = scanned.stdout
 
@@ -3117,8 +3131,15 @@ function assertArtifactNames(
   hash: string,
   entries: ReadonlyArray<{ name: string }>,
   declared: DeclaredOutputs | undefined,
+  dirs: readonly string[] = [],
 ): void {
   const names = new Set(entries.map((e) => e.name))
+  for (const d of dirs) {
+    if (names.has(d)) {
+      throw new CorruptArtifactError(hash, `artifact holds ${d} as a file and as a directory`)
+    }
+    names.add(d)
+  }
   for (const name of names) {
     for (let sep = name.indexOf('/'); sep !== -1; sep = name.indexOf('/', sep + 1)) {
       if (names.has(name.slice(0, sep))) {

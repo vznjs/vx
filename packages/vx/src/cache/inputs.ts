@@ -690,8 +690,30 @@ export async function resolveOutputs(args: {
   outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]> {
+  return (await scanOutputs(args)).files
+}
+
+/**
+ * `resolveOutputs`, plus the empty directories the globs match: a save
+ * keeps them, so a hit leaves the tree a miss left (Turbo and Nx restore
+ * them too). Only a save asks; a hit's walk compares files.
+ */
+export async function resolveOutputTree(args: {
+  projectDir: string
+  outputs: readonly string[]
+  nestedProjectDirs: string[]
+}): Promise<{ files: string[]; emptyDirs: string[] }> {
+  const emptyDirs = new Set<string>()
+  const { files } = await scanOutputs(args, emptyDirs)
+  return { files, emptyDirs: containedIn(args.projectDir, [...emptyDirs]).sort() }
+}
+
+async function scanOutputs(
+  args: { projectDir: string; outputs: readonly string[]; nestedProjectDirs: string[] },
+  emptyDirs?: Set<string>,
+): Promise<{ files: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
-  if (positive.length === 0) return []
+  if (positive.length === 0) return { files: [] }
   const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
   refuseDirLinkedOut(args.projectDir, trees)
@@ -701,6 +723,7 @@ export async function resolveOutputs(args: {
       excludeGlobs,
       args.projectDir,
       inNestedProject(args.projectDir, args.nestedProjectDirs),
+      emptyDirs,
     )),
   ]
   // Containment, enforced HERE and not only at the loader. `cleanOutputs`
@@ -710,7 +733,7 @@ export async function resolveOutputs(args: {
   // outside the project, so any future caller reaching it by another route (a
   // programmatic embedder, a config source that skips the loader) is contained
   // by construction.
-  return containedIn(args.projectDir, scanned).sort()
+  return { files: containedIn(args.projectDir, scanned).sort() }
 }
 
 /**
@@ -948,6 +971,8 @@ export async function cleanOutputPaths(args: {
   rels: readonly string[]
   outputs: readonly string[]
   committed?: (abs: string) => boolean
+  /** Directories the prune leaves standing even when emptied (absolute). */
+  keep?: ReadonlySet<string>
 }): Promise<void> {
   const committed = args.committed ?? committedFiles(undefined, args.projectDir)
   const files = args.rels.map((r) => path.resolve(args.projectDir, r)).filter((f) => !committed(f))
@@ -955,6 +980,7 @@ export async function cleanOutputPaths(args: {
     args.projectDir,
     await removeAll(files, args.projectDir),
     pruneScope(args.projectDir, args.outputs),
+    args.keep,
   )
 }
 
@@ -1147,6 +1173,7 @@ async function pruneEmptiedDirs(
   root: string,
   removed: readonly string[],
   scope?: PruneScope,
+  keep?: ReadonlySet<string>,
 ): Promise<void> {
   const rootResolved = path.resolve(root)
   // LEVEL ORDER, not a walk-up per directory. A parent is attempted only
@@ -1166,7 +1193,8 @@ async function pruneEmptiedDirs(
       (dir) =>
         dir !== rootResolved &&
         dir.startsWith(rootResolved + path.sep) &&
-        (scope === undefined || inScope(dir, scope)),
+        (scope === undefined || inScope(dir, scope)) &&
+        keep?.has(dir) !== true,
     )
     const gone = (err: NodeJS.ErrnoException): boolean => err.code === 'ENOENT'
     if (dirs.length <= SYNC_CLEAN_MAX) {
@@ -2013,6 +2041,7 @@ async function scanUnion(
   excludeGlobs: readonly Bun.Glob[],
   cwd: string,
   nested: (rel: string) => boolean = () => false,
+  emptyDirs?: Set<string>,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
   // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
@@ -2026,7 +2055,9 @@ async function scanUnion(
       const abs = path.resolve(cwd, rel)
       const st = lstatSync(abs, { throwIfNoEntry: false })
       if (st !== undefined && (st.isFile() || st.isSymbolicLink())) matches.add(abs)
-      else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs)
+      else if (emptyDirs !== undefined && st?.isDirectory() === true) {
+        if (readdirSync(abs).length === 0) emptyDirs.add(abs)
+      } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs)
     }
   }
   return matches

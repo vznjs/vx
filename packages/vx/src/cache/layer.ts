@@ -698,6 +698,8 @@ export interface CacheLayer {
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
     projectDir: string
     outputFiles: string[]
+    /** The empty directories under the outputs (absolute), kept so a hit makes them. */
+    outputDirs?: string[]
     /**
      * Resolved `outputs.workspaceFiles` (absolute paths) + the root
      * they're relative to. Packed under `workspace-outputs/<rel>`.

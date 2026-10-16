@@ -207,6 +207,8 @@ export class OutputIndex {
     const results = expected.map((e) => {
       try {
         const s = statSync(path.join(projectDir, e.path))
+        // An empty output directory: current while a directory stands there.
+        if (e.path.endsWith('/')) return s.isDirectory()
         return (
           s.size === e.size &&
           (s.mode & 0o777) === (e.mode & 0o777) &&
@@ -324,6 +326,7 @@ export class OutputIndex {
     const rows = this.rowsOf(hash)
     const stamps: Array<[string, number, number]> = []
     for (const e of rows) {
+      if (e.path.endsWith('/')) continue
       const ws = e.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
       const abs = ws
         ? path.join(workspaceRoot, e.path.slice(WORKSPACE_OUTPUT_PREFIX.length))

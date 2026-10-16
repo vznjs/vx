@@ -196,6 +196,12 @@ interface MetaFile {
   key?: string
   files: Record<string, [mode: number, mtimeMs: number]>
   /**
+   * The empty directories under the outputs, as entry names
+   * (`outputs/dist/empty`): a tar of regular files cannot hold them, and
+   * a hit that dropped them left another tree than the miss (v44).
+   */
+  dirs?: string[]
+  /**
    * What the PRODUCING execution used (2026-09-12, additive: an artifact
    * without it reads as before). Rides the artifact so a machine that
    * never ran the task — a fresh CI runner on a remote hit — still learns
@@ -241,6 +247,8 @@ interface PackArgs {
   key?: string
   stdout: string
   outputs: ReadonlyMap<string, string>
+  /** Entry names of the empty directories under the outputs. */
+  dirs?: readonly string[] | undefined
   /** The producing execution's usage, when the runner reported it. */
   exec?: ExecUsage | undefined
   /**
@@ -300,6 +308,7 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
       ),
     ).then((all) => new Set(all.filter((p): p is string => p !== null))))
   if (args.key !== undefined) meta.key = args.key
+  if (args.dirs !== undefined && args.dirs.length > 0) meta.dirs = [...args.dirs]
   const exec = usageOf(args.exec)
   if (exec !== undefined) meta.exec = exec
   const files = await Promise.all(
@@ -489,6 +498,8 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
 /** What a scan of an artifact reads out of it. */
 interface ArtifactScan {
   entries: ArchiveEntry[]
+  /** The sidecar's empty directories, each name proven safe. */
+  dirs: string[]
   stdout: string | null
   exec: ExecUsage | undefined
   key: string | undefined
@@ -498,6 +509,7 @@ interface ArtifactScan {
 class ScanFold {
   private readonly seen: Array<{ name: string; size: number; mtimeMs: number }> = []
   private files: MetaFile['files'] = {}
+  private dirs: string[] = []
   private exec: ExecUsage | undefined
   private key: string | undefined
   stdout: string | null = null
@@ -505,6 +517,7 @@ class ScanFold {
   sidecar(text: string): void {
     const parsed = JSON.parse(text) as MetaFile
     this.files = parsed.files ?? {}
+    this.dirs = dirsOf(parsed)
     // The ingest side is the untrusted boundary: a foreign sidecar's
     // usage is taken only when it is a plain non-negative number.
     this.exec = usageOf(parsed.exec)
@@ -524,6 +537,7 @@ class ScanFold {
         // sidecar is metadata, never the authority on whether bytes exist.
         return { name: s.name, size: s.size, mode: m?.[0] ?? 0o644, mtimeMs: m?.[1] ?? s.mtimeMs }
       }),
+      dirs: this.dirs,
       stdout: this.stdout,
       exec: this.exec,
       key: this.key,
@@ -589,6 +603,27 @@ export function scanTarBytes(tar: Uint8Array): ArtifactScan {
   return fold.result()
 }
 
+/**
+ * The sidecar's directory names, each held to the rules a file entry's
+ * name is (the sidecar is as attacker-reachable as the tar), and only
+ * under an output namespace.
+ */
+function dirsOf(meta: MetaFile): string[] {
+  const raw: unknown = meta.dirs
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) throw new ArchiveSecurityError('archive sidecar dirs is not a list')
+  return raw.map((name: unknown) => {
+    if (
+      typeof name !== 'string' ||
+      !(name.startsWith('outputs/') || name.startsWith(WORKSPACE_PREFIX))
+    ) {
+      throw new ArchiveSecurityError(`archive directory is not an output: ${String(name)}`)
+    }
+    assertSafeName(name)
+    return name
+  })
+}
+
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
 function usageOf(raw: unknown): ExecUsage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
@@ -628,6 +663,7 @@ export async function extractArtifactStream(
   const provided = new Set<string>()
   const headerMtime = new Map<string, number>()
   let meta: MetaFile['files'] = {}
+  let dirs: string[] = []
   try {
     const check = new SumCheck()
     for await (const e of tarEntries(tar)) {
@@ -635,7 +671,9 @@ export async function extractArtifactStream(
       const body = await check.body(e.name, e.body)
       if (body === null) continue
       if (e.name === META_ENTRY) {
-        meta = (JSON.parse(await textOf(body)) as MetaFile).files ?? {}
+        const parsed = JSON.parse(await textOf(body)) as MetaFile
+        meta = parsed.files ?? {}
+        dirs = dirsOf(parsed)
         continue
       }
       assertSafeName(e.name)
@@ -658,6 +696,20 @@ export async function extractArtifactStream(
       await x.stage(e.name, dest.base, target, e.size <= SMALL_ENTRY ? await bytesOf(body) : body)
     }
     check.done()
+    for (const name of dirs) {
+      if (accept !== undefined && !accept(name)) {
+        throw new ArchiveSecurityError(
+          `archive directory is not one of the task's declared outputs: ${name}`,
+        )
+      }
+      const dest = x.destFor(name)
+      if (dest === null || dest.rel.length === 0) continue
+      const target = path.join(dest.base, dest.rel)
+      await x.assertContained(dest.base, target, name)
+      await x.makeDir(dest.base, target)
+      // The index rows name a directory with a trailing slash.
+      provided.add(`${name}/`)
+    }
     verify?.(provided)
     // The sidecar's stat is the truth, a mode of 000 and an mtime at or
     // before the epoch included (`SOURCE_DATE_EPOCH=0`). Without one, a
@@ -754,6 +806,8 @@ interface Staged {
  */
 class Extractor {
   private readonly staged: Staged[] = []
+  /** Empty output directories made, with the top of each chain created. */
+  private readonly madeDirs: Array<{ dir: string; created: string }> = []
   private inflight: Promise<unknown>[] = []
   private inflightBytes = 0
   private readonly realBaseCache = new Map<string, string>()
@@ -905,6 +959,18 @@ class Extractor {
     // directory) fails this mkdir as it failed the first: the caller names
     // it as a stray.
     return mkdir(real, { recursive: true })
+  }
+
+  /** An empty output directory: made now, pruned by `abort` if it was not there. */
+  async makeDir(base: string, dir: string): Promise<void> {
+    let created: string | undefined
+    try {
+      created = await mkdir(dir, { recursive: true })
+    } catch (err) {
+      created = await this.mkdirThroughLink(base, dir, err as NodeJS.ErrnoException)
+    }
+    this.ensuredDirs.add(dir)
+    if (created !== undefined) this.madeDirs.push({ dir, created })
   }
 
   /**
@@ -1150,6 +1216,21 @@ class Extractor {
         dir = path.dirname(dir)
       }
     }
+    for (const { dir: made, created } of this.madeDirs.toReversed()) {
+      const top = path.resolve(created)
+      let dir = made.startsWith(top) ? made : await realOf(made).catch(() => made)
+      while (
+        dir.startsWith(top) &&
+        (await rmdir(dir).then(
+          () => true,
+          () => false,
+        ))
+      ) {
+        if (dir === top) break
+        dir = path.dirname(dir)
+      }
+    }
+    this.madeDirs.length = 0
     this.staged.length = 0
   }
 }

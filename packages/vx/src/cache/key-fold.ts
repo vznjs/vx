@@ -110,7 +110,9 @@ import type { CacheKeyInput } from './layer.js'
 // v43 stays when core stopped folding package files (2026-10-14): the
 // `workspace:` and `pkg:` parts left the chain, so every key moved and no
 // unchanged key holds wrong bytes.
-export const CACHE_VERSION = 'vx-cache-v43'
+// v44: the sidecar lists the empty directories under the outputs; a v43
+// artifact holds none and a hit left them out (Growth's parity, 2026-10-16).
+export const CACHE_VERSION = 'vx-cache-v44'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

@@ -8,6 +8,7 @@
 // which bytes a green run replays. Moved out of execute-task.ts
 // 2026-09-10 as pure code motion, the mirror of miss-save.ts.
 
+import path from 'node:path'
 import type { CacheConfig } from '../config.js'
 import {
   type CacheEntry,
@@ -166,7 +167,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
           actual: readonly string[],
           exp: ReadonlyArray<{ path: string }>,
         ): boolean => {
-          const expSet = new Set(exp.map((e) => e.path))
+          const expSet = new Set(exp.map((e) => e.path).filter((p) => !p.endsWith('/')))
           return actual.length === expSet.size && actual.every((r) => expSet.has(r))
         }
         // A stray a dependant's glob could have added is not a stray; a path
@@ -185,7 +186,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
           exp: ReadonlyArray<{ path: string }>,
         ): boolean => {
           const have = new Set(actual)
-          return exp.every((e) => have.has(e.path))
+          return exp.every((e) => e.path.endsWith('/') || have.has(e.path))
         }
         treeMatches = additive
           ? rowsPresent(actualRels, projExpected) && rowsPresent(actualWsRels, wsExpected)
@@ -289,6 +290,13 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         rels: staleRels,
         outputs,
         committed: cleanArgs.committed,
+        // A stale file in an output directory the entry holds empty takes
+        // only itself: the directory stays, as the miss left it.
+        keep: new Set(
+          heldRels
+            .filter((r) => r.endsWith('/'))
+            .map((r) => path.join(node.projectDir, r.slice(0, -1))),
+        ),
       })
     }
     if (staleWsRels.length > 0) {

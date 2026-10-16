@@ -102,6 +102,13 @@ export async function resolveOutputs(args: {
   nestedProjectDirs: string[]
 }): Promise<string[]>
 
+// resolveOutputs, plus the empty directories the globs match: a save keeps them.
+export async function resolveOutputTree(args: {
+  projectDir: string
+  outputs: readonly string[]
+  nestedProjectDirs: string[]
+}): Promise<{ files: string[]; emptyDirs: string[] }>
+
 /**
  * Remove every file currently matching the declared output globs.
  * Called before every cache-miss exec AND before every cache-hit
