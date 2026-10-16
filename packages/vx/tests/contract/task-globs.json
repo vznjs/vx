@@ -50,7 +50,7 @@
     "[\".github/**\"]": [".github/ci.yml"],
     "[\"README.md\"]": ["README.md"],
     "[\"ignored.txt\"]": ["ignored.txt"],
-    "[\"node_modules/**\"]": [],
+    "[\"node_modules/**\"]": ["node_modules/m/index.js"],
     "[\"src\"]": [
       "src/(group)/page.ts",
       "src/[id].ts",

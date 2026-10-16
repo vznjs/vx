@@ -112,6 +112,37 @@ it(
   TIMEOUT,
 )
 
+// `node_modules` is no special case (owner, 2026-10-16): an ignored path
+// named outright is an input. A generated client (`prisma generate` writes
+// node_modules/.prisma/client) folded nothing, silently, and a build
+// replayed its output after the client changed.
+it(
+  'an ignored path under node_modules is an input like any other: named outright, or under a named ignored prefix',
+  async () => {
+    root = await workspace(
+      {
+        t: task("{ files: ['src/**', 'node_modules/.prisma/client/**'] }"),
+        gen: task("{ files: ['src/**', 'gen/**'] }"),
+      },
+      {},
+      'node_modules/\npackages/lib/gen/\n',
+    )
+    await mkdir(pkg('node_modules/.prisma/client'), { recursive: true })
+    await writeFile(pkg('node_modules/.prisma/client/index.d.ts'), 'type A = 1\n')
+    await mkdir(pkg('gen/node_modules/x'), { recursive: true })
+    await writeFile(pkg('gen/node_modules/x/i.js'), '1\n')
+    const before = new Map((await dry(root, ['lib#t', 'lib#gen'])).map((t) => [t.id, t.hash]))
+    await writeFile(pkg('node_modules/.prisma/client/index.d.ts'), 'type A = 2\n')
+    await writeFile(pkg('gen/node_modules/x/i.js'), '2\n')
+    const after = new Map((await dry(root, ['lib#t', 'lib#gen'])).map((t) => [t.id, t.hash]))
+    expect([
+      after.get('lib#t') !== before.get('lib#t'),
+      after.get('lib#gen') !== before.get('lib#gen'),
+    ]).toEqual([true, true])
+  },
+  TIMEOUT,
+)
+
 it(
   'CONTROL: a gitignored file no entry names outright stays out of the key',
   async () => {

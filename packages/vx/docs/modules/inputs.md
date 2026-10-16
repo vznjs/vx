@@ -229,8 +229,10 @@ other walker: a project outside a git work tree is a `UserError`
    are transients a concurrent compile is mid-write, and `.vx-tmp-*` is
    vx's own restore temp, which a key taken mid-restore listed and the
    rename then removed. `node_modules` is
-   not here: the enumeration drops an UNTRACKED file under one
-   (`isInstalledPath`, an install), and a tracked one is a source. By
+   not here: the enumeration drops an UNTRACKED file under one that git
+   does not ignore (`isInstalledPath`, an install); an ignored one is any
+   ignored path, an input when named outright (a generated client); and
+   a tracked one is a source. By
    path, a committed fixture under `tests/fixtures/node_modules/` left
    the key and an edit to it replayed the old output (X-4).
 5. **Boundary ignores** — a path under a nested project's directory
