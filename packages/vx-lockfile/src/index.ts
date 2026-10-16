@@ -64,6 +64,8 @@ interface Manager {
   readonly unreadable?: { readonly file: string; readonly fix: string }
   readonly digest: (text: string, files: ReadonlyMap<string, string>) => ReadonlyMap<string, string>
   readonly importers: (text: string) => ReadonlyMap<string, LockfileImporter>
+  /** Each importer's dependency names the file records, whatever they resolve to. */
+  readonly recorded: (text: string) => ReadonlyMap<string, ReadonlyMap<string, unknown>>
   readonly extraFiles?: (text: string) => readonly string[]
   /** Root files no lockfile records that lay the install out: folded whole into every task. */
   readonly settings: readonly string[]
@@ -104,6 +106,7 @@ const MANAGERS = {
     files: ['pnpm-lock.yaml'],
     digest: (t) => pnpmLock().importerDigests(pnpmParse(t)),
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
+    recorded: (t) => pnpmParse(t).importers,
     settings: ['pnpm-workspace.yaml', '.npmrc'],
     peersInManifest: true,
   },
@@ -118,6 +121,7 @@ const MANAGERS = {
     },
     digest: (t, files) => bunLock().importerDigests(bunParse(t), files),
     importers: (t) => bunLock().importerLinks(bunParse(t)),
+    recorded: (t) => bunParse(t).workspaces,
     extraFiles: (t) => bunLock().patchFiles(t),
     settings: ['bunfig.toml', '.npmrc'],
   },
@@ -127,6 +131,13 @@ const MANAGERS = {
     files: ['npm-shrinkwrap.json', 'package-lock.json'],
     digest: (t) => npmLock().importerDigests(npmParse(t)),
     importers: (t) => npmLock().importerLinks(npmParse(t)),
+    recorded: (t) => {
+      const out = new Map<string, ReadonlyMap<string, unknown>>()
+      for (const [p, e] of npmParse(t).packages) {
+        if (p === '' || e.isWorkspace) out.set(p === '' ? '.' : p, e.deps)
+      }
+      return out
+    },
     settings: ['.npmrc'],
   },
   yarn: {
@@ -134,6 +145,12 @@ const MANAGERS = {
     files: ['yarn.lock'],
     digest: (t) => yarnLock().importerDigests(yarnParse(t)),
     importers: (t) => yarnLock().importerLinks(yarnParse(t)),
+    recorded: (t) => {
+      const lock = yarnParse(t)
+      const out = new Map<string, ReadonlyMap<string, unknown>>()
+      for (const [dir, id] of lock.workspaces) out.set(dir, lock.entries.get(id)!.deps)
+      return out
+    },
     settings: ['.yarnrc.yml'],
     async manifestImporters(t, root, manifest) {
       const lock = yarnParse(t)
@@ -141,7 +158,7 @@ const MANAGERS = {
       const pkg = await manifest(root)
       const manifests = new Map<string, Record<string, unknown>>()
       if (pkg !== null) manifests.set('.', pkg)
-      for (const dir of await workspaceDirs(root, pkg)) {
+      for (const dir of await workspaceDirs(root, globsOf(pkg))) {
         const m = await manifest(path.join(root, dir))
         if (m !== null) manifests.set(dir, m)
       }
@@ -215,20 +232,29 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       `${unreadable.file}: ${manager.name}() reads ${manager.files.join(' or ')} and finds none — ${unreadable.fix}`,
     )
   }
-  const importersOf = async (
+  /** The importers, and the lockfile they came from unless the manifests named them. */
+  const readImporters = async (
     ctx: { readonly workspaceRoot: string; readonly cacheDir: string },
     manifest: (dir: string) => Promise<Record<string, unknown> | null>,
-  ): Promise<ReadonlyMap<string, LockfileImporter> | undefined> => {
+  ): Promise<
+    { importers: ReadonlyMap<string, LockfileImporter>; file: string | undefined } | undefined
+  > => {
     for (const { file, claim } of claims) {
       const importers = await claim.importers(ctx)
       if (importers === undefined) continue
-      if (importers.size > 0 || manager.manifestImporters === undefined) return importers
+      if (importers.size > 0 || manager.manifestImporters === undefined) return { importers, file }
       const text = await Bun.file(path.join(ctx.workspaceRoot, file)).text()
-      return (await manager.manifestImporters(text, ctx.workspaceRoot, manifest)) ?? importers
+      const named = await manager.manifestImporters(text, ctx.workspaceRoot, manifest)
+      return named === undefined ? { importers, file } : { importers: named, file: undefined }
     }
     await refuseUnreadable(ctx.workspaceRoot)
     return undefined
   }
+  const importersOf = async (
+    ctx: { readonly workspaceRoot: string; readonly cacheDir: string },
+    manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+  ): Promise<ReadonlyMap<string, LockfileImporter> | undefined> =>
+    (await readImporters(ctx, manifest))?.importers
   // Per run: core hands every `project` visit of one run the same array.
   const perRun = new WeakMap<
     readonly ProjectMeta[],
@@ -269,25 +295,31 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     },
     async discover(ctx) {
       const manifest = manifestReader()
-      const importers = await importersOf(ctx, manifest)
-      if (importers === undefined) return []
-      // A workspace the root manifest names and the lockfile lacks is no
-      // project until an install adds it: lerna's 31 added Nx projects
-      // failed \`vx lock\` as "no such project" and nothing said why
-      // (Growth, 2026-10-16). pnpm reads pnpm-workspace.yaml instead.
-      if (manager.name !== 'pnpm') {
-        const missing = (
-          await workspaceDirs(ctx.workspaceRoot, await manifest(ctx.workspaceRoot))
-        ).filter((d) => !importers.has(d))
+      const read = await readImporters(ctx, manifest)
+      if (read === undefined) return []
+      const { importers, file } = read
+      // A lockfile older than the manifests drops edges: a workspace it does
+      // not list yet (a renamed folder, lerna's 31 added Nx projects) is
+      // named by its path with none, and a dependency added to package.json
+      // before the install orders nothing. Either ran a package beside what
+      // it builds on and hit with old content (Growth, 2026-10-16), so the
+      // lock refuses until the install, as a key from a stale lockfile names
+      // an install that is not on disk.
+      if (file !== undefined) {
+        const text = await Bun.file(path.join(ctx.workspaceRoot, file)).text()
+        const missing = await staleness(
+          ctx.workspaceRoot,
+          importers,
+          manager.recorded(text),
+          await workspaceDirs(
+            ctx.workspaceRoot,
+            await workspaceGlobs(ctx.workspaceRoot, manager.name, manifest),
+          ),
+          manifest,
+        )
         if (missing.length > 0) {
-          let file = manager.files[0]!
-          for (const f of manager.files)
-            if (await Bun.file(path.join(ctx.workspaceRoot, f)).exists()) {
-              file = f
-              break
-            }
-          ctx.warn(
-            `${file} does not list the workspace${missing.length > 1 ? 's' : ''} ${listed(missing)} that package.json names — run \`${manager.name} install\` to add ${missing.length > 1 ? 'them; until then each is' : 'it; until then it is'} named by its path, and a dependsOn naming it finds no project`,
+          throw new UserError(
+            `${file} is out of date: it does not list ${listed(missing)} — run \`${manager.name} install\``,
           )
         }
       }
@@ -376,29 +408,94 @@ function manifestReader(): (dir: string) => Promise<Record<string, unknown> | nu
   }
 }
 
-/**
- * The directories a root manifest's `workspaces` globs (an array, or
- * Yarn 1's `{ packages }`) name that hold a `package.json`, root-relative
- * POSIX, sorted; none under `node_modules`.
- */
-async function workspaceDirs(root: string, pkg: Record<string, unknown> | null): Promise<string[]> {
+/** A root manifest's `workspaces` globs: an array, or Yarn 1's `{ packages }`. */
+function globsOf(pkg: Record<string, unknown> | null): readonly unknown[] {
   const field = pkg?.['workspaces']
   const list = Array.isArray(field)
     ? field
     : field !== null && typeof field === 'object'
       ? (field as Record<string, unknown>)['packages']
       : undefined
-  if (!Array.isArray(list)) return []
+  return Array.isArray(list) ? list : []
+}
+
+/** The workspace globs the manager reads: pnpm's from pnpm-workspace.yaml, the others' from package.json. */
+async function workspaceGlobs(
+  root: string,
+  manager: string,
+  manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+): Promise<readonly unknown[]> {
+  if (manager !== 'pnpm') return globsOf(await manifest(root))
+  let doc: unknown
+  try {
+    doc = Bun.YAML.parse(await Bun.file(path.join(root, 'pnpm-workspace.yaml')).text())
+  } catch {
+    return []
+  }
+  const list =
+    doc !== null && typeof doc === 'object'
+      ? (doc as Record<string, unknown>)['packages']
+      : undefined
+  return Array.isArray(list) ? list : []
+}
+
+/**
+ * The directories the globs name that hold a `package.json`, root-relative
+ * POSIX, sorted; none a `!` glob excludes, none under `node_modules`.
+ */
+async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<string[]> {
+  const strip = (p: string): string => p.replace(/^\.\//, '').replace(/\/+$/, '')
+  const excluded = globs
+    .filter((p): p is string => typeof p === 'string' && p.startsWith('!'))
+    .map((p) => new Bun.Glob(strip(p.slice(1))))
   const dirs = new Set<string>()
-  for (const pattern of list) {
+  for (const pattern of globs) {
     if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
-    const glob = new Bun.Glob(`${pattern.replace(/^\.\//, '').replace(/\/+$/, '')}/package.json`)
+    const glob = new Bun.Glob(`${strip(pattern)}/package.json`)
     for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
       const dir = path.dirname(file).split(path.sep).join('/')
-      if (dir !== '.' && !dir.split('/').includes('node_modules')) dirs.add(dir)
+      if (dir === '.' || dir.split('/').includes('node_modules')) continue
+      if (!excluded.some((g) => g.match(dir))) dirs.add(dir)
     }
   }
   return [...dirs].sort()
+}
+
+/**
+ * What the manifests name that the lockfile does not: each workspace it
+ * lists no importer for, and each importer's dependency (any field but
+ * peers, which a manager may leave out) on a workspace package's name that
+ * it records no entry for.
+ */
+async function staleness(
+  root: string,
+  importers: ReadonlyMap<string, LockfileImporter>,
+  recorded: ReadonlyMap<string, ReadonlyMap<string, unknown>>,
+  dirs: readonly string[],
+  manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+): Promise<string[]> {
+  const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
+  const missing = dirs.filter((d) => !importers.has(d)).map((d) => `the workspace ${d}`)
+  const names = new Set<string>()
+  for (const d of new Set([...importers.keys(), ...dirs])) {
+    const n = (await manifest(dirOf(d)))?.['name']
+    if (typeof n === 'string') names.add(n)
+  }
+  for (const [importer, deps] of recorded) {
+    const pkg = await manifest(dirOf(importer))
+    if (pkg === null) continue
+    const own = pkg['name']
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+      const declared = pkg[field]
+      if (declared === null || typeof declared !== 'object') continue
+      for (const name of Object.keys(declared)) {
+        if (name !== own && names.has(name) && !deps.has(name)) {
+          missing.push(`${importer}'s dependency on ${name}`)
+        }
+      }
+    }
+  }
+  return [...new Set(missing)]
 }
 
 /**
