@@ -118,7 +118,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
         await Bun.write(path.join(app, 'src', 'index.js'), 'export {} // b\n')
         const miss = await vx(['run', 'build', '--all'])
         expect(`${miss.code}\n${miss.err}`).toStartWith('0\n')
-        expect(miss.out).toContain('miss     app#build')
+        expect(miss.out).toContain('1 not saved')
         expect(miss.out + miss.err).not.toContain('1↑')
         expect(miss.out + miss.err).toMatch(notice)
         expect((miss.out + miss.err).match(/\[vx\]/g)?.length).toBe(1)
