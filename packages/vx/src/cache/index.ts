@@ -34,6 +34,7 @@ export {
   vxCacheEntries,
 } from './cache.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION } from './key-fold.js'
+export { measureFsClockLag, setFsClockLag } from './fs-clock.js'
 export {
   addedInput,
   type InputListing,

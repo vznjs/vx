@@ -31,6 +31,7 @@ import {
   MAX_SCOPED_PATHSPECS,
   startGitEnumeration,
   lazyGitEnumeration,
+  measureFsClockLag,
 } from '../cache/index.js'
 import {
   buildPackageGraph,
@@ -256,6 +257,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const cacheDir = options.cacheDir
     ? path.resolve(options.cwd, options.cacheDir)
     : resolveCacheDir(workspaceRoot, workspaceConfig)
+  // Before any racy window is judged: a file system behind this process's
+  // clock dated a mid-command edit before the command (fs-clock.ts).
+  measureFsClockLag(cacheDir)
   // Asked now, read when the cache opens: a repository with no remote is
   // named by its root commit, a git spawn the discovery below overlaps.
   const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceRoot, workspaceConfig)

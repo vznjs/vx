@@ -315,7 +315,15 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     second by two, since FAT32 keeps even seconds; a rewrite later in
     the same stamp keeps it (`racyWindowMs`; until 2026-09-27, A-2 and
     A-38, such a rewrite of the same size was a hit on the first bytes'
-    output). That is the same value the index holds whenever no filter applies,
+    output). Every such window compares a file's stamp, on its file
+    system's clock, with a moment vx read from its own, so a run first
+    measures how far the file system runs behind (one file written and
+    removed in the cache dir) and widens every window by a lag past the
+    kernel's tick (20 ms): a WSL2 VM drifted from the Windows host that
+    stamps `/mnt/c`, a Docker Desktop bind mount or an NFS server dated an
+    edit made while a command ran before the command, and the entry
+    filed the edit's output under the old bytes' key (until 2026-10-16).
+    That is the same value the index holds whenever no filter applies,
     so a file's contribution doesn't flip across dirty↔clean
     transitions. Folded as `(relPath, identity)` pairs, sorted for
     stability across OSes and walk orders. The identity is the OID
