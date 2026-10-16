@@ -230,7 +230,8 @@ other walker: a project outside a git work tree is a `UserError`
    vx's own restore temp, which a key taken mid-restore listed and the
    rename then removed. `node_modules` is
    not here: the enumeration drops an UNTRACKED file under one
-   (`isInstalledPath`, an install), and a tracked one is a source. By
+   (`isInstalledPath`, an install) unless an entry names a path under it
+   outright (a generated client), and a tracked one is a source. By
    path, a committed fixture under `tests/fixtures/node_modules/` left
    the key and an edit to it replayed the old output (X-4).
 5. **Boundary ignores** — a path under a nested project's directory

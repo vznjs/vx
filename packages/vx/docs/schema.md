@@ -822,8 +822,8 @@ Always applied to every glob pass (regardless of what you wrote):
   `.cache/gen/**`), which is then walked on disk under that prefix only.
   Such a file is hashed from disk and never stored or restored; a
   missing one is not an input until it exists. A broad glob (`**`,
-  `src/**` over a listed `src`) still skips ignored files, so
-  `node_modules` is never walked, and an install stays out either way.
+  `src/**` over a listed `src`) still skips ignored files, so it never
+  walks `node_modules`.
   Its bytes differ per machine, so machines with different files miss
   each other's shared entries. An ignored file never selects a task
   under `--affected` on its own, as in Nx (only what git sees does); `vx
@@ -833,8 +833,10 @@ watch` re-runs it on an edit there.
   directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
   `.vx-tmp-*`, at any depth.
 - **Installs** — an untracked file under any `node_modules/` (ignored or
-  not). A file git TRACKS there, such as a committed test fixture, is an
-  input like any other.
+  not), unless an entry names a path under it outright: a generated
+  client (`node_modules/.prisma/client/**`) is an input, read from disk.
+  A file git TRACKS there, such as a committed test fixture, is an input
+  like any other.
 - **Declared `outputs.files`** are excluded — a task never invalidates
   itself via its own output. A path an output `!` entry takes back is
   no output, so it stays an input (A-44). Another task's outputs are
