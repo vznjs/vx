@@ -175,6 +175,21 @@ export function listedPlugins(root: string): string[] {
   return [...plugins].sort()
 }
 
+/**
+ * The `@vzn/vx*` packages a workspace file imports, parsed, not matched (a
+ * formatter's quotes hid a match). Each is installed with core: a file an
+ * earlier init wrote imports @vzn/vx-lockfile that package.json need not
+ * list, and the lock could not find it (M, 2026-10-16).
+ */
+export function importedPackages(text: string): string[] {
+  const out = new Set<string>()
+  for (const i of new Bun.Transpiler({ loader: 'ts' }).scanImports(text)) {
+    const m = /^(@vzn\/vx(?:-[^/]+)?)(?:\/|$)/.exec(i.path)
+    if (m !== null) out.add(m[1]!)
+  }
+  return [...out].sort()
+}
+
 /** Install `packages` (at `version`, given one) with the repo's manager; its output only on failure. */
 export function install(
   root: string,

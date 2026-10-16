@@ -45,6 +45,7 @@ import { exportGraph, nxBin } from './nx/export-graph.js'
 import { readNxJson } from './nx/nx-map.js'
 import {
   type AdoptionMode,
+  importedPackages,
   install,
   installArgv,
   listedPackages,
@@ -358,11 +359,8 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   const finalWorkspace = workspaceText ?? readFileSync(path.join(root, existingWorkspace!), 'utf8')
   // Imports parsed, not matched: a formatter's double quotes hid it, and
   // the file still imported the package removed (owner, 2026-10-16).
-  const needsSelf =
-    runsBins ||
-    new Bun.Transpiler({ loader: 'ts' })
-      .scanImports(finalWorkspace)
-      .some((i) => i.path === '@vzn/vx-migrate')
+  const imported = importedPackages(finalWorkspace)
+  const needsSelf = runsBins || imported.includes('@vzn/vx-migrate')
   const cacheNote =
     runner === 'vite-task'
       ? undefined
@@ -381,6 +379,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
                 '@vzn/vx',
                 ...(needsSelf ? ['@vzn/vx-migrate'] : []),
                 ...plugins.map((p) => p.pkg),
+                ...imported,
               ]),
             ],
             parsed,
@@ -544,7 +543,14 @@ async function keep(
   const declares = before === undefined || extended !== null
   const steps = await prepareRepo(
     root,
-    [...new Set(['@vzn/vx', '@vzn/vx-migrate', ...(declares ? all.map((p) => p.pkg) : [])])],
+    [
+      ...new Set([
+        '@vzn/vx',
+        '@vzn/vx-migrate',
+        ...(declares ? all.map((p) => p.pkg) : []),
+        ...importedPackages(text),
+      ]),
+    ],
     args,
   )
   if (args.json)

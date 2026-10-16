@@ -16,7 +16,7 @@ same way, at the [quickstart](../../quickstart/).
 `npx @vzn/vx init` is the whole adoption in a Turbo or Nx repo: beside
 `turbo.json` or `nx.json` it runs `@vzn/vx-migrate` (the latest
 release, which installs the latest `@vzn/vx` and moves every `@vzn/vx-*` plugin
-the repo lists with it). It asks whether to migrate natively (a `vx.config.ts` per
+the repo lists or the workspace file imports with it). It asks whether to migrate natively (a `vx.config.ts` per
 package, the default) or keep `turbo.json` / `nx.json` as the source
 (`turbo()` / `nx()`, see [Check the mapping first](#check-the-mapping-first)); `--native` or `--keep` answer it, and
 without a terminal, or from Vite Task, it is native. It installs vx with the repo's own package
@@ -87,7 +87,7 @@ $ npx @vzn/vx init --keep
 
 The install uses your lockfile's manager (`pnpm add -D -w …` beside
 `pnpm-lock.yaml`, `yarn add -D -W …` beside a Yarn 1 lockfile) and adds what is not installed at the latest release yet, with every
-`@vzn/vx-*` plugin the root lists: every `@vzn` package releases in lockstep.
+`@vzn/vx-*` plugin the root lists or `.vx/workspace.ts` imports: every `@vzn` package releases in lockstep.
 `--no-install` skips it, and the `next:` line names it instead.
 `vx init --keep --dry` prints the file instead of writing it; `--mjs` writes
 `.vx/workspace.mjs` without the type import. An existing
