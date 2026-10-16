@@ -16,7 +16,8 @@ export const IGNORED_SEGMENTS = ['node_modules', '.git']
 export function isIgnoredDir(segments: readonly string[]): boolean {
   const last = segments.length - 1
   if (IGNORED_SEGMENTS.includes(segments[last]!)) return true
-  return segments[last] === 'cache' && segments[last - 1] === '.vx'
+  // vx's cache, and where its restores stage (archive.ts).
+  return (segments[last] === 'cache' || segments[last] === 'tmp') && segments[last - 1] === '.vx'
 }
 
 /**

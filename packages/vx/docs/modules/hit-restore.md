@@ -4,9 +4,10 @@
 
 A confirmed cache entry, materialised: decide whether the tree is
 already current (the whole-subtree directory proof, then the per-file
-fingerprint proof) and skip the restore when it is; otherwise clean the
-declared outputs (pruning only inside the declared trees, so a sibling's
-fresh directory stays; inputs.md) and restore the artifact; mark the exact changed paths
+fingerprint proof) and skip the restore when it is; otherwise restore the
+artifact in place and then remove the outputs it does not hold (pruning
+only inside the declared trees, so a sibling's fresh directory stays;
+inputs.md); mark the exact changed paths
 against the git snapshot so a same-project consumer need not re-spawn
 git; replay the stored output, both streams in order; build the cache-hit outcome. Moved out
 of `execute-task.ts` on 2026-09-10 as pure code motion — the mirror of
@@ -37,18 +38,39 @@ export function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome>
 `execute-task.ts` re-exports both, so the entry stays importable from
 where it was.
 
+## In place, never clean-then-restore
+
+Each file is renamed over the one it replaces (archive.ts stages every
+entry in the workspace's `.vx/tmp/<pid>-0/` first, never in an output
+folder; a target on another filesystem goes through a temp beside it,
+and a file takes the group its directory gives new files (setgid on
+Linux, any directory on macOS); ACLs are not copied, a restored
+file gets the default ACL of `.vx/tmp/`), so a reader of the output tree never
+finds a declared output missing or half-written, and a restore that fails
+before its renames (a full disk, a damaged entry) leaves the outputs it
+found as they were. Only a found output that blocks a rename goes first:
+a file where the entry needs a directory, or a file under a path the
+entry holds as a file. The rest the entry does not hold goes once the
+restore has landed. On macOS the comparison is case-folded: a rename onto
+`out.txt` replaces `Out.txt`, and removing the found name would remove
+the restored file. The clean used to run first: a reader polling a 64 MB
+output while ten hits restored met ENOENT on 153,336 of 204,411 reads
+(Growth's parity probe, 2026-10-16), and a full disk left no outputs at
+all (`tests/restore-in-place.test.ts`, `tests/disk-full.unsafe.test.ts`).
+Each run first removes the staging a killed run left, never a live
+run's (`sweepStaging`, `tests/restore-staging.test.ts`).
+
 ## Additive tasks (item 588)
 
 Only with `rules.exclusiveOutputs: false` (X-53); by default the graph
 refuses an edge-ordered overlap. An ADDITIVE task
 (`node.addsToOutputsOf`) is judged current by its
-recorded rows alone and cleans by those rows (`cleanOutputPaths`, pruning
-only inside its declared trees as the glob clean does), never
-by its glob, which also selects the upstream's files it adds beside. An
+recorded rows alone and its restore rewrites exactly those rows, never
+touching what its glob, which also selects the upstream's files it adds beside. An
 upstream that dependants add to (`node.outputsAddedToBy`) drops the
 strays their globs could have added before it judges its own tree — on
 both halves, project and root-anchored (`overlapping-outputs.test.ts`
-holds each, item 638) — and never a row it recorded; its glob clean still takes them — the dependant
+holds each, item 638) — and never a row it recorded; its restore still removes them — the dependant
 restores or runs after it, by the edge.
 
 ## Since the split

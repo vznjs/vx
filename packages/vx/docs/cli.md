@@ -1243,8 +1243,7 @@ run...` precedes it.
    which reads what it likes, item 947, outside any project nested
    in it; a write the last cycle made is not, read off the later of
    its mtime and ctime, so an output a cache hit restores with its
-   saved mtime is the run's, and so is the restore's own `.vx-tmp-*`
-   file, `watch-restored-output.test.ts`) — or declared an
+   saved mtime is the run's, `watch-restored-output.test.ts`) — or declared an
    output, or the loop re-runs on it; after three such cycles in a row
    watch names the path and the remedy, once, and keeps going. A dev
    server the last cycle left running counts as that cycle for as long
@@ -1305,8 +1304,8 @@ Always ignored (no re-trigger):
   tracked + untracked-not-ignored — so a cycle it started could change
   nothing. A tracked file that matches a pattern is not ignored, by
   git's own rule; outside a repository nothing is.
-- Files ending in `~` (editor swap files), and a restore's own
-  `.vx-tmp-*` file.
+- Files ending in `~` (editor swap files), and `.vx/tmp/`, where
+  restores stage.
 - The run's **resolved cache directory**, wherever it is. `.vx/cache/` covers the
   default, but `defineWorkspace({ cache: { dir } })` and `--cache-dir` can put it
   anywhere; watching it would let vx's own cache writes trigger the next

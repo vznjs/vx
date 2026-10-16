@@ -12,11 +12,10 @@ import type { CacheConfig } from '../config.js'
 import {
   type CacheEntry,
   cleanOutputPaths,
-  cleanOutputs,
-  cleanWorkspaceOutputs,
   committedFiles,
   resolveOutputs,
   resolveWorkspaceOutputs,
+  sweepRestoreTemps,
   WORKSPACE_OUTPUT_PREFIX,
 } from '../cache/index.js'
 import type { TaskOutcome } from '../graph/index.js'
@@ -232,37 +231,74 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     }
   }
   if (!skipRestore) {
-    let cleanedRels: string[] = []
-    let cleanedWsRels: string[] = []
-    if (additive) {
-      cleanedRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))
-      await cleanOutputPaths({
-        projectDir: node.projectDir,
-        rels: cleanedRels,
-        outputs,
-        committed: cleanArgs.committed,
-      })
-      cleanedWsRels = hit.outputFiles
-        .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
-        .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length))
-      await cleanOutputPaths({
-        projectDir: args.workspaceRoot,
-        rels: cleanedWsRels,
-        outputs: wsOutputs,
-        committed: wsCleanArgs.committed,
-      })
-    } else {
+    const heldRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))
+    const heldWsRels = hit.outputFiles
+      .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
+      .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length))
+    // In place, never clean-then-restore: each file is renamed over the one
+    // it replaces, so a reader of the tree never finds a declared output
+    // missing, and a restore that fails before its renames (a full disk,
+    // a damaged entry) leaves the outputs it found as they were. Only what blocks a rename
+    // goes first; what the entry does not hold goes after. The clean used
+    // to run first: a reader polling a 64 MB output while ten hits restored
+    // met ENOENT on 153,336 of 204,411 reads (2026-10-16). An ADDITIVE task
+    // owns only its rows (item 588), and the restore rewrites exactly those.
+    let foundRels: string[] = []
+    let foundWsRels: string[] = []
+    let staleRels: string[] = []
+    let staleWsRels: string[] = []
+    if (!additive) {
+      sweepRestoreTemps(node.projectDir, outputs)
+      sweepRestoreTemps(args.workspaceRoot, wsOutputs)
       if (outputs.length > 0) {
-        cleanedRels = await cleanOutputs({ ...cleanArgs, resolved: walked?.proj })
+        const abs = walked?.proj ?? (await resolveOutputs(cleanArgs))
+        foundRels = abs.map((f) => relPosix(node.projectDir, f))
+        const blocking = inTheWay(foundRels, heldRels)
+        staleRels = notHeld(foundRels, heldRels).filter((f) => !blocking.has(f))
+        if (blocking.size > 0) {
+          await cleanOutputPaths({
+            projectDir: node.projectDir,
+            rels: [...blocking],
+            outputs,
+            committed: cleanArgs.committed,
+          })
+        }
       }
       if (wsOutputs.length > 0) {
-        cleanedWsRels = await cleanWorkspaceOutputs({ ...wsCleanArgs, resolved: walked?.ws })
+        const abs = walked?.ws ?? (await resolveWorkspaceOutputs(wsCleanArgs))
+        foundWsRels = abs.map((f) => relPosix(args.workspaceRoot, f))
+        const blocking = inTheWay(foundWsRels, heldWsRels)
+        staleWsRels = notHeld(foundWsRels, heldWsRels).filter((f) => !blocking.has(f))
+        if (blocking.size > 0) {
+          await cleanOutputPaths({
+            projectDir: args.workspaceRoot,
+            rels: [...blocking],
+            outputs: wsOutputs,
+            committed: wsCleanArgs.committed,
+          })
+        }
       }
     }
     await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot, {
       files: outputs,
       workspaceFiles: wsOutputs,
     })
+    if (staleRels.length > 0) {
+      await cleanOutputPaths({
+        projectDir: node.projectDir,
+        rels: staleRels,
+        outputs,
+        committed: cleanArgs.committed,
+      })
+    }
+    if (staleWsRels.length > 0) {
+      await cleanOutputPaths({
+        projectDir: args.workspaceRoot,
+        rels: staleWsRels,
+        outputs: wsOutputs,
+        committed: wsCleanArgs.committed,
+      })
+    }
     // The tree now holds this entry's bytes: stamp them for the next hit
     // (item 886).
     args.cache.recordOutputStamps?.(hash, node.projectDir, args.workspaceRoot)
@@ -291,17 +327,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     // unconditional drop (an executed task may write undeclared
     // files only git can see).
     if (outputs.length > 0) {
-      args.gitFilesCache?.markOutputsChanged(node.projectDir, [
-        ...cleanedRels,
-        ...hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX)),
-      ])
+      args.gitFilesCache?.markOutputsChanged(node.projectDir, [...foundRels, ...heldRels])
     }
     if (wsOutputs.length > 0) {
       args.gitFilesCache?.markWorkspaceOutputsChanged(args.workspaceRoot, [
-        ...cleanedWsRels,
-        ...hit.outputFiles
-          .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
-          .map((p) => p.slice(WORKSPACE_OUTPUT_PREFIX.length)),
+        ...foundWsRels,
+        ...heldWsRels,
       ])
     }
   }
@@ -364,3 +395,43 @@ function dirPrefixesOf(outputs: readonly string[]): readonly string[] | null {
 }
 
 const prefixMemo = new Map<string, readonly string[] | null>()
+
+/**
+ * On a case-insensitive volume (macOS's default) a rename onto `out.txt`
+ * replaces `Out.txt`: the two are one file, and removing the found name
+ * after the restore would remove the restored one.
+ */
+const fold: (rel: string) => string =
+  process.platform === 'darwin' ? (rel) => rel.normalize('NFC').toLowerCase() : (rel) => rel
+
+/**
+ * The found outputs a rename cannot replace: a file where the entry needs a
+ * directory (`dist/out` for `dist/out/a.js`) and a file under a path the
+ * entry holds as a file (`dist/out/a.js` for `dist/out`), whose directory
+ * the prune then takes.
+ */
+function inTheWay(found: readonly string[], held: readonly string[]): Set<string> {
+  if (found.length === 0 || held.length === 0) return new Set()
+  const files = new Set<string>()
+  const dirs = new Set<string>()
+  for (const h of held) {
+    const key = fold(h)
+    files.add(key)
+    for (let i = key.indexOf('/'); i !== -1; i = key.indexOf('/', i + 1)) dirs.add(key.slice(0, i))
+  }
+  const out = new Set<string>()
+  for (const f of found) {
+    const key = fold(f)
+    if (dirs.has(key)) out.add(f)
+    for (let i = key.indexOf('/'); i !== -1; i = key.indexOf('/', i + 1)) {
+      if (files.has(key.slice(0, i))) out.add(f)
+    }
+  }
+  return out
+}
+
+/** The found outputs the entry does not hold: the stale ones, once it has restored. */
+function notHeld(found: readonly string[], held: readonly string[]): string[] {
+  const keep = new Set(held.map(fold))
+  return found.filter((f) => !keep.has(fold(f)))
+}

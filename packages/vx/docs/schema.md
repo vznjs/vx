@@ -830,8 +830,8 @@ Always applied to every glob pass (regardless of what you wrote):
 watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
   `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction
-  directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
-  `.vx-tmp-*`, at any depth.
+  directory `.<16 hex>-<8 hex>.tmp/**`, and `.vx/tmp/**`, where vx's
+  restores stage, at any depth.
 - **Installs** — an untracked file under any `node_modules/` that git
   does not ignore. An ignored one follows the gitignore filter above
   like any other ignored path: named outright, it is an input
@@ -890,7 +890,7 @@ backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
-`.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
+`.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx/tmp/**`),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
 in its own project (a task never invalidates itself).
@@ -1669,8 +1669,9 @@ The loader rejects:
 
 Loaded from `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`: the directory holding
 `.vx` is the workspace root. `.vx` also holds the lock (`.vx/projects.lock.json`)
-and `.vx/cache`, the machine-local state (the cache, the workspace id),
-which is the only part git ignores: `.vx/.gitignore` says `/cache`. Every field falls back to its
+`.vx/cache`, the machine-local state (the cache, the workspace id), and
+`.vx/tmp`, where a restore stages files; git ignores only those two:
+`.vx/.gitignore` says `/cache` and `/tmp`. Every field falls back to its
 built-in default.
 
 ```ts
@@ -1830,7 +1831,7 @@ interface CacheSettings {
   workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
   `.gitignore` would hide the sources from git and the cache keys. A
   directory other than the default `.vx/cache` gets that `*` `.gitignore`;
-  the default is ignored by `.vx/.gitignore` (`/cache`) instead, written
+  the default is ignored by `.vx/.gitignore` (`/cache`, `/tmp`) instead, written
   when missing and never edited.
 - **`cache.retention`** — the `vx cache clean` policy, applied at the
   end of every run: entries unused for

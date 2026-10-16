@@ -47,7 +47,7 @@ error names the same fix.
 ### Check the mapping first
 
 `npx @vzn/vx init --keep` writes only this `.vx/workspace.ts` (and
-`.vx/.gitignore`, which keeps `.vx/cache` out of git), installs what it
+`.vx/.gitignore`, which keeps `.vx/cache` and `.vx/tmp` out of git), installs what it
 imports with your lockfile's manager (`@vzn/vx-migrate`, and
 `@vzn/vx-lockfile` for your lockfile's plugin: `npm()`, `pnpm()`, `bun()`
 or `yarn()`), and writes the lock. Its `next:` line builds once through

@@ -639,8 +639,8 @@ function lockRow(lock: { code: number; said: string }): ui.FieldRow {
   ]
 }
 
-/** `.vx/.gitignore`'s text, as core writes it: the machine-local cache stays out of git. */
-const DOT_VX_GITIGNORE = '/cache\n'
+/** `.vx/.gitignore`'s text, as core writes it: the machine-local cache and restore staging stay out of git. */
+const DOT_VX_GITIGNORE = '/cache\n/tmp\n'
 
 // npx and bunx name the package: their bare `vx` is a stranger's npm package.
 const EXEC: Record<PackageManager, string> = {

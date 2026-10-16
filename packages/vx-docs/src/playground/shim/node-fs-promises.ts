@@ -38,6 +38,7 @@ export async function realpath(p: string): Promise<string> {
 
 export const writeFile = rejects('writeFile')
 export const mkdir = rejects('mkdir')
+export const copyFile = rejects('copyFile')
 export const rm = rejects('rm')
 export const rmdir = rejects('rmdir')
 export const rename = rejects('rename')

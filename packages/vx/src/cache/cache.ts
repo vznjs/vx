@@ -1979,6 +1979,7 @@ export class Cache implements CacheLayer {
         workspaceRoot,
         verify,
         outputs === undefined ? undefined : declaredName(outputs),
+        workspaceRoot,
       )
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
@@ -1993,8 +1994,8 @@ export class Cache implements CacheLayer {
         throw new CorruptArtifactError(hash, err.message, err)
       // What is on disk, not what is in the archive: a directory standing
       // where the entry holds a file, or a file where it needs a directory.
-      // The clean removes the FILES the output globs select and the
-      // directories that removal emptied, so this is a path it left: one
+      // The restore removes the FILES the output globs select that block it
+      // and the directories that removal emptied, so this is a path it left: one
       // the globs do not cover, or an empty directory where a file goes,
       // which `dist/**` covers and the clean does not take (item 1094).
       // Named as such, not as a corrupt artifact. A
@@ -2013,7 +2014,7 @@ export class Cache implements CacheLayer {
             : 'a file stands where the entry needs a directory'
         throw new UserError(
           `restore of ${hash} into ${projectDir} was blocked by what is on disk (${msg.startsWith(code) ? msg : `${code}: ${msg}`}): ${what}. ` +
-            `The clean before a restore removes the files the output globs select and the directories that empties, not this — remove it and re-run.`,
+            `A restore replaces what the output globs select, not this — remove it and re-run.`,
         )
       }
       // A legal name under a destination deep enough that the two together
@@ -2061,7 +2062,7 @@ export class Cache implements CacheLayer {
       // on one workspace, a `vx watch` beside a `vx run` — a clean landing
       // 4–32 ms into a 2,000-file restore reproduces it, 2026-09-16). The
       // artifact is intact; the tree was not ours alone.
-      if (code === 'ENOENT' && (err as Error).message.includes('.vx-tmp-')) {
+      if (code === 'ENOENT' && /\.vx-tmp-|[\\/]\.vx[\\/]tmp[\\/]/.test((err as Error).message)) {
         throw new UserError(
           `restore of ${hash} into ${projectDir} was interrupted: a file it had just written vanished (${(err as Error).message}). ` +
             `Another vx run is using this workspace — re-run once it is done.`,

@@ -120,7 +120,7 @@ export default defineProject({
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the keys of the tasks it depends on, the task's config, arguments after `--` |
 | In, with a lockfile plugin | the package's `package.json` and its own dependencies from the lockfile ([Lockfiles](#lockfiles)) |
-| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `.vx/projects.lock.json`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
+| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `.vx/projects.lock.json`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx/tmp` (restore staging), files git ignores, the task's own outputs, a nested project's files |
 | In, when you say so    | a tool's version: `inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 

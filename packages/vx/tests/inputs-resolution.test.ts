@@ -358,7 +358,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     '.vx/.gitignore',
     '.18bf7d9ff3ffeffe-00000001.bun-build',
     '.cd5e87e3246b0795-00000000.tmp/bun',
-    '.vx-tmp-1z2-a',
+    '.vx/tmp/1z2-a/0',
   ]
   const IGNORED_NESTED = [
     'a/b/.git/HEAD',
@@ -369,7 +369,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     'a/b/.vx/.gitignore',
     'a/b/.18bf7d9ff3ffeffe-00000001.bun-build',
     'a/b/.cd5e87e3246b0795-00000000.tmp/bun',
-    'a/b/.vx-tmp-1z2-a',
+    'a/b/.vx/tmp/1z2-a/0',
   ]
   // Names one character away from an ignored one. If any of these is excluded
   // the pattern is over-broad, and a real source file has silently left the key.
@@ -389,8 +389,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     'x.bun-build.txt',
     '.cd5e87e3246b0795-00000000.tmp.txt',
     '.cd5e87e3246b079-00000000.tmp/bun',
-    'vx-tmp-1z2-a',
-    '.vx-tmp',
+    '.vx/tmpl/x',
   ]
 
   beforeEach(async () => {

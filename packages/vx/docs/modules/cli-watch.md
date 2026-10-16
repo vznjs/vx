@@ -72,7 +72,7 @@ export interface WatchCycle {
 export function watchCycle(opts: RunOptions, stop: AbortSignal, onWaiting: () => void): WatchCycle
 
 // watch-filter.ts — which events matter, decided over paths alone:
-export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx segments, ~ suffix, .vx-tmp-* names
+export function isIgnoredWatchPath(rel: string): boolean // node_modules / .git / .vx/cache / .vx/tmp segments, ~ suffix
 export function makeWatchIgnore(
   cacheDir,
   outputs?,
@@ -252,8 +252,7 @@ git checkout packages`) was no event to its own arm, nor to the
      task's write at its top level started a second cycle on macOS
      (`tests/watch-project-dir-write.test.ts`).
    - Filter out `node_modules` / `.git` / `.vx/cache` path segments,
-     the `~` suffix (editor swap files), a restore's `.vx-tmp-*`
-     file, the RESOLVED
+     `.vx/tmp` (restore staging), the `~` suffix (editor swap files), the RESOLVED
      cache directory (a relocated `cache.dir` would otherwise re-trigger
      every cycle), and each project's declared outputs
      (`cache.outputs.files`, root-relative `workspaceFiles`) — a cycle
