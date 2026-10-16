@@ -191,6 +191,34 @@ describe('Cache.evictIfDue', () => {
     }
   })
 
+  // Nx's cleanup_keeps_a_result_stored_meanwhile (in a shared database and
+  // through a separate one) and put_between_check_and_cleanup: a save that
+  // lands while a prune runs is never taken by it, however the two
+  // interleave. Its artifact file is renamed in before its row commits, so
+  // the prune's orphan sweep may list it row-less; the grace window keeps it.
+  for (const shared of [true, false]) {
+    it(`an entry saved while a prune runs survives it (${shared ? 'one handle' : 'two handles'})`, async () => {
+      const seeding = new Cache(cacheDir)
+      await seed(seeding, ['aa'], true)
+      seeding.close()
+      age('aa', Date.now() - 40 * DAY)
+      const cache = new Cache(cacheDir)
+      const other = shared ? cache : new Cache(cacheDir)
+      try {
+        const pruning = cache.prune({ olderThanMs: Date.now() - 30 * DAY })
+        await seed(other, ['bb'], true)
+        expect((await pruning).evicted).toBe(1)
+        expect(hashes(cache)).toEqual(['bb'])
+        const dest = path.join(root, 'restored')
+        await other.restoreOutputs('bb', dest)
+        expect(existsSync(path.join(dest, 'dist', 'bb.txt'))).toBe(true)
+      } finally {
+        if (!shared) other.close()
+        cache.close()
+      }
+    })
+  }
+
   it('evicts least-recently-used entries until the cache is under maxSize', async () => {
     const cache = new Cache(cacheDir)
     try {
