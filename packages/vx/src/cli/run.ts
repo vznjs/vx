@@ -595,9 +595,16 @@ export async function runCmd(args: readonly string[]): Promise<number> {
   const scopeOut: { affectedBase?: string } = {}
   const resolved = await resolveRunOptions(parsed, cwd, tasks, 'run', scopeOut)
   if ('error' in resolved) return refuse('run', args, resolved.error, resolved.code ?? 'VX_E_USAGE')
+  // `--dry=json` prints a plan even when there is nothing to run: a script
+  // reading stdout broke exactly then (Growth, 2026-10-16).
+  const nothingToRun = (): 0 => {
+    if (parsed.dry === 'json')
+      process.stdout.write(formatPlanJson({ tasks: [] }, scopeOut.affectedBase))
+    return 0
+  }
   if ('nothingSelected' in resolved) {
     sayNotice('info', 'vx run', resolved.nothingSelected)
-    return 0
+    return nothingToRun()
   }
   const opts = resolved
   // The raw invocation, recorded on the `invocations` row so dashboards
@@ -628,11 +635,11 @@ export async function runCmd(args: readonly string[]): Promise<number> {
       // said no affected project declared a task one did (X-141).
       if (plan.noneAffected !== undefined) {
         sayLine('info', plan.noneAffected, 'vx run')
-        return 0
+        return nothingToRun()
       }
       if (opts.selectedByDiff === true) {
         sayNotice('info', 'vx run', `no affected project declares task(s): ${tasks.join(', ')}`)
-        return 0
+        return nothingToRun()
       }
       return refuse(
         'run',

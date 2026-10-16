@@ -148,7 +148,10 @@ export interface PlanTaskJson {
 }
 
 /** `affectedBase`: the ref a bare `--affected` guessed (or was given), so a reader knows what the diff was against. */
-export function formatPlanJson(plan: RunPlan, affectedBase?: string): string {
+export function formatPlanJson(
+  plan: Pick<RunPlan, 'tasks' | 'predicted' | 'downloadDowngrades'>,
+  affectedBase?: string,
+): string {
   return (
     JSON.stringify(
       {
