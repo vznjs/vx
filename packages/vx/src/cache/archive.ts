@@ -81,6 +81,7 @@ import {
   tarSize,
 } from './tar-stream.js'
 import { ON_THREAD_MAX } from './zstd.js'
+import { readUmask, restoredMode } from './umask.js'
 
 /** Archive entry name carrying the per-output mode/mtime sidecar. */
 const META_ENTRY = '.vx-meta.json'
@@ -659,6 +660,7 @@ export async function extractArtifactStream(
   // directory chain, the destination included, and the cache restores
   // into a project directory that exists. The eager one cost every
   // restore a thread-pool round trip for an EEXIST and a stat (item 627).
+  readUmask()
   const x = new Extractor(destDir, workspaceDest, stageRoot)
   const provided = new Set<string>()
   const headerMtime = new Map<string, number>()
@@ -772,7 +774,7 @@ function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined)
     if (st.ino !== ino || st.nlink !== 1) {
       throw new Error(`${s.target} changed while it was restored`)
     }
-    if ((st.mode & 0o7777) !== (mode & 0o777)) fchmodSync(fd, mode & 0o777)
+    if ((st.mode & 0o7777) !== restoredMode(mode)) fchmodSync(fd, restoredMode(mode))
     if (mtimeMs !== undefined && Math.floor(st.mtimeMs) !== mtimeMs) {
       const t = new Date(mtimeMs)
       futimesSync(fd, t, t)
@@ -1115,7 +1117,7 @@ class Extractor {
         made = { mode: st.mode & 0o777, uid: st.uid, gid: st.gid }
         created.set(s.streamed, made)
       }
-      if ((mode & 0o777) !== made.mode) chmodSync(s.tmp, mode & 0o777)
+      if (restoredMode(mode) !== made.mode) chmodSync(s.tmp, restoredMode(mode))
       // A Date, not seconds: Bun reads a negative number of seconds as
       // "now", and a Date before 1970 as itself (Bun 1.4.2).
       const t = mtimeMs === undefined ? undefined : new Date(mtimeMs)
@@ -1153,7 +1155,7 @@ class Extractor {
       const side = siblingTemp(s.target)
       try {
         await copyFile(s.tmp, side)
-        chmodSync(side, mode & 0o777)
+        chmodSync(side, restoredMode(mode))
         if (t !== undefined) utimesSync(side, t, t)
         await rename(side, s.target)
       } catch (e) {

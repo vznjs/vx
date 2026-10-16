@@ -44,6 +44,7 @@ src/cache/run-store.ts
 src/cache/schema.ts
 src/cache/scoped-cache.ts
 src/cache/tar-stream.ts
+src/cache/umask.ts
 src/cache/zstd.ts
 src/cli/cache.ts
 src/cli/completions.ts
