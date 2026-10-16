@@ -1,5 +1,8 @@
 // Item 812's sweep of nx-inputs, nx-outputs and nx-deps: pure functions,
 // held here by their exact outputs. Each row fails with one line undone.
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import type { PackageMeta } from '../src/packages.js'
 import { emptyNxInputs, expandNxInputs } from '../src/nx/nx-inputs.js'
@@ -24,7 +27,40 @@ describe('expandNxInputs', () => {
       { runtime: 'ls {workspaceRoot}' },
       { runtime: 'cat {projectRoot}/v.txt && echo {projectName}' },
     ])
-    expect(got.runtimeCmds).toEqual(['cat ./toolver.txt', 'ls .', 'cat packages/a/v.txt && echo a'])
+    expect(got.runtimeCmds).toEqual([
+      '(cat ./toolver.txt) || echo "exit $?"',
+      '(ls .) || echo "exit $?"',
+      '(cat packages/a/v.txt && echo a) || echo "exit $?"',
+    ])
+  })
+
+  // Nx keys a runtime command's stdout and stderr and runs on whatever it
+  // exits (`hash_runtime.rs`); vx's probe failed the task on a non-zero
+  // exit, so `git describe` in a repo with no tags stopped every run. The
+  // mapped command exits 0 and keys the error and the exit code, and a
+  // change in what the probe reads still changes what it prints.
+  it('a runtime command that exits non-zero keys its error and exit code', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-nx-runtime-'))
+    try {
+      const [missing, exits, commented] = inputs([
+        { runtime: 'cat {workspaceRoot}/v.txt' },
+        { runtime: 'echo partial; exit 3' },
+        { runtime: 'echo kept # a note' },
+      ]).runtimeCmds
+      const probe = (cmd: string) => {
+        const r = Bun.spawnSync(['sh', '-c', cmd], { cwd: dir, stderr: 'pipe' })
+        return [r.exitCode, r.stdout.toString().trim(), r.stderr.toString().trim()] as const
+      }
+      const [code, out, err] = probe(missing!)
+      expect([code, out]).toEqual([0, 'exit 1'])
+      expect(err).toContain('v.txt')
+      await writeFile(path.join(dir, 'v.txt'), 'v2\n')
+      expect(probe(missing!)).toEqual([0, 'v2', ''])
+      expect(probe(exits!)).toEqual([0, 'partial\nexit 3', ''])
+      expect(probe(commented!)).toEqual([0, 'kept', ''])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   // Nx 23's `{ workingDirectory }` keys where Nx was started; a vx task

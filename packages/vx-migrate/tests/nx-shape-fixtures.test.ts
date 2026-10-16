@@ -241,7 +241,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(build['inputs'] as unknown).toEqual({
       files: ['**/*'],
       workspaceFiles: ['.github/workflows/ci.yml', 'tsconfig.base.json'],
-      workspaceRuntime: ['node -v'],
+      workspaceRuntime: ['(node -v) || echo "exit $?"'],
     })
     expect(build['dependsOn']).toEqual(['^build', 'util#nx-input:production', 'util#build'])
     expect(r.configs['app']!['typecheck']!['dependsOn']).toEqual([

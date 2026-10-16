@@ -89,7 +89,7 @@ describe('nx-upstream: what the sweep found unheld', () => {
     expect(inputsOf(t.get('lib#nx-input:production'))).toEqual({
       files: ['package.json', 'project.json', 'src/**'],
       env: ['LIB_MODE'],
-      workspaceRuntime: ['node -v'],
+      workspaceRuntime: ['(node -v) || echo "exit $?"'],
     })
   })
 
@@ -99,7 +99,7 @@ describe('nx-upstream: what the sweep found unheld', () => {
       files: [],
       workspaceFiles: ['packages/lib/src/**'],
       env: ['LIB_MODE'],
-      workspaceRuntime: ['node -v'],
+      workspaceRuntime: ['(node -v) || echo "exit $?"'],
     })
     expect(depsOf(t.get('app#test'))).toEqual(['base#nx-input:production'])
   })
@@ -161,7 +161,7 @@ describe('nx-upstream: what the sweep found unheld', () => {
         files: [],
         workspaceFiles: [glob],
         env: ['LIB_MODE'],
-        workspaceRuntime: ['node -v'],
+        workspaceRuntime: ['(node -v) || echo "exit $?"'],
       })
       expect(depsOf(t.get('app#test'))).toEqual(['base#nx-input:production'])
     }
