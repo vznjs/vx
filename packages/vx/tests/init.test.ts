@@ -9,7 +9,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { migrateCommand, parseInitArgs } from '../src/cli/init.js'
-import { VERSION } from '../src/version.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 import { vxInvocation } from '../src/workspace/migration.js'
 import { noticed } from './helpers/notice.js'
@@ -158,19 +157,25 @@ describe('vx init hands a repo with a package.json to @vzn/vx-migrate', () => {
     }
   })
 
-  it('without --keep it runs vx-migrate: the installed one, else this version through bun x', async () => {
+  it('without --keep it runs the latest vx-migrate, never an installed one, but in a source checkout', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-migrate-'))
     try {
-      const pinned = VERSION === '0.0.0' ? 'latest' : VERSION
       const sub = path.join(root, 'packages', 'a')
-      const before = migrateCommand([sub, root], ['--dry'])
+      const before = migrateCommand([sub, root], ['--dry'], 'latest', '0.0.0')
       const bin = path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
       await mkdir(path.dirname(bin), { recursive: true })
       await writeFile(bin, '')
-      // Found from a directory below the one that has it.
-      expect([before, migrateCommand([sub, root], [])]).toEqual([
-        [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${pinned}`, '--dry'],
+      // M, 2026-10-16: an installed 0.0.637 ran under vx 0.0.639 and pinned
+      // core back to 0.0.637. "vx init should always install latest and upgrade all".
+      expect([
+        before,
+        migrateCommand([sub, root], [], 'latest', '0.0.0'),
+        migrateCommand([sub, root], ['--force'], '0.0.640', '0.0.639'),
+      ]).toEqual([
+        [process.execPath, 'x', '--silent', '@vzn/vx-migrate@latest', '--dry'],
+        // Found from a directory below the one that has it.
         [process.execPath, '--no-install', bin],
+        [process.execPath, 'x', '--silent', '@vzn/vx-migrate@0.0.640', '--force'],
       ])
     } finally {
       await rm(root, { recursive: true, force: true })

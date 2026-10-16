@@ -112,13 +112,18 @@ export function versionSpec(tag: string | undefined): string {
  * as an internal error with a stack (a network namespace without a
  * route, 2026-09-16). One line, the host and the reason.
  */
-async function fetchOrRefuse(url: string, init: RequestInit, what: string): Promise<Response> {
+async function fetchOrRefuse(
+  url: string,
+  init: RequestInit,
+  what: string,
+  verb = 'vx upgrade',
+): Promise<Response> {
   try {
     return await fetch(url, init)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     throw new UserError(
-      `vx upgrade: could not reach ${new URL(url).host} to ${what} (${message}) — check the network or the proxy and re-run`,
+      `${verb}: could not reach ${new URL(url).host} to ${what} (${message}) — check the network or the proxy and re-run`,
     )
   }
 }
@@ -130,33 +135,43 @@ async function fetchOrRefuse(url: string, init: RequestInit, what: string): Prom
  * connection was closed unexpectedly"), which `fetchOrRefuse` never sees
  * and the CLI printed as an internal error with a stack.
  */
-async function readOrRefuse<T>(read: () => Promise<T>, url: string, what: string): Promise<T> {
+async function readOrRefuse<T>(
+  read: () => Promise<T>,
+  url: string,
+  what: string,
+  verb = 'vx upgrade',
+): Promise<T> {
   try {
     return await read()
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     throw new UserError(
-      `vx upgrade: could not ${what} from ${new URL(url).host} (${message}) — nothing replaced; check the network or the proxy and re-run`,
+      `${verb}: could not ${what} from ${new URL(url).host} (${message}) — nothing replaced; check the network or the proxy and re-run`,
     )
   }
 }
 
 /** The registry's document for `pkg@spec` (`latest` or a version). */
-export async function fetchManifest(pkg: string, spec: string): Promise<unknown> {
+export async function fetchManifest(
+  pkg: string,
+  spec: string,
+  verb = 'vx upgrade',
+): Promise<unknown> {
   const url = `${REGISTRY}/${pkg}/${spec}`
   const res = await fetchOrRefuse(
     url,
     { redirect: 'follow', headers: { Accept: 'application/json', 'User-Agent': `vx/${VERSION}` } },
     'read the release',
+    verb,
   )
   if (!res.ok) {
     throw new UserError(
-      `vx upgrade: could not read ${pkg}@${spec} from the npm registry (${res.status})${res.status === 404 && spec !== 'latest' ? ` — is ${spec} a published version?` : ''}`,
+      `${verb}: could not read ${pkg}@${spec} from the npm registry (${res.status})${res.status === 404 && spec !== 'latest' ? ` — is ${spec} a published version?` : ''}`,
     )
   }
   // A body that is not JSON (a captive portal's page, a proxy's error
   // page served with a 200) is the same refusal as a cut one.
-  return await readOrRefuse(() => res.json(), url, 'read the release')
+  return await readOrRefuse(() => res.json(), url, 'read the release', verb)
 }
 
 /** What a verified registry document names: the version, its tarball and the signed integrity. */
@@ -556,13 +571,17 @@ export function upgradeArgv(install: ManagedInstall, version: string): string[] 
   return argv
 }
 
-/** The version `tag` names, or the registry's latest, read for the "already at" check. */
-async function targetVersion(tag: string | undefined): Promise<string> {
+/**
+ * The version `tag` names, or the registry's latest: read for the "already
+ * at" check, and by `vx init`, which always installs the latest release.
+ */
+export async function targetVersion(tag: string | undefined, verb = 'vx upgrade'): Promise<string> {
   const spec = versionSpec(tag)
   if (spec !== 'latest') return spec
-  const v = ((await fetchManifest(PACKAGE, 'latest')) as { version?: unknown } | null)?.version
+  const v = ((await fetchManifest(PACKAGE, 'latest', verb)) as { version?: unknown } | null)
+    ?.version
   if (typeof v !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v)) {
-    throw new UserError(`vx upgrade: the npm registry named no latest version of ${PACKAGE}`)
+    throw new UserError(`${verb}: the npm registry named no latest version of ${PACKAGE}`)
   }
   return v
 }

@@ -152,6 +152,29 @@ export function listedPackages(root: string, packages: readonly string[]): strin
   )
 }
 
+/**
+ * The `@vzn/vx-*` plugins the root lists from the registry (a `workspace:`
+ * or `file:` link is the repo's own; a platform binary comes with core).
+ * Every @vzn package releases together: an install moves them with core,
+ * as `vx upgrade` does (M, 2026-10-16: "always install latest and upgrade all").
+ */
+export function listedPlugins(root: string): string[] {
+  const pj = JSON.parse(readText(path.join(root, 'package.json')) || '{}') as Record<
+    string,
+    Record<string, unknown> | undefined
+  >
+  const plugins = new Set<string>()
+  for (const f of ['dependencies', 'devDependencies']) {
+    for (const [name, spec] of Object.entries(pj[f] ?? {})) {
+      if (!name.startsWith('@vzn/vx-') || /^@vzn\/vx-(?:darwin|linux)-(?:x64|arm64)$/.test(name))
+        continue
+      if (typeof spec === 'string' && !/^(?:workspace|file|link|portal):/.test(spec))
+        plugins.add(name)
+    }
+  }
+  return [...plugins].sort()
+}
+
 /** Install `packages` (at `version`, given one) with the repo's manager; its output only on failure. */
 export function install(
   root: string,
