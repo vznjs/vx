@@ -149,7 +149,7 @@ describe('`^task` needs an edge source', () => {
         const r = await vx(root, ['run', 'build', '--all', '--dry=json'])
         expect([r.code, r.err.split('\n')[2]]).toEqual([
           1,
-          '  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns `deps`',
+          '  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',
         ])
       } finally {
         await rm(root, { recursive: true, force: true })
@@ -177,7 +177,7 @@ describe('`^task` needs an edge source', () => {
         )
         expect([run.exitCode, run.stderr.toString().split('\n')[0]]).toEqual([
           1,
-          '✗ vx run  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns `deps`',
+          '✗ vx run  app#build: ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',
         ])
       } finally {
         await rm(root, { recursive: true, force: true })

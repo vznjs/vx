@@ -64,8 +64,9 @@ project:
 workspace one (rule 4 of
 `design/language-agnostic-core-2026-10.md`). Without one,
 `buildTaskGraph` refuses a `^task` (`VX_E_DEPENDS_ON`, "`<id>: ^<task>`
-needs project edges; add pnpm()/bun()/npm()/yarn() or a plugin that
-returns `deps`"), the default `build`'s `^build` included: every `^`
+needs project edges; add pnpm()/bun()/npm()/yarn() and install so its
+lockfile exists, or a plugin that returns `deps`"; a lockfile plugin
+whose lockfile is absent gives no edges), the default `build`'s `^build` included: every `^`
 would resolve to nothing, and its upstream would fold into no key, a
 stale hit replayed green. With one, a project with no deps is a leaf
 and its `^task` resolves to nothing, as a shared template needs. Reach

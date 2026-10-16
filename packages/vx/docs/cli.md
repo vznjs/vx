@@ -2234,8 +2234,9 @@ target, fix its spelling, or drop the entry.
 `vx lock` refuses it, not a run: a run trusts the graph the lock holds.
 
 A `^task` with no edge source is refused too: ``<id>: ^build needs
-project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns
-`deps` ``. Core reads no edge from a manifest, so with no plugin
+project edges; add pnpm()/bun()/npm()/yarn() and install so its
+lockfile exists, or a plugin that returns `deps` ``. A lockfile plugin
+whose lockfile is absent gives no edges. Core reads no edge from a manifest, so with no plugin
 returning `deps` every `^` would resolve to nothing and fold no
 upstream into the key. Declare the lockfile plugin in
 `.vx/workspace.ts` (or a plugin of your own that returns `deps`); a run
