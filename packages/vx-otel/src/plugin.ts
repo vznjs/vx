@@ -185,15 +185,15 @@ export function resolveOtelConfig(
   const base = from('endpoint', 'OTEL_EXPORTER_OTLP_ENDPOINT')
   const pick = (
     option: keyof OtelPluginOptions,
-    signal: 'traces' | 'metrics' | 'logs',
-  ): [string, string] | undefined => {
-    const own = from(option, `OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_ENDPOINT`)
-    return own ?? (base === undefined ? undefined : [joinSignal(base[0], signal), base[1]])
-  }
+    envName: string,
+    signal: string,
+  ): [string, string] | undefined =>
+    from(option, envName) ??
+    (base === undefined ? undefined : [joinSignal(base[0], signal), base[1]])
   const picked = {
-    traces: pick('tracesEndpoint', 'traces'),
-    metrics: pick('metricsEndpoint', 'metrics'),
-    logs: pick('logsEndpoint', 'logs'),
+    traces: pick('tracesEndpoint', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'traces'),
+    metrics: pick('metricsEndpoint', 'OTEL_EXPORTER_OTLP_METRICS_ENDPOINT', 'metrics'),
+    logs: pick('logsEndpoint', 'OTEL_EXPORTER_OTLP_LOGS_ENDPOINT', 'logs'),
   }
   // An endpoint with no http(s) scheme (`localhost:4318`) parses as a URL
   // of scheme `localhost:`: every export failed "Unable to connect", once
