@@ -45,9 +45,10 @@ vulnerability), never in a public issue.
   choosing is trusted as a writer, as it is in every action cache. Use a
   store only your builds write to, or `turboCache()`'s signature key,
   which refuses an artifact a keyholder did not sign. A job you do not
-  trust (a fork's pull request) reads at most: `--cache-policy=local:rw,remote:r`,
-  or the tools' own `TURBO_REMOTE_CACHE_READ_ONLY`, `TURBO_CACHE` and
-  `NX_SKIP_REMOTE_CACHE`, which the cache plugins honour (L-34).
+  trust (a fork's pull request) reads at most: `--cache-policy=local:rw,remote:r`
+  or `cache.policy`. Core's policy alone decides; a cache plugin reads no
+  tool's own switch (`TURBO_CACHE`, `NX_SKIP_REMOTE_CACHE`) and cannot
+  narrow it.
 
 ## Cache poisoning
 

@@ -12,7 +12,7 @@ order, the local store and provenance.
 ```ts
 export interface ResolvedRemote {
   readonly remote: RemoteCacheLayer
-  readonly read: boolean // the run's remote read, narrowed by the remote's access
+  readonly read: boolean // the run's remote read
   readonly write: boolean // the same for writes
   readonly onError?: (err: Error) => void // default: stderr
 }

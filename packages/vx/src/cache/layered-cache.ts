@@ -62,11 +62,6 @@ export interface RemoteCacheLayer {
    * dropped before it is printed.
    */
   readonly endpoint?: string
-  /**
-   * What the wire's credential allows, when less than both (a read-only
-   * token): core clears the run's remote axis it lacks. Omitted → both.
-   */
-  readonly access?: { readonly read?: boolean; readonly write?: boolean }
   /** Existence probe: `--dry` and `--force` ask it per key when the remote cannot batch. */
   has(hash: string): Promise<boolean>
   /**
