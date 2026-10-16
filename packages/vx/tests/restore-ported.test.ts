@@ -64,7 +64,13 @@ const file = (name: string, body: string, mtime?: number): TarInput => ({
 function filesUnder(root: string): string[] {
   return readdirSync(root, { recursive: true, withFileTypes: true })
     .filter((e) => e.isFile())
-    .map((e) => path.relative(root, path.join(e.parentPath, e.name)))
+    .map((e) =>
+      path
+        .join(e.parentPath, e.name)
+        .slice(root.length + 1)
+        .split(path.sep)
+        .join('/'),
+    )
     .sort()
 }
 
