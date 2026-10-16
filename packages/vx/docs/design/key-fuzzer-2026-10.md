@@ -17,7 +17,10 @@ bun scripts/fuzz-keys.ts <scratch-dir> 300 <seed> --policies  # random --force /
 The workspace's tasks print what they read: each listed `src` file's
 name, mode bit and bytes or link target, a constant from an imported
 `conf.mjs`, a cached producer's output read by content (`tasks: []`), a
-`workspaceFiles` input, and the upstream's output. After each random
+`workspaceFiles` input, an uncached producer's output (it writes a
+passed-through env value and a file outside its project), and the
+upstream's output. A symlink prints the bytes behind it, not only its
+target string. After each random
 edit, one `vx run build --all`, then every output is compared with what
 the current inputs produce. A mismatch is a hit that replayed bytes its
 key does not describe, the worst failure class; a seed replays it
@@ -27,8 +30,11 @@ The edits are the ones a key can miss: content, a same-size rewrite with
 the times put back (`forge`), chmod, symlinks, renames, `git add`,
 commit, stash and pop (conflicts included), checkout, reset, `add -N`,
 index flags (`assume-unchanged`, `skip-worktree`, `--chmod`),
-`.gitignore`, `.gitattributes`, `core.autocrlf`, and tampering with
-declared outputs.
+`.gitignore`, `.gitattributes`, `core.autocrlf`, setting or unsetting the
+passed-through env value, and tampering with declared outputs. Symlinks
+point at files and directories inside and outside the project; a run that
+refuses an undeclared link target is correct, and a run that accepts one
+is reported (`UNREFUSED`).
 
 ## What it found
 
@@ -41,6 +47,11 @@ Three stale hits in its first afternoon, each a fix with a row:
   disk (the blob-size check).
 - A-61: a gitlink whose directory lost its `.git` listed none of its
   files (`walkFiles`).
+
+Two more once it read through links and gained an uncached producer
+(2026-10-16): a link whose target was no input
+(`refuseUnkeyedLinks`), and an uncached producer's passed-through env
+value missing from its dependents' keys.
 
 The one probe of the script itself: with the file-hash memo's ctime and
 inode checks deleted, seeds 1 to 3 each report a stale hit by step 23.

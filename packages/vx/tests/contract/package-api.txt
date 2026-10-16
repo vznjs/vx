@@ -439,6 +439,7 @@ export interface CacheKeyInput {
   runtimeValues?: Array<[command: string, output: string]>
   workspaceRuntimeValues?: Array<[command: string, output: string]>
   inputFiles: string[]
+  linkTargetsKeyed?: boolean
   workspaceRoot: string
   upstreamHashes: string[]
   upstreamIds?: ReadonlyMap<string, string>

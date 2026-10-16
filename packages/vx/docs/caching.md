@@ -341,13 +341,17 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A **symlink** folds as git folds it: the blob of its target
     _string_ (its mode-120000 index OID), whether it points at a file,
     a directory, or nothing. Retargeting a link changes the key; the
-    bytes behind a link to a directory, or to a file outside the
-    project, do not — `git diff` and `--affected` cannot see them
-    either, so declare them with `workspaceFiles`. A link to a file
-    inside the project tracks that file's content only when the file
-    matches the task's input globs too: it is then an input of its own.
-    A link under `src/**` to `other/data.txt` folds the link, not
-    `other/data.txt`; name the target in the globs to track it.
+    bytes behind it do not, and `git diff` and `--affected` cannot see
+    them either. So a link's target must be an input of its own: a
+    file the globs hold, or, for a directory, every file git lists
+    under it. A task whose link points anywhere else is refused, naming
+    the target and the `workspaceFiles` entry that keys it (a target
+    git does not list, gitignored or outside the workspace, cannot be
+    a glob's: exclude the link and key it with `runtime`). Declared,
+    the key, `--affected` and `vx watch` all see an edit behind the
+    link. A dangling link reads nothing and is not refused. (Until
+    2026-10-16 such a link folded only its target string, and an edit
+    behind it replayed the old output.)
     (Before 2026-09-09 a file link folded the
     bytes behind it and a directory or dangling link fell out of the
     input set entirely, so retargeting one was a stale hit.)

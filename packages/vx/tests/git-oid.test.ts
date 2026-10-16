@@ -607,12 +607,12 @@ describe('semantic guardrails — key stability across dirty↔clean transitions
     const keyDangling = await keyNow()
     expect(keyDangling).not.toBe(keyBDirty)
     expect(keyDangling).not.toBe(keyA)
-    // Control: the bytes BEHIND a directory link are not inputs (git parity —
-    // declare them with workspaceFiles).
+    // The bytes BEHIND a directory link are not folded with it, so a link
+    // whose target holds a file no glob keys is refused (linked-inputs.ts).
     await rm(link)
     await symlink('../../shared-a', link)
     await writeFile(path.join(root, 'shared-a', 'f.txt'), 'x')
-    expect(await keyNow()).toBe(keyA)
+    await expect(keyNow()).rejects.toThrow('"shared-a/f.txt" behind it is not an input')
   })
 
   it('edit changes the key; reverting restores the ORIGINAL key before any commit', async () => {
