@@ -641,12 +641,8 @@
   .fbody p {
     font-size: 16.5px;
   }
-  /* Wrapped, not scrolled: the end of a line past the edge said nothing
-     about being there (the docs' code blocks wrap for the same reason). */
   .fexample .code {
     font-size: 12.5px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
   .pager {
     grid-template-columns: minmax(0, 1fr);
