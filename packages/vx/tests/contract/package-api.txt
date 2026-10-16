@@ -1825,7 +1825,6 @@ export interface WorkspacePlugin {
 == type WorkspaceRules (src/config.ts)
 export interface WorkspaceRules {
   exclusiveOutputs?: boolean
-  upfrontKeys?: boolean
   dependencies?: readonly DependencyRule[]
 }
 == runtime values

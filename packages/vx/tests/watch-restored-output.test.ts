@@ -4,8 +4,8 @@
 // not ignored by path; it is git-ignored, but `types` runs uncached, so an
 // ignored path there counts unless the last cycle wrote it, and "wrote it"
 // was read off the restored (old) mtime. An edit undone replayed `build`
-// and started one more cycle: `changed solid-js h/dist/h.cjs`. A reader
-// over another task's outputs is what `upfrontKeys: false` allows.
+// and started one more cycle: `changed solid-js h/dist/h.cjs`. `check` reads
+// `build`'s outputs only where git lists them, and git ignores them whole.
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -47,10 +47,7 @@ it('an output a cache hit restores starts no cycle', async () => {
     } }\n`,
     files: { 'src/a.txt': 'a1\n', '.gitignore': 'dist/\n' },
   })
-  await writeFile(
-    path.join(root, '.vx/workspace.mjs'),
-    localWorkspaceSource([], '', '{ upfrontKeys: false }'),
-  )
+  await writeFile(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
   w = startWatch(root, ['--all'], {}, 'types')
   const watch = w
   await until(() => watch.out().includes('watching '), 'the watching marker')

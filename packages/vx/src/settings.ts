@@ -109,12 +109,6 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'Refuse two tasks whose outputs overlap even when an edge orders them.',
   },
   {
-    path: 'run.rules.upfrontKeys',
-    kind: { type: 'bool' },
-    default: 'true',
-    doc: "Refuse a task whose inputs can match another task's outputs.",
-  },
-  {
     path: 'cache.dir',
     kind: { type: 'string' },
     default: '.vx/cache, entries in ~/.vx/<repo>/cache',
@@ -400,15 +394,8 @@ export function resolveSetting(
   return { value: undefined, source: 'default' }
 }
 
-/** `run.rules`, each from its variable, else the workspace; unset ones stay on. */
-export function runRules(workspace: unknown): {
-  exclusiveOutputs?: boolean
-  upfrontKeys?: boolean
-} {
-  const out: { exclusiveOutputs?: boolean; upfrontKeys?: boolean } = {}
-  for (const rule of ['exclusiveOutputs', 'upfrontKeys'] as const) {
-    const { value } = resolveSetting(`run.rules.${rule}`, workspace)
-    if (value !== undefined) out[rule] = value as boolean
-  }
-  return out
+/** `run.rules`, from its variable, else the workspace; unset stays on. */
+export function runRules(workspace: unknown): { exclusiveOutputs?: boolean } {
+  const { value } = resolveSetting('run.rules.exclusiveOutputs', workspace)
+  return value === undefined ? {} : { exclusiveOutputs: value as boolean }
 }

@@ -16,7 +16,7 @@ import { Cache } from '../src/cache/index.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { waitForProducers } from './helpers/local-workspace.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { removeStoredArtifact, replaceStoredArtifact } from './helpers/stored-artifact.js'
 
 const TIMEOUT = 30_000
@@ -220,13 +220,13 @@ describe('a cache artifact that vanishes before its restore', () => {
               consume: {
                 dependsOn: ['codegen'],
                 exec: { command: "cat generated.txt > out.txt" },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
         `,
       })
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       const cold = await run({
         cwd: root,
         tasks: ['consume'],

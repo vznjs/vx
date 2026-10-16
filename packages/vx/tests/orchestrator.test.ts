@@ -18,7 +18,7 @@ import {
   type Fixture,
 } from './helpers/orchestrator-fixture.js'
 import { run } from './helpers/orchestrator.js'
-import { waitForProducers } from './helpers/local-workspace.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { edgesSource } from './helpers/plugin.js'
 
 // The edges every row's projects take, whichever of them a row adds.
@@ -1437,7 +1437,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: ['prep'],
-                inputs: { files: ['src/**', 'gen/**', '!src/**/*.test.ts'] },
+                inputs: { files: ['src/**', 'gen/**', '!src/**/*.test.ts'], tasks: [] },
                 cache: {
                   outputs: { files: ['out.txt'] },
                 },
@@ -1446,7 +1446,7 @@ describe('orchestrator e2e — keys, inputs and invalidation', () => {
           }
         `,
       })
-      await waitForProducers(fixture.root, [edgesSource(EDGES)])
+      await writeLocalWorkspace(fixture.root, [edgesSource(EDGES)])
       const statuses = async () => {
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
         return Object.fromEntries(r.outcomes.map((o) => [o.node.id, o.status]))

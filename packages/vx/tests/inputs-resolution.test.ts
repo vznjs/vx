@@ -1385,45 +1385,23 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     expect(await filesOf(['src/gen'])).toEqual(['src/gen/a.ts'])
   })
 
-  it('REFUSES a gitignored DIRECTORY named as a literal', async () => {
-    // This row was a FINDING (item 565): `Bun.file(<a directory>).exists()`
-    // is FALSE (measured on 1.3.11 and 1.4.2), so the refusal `continue`d
-    // past every literal naming a directory, and `inputs.files:
-    // ['gen']` on a gitignored `gen/` folded ZERO files and said nothing —
-    // the stale hit the refusal exists to stop, one directory above where it
-    // looked. A directory literal never settles (git lists files, not
-    // directories) AND was never judged, so the two guards masked each
-    // other (the 563 shape). Existence is lstat now (item 576); this row is
-    // the differential: it read `['keep.ts']` before the fix.
+  it('a gitignored DIRECTORY named as a literal reads every file under it', async () => {
+    // Item 565's shape: `Bun.file(<a directory>).exists()` is false, so a
+    // check by it skipped every literal naming a directory. Existence is
+    // lstat (item 576); naming the directory is asking for it (owner,
+    // 2026-10-16).
     await write(path.join(root, '.gitignore'), 'gen/\n')
     await write(path.join(projectDir, 'gen', 'out.js'), 'built')
     await write(path.join(projectDir, 'keep.ts'), 'k')
 
-    const err = await filesOf(['gen', 'keep.ts']).then(
-      () => null,
-      (e: unknown) => e as Error,
-    )
-    expect(err?.message).toContain('"gen" exists in')
-    expect(err?.message).toContain('contributes NOTHING to the cache key')
+    expect(await filesOf(['gen', 'keep.ts'])).toEqual(['gen/out.js', 'keep.ts'])
   })
 
-  it('REFUSES a literal naming an EMPTY directory, tracked or not', async () => {
-    // The case 565 named as the reason not to fix: a stat newly refuses a
-    // literal naming an empty directory. Decided (plan F1): git tracks no
-    // empty directory, so nothing under it can fold, and a literal that
-    // folds nothing is exactly what the refusal is for — silently keying
-    // on nothing is the stale hit, whatever put the directory there. The
-    // remedy in the message (depend on the producing task, or track the
-    // files) is the right one for this case too.
+  it('a literal naming an EMPTY directory reads nothing, until a file lands in it', async () => {
     await mkdir(path.join(projectDir, 'gen'), { recursive: true })
     await write(path.join(projectDir, 'keep.ts'), 'k')
 
-    const err = await filesOf(['gen', 'keep.ts']).then(
-      () => null,
-      (e: unknown) => e as Error,
-    )
-    expect(err?.message).toContain('"gen" exists in')
-    // Control beside it: the same literal with a file inside resolves.
+    expect(await filesOf(['gen', 'keep.ts'])).toEqual(['keep.ts'])
     await write(path.join(projectDir, 'gen', 'a.ts'), 'a')
     expect(await filesOf(['gen', 'keep.ts'])).toEqual(['gen/a.ts', 'keep.ts'])
   })
@@ -1440,21 +1418,13 @@ describe('a declared literal settles on its own tree, and only its own', () => {
 
   it('a sibling that merely SHARES A PREFIX does not settle it', async () => {
     // The `/` in `${lit}/` is the whole guard. Without it `gen-notes.txt`
-    // starts with `gen` and settles the literal `gen` — so a gitignored
-    // `gen` sails through the refusal, folds NOTHING into the key, and the
-    // task reports up-to-date forever while it changes. Exactly the stale
-    // hit the refusal exists to stop, reachable by naming one file next to
-    // another.
+    // starts with `gen` and settles the literal `gen`, so the ignored `gen`
+    // was never read from disk and its edits moved no key.
     await write(path.join(root, '.gitignore'), 'gen\n')
     await write(path.join(projectDir, 'gen'), 'ignored')
     await write(path.join(projectDir, 'gen-notes.txt'), 'tracked')
 
-    const err = await filesOf(['gen', 'gen-notes.txt']).then(
-      () => null,
-      (e: unknown) => e as Error,
-    )
-    expect(err?.message).toContain('"gen" exists in')
-    expect(err?.message).toContain('contributes NOTHING to the cache key')
+    expect(await filesOf(['gen', 'gen-notes.txt'])).toEqual(['gen', 'gen-notes.txt'])
   })
 })
 
@@ -1698,41 +1668,27 @@ describe('inputs.files can only ever narrow the git file set', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  it('REFUSES a gitignored file NAMED explicitly in inputs.files', async () => {
-    // The candidate set is `git ls-files` output and the user's globs are a
-    // FILTER over it. A filter can only remove, so a path git never reported can
-    // never be filtered back IN — no matter how explicitly it is named. That
-    // made `inputs.files: ['generated.ts']` on a gitignored
-    // `generated.ts` resolve to zero files, silently: the task cached on its
-    // FIRST run and reported `up-to-date` forever while the file changed
-    // underneath it.
-    //
-    // This test began as a FINDING pinning that silence. Flipping it to assert
-    // the refusal is the intended end of that loop.
+  it('a gitignored file NAMED explicitly in inputs.files is read from disk', async () => {
+    // The candidate set is `git ls-files` output and the globs filter it, so a
+    // path git never reported cannot be filtered back in. A literal naming it
+    // is read from disk instead (owner, 2026-10-16), where it once folded
+    // nothing and the task reported up-to-date while the file changed.
     await write(path.join(root, '.gitignore'), 'generated.ts\n')
     await write(path.join(projectDir, 'generated.ts'), 'v1')
     await write(path.join(projectDir, 'src', 'a.ts'), 'a')
 
-    const err = await resolveInputs({
+    const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
       envSource: {},
       inputs: { files: ['generated.ts'] },
       ownOutputs: [],
       nestedProjectDirs: [],
-    }).then(
-      () => null,
-      (e: unknown) => e as Error,
-    )
-    expect(err?.message).toContain('generated.ts')
-    expect(err?.message).toContain('contributes NOTHING to the cache key')
-    // The remedy has to be named, because the honest answer is not "un-ignore
-    // it" for the common case (generated code) — it is to depend on the task
-    // that produces it, which is how vx expresses that relationship.
-    expect(err?.message).toContain('inputs.tasks')
+    })
+    expect(got.files.map((f) => relPosix(projectDir, f))).toEqual(['generated.ts'])
   })
 
-  it('a BROAD glob over the same tree stays silent — only literals are judged', async () => {
+  it('a BROAD glob over the same tree skips it — only an entry naming it reads it', async () => {
     // The distinction the refusal rests on. A glob matching nothing is
     // legitimate (`src/**/*.gen.ts` in a package with no generated code), so it
     // must not raise; a literal names one exact file, so "matched nothing" is
@@ -1904,29 +1860,22 @@ describe('inputs.files can only ever narrow the git file set', () => {
     expect(got.files.map((f) => relPosix(projectDir, f))).toEqual([path.join('src', 'a.ts')])
   })
 
-  it('the workspace half is refused too, and names its own field', async () => {
-    // Second resolver, same filter-over-git-set design, so the hazard is not
-    // confined to the project half — this was pinned as a FINDING precisely so
-    // a fix would have to address both. The message must name
-    // `workspaceFiles`, not `files`: a user staring at a config with both lists
-    // needs to know which one to look at.
+  it('the workspace half reads an ignored file named outright too', async () => {
+    // Second resolver, same filter-over-git-set design: a fix to one half
+    // alone passed the other half's tests.
     await write(path.join(root, '.gitignore'), 'shared-gen.ts\n')
     await write(path.join(root, 'shared-gen.ts'), 'v1')
     await write(path.join(root, 'tsconfig.json'), '{}')
 
-    const err = await resolveInputs({
+    const got = await resolveInputs({
       projectDir,
       workspaceRoot: root,
       envSource: {},
       inputs: { files: [], workspaceFiles: ['shared-gen.ts', 'tsconfig.json'] },
       ownOutputs: [],
       nestedProjectDirs: [],
-    }).then(
-      () => null,
-      (e: unknown) => e as Error,
-    )
-    expect(err?.message).toContain('inputs.workspaceFiles')
-    expect(err?.message).toContain('shared-gen.ts')
+    })
+    expect(got.files.map((f) => relPosix(root, f))).toEqual(['shared-gen.ts', 'tsconfig.json'])
   })
 
   it('workspaceFiles literals that git DOES report resolve normally', async () => {

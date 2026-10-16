@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { describe, expect, it, spyOn } from 'bun:test'
-import { localWorkspaceSource, waitForProducers } from './helpers/local-workspace.js'
+import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import {
   addProject,
   FORCE,
@@ -695,14 +695,14 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
                 build: {
                   dependsOn: ['codegen'],
                   exec: { command: 'cat generated.txt > out.txt' },
-                  inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: ['out.txt'] } },
                 },
               },
             }
           `,
         })
 
-        await waitForProducers(fixture.root)
+        await writeLocalWorkspace(fixture.root)
         const first = await run({
           cwd: fixture.root,
           tasks: ['build'],

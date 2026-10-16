@@ -30,7 +30,7 @@ import { watchProbeDelivered } from './helpers/watch-events.js'
 import { edgesSource, packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { lock } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { waitForProducers } from './helpers/local-workspace.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 import { skipAsRoot } from './helpers/nonroot-gate.js'
@@ -356,13 +356,14 @@ describe('sweepConfigs: only the tasks the run reaches are judged', () => {
           fetch: ${task('api/**')},
           gen: ${task('schema/**', '', ", dependsOn: ['fetch']")},
           build: ${task('src/**', 'dist/**', ", dependsOn: ['gen', '^build']")},
-          lint: ${task('**/*')},
+          lint: { exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: [] } } },
           all: { dependsOn: ['lint.*'] },
           'lint.x': ${task('x/**')},
         } }\n`,
       )
-      // lint's `**/*` reading build's `dist/` is the case under test.
-      await waitForProducers(root, [edgesSource()])
+      // lint's `**/*` reading build's `dist/` is the case under test; it
+      // depends on build and leaves it out of its key, which `vx lock` allows.
+      await writeLocalWorkspace(root, [edgesSource()])
       await lock(root)
       const metas = await discoverCliProjects(root)
       const ui = path.join(root, 'packages', 'ui')
@@ -392,8 +393,9 @@ describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
   // took build's `dist/` write for an edit and every save cost a cycle more.
   it("a sibling task's inputs never turn the run's own write into a cycle", async () => {
     const root = await makeWorkspace({ prefix: 'vx-watch-own-' })
-    // `vx lock` checks every task: lint's `**/*` reads build's `dist/**`.
-    await waitForProducers(root)
+    // lint's `**/*` reads build's `dist/**`, so it depends on build and
+    // leaves it out of its key (`vx lock`); `vx watch build` never reaches it.
+    await writeLocalWorkspace(root)
     try {
       const dir = await addProject(
         root,
@@ -401,7 +403,7 @@ describe('vx watch <task> judges only the tasks it runs (e2e)', () => {
         `export default { tasks: {
           build: { exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
-          lint: { exec: { command: 'true' }, inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } } },
+          lint: { exec: { command: 'true' }, dependsOn: ['build'], inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: [] } } },
         } }`,
       )
       await mkdir(path.join(dir, 'src'), { recursive: true })

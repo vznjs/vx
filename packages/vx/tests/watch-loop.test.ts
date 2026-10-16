@@ -24,7 +24,7 @@ import {
   useWatchFixture,
   type Watch,
 } from './helpers/watch-loop.js'
-import { localWorkspaceSource, waitForProducers } from './helpers/local-workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { noticed } from './helpers/notice.js'
 
 /** `vx lock` in `root`: what a run, and each watch cycle, reads its configs from. */
@@ -141,36 +141,6 @@ describe('vx watch loop (e2e)', () => {
     expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a1\na1\n')
   }, 40_000)
 
-  it('another task declaring an input as its output does not hide the input (item 946)', async () => {
-    // An in-place formatter declares `src/**` as its outputs; the watch
-    // ignore folded every task's outputs, so `build`'s `src` edits were
-    // ignored and no cycle ran, while `vx run build` would have run it.
-    // The formatter reads no `src` (`vx lock` refuses a task whose inputs
-    // are all its own outputs), and build reads its outputs unordered.
-    await waitForProducers(f.root)
-    await writeFile(
-      path.join(f.dir, 'vx.config.mjs'),
-      `export default { tasks: {
-        build: {
-          exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
-        },
-        format: {
-          exec: { command: 'true' },
-          inputs: { files: ['package.json'] }, cache: { outputs: { files: ['src/**'] } },
-        },
-      } }\n`,
-    )
-    f.watch = startWatch(f.root)
-    const w = f.watch
-    await until(() => w.out().includes('watching '), 'the watching marker')
-    await initialOnly(w, f.log)
-
-    await writeFile(path.join(f.dir, 'src', 'a.txt'), 'a2\n')
-    await until(async () => (await executions(f.log)) === 2, 'the re-run after an edit')
-    expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a2\n')
-  }, 40_000)
-
   it('a task with no cache re-runs on a git-ignored file it reads (item 947)', async () => {
     // The git-ignore filter's reason is "no cache key can see it", and a
     // task with no cache has no key: its `.env.local` edit re-ran nothing.
@@ -204,6 +174,28 @@ describe('vx watch loop (e2e)', () => {
     await writeFile(path.join(f.dir, '.env.local'), 'A=3\n')
     await until(async () => (await executions(f.log)) === 3, 'the re-run after a second edit')
     expect(await readFile(path.join(f.dir, 'shown.txt'), 'utf8')).toBe('A=3\n')
+  }, 40_000)
+
+  it('a cached task re-runs on a git-ignored file its inputs name outright', async () => {
+    await writeFile(path.join(f.dir, '.gitignore'), '.env.local\nother.local\n')
+    await writeFile(path.join(f.dir, '.env.local'), 'A=1\n')
+    await writeFile(
+      path.join(f.dir, 'vx.config.mjs'),
+      `export default { tasks: {
+        show: { exec: { command: 'echo run >> ${f.log}' }, inputs: { files: ['.env.local'] }, cache: { outputs: { files: [] } } },
+      } }\n`,
+    )
+    f.watch = startWatch(f.root, ['--all'], {}, 'show')
+    const w = f.watch
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    await initialOnly(w, f.log)
+
+    await writeFile(path.join(f.dir, '.env.local'), 'A=2\n')
+    await until(async () => (await executions(f.log)) === 2, 'the re-run after the ignored edit')
+    // CONTROL: an ignored file no entry names starts no cycle.
+    await writeFile(path.join(f.dir, 'other.local'), 'x\n')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.cycles()).toBe(1)
   }, 40_000)
 
   it('a shared preset outside the project is watched, and its edit runs once re-locked (item 949)', async () => {

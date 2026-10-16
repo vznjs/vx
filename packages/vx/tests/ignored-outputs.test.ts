@@ -1,7 +1,7 @@
 // An output git ignores is no input overlap (M, 2026-10-15): a key reads
 // only what git lists, so a gitignored output never enters it. Solid's
 // shape, a `**/*` reader beside a `**/dist/**` producer with dist ignored,
-// passes `rules.upfrontKeys` and keys up front, the key the same before and
+// passes `vx lock` and keys up front, the key the same before and
 // after the build. Git alone says what it ignores, wherever the rule lives;
 // a tracked output, or a place under the glob git does not ignore, is still
 // an overlap.
@@ -12,7 +12,6 @@ import { describe, expect, it } from 'bun:test'
 import type { Logger } from '../src/report/index.js'
 import { deriveStableKeys } from '../src/orchestrator/stable-keys.js'
 import { prepareRun, run } from './helpers/orchestrator.js'
-import { waitForProducers } from './helpers/local-workspace.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
@@ -86,26 +85,6 @@ describe('an output git ignores is no overlap', () => {
       }
     }, 30_000)
   }
-
-  it('keys up front with the rule off too: the gate asks git, not the lock', async () => {
-    const { root } = await fixture({ '.gitignore': 'dist/\n' })
-    try {
-      await waitForProducers(root)
-      await keyedTheSameAcrossTheBuild(root)
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 30_000)
-
-  it('CONTROL: with the rule off and nothing ignored the key waits for the build', async () => {
-    const { root } = await fixture({})
-    try {
-      await waitForProducers(root)
-      expect(await upfrontKey(root)).toBeNull()
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 30_000)
 
   it('CONTROL: with nothing ignored the rule refuses the reader', async () => {
     const { root } = await fixture({})

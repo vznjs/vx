@@ -64,13 +64,14 @@ correctly, only slower, and never changes a cache key:
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({
-  run: { rules: { exclusiveOutputs: false, upfrontKeys: true } },
+  run: { rules: { exclusiveOutputs: false } },
 })
 ```
 
-`upfrontKeys` refuses a task whose inputs match another task's outputs
-in the same run, because its key cannot be known before that task
-finishes. The message names the glob to exclude.
+One check has no switch: `vx lock` refuses a task whose inputs match
+another task's outputs, because its key cannot be known before that task
+finishes. The message names the glob to exclude, or the dependency to
+leave out of `inputs.tasks` so the key hashes its bytes.
 
 ## A config that hangs
 

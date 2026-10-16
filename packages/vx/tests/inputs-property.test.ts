@@ -38,14 +38,15 @@ const segs = (r: string): string[] => r.split('/')
 const base = (r: string): string => segs(r).at(-1)!
 const tree = (dir: string) => (r: string) => r === dir || r.startsWith(`${dir}/`)
 
-// The third field is the path a literal entry names: one on disk with
-// nothing under it git reports is refused, never folded as nothing.
+// The third field is the path an entry names outright (a literal, or a
+// glob's fixed directory): with nothing under it git reports, what is on
+// disk there is read anyway (owner, 2026-10-16).
 const POSITIVE: Array<[string, (r: string) => boolean, string?]> = [
   ['**/*', () => true],
   ['./**/*.ts', (r) => r.endsWith('.ts')],
   ['src', tree('src'), 'src'],
   ['src/', tree('src'), 'src'],
-  ['[id]/**', (r) => r.startsWith('[id]/')],
+  ['[id]/**', (r) => r.startsWith('[id]/'), '[id]'],
   ['**/.*', (r) => base(r).startsWith('.')],
   ['*.md', (r) => !r.includes('/') && r.endsWith('.md')],
   ['{src,lib}/**', (r) => r.startsWith('src/') || r.startsWith('lib/')],
@@ -138,10 +139,13 @@ function oracle(
   fx: Fixture,
   pos: Array<(r: string) => boolean>,
   neg: Array<(r: string) => boolean>,
+  named: readonly string[],
 ): string[] {
+  const all = [...fx.entries]
+  const hidden = named.filter((n) => !all.some(([r, visible]) => visible && tree(n)(r)))
   const out: string[] = []
   for (const [rel, visible] of fx.entries) {
-    if (!visible) continue
+    if (!visible && !hidden.some((n) => tree(n)(rel))) continue
     if (fx.nested !== undefined && rel.startsWith('sub/')) continue
     if (!pos.some((p) => p(rel)) || neg.some((p) => p(rel))) continue
     out.push(rel)
@@ -163,13 +167,7 @@ for (let seed = 1; seed <= 24; seed++) {
         fx,
         pos.map(([, p]) => p),
         neg.map(([, p]) => p),
-      )
-      const all = [...fx.entries]
-      const refused = pos.some(
-        ([, , lit]) =>
-          lit !== undefined &&
-          all.some(([r]) => tree(lit)(r)) &&
-          !all.some(([r, visible]) => visible && tree(lit)(r)),
+        pos.flatMap(([, , n]) => (n === undefined ? [] : [n])),
       )
       const populated = new GitFilesCache()
       await populateGitFilesCache(fx.root, projectDirs, populated)
@@ -186,12 +184,9 @@ for (let seed = 1; seed <= 24; seed++) {
         const route = `${JSON.stringify(files)} ${gitFilesCache ? 'populated' : 'spawned'}`
         const got = await resolving.then(
           (r) => r.files.map((f) => relPosix(fx.pkg, f)),
-          (e: Error) =>
-            /^inputs\.files: ".*" exists in .* but git does not report it/.test(e.message)
-              ? 'refused'
-              : e.message,
+          (e: Error) => e.message,
         )
-        expect({ route, got }).toEqual({ route, got: refused ? 'refused' : want })
+        expect({ route, got }).toEqual({ route, got: want })
       }
     }
   })

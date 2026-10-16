@@ -816,7 +816,18 @@ lockfile change when a lockfile plugin (`@vzn/vx-lockfile`) is declared.
 
 Always applied to every glob pass (regardless of what you wrote):
 
-- **gitignore filter** — workspace-root + project `.gitignore`.
+- **gitignore filter** — workspace-root + project `.gitignore`, unless
+  an entry names the ignored path outright: a literal (`.env.local`), or
+  a glob whose fixed prefix git ignores (`dist/**`, `dist/*.js`,
+  `.cache/gen/**`), which is then walked on disk under that prefix only.
+  Such a file is hashed from disk and never stored or restored; a
+  missing one is not an input until it exists. A broad glob (`**`,
+  `src/**` over a listed `src`) still skips ignored files, so
+  `node_modules` is never walked, and an install stays out either way.
+  Its bytes differ per machine, so machines with different files miss
+  each other's shared entries. An ignored file never selects a task
+  under `--affected` on its own, as in Nx (only what git sees does); `vx
+watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
   `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction
   directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
@@ -828,8 +839,10 @@ Always applied to every glob pass (regardless of what you wrote):
   itself via its own output. A path an output `!` entry takes back is
   no output, so it stays an input (A-44). Another task's outputs are
   not excluded for you: an input glob that can match them is refused
-  while `rules.upfrontKeys` is on (X-54), unless git ignores them
-  whole. Write the exclusion, `['**/*', '!dist/**']`, or ignore `dist/`. An input entry the task's OWN outputs take
+  (X-54), unless git ignores them whole, or the producer is a
+  dependency the key does not fold (see Inputs over outputs in §
+  Settings). Write the exclusion,
+  `['**/*', '!dist/**']`, or ignore `dist/`. An input entry the task's OWN outputs take
   back whole is always refused (X-55): vx removes outputs before a run,
   so a formatter declaring `src/**` as both would delete its sources. A
   task that rewrites files in place declares no outputs.
@@ -844,8 +857,9 @@ Workspace-root-relative globs — the Turbo `$TURBO_ROOT$` / Nx
 `{workspaceRoot}` equivalent, for inputs that live outside the project
 dir (a root `tsconfig.base.json`, shared codegen output, …). Same
 syntax as `files` (`!` negation subtracts, in any order), same git-aware
-resolution (tracked + untracked-not-ignored; gitignored files are
-invisible), and the resolved paths join the same cache-key file list.
+resolution (tracked + untracked-not-ignored; a gitignored file only when
+named outright, as in `files`), and the resolved paths join the same
+cache-key file list.
 
 ```ts
 inputs: {
@@ -1669,7 +1683,6 @@ export default defineWorkspace({
     continue: 'deps-ok',
     rules: {
       exclusiveOutputs: true,
-      upfrontKeys: true,
       dependencies: [{ from: 'tag:lib', deny: ['tag:app'] }],
     },
   },
@@ -1719,7 +1732,6 @@ default and where it came from.
 | `run.continue`                                 | `VX_RUN_CONTINUE`                   | `--continue`       | one of 'never', 'deps-ok', 'always'                                     | deps-ok                                    | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                       |
 | `run.outputLogs` (variable or flag only)       | `VX_RUN_OUTPUT_LOGS`                | `--output-logs`    | one of 'full', 'errors-only', 'hash-only', 'none'                       | `full` on CI, else by what the run selects | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                          |
 | `run.rules.exclusiveOutputs`                   | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | —                  | true or false                                                           | true                                       | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                               |
-| `run.rules.upfrontKeys`                        | `VX_RUN_RULES_UPFRONT_KEYS`         | —                  | true or false                                                           | true                                       | Refuse a task whose inputs can match another task's outputs.                                                                                        |
 | `cache.dir`                                    | `VX_CACHE_DIR`                      | `--cache-dir`      | a non-blank string                                                      | .vx/cache, entries in ~/.vx/<repo>/cache   | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                             |
 | `cache.retention.maxSize`                      | `VX_CACHE_RETENTION_MAX_SIZE`       | —                  | a size like '500MB' or '10GB'                                           | none                                       | Evict least-recently-used entries at each run's end until the cache is under this (`'10GB'`).                                                       |
 | `cache.retention.olderThan`                    | `VX_CACHE_RETENTION_OLDER_THAN`     | —                  | a duration like '45s', '12h' or '30d'                                   | none                                       | Evict entries unused for this long at each run's end (`'30d'`).                                                                                     |
@@ -1757,7 +1769,7 @@ interface RunSettings {
   retries?: number
   continue?: 'never' | 'deps-ok' | 'always'
   /** Graph rules `vx lock` checks, never a run; each on unless set to false. */
-  rules?: { exclusiveOutputs?: boolean; upfrontKeys?: boolean; dependencies?: DependencyRule[] }
+  rules?: { exclusiveOutputs?: boolean; dependencies?: DependencyRule[] }
 }
 
 /** `run.rules.dependencies`, checked by `vx lock` only. */
@@ -1911,34 +1923,6 @@ own output path, or set run.rules.exclusiveOutputs: false in
     Off, the dependant adds to its upstream's tree (item 588;
     `caching.md` § Additive outputs). Two overlapping tasks with no
     edge are refused either way.
-  - **`upfrontKeys`** (X-54) — a cached task whose `inputs.files` can
-    match a same-project task's `outputs.files`, or whose
-    `inputs.workspaceFiles` can match any task's `outputs.workspaceFiles`
-    or another project's `outputs.files` read from the root, or whose
-    `inputs.files` can match another task's `outputs.workspaceFiles`
-    landing in its project (X-135), is refused,
-    edge or no edge: `<reader> reads "<glob>" in inputs.<field>,
-which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
-to <reader>'s inputs.<field>, or set run.rules.upfrontKeys:
-false in .vx/workspace.ts to let it wait for its producer.` Such a key
-    reads what the producer writes this run, so vx cannot know it before
-    the producer ran: it is not probed, prefetched or restored ahead of
-    the schedule (`caching.md` § Local restore tier). The upstream's key
-    already reaches the reader through `dependsOn`. A `!` entry that
-    takes the whole output back clears it, and an output the reader's
-    `!` entries take back no longer holds its key back either. Nor does
-    an output git ignores whole: a key reads only what git lists, so
-    `**/*` beside a gitignored `**/dist/**` passes and keys up front. Git
-    is asked, never a `.gitignore` read: `git check-ignore` on the
-    output's directory (for `**/dist/**`, `dist/` and a fresh
-    `__vx_probe__/dist/`), and no tracked or listed file may match it,
-    so a tracked output is still refused. A glob no few paths stand for
-    (`*.js`) is refused as before. `vx lock` asks once for every
-    overlapped output; a run asks once beside its git walk for the
-    stability gate, so a rule changed after the lock keys the reader
-    late until the next `vx lock` refuses it. A task's
-    own outputs, a task with no `cache`, and a group are exempt. Off,
-    the key waits for its producer, as before.
   - **`dependencies`** — which workspace projects a project may depend
     on, checked by `vx lock` and `vx lock --check` only, over each
     project's direct dependencies (its `package.json` buckets and its
@@ -1954,6 +1938,41 @@ false in .vx/workspace.ts to let it wait for its producer.` Such a key
     `lib depends on app, which run.rules.dependencies[0] (from 'tag:lib') denies`,
     every broken edge on its own line. A rule with neither `allow` nor
     `deny` is refused.
+- **Inputs over outputs** (X-54, always checked, no setting) — a cached task whose `inputs.files` can
+  match a same-project task's `outputs.files`, or whose
+  `inputs.workspaceFiles` can match any task's `outputs.workspaceFiles`
+  or another project's `outputs.files` read from the root, or whose
+  `inputs.files` can match another task's `outputs.workspaceFiles`
+  landing in its project (X-135), is refused by `vx lock` unless one of
+  the exceptions below applies: `<reader> reads "<glob>" in inputs.<field>,
+which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
+to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
+<reader>'s inputs.tasks, so its key hashes those bytes instead.` Such a key
+  reads what the producer writes this run, so vx cannot know it before
+  the producer ran: it is not probed, prefetched or restored ahead of
+  the schedule (`caching.md` § Local restore tier). The upstream's key
+  already reaches the reader through `dependsOn`. A `!` entry that
+  takes the whole output back clears it, and an output the reader's
+  `!` entries take back no longer holds its key back either. Nor does
+  an output git ignores whole: a key reads only what git lists, so
+  `**/*` beside a gitignored `**/dist/**` passes and keys up front,
+  unless the reader's entry starts in the ignored path (`dist/**`):
+  naming it reads it, so the check applies. A reader may read the
+  outputs of a task in its `dependsOn` closure that its key does not
+  fold: it sets `inputs.tasks` and leaves the producer out, also
+  through the tasks it does fold (a producer folded by a folded task
+  counts as folded). Its key then waits for the producer and hashes
+  the bytes it wrote, so a producer rerun with identical output still
+  hits. `vx lock` checks all of it; a run reads only the lock. Git
+  is asked, never a `.gitignore` read: `git check-ignore` on the
+  output's directory (for `**/dist/**`, `dist/` and a fresh
+  `__vx_probe__/dist/`), and no tracked or listed file may match it,
+  so a tracked output is still refused. A glob no few paths stand for
+  (`*.js`) is refused as before. `vx lock` asks once for every
+  overlapped output; a run asks once beside its git walk for the
+  stability gate, so a rule changed after the lock keys the reader
+  late until the next `vx lock` refuses it. A task's
+  own outputs, a task with no `cache`, and a group are exempt.
 - **`plugins`** — the run-level extension points. Optional: core
   applies no plugin by default, and the local executor and the local
   cache are its floor — the tail of every executor list, and the first

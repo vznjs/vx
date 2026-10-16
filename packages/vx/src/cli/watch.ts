@@ -279,6 +279,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
       outputs: swept.outputs,
       inputs: swept.inputs,
       uncached: swept.uncached,
+      namedIgnored: swept.namedIgnored,
       configImports: swept.configImports,
       workspaceConfigImports: swept.workspaceConfigImports,
       fenceDirs: fenceDirs(allProjects),
@@ -301,6 +302,7 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
           outputs: sweep.outputs,
           inputs: sweep.inputs,
           uncached: sweep.uncached,
+          namedIgnored: sweep.namedIgnored,
           configImports: sweep.configImports,
           workspaceConfigImports: sweep.workspaceConfigImports,
           fenceDirs: fenceDirs(all),
@@ -351,6 +353,8 @@ interface WatchLoopArgs {
   inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>>
   /** Projects whose uncached task may read a git-ignored file: such a path there is still an edit. */
   uncached: ReadonlySet<string>
+  /** Paths a task's inputs name outright: a git-ignored one there is still an edit. */
+  namedIgnored: readonly string[]
   /** Files the configs import: an edit to one outside the watched projects is a cycle that re-reads them. */
   configImports: readonly string[]
   /** Files the workspace config imports: loaded once per process, so an edit is named, not run. */
@@ -379,6 +383,7 @@ interface Rediscovered {
   outputs: ReadonlyMap<string, readonly string[]>
   inputs: ReadonlyMap<string, ReadonlyArray<readonly string[]>>
   uncached: ReadonlySet<string>
+  namedIgnored: readonly string[]
   configImports: readonly string[]
   workspaceConfigImports: readonly string[]
   fenceDirs: readonly string[]
@@ -394,6 +399,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   let outputs = args.outputs
   let inputs = args.inputs
   let uncached = args.uncached
+  let namedIgnored = args.namedIgnored
   let claimedRootFiles = args.claimedRootFiles
   let configImportFiles = args.configImports
   let wsConfigImportFiles = args.workspaceConfigImports
@@ -567,6 +573,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     armedAt,
     held: () => held !== undefined,
     uncached: () => uncached,
+    namedIgnored: () => namedIgnored,
     fenced: (ownDir, abs) => fenced(ownDir, abs),
     ...(atArm !== undefined ? { existedAtArm: atArm.listed, trackedAtArm: atArm.tracked } : {}),
   })
@@ -903,6 +910,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     outputs = next.outputs
     inputs = next.inputs
     uncached = next.uncached
+    namedIgnored = next.namedIgnored
     claimedRootFiles = next.claimedRootFiles
     configImportFiles = next.configImports
     wsConfigImportFiles = next.workspaceConfigImports

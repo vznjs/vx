@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: read gitignored inputs named outright
+
+run.rules.upfrontKeys and VX_RUN_RULES_UPFRONT_KEYS are removed; a task reading another task's outputs must depend on it and leave it out of inputs.tasks.
+
 ## orchestrator: never hold a run on fetched schedule weights
 
 PreparedRun.priorities takes an optional ScheduleRun (step, refined).

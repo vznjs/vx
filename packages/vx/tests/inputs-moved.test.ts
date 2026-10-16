@@ -26,7 +26,7 @@ import { failedLabel } from '../src/report/events.js'
 import { run } from './helpers/orchestrator.js'
 import { describeTaskInputs, movedInput } from '../src/orchestrator/task-hash.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { waitForProducers, workspaceWith } from './helpers/local-workspace.js'
+import { writeLocalWorkspace, workspaceWith } from './helpers/local-workspace.js'
 import { edgesSource } from './helpers/plugin.js'
 
 const TIMEOUT = 30_000
@@ -529,7 +529,7 @@ describe('what a moved task wrote elsewhere is seen too', () => {
   it(
     "a workspace output it created in another project reaches that project's reader",
     async () => {
-      await waitForProducers(root, [edgesSource({ app: ['lib'] })])
+      await writeLocalWorkspace(root, [edgesSource({ app: ['lib'] })])
       // Its save would have marked the output against `app`'s listing; the
       // save is withheld, and the listing must not outlive the write.
       await addProject(root, 'lib', {
@@ -852,7 +852,7 @@ describe('control: inputs an upstream wrote just before are not a move', () => {
               build: {
                 dependsOn: ['gen'],
                 exec: { command: 'mkdir -p dist; cat gen.txt > dist/out.txt' },
-                inputs: { files: ['src/**', 'gen.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**', 'gen.txt'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -861,7 +861,7 @@ describe('control: inputs an upstream wrote just before are not a move', () => {
       })
       await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n')
       commit()
-      await waitForProducers(root, [edgesSource({ app: ['lib'] })])
+      await writeLocalWorkspace(root, [edgesSource({ app: ['lib'] })])
       await runTask('build')
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       expect(statusOf(await runTask('build'), 'app#build')).toBe('cache-hit')

@@ -376,7 +376,7 @@ function inputsOf(t: GeneratedTask): { files: string[]; workspaceFiles?: unknown
 
 /**
  * Core refuses a task whose inputs can match another task's declared
- * outputs (`rules.upfrontKeys`, on by default, core X-54): such a key
+ * outputs (`vx lock`, always, core X-54): such a key
  * reads what a producer writes this run and cannot be known before it ran.
  * Turbo and Nx default a task's inputs to every file of its package
  * (`**\/*`), which matches a sibling build's `dist`. Each overlapping

@@ -17,7 +17,7 @@ export const SETTING_GROUPS: readonly ['run', 'cache', 'watch']
 export function setting(path: string): Setting
 export function kindHint(kind: SettingKind): string
 export function atPath(config: unknown, path: string): unknown
-export function runRules(workspace: unknown): { exclusiveOutputs?: boolean; upfrontKeys?: boolean }
+export function runRules(workspace: unknown): { exclusiveOutputs?: boolean }
 export function envName(path: string): string
 export function parseSettingValue(kind: SettingKind, raw: unknown): unknown
 export function settingRefusal(path: string, where: string, raw: unknown, got?: string): string

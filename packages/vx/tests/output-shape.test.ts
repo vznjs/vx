@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { storedBytesUnder } from './helpers/stored-artifact.js'
 import { PARITY_TIMEOUT as TIMEOUT, summarized } from './helpers/parity.js'
-import { workspaceWith } from './helpers/local-workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 // The shape of `dist/out` follows the one input file: `dir` writes a
 // directory with a file inside, `file` a plain file, `link` a symlink to a
@@ -450,13 +450,9 @@ describe('a restore beside a sibling writing into its directory (e2e)', () => {
         try {
           // The gate misses every run (its seed moves) and holds the build
           // until the sibling has made its directory. The build reads the
-          // gate's constant output (allowed by `upfrontKeys: false`) and
-          // folds no key of it, so it is keyed after the gate, not restored
-          // ahead of the schedule, and hits.
-          await Bun.write(
-            path.join(root, '.vx/workspace.mjs'),
-            workspaceWith('run: { rules: { upfrontKeys: false } }'),
-          )
+          // gate's constant output and folds no key of it, so it is keyed
+          // after the gate, not restored ahead of the schedule, and hits.
+          await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
           const app = await addProject(root, 'app', {
             config: `
               export default {

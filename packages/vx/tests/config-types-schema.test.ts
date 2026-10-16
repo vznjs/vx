@@ -52,7 +52,7 @@ const RUN = [
   'schedule',
   'timeout',
 ] as const satisfies readonly Keys<RunSettings>[]
-const RULES = ['dependencies', 'exclusiveOutputs', 'upfrontKeys'] as const satisfies readonly Keys<
+const RULES = ['dependencies', 'exclusiveOutputs'] as const satisfies readonly Keys<
   NonNullable<RunSettings['rules']>
 >[]
 const WATCH = ['poll'] as const satisfies readonly Keys<WatchSettings>[]

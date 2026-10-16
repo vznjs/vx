@@ -69,7 +69,6 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
     }),
     'run.rules': keys<NonNullable<RunSettings['rules']>>({
       exclusiveOutputs: true,
-      upfrontKeys: true,
       dependencies: true,
     }),
     cache: keys<CacheSettings>({
@@ -164,7 +163,6 @@ function workspaceSeed(): Record<string, unknown> {
       continue: 'deps-ok',
       rules: {
         exclusiveOutputs: true,
-        upfrontKeys: true,
         dependencies: [{ from: 'tag:app', allow: ['tag:lib'], deny: ['tag:e2e'] }],
       },
     },

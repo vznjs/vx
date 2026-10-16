@@ -13,7 +13,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { waitForProducers, writeLocalWorkspace } from './helpers/local-workspace.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { lock } from './helpers/orchestrator.js'
 
 const TIMEOUT = 60_000
@@ -65,6 +65,8 @@ async function makeWorkspace(): Promise<Fixture> {
 }
 
 async function addProject(root: string, name: string, testInputs: string): Promise<void> {
+  // A test reading build's outputs leaves build out of its key (`vx lock`).
+  const reads = testInputs === `['**']`
   const dir = path.join(root, 'packages', name)
   await mkdir(path.join(dir, 'src'), { recursive: true })
   await writeFile(
@@ -83,7 +85,7 @@ async function addProject(root: string, name: string, testInputs: string): Promi
         test: {
           dependsOn: ['build'],
           exec: { command: 'echo ran >> ../../.stamp-${name}' },
-          inputs: { files: ${testInputs} }, cache: { outputs: { files: [] } },
+          inputs: { files: ${testInputs}${reads ? ', tasks: []' : ''} }, cache: { outputs: { files: [] } },
         },
       },
     }
@@ -165,7 +167,7 @@ describe('restore-path git spawns', () => {
       // stale snapshot here would surface as a spurious re-execution.
       await addProject(fixture.root, 'a', `['**']`)
       await addProject(fixture.root, 'b', `['**']`)
-      await waitForProducers(fixture.root)
+      await writeLocalWorkspace(fixture.root)
       await warmThenWipe(fixture)
 
       expect(await vx(fixture, true)).toBe(0)

@@ -84,9 +84,10 @@ in place (a formatter) whose key this one does not fold. Such a task,
 and every task depending on it, stays gated on its dependencies and is
 excluded from the up-front probe. A task whose input globs can match
 another task's declared outputs (a `test` task reading `dist/**`
-produced by `build`) is refused at load by default, so its key can
-never be preliminary by accident; `rules.upfrontKeys: false` in
-`.vx/workspace.ts` lets it run, gated the same way. The rule
+produced by `build`) is refused by `vx lock`, so its key can never be
+preliminary by accident. The one exception is a dependency the reader's
+key does not fold (left out of `inputs.tasks`): its key waits for that
+dependency and hashes the bytes it wrote. The rule
 that finds it is shared between the local restore tier and remote
 prefetch, so the two cannot disagree about which keys are stable.
 

@@ -5,6 +5,7 @@
 
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
+import { namedOutright } from '../cache/index.js'
 import {
   buildPackageGraph,
   lockKey,
@@ -64,6 +65,8 @@ export interface ConfigSweep {
   inputs: Map<string, string[][]>
   /** Projects with a task that has a command and no cache: it reads what it likes, git-ignored files included. */
   uncached: Set<string>
+  /** Paths a task's inputs name outright (`namedOutright`), absolute: a git-ignored one is an input. */
+  namedIgnored: string[]
   /** Files the project configs import by relative path (item 949). */
   configImports: string[]
   /** Files the workspace config imports by relative path: loaded once per process (item 949). */
@@ -115,6 +118,7 @@ export async function sweepConfigs(
     addTo(outputs, dir, globs)
   const workspaceInputs = new Set<string>()
   const uncached = new Set<string>()
+  const namedIgnored = new Set<string>()
   const folded: [string, ProjectConfig][] = []
   const fold = (dir: string, config: ProjectConfig): void => {
     folded.push([dir, config])
@@ -137,6 +141,11 @@ export async function sweepConfigs(
         task.exec.persistent === undefined
       )
         uncached.add(dir)
+      if (task.inputs !== undefined && task.exec !== undefined) {
+        const named = namedOutright(task)
+        for (const rel of named.files) namedIgnored.add(path.join(dir, rel))
+        for (const rel of named.workspaceFiles) namedIgnored.add(path.join(workspaceRoot, rel))
+      }
       for (const g of task.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
       addInputs(dir, task.inputs?.files, task.cache?.outputs?.files)
       addInputs(workspaceRoot, task.inputs?.workspaceFiles, task.cache?.outputs?.workspaceFiles)
@@ -148,6 +157,7 @@ export async function sweepConfigs(
     outputs,
     inputs,
     uncached,
+    namedIgnored: [...namedIgnored],
     configImports: [...projectImports],
     workspaceConfigImports: [...wsImports],
     staged,

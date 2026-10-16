@@ -278,8 +278,8 @@ describe('defineWorkspace', () => {
     defineWorkspace({ cache: { dir: '.vx' }, pipeline: {} })
     // @ts-expect-error `maxAge` is not a cache.retention key.
     defineWorkspace({ cache: { retention: { olderThan: '7d', maxAge: '1d' } } })
-    // @ts-expect-error `upfrontKey` is a typo of `upfrontKeys` (D-155).
-    defineWorkspace({ run: { rules: { exclusiveOutputs: false, upfrontKey: false } } })
+    // @ts-expect-error `exclusiveOutput` is a typo of `exclusiveOutputs` (D-155).
+    defineWorkspace({ run: { rules: { exclusiveOutput: false } } })
     // @ts-expect-error a duration carries its unit.
     defineWorkspace({ run: { timeout: 1000 } })
     // CONTROL: every declared key type-checks.
@@ -291,7 +291,7 @@ describe('defineWorkspace', () => {
         timeout: '10m',
         retries: 1,
         continue: 'deps-ok',
-        rules: { exclusiveOutputs: false, upfrontKeys: false },
+        rules: { exclusiveOutputs: false },
       },
       cache: {
         dir: '.vx',

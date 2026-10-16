@@ -18,12 +18,9 @@ export function keyedProjects(
 ): (node: TaskNode) => ReadonlySet<string>
 ```
 
-```ts
-export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate[]
-```
-
-The dependencies one task's key folds, the step the walk repeats;
-`stable-keys.ts`' `probesAfterWrites` asks it too.
+The step the walk repeats is `foldedDeps` (`graph/folds.ts`): the
+dependencies one task's key folds. `stable-keys.ts`' `probesAfterWrites`
+and `vx lock`'s input-overlap rule ask it too.
 
 Under `--exclude-dependencies` the walk folds what the key folds
 (`keyUpstream`): a task's scheduled edges less its order-only ones, plus
@@ -40,7 +37,7 @@ of a sandboxed task that declares `cache`.
 
 - **The fold relation is the hash path's, on the graph.** An exec task
   folds its dependencies as its own `inputs.tasks` selects them
-  (absent means all), through `upstream.ts`'s
+  (absent means all), through `graph/folds.ts`'s
   `selectFoldedDeps` — the one copy of the matcher. A group folds every
   dependency. The walk is transitive.
 - **Every exec task reached counts its project, cached or not.** Its

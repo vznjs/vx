@@ -266,22 +266,19 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     dropping out of the key or the artifact without a word
     (turborepo#9345). Rename it, or exclude it with a negated glob.
 
-    Your globs are a **filter over the set git reports**, so a filter
-    can only ever remove — a gitignored file can never be filtered back
-    in, however explicitly you name it. Naming one by hand is therefore
-    a **hard error** rather than a silent nothing: it would leave the
-    task ignoring a file its own config claims as an input, reporting
-    `up-to-date` while that file changed. Turbo lets an explicit entry
-    override gitignore; vx cannot, because the key would then depend on
-    a change `git diff` cannot see and `--affected` would stop selecting
-    the task. If the file is generated, depend on the task that produces
-    it via `inputs.tasks`; if a tool reads it by itself (`.env.local`),
-    key its bytes with a `runtime` probe (§ What's NOT in the key). A
-    **glob** matching nothing stays
-    silent — that is legitimate — and so does a literal naming a file
-    that does not exist. A literal naming a **directory** is judged the
-    same way: an ignored one, or an empty one, has no file git lists
-    under it, folds nothing, and is refused (item 576).
+    Your globs are a **filter over the set git reports**, so a broad
+    glob never reaches a gitignored file. An entry that names one
+    outright does: a literal (`.env.local`, `gen`), or a glob whose fixed
+    prefix git ignores (`dist/**`), walked on disk under that prefix
+    only (owner, 2026-10-16). Such a file is hashed from disk with the
+    blob formula an untracked file gets, and is never stored or
+    restored. `--affected` reflects only what git sees, so an edit to
+    one never selects a task on its own (as in Nx); `vx watch` re-runs
+    it on an edit there.
+    A **glob** matching nothing stays silent, and so does a literal
+    naming a path that does not exist, until it does. An ignored
+    directory named outright folds every file under it; an empty one
+    folds nothing.
 
     A **bracket is literal** in a task glob, and there are no character
     classes (item 667): `app/[id]/**` folds the route directory
@@ -470,10 +467,12 @@ root-anchored output can land in any project's directory — and every
 transitive dependant of one with it (their up-front keys fold a
 preliminary key); a glob with no literal prefix reaches every project.
 Before item 584 one such declaration emptied the tier graph-wide.
-`rules.upfrontKeys` (on by default, X-54) refuses at load a task whose
-input globs can match another task's declared outputs, unless git
-ignores those outputs whole, so the clauses on declared outputs fire
-only with the rule off. An output git ignores whole is no reach either:
+`vx lock` refuses a task whose input globs can match another task's
+declared outputs (X-54, no opt-out), unless git ignores those outputs
+whole (and the entry does not start inside them) or the producer is a
+dependency its key does not fold, whose bytes it then hashes after the
+producer ran, so the clauses on declared outputs fire only for such a
+dependency read or a pair the check cannot decide. An output git ignores whole is no reach either:
 a key reads only what git lists, so a `**/*` reader beside a gitignored
 `**/dist/**` producer keys up front, the same key before and after the
 build. The run asks git once, beside its walk and only when a reader
@@ -568,9 +567,8 @@ Hard invariants of the remote prefetch:
   stat pass.
 - **Stable keys only.** A task with a _preliminary_ key (§ Local
   restore tier's stability gate: undeclared writes, an
-  `outputs.workspaceFiles` producer upstream, or, with
-  `rules.upfrontKeys: false`, input globs that match an upstream's
-  declared outputs) is not prefetched: its key would name the wrong
+  `outputs.workspaceFiles` producer upstream, or input globs that match
+  the outputs of a dependency the key does not fold) is not prefetched: its key would name the wrong
   artifact, and it resolves via the lazy read-through in `execute-task`. Instability propagates: a task that folds an
   unstable upstream is itself unstable. When in doubt, skip.
 - **At most once.** The `LayeredCache` keeps an in-flight map keyed by
@@ -1006,7 +1004,7 @@ For a task with `exec.sandbox` and `cache`, the sandbox enforces that
 "only". A workspace package reached through a `node_modules` link is
 granted only when the task's key folds a task of that package, walking
 the same selection `inputs.tasks` applies at hash time
-(`orchestrator/keyed-projects.ts`, over `upstream.ts`'s
+(`orchestrator/keyed-projects.ts`, over `graph/folds.ts`'s
 `selectFoldedDeps`); every other link target inside the root is
 withheld, so an import of a sibling the key never sees fails and is
 reported instead of caching a result an edit there would not re-run.
@@ -1873,13 +1871,15 @@ moat.
   Workspace-root configs (`tsconfig.base.json`, etc.) are not
   auto-included — declare them via `inputs.workspaceFiles`
   (root-anchored globs).
-- **Gitignored files a tool reads by itself.** Vite and Next load
-  `.env.local` on their own; git does not list it, so `files` cannot key
-  it and naming it is refused. Editing it replays the old build unless
-  the task keys its bytes with a probe, which also tolerates the file
-  being absent and keeps its values out of the key:
-  `runtime: ['cat .env.local .env.production.local 2>/dev/null | cksum']`.
-  `--affected` still cannot see such an edit.
+- **Gitignored files no entry names.** Vite and Next load `.env.local`
+  on their own; a broad glob skips it, so editing it replays the old
+  build. Name it: `files: ['src/**', '.env.local']`. Its bytes are
+  hashed, never stored, and a missing file is simply not an input.
+  Machines with different files compute different keys, so they miss
+  each other's shared entries. `--affected` ignores it (only what git
+  sees selects a task), and `vx watch` re-runs on its edit. A probe
+  (`runtime: ['cat .env.local 2>/dev/null | cksum']`) still works where
+  a command, not a path, decides what to read.
 - **Node / Bun / OS / build-tool versions — unless you declare them.**
   The canonical mechanism is `inputs.runtime` /
   `workspaceRuntime` (e.g. `workspaceRuntime: ['node -v']`): the

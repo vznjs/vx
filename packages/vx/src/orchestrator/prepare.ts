@@ -51,6 +51,7 @@ import {
   expandRequested,
   type GraphRules,
   isGroupTask,
+  refuseFiltersThroughGroups,
   type TaskNode,
   undeclaredDepsError,
   unresolvedRequests,
@@ -85,7 +86,6 @@ import { currentBranch } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { RunOptions } from './options.js'
-import { refuseFiltersThroughGroups } from './upstream.js'
 import { runRules } from '../settings.js'
 
 export interface PreparedRun {

@@ -39,7 +39,7 @@ const IMPORTED = [
   'src/content/docs/design/**',
   'src/content/docs/plugins/**',
 ]
-// A key reads no other task's outputs (`rules.upfrontKeys`, X-54): each
+// A key reads no other task's outputs (`vx lock`, X-54): each
 // arrives through that task's key and `dependsOn`. All three are gitignored,
 // so no key read them before either.
 const NOT_GENERATED = [...IMPORTED, 'public/playground/planner.js', 'dist/**'].map((g) => `!${g}`)

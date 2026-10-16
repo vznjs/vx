@@ -1,8 +1,9 @@
-// `rules.upfrontKeys` (X-54): a task whose input globs can match another
-// task's declared outputs is refused at graph build, unless the workspace
-// turns the rule off. Such a key reads bytes a producer writes this run, so
-// it cannot be derived until the producer ran; refused, every key is known
-// before anything runs. Proven overlaps only, as for outputs.
+// X-54: a task whose input globs can match another task's declared outputs
+// is refused at graph build, with no opt-out (owner, 2026-10-16), unless the
+// producer is a dependency its key does not fold. Such a key reads bytes a
+// producer writes this run, so it cannot be derived until the producer ran;
+// refused, every key is known before anything runs. Proven overlaps only, as
+// for outputs.
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -74,14 +75,14 @@ function refusal(
 const app = (tasks: Record<string, TaskConfig>) => ({ app: tasks })
 const build = task(['src/**'], ['dist/**'])
 
-describe('rules.upfrontKeys refuses inputs that read another task’s outputs', () => {
+describe('vx lock refuses inputs that read another task’s outputs', () => {
   it('names the reader, the glob, the producer and both ways out', () => {
     expect(refusal(app({ build, test: task(['**'], ['coverage/**']) }))).toBe(
       'app#test reads "**" in inputs.files, which matches app#build\'s output "dist/**" — ' +
-        "a task's key must not read another task's outputs (the dependency's key already " +
-        'cascades through dependsOn). Exclude it: add "!dist/**" to app#test\'s ' +
-        'inputs.files, or set run.rules.upfrontKeys: false in .vx/workspace.ts to let ' +
-        'it wait for its producer.',
+        "a task's key must not read the outputs of a task it does not depend on, or whose " +
+        'key it already folds. Exclude it: add "!dist/**" to app#test\'s inputs.files, or ' +
+        "depend on app#build and leave it out of app#test's inputs.tasks, so its key " +
+        'hashes those bytes instead.',
     )
   })
 
@@ -97,10 +98,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
   for (const [what, inputs, outputs] of refused) {
     it(`refuses ${what}: ${inputs.join()} against ${outputs.join()}`, () => {
       const graph = app({ build: task(['src/**'], outputs), test: task(inputs, ['out/**']) })
-      expect(refusal(graph)).toMatch(/^app#test reads .* run\.rules\.upfrontKeys: false/)
-      expect(refusal(graph, { upfrontKeys: true })).toMatch(/^app#test reads /)
-      // The way out it names: the rule off.
-      expect(refusal(graph, { upfrontKeys: false })).toBeNull()
+      expect(refusal(graph)).toMatch(/^app#test reads .* inputs\.tasks, so its key hashes/)
     })
   }
 
@@ -126,17 +124,11 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
       }),
     ).toBe(
       'app#build reads "**" in inputs.files, which matches g#gen\'s output "app/gen/**" — ' +
-        "a task's key must not read another task's outputs (the dependency's key already " +
-        'cascades through dependsOn). Exclude it: add "!gen/**" to app#build\'s ' +
-        'inputs.files, or set run.rules.upfrontKeys: false in .vx/workspace.ts to let ' +
-        'it wait for its producer.',
+        "a task's key must not read the outputs of a task it does not depend on, or whose " +
+        'key it already folds. Exclude it: add "!gen/**" to app#build\'s inputs.files, or ' +
+        "depend on g#gen and leave it out of app#build's inputs.tasks, so its key " +
+        'hashes those bytes instead.',
     )
-    expect(
-      refusal(
-        { g: { gen: wsTask([], ['app/gen/**']) }, app: { build: task(['**'], ['dist/**']) } },
-        { upfrontKeys: false },
-      ),
-    ).toBeNull()
   })
 
   it('CONTROL: a workspaceFiles output in another project, or taken back, passes', () => {
@@ -154,7 +146,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
   })
 })
 
-describe('rules.upfrontKeys passes what reads no other task’s outputs', () => {
+describe('vx lock passes what reads no other task’s outputs', () => {
   it('an input set whose `!` entry takes the output back', () => {
     expect(refusal(app({ build, test: task(['**', '!dist/**'], []) }))).toBeNull()
     expect(
@@ -199,7 +191,7 @@ describe('rules.upfrontKeys passes what reads no other task’s outputs', () => 
   })
 })
 
-describe('rules.upfrontKeys end to end', () => {
+describe('input overlaps end to end', () => {
   const config = `export default { tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
@@ -212,7 +204,7 @@ describe('rules.upfrontKeys end to end', () => {
     },
   } }`
 
-  it('`vx lock` refuses the reader, unless the rule is off; a run never checks it', async () => {
+  it('`vx lock` refuses the reader until its key leaves the producer out', async () => {
     const root = await makeWorkspace({ prefix: 'vx-upfront-' })
     try {
       await addProject(root, 'app', { files: { 'src/a.txt': 'A1' }, config })
@@ -228,12 +220,10 @@ describe('rules.upfrontKeys end to end', () => {
       expect(refused.stderr.toString()).toMatch(
         /app#test reads "\*\*" in inputs\.files, which matches app#build's output/,
       )
-      const ws = path.join(root, '.vx/workspace.mjs')
-      const on = await Bun.file(ws).text()
-      await Bun.write(ws, 'export default { run: { rules: { upfrontKeys: false } } }\n')
+      const cfg = path.join(root, 'packages/app/vx.config.mjs')
+      const text = await Bun.file(cfg).text()
+      await Bun.write(cfg, text.replace("files: ['**'] }", "files: ['**'], tasks: [] }"))
       expect(lock().exitCode).toBe(0)
-      // The rule back on, the lock unchanged: the run plans the reader.
-      await Bun.write(ws, on)
       const plan = await corePlanRun({ cwd: root, tasks: ['test'], log: silent })
       expect(plan.tasks.map((t) => t.node.id).sort()).toEqual(['app#build', 'app#test'])
     } finally {
@@ -268,16 +258,16 @@ describe('rules.upfrontKeys end to end', () => {
     }
   }, 30_000)
 
-  it('an invalid rule is refused at load', async () => {
+  it('the removed upfrontKeys rule is an unknown key', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-upfront-bad-'))
     try {
       await writeFile(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        "export default { run: { rules: { upfrontKeys: 'yes' } } }\n",
+        'export default { run: { rules: { upfrontKeys: false } } }\n',
       )
       await expect(planRun({ cwd: root, tasks: ['build'], log: silent })).rejects.toThrow(
-        /`run\.rules\.upfrontKeys` must be true or false/,
+        /upfrontKeys/,
       )
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -285,7 +275,7 @@ describe('rules.upfrontKeys end to end', () => {
   }, 30_000)
 })
 
-describe('rules.upfrontKeys stays near-linear', () => {
+describe('input overlaps stay near-linear', () => {
   it('4,000 readers and writers in ONE project', () => {
     // All pairs over 8,000 sides is 32 million glob comparisons (4,000
     // outputs alone took 10.7 s all-pairs, item 741); the path index pairs
@@ -342,7 +332,7 @@ describe('the reader-writer index finds every pair the rule refuses', () => {
   }
 })
 
-describe('rules.upfrontKeys stays near-linear over a shared input', () => {
+describe('input overlaps stay near-linear over a shared input', () => {
   it('4,000 readers of one shared input pair none of them', () => {
     // Every task reading `src/**` and the root `tsconfig.base.json` filed
     // all 4,000 readers under one glob, and the index paired each reader
@@ -374,7 +364,7 @@ describe('rules.upfrontKeys stays near-linear over a shared input', () => {
 })
 
 describe('a task whose own outputs take back an input entry whole is always refused', () => {
-  const off = { exclusiveOutputs: false, upfrontKeys: false }
+  const off = { exclusiveOutputs: false }
   const said = (glob: string, field = 'files') =>
     `app#fmt: every file ${JSON.stringify(glob)} in inputs.${field} selects is also its ` +
     "own output — vx removes a task's outputs before it runs, so the task would delete its " +

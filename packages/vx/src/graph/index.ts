@@ -8,6 +8,14 @@ export {
   parseDependencySpec,
   type DependencySpec,
 } from './dependency-spec.js'
+export {
+  type FoldCandidate,
+  foldedDeps,
+  isGroupTask,
+  keyedDeps,
+  refuseFiltersThroughGroups,
+  selectFoldedDeps,
+} from './folds.js'
 export { computeReverseDepCount } from './priorities.js'
 export {
   type ContinueMode,
@@ -33,7 +41,6 @@ export {
   excludeDependencies,
   expandRequested,
   type GraphRules,
-  isGroupTask,
   markSurfacedDeps,
   outputsOverlap,
   outputTakenBack,

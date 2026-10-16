@@ -79,7 +79,7 @@ here, itself or in a brace group.
 | [`lockfile-claim.md`](./lockfile-claim.md)         | `src/orchestrator/lockfile-claim.ts` — the claimant's shell a lockfile plugin wraps its parser in, and `reachDigests`.                                                                                                         |
 | [`hit-restore.md`](./hit-restore.md)               | `src/orchestrator/{hit-restore,output-log}.ts` — what a hit leaves behind: the two proofs, clean + restore, mark git, replay output; the stored output log.                                                                    |
 | [`task-hash.md`](./task-hash.md)                   | `src/orchestrator/task-hash.ts` — cache-key derivation (`computeTaskHash` & co.).                                                                                                                                              |
-| [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — which upstream a key folds, by `inputs.tasks` (`selectFoldedDeps`, one matcher for both paths).                                                                                               |
+| [`upstream.md`](./upstream.md)                     | `src/orchestrator/upstream.ts` — which upstream hashes a key folds, by `inputs.tasks` (over `graph/folds.ts`'s `selectFoldedDeps`, one matcher for every path).                                                                |
 | [`affected-tasks.md`](./affected-tasks.md)         | `src/orchestrator/{affected-tasks,graph-stage}.ts` — which requested tasks `--affected`'s diff reaches along `dependsOn`; the `graph` stage.                                                                                   |
 | [`excluded-keys.md`](./excluded-keys.md)           | `src/orchestrator/excluded-keys.ts` — the key of a dependency `--exclude-dependencies` keeps from running, and the taint it seeds.                                                                                             |
 | [`colors.md`](./colors.md)                         | `src/util/{colors,report}.ts` — ANSI gate + truecolor helpers, the brand rule; task output stripped where vx prints plain.                                                                                                     |
@@ -156,6 +156,7 @@ here, itself or in a brace group.
 |                                              | `src/graph/priorities.ts` — the ready-queue ranking (see scheduler.md). |
 |                                              | `src/graph/task-status.ts` — the status vocabulary (see scheduler.md).  |
 | [`dependency-spec.md`](./dependency-spec.md) | `src/graph/dependency-spec.ts` — shared Turbo/Nx micro-syntax parser.   |
+| [`folds.md`](./folds.md)                     | `src/graph/folds.ts` — which dependencies a key folds (`inputs.tasks`). |
 
 ## Cache cluster
 
