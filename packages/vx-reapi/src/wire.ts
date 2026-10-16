@@ -421,6 +421,24 @@ async function* messagesOf(
   if (carry.length > 0) yield carry
 }
 
+/**
+ * TLS unless the endpoint says plaintext, as Bazel reads a schemeless
+ * `--remote_cache`; a unix socket stays plaintext.
+ */
+export function usesTls(opts: {
+  endpoint: string
+  tls?: boolean | undefined
+  tlsCaPem?: string | undefined
+  tlsClientCertPem?: string | undefined
+}): boolean {
+  return (
+    opts.tls ??
+    (opts.tlsCaPem !== undefined ||
+      opts.tlsClientCertPem !== undefined ||
+      !/^((http|grpc):\/\/|unix:|unix-abstract:)/.test(opts.endpoint))
+  )
+}
+
 export class ReapiClient {
   private readonly svc: ServiceClients
   private readonly instance: string
@@ -453,13 +471,7 @@ export class ReapiClient {
     assertBunSupportsChunking()
     const pem = (text: string | undefined): Buffer | null =>
       text === undefined ? null : Buffer.from(text)
-    // TLS unless the endpoint says plaintext, as Bazel reads a schemeless
-    // `--remote_cache`; a unix socket stays plaintext.
-    const tls =
-      opts.tls ??
-      (opts.tlsCaPem !== undefined ||
-        opts.tlsClientCertPem !== undefined ||
-        !/^((http|grpc):\/\/|unix:|unix-abstract:)/.test(opts.endpoint))
+    const tls = usesTls(opts)
     const target = opts.endpoint.replace(/^(https?|grpcs?):\/\//, '')
     this.svc = loadServices(
       target,

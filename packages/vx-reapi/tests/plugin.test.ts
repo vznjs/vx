@@ -183,6 +183,21 @@ describe('reapi(): the endpoint is checked where it is set', () => {
     ])
   })
 
+  // Bun's TLS refuses an IP address as the server name, so a TLS endpoint
+  // at an IP failed every request ("Setting the TLS ServerName to an IP
+  // address is not permitted") and the remote was never reached.
+  it('refuses a TLS endpoint at an IP address, naming the way out', () => {
+    expect([
+      outcome('10.0.0.5:9092'),
+      outcome('grpcs://[::1]:8980'),
+      outcome(undefined, 'ipv4:10.0.0.5:443'),
+    ]).toEqual([
+      'vx/reapi: `reapi({ endpoint })` is "10.0.0.5:9092", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+      'vx/reapi: `reapi({ endpoint })` is "grpcs://[::1]:8980", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+      'vx/reapi: VX_REAPI_ENDPOINT is "ipv4:10.0.0.5:443", TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext',
+    ])
+  })
+
   it.skipIf(!CHUNKING_SUPPORTED)(
     'a blank one declines as an unset one does; well-formed ones are taken',
     () => {
@@ -191,11 +206,13 @@ describe('reapi(): the endpoint is checked where it is set', () => {
         outcome('cache.test:443'),
         outcome('grpcs://cache.test'),
         outcome('https://cache.test:8443'),
-        outcome('[::1]:8980'),
+        outcome('grpc://[::1]:8980'),
+        outcome('grpc://10.0.0.5:9092'),
         outcome('localhost'),
         outcome('unix:/run/cas.sock'),
       ]).toEqual([
         'declined',
+        'accepted',
         'accepted',
         'accepted',
         'accepted',
