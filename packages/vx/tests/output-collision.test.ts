@@ -19,7 +19,12 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { buildTaskGraph, outputsOverlap, type TaskNode } from '../src/graph/index.js'
+import {
+  buildTaskGraph,
+  outputTakenBack,
+  outputsOverlap,
+  type TaskNode,
+} from '../src/graph/index.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
 import type { PackageGraph } from '../src/workspace/index.js'
 import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../src/config.js'
@@ -641,6 +646,45 @@ describe('what must NOT be refused — a false positive breaks a working build',
     }
   })
 
+  it("allows a glob whose `!` entry takes back the other task's whole output", () => {
+    // solid: `build` writes `**/dist` and `types` writes `types/**`; they
+    // meet only at `types/dist`, which build's `!types/**` takes back from
+    // its clean and its capture alike, so neither task touches the other's.
+    expect(() =>
+      graph({
+        app: {
+          build: task(['**/dist', '!types/**']),
+          types: task(['types/**']),
+          coverage: task(['coverage/**']),
+        },
+      }),
+    ).toThrow('coverage')
+    expect(() =>
+      graph({
+        app: {
+          build: task(['**/dist', '!types/**', '!coverage/**']),
+          types: task(['types/**']),
+          coverage: task(['coverage/**']),
+        },
+      }),
+    ).not.toThrow()
+    // Either side's `!` separates the pair, and in either namespace.
+    expect(() =>
+      graph({ app: { a: task(['types/**']), b: task(['**/dist', '!types']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({
+        a: { build: task([], ['b/dist/a.txt']) },
+        b: { build: task(['dist/**', '!dist/a.txt']) },
+      }),
+    ).not.toThrow()
+    // CONTROL: a `!` that takes back only part of the other's output is
+    // no separation.
+    expect(() =>
+      graph({ app: { a: task(['types/**']), b: task(['**/dist', '!types/x/**']) } }),
+    ).toThrow('vx cleans a task')
+  })
+
   it('allows a task with no declared outputs beside one that has them', () => {
     expect(() => graph({ app: { lint: task([]), build: task(['dist/**']) } })).not.toThrow()
   })
@@ -838,7 +882,7 @@ describe('the path index finds every pair the rule refuses', () => {
     'a?',
     'di\\st',
     '*.js',
-    // Leading, `!` makes the entry a negation the graph leaves out (A-44);
+    // Leading, `!` makes the entry a negation that takes paths back (A-44);
     // deeper, it is a glob character the rule and the index must agree on.
     '!a',
   ]
@@ -905,6 +949,15 @@ const outputsOf = (n: TaskNode, ws: boolean): readonly string[] =>
     (g) => !g.startsWith('!'),
   )
 
+/** The rule for one pair of globs: they overlap and neither task's `!` entries take the other's back. */
+const collides = (a: TaskNode, b: TaskNode, ga: string, gb: string, ws: boolean): boolean => {
+  const back = (n: TaskNode): string[] =>
+    ((ws ? n.config.cache?.outputs.workspaceFiles : n.config.cache?.outputs.files) ?? [])
+      .filter((g) => g.startsWith('!'))
+      .map((g) => g.slice(1))
+  return outputsOverlap(ga, gb) && !outputTakenBack(gb, back(a)) && !outputTakenBack(ga, back(b))
+}
+
 /** Build unordered: the node order (for the reference) and the refusal's head, if any. */
 function graphNodesOrError(projects: Record<string, Record<string, TaskConfig>>): {
   order: TaskNode[]
@@ -943,7 +996,7 @@ function firstRefusal(order: readonly TaskNode[], ws: boolean): string | null {
       if (!ws && a.projectName !== b.projectName) continue
       for (const ga of outputsOf(a, ws)) {
         for (const gb of outputsOf(b, ws)) {
-          if (!outputsOverlap(ga, gb)) continue
+          if (!collides(a, b, ga, gb, ws)) continue
           return (
             `${a.id} and ${b.id} both declare the output ${JSON.stringify(ga)}` +
             (ga === gb ? '' : ` / ${JSON.stringify(gb)}`) +
@@ -986,7 +1039,7 @@ function reference(
       const b = order[j]!
       if (!ws && a.projectName !== b.projectName) continue
       const hit = outputsOf(a, ws).some((ga) =>
-        outputsOf(b, ws).some((gb) => outputsOverlap(ga, gb)),
+        outputsOf(b, ws).some((gb) => collides(a, b, ga, gb, ws)),
       )
       if (!hit) continue
       const [up, down] = below(b.id, a.id) ? [a, b] : [b, a]

@@ -1261,7 +1261,9 @@ uses, so `dist` collides with `dist/app.js` (item 442). A whole subtree
 collides with any glob whose literal head lies inside it: `dist/**` with
 `dist/extra/**` or `dist/*.js` (item 941). Two globs a path built from
 either one matches are one too: `**/*` and `**/dist/**` both match
-`x/dist/x`. Globs that only _might_
+`x/dist/x`. A pair is no overlap where one task's `!` output entry
+takes the other's glob back whole: `['**/dist', '!types/**']` beside
+`types/**` (a `!` entry is never cleaned or captured). Globs that only _might_
 overlap (`dist/*` and `dist/sub/**`) are let through; there, last
 restore wins. A workspace output is also compared with every other
 project's `files` outputs, read from the root: `packages/b/dist/a.txt`
