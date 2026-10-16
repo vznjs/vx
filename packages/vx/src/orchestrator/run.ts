@@ -76,7 +76,7 @@ import {
   warnOf,
 } from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
-import { keepRunBytes } from './run-report.js'
+import { keepsFailures, reportOf, RunKeeper } from './run-report.js'
 import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { createSteps } from './steps.js'
 import { writeRunSteps } from './run-steps.js'
@@ -452,7 +452,25 @@ async function runOnBus(
   const runId = ulid()
   const head = captureGitContext(prepared.workspaceRoot)
   const ciContext = detectCi(process.env)
-  const keepRunLog = prepared.keepRunEntry !== undefined
+  const keepRun =
+    prepared.keepRunEntry === undefined
+      ? undefined
+      : {
+          failures: keepsFailures(
+            resolveSetting('cache.upload.failures', prepared.workspaceConfig).value,
+            ciContext.ci,
+          ),
+        }
+  const keeper =
+    prepared.keepRunEntry === undefined || keepRun === undefined
+      ? undefined
+      : new RunKeeper({
+          runId,
+          workspaceRoot: prepared.workspaceRoot,
+          nestedDirsByProject: prepared.nestedDirsByProject,
+          keep: prepared.keepRunEntry,
+          failures: keepRun.failures,
+        })
   try {
     disposePlugins = await installPlugins({
       plugins: prepared.plugins,
@@ -581,6 +599,7 @@ async function runOnBus(
     onStop: () => {
       stopRuntimeProbes(hashCache.runtime, hashCache.workspaceRuntime)
       cache.stopUploads?.()
+      keeper?.stop()
     },
   })
   const { liveChildren, persistentRegistry } = stop
@@ -940,7 +959,7 @@ async function runOnBus(
     if (cleanOutputs !== undefined) scope.cleanOutputs = cleanOutputs
     if (telemetry?.track !== undefined) scope.track = telemetry.track
     if (explainMiss !== undefined) scope.explainMiss = explainMiss
-    if (keepRunLog) scope.keepRunLog = true
+    if (keepRun !== undefined) scope.keepRun = keepRun
     if (sandboxArmer !== null) scope.armSandbox = () => sandboxArmer.arm()
     const argsOf = executeArgsOf(scope, {
       log: (node) => (node.config.exec?.persistent !== undefined ? serverLog(node.id) : log),
@@ -1049,6 +1068,7 @@ async function runOnBus(
         if (cacheOff) o.cacheOff = true
         taint.settled(o)
         judgeFlaky(o)
+        keeper?.taskDone(o)
         log.taskComplete(o.node, o)
         narrowDemand(o.node.id)
       },
@@ -1252,23 +1272,13 @@ async function runOnBus(
     // nothing the suite could see, because this gate is the rule.
     await step('vx:uploads', async () => {
       await prefetchDone
-      await cache.drainUploads?.()
+      await Promise.all([cache.drainUploads?.(), keeper?.settled()])
     })
     writeRunSteps(prepared.cacheDir, runId, steps.ended, warnOf(log))
     // An upload that failed after the rows went in: its row says so too.
     if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
       recordHistory(() => recordLateRemoteErrors(prepared.localCache, records.runs, runId))
-    const report = await step('vx:keep-run', () =>
-      keepRunBytes(list, {
-        runId,
-        commit: head.commitSha,
-        ciRun: ciContext,
-        ok,
-        workspaceRoot: prepared.workspaceRoot,
-        nestedDirsByProject: prepared.nestedDirsByProject,
-        keep: prepared.keepRunEntry,
-      }),
-    )
+    const report = reportOf(list, { runId, commit: head.commitSha, ciRun: ciContext, ok }, keeper)
     // Hand the per-run summary to the telemetry sinks + drain them. Only
     // when a sink is active (telemetry !== undefined) — otherwise this
     // whole block is skipped and the run is byte-identical to before.

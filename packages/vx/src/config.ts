@@ -110,6 +110,12 @@ export interface CacheSettings {
   inputStability?: InputStability
   /** The `cache.outputs.clean` of every task that does not set its own. */
   outputs?: { clean?: boolean }
+  /**
+   * Which runs keep a failed task's log and the files its outputs left in
+   * the remote: CI runs (`'ci'`, the default), runs off CI (`'local'`), or
+   * both (`'always'`). Only a run whose policy writes a remote keeps any.
+   */
+  upload?: { failures?: 'ci' | 'local' | 'always' }
 }
 
 /** `WorkspaceConfig.lock`. */

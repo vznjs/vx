@@ -1,6 +1,9 @@
 // The report every plugin's teardown reads, and the run's own bytes kept
 // in a remote that takes its writes (owner 2026-10-15): a failed task's
-// log and the files its outputs left, an uncached task's log.
+// log and the files its outputs left (`cache.upload.failures`), and the
+// log of a task that saved no entry. Each task's bytes leave when it ends,
+// off its path, like its entry's upload (owner 2026-10-16); the run only
+// waits for them where it waits for every upload.
 
 import {
   packRunOutputs,
@@ -14,16 +17,26 @@ import { relPosix } from '../util/index.js'
 import { decodeOutputLog } from './output-log.js'
 import type { RunReport, RunReportTask } from './plugin.js'
 
-export interface RunReportArgs {
+/** Stores one run entry; resolves whether a remote kept it. */
+export type KeepRunEntry = (name: string, bytes: Uint8Array) => Promise<boolean>
+
+export interface RunKeeperArgs {
   readonly runId: string
-  readonly commit: string | null
-  readonly ciRun: CiContext
-  readonly ok: boolean
   readonly workspaceRoot: string
   readonly nestedDirsByProject: ReadonlyMap<string, string[]>
-  /** Stores one run entry; undefined when no remote takes the run's writes. */
-  readonly keep: ((name: string, bytes: Uint8Array) => Promise<boolean>) | undefined
+  readonly keep: KeepRunEntry
+  /** Whether a failed task's log and outputs are kept (`cache.upload.failures`). */
+  readonly failures: boolean
 }
+
+/** Whether a run on CI or off it keeps failures, by `cache.upload.failures` (default `'ci'`). */
+export function keepsFailures(where: unknown, ci: boolean): boolean {
+  const at = where ?? 'ci'
+  return at === 'always' || (at === 'ci') === ci
+}
+
+/** Concurrent run-entry writes; more queue. */
+const KEEP_CONCURRENCY = 8
 
 /** The files `node`'s declared outputs match on disk now, workspace-relative and sorted. */
 async function outputsLeft(
@@ -40,52 +53,117 @@ async function outputsLeft(
   return [...new Set([...own, ...ws].map((p) => relPosix(workspaceRoot, p)))].sort()
 }
 
-export async function keepRunBytes(
+/** Keeps each task's run bytes as it ends, and names them in the run's report. */
+export class RunKeeper {
+  private readonly kept = new Map<string, { log?: string; outputs?: string }>()
+  private readonly queue: (() => Promise<void>)[] = []
+  private readonly pending = new Set<Promise<void>>()
+  private active = 0
+  private stopped = false
+
+  constructor(private readonly args: RunKeeperArgs) {}
+
+  /** A task ended: queue what of it the run keeps. */
+  taskDone(o: TaskOutcome): void {
+    if (this.stopped || isGroupTask(o.node)) return
+    const { runId, workspaceRoot } = this.args
+    const id = o.node.id
+    const slot = (): { log?: string; outputs?: string } => {
+      let s = this.kept.get(id)
+      if (s === undefined) this.kept.set(id, (s = {}))
+      return s
+    }
+    const runLog = o.runLog
+    if (runLog !== undefined) {
+      const text = decodeOutputLog(runLog)
+        .map((c) => c.text)
+        .join('')
+      if (text.length > 0) {
+        const name = runEntryName(runId, id, 'log')
+        const bytes = new TextEncoder().encode(text)
+        this.enqueue(async () => {
+          if (await this.args.keep(name, bytes)) slot().log = name
+        })
+      }
+    }
+    if (this.args.failures && o.status === 'failed' && o.where === undefined) {
+      // Read now: a later task may write where this one's outputs lie.
+      const packed = outputsLeft(
+        o.node,
+        workspaceRoot,
+        this.args.nestedDirsByProject.get(o.node.projectName) ?? [],
+      ).then((paths) => packRunOutputs(workspaceRoot, paths))
+      const name = runEntryName(runId, id, 'outputs')
+      this.enqueue(async () => {
+        const bytes = await packed
+        if (bytes !== null && (await this.args.keep(name, bytes))) slot().outputs = name
+      })
+    }
+  }
+
+  /** Resolves once every queued write has settled, or the run was stopped. */
+  async settled(): Promise<void> {
+    while (!this.stopped && this.pending.size > 0) await Promise.all(this.pending)
+  }
+
+  /** A stopped run starts no more writes and stops waiting on those in flight. */
+  stop(): void {
+    this.stopped = true
+    this.queue.length = 0
+  }
+
+  /** What was kept of each task, by id, for `reportOf`. */
+  keptOf(id: string): { log?: string; outputs?: string } | undefined {
+    return this.kept.get(id)
+  }
+
+  private enqueue(job: () => Promise<void>): void {
+    let done!: () => void
+    const p = new Promise<void>((resolve) => (done = resolve))
+    this.pending.add(p)
+    this.queue.push(async () => {
+      try {
+        if (!this.stopped) await job()
+      } catch {
+        // a record, never the run's verdict
+      } finally {
+        this.pending.delete(p)
+        done()
+      }
+    })
+    this.pump()
+  }
+
+  private pump(): void {
+    while (this.active < KEEP_CONCURRENCY && this.queue.length > 0) {
+      const job = this.queue.shift()!
+      this.active++
+      void job().finally(() => {
+        this.active--
+        this.pump()
+      })
+    }
+  }
+}
+
+/** The report: every task, with the names of what `keeper` kept of it. */
+export function reportOf(
   final: readonly TaskOutcome[],
-  args: RunReportArgs,
-): Promise<RunReport> {
-  const { keep, runId, workspaceRoot } = args
+  run: { runId: string; commit: string | null; ciRun: CiContext; ok: boolean },
+  keeper: RunKeeper | undefined,
+): RunReport {
   const tasks: RunReportTask[] = []
-  const work: (() => Promise<void>)[] = []
   for (const o of final) {
     if (isGroupTask(o.node)) continue
-    const task: { -readonly [K in keyof RunReportTask]: RunReportTask[K] } = {
+    const kept = keeper?.keptOf(o.node.id)
+    tasks.push({
       id: o.node.id,
       status: o.status,
       durationMs: Math.round(o.durationMs),
       ...(o.hash !== undefined ? { key: o.hash } : {}),
-    }
-    tasks.push(task)
-    if (keep === undefined) continue
-    const runLog = o.runLog
-    if (runLog !== undefined) {
-      work.push(async () => {
-        const text = decodeOutputLog(runLog)
-          .map((c) => c.text)
-          .join('')
-        if (text.length === 0) return
-        const name = runEntryName(runId, o.node.id, 'log')
-        if (await keep(name, new TextEncoder().encode(text))) task.log = name
-      })
-    }
-    if (o.status === 'failed' && o.where === undefined) {
-      work.push(async () => {
-        const bytes = await packRunOutputs(
-          workspaceRoot,
-          await outputsLeft(
-            o.node,
-            workspaceRoot,
-            args.nestedDirsByProject.get(o.node.projectName) ?? [],
-          ),
-        )
-        if (bytes === null) return
-        const name = runEntryName(runId, o.node.id, 'outputs')
-        if (await keep(name, bytes)) task.outputs = name
-      })
-    }
+      ...(kept?.log !== undefined ? { log: kept.log } : {}),
+      ...(kept?.outputs !== undefined ? { outputs: kept.outputs } : {}),
+    })
   }
-  for (let i = 0; i < work.length; i += 8) {
-    await Promise.all(work.slice(i, i + 8).map((w) => w()))
-  }
-  return { runId, commit: args.commit, ciRun: args.ciRun, ok: args.ok, tasks }
+  return { runId: run.runId, commit: run.commit, ciRun: run.ciRun, ok: run.ok, tasks }
 }

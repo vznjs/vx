@@ -306,6 +306,7 @@ export interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   inputStability?: InputStability
   outputs?: { clean?: boolean }
+  upload?: { failures?: 'ci' | 'local' | 'always' }
 }
 ```
 
@@ -1908,8 +1909,9 @@ type · `src/orchestrator/plugin.ts`
 
 What a finished run hands each plugin's `teardown`: its facts and every
 task, with the names core kept the task's bytes under. Core keeps them
-only when a remote takes the run's writes (CI by default): a failed
-task's log and the files its outputs left, an uncached task's log. Read
+only when a remote takes the run's writes (CI by default): the log of a
+task that saved no entry, and a failed task's log and the files its
+outputs left when `cache.upload.failures` covers the run. Read
 them with `ctx.cache.getRun(name)`. Core keeps no manifest of its own; a
 plugin that wants one writes it from here (`ctx.cache.put`).
 

@@ -3,7 +3,8 @@
 // a failed task's log and outputs and an uncached task's log (core does,
 // under run names), a plugin writes its own manifest from the report its
 // teardown gets, and its verb reads all of it back from the remote on a
-// machine with no local cache.
+// machine with no local cache. Each task's bytes leave when it ends, and
+// `cache.upload.failures` says which runs keep failures (owner, 2026-10-16).
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -50,11 +51,18 @@ const WIRE = pluginSource(
   `{ cache: () => ({
       has: async (h) => globalThis.__vxWire.has(h),
       get: async (h) => globalThis.__vxWire.has(h) ? { body: new Blob([globalThis.__vxWire.get(h)]), durationMs: undefined } : null,
-      put: async (h, b) => { globalThis.__vxWire.set(h, new Uint8Array(await b.arrayBuffer())) },
+      put: async (h, b) => { globalThis.__vxPuts?.push(Date.now()); globalThis.__vxWire.set(h, new Uint8Array(await b.arrayBuffer())) },
     }) }`,
 )
 
-it("core keeps a CI run's logs and failed outputs, a plugin its manifest, and a verb reads both from the remote", async () => {
+const box = globalThis as unknown as {
+  __vxWire: Map<string, Uint8Array>
+  __vxPuts?: number[]
+  __vxShown?: unknown
+}
+
+/** `lib#test` fails leaving a report, `docs#test` is uncached, `gen#build` saves an entry. */
+async function fixture(cacheSettings = ''): Promise<void> {
   root = realpathSync(mkdtempSync(path.join(tmpdir(), 'vx-run-record-')))
   await Bun.write(
     path.join(root, 'lib/vx.config.mjs'),
@@ -76,56 +84,73 @@ it("core keeps a CI run's logs and failed outputs, a plugin its manifest, and a 
     } } }`,
   )
   await Bun.write(path.join(root, 'gen/src/i.js'), 'x')
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([WIRE, RECORDER]))
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([WIRE, RECORDER]).replace(
+      'export default {',
+      `export default { ${cacheSettings}`,
+    ),
+  )
   gitInitCommit(root)
-  const box = globalThis as unknown as { __vxWire: Map<string, Uint8Array>; __vxShown?: unknown }
   box.__vxWire = new Map()
-  const lines: string[] = []
-  const quiet = {
-    status: (l: string) => lines.push(l),
-    taskStart() {},
-    taskStdout() {},
-    taskStderr() {},
-    taskComplete() {},
-  }
+}
 
-  const CI_VARS = ['GITHUB_ACTIONS', 'GITLAB_CI', 'BUILDKITE', 'CIRCLECI', 'CI']
+const lines: string[] = []
+const quiet = {
+  status: (l: string) => lines.push(l),
+  taskStart() {},
+  taskStdout() {},
+  taskStderr() {},
+  taskComplete() {},
+}
+
+const CI_VARS = ['GITHUB_ACTIONS', 'GITLAB_CI', 'BUILDKITE', 'CIRCLECI', 'CI']
+async function runAs(ci: boolean, tasks: string[], extra: object = {}) {
   const saved = CI_VARS.map((k) => [k, process.env[k]] as const)
-  const runAs = async (ci: boolean) => {
-    for (const k of CI_VARS) delete process.env[k]
-    if (ci) process.env['CI'] = '1'
-    try {
-      return await run({
-        cwd: root,
-        tasks: ci ? ['test', 'build'] : ['test'],
-        handleSignals: false,
-        log: quiet,
-        ...(ci ? {} : { remoteReadOnlyByDefault: true }),
-      })
-    } finally {
-      for (const [k, v] of saved) {
-        if (v === undefined) delete process.env[k]
-        else process.env[k] = v
-      }
+  for (const k of CI_VARS) delete process.env[k]
+  if (ci) process.env['CI'] = '1'
+  try {
+    return await run({
+      cwd: root,
+      tasks,
+      handleSignals: false,
+      log: quiet,
+      ...(ci ? {} : { remoteReadOnlyByDefault: true }),
+      ...extra,
+    })
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
     }
   }
-  expect((await runAs(false)).ok).toBe(false)
-  expect(box.__vxWire.size).toBe(0)
-  expect((await runAs(true)).ok).toBe(false)
-  const runId = lines.map((l) => /^run (\S+)$/.exec(l)?.[1]).find(Boolean) ?? ''
-  expect(runId).not.toBe('')
+}
 
+interface Shown {
+  runId: string
+  ok: boolean
+  ciRun: { ci: boolean }
+  tasks: { id: string; status: string; key?: string; log?: string; outputs?: Uint8Array }[]
+}
+
+/** The run the recorder kept, read back with no local cache. */
+async function shown(): Promise<Shown> {
+  const runId = lines.map((l) => /^run (\S+)$/.exec(l)?.[1]).findLast(Boolean) ?? ''
+  expect(runId).not.toBe('')
   rmSync(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
   process.chdir(root)
   expect(await cli(['show-run', runId])).toBe(0)
-  const shown = box.__vxShown as {
-    runId: string
-    ok: boolean
-    ciRun: { ci: boolean }
-    tasks: { id: string; status: string; key?: string; log?: string; outputs?: Uint8Array }[]
-  }
-  const task = (id: string) => shown.tasks.find((t) => t.id === id)
-  expect([shown.runId, shown.ok, shown.ciRun.ci]).toEqual([runId, false, true])
+  return box.__vxShown as Shown
+}
+
+it("core keeps a CI run's logs and failed outputs, a plugin its manifest, and a verb reads both from the remote", async () => {
+  await fixture()
+  expect((await runAs(false, ['test'])).ok).toBe(false)
+  expect(box.__vxWire.size).toBe(0)
+  expect((await runAs(true, ['test', 'build'])).ok).toBe(false)
+  const run = await shown()
+  const task = (id: string) => run.tasks.find((t) => t.id === id)
+  expect([run.ok, run.ciRun.ci]).toEqual([false, true])
   expect(task('docs#test')).toMatchObject({ status: 'success', log: 'links ok\n' })
   expect(task('lib#test')).toMatchObject({ status: 'failed', log: '1 failing\n' })
   // A task that saved an entry: its log is the entry's, core keeps no copy.
@@ -135,4 +160,36 @@ it("core keeps a CI run's logs and failed outputs, a plugin its manifest, and a 
   await Bun.write(tar, task('lib#test')!.outputs!)
   const file = Bun.spawnSync(['tar', '-xOf', tar, 'lib/reports/junit.xml'])
   expect(file.stdout.toString()).toBe('boom\n')
+}, 30_000)
+
+it("`cache.upload.failures: 'local'` keeps no CI failure, and an uncached log still", async () => {
+  await fixture("cache: { upload: { failures: 'local' } },")
+  expect((await runAs(true, ['test'])).ok).toBe(false)
+  const run = await shown()
+  const task = (id: string) => run.tasks.find((t) => t.id === id)
+  expect(task('docs#test')).toMatchObject({ status: 'success', log: 'links ok\n' })
+  expect(task('lib#test')).toMatchObject({ status: 'failed' })
+  expect(task('lib#test')).not.toHaveProperty('log')
+  expect(task('lib#test')).not.toHaveProperty('outputs')
+}, 30_000)
+
+it("a task's bytes leave when it ends, not when the run does", async () => {
+  await fixture()
+  await Bun.write(
+    path.join(root, 'slow/vx.config.mjs'),
+    `export default { tasks: { test: { exec: { command: 'sleep 1.5 && echo slow' } } } }`,
+  )
+  gitInitCommit(root, 'slow')
+  box.__vxPuts = []
+  try {
+    const started = Date.now()
+    expect((await runAs(true, ['lib#test', 'slow#test'], { continueMode: 'always' })).ok).toBe(
+      false,
+    )
+    // lib#test's log and outputs went while slow#test still ran.
+    expect(box.__vxPuts.length).toBeGreaterThan(0)
+    expect(box.__vxPuts[0]! - started).toBeLessThan(1_200)
+  } finally {
+    delete box.__vxPuts
+  }
 }, 30_000)
