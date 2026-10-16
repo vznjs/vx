@@ -8,7 +8,8 @@
 // before the fix.
 
 import { existsSync, lstatSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
@@ -216,13 +217,19 @@ describe('cache.inputStability: what a write during the command means', () => {
       // The bytes match the key, but `meddle` held other bytes while `read`
       // ran: the save filed what `read` saw under the key of what is there
       // now (STATUS item 28). Control: the same write, finished before
-      // `read` starts (dependsOn), is saved.
+      // `read` starts (dependsOn), is saved. Files order the overlap, not
+      // sleeps: on a slow runner `read` was keyed after `meddle` put the
+      // bytes back, which saw nothing to withhold (macOS CI, #3683).
+      const signals = await mkdtemp(path.join(os.tmpdir(), 'vx-moved-signals-'))
+      const waitFor = (file: string) =>
+        `i=0; while [ ! -f ${signals}/${file} ] && [ $i -lt 1000 ]; do sleep 0.01; i=$((i+1)); done`
+      const swap = 'cp a.ts a.keep && printf bad > a.ts && cat a.keep > a.ts && rm a.keep'
       const project = (ordered: boolean) => ({
         config: `
           export default {
             tasks: {
               read: {
-                exec: { command: 'sleep 0.8' },
+                exec: { command: ${JSON.stringify(ordered ? 'true' : `touch ${signals}/started; ${waitFor('restored')}`)} },
                 ${ordered ? "dependsOn: ['meddle']," : ''}
                 inputs: { files: ['a.ts'] },
                 cache: {
@@ -231,7 +238,7 @@ describe('cache.inputStability: what a write during the command means', () => {
                 },
               },
               meddle: {
-                exec: { command: 'sleep 0.2 && cp a.ts a.keep && printf bad > a.ts && sleep 0.2 && cat a.keep > a.ts && rm a.keep' },
+                exec: { command: ${JSON.stringify(ordered ? swap : `${waitFor('started')}; ${swap} && touch ${signals}/restored`)} },
                 inputs: { files: [] },
               },
             },
@@ -254,6 +261,7 @@ describe('cache.inputStability: what a write during the command means', () => {
       expect((await run({ cwd: root, tasks: ['read'], log: logger })).ok).toBe(true)
       expect(status.filter((l) => MOVED.test(l))).toEqual([])
       expect(statusOf(await runTask('read'), 'app#read')).toBe('cache-hit')
+      await rm(signals, { recursive: true, force: true })
     },
     TIMEOUT,
   )
