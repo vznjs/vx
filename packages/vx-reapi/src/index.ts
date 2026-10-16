@@ -10,6 +10,7 @@
 // plugin, so nothing here depends on core's internal layout.
 
 import { readFileSync } from 'node:fs'
+import { isIP } from 'node:net'
 import * as grpc from '@grpc/grpc-js'
 import {
   definePlugin,
@@ -22,7 +23,7 @@ import {
 } from '@vzn/vx'
 import { ReapiRemoteCache } from './cache.js'
 import { reapiExecutor } from './executor.js'
-import { ReapiClient, type ReapiOptions } from './wire.js'
+import { ReapiClient, type ReapiOptions, usesTls } from './wire.js'
 
 // `ReapiRemoteCache` is public for a workspace that composes cache
 // layers by hand; the wire, the Merkle encoders and the executor are
@@ -150,6 +151,11 @@ function connection(options: ReapiPluginOptions): ReapiOptions | undefined {
       'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
     )
   }
+  if (usesTls({ endpoint, tls: options.tls, tlsCaPem, tlsClientCertPem }) && ipTarget(endpoint)) {
+    throw new UserError(
+      `vx/reapi: ${from} is ${JSON.stringify(endpoint)}, TLS to an IP address, which Bun cannot open (it refuses an IP as the TLS server name) — name the server by host name, or use grpc:// for plaintext`,
+    )
+  }
   return {
     ...options,
     endpoint,
@@ -178,6 +184,20 @@ function assertEndpoint(endpoint: string, from: string): void {
       `vx/reapi: ${from} is ${JSON.stringify(endpoint)}, which is not host[:port] (e.g. grpcs://cache.example.com:443)`,
     )
   }
+}
+
+/**
+ * The endpoint names its server by IP address. grpc-js sends the host as
+ * the TLS server name, and Bun's TLS throws on an IP there (Node only
+ * warns), so every request failed and the remote was never reached.
+ */
+function ipTarget(endpoint: string): boolean {
+  if (/^ipv[46]:/.test(endpoint)) return true
+  const host = endpoint
+    .replace(/^(https?|grpcs?|dns):\/*/, '')
+    .replace(/:\d+$/, '')
+    .replace(/^\[(.*)\]$/, '$1')
+  return isIP(host) !== 0
 }
 
 /** Each option `ReapiPluginOptions` names, with its kind: derived from the type, so the two cannot drift. */

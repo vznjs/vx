@@ -39,7 +39,9 @@ one) the plugin **declines** and costs nothing, so it is
 safe to leave declared. An endpoint that is not `host[:port]`, with an
 optional `grpc(s)://` or `http(s)://` scheme, or a gRPC resolver target
 (`unix:`, `unix-abstract:`, `dns:`, `ipv4:`, `ipv6:`), is refused at startup
-with a line naming the setting. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
+with a line naming the setting. So is a TLS endpoint at an IP address:
+Bun's TLS refuses an IP as the server name, so name the server by host
+name, or use `grpc://` for plaintext. `VX_REAPI_ENDPOINT` / `VX_REAPI_INSTANCE` configure it
 from the environment, and `VX_REAPI_EXECUTE=1` turns on remote execution the
 way `execute: true` does (off by default: a plugin must not move where a
 build runs merely by being configured for caching). `execute` is a
