@@ -25,6 +25,8 @@ and key derivation logic live here.
 - `file-hashes.ts` — `FileHashStore`: the per-file blob-OID memo over
   `file_hashes` (a symlink hashes as its target string) and the repo's
   object format.
+- `fs-clock.ts` — how far the workspace's file system clock runs behind
+  this process's, measured once a run; `racyWindowMs` adds it.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
   and the two proofs a hit runs before skipping a restore.
 - `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
@@ -135,8 +137,15 @@ export const FILE_HASH_RACY_MS = 50
 // The window for one stamp: `windowMs`, plus a second when the stamp has no
 // sub-second part (a file system that keeps whole seconds), two on an even
 // second (FAT32) — the file hasher, the output-directory snapshot and the
-// re-check all ask it (A-2, A-38).
+// re-check all ask it (A-2, A-38). Plus the measured file-system clock lag.
 export function racyWindowMs(stampMs: number, windowMs: number): number
+
+// How far the workspace's file system clock runs behind `Date.now()`
+// (fs-clock.ts): measured once a run from a stamp written in the cache dir
+// (prepare.ts), and every racy window is widened by it when it is past the
+// kernel's 20 ms tick. Set by a test to simulate a lagging file system.
+export function measureFsClockLag(dir: string): void
+export function setFsClockLag(lagMs: number): void
 
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the

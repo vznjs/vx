@@ -5,6 +5,7 @@
 // reference to `Cache` below is a type (the local handle a layer may wrap).
 
 import type { Cache } from './cache.js'
+import { fsClockLag, stampGrainMs } from './fs-clock.js'
 
 export interface CacheKeyInput {
   taskId: string
@@ -411,11 +412,11 @@ export const FILE_HASH_RACY_MS = 50
  * field (A-38). Pass the UNFLOORED stamp: a kernel's nanosecond stamp lands
  * on a whole second about once in 10^9, one set through a millisecond
  * `utimes` once in a thousand, and either is then trusted up to two seconds
- * later — never wrongly.
+ * later — never wrongly. And every window is widened by how far the file
+ * system's clock runs behind this process's (`fsClockLag`, fs-clock.ts).
  */
 export function racyWindowMs(stampMs: number, windowMs: number): number {
-  if (stampMs % 2000 === 0) return windowMs + 2000
-  return stampMs % 1000 === 0 ? windowMs + 1000 : windowMs
+  return windowMs + stampGrainMs(stampMs) + fsClockLag()
 }
 
 /**
