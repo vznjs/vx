@@ -738,7 +738,9 @@ A task that runs a command and declares no `inputs` has no key: nothing
 says what it read. A key that folds it is this run's alone, so every
 task behind it misses and saves nothing, never a stale hit. Declare
 `inputs` on an uncached task a cached one depends on;
-`inputs: { files: [] }` keys it on its command and config alone.
+`inputs: { files: [] }` is a declaration too: it keys the task on its
+config and its dependencies' keys, and a task behind it can hit. An
+absent `inputs` and an empty one differ.
 
 #### `InputsConfig`
 

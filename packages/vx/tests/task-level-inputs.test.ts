@@ -123,6 +123,21 @@ describe('an uncached task is keyed on its inputs', () => {
   )
 
   it(
+    'with empty inputs it is keyed on its config and deps, and its dependant hits',
+    async () => {
+      // Absent and empty differ (owner, 2026-10-16): `files: []` is a
+      // declaration, so the key stands and a later run hits.
+      await fixture(
+        `{ exec: { command: 'cp ../shared/schema.txt ../b/src/gen.txt' }, inputs: { files: [] } }`,
+      )
+      expect(await build()).toBe('SCHEMA1')
+      expect(await build()).toBe('SCHEMA1')
+      expect(await runs()).toBe(1)
+    },
+    TIMEOUT,
+  )
+
+  it(
     'with no inputs it has no key, and its dependant never hits',
     async () => {
       await fixture(`{ exec: { command: 'cp ../shared/schema.txt ../b/src/gen.txt' } }`)
