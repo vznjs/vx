@@ -174,19 +174,47 @@ export function resolveOtelConfig(
   env: Record<string, string | undefined>,
   warn?: (m: string) => void,
 ): OtelSinkConfig | undefined {
-  const base = present(opts.endpoint) ?? present(env['OTEL_EXPORTER_OTLP_ENDPOINT'])
-  const tracesUrl =
-    present(opts.tracesEndpoint) ??
-    present(env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT']) ??
-    (base ? joinSignal(base, 'traces') : undefined)
-  const metricsUrl =
-    present(opts.metricsEndpoint) ??
-    present(env['OTEL_EXPORTER_OTLP_METRICS_ENDPOINT']) ??
-    (base ? joinSignal(base, 'metrics') : undefined)
-  const logsUrl =
-    present(opts.logsEndpoint) ??
-    present(env['OTEL_EXPORTER_OTLP_LOGS_ENDPOINT']) ??
-    (base ? joinSignal(base, 'logs') : undefined)
+  // Each URL with the setting it came from, so a refusal can name it
+  // without printing a value that may hold a credential.
+  const from = (option: keyof OtelPluginOptions, envName: string): [string, string] | undefined => {
+    const o = present(opts[option] as string | undefined)
+    if (o !== undefined) return [o, `the ${option} option`]
+    const e = present(env[envName])
+    return e === undefined ? undefined : [e, envName]
+  }
+  const base = from('endpoint', 'OTEL_EXPORTER_OTLP_ENDPOINT')
+  const pick = (
+    option: keyof OtelPluginOptions,
+    signal: 'traces' | 'metrics' | 'logs',
+  ): [string, string] | undefined => {
+    const own = from(option, `OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_ENDPOINT`)
+    return own ?? (base === undefined ? undefined : [joinSignal(base[0], signal), base[1]])
+  }
+  const picked = {
+    traces: pick('tracesEndpoint', 'traces'),
+    metrics: pick('metricsEndpoint', 'metrics'),
+    logs: pick('logsEndpoint', 'logs'),
+  }
+  // An endpoint with no http(s) scheme (`localhost:4318`) parses as a URL
+  // of scheme `localhost:`: every export failed "Unable to connect", once
+  // per signal, after a second of retries. It is refused here, once per
+  // setting, and its signals are not exported.
+  const refused = new Map<string, string[]>()
+  for (const signal of ['traces', 'metrics', 'logs'] as const) {
+    const p = picked[signal]
+    if (p === undefined) continue
+    const protocol = URL.parse(p[0])?.protocol
+    if (protocol === 'http:' || protocol === 'https:') continue
+    refused.set(p[1], [...(refused.get(p[1]) ?? []), signal])
+    picked[signal] = undefined
+  }
+  for (const [setting, signals] of refused) {
+    const names = signals.length === 3 ? 'traces, metrics and logs' : signals.join(' and ')
+    warn?.(`[vx-otel] ${setting} is not an http:// or https:// URL — ${names} are not exported`)
+  }
+  const tracesUrl = picked.traces?.[0]
+  const metricsUrl = picked.metrics?.[0]
+  const logsUrl = picked.logs?.[0]
   // Each signal has its own endpoint, as the spec has them: a pipeline that
   // set only a metrics (or logs) endpoint declined whole and exported
   // nothing (F-45). The plugin declines only when no signal has one.
