@@ -11,6 +11,7 @@
 
 import { readFileSync } from 'node:fs'
 import { isIP } from 'node:net'
+import * as grpc from '@grpc/grpc-js'
 import {
   definePlugin,
   type RemoteCacheLayer,
@@ -246,6 +247,14 @@ export function reapi(options: ReapiPluginOptions = {}): VxPlugin {
         executorClient.close()
         executorClient = undefined
         const why = err instanceof Error ? err.message : String(err)
+        // A server that answered with a refusal was reached: the endpoint
+        // advice sent the user to check everything but the token.
+        const code = (err as { code?: unknown } | null)?.code
+        if (code === grpc.status.UNAUTHENTICATED || code === grpc.status.PERMISSION_DENIED) {
+          throw new Error(
+            `the REAPI server at ${conn.endpoint} refused the credentials for remote execution: ${why} — check the token in \`headers\`, or drop \`execute\` to use it as a cache only`,
+          )
+        }
         throw new Error(
           `cannot reach the REAPI server at ${conn.endpoint} for remote execution: ${why} — check the endpoint, that the server is running, and that this host can reach it, or drop \`execute\` to use it as a cache only`,
         )
