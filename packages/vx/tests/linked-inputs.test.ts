@@ -155,6 +155,23 @@ describe('a symlinked input', () => {
   )
 
   it(
+    'a file deleted from behind a linked directory reads nothing, and runs',
+    async () => {
+      await writeFile(path.join(root, 'shared', 'y.txt'), 'Y\n')
+      const app = await addProject(root, 'a', {
+        config: config('src/sh/x.txt', `{ files: ['src/**'], workspaceFiles: ['shared/x.txt'] }`),
+      })
+      await mkdir(path.join(app, 'src'), { recursive: true })
+      await symlink('../../../shared', path.join(app, 'src', 'sh'))
+      commit('fixture')
+      await rm(path.join(root, 'shared', 'y.txt'))
+      // Before the fix: refused for "shared/y.txt", which git still lists.
+      expect(statusOf(await build())).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a task with no cache block declares nothing to key a link with, and runs',
     async () => {
       const app = await addProject(root, 'a', {

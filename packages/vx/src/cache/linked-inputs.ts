@@ -4,9 +4,10 @@
 // (Growth, 2026-10-16). Keying the target from here would leave `--affected`
 // and `vx watch` blind to the same edit, so the target must be an input
 // itself, and a link whose target is not is refused naming the declaration
-// that keys it. A dangling link reads nothing.
+// that keys it. A dangling link, or a listed file deleted from behind a
+// linked directory, reads nothing.
 
-import { realpathSync, statSync } from 'node:fs'
+import { existsSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { relPosix, UserError } from '../util/index.js'
 import { runGitLsFiles } from './git-inputs.js'
@@ -39,7 +40,9 @@ export function refuseUnkeyedLinks(
     const target = path.join(workspaceRoot, rel)
     if (!outside && statSync(real).isDirectory()) {
       const behind = runGitLsFiles(target).files
-      const missing = behind.find((f) => !inputs.has(path.join(target, f)))
+      const missing = behind.find(
+        (f) => !inputs.has(path.join(target, f)) && existsSync(path.join(target, f)),
+      )
       if (missing === undefined) continue
       throw new UserError(
         `${head}, and "${targetRel}/${missing}" behind it is not an input — an edit to it would replay the old output. Add "${targetRel}/**" to cache.inputs.workspaceFiles.`,
