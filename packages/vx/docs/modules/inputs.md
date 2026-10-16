@@ -51,6 +51,7 @@ export interface ResolveInputsArgs {
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
+  uncachedEnv?: readonly string[] // a task with no cache block: its passThrough names, whose values key it for dependents
   ownOutputs: readonly string[] // project-relative globs to exclude
   ownWorkspaceOutputs?: readonly string[] // root-relative `outputs.workspaceFiles` to exclude from `inputs.workspaceFiles`
   nestedProjectDirs: string[] // absolute dirs of nested projects
