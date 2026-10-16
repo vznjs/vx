@@ -62,6 +62,7 @@ import {
   hasHook,
   resolveCache,
   teardownPlugins,
+  type ScheduleRun,
 } from './plugin-host.js'
 import {
   discoverProjects,
@@ -115,9 +116,10 @@ export interface PreparedRun {
    * merged over the structural baseline by the scheduler). Empty when no
    * plugin declares the stage. Asked only by a run with a task to start:
    * the stage reads history (148 ms at 8,002 tasks) to order work a
-   * nothing-changed run never dispatches. Runs the stage once.
+   * nothing-changed run never dispatches. Runs the stage once: `run`
+   * times each plugin's call and hears its later `ctx.refine` sets.
    */
-  priorities: () => Promise<ReadonlyMap<string, number>>
+  priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   /**
    * The run's branch (`run.branch`, else git's, else the CI provider's):
    * what its history records and the timings a forecast reads first.
@@ -747,7 +749,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       return own
     }
     let scheduled: Promise<ReadonlyMap<string, number>> | undefined
-    const priorities = (): Promise<ReadonlyMap<string, number>> =>
+    const priorities = (run?: ScheduleRun): Promise<ReadonlyMap<string, number>> =>
       (scheduled ??= hasHook(plugins, 'schedule')
         ? applyScheduleHooks(
             plugins,
@@ -760,6 +762,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
               branch: branch(),
             },
             cacheFor,
+            run,
           )
         : Promise.resolve(new Map()))
 

@@ -774,8 +774,8 @@ other persistent task`), and a non-zero exit makes the run exit 1
    waits on, before its first task starts or before it ends, as rows of
    their own below the worker rows: `vx:load` (configs and graph from
    the lock), `vx:run-lock`, `<plugin>:setup`, `vx:keys` (keys and local
-   probes), `vx:schedule`, then after the graph `vx:uploads`,
-   `vx:history`, `vx:telemetry`, `<plugin>:teardown`,
+   probes), `<plugin>:schedule`, then after the graph `vx:uploads`,
+   `vx:history`, `<plugin>:telemetry`, `<plugin>:teardown`,
    `vx:snapshots`, `vx:retention`, `vx:close` and `vx:sandbox`. A step
    shows once it has run 150 ms, ticking like a task
    (`     1.2s running internal vx:uploads`); no worker slot or

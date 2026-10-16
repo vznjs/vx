@@ -27,8 +27,8 @@ import type { VxPlugin } from './plugin.js'
 export interface TelemetryHandle {
   /** Emit the per-run summary to every sink (crash-isolated). */
   emitSummary(summary: RunSummaryRecord): void
-  /** Await every sink's flush (crash-isolated, time-bounded by the sink). */
-  flush(): Promise<void>
+  /** Await every sink's flush (crash-isolated, time-bounded by the sink), each as a `<plugin>:telemetry` step. */
+  flush(step?: <T>(id: string, work: () => Promise<T>) => Promise<T>): Promise<void>
   /** Remove the bus subscription. Idempotent. */
   dispose(): void
   /** Sample a running task's process tree; see `TelemetrySource.track`. */
@@ -125,7 +125,7 @@ export async function subscribeTelemetry(
   const dispose = bus.subscribe(source.subscriber)
   return {
     emitSummary: (summary) => source.emitSummary(summary),
-    flush: () => source.flush(),
+    flush: (step) => source.flush(step),
     dispose,
     ...(source.track !== undefined ? { track: source.track } : {}),
   }

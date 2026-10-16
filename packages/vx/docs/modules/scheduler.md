@@ -92,6 +92,8 @@ export interface ScheduleOptions {
   settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => TaskOutcome | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */
   priorities?: ReadonlyMap<string, number>
+  /** Later weights for `priorities`: the ready queues re-rank at once (a `schedule` plugin's `refine`). */
+  reprioritize?: (apply: (priorities: ReadonlyMap<string, number>) => void) => void
   /** The baseline ranking under `priorities`: `schedule` in .vx/workspace.ts. */
   strategy?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */

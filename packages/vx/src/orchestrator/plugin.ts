@@ -137,6 +137,9 @@ export interface VxPlugin {
    * only when a task will start: a run of confirmed local hits restores
    * in no order a weight changes. A later plugin's weight for a task
    * overrides an earlier one's. Return undefined to leave the baseline.
+   * The run waits for this answer before its first task, so it should
+   * come from what is at hand (local history); better weights that need
+   * a fetch go to `ctx.refine` when they arrive, without holding the run.
    */
   schedule?(
     nodes: ReadonlyMap<string, TaskNode>,
@@ -449,6 +452,12 @@ export interface ScheduleHookContext extends BaseContext {
   readonly branch: string | null
   /** This plugin's entries in the workspace's cache, as `setup` has them. */
   readonly cache: PluginCache
+  /**
+   * Replace this plugin's weights while the run goes on: the tasks not yet
+   * started re-rank at once. For weights that arrive late (timings fetched
+   * from a remote). Ignored in a plan and once the run's tasks are done.
+   */
+  refine(weights: ReadonlyMap<string, number>): void
 }
 
 /** A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns. */

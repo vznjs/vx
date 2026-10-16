@@ -175,7 +175,10 @@ export function oneDatabase(): VxPlugin {
 }
 ```
 
-`schedule` ranks ready tasks. This one learns from your run history:
+`schedule` ranks ready tasks. The run waits for its answer before the
+first task, so answer from what is at hand; weights that need a fetch go
+to `ctx.refine(weights)` when they arrive, and the tasks not yet started
+re-rank. This one learns from your run history:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'

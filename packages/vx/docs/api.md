@@ -1497,7 +1497,7 @@ export interface PreparedRun {
   localCache: Cache
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
-  priorities: () => Promise<ReadonlyMap<string, number>>
+  priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
   cacheFor: (plugin: string) => PluginCache
   keepRunEntry: ((name: string, bytes: Uint8Array) => Promise<boolean>) | undefined
@@ -2107,6 +2107,7 @@ export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
   readonly branch: string | null
   readonly cache: PluginCache
+  refine(weights: ReadonlyMap<string, number>): void
 }
 ```
 
