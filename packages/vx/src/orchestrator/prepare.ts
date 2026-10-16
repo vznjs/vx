@@ -671,12 +671,16 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       if ((n.config.cache?.inputs.workspaceFiles?.length ?? 0) > 0) usesWorkspaceInputs = true
     }
     const projectDirs = [...graphDirs]
-    const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot)
-    const enumeration = await (git.started ??
+    const enumerating =
+      git.started ??
       startGitEnumeration(
         workspaceRoot,
         gitPathspecs(workspaceRoot, projectDirs, usesWorkspaceInputs),
-      ))
+      )
+    // While git walks: the gate's pass over every task cost 2-8 ms at
+    // 1,000 projects when it ran before the spawn.
+    const settleIgnored = askIgnoredOutputs(gatedOutputs(nodes, workspaceRoot), workspaceRoot)
+    const enumeration = await enumerating
     await applyGitEnumeration(
       enumeration,
       workspaceRoot,
