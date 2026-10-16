@@ -584,3 +584,32 @@ describe('Turbo parity — task hash and global hash (turborepo-task-hash)', () 
     TIMEOUT,
   )
 })
+
+describe('Turbo parity — line endings (turborepo-scm)', () => {
+  it(
+    "`test_crlf_hash_with_autocrlf_true` — divergence: a core.autocrlf checkout keys the CRLF bytes its build reads, so it misses the LF checkout's entries rather than risk a stale hit",
+    async () => {
+      const lf = await workspace('vx-parity-turbo-crlf-', {
+        lib: { config: config("{ files: ['src/**'] }"), files: { 'src/a.txt': 'a\nb\n' } },
+      })
+      const crlf = `${lf}-crlf`
+      try {
+        await writeFile(path.join(lf, '.gitattributes'), '* text=auto\n')
+        const git = gitIn(lf)
+        git('add', '-A')
+        git('commit', '-q', '-m', 'eol')
+        gitIn(os.tmpdir())('-c', 'core.autocrlf=true', 'clone', '-q', lf, crlf)
+        // The clone is clean to git, yet its build reads other bytes.
+        expect(gitIn(crlf)('status', '--porcelain', '-uno')).toBe('')
+        expect(await readFile(path.join(crlf, 'packages', 'lib', 'src', 'a.txt'), 'utf8')).toBe(
+          'a\r\nb\r\n',
+        )
+        expect(await key(crlf, 'lib#t')).not.toBe(await key(lf, 'lib#t'))
+      } finally {
+        await rm(crlf, { recursive: true, force: true })
+        await rm(lf, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+})
