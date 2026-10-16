@@ -69,8 +69,16 @@ interface Manager {
   readonly settings: readonly string[]
   /** The lockfile files a peer under `dependencies`: the manifest says which entries are peers. */
   readonly peersInManifest?: true
-  /** Warned when the file records no importer at all, which only this format can. */
-  readonly noImporters?: () => string
+  /**
+   * Importers a format leaves out of the lockfile (yarn classic), from the
+   * workspace's manifests through `manifest`; undefined where the file
+   * records them itself.
+   */
+  readonly manifestImporters?: (
+    text: string,
+    workspaceRoot: string,
+    manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+  ) => Promise<ReadonlyMap<string, LockfileImporter> | undefined>
 }
 
 /**
@@ -127,7 +135,18 @@ const MANAGERS = {
     digest: (t) => yarnLock().importerDigests(yarnParse(t)),
     importers: (t) => yarnLock().importerLinks(yarnParse(t)),
     settings: ['.yarnrc.yml'],
-    noImporters: () => `yarn.lock${yarnLock().CLASSIC_EDGES}`,
+    async manifestImporters(t, root, manifest) {
+      const lock = yarnParse(t)
+      if (lock.generation !== 'classic') return undefined
+      const pkg = await manifest(root)
+      const manifests = new Map<string, Record<string, unknown>>()
+      if (pkg !== null) manifests.set('.', pkg)
+      for (const dir of await workspaceDirs(root, pkg)) {
+        const m = await manifest(path.join(root, dir))
+        if (m !== null) manifests.set(dir, m)
+      }
+      return yarnLock().classicLinks(lock, manifests)
+    },
   },
 } satisfies Record<string, Manager>
 
@@ -196,13 +215,16 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       `${unreadable.file}: ${manager.name}() reads ${manager.files.join(' or ')} and finds none — ${unreadable.fix}`,
     )
   }
-  const importersOf = async (ctx: {
-    readonly workspaceRoot: string
-    readonly cacheDir: string
-  }): Promise<ReadonlyMap<string, LockfileImporter> | undefined> => {
-    for (const { claim } of claims) {
+  const importersOf = async (
+    ctx: { readonly workspaceRoot: string; readonly cacheDir: string },
+    manifest: (dir: string) => Promise<Record<string, unknown> | null>,
+  ): Promise<ReadonlyMap<string, LockfileImporter> | undefined> => {
+    for (const { file, claim } of claims) {
       const importers = await claim.importers(ctx)
-      if (importers !== undefined) return importers
+      if (importers === undefined) continue
+      if (importers.size > 0 || manager.manifestImporters === undefined) return importers
+      const text = await Bun.file(path.join(ctx.workspaceRoot, file)).text()
+      return (await manager.manifestImporters(text, ctx.workspaceRoot, manifest)) ?? importers
     }
     await refuseUnreadable(ctx.workspaceRoot)
     return undefined
@@ -246,21 +268,22 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         : { ...deps, ...folded }
     },
     async discover(ctx) {
-      const importers = await importersOf(ctx)
+      const manifest = manifestReader()
+      const importers = await importersOf(ctx, manifest)
       if (importers === undefined) return []
-      if (importers.size === 0 && manager.noImporters !== undefined) ctx.warn(manager.noImporters())
       const rootIsProject = ctx.projects.some((p) => importerOf(ctx.workspaceRoot, p.dir) === '.')
       return await discovered(
         ctx.workspaceRoot,
         importers,
         manager.peersInManifest === true,
         rootIsProject,
+        manifest,
       )
     },
     async project(config, ctx) {
       let importers = perRun.get(ctx.projects)
       if (importers === undefined) {
-        importers = importersOf(ctx)
+        importers = importersOf(ctx, manifestReader())
         perRun.set(ctx.projects, importers)
       }
       if ((await importers)?.has(importerOf(ctx.workspaceRoot, ctx.dir)) !== true) return
@@ -316,6 +339,44 @@ async function manifestOf(dir: string): Promise<Record<string, unknown> | null> 
   }
 }
 
+/** `manifestOf`, each directory read once. */
+function manifestReader(): (dir: string) => Promise<Record<string, unknown> | null> {
+  const read = new Map<string, Promise<Record<string, unknown> | null>>()
+  return (dir) => {
+    let pkg = read.get(dir)
+    if (pkg === undefined) {
+      pkg = manifestOf(dir)
+      read.set(dir, pkg)
+    }
+    return pkg
+  }
+}
+
+/**
+ * The directories a root manifest's `workspaces` globs (an array, or
+ * Yarn 1's `{ packages }`) name that hold a `package.json`, root-relative
+ * POSIX, sorted; none under `node_modules`.
+ */
+async function workspaceDirs(root: string, pkg: Record<string, unknown> | null): Promise<string[]> {
+  const field = pkg?.['workspaces']
+  const list = Array.isArray(field)
+    ? field
+    : field !== null && typeof field === 'object'
+      ? (field as Record<string, unknown>)['packages']
+      : undefined
+  if (!Array.isArray(list)) return []
+  const dirs = new Set<string>()
+  for (const pattern of list) {
+    if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
+    const glob = new Bun.Glob(`${pattern.replace(/^\.\//, '').replace(/\/+$/, '')}/package.json`)
+    for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
+      const dir = path.dirname(file).split(path.sep).join('/')
+      if (dir !== '.' && !dir.split('/').includes('node_modules')) dirs.add(dir)
+    }
+  }
+  return [...dirs].sort()
+}
+
 /**
  * One entry per importer with a `package.json` (core reads none): a
  * directory that is no project yet becomes one, the root aside, which is
@@ -332,12 +393,13 @@ async function discovered(
   importers: ReadonlyMap<string, LockfileImporter>,
   peersInManifest: boolean,
   rootIsProject: boolean,
+  manifest: (dir: string) => Promise<Record<string, unknown> | null>,
 ): Promise<DiscoveredProject[]> {
   const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
   const read = await Promise.all(
     [...importers.keys()]
       .filter((i) => i !== '.' || rootIsProject)
-      .map(async (i) => [i, await manifestOf(dirOf(i))] as const),
+      .map(async (i) => [i, await manifest(dirOf(i))] as const),
   )
   const manifests = new Map<string, Record<string, unknown>>()
   for (const [i, pkg] of read) if (pkg !== null) manifests.set(i, pkg)
@@ -443,7 +505,7 @@ export function npm(options: LockfileOptions = {}): VxPlugin {
   return plugin(MANAGERS.npm, options)
 }
 
-/** `yarn.lock`: berry (yarn 2+, per workspace) and classic (yarn 1, one digest for the root). */
+/** `yarn.lock`: berry (yarn 2+, per workspace) and classic (yarn 1: one digest for the root, links from the workspaces' manifests). */
 export function yarn(options: LockfileOptions = {}): VxPlugin {
   refuseUnknownOptions('yarn()', options, LOCKFILE_KEYS)
   return plugin(MANAGERS.yarn, options)

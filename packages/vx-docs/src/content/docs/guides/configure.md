@@ -316,7 +316,8 @@ Each plugin also folds its manager's install settings into every task
 `package.json` to its cached tasks' inputs, and gives vx the project
 edges the lockfile records: what `^build` waits on, and what `--filter`
 and `--affected` follow. A yarn 1 lockfile records no workspaces, so
-`yarn()` gives no edges there and says so.
+`yarn()` takes its edges from the workspaces' `package.json` files, as
+Yarn 1 links them.
 
 `vx why` names the part `plugin @vzn/vx-lockfile/pnpm`. An unreadable
 lockfile stops the run and names the install to re-run. An import you
