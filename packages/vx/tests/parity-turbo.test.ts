@@ -217,12 +217,12 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
         'lint: {',
         `env: {
         exec: { command: 'echo mode=$MODE token=$TOKEN', env: { passThrough: ['MODE', 'TOKEN'] } },
-        cache: { inputs: { files: ['src/**'], env: ['MODE'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'], env: ['MODE'] }, cache: { outputs: { files: [] } },
       },
       uncached: { exec: { command: 'echo uncached' } },
       args: {
         exec: { command: 'echo args' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
       },
       lint: {`,
       ),
@@ -324,7 +324,7 @@ describe('Turbo parity — caching (`inputs`, `outputs`, `env`, `cache: false`)'
 
         const cfg = await readFile(config, 'utf8')
         const lint =
-          "lint: {\n        exec: { command: 'echo lint-lib' },\n        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },\n      },"
+          "lint: {\n        exec: { command: 'echo lint-lib' },\n        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },\n      },"
         expect(cfg).toContain(lint)
         await writeFile(config, cfg.replace(lint, "lint: { exec: { command: 'echo lint-lib' } },"))
         const [uncached] = await dry(own, ['lib#lint'])

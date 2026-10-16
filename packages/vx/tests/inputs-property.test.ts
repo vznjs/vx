@@ -187,7 +187,7 @@ for (let seed = 1; seed <= 24; seed++) {
         const got = await resolving.then(
           (r) => r.files.map((f) => relPosix(fx.pkg, f)),
           (e: Error) =>
-            /^cache\.inputs\.files: ".*" exists in .* but git does not report it/.test(e.message)
+            /^inputs\.files: ".*" exists in .* but git does not report it/.test(e.message)
               ? 'refused'
               : e.message,
         )

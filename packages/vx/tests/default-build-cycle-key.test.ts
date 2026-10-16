@@ -32,7 +32,7 @@ describe('default builds on a package cycle', () => {
       config: `export default { tasks: { test: {
         dependsOn: ['build'],
         exec: { command: 'cat ../b/src/index.js' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
       } } }\n`,
       files: { 'src/index.js': 'a-1\n' },
     })

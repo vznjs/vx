@@ -95,7 +95,7 @@ it('a later run keeps an unchanged held server, rebuilds its deps, and replaces 
   const lib = await addProject(root, 'lib', {
     config: `export default { tasks: { build: {
       exec: { command: 'echo built >> ../../built.log' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     } } }`,
     files: { 'src/a.txt': 'v1' },
   })

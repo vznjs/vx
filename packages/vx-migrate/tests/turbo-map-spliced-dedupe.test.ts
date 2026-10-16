@@ -48,10 +48,10 @@ describe('turbo-map: a global name the task repeats', () => {
     const inputsOf = async (splice: (k: string, v: readonly string[]) => readonly unknown[]) => {
       const m = await mapTurboWorkspace(root, metas, { splice, persistentTodo: 'P' })
       const t = m.projects[0]!.tasks[0]!.task as {
-        cache: { inputs: { env: unknown[]; workspaceFiles: unknown[] } }
+        inputs: { env: unknown[]; workspaceFiles: unknown[] }
         exec: { env: { passThrough: unknown[] } }
       }
-      return [t.cache.inputs.env, t.exec.env.passThrough, t.cache.inputs.workspaceFiles]
+      return [t.inputs.env, t.exec.env.passThrough, t.inputs.workspaceFiles]
     }
     expect([await inputsOf((_k, v) => v), await inputsOf((k) => [{ raw: `...${k}` }])]).toEqual([
       [['A', 'B'], ['A', 'C', 'B', 'D'], ['g.json']],

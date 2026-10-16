@@ -103,7 +103,7 @@ Speed by subtraction is still speed:
   against: inside the workspace, a task with `sandbox` reads only what
   `allow.read` grants, plus `node_modules` and the linked packages it
   depends on. Reads outside the workspace stay open, except the
-  credential stores under home (`~/.ssh`, `~/.aws`, …), and `cache.inputs`
+  credential stores under home (`~/.ssh`, `~/.aws`, …), and `inputs`
   grants nothing, so the sandbox checks the input list only where
   `allow.read` mirrors it. Guessing is replaced by a boundary.
 

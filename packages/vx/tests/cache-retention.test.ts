@@ -444,7 +444,7 @@ describe('a run applies the workspace retention at its end', () => {
   }
 
   const task = (name: string) =>
-    `export default { tasks: { build: { exec: { command: 'cat src/a.txt > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } }\n`.replace(
+    `export default { tasks: { build: { exec: { command: 'cat src/a.txt > out.txt' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } } } }\n`.replace(
       'src/a.txt',
       `src/${name}.txt`,
     )

@@ -7,13 +7,13 @@
       "exec": {
         "command": "mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js"
       },
+      "inputs": {
+        "files": [
+          "src/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "src/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": [
             "dist/**"
@@ -28,13 +28,13 @@
       "exec": {
         "command": "sh tests/main.sh"
       },
+      "inputs": {
+        "files": [
+          "tests/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "tests/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }

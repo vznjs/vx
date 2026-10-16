@@ -49,11 +49,12 @@ function git(cwd: string, ...args: string[]): void {
 // ─── Loader validation ───────────────────────────────────────────────
 
 describe('workspaceFiles loader validation', () => {
-  const cfgWith = (cache: Record<string, unknown>): Record<string, unknown> => ({
-    tasks: { build: { exec: { command: 'true' }, cache } },
+  /** `spec` is the task's `inputs` and its `cache` fields in one object. */
+  const cfgWith = ({ inputs, ...cache }: Record<string, unknown>): Record<string, unknown> => ({
+    tasks: { build: { exec: { command: 'true' }, inputs, cache } },
   })
-  const validate = (cache: Record<string, unknown>): void => {
-    validateProjectConfig(cfgWith(cache), '/ws/pkg/vx.config.ts')
+  const validate = (spec: Record<string, unknown>): void => {
+    validateProjectConfig(cfgWith(spec), '/ws/pkg/vx.config.ts')
   }
   const base = { inputs: { files: ['src/**'] }, outputs: { files: [] } }
 
@@ -314,8 +315,8 @@ describe('inputs.workspaceFiles resolution', () => {
             taskName: 'build',
             config: {
               exec: { command: 'gen' },
+              inputs: { files: [], workspaceFiles: ['shared/**'] },
               cache: {
-                inputs: { files: [], workspaceFiles: ['shared/**'] },
                 outputs: { files: [], workspaceFiles: ['shared/generated.json'] },
               },
             },
@@ -521,8 +522,8 @@ describe('GitFilesCache workspace-wide partition', () => {
             taskName: 'build',
             config: {
               exec: { command: 'build' },
+              inputs: { files: [], workspaceFiles: ['shared/**'] },
               cache: {
-                inputs: { files: [], workspaceFiles: ['shared/**'] },
                 outputs: { files: [] },
               },
             },
@@ -701,8 +702,8 @@ describe('workspaceFiles e2e', () => {
             tasks: {
               gen: {
                 exec: { command: 'echo done > out.txt' },
+                inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
                 cache: {
-                  inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
                   outputs: { files: ['out.txt'] },
                 },
               },
@@ -734,8 +735,8 @@ describe('workspaceFiles e2e', () => {
             tasks: {
               gen: {
                 exec: { command: 'echo done > out.txt' },
+                inputs: { files: ['src/**'], workspaceFiles: ['packages/pkg-b/data/**'] },
                 cache: {
-                  inputs: { files: ['src/**'], workspaceFiles: ['packages/pkg-b/data/**'] },
                   outputs: { files: ['out.txt'] },
                 },
               },
@@ -772,8 +773,8 @@ describe('workspaceFiles e2e', () => {
             tasks: {
               gen: {
                 exec: { command: ${JSON.stringify(genCmd)} },
+                inputs: { files: ['src/**'] },
                 cache: {
-                  inputs: { files: ['src/**'] },
                   outputs: { files: ['dist/**'], workspaceFiles: ['generated/**'] },
                 },
               },
@@ -815,8 +816,8 @@ describe('workspaceFiles e2e', () => {
             tasks: {
               gen: {
                 exec: { command: ${JSON.stringify(genCmd)} },
+                inputs: { files: ['src/**'] },
                 cache: {
-                  inputs: { files: ['src/**'] },
                   outputs: { files: ['out.txt'], workspaceFiles: ['generated/**'] },
                 },
               },

@@ -25,7 +25,7 @@ export default defineProject({
     ...lib({ entry: 'src/index.ts' }),
     docs: {
       exec: { command: `typedoc --out ${process.env.DOCS_OUT ?? 'docs'}` },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['docs/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['docs/**'] } },
     },
   },
 })

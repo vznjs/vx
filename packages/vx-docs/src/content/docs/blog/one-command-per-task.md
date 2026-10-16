@@ -60,12 +60,12 @@ inherited wholesale. Each task gets an isolated environment: a small
 essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few
 more), then what `exec.env` says: values you set (part of the config, so in the key) and
 variables you `passThrough` from the parent (not in the key).
-`cache.inputs.env` puts a variable in the key but does not pass it to
+`inputs.env` puts a variable in the key but does not pass it to
 the task, so a variable that changes the output and must reach the
 task goes in both. `PATH` is prepended
 with the project's `node_modules/.bin`, then the workspace root's, so
 `tsc` resolves without `npx`. A variable that changes the output and
-is missing from `cache.inputs.env` is the most common
+is missing from `inputs.env` is the most common
 under-declaration, and it shows up as a stale hit: the key did not
 change, so vx replays the old output.
 

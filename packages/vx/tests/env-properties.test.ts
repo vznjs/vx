@@ -4,7 +4,7 @@
 // the named cases and the end-to-end allowlist; this file holds the laws
 // over the space: the child sees exactly the three layers (allowlist, then
 // passThrough, then define) plus FORCE_COLOR and the bin prefix, nothing
-// of the host leaks, and the key moves iff a `cache.inputs.env` value or
+// of the host leaks, and the key moves iff a `inputs.env` value or
 // the config moves, never for a value the child alone gets.
 
 import os from 'node:os'
@@ -44,7 +44,7 @@ const DOC_ESSENTIALS = [
 
 const CHARS = ['a', 'Z', '0', '=', ' ', '\n', '\r', '\t', 'é', '漢', '😀', '"', "'", '$', '\\', ':']
 // Names a host can hold; the last three are no shell identifier, so only
-// the host and `cache.inputs.env` may name them.
+// the host and `inputs.env` may name them.
 const HOST_ONLY = ['SSH_AUTH_SOCK', 'GITHUB_TOKEN', 'PS1', 'a.b', 'X-Y', 'ünï']
 const IDENTS = ['FOO', 'BAR_1', '_baz', 'NODE_ENV', 'VITE_URL', 'q']
 
@@ -170,7 +170,7 @@ describe('the key, over random hosts and configs', () => {
 
   // The documented key, as a value: the config as written (define values
   // included, passThrough names but not their values) and each
-  // `cache.inputs.env` name with its host value, unset apart from empty.
+  // `inputs.env` name with its host value, unset apart from empty.
   const signature = (s: Scenario): string =>
     JSON.stringify([
       s.c.passThrough,
@@ -186,7 +186,8 @@ describe('the key, over random hosts and configs', () => {
       taskName: 'build',
       config: {
         exec: { command: 'build', env: { passThrough: s.c.passThrough, define: s.c.define } },
-        cache: { inputs: { files: [], env: s.keyed }, outputs: { files: [] } },
+        inputs: { files: [], env: s.keyed },
+        cache: { outputs: { files: [] } },
       },
       deps: [],
       requested: true,

@@ -14,7 +14,8 @@ function task(name: string, outputs: string[], dependsOn: string[] = []): Genera
     task: {
       exec: { command: name },
       ...(dependsOn.length > 0 ? { dependsOn } : {}),
-      cache: { inputs: { files: ['**/*'] }, outputs: { files: outputs } },
+      inputs: { files: ['**/*'] },
+      cache: { outputs: { files: outputs } },
     },
   }
 }
@@ -204,7 +205,8 @@ describe('resolveSharedWorkspaceOutputs — the clashes the prefix index finds',
     todos: [],
     task: {
       exec: { command: name },
-      cache: { inputs: { files: ['**/*'] }, outputs: { files: [], workspaceFiles: outputs } },
+      inputs: { files: ['**/*'] },
+      cache: { outputs: { files: [], workspaceFiles: outputs } },
     },
   })
   const clashes = (projects: { name: string; tasks: GeneratedTask[] }[]): string[] => {
@@ -243,11 +245,10 @@ const reader = (name: string, files: string[], workspaceFiles?: string[]): Gener
   todos: [],
   task: {
     exec: { command: name },
-    cache: { inputs: { files, ...(workspaceFiles ? { workspaceFiles } : {}) } },
+    inputs: { files, ...(workspaceFiles ? { workspaceFiles } : {}) },
   },
 })
-const inputsOf = (t: GeneratedTask) =>
-  (t.task!['cache'] as { inputs: Record<string, string[]> } | undefined)?.inputs
+const inputsOf = (t: GeneratedTask) => t.task!['inputs'] as Record<string, string[]> | undefined
 
 describe('excludeSiblingOutputs — no key reads a sibling output (X-54)', () => {
   it('takes back each overlapping output once, and uncaches a literal reader', () => {
@@ -289,8 +290,8 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
       todos: [],
       task: {
         exec: { command: 'gen' },
+        inputs: { files: ['**/*'], workspaceFiles: ['tools/**'] },
         cache: {
-          inputs: { files: ['**/*'], workspaceFiles: ['tools/**'] },
           outputs: { workspaceFiles: ['tools/out/**'] },
         },
       },
@@ -324,7 +325,8 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
       todos: [],
       task: {
         exec: { command: 'gen' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { workspaceFiles: [out] } },
+        inputs: { files: ['src/**'] },
+        cache: { outputs: { workspaceFiles: [out] } },
       },
     })
     const lib = reader('build', ['**/*'])
@@ -348,7 +350,8 @@ describe('excludeWorkspaceOutputs — workspace inputs against every output (X-5
       todos: [],
       task: {
         exec: { command: 'gen' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { workspaceFiles: ['**/gen/**'] } },
+        inputs: { files: ['src/**'] },
+        cache: { outputs: { workspaceFiles: ['**/gen/**'] } },
       },
     }
     const literal = reader('test', ['gen/a.ts'])

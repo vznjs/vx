@@ -33,7 +33,7 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 |                            | vx                                                                                         | Turborepo                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------- |
 | Config                     | TypeScript, evaluated into the cache key                                                   | JSON (`turbo.json`), static                  |
-| Default inputs             | None: you declare `cache.inputs.files`                                                     | Every tracked file in the package            |
+| Default inputs             | None: you declare `inputs.files`                                                           | Every tracked file in the package            |
 | Outputs on run and restore | Wiped first: no stale file survives a hit                                                  | Additive: stale files survive                |
 | Task sandbox               | Free and local, opt-in per task (Linux, macOS)                                             | Its docs describe no file sandbox            |
 | Clean-tree hashing         | No source reads: git index OIDs                                                            | git OIDs                                     |

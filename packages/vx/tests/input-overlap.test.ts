@@ -21,7 +21,8 @@ const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 function task(inputs: string[], outputs: string[], extra: Partial<TaskConfig> = {}): TaskConfig {
   return {
     exec: { command: 'x' },
-    cache: { inputs: { files: inputs }, outputs: { files: outputs } },
+    inputs: { files: inputs },
+    cache: { outputs: { files: outputs } },
     ...extra,
   }
 }
@@ -29,8 +30,8 @@ function task(inputs: string[], outputs: string[], extra: Partial<TaskConfig> = 
 function wsTask(inputs: string[], outputs: string[]): TaskConfig {
   return {
     exec: { command: 'x' },
+    inputs: { files: [], workspaceFiles: inputs },
     cache: {
-      inputs: { files: [], workspaceFiles: inputs },
       outputs: { files: [], workspaceFiles: outputs },
     },
   }
@@ -76,10 +77,10 @@ const build = task(['src/**'], ['dist/**'])
 describe('rules.upfrontKeys refuses inputs that read another task’s outputs', () => {
   it('names the reader, the glob, the producer and both ways out', () => {
     expect(refusal(app({ build, test: task(['**'], ['coverage/**']) }))).toBe(
-      'app#test reads "**" in cache.inputs.files, which matches app#build\'s output "dist/**" — ' +
+      'app#test reads "**" in inputs.files, which matches app#build\'s output "dist/**" — ' +
         "a task's key must not read another task's outputs (the dependency's key already " +
         'cascades through dependsOn). Exclude it: add "!dist/**" to app#test\'s ' +
-        'cache.inputs.files, or set run.rules.upfrontKeys: false in .vx/workspace.ts to let ' +
+        'inputs.files, or set run.rules.upfrontKeys: false in .vx/workspace.ts to let ' +
         'it wait for its producer.',
     )
   })
@@ -112,7 +113,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
   it('refuses a workspaceFiles input over a root-anchored output', () => {
     expect(
       refusal({ a: { gen: wsTask([], ['gen/**']) }, b: { use: wsTask(['gen/api.ts'], []) } }),
-    ).toMatch(/^b#use reads "gen\/api\.ts" in cache\.inputs\.workspaceFiles, which matches a#gen's/)
+    ).toMatch(/^b#use reads "gen\/api\.ts" in inputs\.workspaceFiles, which matches a#gen's/)
   })
 
   // A root-anchored output lands in any project, edge or no edge: an
@@ -124,10 +125,10 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
         app: { build: task(['**'], ['dist/**']) },
       }),
     ).toBe(
-      'app#build reads "**" in cache.inputs.files, which matches g#gen\'s output "app/gen/**" — ' +
+      'app#build reads "**" in inputs.files, which matches g#gen\'s output "app/gen/**" — ' +
         "a task's key must not read another task's outputs (the dependency's key already " +
         'cascades through dependsOn). Exclude it: add "!gen/**" to app#build\'s ' +
-        'cache.inputs.files, or set run.rules.upfrontKeys: false in .vx/workspace.ts to let ' +
+        'inputs.files, or set run.rules.upfrontKeys: false in .vx/workspace.ts to let ' +
         'it wait for its producer.',
     )
     expect(
@@ -148,7 +149,7 @@ describe('rules.upfrontKeys refuses inputs that read another task’s outputs', 
 
   it("refuses a workspaceFiles input over another project's files output, said in its terms", () => {
     expect(refusal({ a: { build }, b: { use: wsTask(['a/dist/index.js'], []) } })).toMatch(
-      /^b#use reads "a\/dist\/index\.js" in cache\.inputs\.workspaceFiles, which matches a#build's output "dist\/\*\*" .* add "!a\/dist\/\*\*" to b#use's cache\.inputs\.workspaceFiles/,
+      /^b#use reads "a\/dist\/index\.js" in inputs\.workspaceFiles, which matches a#build's output "dist\/\*\*" .* add "!a\/dist\/\*\*" to b#use's inputs\.workspaceFiles/,
     )
   })
 })
@@ -191,7 +192,8 @@ describe('rules.upfrontKeys passes what reads no other task’s outputs', () => 
   it('an uncached task and a keyed group read nothing the rule checks', () => {
     const group = {
       dependsOn: ['^build'],
-      cache: { inputs: { files: ['**'] }, outputs: { files: [] } },
+      inputs: { files: ['**'] },
+      cache: { outputs: { files: [] } },
     } as unknown as TaskConfig
     expect(refusal(app({ build, dev: { exec: { command: 'dev' } }, bundle: group }))).toBeNull()
   })
@@ -201,12 +203,12 @@ describe('rules.upfrontKeys end to end', () => {
   const config = `export default { tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'cat dist/a.txt > out.txt' },
-      cache: { inputs: { files: ['**'] }, outputs: { files: ['out.txt'] } },
+      inputs: { files: ['**'] }, cache: { outputs: { files: ['out.txt'] } },
     },
   } }`
 
@@ -224,7 +226,7 @@ describe('rules.upfrontKeys end to end', () => {
       const refused = lock()
       expect(refused.exitCode).toBe(1)
       expect(refused.stderr.toString()).toMatch(
-        /app#test reads "\*\*" in cache\.inputs\.files, which matches app#build's output/,
+        /app#test reads "\*\*" in inputs\.files, which matches app#build's output/,
       )
       const ws = path.join(root, '.vx/workspace.mjs')
       const on = await Bun.file(ws).text()
@@ -245,14 +247,14 @@ describe('rules.upfrontKeys end to end', () => {
       await addProject(root, 'lib', {
         config: `export default { tasks: { test: {
           exec: { command: 'true' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['coverage/**'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['coverage/**'] } },
         } } }`,
       })
       await addProject(root, 'app', {
         config: `export default { tasks: { build: {
           dependsOn: ['^build'],
           exec: { command: 'true' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
         } } }`,
       })
       const plan = await planRun({ cwd: root, tasks: ['app#build', 'lib#test'], log: silent })
@@ -334,7 +336,7 @@ describe('the reader-writer index finds every pair the rule refuses', () => {
         expect(refusal(app({ w, r }))).toStartWith(`app#r reads ${JSON.stringify(read)}`)
         expect(
           refusal({ p: { r: wsTask([read], []) }, q: { w: wsTask([], [written]) } }),
-        ).toStartWith(`p#r reads ${JSON.stringify(read)} in cache.inputs.workspaceFiles`)
+        ).toStartWith(`p#r reads ${JSON.stringify(read)} in inputs.workspaceFiles`)
       })
     }
   }
@@ -353,8 +355,8 @@ describe('rules.upfrontKeys stays near-linear over a shared input', () => {
       for (let t = 0; t < 10; t++) {
         tasks[`t${t}`] = {
           exec: { command: 'x' },
+          inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
           cache: {
-            inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
             outputs: { files: [`out/t${t}/**`] },
           },
         }
@@ -374,7 +376,7 @@ describe('rules.upfrontKeys stays near-linear over a shared input', () => {
 describe('a task whose own outputs take back an input entry whole is always refused', () => {
   const off = { exclusiveOutputs: false, upfrontKeys: false }
   const said = (glob: string, field = 'files') =>
-    `app#fmt: every file ${JSON.stringify(glob)} in cache.inputs.${field} selects is also its ` +
+    `app#fmt: every file ${JSON.stringify(glob)} in inputs.${field} selects is also its ` +
     "own output — vx removes a task's outputs before it runs, so the task would delete its " +
     'own sources. A task that rewrites files in place (a formatter) declares no outputs.'
 

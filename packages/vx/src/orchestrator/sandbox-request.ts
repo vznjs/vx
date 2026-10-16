@@ -163,7 +163,7 @@ export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
  * cached path (through the executor) and the persistent path (spawned here).
  *
  * The user's grants derive NOTHING from `cache` (owner, 2026-09-05). Those
- * are two different questions: `cache.inputs` says what INVALIDATES the
+ * are two different questions: `inputs` says what INVALIDATES the
  * task, `sandbox.allow` says what it may TOUCH. Deriving one from the other
  * coupled them in both directions — a declaration added for caching
  * silently widened the sandbox, and a path the task needed had to be
@@ -476,7 +476,7 @@ export function withheldLinkLine(taskId: string, w: WithheldLink): string {
     `${w.name}, so an edit there would not re-run it. Add a \`dependsOn\` edge that ` +
     `reaches one (\`^build\` where ${w.name}#build keys its sources, or a \`source\` task: ` +
     `\`${w.name}#source\`), or grant and key the files yourself (\`allow.read\` plus ` +
-    `\`cache.inputs.workspaceFiles\`).`
+    `\`inputs.workspaceFiles\`).`
   )
 }
 

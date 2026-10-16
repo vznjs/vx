@@ -441,15 +441,15 @@ the packages a build needs. The answer is the design doc's §7.4 recipe,
 ```ts
 install: {
   exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
+  inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
   cache: {
-    inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
     outputs: { files: ['node_modules/**'] },
   },
 },
 build: {
   dependsOn: ['install'],
   exec: { command: 'tsc -p .' },
-  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
 },
 ```
 
@@ -487,7 +487,7 @@ sorted by name — the proto requires that, so equivalent Commands hash alike:
 - **`exec.env.define`** — literal `name: value` pairs from the task config.
   They read the same on every machine, so they are safe to put into the
   action identity, and they are already in the vx cache key.
-- **`cache.inputs.env`** — the values this machine resolved for those names,
+- **`inputs.env`** — the values this machine resolved for those names,
   for each name the task's local child would get too (it is also in
   `exec.env.passThrough`). They are in the vx cache key by definition, so a
   change to one already produces a different action. A name unset here, or
@@ -511,6 +511,6 @@ the worker has its own. Two reasons, and both matter:
   can name its digest.
 
 So a task that needs a value on a worker must `define` it (config literal) or
-list it in both `cache.inputs.env` and `exec.env.passThrough` (host value,
+list it in both `inputs.env` and `exec.env.passThrough` (host value,
 keyed, and seen by a local run the same way). A task whose command reads
 a `passThrough` secret is one to keep local with `exec: { remote: false }`.

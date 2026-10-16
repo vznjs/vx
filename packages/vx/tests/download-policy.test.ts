@@ -19,15 +19,25 @@ import { edgesSource, pluginSource } from './helpers/plugin.js'
 
 // ── unit: the eligibility gate ──────────────────────────────────────
 
-function node(id: string, cache?: unknown, deps: string[] = []): TaskNode {
+/** `spec` is a cached task's `inputs` and `cache` fields in one object. */
+function node(
+  id: string,
+  spec?: { inputs?: unknown } & Record<string, unknown>,
+  deps: string[] = [],
+): TaskNode {
   const [projectName, taskName] = id.split('#') as [string, string]
+  const { inputs, ...cache } = spec ?? {}
   return {
     id,
     projectName,
     taskName,
     projectDir: `/ws/${projectName}`,
     deps,
-    config: { exec: { command: 'true' }, ...(cache === undefined ? {} : { cache }) },
+    config: {
+      exec: { command: 'true' },
+      ...(inputs === undefined ? {} : { inputs }),
+      ...(spec === undefined || Object.keys(cache).length === 0 ? {} : { cache }),
+    },
   } as unknown as TaskNode
 }
 
@@ -45,23 +55,28 @@ describe('deferralEligibility', () => {
     expect(deferralEligibility(nodes).has('a#build')).toBe(false)
   })
 
-  it('an uncached task a cached one folds reads its whole project', () => {
-    // Its key folds every file in its project, and `report` folds that
-    // key: deferring `gen` moved both keys with the transfer flag.
+  it('an uncached task a cached one folds is a reader on its inputs', () => {
+    // Its key folds its inputs, and `report` folds that key: deferring
+    // `gen` moved both keys with the transfer flag.
     const nodes = graph(
       node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } }),
-      node('a#check', undefined, ['a#gen']),
-      node('b#report', { inputs: { files: ['src/**'] } }, ['a#check']),
+      node('a#check', { inputs: { files: ['out/**'] } }, ['a#gen']),
+      node('b#report', { inputs: { files: ['src/**'] }, outputs: { files: [] } }, ['a#check']),
     )
-    expect(deferralEligibility(nodes).get('a#gen')).toBe(
-      'a#check reads the whole project as a task with no cache block that a cached task folds',
-    )
+    expect(deferralEligibility(nodes).get('a#gen')).toBe('a#check reads out with inputs.files')
     // CONTROL: one no cached task folds keys nothing, and defers nothing less.
     const alone = graph(
       node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } }),
-      node('a#check', undefined, ['a#gen']),
+      node('a#check', { inputs: { files: ['out/**'] } }, ['a#gen']),
     )
     expect(deferralEligibility(alone).has('a#gen')).toBe(false)
+    // CONTROL: with no inputs it has no key to read; `report` never hits.
+    const keyless = graph(
+      node('a#gen', { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } }),
+      node('a#check', undefined, ['a#gen']),
+      node('b#report', { inputs: { files: ['src/**'] }, outputs: { files: [] } }, ['a#check']),
+    )
+    expect(deferralEligibility(keyless).has('a#gen')).toBe(false)
   })
 
   it('an OVERLAPPING same-project reader forces the producer eager', () => {
@@ -143,7 +158,7 @@ describe('deferralEligibility', () => {
 
   it('a runtime-command reader forces eager — its reads cannot be bounded', () => {
     // The hole the first cut had: the gate compared GLOBS, but a
-    // `cache.inputs.runtime` command is a shell command that can `cat` the
+    // `inputs.runtime` command is a shell command that can `cat` the
     // producer's outputs, and its stdout is folded into the key. Deferral
     // sharpens it further by skipping the output clean, so a stale prior
     // build is exactly what such a command would sample.
@@ -154,7 +169,7 @@ describe('deferralEligibility', () => {
         outputs: { files: ['dist/**'] },
       }),
     )
-    expect(deferralEligibility(nodes).get('a#gen')).toContain('cache.inputs.runtime')
+    expect(deferralEligibility(nodes).get('a#gen')).toContain('inputs.runtime')
   })
 
   it('a workspaceRuntime reader does the same, across projects', () => {
@@ -187,19 +202,7 @@ describe('deferralEligibility', () => {
       node('a#build', { inputs: { files: ['schema/**'] }, outputs: { files: ['src/gen/**'] } }),
       node('a#test', { inputs: { files: ['src/**'] }, outputs: { files: [] } }),
     )
-    expect(deferralEligibility(nodes).get('a#build')).toBe(
-      'a#test reads src with cache.inputs.files',
-    )
-  })
-
-  it('a cacheable sibling with no declared files reads the whole project', () => {
-    const nodes = graph(
-      node('a#build', { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }),
-      node('a#lint', { outputs: { files: [] } }),
-    )
-    expect(deferralEligibility(nodes).get('a#build')).toBe(
-      'a#lint reads the whole project with cache.inputs.files',
-    )
+    expect(deferralEligibility(nodes).get('a#build')).toBe('a#test reads src with inputs.files')
   })
 
   it('a task’s own outputs never make it ineligible: its key excludes them', () => {
@@ -409,7 +412,7 @@ async function fixture(
     `export default { tasks: {
        gen: {
          exec: { command: 'true' },
-         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
        },
      } }`,
   )
@@ -450,7 +453,7 @@ async function fixture(
          use: {
            exec: { command: 'cat ../pkg-a/out/gen.txt > used.txt' },
            dependsOn: ['${opts.chain === true ? '^mid' : '^gen'}'],
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['used.txt'] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['used.txt'] } },
          },
        } }`,
     )
@@ -704,11 +707,11 @@ describe('--cache-download end to end', () => {
         `export default { tasks: {
            gen: {
              exec: { command: 'true' },
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
            },
            reader: {
              exec: { command: 'true' },
-             cache: { inputs: { files: ['out/**'] }, outputs: { files: ['d/**'] } },
+             inputs: { files: ['out/**'] }, cache: { outputs: { files: ['d/**'] } },
            },
          } }`,
       )
@@ -742,11 +745,11 @@ describe('--cache-download end to end', () => {
         `export default { tasks: {
            gen: {
              exec: { command: 'true' },
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
            },
            reader: {
              exec: { command: 'true' },
-             cache: { inputs: { files: ['out/**'] }, outputs: { files: ['d/**'] } },
+             inputs: { files: ['out/**'] }, cache: { outputs: { files: ['d/**'] } },
            },
          } }`,
       )
@@ -993,13 +996,13 @@ async function sameProjectFixture(
     `export default { tasks: {
        gen: {
          exec: { command: 'true' },
-         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
        },
        use: {
          exec: { command: 'cat out/gen.txt > used.txt' },
          dependsOn: ['gen'],
+         inputs: { files: ${JSON.stringify([readGlob])} },
          cache: {
-           inputs: { files: ${JSON.stringify([readGlob])} },
            outputs: { files: ['used.txt'] },
          },
        },

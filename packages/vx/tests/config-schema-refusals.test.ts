@@ -66,11 +66,12 @@ describe('whitespace-only values', () => {
     const probe = (runtime: string[]) =>
       taskRefusal({
         exec: { command: 'x' },
-        cache: { inputs: { files: ['src/**'], runtime }, outputs: { files: [] } },
+        inputs: { files: ['src/**'], runtime },
+        cache: { outputs: { files: [] } },
       })
     expect([probe(['   ']), probe(['\t\n']), probe(['node -v'])]).toEqual([
-      `${CFG}: tasks.t.cache.inputs.runtime must be an array of non-empty shell command strings with no NUL`,
-      `${CFG}: tasks.t.cache.inputs.runtime must be an array of non-empty shell command strings with no NUL`,
+      `${CFG}: tasks.t.inputs.runtime must be an array of non-empty shell command strings with no NUL`,
+      `${CFG}: tasks.t.inputs.runtime must be an array of non-empty shell command strings with no NUL`,
       null,
     ])
   })
@@ -224,6 +225,18 @@ describe('cache.retention refusals the sweep found unheld (item 653)', () => {
 })
 
 describe('task refusals the sweep found unheld (item 653)', () => {
+  it('a persistent task with a cache is refused', () => {
+    expect(
+      taskRefusal({
+        exec: { command: 'x', persistent: {} },
+        inputs: { files: [] },
+        cache: { outputs: { files: [] } },
+      }),
+    ).toBe(
+      `${CFG}: tasks.t: \`cache\` is not allowed on a persistent task — persistent tasks don't terminate, so there's no exit to cache`,
+    )
+  })
+
   it('a remote that is neither a boolean nor "only" is refused', () => {
     expect(taskRefusal({ exec: { command: 'x', remote: 'yes' } })).toBe(
       `${CFG}: tasks.t.exec.remote must be a boolean or 'only' (or omitted)`,
@@ -232,8 +245,10 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     for (const remote of [true, false]) {
       expect(taskRefusal({ exec: { command: 'x', remote } })).toBeNull()
     }
-    const cache = { inputs: { files: [] }, outputs: { files: [] } }
-    expect(taskRefusal({ exec: { command: 'x', remote: 'only' }, cache })).toBeNull()
+    const cache = { outputs: { files: [] } }
+    expect(
+      taskRefusal({ exec: { command: 'x', remote: 'only' }, inputs: { files: [] }, cache }),
+    ).toBeNull()
   })
 
   // schema.md said an 'only' task must declare `cache`, and nothing held
@@ -278,7 +293,7 @@ describe('task refusals the sweep found unheld (item 653)', () => {
         `${CFG}: tasks.t.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)`,
       )
       expect(cacheRefusal({ files: [], env: [n] })).toBe(
-        `${CFG}: tasks.t.cache.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
+        `${CFG}: tasks.t.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
       )
     }
     // Item 1090: a wildcard passed nothing through and loaded clean.
@@ -323,7 +338,7 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     )
     for (const field of ['runtime', 'workspaceRuntime']) {
       expect(cacheRefusal({ files: [], [field]: ['node -v\0'] })).toBe(
-        `${CFG}: tasks.t.cache.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
+        `${CFG}: tasks.t.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
       )
       expect(cacheRefusal({ files: [], [field]: ['node -v'] })).toBeNull()
     }
@@ -343,7 +358,7 @@ describe('task refusals the sweep found unheld (item 653)', () => {
         return (err as Error).message
       }
     }
-    const tail = ' — dependsOn, cache.inputs.tasks and the CLI could not name it. Rename the task.'
+    const tail = ' — dependsOn, inputs.tasks and the CLI could not name it. Rename the task.'
     for (const [name, why] of [
       ['', 'is empty'],
       ['  ', 'is empty'],
@@ -367,7 +382,8 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     const out = (g: string) =>
       taskRefusal({
         exec: { command: 'x' },
-        cache: { inputs: { files: [] }, outputs: { files: ['dist/**', g] } },
+        inputs: { files: [] },
+        cache: { outputs: { files: ['dist/**', g] } },
       })
     for (const g of ['workspace-outputs/**', './workspace-outputs/o', 'workspace-outputs']) {
       expect(out(g)).toBe(
@@ -388,7 +404,8 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     const out = (g: string) =>
       taskRefusal({
         exec: { command: 'x' },
-        cache: { inputs: { files: [] }, outputs: { files: [g] } },
+        inputs: { files: [] },
+        cache: { outputs: { files: [g] } },
       })
     const why = (g: string, own: string) =>
       `${CFG}: tasks.t.cache.outputs.files: "${g}" covers the project's own ${own} — vx deletes a ` +
@@ -420,7 +437,8 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     const outs = (files: string[]) =>
       taskRefusal({
         exec: { command: 'x' },
-        cache: { inputs: { files: [] }, outputs: { files } },
+        inputs: { files: [] },
+        cache: { outputs: { files } },
       })
     expect(outs(['**', '!vx.config.ts'])).toBeNull()
     expect(outs(['*.ts', '!vx.config.*'])).toBeNull()
@@ -429,22 +447,24 @@ describe('task refusals the sweep found unheld (item 653)', () => {
   })
 
   it('a null cache is refused by name, not by a TypeError from the field scan', () => {
-    // A non-null non-object is refused further down (`cache.inputs is
+    // A non-null non-object is refused further down (`inputs is
     // required`); null alone reaches `Object.keys` and throws a raw TypeError.
     expect(taskRefusal({ exec: { command: 'x' }, cache: null })).toBe(
-      `${CFG}: tasks.t.cache must be an object when present — \`cache: { inputs: { files: [...] }, outputs: { files: [...] } }\`, or no \`cache\` for a task that never caches`,
+      `${CFG}: tasks.t.cache must be an object when present — \`inputs: { files: [...] }, cache: { outputs: { files: [...] } }\`, or no \`cache\` for a task that never caches`,
     )
   })
 
   it('a field another runner spells elsewhere is refused naming where vx keeps it (D-37)', () => {
-    // Turbo's task-level `outputs` / `inputs` / `env`, Nx's `command`: an
+    // Turbo's task-level `outputs` / `env`, Nx's `command`: an
     // unknown-field refusal that named neither the field nor its home.
     const where = (task: Record<string, unknown>): string | undefined =>
       taskRefusal({ exec: { command: 'x' }, ...task })?.split(' — ')[1]
     expect(where({ outputs: ['dist/**'] })).toBe('vx spells it `cache.outputs.files`')
-    expect(where({ inputs: ['src/**'] })).toBe('vx spells it `cache.inputs.files`')
+    expect(taskRefusal({ exec: { command: 'x' }, inputs: ['src/**'] })).toContain(
+      'did you mean `{ files: [...] }`?',
+    )
     expect(where({ env: ['API_URL'] })).toBe(
-      'vx spells it `cache.inputs.env` (to key the task on a variable) or `exec.env` (to pass one)',
+      'vx spells it `inputs.env` (to key the task on a variable) or `exec.env` (to pass one)',
     )
     expect(where({ passThroughEnv: ['CI'] })).toBe('vx spells it `exec.env.passThrough`')
     expect(where({ persistent: true })).toBe('vx spells it `exec.persistent: {}`')
@@ -492,13 +512,13 @@ describe('task refusals the sweep found unheld (item 653)', () => {
 
 /** A cached task over `inputs` / `outputs`, as its refusal message or null. */
 function cacheRefusal(inputs: object, outputs: object = { files: [] }, dependsOn?: string[]) {
-  return taskRefusal({ exec: { command: 'x' }, dependsOn, cache: { inputs, outputs } })
+  return taskRefusal({ exec: { command: 'x' }, dependsOn, inputs, cache: { outputs } })
 }
 
 // A `!` entry subtracts wherever it sits: a literal named after it never
 // entered the key, and an edit to it replayed the old output.
 describe('a literal input a negation takes back (X-31)', () => {
-  const refused = (g: string, by: string, where = 'tasks.t.cache.inputs.files') =>
+  const refused = (g: string, by: string, where = 'tasks.t.inputs.files') =>
     `${CFG}: ${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
     `the list, so the file never enters the key. Narrow the negation so it leaves "${g}".`
   it('is refused in files and workspaceFiles', () => {
@@ -512,7 +532,7 @@ describe('a literal input a negation takes back (X-31)', () => {
       refused('package.json', '*.json'),
     )
     expect(cacheRefusal({ files: [], workspaceFiles: ['tsconfig.json', '!tsconfig.json'] })).toBe(
-      refused('tsconfig.json', 'tsconfig.json', 'tasks.t.cache.inputs.workspaceFiles'),
+      refused('tsconfig.json', 'tsconfig.json', 'tasks.t.inputs.workspaceFiles'),
     )
   })
   it('CONTROL: a directory literal a negation trims, and a glob, load', () => {
@@ -527,7 +547,7 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
     // A bare "/" is refused as absolute first, and "./" normalizes to "";
     // "!/" is the one spelling that reaches the "/" arm.
     expect(cacheRefusal({ files: ['src/**', '!/'] })).toBe(
-      `${CFG}: tasks.t.cache.inputs.files: "!/" names the project directory itself and selects nothing — use "**" for everything under it`,
+      `${CFG}: tasks.t.inputs.files: "!/" names the project directory itself and selects nothing — use "**" for everything under it`,
     )
     expect(cacheRefusal({ files: ['src/**', '!dist/**'] })).toBeNull()
   })
@@ -535,14 +555,14 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
   it('a negated absolute path in inputs.files is refused like workspaceFiles refuses it (item 679)', () => {
     // It subtracts nothing from project-relative globs: a silent no-op.
     expect(cacheRefusal({ files: ['src/**', '!/etc/passwd'] })).toBe(
-      `${CFG}: tasks.t.cache.inputs.files: absolute paths are not allowed (got "!/etc/passwd") — inputs must be project-relative globs`,
+      `${CFG}: tasks.t.inputs.files: absolute paths are not allowed (got "!/etc/passwd") — inputs must be project-relative globs`,
     )
     expect(cacheRefusal({ files: ['src/**', '!src/**/*.spec.ts'] })).toBeNull()
   })
 
   it('"." in workspaceFiles names the workspace root and is refused', () => {
     expect(cacheRefusal({ files: ['src/**'], workspaceFiles: ['.'] })).toBe(
-      `${CFG}: tasks.t.cache.inputs.workspaceFiles: "." names the workspace root itself and selects nothing — use "**" for everything under it`,
+      `${CFG}: tasks.t.inputs.workspaceFiles: "." names the workspace root itself and selects nothing — use "**" for everything under it`,
     )
     expect(cacheRefusal({ files: ['src/**'], workspaceFiles: ['tsconfig.json'] })).toBeNull()
   })
@@ -565,7 +585,7 @@ describe('glob and filter refusals the sweep found unheld (item 653)', () => {
   // fold nothing; it is refused like a typo.
   it('an inputs.tasks name reached only through a group is refused, in each form', () => {
     const refused = (name: string, dep: string) =>
-      `${CFG}: tasks.t.cache.inputs.tasks: "${name}" names no task in tasks.t.dependsOn ('${dep}') — ` +
+      `${CFG}: tasks.t.inputs.tasks: "${name}" names no task in tasks.t.dependsOn ('${dep}') — ` +
       `it would match nothing and fold no upstream hash, decoupling the task from its ` +
       `dependencies. \`name\` is this project's task, \`^name\` its dependencies', ` +
       `\`pkg#name\` one project's. Fix the name, or use [] to decouple on purpose.`
@@ -727,7 +747,7 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
     expect(where('remoteCache')).toBe(
       'vx spells it a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
     )
-    expect(where('globalEnv')).toBe('vx spells it `cache.inputs.env` on the tasks it keys')
+    expect(where('globalEnv')).toBe('vx spells it `inputs.env` on the tasks it keys')
     expect(where('parallel')).toBe('vx spells it `run.concurrency`')
     expect(where('cacheDirectory')).toBe('vx spells it `cache.dir`')
     // CONTROL: a typo still gets the nearest spelling.
@@ -789,13 +809,13 @@ describe("Turbo's and Nx's glob tokens (D-50)", () => {
   // task on no file, and an edited source replayed the old output.
   it('is refused in each glob list, naming what vx writes instead', () => {
     expect(cacheRefusal({ files: ['$TURBO_DEFAULT$'] })).toBe(
-      `${CFG}: tasks.t.cache.inputs.files: "$TURBO_DEFAULT$" holds $TURBO_DEFAULT$, Turbo's default input set, which vx does not have — list the files, such as "**" for everything in the project`,
+      `${CFG}: tasks.t.inputs.files: "$TURBO_DEFAULT$" holds $TURBO_DEFAULT$, Turbo's default input set, which vx does not have — list the files, such as "**" for everything in the project`,
     )
     expect(cacheRefusal({ files: ['**', '{projectRoot}/src/**'] })).toBe(
-      `${CFG}: tasks.t.cache.inputs.files: "{projectRoot}/src/**" holds {projectRoot}, Nx's project root — drop it: \`files\` globs are project-relative already`,
+      `${CFG}: tasks.t.inputs.files: "{projectRoot}/src/**" holds {projectRoot}, Nx's project root — drop it: \`files\` globs are project-relative already`,
     )
     expect(cacheRefusal({ files: ['**'], workspaceFiles: ['$TURBO_ROOT$/tsconfig.json'] })).toBe(
-      `${CFG}: tasks.t.cache.inputs.workspaceFiles: "$TURBO_ROOT$/tsconfig.json" holds $TURBO_ROOT$, Turbo's workspace root — name the path without it in \`workspaceFiles\`, which is workspace-root-relative`,
+      `${CFG}: tasks.t.inputs.workspaceFiles: "$TURBO_ROOT$/tsconfig.json" holds $TURBO_ROOT$, Turbo's workspace root — name the path without it in \`workspaceFiles\`, which is workspace-root-relative`,
     )
     expect(cacheRefusal({ files: ['**'] }, { files: ['{workspaceRoot}/dist/**'] })).toBe(
       `${CFG}: tasks.t.cache.outputs.files: "{workspaceRoot}/dist/**" holds {workspaceRoot}, Nx's workspace root — name the path without it in \`workspaceFiles\`, which is workspace-root-relative`,
@@ -806,7 +826,7 @@ describe("Turbo's and Nx's glob tokens (D-50)", () => {
 
   it("Nx's upstream named input is refused; a bare name stays a path (D-51)", () => {
     expect(cacheRefusal({ files: ['default', '^production'] })).toBe(
-      `${CFG}: tasks.t.cache.inputs.files: "^production" starts with ^, Nx's named input of the dependencies — vx keys a task on its dependencies through \`dependsOn\` (\`^build\`); list this project's files here`,
+      `${CFG}: tasks.t.inputs.files: "^production" starts with ^, Nx's named input of the dependencies — vx keys a task on its dependencies through \`dependsOn\` (\`^build\`); list this project's files here`,
     )
     expect(cacheRefusal({ files: ['**', '!^default'] })).toContain('"!^default" starts with ^')
     // CONTROL: `default` may be a directory (themes/default), and `^` inside a
@@ -833,7 +853,7 @@ describe("Turbo's env exclusion (D-53)", () => {
   // was a variable named `!SECRET`, and nothing said so.
   it('is refused in each env list', () => {
     expect(cacheRefusal({ files: ['**'], env: ['API_URL', '!SECRET'] })).toBe(
-      `${CFG}: tasks.t.cache.inputs.env: "!SECRET" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave SECRET out`,
+      `${CFG}: tasks.t.inputs.env: "!SECRET" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave SECRET out`,
     )
     expect(taskRefusal({ exec: { command: 'x', env: { passThrough: ['!AWS_KEY'] } } })).toBe(
       `${CFG}: tasks.t.exec.env.passThrough: "!AWS_KEY" is Turbo's exclusion from a wildcard — vx lists names explicitly, so leave AWS_KEY out`,
@@ -918,7 +938,8 @@ describe('project tags', () => {
 describe('an extglob in a task glob', () => {
   const task = (inputs: object, outputs: object = { files: ['dist/**'] }) => ({
     exec: { command: 'x' },
-    cache: { inputs, outputs },
+    inputs,
+    cache: { outputs },
   })
   const tail =
     `" is an extglob, which vx's glob engine reads as literal text or a ` +
@@ -926,22 +947,22 @@ describe('an extglob in a task glob', () => {
 
   it('is refused in every task glob field, with the brace it means when there is one', () => {
     expect(taskRefusal(task({ files: ['src/@(x|y).ts'] }))).toBe(
-      `${CFG}: tasks.t.cache.inputs.files: "src/@(x|y).ts${tail} Write "src/{x,y}.ts" instead.`,
+      `${CFG}: tasks.t.inputs.files: "src/@(x|y).ts${tail} Write "src/{x,y}.ts" instead.`,
     )
     expect(taskRefusal(task({ files: ['src/@(x).ts'] }))).toBe(
-      `${CFG}: tasks.t.cache.inputs.files: "src/@(x).ts${tail} Write "src/x.ts" instead.`,
+      `${CFG}: tasks.t.inputs.files: "src/@(x).ts${tail} Write "src/x.ts" instead.`,
     )
     const generic = 'Write braces ("{a,b}") or one entry per alternative instead.'
     for (const g of ['src/!(x).ts', 'src/+(a).ts', 'src/*(a).ts', 'src/?(a).ts', 'src/@(*.a|b)']) {
       expect(taskRefusal(task({ files: [g] }))).toBe(
-        `${CFG}: tasks.t.cache.inputs.files: "${g}${tail} ${generic}`,
+        `${CFG}: tasks.t.inputs.files: "${g}${tail} ${generic}`,
       )
     }
     expect(taskRefusal(task({ files: ['**', '!src/@(x|y).ts'] }))).toBe(
-      `${CFG}: tasks.t.cache.inputs.files: "!src/@(x|y).ts${tail} Write "!src/{x,y}.ts" instead.`,
+      `${CFG}: tasks.t.inputs.files: "!src/@(x|y).ts${tail} Write "!src/{x,y}.ts" instead.`,
     )
     expect(taskRefusal(task({ files: ['**'], workspaceFiles: ['@(a|b).json'] }))).toBe(
-      `${CFG}: tasks.t.cache.inputs.workspaceFiles: "@(a|b).json${tail} Write "{a,b}.json" instead.`,
+      `${CFG}: tasks.t.inputs.workspaceFiles: "@(a|b).json${tail} Write "{a,b}.json" instead.`,
     )
     expect(taskRefusal(task({ files: ['**'] }, { files: ['@(dist|lib)/**'] }))).toBe(
       `${CFG}: tasks.t.cache.outputs.files: "@(dist|lib)/**${tail} Write "{dist,lib}/**" instead.`,
@@ -964,13 +985,14 @@ describe('an extglob in a task glob', () => {
 describe('a backslash separator or a drive letter in a task glob', () => {
   const task = (inputs: object, outputs: object = { files: ['dist/**'] }) => ({
     exec: { command: 'x' },
-    cache: { inputs, outputs },
+    inputs,
+    cache: { outputs },
   })
   const sep = (field: string, g: string, write: string, base = 'project') =>
-    `${CFG}: tasks.t.cache.${field}: "${g}" uses a backslash as a path separator — task globs ` +
+    `${CFG}: tasks.t.${field}: "${g}" uses a backslash as a path separator — task globs ` +
     `are ${base}-relative with forward slashes: write "${write}"`
   const drive = (field: string, g: string, write: string, base = 'project') =>
-    `${CFG}: tasks.t.cache.${field}: "${g}" starts with a Windows drive — task globs ` +
+    `${CFG}: tasks.t.${field}: "${g}" starts with a Windows drive — task globs ` +
     `are ${base}-relative with forward slashes: write "${write}"`
 
   it('is refused in every task glob list, with the forward-slash spelling', () => {
@@ -995,11 +1017,11 @@ describe('a backslash separator or a drive letter in a task glob', () => {
       sep('inputs.workspaceFiles', 'config\\*.json', 'config/*.json', 'workspace-root'),
     )
     expect(taskRefusal(task({ files: ['**'] }, { files: ['dist\\**'] }))).toBe(
-      sep('outputs.files', 'dist\\**', 'dist/**'),
+      sep('cache.outputs.files', 'dist\\**', 'dist/**'),
     )
     expect(
       taskRefusal(task({ files: ['**'] }, { files: ['dist/**'], workspaceFiles: ['D:\\out\\**'] })),
-    ).toBe(drive('outputs.workspaceFiles', 'D:\\out\\**', 'out/**', 'workspace-root'))
+    ).toBe(drive('cache.outputs.workspaceFiles', 'D:\\out\\**', 'out/**', 'workspace-root'))
   })
 
   it('leaves an escape and a colon in a name alone', () => {

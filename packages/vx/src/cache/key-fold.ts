@@ -28,7 +28,7 @@ import type { CacheKeyInput } from './layer.js'
 // in any cache key. SCHEMA v21 drops the now-unused outputs_hash
 // column. Early cutoff removed (an upstream that re-emits identical
 // output still re-runs dependents) — rare, not worth the cascade.
-// v23: fold cache.inputs.runtime / workspaceRuntime command output into
+// v23: fold inputs.runtime / workspaceRuntime command output into
 // the key (two namespaced sections after env-values). Command strings
 // live in the resolved config (frozen by `vx lock`); the OUTPUT is
 // resolved live every run, so it stays correct under the lock. No
@@ -170,7 +170,7 @@ export async function foldKey(
   // NOTE on `cap` (entry_inputs capture): the `hash` field stores a
   // DIGEST of each component, never the raw value. For value-bearing kinds
   // (env, runtime, ws-runtime, forward) the payload is a secret or
-  // sensitive string (API keys via cache.inputs.env, runtime-command
+  // sensitive string (API keys via inputs.env, runtime-command
   // output, args after `--`), so we push `digestValue(v)` — the diff
   // consumer only needs to know whether a component CHANGED, which a
   // digest preserves losslessly. cache.db must never hold plaintext

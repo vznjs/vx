@@ -1072,7 +1072,7 @@ async function runOnBus(
       ...(options.continueMode !== 'always' && taintSeeds.size === 0
         ? {
             settleNow: (node: TaskNode, upstream: TaskOutcome[]) =>
-              isGroupTask(node) && node.config.cache === undefined
+              isGroupTask(node) && node.config.inputs === undefined
                 ? unkeyedGroupOutcome(
                     node,
                     keyUpstream(node, upstream),
@@ -1480,7 +1480,7 @@ function noneAffected(prepared: PreparedRun, options: RunOptions): string {
  * task. Used by `--dry`.
  *
  * Side-effects are limited to opening + closing the local Cache handle
- * (and running `cache.inputs.runtime` probe commands, which key
+ * (and running `inputs.runtime` probe commands, which key
  * derivation requires). Cache probing is the byte-free `cache.has()`
  * existence check — no artifact download, no ingest, no accessed_at bump.
  */

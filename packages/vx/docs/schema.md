@@ -87,7 +87,7 @@ absent, which is what a conditional spread
 held to this: its plugins are objects of functions.
 
 `tasks` is a `Record<string, TaskConfig>`. Task names are strings
-referenced by `dependsOn`, by `cache.inputs.tasks`, and by the CLI
+referenced by `dependsOn`, by `inputs.tasks`, and by the CLI
 (`vx run <taskName>` or `vx run <pkg>#<taskName>`), so a name those
 could not spell is refused at load: an empty one, one with surrounding
 whitespace, one holding `#` (the project separator) or `*` (a pattern),
@@ -109,12 +109,13 @@ interface TaskConfig {
   description?: string // one-line blurb for the picker / --dry view
   exec?: ExecConfig // omit to declare a group task
   dependsOn?: readonly string[] // Turbo/Nx micro-syntax
-  cache?: CacheConfig // caching is opt-in; on a group, a key with no outputs
+  inputs?: InputsConfig // what the task reads: its key, cached or not
+  cache?: CacheConfig // caching is opt-in; needs `exec` and `inputs`
 }
 ```
 
 A task either has an `exec` (it does work) or omits `exec` and declares
-`dependsOn` or `cache` (it's a **group task**: an aggregator, or a key).
+`dependsOn` or `inputs` (it's a **group task**: an aggregator, or a key).
 The loader rejects a task that has none of them — a no-op standalone
 task is almost always a config mistake. `dependsOn: []` is the deliberate form: an
 explicit empty group, for a package that wants a task by that name to
@@ -122,7 +123,7 @@ exist and do nothing.
 
 A project whose config and plugins declare no `build` gets one (owner,
 2026-10-04): a group with `dependsOn: ['^build']` keyed on every file of
-the project (`cache.inputs.files: ['**']`, no outputs). It runs nothing,
+the project (`inputs.files: ['**']`, no outputs). It runs nothing,
 but a dependant behind `^build` folds its key, so a package consumed as
 source moves its dependants' keys and reaches them under `--affected`.
 A config can declare a keyed group too (Group tasks, below). A
@@ -156,8 +157,8 @@ places:
 test: {
   description: 'bun test against the tests/ tree',
   exec: { command: 'bun test' },
+  inputs: { files: ['src/**', 'tests/**'] },
   cache: {
-    inputs: { files: ['src/**', 'tests/**'] },
     outputs: { files: [] },
   },
 }
@@ -319,7 +320,7 @@ daemon, a Docker socket, a device, a VPN-only host.
   declares — a worker cannot reach a port served on the submitter. So is
   a task with a `sandbox` block, and its dependants: the sandbox is this
   machine's machinery, and a boundary a worker does not enforce would
-  pass vacuously. So is a task whose key folds `cache.inputs.runtime` or
+  pass vacuously. So is a task whose key folds `inputs.runtime` or
   `workspaceRuntime`: the key holds this machine's answer, which a worker
   cannot prove it shares. Its dependants are not pinned.
 - **Placement is decided once per task**, before scheduling, so the
@@ -341,8 +342,8 @@ daemon, a Docker socket, a device, a VPN-only host.
   ```ts
   install: {
     exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
+    inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
     cache: {
-      inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
       outputs: { files: ['node_modules/**'] },
     },
   },
@@ -539,11 +540,11 @@ highest priority:
    build; if one does, say so explicitly:
 
    ```ts
-   cache: { inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files: [] } }
+   inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, cache: { outputs: { files: [] } }
    ```
 
    That folds its value into the key. The two axes are orthogonal on
-   purpose: `cache.inputs.env` decides what the key _sees_,
+   purpose: `inputs.env` decides what the key _sees_,
    `exec.env.passThrough` decides what the child _gets_.
 
 2. **`passThrough`** names → value taken from host `process.env` at
@@ -564,14 +565,14 @@ exec: {
 }
 ```
 
-Every name in these lists (and in `cache.inputs.env`) must be one an
+Every name in these lists (and in `inputs.env`) must be one an
 environment can hold: non-empty, with no `=` and no NUL, and a `define`
 value holds no NUL. Such a name is refused at load; it used to reach the
 child split at its `=` or not at all. A `passThrough` or `define` name is
 also a shell variable name, `[A-Za-z_][A-Za-z0-9_]*`: the task runs under
 `sh -c`, and dash (Linux's `sh`) drops any other name from the environment
 it hands the command, so `my.var` reached a task on macOS and never on
-Linux. `cache.inputs.env` takes any such name: the key reads it from vx's
+Linux. `inputs.env` takes any such name: the key reads it from vx's
 own environment.
 
 vx also sets `npm_execpath` to the workspace's package manager (the root
@@ -608,7 +609,7 @@ shows it: the task's output and the line vx adds under a shell's 127 or
 replays, the command a cache entry stores (what `vx why` prints and a
 remote cache receives), the `$ command` line, telemetry records,
 `vx show`, the hashes `vx why` gives for such a variable in
-`cache.inputs.env` (its value, unsalted: the row names it and its change), an executor's error, a plugin's warning or failure (a remote's reply; the failure masked in the error `run()` rejects with), a failed `cache.inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
+`inputs.env` (its value, unsalted: the row names it and its change), an executor's error, a plugin's warning or failure (a remote's reply; the failure masked in the error `run()` rejects with), a failed `inputs` runtime probe's error (its command and output), and the run's own invocation line that `vx last` prints (a
 secret passed after `--`). So are every string of a
 task `vx show` prints (a runtime probe, `readyWhen`, the description),
 the description `--dry` and the task picker print, a runtime probe's
@@ -701,7 +702,7 @@ Semantics:
   nothing anywhere stays legal, as `'name.*'` does.
 - **`'pkg#name'`** — missing pkg or task is a hard error (you named
   them explicitly). `'//#name'`, Turbo's spelling of the root package,
-  names the root project (D-39) here and in `cache.inputs.tasks`; with no
+  names the root project (D-39) here and in `inputs.tasks`; with no
   root project it is refused as such.
 - **Patterns (`'name.*'` / `'^name.*'`)** — `*` matches any run of
   characters in a task NAME; everything else is literal (the dotted
@@ -714,102 +715,37 @@ Semantics:
   ALL its matches and stops the walk. Patterns are not supported in
   the `'pkg#task'` form. (Nx 19.5 `build-*` parity.)
 - **No bare wildcards or negation here.** `'*'` / `'^*'` / `'!form'`
-  belong in `cache.inputs.tasks` (filtering which upstream hashes
+  belong in `inputs.tasks` (filtering which upstream hashes
   participate in this task's cache key), not in `dependsOn` (declaring
   graph edges). The micro-syntax parser rejects them in this position.
 - **Cycle detection** runs across the resolved graph at the end of
   `buildTaskGraph`. Cycles throw with a path-formatted message.
 
-### `cache` (optional)
+### `inputs` (optional)
 
 ```ts
-interface CacheConfig {
-  inputs: CacheInputs // required when `cache` is provided
-  outputs: CacheOutputs // required when `cache` is provided
-  inputStability?: InputStability // optional
-}
-
-interface InputStability {
-  strategy?: 'immutable' | 'mutable' | 'unchecked' // default 'immutable'
-  severity?: 'warn' | 'error' // default 'warn'
-}
+inputs?: InputsConfig
 ```
 
-`inputStability` says what a write to an input while the command runs
-means. `strategy` says which writes count:
+What the task reads, and so what its key folds. A task is keyed on its
+inputs whether it caches or not, as Turbo and Nx hash every task: a
+dependant folds that key, so an edit to an uncached generator's inputs
+re-runs the cached task behind it. A group with `inputs` is a keyed
+group (Group tasks, below). The default `build` is
+`{ dependsOn: ['^build'], inputs: { files: ['**'] } }`.
 
-- `'immutable'` (the default, on CI too): any write. An edit undone
-  mid-run, or another task changing the file and putting it back, cannot
-  be told from no edit.
-- `'mutable'`: a file rewritten to the bytes the key folded counts as
-  unchanged, for a task that rewrites its own input identically
-  (tsdown's `package.json`); different bytes still count, and so does
-  any write while another task that may write the file was running (one
-  of the same project, or one whose sandbox grants writes elsewhere in
-  the workspace; a server `vx watch` keeps from an earlier run counts),
-  since it may have changed the file and put it back.
-  The line names that task; order the two with `dependsOn` to save.
-- `'unchecked'`: none. The entry is saved under the key taken before the
-  command, whatever the command did to its inputs; `severity` is ignored.
-  A key that no longer held before the command started still withholds
-  it.
+A task that runs a command and declares no `inputs` has no key: nothing
+says what it read. A key that folds it is this run's alone, so every
+task behind it misses and saves nothing, never a stale hit. Declare
+`inputs` on an uncached task a cached one depends on;
+`inputs: { files: [] }` is a declaration too: it keys the task on its
+config and its dependencies' keys, and a task behind it can hit. An
+absent `inputs` and an empty one differ.
 
-A write that counts withholds the entry, and `severity` says what else
-happens: `'warn'` (the default) keeps the result, says why on the status
-line, and the run goes on; `'error'` fails the task, so the run fails,
-and its label names the file: `failed (src/a.ts changed during the run, exit 1)`
-(`inputMoved` in `vx last --format json`).
-Either way, every task that ran over the task's outputs, down the graph,
-withholds its save too, and a task of any project that declares the
-moved file as an input withholds its own.
-
-Each field is resolved on its own, highest first:
-
-1. `VX_CACHE_INPUT_STABILITY_STRATEGY` (`immutable`, `mutable`,
-   `unchecked`) and `VX_CACHE_INPUT_STABILITY_SEVERITY` (`warn`, `error`), for the whole run
-   (a CI job that wants `error` sets it without editing configs); any
-   other value is refused before a task runs;
-2. the task's own `cache.inputStability`;
-3. the workspace's `inputStability` (`.vx/workspace.ts`);
-4. the default, `'immutable'` and `'warn'`.
-
-Never folded into a cache key.
+#### `InputsConfig`
 
 ```ts
-import { defineProject } from '@vzn/vx/config'
-
-export default defineProject({
-  tasks: {
-    build: {
-      // tsdown rewrites package.json with the same bytes on every build;
-      // different bytes fail the run rather than rebuild next time.
-      exec: { command: 'tsdown' },
-      cache: {
-        inputs: { files: ['src/**', 'package.json'] },
-        outputs: { files: ['dist/**'] },
-        inputStability: { strategy: 'mutable', severity: 'error' },
-      },
-    },
-  },
-})
-```
-
-**Caching is opt-in.** Omit `cache` and the task always runs (no read,
-no write). Provide it and caching is active for that task. The
-project loader requires _both_ `inputs` and `outputs` when `cache` is
-set — declaring "what does this read?" and "what does it produce?" is
-a deliberate, conscious choice.
-
-**Why opt-in?** Defaulting caching to ON with implicit "all files / no
-outputs" silently produces stale builds the moment a user forgets
-to revisit the config. The cost of a single forgotten cache miss
-(re-run a task) is much less than the cost of a stale cache hit
-(ship broken artifacts).
-
-#### `CacheInputs`
-
-```ts
-interface CacheInputs {
+interface InputsConfig {
   files: readonly string[] // required
   workspaceFiles?: readonly string[] // optional; workspace-root-relative
   env?: readonly string[] // optional
@@ -1132,6 +1068,92 @@ tasks: [] // fully decoupled
 task's outputs. Typical case: an integration-test task `dependsOn`s
 `build` for ordering, but its inputs are only the test source — so
 `inputs.tasks: []` to keep `build` from invalidating it.
+
+### `cache` (optional)
+
+```ts
+interface CacheConfig {
+  outputs: CacheOutputs // required when `cache` is provided
+  inputStability?: InputStability // optional
+}
+
+interface InputStability {
+  strategy?: 'immutable' | 'mutable' | 'unchecked' // default 'immutable'
+  severity?: 'warn' | 'error' // default 'warn'
+}
+```
+
+`inputStability` says what a write to an input while the command runs
+means. `strategy` says which writes count:
+
+- `'immutable'` (the default, on CI too): any write. An edit undone
+  mid-run, or another task changing the file and putting it back, cannot
+  be told from no edit.
+- `'mutable'`: a file rewritten to the bytes the key folded counts as
+  unchanged, for a task that rewrites its own input identically
+  (tsdown's `package.json`); different bytes still count, and so does
+  any write while another task that may write the file was running (one
+  of the same project, or one whose sandbox grants writes elsewhere in
+  the workspace; a server `vx watch` keeps from an earlier run counts),
+  since it may have changed the file and put it back.
+  The line names that task; order the two with `dependsOn` to save.
+- `'unchecked'`: none. The entry is saved under the key taken before the
+  command, whatever the command did to its inputs; `severity` is ignored.
+  A key that no longer held before the command started still withholds
+  it.
+
+A write that counts withholds the entry, and `severity` says what else
+happens: `'warn'` (the default) keeps the result, says why on the status
+line, and the run goes on; `'error'` fails the task, so the run fails,
+and its label names the file: `failed (src/a.ts changed during the run, exit 1)`
+(`inputMoved` in `vx last --format json`).
+Either way, every task that ran over the task's outputs, down the graph,
+withholds its save too, and a task of any project that declares the
+moved file as an input withholds its own.
+
+Each field is resolved on its own, highest first:
+
+1. `VX_CACHE_INPUT_STABILITY_STRATEGY` (`immutable`, `mutable`,
+   `unchecked`) and `VX_CACHE_INPUT_STABILITY_SEVERITY` (`warn`, `error`), for the whole run
+   (a CI job that wants `error` sets it without editing configs); any
+   other value is refused before a task runs;
+2. the task's own `cache.inputStability`;
+3. the workspace's `inputStability` (`.vx/workspace.ts`);
+4. the default, `'immutable'` and `'warn'`.
+
+Never folded into a cache key.
+
+```ts
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    build: {
+      // tsdown rewrites package.json with the same bytes on every build;
+      // different bytes fail the run rather than rebuild next time.
+      exec: { command: 'tsdown' },
+      inputs: { files: ['src/**', 'package.json'] },
+      cache: {
+        outputs: { files: ['dist/**'] },
+        inputStability: { strategy: 'mutable', severity: 'error' },
+      },
+    },
+  },
+})
+```
+
+**Caching is opt-in.** Omit `cache` and the task always runs (no read,
+no write). Provide it and caching is active for that task. The
+project loader requires `exec`, the task's `inputs` and `cache.outputs`
+when `cache` is set: declaring "what does this read?" and "what does
+it produce?" is a deliberate, conscious choice, and a task with no
+command produces nothing to cache.
+
+**Why opt-in?** Defaulting caching to ON with implicit "all files / no
+outputs" silently produces stale builds the moment a user forgets
+to revisit the config. The cost of a single forgotten cache miss
+(re-run a task) is much less than the cost of a stale cache hit
+(ship broken artifacts).
 
 #### `CacheOutputs`
 
@@ -1470,7 +1492,7 @@ shares (L-41): `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.azure`, `~/.kube`,
 `~/.codex/auth.json`.
 What it grants from there is the union of the read grants and, on Linux,
 the DIRECTORY holding each file-shaped write grant (above).
-Nothing is inherited from `cache` — `cache.inputs` says what INVALIDATES a task, `sandbox.allow`
+Nothing is inherited from `cache` — `inputs` says what INVALIDATES a task, `sandbox.allow`
 says what it may TOUCH, and deriving one from the other made a
 declaration added for caching silently widen the sandbox. The one grant
 vx makes for you is dependencies: `node_modules` and, through it, the
@@ -1484,7 +1506,7 @@ past its `allow.read`.
 
 A task that declares `cache` gets a linked workspace package only when
 its key already answers for it: some task of that package is folded into
-the key through `dependsOn` (as `cache.inputs.tasks` selects it, groups
+the key through `dependsOn` (as `inputs.tasks` selects it, groups
 passing everything through). Every other link inside the workspace root
 is withheld, and a read through one fails the task with the denial plus
 one line naming the package and the edge that would key it. Declaring
@@ -1576,17 +1598,16 @@ dependant's `^build`, by `vx run build --all` — and runs nothing. A
 project with no `build` gets a keyed one (above), which a bare name
 does not select.
 
-A group with `cache` is a **keyed group**: its `cache.inputs` are a key
+A group with `inputs` is a **keyed group**: its `inputs` are a key
 and nothing runs. A task that depends on it folds that key, so an edit
-to those inputs re-runs the dependant, and `--affected` reaches it. Its
-`cache.outputs` must be `{ files: [] }` (a group writes nothing), and it
-needs no `dependsOn`. It spawns nothing, writes no cache entry, and the
+to those inputs re-runs the dependant, and `--affected` reaches it. It
+takes no `cache` (a group writes nothing), and it needs no `dependsOn`. It spawns nothing, writes no cache entry, and the
 run summary does not count it. `@vzn/vx-migrate` writes one for each
 Nx `^production`-style input and each Turbo transit node.
 
 ```ts
 // `test` re-runs when a file under fixtures/ changes; nothing spawns for it
-fixtures: { cache: { inputs: { files: ['fixtures/**'] }, outputs: { files: [] } } },
+fixtures: { inputs: { files: ['fixtures/**'] } },
 test: { exec: { command: 'bun test' }, dependsOn: ['fixtures'], cache: { /* … */ } },
 ```
 
@@ -1624,8 +1645,8 @@ Group tasks:
 
 The loader rejects:
 
-- A task with no `exec`, no `dependsOn` and no `cache` (literal no-op).
-- A group whose `cache.outputs` names a file (a group writes nothing).
+- A task with no `exec`, no `dependsOn` and no `inputs` (literal no-op).
+- A group with `cache` (a group writes nothing).
 
 ## Workspace config (`.vx/workspace.ts`)
 
@@ -1886,9 +1907,9 @@ own output path, or set run.rules.exclusiveOutputs: false in
     or another project's `outputs.files` read from the root, or whose
     `inputs.files` can match another task's `outputs.workspaceFiles`
     landing in its project (X-135), is refused,
-    edge or no edge: `<reader> reads "<glob>" in cache.inputs.<field>,
+    edge or no edge: `<reader> reads "<glob>" in inputs.<field>,
 which matches <writer>'s output "<glob>" … Exclude it: add "!<glob>"
-to <reader>'s cache.inputs.<field>, or set run.rules.upfrontKeys:
+to <reader>'s inputs.<field>, or set run.rules.upfrontKeys:
 false in .vx/workspace.ts to let it wait for its producer.` Such a key
     reads what the producer writes this run, so vx cannot know it before
     the producer ran: it is not probed, prefetched or restored ahead of
@@ -1966,8 +1987,8 @@ malformed input.
 
 There are no workspace-level `globalInputs` / task-default fields:
 root-anchored file inputs are declared per task via
-`cache.inputs.workspaceFiles`, root-anchored probes via
-`cache.inputs.workspaceRuntime`, and shared task shapes compose
+`inputs.workspaceFiles`, root-anchored probes via
+`inputs.workspaceRuntime`, and shared task shapes compose
 through plain TypeScript (import a preset and spread it) — the
 language replaces Nx-style `namedInputs` / `targetDefaults` schema
 machinery by design.
@@ -2017,11 +2038,11 @@ export default defineProject({
       // too — the exec env is isolated, not inherited.
       exec: { command: 'tsc -b', env: { passThrough: ['NODE_ENV'] } },
       dependsOn: ['^build'],
+      inputs: {
+        files: ['src/**', '!**/*.test.ts', 'tsconfig.json'],
+        env: ['NODE_ENV'],
+      },
       cache: {
-        inputs: {
-          files: ['src/**', '!**/*.test.ts', 'tsconfig.json'],
-          env: ['NODE_ENV'],
-        },
         outputs: { files: ['dist/**'] },
       },
     },
@@ -2032,8 +2053,8 @@ export default defineProject({
       description: 'run unit tests',
       exec: { command: 'bun test', env: { passThrough: ['CI'] } },
       dependsOn: ['build'],
+      inputs: { files: ['src/**', 'tests/**'] },
       cache: {
-        inputs: { files: ['src/**', 'tests/**'] },
         outputs: { files: [] },
       },
     },
@@ -2044,11 +2065,11 @@ export default defineProject({
       description: 'pack the npm tarball',
       exec: { command: 'rm -rf pkg && npm pack --pack-destination ./pkg' },
       dependsOn: ['build', 'test', '^build'],
+      inputs: {
+        files: ['package.json'],
+        tasks: ['build', '^build'], // hash these upstream too
+      },
       cache: {
-        inputs: {
-          files: ['package.json'],
-          tasks: ['build', '^build'], // hash these upstream too
-        },
         outputs: { files: ['pkg/*.tgz'] },
       },
     },
@@ -2078,12 +2099,14 @@ export default defineProject({
     lint: {
       description: 'oxlint',
       exec: { command: 'oxlint .' },
-      cache: { inputs: { files: ['src/**', '.oxlintrc.json'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**', '.oxlintrc.json'] },
+      cache: { outputs: { files: [] } },
     },
     'format-check': {
       description: 'oxfmt --check',
       exec: { command: 'oxfmt --check .' },
-      cache: { inputs: { files: ['src/**', '.oxfmtrc.json'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**', '.oxfmtrc.json'] },
+      cache: { outputs: { files: [] } },
     },
 
     // Pure group task — `vx run ci` fans out, the group itself is
@@ -2132,12 +2155,12 @@ export default defineProject({
           weakerWhenNested: false,
         },
       },
+      inputs: {
+        files: ['e2e/**'],
+        runtime: ['npx playwright --version'],
+        workspaceRuntime: ['node -v'],
+      },
       cache: {
-        inputs: {
-          files: ['e2e/**'],
-          runtime: ['npx playwright --version'],
-          workspaceRuntime: ['node -v'],
-        },
         outputs: { files: ['test-results/**'] },
       },
     },
@@ -2162,11 +2185,13 @@ export default defineProject({
   tasks: {
     build: {
       exec: { command: 'tsc' },
-      cache: { inputs: { files: srcInputs }, outputs: { files: ['dist/**'] } },
+      inputs: { files: srcInputs },
+      cache: { outputs: { files: ['dist/**'] } },
     },
     test: {
       exec: { command: 'bun test' },
-      cache: { inputs: { files: [...srcInputs, 'tests/**'] }, outputs: { files: [] } },
+      inputs: { files: [...srcInputs, 'tests/**'] },
+      cache: { outputs: { files: [] } },
     },
   },
 })
@@ -2184,8 +2209,8 @@ export function tsBuild(opts?: { tsconfig?: string }): TaskConfig {
   return {
     description: 'compile TypeScript',
     exec: { command: `tsc -b ${opts?.tsconfig ?? ''}`.trim() },
+    inputs: { files: ['src/**', opts?.tsconfig ?? 'tsconfig.json'] },
     cache: {
-      inputs: { files: ['src/**', opts?.tsconfig ?? 'tsconfig.json'] },
       outputs: { files: ['dist/**'] },
     },
   }
@@ -2203,7 +2228,8 @@ export default defineProject({
     test: {
       exec: { command: 'bun test' },
       dependsOn: ['build'],
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] },
+      cache: { outputs: { files: [] } },
     },
   },
 })
@@ -2214,7 +2240,7 @@ to `.ts` source — see
 [`architecture.md` § Config-time imports](./architecture.md#config-time-imports--the-bootstrap-problem)
 for the bootstrap-cycle tradeoff.
 
-### When to use `cache.inputs.tasks: []`
+### When to use `inputs.tasks: []`
 
 When a `dependsOn` exists for ordering only, and the upstream's
 output doesn't influence this task's output. Common case: an
@@ -2225,11 +2251,11 @@ own inputs are just the test source.
 e2e: {
   dependsOn: ['dev'],
   exec: { command: 'playwright test' },
+  inputs: {
+    files: ['e2e/**'],
+    tasks: [],   // dev's hash does not affect e2e's cache identity
+  },
   cache: {
-    inputs: {
-      files: ['e2e/**'],
-      tasks: [],   // dev's hash does not affect e2e's cache identity
-    },
     outputs: { files: ['playwright-report/**'] },
   },
 }
@@ -2304,27 +2330,27 @@ a user meets most:
 | `sandbox is not allowed on an interactive task`                                                                                       | interactive + sandbox combined.                                                                                                                                                                                                |
 | `persistent.readyWhen is not allowed on an interactive task`                                                                          | vx reads none of an interactive task's output.                                                                                                                                                                                 |
 | `a task with no exec must declare dependsOn`                                                                                          | Group task with no edges.                                                                                                                                                                                                      |
-| `a task with no exec writes nothing`                                                                                                  | Group task with `cache.outputs` that names a file.                                                                                                                                                                             |
+| `cache needs exec — a task with no command produces nothing to cache`                                                                 | `cache` on a group: a task with no command writes nothing to cache.                                                                                                                                                            |
 | `dependsOn must be an array of strings`                                                                                               | Wrong shape.                                                                                                                                                                                                                   |
-| `cache.inputs is required when cache is set`                                                                                          | Forgot `inputs`.                                                                                                                                                                                                               |
-| `cache.inputs must be an object`                                                                                                      | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
-| `cache.inputs.files must be an array`                                                                                                 | Wrong shape.                                                                                                                                                                                                                   |
-| `cache.inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
-| `cache.inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                       | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
-| `cache.inputs.tasks must be an array of non-empty strings`                                                                            | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
-| `cache.inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                      | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
+| `cache needs inputs — the key is the task's inputs`                                                                                   | Forgot `inputs` on a cached task.                                                                                                                                                                                              |
+| `inputs must be an object`                                                                                                            | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
+| `inputs.files must be an array`                                                                                                       | Wrong shape.                                                                                                                                                                                                                   |
+| `inputs.runtime must be an array of non-empty shell command strings with no NUL`                                                      | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
+| `inputs.workspaceRuntime must be an array of non-empty shell command strings with no NUL`                                             | Non-string / blank entry (whitespace alone runs as a no-op), or one holding a NUL.                                                                                                                                             |
+| `inputs.tasks must be an array of non-empty strings`                                                                                  | Non-string / empty entry, or a bare string.                                                                                                                                                                                    |
+| `inputs.tasks: "<name>" names no task in <task>.dependsOn`                                                                            | An exact entry no `dependsOn` entry of its form names.                                                                                                                                                                         |
 | `cache.outputs is required when cache is set`                                                                                         | Forgot `outputs`.                                                                                                                                                                                                              |
 | `cache.inputStability must be an object`                                                                                              | A bare string (`inputStability: 'mutable'`).                                                                                                                                                                                   |
 | `cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'`                                                         | Any other value (`'content'`, `false`).                                                                                                                                                                                        |
 | `cache.inputStability.severity must be 'warn' or 'error'`                                                                             | Any other value (`'fail'`, `true`).                                                                                                                                                                                            |
 | `cache.outputs must be an object`                                                                                                     | Present but not an object: a string (`outputs: 'dist'`). An array is the row above.                                                                                                                                            |
 | `cache.outputs.files must be an array`                                                                                                | Wrong shape.                                                                                                                                                                                                                   |
-| `cache.inputs.files: every entry is a negation, which selects NOTHING`                                                                | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
-| `cache.inputs.files: "<file>" is taken back by "!<glob>"`                                                                             | A literal input a `!` entry covers: the negation subtracts wherever it sits, so the file never entered the key.                                                                                                                |
+| `inputs.files: every entry is a negation, which selects NOTHING`                                                                      | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
+| `inputs.files: "<file>" is taken back by "!<glob>"`                                                                                   | A literal input a `!` entry covers: the negation subtracts wherever it sits, so the file never entered the key.                                                                                                                |
 | `cache.outputs.files: every entry is a negation, which selects NOTHING`                                                               | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
 | `cache.outputs.files: "<glob>" covers the project's own <file>`                                                                       | An output glob that matches the project's own `vx.config.*` (`**`, `*.ts`): the clean before a run would delete it. A `!` entry that takes the file back (`!vx.config.ts`) lets it load.                                       |
 | `cache.outputs.files: "<glob>" is under workspace-outputs/`                                                                           | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                               |
-| `cache.inputs.files: '!!' is not a double negation`                                                                                   | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
+| `inputs.files: '!!' is not a double negation`                                                                                         | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
 | `exec.timeout of <value> exceeds the maximum timer delay`                                                                             | Past 2^31-1 ms a timer fires at once, not never.                                                                                                                                                                               |
 | `description must be a string`                                                                                                        | Non-string description.                                                                                                                                                                                                        |
 | `tag "<tag>" <why> — --filter tag:<name> could not name it`                                                                           | A tag with surrounding whitespace or a `*`, or one ending in `...` or `[<ref>]`, which a filter reads as a pattern, a dependency walk or a git range.                                                                          |
@@ -2332,7 +2358,7 @@ a user meets most:
 **Unknown fields are rejected**, not ignored, at every object level —
 the project's top level (`tasks`), the task itself, `exec`, `exec.env`,
 `exec.persistent`, `exec.sandbox` and its `allow` /
-`deny` / `ignore` blocks, `cache`, `cache.inputs`, and `cache.outputs`
+`deny` / `ignore` blocks, `cache`, `inputs`, and `cache.outputs`
 (`tests/schema-unknown-keys.test.ts` walks every one) — and at the top
 of `.vx/workspace.ts`,
 where `plugin:` (singular) would otherwise declare no plugins and run

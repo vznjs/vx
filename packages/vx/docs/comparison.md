@@ -107,14 +107,14 @@ vite-task `/crates/vite_task/src/cli/mod.rs`; vx `src/cli/run.ts`.
 | Per-task `dependsOn`: arbitrary other package's task                        | `pkg#task`                                           | `{projects:["pkg"],target:"task"}`                       | `pkg#task`                         | `'pkg#task'`                                                                                            |
 | Wildcards in `dependsOn`                                                    | —                                                    | v19.5+: `build-*`, `^build-*`                            | —                                  | `'build.*'`, `'^build.*'` (task-name patterns; bare `*` stays filter-only)                              |
 | Group / umbrella tasks                                                      | tasks with `dependsOn` only                          | (achieved via target groups)                             | (none)                             | yes — tasks with no `exec`                                                                              |
-| Input declarations                                                          | `inputs: [...]` + `$TURBO_DEFAULT$` etc.             | `inputs: [...]` w/ rich types                            | `input: glob` or `{auto:true}`     | `cache.inputs.files: string[]`                                                                          |
+| Input declarations                                                          | `inputs: [...]` + `$TURBO_DEFAULT$` etc.             | `inputs: [...]` w/ rich types                            | `input: glob` or `{auto:true}`     | `inputs.files: string[]`                                                                                |
 | Auto-input inference                                                        | —                                                    | —                                                        | **yes** (`fspy`, see §3)           | — out of scope (see §3)                                                                                 |
-| Root-anchored inputs/outputs                                                | `$TURBO_ROOT$/…`                                     | `{workspaceRoot}/…`                                      | (none)                             | `cache.inputs/outputs.workspaceFiles`                                                                   |
-| Runtime-command inputs (tool versions, probes)                              | — (vercel/turborepo#4124)                            | `runtime` input                                          | (none)                             | `cache.inputs.runtime` / `workspaceRuntime`                                                             |
+| Root-anchored inputs/outputs                                                | `$TURBO_ROOT$/…`                                     | `{workspaceRoot}/…`                                      | (none)                             | `inputs/outputs.workspaceFiles`                                                                         |
+| Runtime-command inputs (tool versions, probes)                              | — (vercel/turborepo#4124)                            | `runtime` input                                          | (none)                             | `inputs.runtime` / `workspaceRuntime`                                                                   |
 | Frozen / locked resolved configs                                            | —                                                    | —                                                        | —                                  | `vx lock` (every run reads it)                                                                          |
 | Migration generator from other runners                                      | —                                                    | —                                                        | —                                  | `bunx @vzn/vx-migrate` (Turbo, Nx → vx.config.ts)                                                       |
 | Named / reusable input sets                                                 | (none)                                               | `namedInputs` at workspace + project level               | (none)                             | rejected by design — TS arrays/imports compose                                                          |
-| Per-task env inputs                                                         | `env: ["NODE_ENV"]`                                  | `inputs: [{env: "NODE_ENV"}]`                            | `env: [...]` + `untrackedEnv`      | `cache.inputs.env: string[]`                                                                            |
+| Per-task env inputs                                                         | `env: ["NODE_ENV"]`                                  | `inputs: [{env: "NODE_ENV"}]`                            | `env: [...]` + `untrackedEnv`      | `inputs.env: string[]`                                                                                  |
 | Pass-through env                                                            | `passThroughEnv`                                     | (always pass through)                                    | `untrackedEnv` (passed, no hash)   | `exec.env.passThrough`                                                                                  |
 | Define / literal env                                                        | (no; rely on globalEnv)                              | (via executor options)                                   | (no; in script)                    | `exec.env.define`                                                                                       |
 | Workspace-level env inputs                                                  | `globalEnv`, `globalPassThroughEnv`                  | workspace `namedInputs` + `inputs`                       | (no)                               | rejected by design — TS presets compose                                                                 |
@@ -188,7 +188,7 @@ seams (`@vzn/vx-reapi`).
 | --------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Zero-config adoption: `package.json` scripts are tasks, no per-package file | both, in core | SHIPPED 2026-09-09 as `@vzn/vx-turbo`, `turbo()` in `@vzn/vx-migrate` since 2026-09-11: a `project`-stage plugin over the same mapper `vx-migrate` renders from, so a `turbo.json` repo starts, temporarily, with only a `.vx/workspace.ts`; the seam widening core needed (visit a config-less package when a plugin declares `project`) landed with it. Nx followed 2026-09-22 (`nx()`, item 590): the same stage over Nx's resolved graph, executor targets run as themselves through `nx-exec`. |
 | Inferred tasks from tool configs (`vite.config` ⇒ build/serve/test)         | Nx plugins    | The `project` stage is the seam (a plugin visits every package, a config-less one as `{ tasks: {} }`, and fills what the package did not declare); a first-party family was built and RETIRED the same day (2026-09-10, owner): technology plugins are the community's, core names no tool. The recipe is in the plugins guide.                                                                                                                                                                     |
-| `.env` files loaded into the task env                                       | Nx            | Tasks read their own `.env` (Vite, Next do); the cache side is `cache.inputs.files: ['.env*']`. A `config`-stage plugin can inject. Not core; a docs footnote.                                                                                                                                                                                                                                                                                                                                      |
+| `.env` files loaded into the task env                                       | Nx            | Tasks read their own `.env` (Vite, Next do); the cache side is `inputs.files: ['.env*']`. A `config`-stage plugin can inject. Not core; a docs footnote.                                                                                                                                                                                                                                                                                                                                            |
 | Configurations (`build:prod` as one task, two modes)                        | Nx            | The language: a TS function returning the task per mode. Not core.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Cache size / age caps applied during runs                                   | both          | SHIPPED 2026-09-23 (item 658) in core as `cache.retention`: the local cache is core's floor, not a plugin, so its caps are a workspace field.                                                                                                                                                                                                                                                                                                                                                       |
 | Graph UI, TUI, dashboards                                                   | both          | Rejected for core; `--dry=json` emits the data for a plugin or a site.                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -233,7 +233,7 @@ upstream repos.
    `'^build.*'` walks the nearest-holder frontier where a holder is a
    dep declaring ≥1 match and receives edges to ALL of them. `*` is the
    sole metacharacter; bare `'*'`/`'^*'` stay filter-only
-   (`cache.inputs.tasks`), and `'pkg#pattern'` is rejected. See
+   (`inputs.tasks`), and `'pkg#pattern'` is rejected. See
    [`schema.md`](./schema.md) § dependsOn.
    - Nx 19.5+ `build-*` parity.
 
@@ -425,7 +425,7 @@ Things `@vzn/vx` does that the others don't:
 - **Group tasks as first-class.** A task with no `exec` (just
   `dependsOn`) is a pure aggregator; doesn't appear in the run output,
   isn't counted in the summary, isn't recorded in analytics.
-- **Runtime-command inputs.** `cache.inputs.runtime` /
+- **Runtime-command inputs.** `inputs.runtime` /
   `workspaceRuntime` fold a probe command's live output into the key
   (tool versions, OS info) — Nx has `runtime`; Turbo has no
   equivalent (vercel/turborepo#4124).
@@ -598,13 +598,13 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
 ### Env handling
 
 - **No `.env` auto-loading.** Nx auto-loads `.env` files. vx
-  requires explicit `cache.inputs.env` declarations. "Explicit over
+  requires explicit `inputs.env` declarations. "Explicit over
   magical" (architecture principle #1).
-- **No wildcards in `cache.inputs.env`.** Turbo supports `VERCEL_*`
+- **No wildcards in `inputs.env`.** Turbo supports `VERCEL_*`
   expansion. vx rejects wildcards at load time so a typo doesn't
   silently contribute an empty value to the cache key (pinned by
   tests/project-loader.test.ts > rejects wildcards in
-  cache.inputs.env).
+  inputs.env).
 
 ### Concurrency model
 

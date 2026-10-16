@@ -243,7 +243,7 @@ describe('every input the npm digest must read', () => {
 describe('npm() declared', () => {
   let root: string
   const BUILD =
-    "export default { tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n"
+    "export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n"
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'vx-npm-'))
     await writeFile(

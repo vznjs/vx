@@ -532,7 +532,7 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
           ...(fix.inputs !== undefined
             ? [
                 dim(
-                  `and, if the output depends on them, cache.inputs.files: [${fix.inputs.map((p) => `'${p}'`).join(', ')}]`,
+                  `and, if the output depends on them, inputs.files: [${fix.inputs.map((p) => `'${p}'`).join(', ')}]`,
                 ),
               ]
             : []),

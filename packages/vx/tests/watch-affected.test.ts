@@ -20,11 +20,11 @@ describe('vx watch --affected (e2e)', () => {
       `export default { tasks: {
         build: {
           exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
         },
         docs: {
           exec: { command: 'true' },
-          cache: { inputs: { files: ['notes.md'] }, outputs: { files: [] } },
+          inputs: { files: ['notes.md'] }, cache: { outputs: { files: [] } },
         },
       } }\n`,
     )

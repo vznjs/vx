@@ -211,13 +211,13 @@ describe('RunOptions.signal aborts a run in flight', () => {
   // C-65: a runtime probe still running when the run stopped held it until
   // the probe ended (a Ctrl-C waited out the signal bound, ~7 s), and the
   // task read failed for the probe the stop cut short.
-  it('the stop kills a running cache.inputs.runtime probe; the task is aborted', async () => {
+  it('the stop kills a running inputs.runtime probe; the task is aborted', async () => {
     const dir = await addProject(
       root,
       'app',
       `export default { tasks: { t: {
         exec: { command: 'true' },
-        cache: { inputs: { files: ['package.json'], runtime: ['echo $$ > probe.pid; exec sleep 30'] }, outputs: { files: [] } },
+        inputs: { files: ['package.json'], runtime: ['echo $$ > probe.pid; exec sleep 30'] }, cache: { outputs: { files: [] } },
       } } }`,
     )
     const ac = new AbortController()
@@ -306,7 +306,7 @@ describe('RunOptions.signal aborts a run in flight', () => {
   it("one run's stop leaves another run's runtime probe alone", async () => {
     const config = (pidFile: string, rest: string) => `export default { tasks: { t: {
       exec: { command: 'true' },
-      cache: { inputs: { files: ['package.json'], runtime: ['echo $$ > ${pidFile}; ${rest}'] }, outputs: { files: [] } },
+      inputs: { files: ['package.json'], runtime: ['echo $$ > ${pidFile}; ${rest}'] }, cache: { outputs: { files: [] } },
     } } }`
     const a = await addProject(root, 'app', config('probe.pid', 'exec sleep 30'))
     const otherRoot = await makeWorkspace({ prefix: 'vx-abort-other-' })

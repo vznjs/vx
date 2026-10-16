@@ -301,13 +301,13 @@ change seeds tasks in the projects it touches:
   repository is one its `workspaceFiles` may reach into (git reports it
   as one path; a glob whose fixed prefix is above or inside it counts);
 - every task of a project whose `vx.config.*`
-  changed, or that holds a changed path no cached task of its declares
+  changed, or that holds a changed path no task of its declares
   (vx cannot prove that path re-keys nothing), or that holds a changed
   submodule or embedded repository (git reports it as one path, and no
   task's globs can say whether they reach inside), or that a lockfile
   claim or a config import names (a dependency an install added or
   removed reaches here as the lockfile's change);
-- an uncached task when a changed path lies in its project or the
+- a task with no `inputs` when a changed path lies in its project or the
   project is reached whole; a root file another task of its declares
   (`workspaceFiles`) is no change there. A group seeds nothing.
 
@@ -905,14 +905,14 @@ Locally-executed tasks always write in place and ignore the flag, and
 it in either direction. **It never affects a cache key**: transfer
 tuning cannot change what a command produces.
 
-One safety gate: a task whose outputs another task's `cache.inputs`
+One safety gate: a task whose outputs another task's `inputs`
 globs could read on disk is silently kept eager, because deferring it
 would make that key depend on whether the bytes arrived. A task with no
 `cache` that a cached task depends on counts as reading its whole
 project (C-16). `--dry` reports
 how many tasks would keep their outputs remote and names each downgrade,
 so a run that defers nothing says why. A run in which any task declares a
-`cache.inputs.runtime` / `workspaceRuntime` command defers **nothing**:
+`inputs.runtime` / `workspaceRuntime` command defers **nothing**:
 a shell command's reads cannot be bounded, so vx cannot prove it will
 not read a deferred output (the same reason vx refuses to infer inputs
 by tracing). When bytes are fetched later, vx saves an ordinary
@@ -1013,8 +1013,8 @@ $ vx run build lint --affected=main --dry
 ```
 
 `kind` is `input` (a changed `file` is a declared input), `project` (its
-project changed and the task reads it whole: an uncached task, or a changed
-`file` no cached task of the project declares, often an output git does not
+project changed and the task reads it whole: a task with no `inputs`, or a
+changed `file` no task of the project declares, often an output git does not
 ignore; no `file` for a config import), `workspace` (a workspace-wide
 `file` changed: the workspace config, or a root file a plugin claims such
 as a lockfile, reached every task of the project),
@@ -1090,7 +1090,8 @@ export default {
           },
         },
       },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] },
+      cache: { outputs: { files: ['dist/**'] } },
     },
   },
 }
@@ -1114,7 +1115,7 @@ task's `SANDBOX VIOLATIONS` section ends with a dimmed `fix:` line,
 the grants that would have allowed each denial, project-relative:
 `fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`.
 A write grants the top directory it landed in, so the next file there
-passes too, unless `cache.inputs.files` reads that directory: then it
+passes too, unless `inputs.files` reads that directory: then it
 grants the file alone, so the task cannot write its own inputs; a read the output depends on is a key input as well, and
 the line says so, since a grant never adds one. A credential path
 (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.config/gh`,
@@ -1241,7 +1242,7 @@ run...` precedes it.
    `.gitignore` as the remedy (a persistent task declares no outputs;
    item 948). A file git tracks is never blamed on the server: three
    saves of a source file are the user's (WD-7). When any project's config declares
-   `cache.inputs.workspaceFiles`, the per-project watchers are swapped
+   `inputs.workspaceFiles`, the per-project watchers are swapped
    for ONE recursive root watcher (boundaries are off for those globs,
    so a root-relative glob can name a file anywhere). That watcher
    hears every write in the tree and keeps only the ones a key can
@@ -1301,7 +1302,7 @@ Always ignored (no re-trigger):
   cycle, which writes again — a loop that never settles.
 
 Everything else triggers a cycle. We deliberately don't filter events
-against per-task `cache.inputs.files` — the cache hash is the source
+against per-task `inputs.files` — the cache hash is the source
 of truth. A change to an irrelevant file produces a cache-hit run
 (typically tens of ms); the cost is much smaller than the engineering
 cost of a per-event glob match.
@@ -2071,7 +2072,7 @@ copy to the source.
 | turbo  | `--dangerously-disable-package-manager-check`     | refuse  | vx reads no `packageManager` field: drop it                                                                                                       |
 | turbo  | `--env-mode <v>`                                  | refuse  | vx passes only the variables a task declares (strict): list the rest in `exec.env.passThrough`                                                    |
 | turbo  | `--framework-inference <v>`                       | refuse  | under `turbo()` inference is Turbo's; take a name back with a `!` entry in the task's `env`                                                       |
-| turbo  | `--global-deps <v>`                               | refuse  | declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)                                                |
+| turbo  | `--global-deps <v>`                               | refuse  | declare them in `inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)                                                      |
 | turbo  | `--json`                                          | refuse  | use `vx last --format json` for the run's result, `--dry=json` for the plan                                                                       |
 | turbo  | `--log-file`                                      | refuse  | use `vx last --format json` for the run's JSON record                                                                                             |
 | turbo  | `--preflight`                                     | refuse  | set `turboCache({ preflight: true })` or `TURBO_PREFLIGHT=1`                                                                                      |
@@ -2263,7 +2264,7 @@ its own output path, or make one depend on the other.
 
 #### `VX_E_INPUT_IS_OUTPUT`
 
-A task's `cache.inputs` match outputs: its own (vx cleans outputs before
+A task's `inputs` match outputs: its own (vx cleans outputs before
 a run, so it would delete its sources) or another task's (its key must
 not read them; `dependsOn` already cascades). Exclude the outputs from
 the inputs with a `!` glob, as the message shows, or declare no outputs
@@ -2599,7 +2600,7 @@ app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
     changed file  packages/app/src/input.txt  78981922613b2afb6025042ff6bd878ac1994e85 → 61780798228d17af2d34fce4cfbdf35556832472
 
   what to do:
-    file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
+    file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
 ```
 
 A changed key's verdict names what moved, kind and name, three at most
@@ -2655,9 +2656,9 @@ is gone (pruned, or the run failed and never saved one) the verb still
 names the hash change and says the component diff is unavailable. When
 only the previous run failed, the diff is taken against the last run
 that saved an entry instead, and the detail line names that run. A
-task with no `cache` block derives a key too — it is what dependents
-fold — but saves no entry, so for it the verb can only report the key
-change and says so.
+task with `inputs` and no `cache` block derives a key too — it is what
+dependents fold — but saves no entry, so for it the verb can only report
+the key change and says so.
 `--format json` emits one machine-readable object (`{ taskId, runId,
 why, diff, roots, writers }`); when the task's recorded runs predate run ids, `{ taskId,
 why, diff, explanation }`, `why` and `diff` null and `explanation` the
@@ -2725,7 +2726,7 @@ sandboxed task's row adds `sandboxFix`, the `exec.sandbox.allow`
 entries (`read`, `write`, `network`, `systemInfo`) that would have
 granted its denials, the same grants the terminal prints as `fix:`;
 `withheld` lists the credential paths it denied and left out (a `.env` file, or a store under home the sandbox denies, `security.md`), and, for
-a cached task, `inputs` the reads of its project no `cache.inputs.files`
+a cached task, `inputs` the reads of its project no `inputs.files`
 glob matches (the terminal's `and, if the output depends on them, …`
 line). A task
 failed by `inputStability.severity: 'error'` adds `inputMoved`, the

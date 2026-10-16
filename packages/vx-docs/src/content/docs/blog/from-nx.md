@@ -85,7 +85,7 @@ step that lets you remove Nx:
 ```ts
 build: {
   exec: { command: 'tsc -b tsconfig.lib.json' },
-  cache: { inputs: { files: ['src/**', 'tsconfig.lib.json'] }, outputs: { files: ['dist/**'] } },
+  inputs: { files: ['src/**', 'tsconfig.lib.json'] }, cache: { outputs: { files: ['dist/**'] } },
 }
 ```
 
@@ -105,8 +105,8 @@ Nothing is silently wrong.
 | ------------------------------------- | --------------------------------------------- |
 | a project's `targets`                 | `tasks`                                       |
 | `dependsOn` (`^build`, …)             | `dependsOn`, same syntax                      |
-| `inputs` / `namedInputs` (resolved)   | `cache.inputs.files`                          |
-| `{workspaceRoot}/file`                | `cache.inputs.workspaceFiles`                 |
+| `inputs` / `namedInputs` (resolved)   | `inputs.files`                          |
+| `{workspaceRoot}/file`                | `inputs.workspaceFiles`                 |
 | `outputs`                             | `cache.outputs.files`                         |
 | `nx affected`                         | `vx run … --affected[=<base>]`                |
 | `nx run-many --projects`              | `vx run … --filter`                           |
@@ -116,7 +116,7 @@ Nothing is silently wrong.
 
 `namedInputs` and `targetDefaults` never reach the migration as
 themselves: the resolved graph has already applied them, so what gets
-written is each task's own `cache.inputs.files` and its own values.
+written is each task's own `inputs.files` and its own values.
 Neither exists in vx and neither will — a TypeScript config composes,
 so a shared input list is an import.
 

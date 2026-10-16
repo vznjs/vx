@@ -548,7 +548,7 @@ describe('staticPrefix normalizes the spelling before it takes the prefix', () =
 describe('staticPrefix and an ABSOLUTE grant — the root is a prefix', () => {
   it('keeps `/` as the prefix instead of collapsing it to the empty string', () => {
     // Every other row here feeds staticPrefix a project-relative glob,
-    // because `cache.inputs`/`cache.outputs` are validated to be relative —
+    // because `inputs`/`cache.outputs` are validated to be relative —
     // absolute entries, `..` segments and negations are all refused at the
     // schema. Sandbox grants are NOT: `exec.sandbox.allow.read` is checked
     // only for being an array of strings, on purpose ("macOS matches them

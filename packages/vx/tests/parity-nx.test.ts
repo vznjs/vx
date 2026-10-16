@@ -145,11 +145,11 @@ describe('Nx parity — target defaults, `dependsOn` forms, inputs and outputs',
       check: { dependsOn: ['check.*'] },
       rt: {
         exec: { command: 'echo rt' },
-        cache: { inputs: { files: ['src/**'], runtime: ['cat ../../runtime.txt'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'], runtime: ['cat ../../runtime.txt'] }, cache: { outputs: { files: [] } },
       },
       ts: {
         exec: { command: 'echo ts' },
-        cache: { inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: [] } },
       },
       lint: {`,
       ),
@@ -215,7 +215,7 @@ describe('Nx parity — target defaults, `dependsOn` forms, inputs and outputs',
   )
 
   it(
-    '`{ "runtime": "node -v" }` — a command\'s output is a hashed input (vx `cache.inputs.runtime`)',
+    '`{ "runtime": "node -v" }` — a command\'s output is a hashed input (vx `inputs.runtime`)',
     async () => {
       const a = (await dry(root, ['lib#rt'])).find((t) => t.id === 'lib#rt')!.hash
       await writeFile(path.join(root, 'runtime.txt'), 'rt-2\n')
@@ -278,7 +278,7 @@ describe('Nx parity — cache control and failure handling', () => {
       path.join(root, 'packages', 'lib', 'vx.config.mjs'),
       cfg.replace(
         'lint: {',
-        `fail: { exec: { command: 'exit 2' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
+        `fail: { exec: { command: 'exit 2' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
       after: { exec: { command: 'echo after' }, dependsOn: ['fail'] },
       lint: {`,
       ),

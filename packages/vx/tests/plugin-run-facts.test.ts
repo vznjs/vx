@@ -25,7 +25,7 @@ it('teardown gets the run report: its facts and every task', async () => {
     `export default { tasks: {
       build: {
         exec: { command: 'exit 3' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     } }`,
   )

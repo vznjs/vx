@@ -83,7 +83,7 @@ describe('a cache artifact that vanishes before its restore', () => {
             tasks: {
               build: {
                 exec: { command: "mkdir -p dist && node -e 'process.stdout.write(String(process.hrtime.bigint()))' > dist/out.txt" },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -98,7 +98,7 @@ describe('a cache artifact that vanishes before its restore', () => {
               build: {
                 dependsOn: ['^build'],
                 exec: { command: 'mkdir -p dist && cat ../lib/dist/out.txt > dist/built.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -160,7 +160,7 @@ describe('a cache artifact that vanishes before its restore', () => {
             tasks: {
               build: {
                 exec: { command: "echo solo > out.txt" },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -173,7 +173,7 @@ describe('a cache artifact that vanishes before its restore', () => {
             tasks: {
               build: {
                 exec: { command: "mkdir -p ../solo/gen && echo y > ../solo/gen/g.txt" },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['packages/solo/gen/g.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['packages/solo/gen/g.txt'] } },
               },
             },
           }
@@ -215,12 +215,12 @@ describe('a cache artifact that vanishes before its restore', () => {
             tasks: {
               codegen: {
                 exec: { command: "cp src/seed.txt generated.txt" },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['generated.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['generated.txt'] } },
               },
               consume: {
                 dependsOn: ['codegen'],
                 exec: { command: "cat generated.txt > out.txt" },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -276,7 +276,7 @@ describe('a local cache artifact whose bytes are corrupt', () => {
         files: { 'src/a.txt': 'a' },
         config: `export default { tasks: { build: {
           exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
         } } }`,
       })
       const quiet = (): Logger => logger({ status: [], complete: [], started: [] })

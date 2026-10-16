@@ -289,15 +289,12 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       if ((await importers)?.has(importerOf(ctx.workspaceRoot, ctx.dir)) !== true) return
       const tasks = config.tasks ?? {}
       for (const [name, task] of Object.entries(tasks)) {
-        const inputs = task.cache?.inputs
+        const inputs = task.inputs
         if (inputs === undefined || inputs.files.includes('package.json')) continue
         // A copy: a loaded config may be shared or frozen.
         tasks[name] = {
           ...task,
-          cache: {
-            ...task.cache!,
-            inputs: { ...inputs, files: [...inputs.files, 'package.json'] },
-          },
+          inputs: { ...inputs, files: [...inputs.files, 'package.json'] },
         }
       }
     },

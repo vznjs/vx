@@ -116,7 +116,7 @@ export function refIsHead(workspaceRoot: string, ref: string): boolean
      them too.
    - **Workspace globs.** For every changed path, `workspaceGlobOwners`
      (`cli/select.ts`) asks which projects declare
-     a matching `cache.inputs.workspaceFiles` glob — through the run
+     a matching `inputs.workspaceFiles` glob — through the run
      path's staged load, so a glob a `project` plugin gave a
      config-less package counts. The match runs the entries through
      `asTrees`, the same rule `resolveWorkspaceFiles` applies, because
@@ -171,7 +171,7 @@ spawns) — easy to test against in-memory fixtures.
   fetch first.
 - **Doesn't honor `.gitattributes` or `--diff-filter`.** A
   whitespace-only commit still marks projects as affected.
-- **Doesn't intersect with `cache.inputs.files`.** A project is
+- **Doesn't intersect with `inputs.files`.** A project is
   affected if any file changed under its dir — even if no cached
   task lists that file as an input. (We default to "be permissive";
   Turbo behaves the same.)

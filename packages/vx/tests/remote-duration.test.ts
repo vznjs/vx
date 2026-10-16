@@ -11,7 +11,7 @@ import { run } from './helpers/orchestrator.js'
 
 const CFG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },
-  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } }`
+  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } } } }`
 
 it(
   'a remote duration that is no usable count of ms is a hit recorded as 0 ms',

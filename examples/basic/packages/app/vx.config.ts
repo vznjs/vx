@@ -6,16 +6,16 @@ export default defineProject({
       // `^build`: every dependency's build runs first, so lib/dist exists.
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cat ../lib/dist/*.js src/main.js > dist/app.js' },
+      inputs: { files: ['src/**'] },
       cache: {
-        inputs: { files: ['src/**'] },
         outputs: { files: ['dist/**'] },
       },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'sh tests/main.sh' },
+      inputs: { files: ['tests/**'] },
       cache: {
-        inputs: { files: ['tests/**'] },
         outputs: { files: [] },
       },
     },

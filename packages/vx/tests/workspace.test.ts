@@ -32,7 +32,7 @@ describe('a project directory named packages/[abc]', () => {
           tasks: {
             build: {
               exec: { command: 'cat src/in.txt > out.txt' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
             },
           },
         }

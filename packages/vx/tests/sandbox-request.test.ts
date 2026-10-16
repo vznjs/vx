@@ -606,8 +606,8 @@ describe('the request derives nothing from cache', () => {
       ...node(),
       config: {
         exec: { command: 'true' },
+        inputs: { files: ['src/**'] },
         cache: {
-          inputs: { files: ['src/**'] },
           outputs: { files: ['dist/**', 'out.txt'] },
         },
       },
@@ -945,7 +945,7 @@ describe("a link to the task's own project, or to a directory holding it, is not
         'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
         'reaches one (`^build` where @x/ui#build keys its sources, or a `source` task: ' +
         '`@x/ui#source`), or grant and key the files yourself (`allow.read` plus ' +
-        '`cache.inputs.workspaceFiles`).',
+        '`inputs.workspaceFiles`).',
     )
   })
 })

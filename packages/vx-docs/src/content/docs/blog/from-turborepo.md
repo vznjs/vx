@@ -69,8 +69,8 @@ what the plugin was already doing.
 | ---------------------------------------------- | ------------------------------------------------------- |
 | `tasks` / `pipeline`                           | `tasks`                                                 |
 | `dependsOn`                                    | `dependsOn`, identical syntax                           |
-| `inputs` / `outputs`                           | `cache.inputs.files` / `cache.outputs.files`            |
-| `env`                                          | `cache.inputs.env` **and** `exec.env.passThrough`       |
+| `inputs` / `outputs`                           | `inputs.files` / `cache.outputs.files`            |
+| `env`                                          | `inputs.env` **and** `exec.env.passThrough`       |
 | `passThroughEnv`                               | `exec.env.passThrough`                                  |
 | `cache: false`                                 | omit the `cache` block                                  |
 | `persistent: true`                             | `exec.persistent: {}`, with a TODO to set `readyWhen` when a task depends on it |
@@ -80,8 +80,8 @@ what the plugin was already doing.
 | `interruptible` | nothing: `vx watch` keeps a persistent task up and restarts it only when its config changes or it dies |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
 | `outputLogs` (Turbo 1: `outputMode`)           | no per-task knob: the per-run `--output-logs` flag      |
-| `$TURBO_ROOT$/file`                            | `cache.inputs.workspaceFiles`                           |
-| `dotEnv` (Turbo 1)                              | `cache.inputs.runtime`: a probe that hashes the `.env` files |
+| `$TURBO_ROOT$/file`                            | `inputs.workspaceFiles`                           |
+| `dotEnv` (Turbo 1)                              | `inputs.runtime`: a probe that hashes the `.env` files |
 | `command` (Turbo 2.11) | the task's `exec.command`; `null` is no task |
 | `description` | the task's `description` |
 | `globalDependencies`, `globalEnv`, `globalPassThroughEnv`, `globalDotEnv` | a generated `vx-preset.ts` you import and spread |

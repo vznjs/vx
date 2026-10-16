@@ -57,7 +57,7 @@ export interface PlaygroundInput {
   files: Record<string, string>
   /** Root-relative config file → its evaluated `vx.config` default export. */
   configs: Record<string, unknown>
-  /** The environment `cache.inputs.env` reads. */
+  /** The environment `inputs.env` reads. */
   env: Record<string, string>
   /** Task specs, as `vx run <tasks…>` takes them. */
   tasks: string[]
@@ -235,9 +235,7 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
 
   const gitFilesCache = new GitFilesCache()
   const usesWorkspaceInputs = [...projects.values()].some((p) =>
-    Object.values(p.config.tasks ?? {}).some(
-      (t) => (t.cache?.inputs.workspaceFiles?.length ?? 0) > 0,
-    ),
+    Object.values(p.config.tasks ?? {}).some((t) => (t.inputs?.workspaceFiles?.length ?? 0) > 0),
   )
   // Every VFS blob IS its file's bytes: no index sizes to check.
   await applyGitEnumeration(

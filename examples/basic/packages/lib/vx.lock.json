@@ -4,13 +4,13 @@
       "exec": {
         "command": "mkdir -p dist && cp src/*.js dist/"
       },
+      "inputs": {
+        "files": [
+          "src/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "src/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": [
             "dist/**"

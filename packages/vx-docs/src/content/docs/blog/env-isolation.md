@@ -91,7 +91,7 @@ loading a loader. vx does not guess which. Say so, and the value joins
 the key:
 
 ```ts
-cache: { inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, outputs: { files: ['dist/**'] } }
+inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, cache: { outputs: { files: ['dist/**'] } }
 ```
 
 ## Hygiene, not a wall

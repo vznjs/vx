@@ -1,7 +1,7 @@
 // The third `changed file → project` channel for `--affected`.
 //
 // Directory containment answers "which project owns this file", and
-// `cache.inputs.workspaceFiles` answers "which project declared it". Neither
+// `inputs.workspaceFiles` answers "which project declared it". Neither
 // can see the one remaining way a file reaches a task: a project's
 // `vx.config.*` IMPORTS it. Resolved-config hashing folds the imported values
 // into the cache key (architecture principle #4), so editing such a file

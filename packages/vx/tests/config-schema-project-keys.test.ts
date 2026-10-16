@@ -20,12 +20,12 @@ it("names vx's home for a project key another tool spells (D-99)", () => {
     'vx spells it `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)',
   )
   expect(where('namedInputs')).toBe(
-    'vx spells it a module the vx.config imports, spread into `cache.inputs.files`',
+    'vx spells it a module the vx.config imports, spread into `inputs.files`',
   )
   expect(where('root')).toBe(
     "vx spells it no field: a project's directory is where its vx.config sits",
   )
-  expect(where('sourceRoot')).toBe("vx spells it a task's `cache.inputs.files`")
+  expect(where('sourceRoot')).toBe("vx spells it a task's `inputs.files`")
   expect(where('projectType')).toBe('vx spells it no field: vx runs every project alike')
   expect(where('dependsOn')).toBe(
     'vx spells it `tasks.<name>.dependsOn`: a project holds tasks, and each task its own `dependsOn`',
@@ -33,10 +33,12 @@ it("names vx's home for a project key another tool spells (D-99)", () => {
   expect(where('cache')).toBe(
     'vx spells it `tasks.<name>.cache`: a project holds tasks, and each task its own `cache`',
   )
-  expect(where('inputs')).toBe('vx spells it `tasks.<name>.cache.inputs.files`')
+  expect(where('inputs')).toBe(
+    'vx spells it `tasks.<name>.inputs`: a project holds tasks, and each task its own `inputs`',
+  )
   expect(where('outputs')).toBe('vx spells it `tasks.<name>.cache.outputs.files`')
   expect(where('env')).toBe(
-    'vx spells it `tasks.<name>.cache.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
+    'vx spells it `tasks.<name>.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
   )
   // CONTROL: a typo still gets the nearest spelling.
   expect(where('task')).toBe('did you mean tasks?')

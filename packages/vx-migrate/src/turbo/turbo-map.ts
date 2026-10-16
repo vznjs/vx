@@ -24,6 +24,7 @@ import {
   resolveSharedOutputs,
   resolveSharedWorkspaceOutputs,
   takingBack,
+  unkey,
   wildcardCleanTodo,
   wildcardOutput,
   wildcardTodo,
@@ -68,7 +69,7 @@ interface TurboJson {
 
 const SHELL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
-/** A name core takes in `cache.inputs.env` and `exec.env.passThrough`. */
+/** A name core takes in `inputs.env` and `exec.env.passThrough`. */
 const keyable = (name: string): boolean =>
   name.length > 0 && !name.startsWith('!') && !/[*?[\]{}=\0]/.test(name)
 
@@ -936,7 +937,7 @@ export async function mapTurboWorkspace(
   if (envMode === 'loose') {
     notes.push(
       'envMode "loose": Turbo passes every environment variable to every task; vx passes only ' +
-        'the declared ones — list what each task reads in exec.env.passThrough (or cache.inputs.env)',
+        'the declared ones — list what each task reads in exec.env.passThrough (or inputs.env)',
     )
   } else if (
     !envMode &&
@@ -954,7 +955,7 @@ export async function mapTurboWorkspace(
       notes.push(
         `Turbo 1 runs ${loose.join(', ')} in loose env mode (no passThroughEnv, so its "infer" ` +
           'mode passes every environment variable); vx passes only the declared ones — list what ' +
-          'each reads in exec.env.passThrough (or cache.inputs.env)',
+          'each reads in exec.env.passThrough (or inputs.env)',
       )
     }
   }
@@ -1288,12 +1289,12 @@ export async function mapTurboWorkspace(
     notes.push(
       `${fw.slug} in ${few(users)}: Turbo passes ${few(fw.env)} implicitly; the configs list ` +
         'the names the package and its workspace dependencies spell, so add any an installed ' +
-        'dependency reads to cache.inputs.env and exec.env.passThrough',
+        'dependency reads to inputs.env and exec.env.passThrough',
     )
   for (const [fw, users] of usersOf)
     notes.push(
       `${fw.slug} in ${few(users)}: Turbo passes ${few(fw.env)} implicitly; list the ones ` +
-        'they read in cache.inputs.env and exec.env.passThrough',
+        'they read in inputs.env and exec.env.passThrough',
     )
 
   // A task's own `*` env name, in a written config: expanded over the
@@ -1470,7 +1471,7 @@ export async function mapTurboWorkspace(
     for (const t of projects.find((p) => p.name === meta.name)?.tasks ?? []) {
       const def = defFor(t.name)
       const dep = def === undefined ? undefined : dependencyOutputs.get(def)
-      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      const inputs = t.task?.['inputs'] as Record<string, unknown> | undefined
       if (dep === undefined || inputs === undefined) continue
       const rels: string[] = []
       const unfold = new Set<string>()
@@ -1500,7 +1501,7 @@ export async function mapTurboWorkspace(
       if (rels.length === 0) continue
       const probe = rels.every(isLiteral) ? ignoredFilesProbe(rels) : dotenvGlobsProbe(rels)
       if (probe === null) {
-        delete t.task!['cache']
+        unkey(t.task!)
         t.todos.push(
           `inputs read ${rels.map((r) => JSON.stringify(r)).join(', ')} from an uncached ` +
             'dependency, a glob vx cannot key by a probe — task runs uncached; key it in a vx.config to cache it',
@@ -1534,7 +1535,7 @@ export async function mapTurboWorkspace(
     notes.push(
       `env ${JSON.stringify(entry)}: the configs list the names the files of each task's ` +
         `package and its workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add ` +
-        'any other a task reads to cache.inputs.env and exec.env.passThrough',
+        'any other a task reads to inputs.env and exec.env.passThrough',
     )
   literalEnvGapsOnce(projects, notes)
   resolveSharedWorkspaceOutputs(root, projects)
@@ -1571,7 +1572,7 @@ function nestedInputs(root: string, projects: readonly TurboMappedProject[]): vo
     const nested = inside.filter((n) => !inside.some((m) => n.startsWith(`${m}/`)))
     if (nested.length === 0) return
     for (const t of p.tasks) {
-      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      const inputs = t.task?.['inputs'] as Record<string, unknown> | undefined
       const files = inputs?.['files']
       if (inputs === undefined || !Array.isArray(files)) continue
       const extra: string[] = []
@@ -1763,13 +1764,13 @@ function keyOnlyGroup(t: TurboMappedTask): TurboMappedTask {
   const cache = task['cache'] as
     | { outputs: { files: unknown[]; workspaceFiles?: unknown[] } }
     | undefined
-  if (cache === undefined && task['dependsOn'] === undefined) return t
+  if (task['inputs'] === undefined && task['dependsOn'] === undefined) return t
   if (
     cache !== undefined &&
     (cache.outputs.files.length > 0 || cache.outputs.workspaceFiles !== undefined)
   )
     return t
-  const { exec: _exec, ...group } = task
+  const { exec: _exec, cache: _cache, ...group } = task
   return { ...t, task: group }
 }
 
@@ -1949,7 +1950,7 @@ function buildTask(
           'env',
           e,
           literal,
-          ' in vx env names — list explicit names in cache.inputs.env + exec.env.passThrough',
+          ' in vx env names — list explicit names in inputs.env + exec.env.passThrough',
         ),
       ),
     opts.envNames,
@@ -1981,181 +1982,180 @@ function buildTask(
   if (typeof def['description'] === 'string') task.description = def['description']
   if (deps.length > 0) task.dependsOn = deps
 
-  if (cacheEnabled) {
-    const files: unknown[] = []
-    // `.env` files Turbo hashes although git ignores them; a glob over git's
-    // files keyed none of them (item 1032). Probed instead, per package and
-    // at the root.
-    let pkgDotenv = false
-    // Any of them below the package root needs the walk.
-    let pkgDotenvDeep = false
-    // The root-relative `.env` globs, probed at the workspace root.
-    const wsDotenv = [...rootDotenv]
-    // globalDependencies are workspace-root-relative by definition —
-    // they map to inputs.workspaceFiles, not project-relative files.
-    const wsFiles: unknown[] = [...global('inputs')]
-    // Root-relative path → the entry naming it.
-    const rels = new Map<string, Named>(literals.globalIgnored.map((f) => [f, [null, f]]))
-    const atRoot = pkgDir === '' || pkgDir === '.'
-    if (def.inputs === undefined || def.inputs.length === 0) {
-      // Turbo's default input set is every package file, and an empty
-      // `inputs` is that default: mapped as no files, it keyed on nothing
-      // in the package and an edit replayed a stale build (item 936).
-      files.push('**/*')
-    } else {
-      for (const i of def.inputs) {
-        if (i === '$TURBO_DEFAULT$') {
-          files.push('**/*')
-          continue
-        }
-        const neg = i.startsWith('!')
-        // Turbo's globs have character classes and extglobs; a vx bracket is
-        // a literal, so `src/**/*.[jt]s` keyed on nothing and an edit
-        // replayed the old build (item 1031). A positive glob with no safe
-        // form widens to every package file; a negation with none is dropped
-        // (it would exclude fewer files, never more).
-        const wax = minimatchToVx(neg ? i.slice(1) : i, neg)
-        if (wax === null) {
-          todos.push(`input ${JSON.stringify(i)}: glob syntax vx cannot take — map manually`)
-          if (!neg) files.push('**/*')
-          continue
-        }
-        const translated = (neg ? '!' : '') + wax
-        const body = wax
-        const up = climbed(translated)
-        if (!neg && isDotenvGlob(body)) {
-          if (body.startsWith('$TURBO_ROOT$/')) wsDotenv.push(body.slice('$TURBO_ROOT$/'.length))
-          else if (up !== null) wsDotenv.push(up)
-          else {
-            pkgDotenv = true
-            if (body.includes('/')) pkgDotenvDeep = true
-          }
-          continue
-        }
-        if (body.startsWith('$TURBO_ROOT$/')) {
-          wsFiles.push(...withZeroSegments((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length)))
-          const rel = body.slice('$TURBO_ROOT$/'.length)
-          if (!neg) rels.set(rel, ['workspaceFiles', rel])
-        } else if (up !== null) {
-          wsFiles.push(...withZeroSegments(up))
-          if (!neg) rels.set(up, ['workspaceFiles', up])
-        } else if (body.startsWith('../')) {
-          todos.push(`input ${JSON.stringify(i)}: leaves the workspace — map manually`)
-        } else if (i.includes('$TURBO_ROOT$')) {
-          todos.push(
-            `input ${JSON.stringify(i)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
-              'prefix (→ cache.inputs.workspaceFiles) — map manually',
-          )
-        } else {
-          // Unkeyed, a root file edit `*\/**` reaches in Turbo replayed a stale hit.
-          files.push(...withZeroSegments(translated))
-          const rel = path.posix.join(atRoot ? '.' : pkgDir, body)
-          if (!neg) rels.set(rel, [atRoot ? 'workspaceFiles' : 'files', translated])
-        }
+  const files: unknown[] = []
+  // `.env` files Turbo hashes although git ignores them; a glob over git's
+  // files keyed none of them (item 1032). Probed instead, per package and
+  // at the root.
+  let pkgDotenv = false
+  // Any of them below the package root needs the walk.
+  let pkgDotenvDeep = false
+  // The root-relative `.env` globs, probed at the workspace root.
+  const wsDotenv = [...rootDotenv]
+  // globalDependencies are workspace-root-relative by definition —
+  // they map to inputs.workspaceFiles, not project-relative files.
+  const wsFiles: unknown[] = [...global('inputs')]
+  // Root-relative path → the entry naming it.
+  const rels = new Map<string, Named>(literals.globalIgnored.map((f) => [f, [null, f]]))
+  const atRoot = pkgDir === '' || pkgDir === '.'
+  if (def.inputs === undefined || def.inputs.length === 0) {
+    // Turbo's default input set is every package file, and an empty
+    // `inputs` is that default: mapped as no files, it keyed on nothing
+    // in the package and an edit replayed a stale build (item 936).
+    files.push('**/*')
+  } else {
+    for (const i of def.inputs) {
+      if (i === '$TURBO_DEFAULT$') {
+        files.push('**/*')
+        continue
       }
-      // Exclusions alone narrow every package file: core refuses a list
-      // with nothing to narrow, and that refusal failed the whole run
-      // (item 936). Every file is the widest reading, so it can cost a
-      // hit and never serve a stale one.
-      if (files.length > 0 && files.every((f) => typeof f === 'string' && f.startsWith('!'))) {
-        files.unshift('**/*')
+      const neg = i.startsWith('!')
+      // Turbo's globs have character classes and extglobs; a vx bracket is
+      // a literal, so `src/**/*.[jt]s` keyed on nothing and an edit
+      // replayed the old build (item 1031). A positive glob with no safe
+      // form widens to every package file; a negation with none is dropped
+      // (it would exclude fewer files, never more).
+      const wax = minimatchToVx(neg ? i.slice(1) : i, neg)
+      if (wax === null) {
+        todos.push(`input ${JSON.stringify(i)}: glob syntax vx cannot take — map manually`)
+        if (!neg) files.push('**/*')
+        continue
+      }
+      const translated = (neg ? '!' : '') + wax
+      const body = wax
+      const up = climbed(translated)
+      if (!neg && isDotenvGlob(body)) {
+        if (body.startsWith('$TURBO_ROOT$/')) wsDotenv.push(body.slice('$TURBO_ROOT$/'.length))
+        else if (up !== null) wsDotenv.push(up)
+        else {
+          pkgDotenv = true
+          if (body.includes('/')) pkgDotenvDeep = true
+        }
+        continue
+      }
+      if (body.startsWith('$TURBO_ROOT$/')) {
+        wsFiles.push(...withZeroSegments((neg ? '!' : '') + body.slice('$TURBO_ROOT$/'.length)))
+        const rel = body.slice('$TURBO_ROOT$/'.length)
+        if (!neg) rels.set(rel, ['workspaceFiles', rel])
+      } else if (up !== null) {
+        wsFiles.push(...withZeroSegments(up))
+        if (!neg) rels.set(up, ['workspaceFiles', up])
+      } else if (body.startsWith('../')) {
+        todos.push(`input ${JSON.stringify(i)}: leaves the workspace — map manually`)
+      } else if (i.includes('$TURBO_ROOT$')) {
+        todos.push(
+          `input ${JSON.stringify(i)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
+            'prefix (→ inputs.workspaceFiles) — map manually',
+        )
+      } else {
+        // Unkeyed, a root file edit `*\/**` reaches in Turbo replayed a stale hit.
+        files.push(...withZeroSegments(translated))
+        const rel = path.posix.join(atRoot ? '.' : pkgDir, body)
+        if (!neg) rels.set(rel, [atRoot ? 'workspaceFiles' : 'files', translated])
       }
     }
-    // Turbo 1's task `dotEnv`: package-relative `.env` files it hashes,
-    // gitignored as a rule, so read as files they keyed nothing (item 1032).
-    const dotEnv = (def as { dotEnv?: unknown }).dotEnv
-    if (Array.isArray(dotEnv) && dotEnv.some((f) => typeof f === 'string')) pkgDotenv = true
-
-    const outFiles: string[] = []
-    const zeroed = new Set<string>()
-    const wsOutFiles: string[] = []
-    for (const raw of def.outputs ?? []) {
-      // The first segment stays a literal (a route directory, item 667);
-      // the rest is Turbo's grammar: `dist/**/*.[cm]js` matched nothing, so
-      // a hit restored nothing (item 1031).
-      const cut = raw.indexOf('/')
-      const rest = cut < 0 ? null : minimatchToVx(raw.slice(cut + 1), raw.startsWith('!'))
-      if (cut >= 0 && rest === null) {
-        todos.push(
-          `output ${JSON.stringify(raw)}: glob syntax vx cannot take — task runs uncached; ` +
-            'declare the exact outputs in a vx.config to cache it',
-        )
-        return { name, todos, task, uses }
-      }
-      const mapped = cut < 0 ? raw : `${raw.slice(0, cut + 1)}${rest}`
-      // A `!` output takes a path back, as Turbo's does (A-44): Next's
-      // `.next/**` minus `!.next/cache/**` saved the cache and cleaned it
-      // before every run while vx outputs could not exclude.
-      const neg = mapped.startsWith('!') ? '!' : ''
-      const o = mapped.slice(neg.length)
-      const signed = (g: string) => {
-        const head = zeroSegments(g)
-        if (head === null) return [neg + g]
-        zeroed.add(neg + head)
-        return [neg + g, neg + head]
-      }
-      if (o.startsWith('$TURBO_ROOT$/')) {
-        wsOutFiles.push(...signed(o.slice('$TURBO_ROOT$/'.length)))
-      } else if (climbed(o) !== null) {
-        wsOutFiles.push(...signed(climbed(o)!))
-      } else if (o.startsWith('../')) {
-        todos.push(`output ${JSON.stringify(o)}: leaves the workspace — map manually`)
-      } else if (o.includes('$TURBO_ROOT$')) {
-        todos.push(
-          `output ${JSON.stringify(o)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
-            'prefix (→ cache.outputs.workspaceFiles) — map manually',
-        )
-      } else outFiles.push(...signed(o))
+    // Exclusions alone narrow every package file: core refuses a list
+    // with nothing to narrow, and that refusal failed the whole run
+    // (item 936). Every file is the widest reading, so it can cost a
+    // hit and never serve a stale one.
+    if (files.length > 0 && files.every((f) => typeof f === 'string' && f.startsWith('!'))) {
+      files.unshift('**/*')
     }
+  }
+  // Turbo 1's task `dotEnv`: package-relative `.env` files it hashes,
+  // gitignored as a rule, so read as files they keyed nothing (item 1032).
+  const dotEnv = (def as { dotEnv?: unknown }).dotEnv
+  if (Array.isArray(dotEnv) && dotEnv.some((f) => typeof f === 'string')) pkgDotenv = true
 
-    // With git's file list known, a wildcard-first output stays cached as
-    // nx() keeps it (owner, 2026-10-03; turbo() 2026-10-14): core never
-    // cleans a committed file. Turbo never cleans, so the untracked files
-    // it reaches are named. An X added for `X/**` is judged with it.
-    const wild = wildcardOutput(
-      outFiles.filter((g) => !zeroed.has(g)),
-      opts.tracked?.(pkgDir),
-      true,
-    )
-    if (wild !== undefined && opts.tracked === undefined) {
-      todos.push(wildcardTodo(wild))
+  const keyEnv = uniq([...global('env'), ...envNames], hidden('env'))
+
+  // Turbo hashes a root task over the whole repo; core stops a root
+  // project's own globs at every member (D-39), so as `files` a root
+  // `oxlint` over the repo replayed green after a member file broke.
+  // A root task's globs are the workspace's, outputs too.
+  if (atRoot) wsFiles.unshift(...files.splice(0))
+  const inputs: Record<string, unknown> = { files: withoutTakenBack(files) }
+  if (wsFiles.length > 0) inputs.workspaceFiles = withoutTakenBack(uniq(wsFiles, hidden('inputs')))
+  if (keyEnv.length > 0) inputs.env = keyEnv
+  if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
+  if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]
+  for (const rel of rels.keys()) if (!isLiteral(rel)) rels.delete(rel)
+  literals.tasks.push({ inputs, rels })
+  // Turbo keys every task on its inputs, cached or not, and a dependant
+  // folds that key: an uncached task's inputs still move its dependants.
+  task.inputs = inputs
+  if (!cacheEnabled) return { name, todos, task, uses }
+
+  const outFiles: string[] = []
+  const zeroed = new Set<string>()
+  const wsOutFiles: string[] = []
+  for (const raw of def.outputs ?? []) {
+    // The first segment stays a literal (a route directory, item 667);
+    // the rest is Turbo's grammar: `dist/**/*.[cm]js` matched nothing, so
+    // a hit restored nothing (item 1031).
+    const cut = raw.indexOf('/')
+    const rest = cut < 0 ? null : minimatchToVx(raw.slice(cut + 1), raw.startsWith('!'))
+    if (cut >= 0 && rest === null) {
+      todos.push(
+        `output ${JSON.stringify(raw)}: glob syntax vx cannot take — task runs uncached; ` +
+          'declare the exact outputs in a vx.config to cache it',
+      )
       return { name, todos, task, uses }
     }
-    if (wild !== undefined) todos.push(wildcardCleanTodo(wild))
-    // An output over the project's own package.json (trpc's builds list
-    // it: tsdown rewrites `exports`) is taken back and keeps the cache, as
-    // nx() does (owner, 2026-10-03). The build rewrites an input the key
-    // folds, so its identical rewrite counts as unchanged ('mutable').
-    const takeBacks = ownFileTakeBacks(outFiles, opts.ownConfig?.(pkgDir))
-    outFiles.push(...takeBacks)
-    const rewritesManifest = takeBacks.includes('!package.json')
-
-    const cacheEnv = uniq([...global('env'), ...envNames], hidden('env'))
-
-    // Turbo hashes a root task over the whole repo; core stops a root
-    // project's own globs at every member (D-39), so as `files` a root
-    // `oxlint` over the repo replayed green after a member file broke.
-    // A root task's globs are the workspace's, outputs too.
-    if (pkgDir === '' || pkgDir === '.') {
-      wsFiles.unshift(...files.splice(0))
-      wsOutFiles.unshift(...outFiles.splice(0))
+    const mapped = cut < 0 ? raw : `${raw.slice(0, cut + 1)}${rest}`
+    // A `!` output takes a path back, as Turbo's does (A-44): Next's
+    // `.next/**` minus `!.next/cache/**` saved the cache and cleaned it
+    // before every run while vx outputs could not exclude.
+    const neg = mapped.startsWith('!') ? '!' : ''
+    const o = mapped.slice(neg.length)
+    const signed = (g: string) => {
+      const head = zeroSegments(g)
+      if (head === null) return [neg + g]
+      zeroed.add(neg + head)
+      return [neg + g, neg + head]
     }
-    const inputs: Record<string, unknown> = { files: withoutTakenBack(files) }
-    if (wsFiles.length > 0)
-      inputs.workspaceFiles = withoutTakenBack(uniq(wsFiles, hidden('inputs')))
-    if (cacheEnv.length > 0) inputs.env = cacheEnv
-    if (pkgDotenv) inputs.runtime = [pkgDotenvDeep ? DOTENV_PROBE : DOTENV_PROBE_TOP]
-    if (wsDotenv.length > 0) inputs.workspaceRuntime = [dotenvGlobsProbe(wsDotenv) ?? DOTENV_PROBE]
-    for (const rel of rels.keys()) if (!isLiteral(rel)) rels.delete(rel)
-    literals.tasks.push({ inputs, rels })
-    const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
-    const ws = takingBack(wsOutFiles)
-    if (ws.length > 0) outputs.workspaceFiles = ws
-    task.cache = {
-      inputs,
-      outputs,
-      ...(rewritesManifest ? { inputStability: { strategy: 'mutable' } } : {}),
-    }
+    if (o.startsWith('$TURBO_ROOT$/')) {
+      wsOutFiles.push(...signed(o.slice('$TURBO_ROOT$/'.length)))
+    } else if (climbed(o) !== null) {
+      wsOutFiles.push(...signed(climbed(o)!))
+    } else if (o.startsWith('../')) {
+      todos.push(`output ${JSON.stringify(o)}: leaves the workspace — map manually`)
+    } else if (o.includes('$TURBO_ROOT$')) {
+      todos.push(
+        `output ${JSON.stringify(o)}: $TURBO_ROOT$ only maps as a '$TURBO_ROOT$/<path>' ` +
+          'prefix (→ cache.outputs.workspaceFiles) — map manually',
+      )
+    } else outFiles.push(...signed(o))
+  }
+
+  // With git's file list known, a wildcard-first output stays cached as
+  // nx() keeps it (owner, 2026-10-03; turbo() 2026-10-14): core never
+  // cleans a committed file. Turbo never cleans, so the untracked files
+  // it reaches are named. An X added for `X/**` is judged with it.
+  const wild = wildcardOutput(
+    outFiles.filter((g) => !zeroed.has(g)),
+    opts.tracked?.(pkgDir),
+    true,
+  )
+  if (wild !== undefined && opts.tracked === undefined) {
+    todos.push(wildcardTodo(wild))
+    return { name, todos, task, uses }
+  }
+  if (wild !== undefined) todos.push(wildcardCleanTodo(wild))
+  // An output over the project's own package.json (trpc's builds list
+  // it: tsdown rewrites `exports`) is taken back and keeps the cache, as
+  // nx() does (owner, 2026-10-03). The build rewrites an input the key
+  // folds, so its identical rewrite counts as unchanged ('mutable').
+  const takeBacks = ownFileTakeBacks(outFiles, opts.ownConfig?.(pkgDir))
+  outFiles.push(...takeBacks)
+  const rewritesManifest = takeBacks.includes('!package.json')
+
+  if (atRoot) wsOutFiles.unshift(...outFiles.splice(0))
+  const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
+  const ws = takingBack(wsOutFiles)
+  if (ws.length > 0) outputs.workspaceFiles = ws
+  task.cache = {
+    outputs,
+    ...(rewritesManifest ? { inputStability: { strategy: 'mutable' } } : {}),
   }
 
   return { name, todos, task, uses }

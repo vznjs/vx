@@ -74,7 +74,7 @@ describe('running from inside a workspace member', () => {
         tasks: {
           build: {
             exec: { command: 'mkdir -p out && cp src/in.txt out/o.txt' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
           },
         },
       }
@@ -90,7 +90,7 @@ describe('running from inside a workspace member', () => {
           build: {
             dependsOn: ['^build'],
             exec: { command: 'echo ran >> ran.log && mkdir -p out && cp src/in.txt out/o.txt' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
           },
         },
       }

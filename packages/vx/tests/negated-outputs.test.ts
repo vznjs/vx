@@ -23,8 +23,8 @@ import { workspaceWith } from './helpers/local-workspace.js'
 
 const BUILD = `export default { tasks: { build: {
   exec: { command: 'mkdir -p dist/sub && cp src/a.txt dist/a.js && echo g > dist/sub/gen.js && echo t > dist/scratch.tmp' },
+  inputs: { files: ['src/**', 'dist/keep.txt'] },
   cache: {
-    inputs: { files: ['src/**', 'dist/keep.txt'] },
     outputs: { files: ['dist/**', '!dist/keep.txt', '!dist/sub/fixture.txt', '!**/*.tmp'] },
   },
 } } }`
@@ -138,12 +138,12 @@ describe('a negated output', () => {
         `export default { tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.js' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '!dist/keep.txt', '!dist/sub/**'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**', '!dist/keep.txt', '!dist/sub/**'] } },
           },
           types: {
             dependsOn: ['build'],
             exec: { command: 'echo d > dist/a.d.ts && echo t > dist/types.tmp' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '!dist/keep.txt', '!dist/sub/**', '!**/*.tmp'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**', '!dist/keep.txt', '!dist/sub/**', '!**/*.tmp'] } },
           },
         } }`,
       )
@@ -165,11 +165,11 @@ describe('a negated output in the task graph', () => {
         `export default { tasks: {
           a: {
             exec: { command: 'mkdir -p dist && echo a > dist/a.js' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '!dist/keep.txt'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**', '!dist/keep.txt'] } },
           },
           b: {
             exec: { command: 'mkdir -p out && echo b > out/b.js' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**', '!out/keep.txt'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**', '!out/keep.txt'] } },
           },
         } }`,
       )
@@ -188,12 +188,12 @@ describe('a negated output in the task graph', () => {
         `export default { tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.js' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', '!dist/keep.txt', '!dist/sub/**'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**', '!dist/keep.txt', '!dist/sub/**'] } },
           },
           types: {
             dependsOn: ['build'],
             exec: { command: 'mkdir -p dist/types && echo d > dist/types/a.d.ts' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/types/**', '!dist/types/*.tmp'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/types/**', '!dist/types/*.tmp'] } },
           },
         } }`,
       )
@@ -221,8 +221,8 @@ describe('a negated workspace output', () => {
       path.join(app, 'vx.config.mjs'),
       `export default { tasks: { build: {
         exec: { command: 'mkdir -p ../../gen && cp src/a.txt ../../gen/x.txt' },
+        inputs: { files: ['src/**'], workspaceFiles: ['gen/keep.txt'] },
         cache: {
-          inputs: { files: ['src/**'], workspaceFiles: ['gen/keep.txt'] },
           outputs: { files: [], workspaceFiles: ['gen/**', '!gen/keep.txt'] },
         },
       } } }`,
@@ -252,7 +252,7 @@ describe('a remote artifact carrying a negated output', () => {
         path.join(app, 'vx.config.mjs'),
         `export default { tasks: { build: {
           exec: { command: 'mkdir -p out && echo built > out/a.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**', '!out/keep.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**', '!out/keep.txt'] } },
         } } }`,
       )
       const src = path.join(fx.root, '.entry')

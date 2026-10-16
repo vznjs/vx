@@ -36,8 +36,8 @@ interface WhyArgs {
  * `tests/why.test.ts`.
  */
 export const WHAT_TO_DO: Readonly<Record<string, string>> = {
-  file: 'an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files',
-  env: "the variable's value moved; one the task does not read belongs out of cache.inputs.env",
+  file: 'an edit re-runs by design; a file the task does not read belongs out of inputs.files',
+  env: "the variable's value moved; one the task does not read belongs out of inputs.env",
   runtime: 'the command printed something else; drop timestamps and paths from its output',
   'ws-runtime':
     'the workspace command printed something else; drop timestamps and paths from its output',
@@ -372,4 +372,4 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
 const ROOTS_SHOWN = 5
 
 const WRITTEN_TODO =
-  'a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of cache.inputs.files'
+  'a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files'

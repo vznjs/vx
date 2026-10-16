@@ -159,7 +159,7 @@ const REFUSE: ReadonlyArray<readonly [readonly string[], string]> = [
   ],
   [
     ['--global-deps', 'x'],
-    "--global-deps (turbo): declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)",
+    "--global-deps (turbo): declare them in `inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)",
   ],
   [
     ['--json'],

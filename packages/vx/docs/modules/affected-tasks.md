@@ -6,15 +6,15 @@
 (`affectedChanges`, affected.md) seeds tasks:
 
 - a group seeds nothing (it runs nothing), but for the default `build`;
-- an uncached task seeds when a changed path lies in its project
+- a task with no `inputs` seeds when a changed path lies in its project
   (`changes.paths`) or the project is reached whole, never only because
   another task of it declares a changed root file (`workspaceFiles`
   owners join `changes.projects` alone);
-- a cached task seeds when a changed path is one of its declared inputs
+- a task with `inputs`, cached or not, seeds when a changed path is one of them
   (`declaresInput`, inputs.md), or its `workspaceFiles` may reach into a
   changed nested repository (`changes.nested`, `workspaceFilesReachInto`), or when its project is reached whole: the
   diff named it whole, a changed path is `package.json` or a `vx.config.*`,
-  or no cached task of the project declares a changed path.
+  or no task of the project declares a changed path.
 
 A requested bare task runs when its `dependsOn` closure holds a seeded
 task, so a change reaches another project only along a task edge such as
@@ -26,7 +26,7 @@ and returns `empty: 'none-affected'` when nothing is left. The closure
 walk keeps its own stack, so a chain as deep as the builder takes
 (50,000) is walked, where a recursion per edge threw `RangeError`.
 
-A cached task's `workspaceFiles` is asked of every node, not only of the
+A task's `workspaceFiles` is asked of every node, not only of the
 changed projects' (whose owners the selection found from the staged
 configs), so an input a `graph` hook gave it counts.
 

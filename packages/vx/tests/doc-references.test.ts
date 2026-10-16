@@ -230,10 +230,10 @@ describe("execution.md's workspace-config step names every field", () => {
   })
 })
 
-// task-graph.md said a `cache.inputs.tasks` name that resolves to no
+// task-graph.md said a `inputs.tasks` name that resolves to no
 // upstream is "silently filtered out"; the schema refuses an exact one
 // (item 994), and only a pattern stays silent (J2-67).
-describe("task-graph.md's account of cache.inputs.tasks misses is the schema's", () => {
+describe("task-graph.md's account of inputs.tasks misses is the schema's", () => {
   it('names the refusal of an exact name, and only patterns as silent', () => {
     const schema = readFileSync(path.join(pkg, 'src', 'workspace', 'config-schema.ts'), 'utf8')
     expect(schema).toContain('names no task in ${task}.dependsOn')

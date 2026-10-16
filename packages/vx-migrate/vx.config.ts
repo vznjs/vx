@@ -37,7 +37,8 @@ export default defineProject({
     source: {
       description: 'the source dependants import: a key, not a build',
       exec: { command: 'true', sandbox: { allow: { read: [] } } },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] },
+      cache: { outputs: { files: [] } },
     },
 
     ci: {
@@ -55,10 +56,10 @@ export default defineProject({
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
+      inputs: {
+        files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+      },
       cache: {
-        inputs: {
-          files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
-        },
         outputs: { files: [] },
       },
     },
@@ -70,10 +71,10 @@ export default defineProject({
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
+      inputs: {
+        files: ['**/*'],
+      },
       cache: {
-        inputs: {
-          files: ['**/*'],
-        },
         outputs: { files: [] },
       },
     },
@@ -102,11 +103,11 @@ export default defineProject({
         sandbox: SUITE_SANDBOX,
       },
       dependsOn: ['install'],
+      inputs: {
+        files: ['src/**', 'tests/**', 'package.json'],
+        env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],
+      },
       cache: {
-        inputs: {
-          files: ['src/**', 'tests/**', 'package.json'],
-          env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],
-        },
         outputs: { files: [] },
       },
     },

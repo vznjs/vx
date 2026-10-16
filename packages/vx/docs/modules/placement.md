@@ -51,7 +51,7 @@ export const UNPLACED_EXECUTOR: TaskExecutor
   sandboxed task and its dependants (the sandbox is this machine's
   machinery; a boundary "verified" where it is not enforced passes
   vacuously), `exec.remote: false`, or a task whose key folds a runtime
-  probe (`cache.inputs.runtime` / `workspaceRuntime`: this machine's
+  probe (`inputs.runtime` / `workspaceRuntime`: this machine's
   answer, which a worker's own runtime may not match; its dependants stay
   free, C-2). Pinned tasks never reach a remote
   executor;

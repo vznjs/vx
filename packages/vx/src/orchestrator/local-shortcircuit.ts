@@ -232,7 +232,7 @@ export function restoreTierExclusions(
   const dependants = new Map<string, string[]>()
   for (const node of nodes.values()) {
     const dir = relPosix(workspaceRoot, node.projectDir)
-    const wsInputs = node.config.cache?.inputs?.workspaceFiles ?? []
+    const wsInputs = node.config.inputs?.workspaceFiles ?? []
     if (reaches(dir) || (wsInputs.length > 0 && workspaceInputsReach(wsInputs, prefixes))) {
       out.add(node.id)
     }

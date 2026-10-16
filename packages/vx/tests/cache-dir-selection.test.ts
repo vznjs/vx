@@ -25,7 +25,7 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'echo built' },
-        cache: { inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, cache: { outputs: { files: [] } },
       },
     },
   }
@@ -239,7 +239,7 @@ describe('two checkouts of one commit sharing --cache-dir', () => {
               tasks: {
                 build: {
                   exec: { command: 'mkdir -p dist && cat src/in.txt > dist/out.txt' },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
                 },
               },
             }

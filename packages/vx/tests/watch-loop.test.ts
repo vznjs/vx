@@ -153,11 +153,11 @@ describe('vx watch loop (e2e)', () => {
       `export default { tasks: {
         build: {
           exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
         },
         format: {
           exec: { command: 'true' },
-          cache: { inputs: { files: ['package.json'] }, outputs: { files: ['src/**'] } },
+          inputs: { files: ['package.json'] }, cache: { outputs: { files: ['src/**'] } },
         },
       } }\n`,
     )
@@ -600,7 +600,7 @@ describe('vx watch in a single-project repository (e2e)', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${log}' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
             },
           },
         }`,

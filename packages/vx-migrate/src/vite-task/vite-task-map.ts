@@ -382,7 +382,7 @@ export async function mapViteTaskWorkspace(
     ([e, n]) =>
       `env ${JSON.stringify(e)}: the configs list the names the files of each task's package and its ` +
       `workspace dependencies spell (${n} task${n === 1 ? '' : 's'}) — add any other a task reads to ` +
-      'cache.inputs.env and exec.env.passThrough',
+      'inputs.env and exec.env.passThrough',
   )
   return { projects, notes }
 }
@@ -392,7 +392,7 @@ function autoTodo(what: string, known?: Record<string, unknown>): string {
   const have = known === undefined ? '' : ` (declared so far: \`${JSON.stringify(known)}\`)`
   return (
     `cache: Vite Task traced this task's ${what} and vx infers none — add ` +
-    `\`cache: { inputs: { files: [...] }, outputs: { files: [...] } }\` with the real ones${have}; ` +
+    `\`inputs: { files: [...] }, cache: { outputs: { files: [...] } }\` with the real ones${have}; ` +
     'without it the task always runs'
   )
 }
@@ -460,6 +460,10 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
     todos.push(autoTodo(what, Object.keys(known).length > 0 ? known : undefined))
     return { name, todos, task }
   }
+  // Declared inputs key the task cached or not: a dependant folds them.
+  const inputLists: Record<string, unknown> = { ...inputs.lists }
+  if (env.length > 0) inputLists['env'] = env
+  task['inputs'] = inputLists
   if (outputs.uncached) return { name, todos, task }
 
   const outFiles = outputs.lists['files'] as string[]
@@ -473,9 +477,7 @@ function mapTask(name: string, def: TaskDef, ctx: TaskCtx): GeneratedTask {
     todos.push(ownFileTodo(ownFile))
     return { name, todos, task }
   }
-  const inputLists: Record<string, unknown> = { ...inputs.lists }
-  if (env.length > 0) inputLists['env'] = env
-  task['cache'] = { inputs: inputLists, outputs: outputs.lists }
+  task['cache'] = { outputs: outputs.lists }
   return { name, todos, task }
 }
 
@@ -510,7 +512,7 @@ function envNames(
     }
     if (/[*?[\]{}=\0]/.test(e) || e === '') {
       todos.push(
-        `${field} ${JSON.stringify(e)}: vx takes exact env names — list the ones the task reads in exec.env.passThrough${field === 'cache.env' ? ' and cache.inputs.env' : ''}`,
+        `${field} ${JSON.stringify(e)}: vx takes exact env names — list the ones the task reads in exec.env.passThrough${field === 'cache.env' ? ' and inputs.env' : ''}`,
       )
       continue
     }

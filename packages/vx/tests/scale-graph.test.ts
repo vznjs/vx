@@ -32,12 +32,12 @@ const CONFIG = `export default {
   tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cp src/index.js dist/out.js' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'node -e "process.exit(0)"' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
     lint: { dependsOn: ['^build'] },
   },

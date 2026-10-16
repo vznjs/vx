@@ -898,17 +898,28 @@ function buildTask(
     const gens = target.syncGenerators.map((g) => JSON.stringify(g)).join(', ')
     opts.syncTasks.set(gens, (opts.syncTasks.get(gens) ?? 0) + 1)
   }
-  if (cacheEnabled && mapped !== null) {
+  // vx keys an uncached task too, and a dependant folds that key. Its own
+  // inputs are enough there: Nx never folds a dependency's hash, so what a
+  // dependant reads upstream its own `^` inputs already name, and twins
+  // for the uncached one's `^` inputs would key nothing new.
+  if (mapped !== null) {
     // No `inputs` is Nx's `default` and `^default`: the project's
     // `default` named input (its whole tree unless declared) and each
     // dependency's. No gap to report (487 lines per run on refine,
     // 2026-09-22).
     if (target.inputs === undefined)
-      expandNxInputs(['default', '^default'], upstream.namedOf(nodeName), at, inputs, todos)
+      expandNxInputs(
+        cacheEnabled ? ['default', '^default'] : ['default'],
+        upstream.namedOf(nodeName),
+        at,
+        inputs,
+        todos,
+      )
     if (inputs.files.length === 0 && target.inputs === undefined) inputs.files.push('**/*')
     // Before the env block: a dependency's `{ env }` passes through too.
-    for (const edge of upstream.resolve(nodeName, inputs, todos))
-      if (!deps.includes(edge)) deps.push(edge)
+    if (cacheEnabled)
+      for (const edge of upstream.resolve(nodeName, inputs, todos))
+        if (!deps.includes(edge)) deps.push(edge)
   }
 
   if (mapped === null) {
@@ -957,18 +968,19 @@ function buildTask(
   }
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task.dependsOn = deps
+  const keyed: Record<string, unknown> = { files: withoutTakenBack(inputs.files) }
+  if (inputs.wsFiles.length > 0) keyed.workspaceFiles = withoutTakenBack(inputs.wsFiles)
+  if (inputs.envNames.length > 0) keyed.env = inputs.envNames
+  // The `.env` files the task loads are inputs, and gitignored ones
+  // (`.env.local`) are invisible to a glob: their bytes, read per run.
+  // Their paths are project-relative: `runtime`, in the project dir.
+  if (mapped.envInputs.length > 0) keyed.runtime = [envProbe(mapped.envInputs)]
+  if (inputs.runtimeCmds.length > 0) keyed.workspaceRuntime = inputs.runtimeCmds
+  task.inputs = keyed
   if (cacheEnabled) {
-    const cacheInputs: Record<string, unknown> = { files: withoutTakenBack(inputs.files) }
-    if (inputs.wsFiles.length > 0) cacheInputs.workspaceFiles = withoutTakenBack(inputs.wsFiles)
-    if (inputs.envNames.length > 0) cacheInputs.env = inputs.envNames
-    // The `.env` files the task loads are inputs, and gitignored ones
-    // (`.env.local`) are invisible to a glob: their bytes, read per run.
-    // Their paths are project-relative: `runtime`, in the project dir.
-    if (mapped.envInputs.length > 0) cacheInputs.runtime = [envProbe(mapped.envInputs)]
-    if (inputs.runtimeCmds.length > 0) cacheInputs.workspaceRuntime = inputs.runtimeCmds
     const outputs: Record<string, unknown> = { files: outFiles }
     if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
-    task.cache = { inputs: cacheInputs, outputs }
+    task.cache = { outputs }
   }
 
   return { name: variant.name, todos, task }
@@ -1211,7 +1223,7 @@ function argsTodo(options: Record<string, unknown>, todos: string[]): void {
 }
 
 /**
- * Prints each file's name and bytes, for `cache.inputs.runtime`: the name
+ * Prints each file's name and bytes, for `inputs.runtime`: the name
  * keeps a line moved from one file to the next (a different precedence) a
  * different key.
  */

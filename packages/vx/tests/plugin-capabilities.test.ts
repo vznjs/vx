@@ -622,7 +622,7 @@ describe('executor capability — end-to-end via run()', () => {
         path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
         `export default { tasks: { hello: {
            exec: { command: 'echo hi > out.txt' },
-           cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
+           inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out.txt'] } },
          } } }`,
       )
       await Bun.write(
@@ -680,7 +680,7 @@ describe('executor capability — end-to-end via run()', () => {
         path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
         `export default { tasks: { hello: {
            exec: { command: 'echo hi > out.txt' },
-           cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
+           inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out.txt'] } },
          } } }`,
       )
       const remote = (name: string) =>
@@ -733,13 +733,13 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            codegen: {
              exec: { command: 'echo gen > gen.txt' },
-             cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['gen.txt'] } },
+             inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['gen.txt'] } },
            },
            hello: {
              exec: { command: 'echo hi > out.txt' },
              dependsOn: ['codegen'],
+             inputs: { files: ['src.txt'], env: ['VX_TEST_INPUT'], runtime: ['echo tool-1.2'], tasks: ['codegen'] },
              cache: {
-               inputs: { files: ['src.txt'], env: ['VX_TEST_INPUT'], runtime: ['echo tool-1.2'], tasks: ['codegen'] },
                outputs: { files: ['out.txt'] },
              },
            },
@@ -1130,11 +1130,11 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo i', remote: 'only' },
-             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
            },
            hello: {
              exec: { command: 'echo hi' },
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
            },
          } }`,
       )
@@ -1182,7 +1182,7 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo i', remote: 'only' },
-             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
            },
          } }`,
       )
@@ -1287,7 +1287,7 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo i', remote: 'only' },
-             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
            },
            hello: { exec: { command: 'echo hi' } },
          } }`,
@@ -1322,12 +1322,12 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo ran > tombstone.txt && exit 1', remote: 'only' },
-             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
            },
            build: {
              exec: { command: 'cat deps/ambient.txt > out.txt' },
              dependsOn: ['install'],
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
            },
          } }`,
       )
@@ -1374,12 +1374,12 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'exit 1', remote: 'only' },
-             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
            },
            build: {
              exec: { command: 'cat deps/ambient.txt > out.txt' },
              dependsOn: ['install'],
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
            },
          } }`,
       )
@@ -1419,12 +1419,12 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo ran > tombstone.txt', remote: 'only' },
-             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
            },
            build: {
              exec: { command: 'echo b > out.txt' },
              dependsOn: ['install'],
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
            },
          } }`,
       )
@@ -1460,7 +1460,7 @@ describe('executor capability — end-to-end via run()', () => {
         `export default { tasks: {
            install: {
              exec: { command: 'echo remote-made > deps/lib.txt', remote: 'only' },
-             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['deps/**'] } },
+             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['deps/**'] } },
            },
          } }`,
       )

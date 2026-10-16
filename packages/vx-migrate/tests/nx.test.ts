@@ -282,7 +282,7 @@ describe('nx()', () => {
       expect(app.config.exec?.command).toBe(
         `nx-exec @acme/compile:run --project app --target build --configuration production --options '{"writeFile":"dist/app.js","mode":"prod"}'`,
       )
-      expect(app.config.cache?.inputs.files).toEqual(['src/**/*'])
+      expect(app.config.inputs?.files).toEqual(['src/**/*'])
       expect(app.config.cache?.outputs.files).toEqual(['dist'])
       const lint = plan.tasks.find((t) => t.node.id === 'lib#lint')!.node
       expect(lint.config.exec?.command).toBe('echo lint-ran > lint.log')
@@ -864,7 +864,7 @@ describe('nx()', () => {
           'nx-env --dotenv .env.showenv --dotenv .env --dotenv ../../.env.local --dotenv ../../.env -- ' +
             `'mkdir -p out && printf "%s|%s|%s" "$A" "$B" "$C" > out/env.txt'`,
         )
-        expect(config.cache?.inputs.runtime).toEqual([
+        expect(config.inputs?.runtime).toEqual([
           'for f in .env.showenv .env ../../.env.local ../../.env; do echo "$f"; cat -- "$f" 2>/dev/null; echo; done',
         ])
         const opts = { cwd: root, tasks: ['showenv'], log: silent(), handleSignals: false }
@@ -1024,7 +1024,7 @@ describe('nx()', () => {
           expect(config.exec?.command).toBe(
             'mkdir -p out && printf "%s|%s|%s" "$A" "$B" "$C" > out/env.txt',
           )
-          expect(config.cache?.inputs.runtime).toBeUndefined()
+          expect(config.inputs?.runtime).toBeUndefined()
         } finally {
           if (before === undefined) delete process.env['NX_LOAD_DOT_ENV_FILES']
           else process.env['NX_LOAD_DOT_ENV_FILES'] = before
@@ -1359,7 +1359,7 @@ describe('nx(): the mapping cache', () => {
       const inputs = async () =>
         (await planRun({ cwd: root, tasks: ['lib#build'], log: silent() })).tasks.find(
           (t) => t.node.id === 'lib#build',
-        )!.node.config.cache?.inputs.files
+        )!.node.config.inputs!.files
       expect(await inputs()).toEqual(['src/**/*'])
       await writeFile(
         path.join(root, 'base.json'),

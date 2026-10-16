@@ -1366,7 +1366,7 @@ describe('defaultAffectedBase', () => {
 // workspaceFiles widening
 // --------------------------------------------------------------------------
 //
-// A workspace-root-anchored `cache.inputs.workspaceFiles` glob reaches files
+// A workspace-root-anchored `inputs.workspaceFiles` glob reaches files
 // outside the declaring project, so mapping changed paths to project dirs
 // cannot see them: `--affected` selected nothing for a change that re-keyed
 // the task. Answering needs the resolved configs, which selection runs
@@ -1377,7 +1377,7 @@ describe('defaultAffectedBase', () => {
 // `--affected` asks the key's own question (`declaresInput`) of a
 // changed root path: a copy of it drifted twice (item 445, X-8).
 const workspaceGlobsMatch = (globs: string[], rel: string): boolean =>
-  declaresInput({ inputs: { files: [], workspaceFiles: globs }, outputs: { files: [] } }, null, rel)
+  declaresInput({ inputs: { files: [], workspaceFiles: globs } }, null, rel)
 
 describe('a workspaceFiles glob read for --affected', () => {
   it('matches a positive glob', () => {
@@ -1878,8 +1878,8 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
       `${PLUGIN_IMPORT}export default { plugins: [${packagesSource()}, ${pluginSource(
         'gen',
         `{ project(config, ctx) {
-        if (ctx.name === 'bare') config.tasks.build = { exec: { command: 'true' }, cache: {
-          inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: [] } } }
+        if (ctx.name === 'bare') config.tasks.build = { exec: { command: 'true' }, inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, cache: {
+ outputs: { files: [] } } }
       } }`,
       )}] }\n`,
     )
@@ -1953,8 +1953,8 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
       tasks: {
         gen: {
           exec: { command: 'true' },
+          inputs: { files: [], workspaceFiles: ['shared/**'] },
           cache: {
-            inputs: { files: [], workspaceFiles: ['shared/**'] },
             outputs: { files: [], workspaceFiles: ['shared/gen/**'] },
           },
         },

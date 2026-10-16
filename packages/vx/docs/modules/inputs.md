@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Turn a task's declared `cache.inputs` into concrete data the cache key
+Turn a task's declared `inputs` into concrete data the cache key
 can hash:
 
 - a sorted list of absolute file paths whose contents will be hashed
 - a sorted list of `[envName, hostValue]` pairs
-- sorted `[command, output]` pairs for `cache.inputs.runtime` and
+- sorted `[command, output]` pairs for `inputs.runtime` and
   `workspaceRuntime` (each command run once per run through a memo)
 
 Plus the helpers that resolve and clean `cache.outputs.files` and
@@ -50,7 +50,7 @@ export interface ResolveInputsArgs {
   projectDir: string
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
-  inputs: CacheInputs | undefined
+  inputs: InputsConfig | undefined
   ownOutputs: readonly string[] // project-relative globs to exclude
   ownWorkspaceOutputs?: readonly string[] // root-relative `outputs.workspaceFiles` to exclude from `inputs.workspaceFiles`
   nestedProjectDirs: string[] // absolute dirs of nested projects
@@ -180,7 +180,7 @@ export function stopRuntimeProbes(...memos: readonly Map<string, Promise<string>
 
 The candidate file set comes from git — `git ls-files --cached
 --others --exclude-standard` in the project directory — and the user's
-`cache.inputs.files` globs are applied as a filter on top. There is no
+`inputs.files` globs are applied as a filter on top. There is no
 other walker: a project outside a git work tree is a `UserError`
 ("vx requires git").
 
@@ -194,8 +194,8 @@ other walker: a project outside a git work tree is a `UserError`
    embedded repository, which the workspace's git holds as one gitlink
    — is enumerated by its own git, whether a project sits inside it or
    it sits inside a project.
-2. **Positive globs** — `cache.inputs.files` strings without `!`.
-   The default when `cache.inputs.files` is undefined is `['**/*']`.
+2. **Positive globs** — `inputs.files` strings without `!`.
+   The default when `inputs.files` is undefined is `['**/*']`.
    Each is normalized (a leading `./`, inner `./` segments, doubled
    slashes and a trailing slash) and checked against the candidate
    set via `Bun.Glob.match`. A literal entry — no glob character —
@@ -260,7 +260,7 @@ listed file and was not itself created since the listing.
 
 ## Env resolution rules
 
-Listed `cache.inputs.env` names are looked up in `envSource` (the
+Listed `inputs.env` names are looked up in `envSource` (the
 host's `process.env`):
 
 - Set names → `[name, value]` pair.
@@ -317,7 +317,7 @@ error.
   `orchestrator/upstream.ts`'s `filterUpstreamHashes`).
 - Doesn't support workspace-relative globs in `inputs.files` —
   intentionally scoped per-project. For workspace-root-anchored files use
-  `cache.inputs.workspaceFiles` (root-relative globs); see
+  `inputs.workspaceFiles` (root-relative globs); see
   [`../schema.md`](../schema.md). A workspace-level `globalInputs` field is
   an owner-rejected non-goal.
 - Doesn't follow symlinks. Inputs come from git, which reports a link as
@@ -370,7 +370,7 @@ Possible directions:
   the observed set becoming the next run's inputs): owner-rejected
   (CLAUDE.md § Rejected). Inputs stay declared. A task that wants its
   reads confined to what it declared asks for that with `exec.sandbox`.
-- **Cross-project inputs** exist as `cache.inputs.workspaceFiles`
+- **Cross-project inputs** exist as `inputs.workspaceFiles`
   (root-relative globs, which may reach into another project's
   directory) and, for outputs of an upstream task, through `dependsOn`
   folding the upstream INPUT key. A per-project `{ project, files }`

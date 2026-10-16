@@ -23,7 +23,7 @@ it(
           tasks: {
             gen: {
               exec: { command: 'mkdir -p out && echo x > out/x' },
-              cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out/**', '.vx/**'] } },
+              inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out/**', '.vx/**'] } },
             },
           },
         }\n`,

@@ -39,7 +39,7 @@ async function lastRun(root: string): Promise<Map<string, LastTask>> {
 
 // A group is not recorded; its key reaches the record through a cached
 // dependant's, which folds it.
-const CACHED = `exec: { command: 'true' }, cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } }`
+const CACHED = `exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } }`
 
 describe('an unkeyed group key is derived once', () => {
   let root: string
@@ -57,7 +57,7 @@ describe('an unkeyed group key is derived once', () => {
       `
         export default { tasks: {
           t1: { ${CACHED} },
-          t2: { exec: { command: 'true' } },
+          t2: { exec: { command: 'true' }, inputs: { files: [] } },
           g: { dependsOn: ['t1', 't2'] },
           d: { ${CACHED}, dependsOn: ['g'] },
         } }
@@ -73,19 +73,16 @@ describe('an unkeyed group key is derived once', () => {
   }, 30_000)
 
   it('follows an upstream whose key moved after the up-front pass', async () => {
-    // c#w's output lands in c, so c#r's key (its whole project) taken up
-    // front misses made.txt; the group must fold the live one, or c#d's
+    // c#w writes made.txt into c, so c#r's key (its whole project) taken up
+    // front misses it; w declares no outputs, so the overlap rule allows it; the group must fold the live one, or c#d's
     // first key is one no later run derives and the second run misses.
     await addProject(
       root,
       'c',
       `
         export default { tasks: {
-          w: {
-            exec: { command: 'echo made > made.txt' },
-            cache: { inputs: { files: ['package.json'] }, outputs: { files: ['made.txt'] } },
-          },
-          r: { exec: { command: 'true' }, dependsOn: ['w'] },
+          w: { exec: { command: 'echo made > made.txt' }, inputs: { files: ['package.json'] } },
+          r: { exec: { command: 'true' }, inputs: { files: ['**'] }, dependsOn: ['w'] },
           g: { dependsOn: ['r'] },
           d: { ${CACHED}, dependsOn: ['g'] },
         } }

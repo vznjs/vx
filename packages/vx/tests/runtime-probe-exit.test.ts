@@ -1,4 +1,4 @@
-// A `cache.inputs.runtime` probe still running when vx exits is taken down
+// A `inputs.runtime` probe still running when vx exits is taken down
 // with its tree (A-9). The probe ran in vx's own group with nothing listing
 // it: a Ctrl-C during key derivation, while `sleep` (standing for a hung
 // `git` or `node -e …`) still ran, left the probe's shell and its child to
@@ -30,11 +30,11 @@ it('a runtime probe running when vx exits on SIGINT is gone with its tree', asyn
         tasks: {
           build: {
             exec: { command: 'true' },
+            inputs: {
+              files: ['**'],
+              runtime: ['sleep 300 & echo "$$ $!" > probe.pids; wait'],
+            },
             cache: {
-              inputs: {
-                files: ['**'],
-                runtime: ['sleep 300 & echo "$$ $!" > probe.pids; wait'],
-              },
               outputs: { files: [] },
             },
           },

@@ -23,7 +23,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type {
   CacheConfig,
-  CacheInputs,
+  InputsConfig,
   CacheOutputs,
   CacheSettings,
   RunSettings,
@@ -92,7 +92,13 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
   },
   project: {
     '': keys<ProjectConfig>({ name: true, tags: true, tasks: true }),
-    'tasks.*': keys<TaskConfig>({ description: true, exec: true, dependsOn: true, cache: true }),
+    'tasks.*': keys<TaskConfig>({
+      description: true,
+      exec: true,
+      dependsOn: true,
+      inputs: true,
+      cache: true,
+    }),
     'tasks.*.exec': keys<ExecConfig>({
       command: true,
       remote: true,
@@ -130,8 +136,8 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       systemInfo: true,
     }),
     'tasks.*.exec.sandbox.deny': keys<SandboxDenials>({ network: true }),
-    'tasks.*.cache': keys<CacheConfig>({ inputs: true, outputs: true, inputStability: true }),
-    'tasks.*.cache.inputs': keys<CacheInputs>({
+    'tasks.*.cache': keys<CacheConfig>({ outputs: true, inputStability: true }),
+    'tasks.*.inputs': keys<InputsConfig>({
       files: true,
       workspaceFiles: true,
       env: true,
@@ -224,15 +230,15 @@ function projectSeed(): Record<string, unknown> {
       i: { exec: { command: 'true', interactive: true } },
       c: {
         exec: { command: 'true', retries: 1 },
+        inputs: {
+          files: ['src/**'],
+          workspaceFiles: ['tsconfig.json'],
+          env: ['A'],
+          tasks: [],
+          runtime: ['node -v'],
+          workspaceRuntime: ['bun -v'],
+        },
         cache: {
-          inputs: {
-            files: ['src/**'],
-            workspaceFiles: ['tsconfig.json'],
-            env: ['A'],
-            tasks: [],
-            runtime: ['node -v'],
-            workspaceRuntime: ['bun -v'],
-          },
           outputs: { files: ['dist/**'], workspaceFiles: ['out/**'], clean: false },
           inputStability: { strategy: 'mutable', severity: 'error' },
         },
@@ -240,7 +246,8 @@ function projectSeed(): Record<string, unknown> {
       g: { dependsOn: ['t'] },
       r: {
         exec: { command: 'true', remote: 'only' },
-        cache: { inputs: { files: [] }, outputs: { files: [] } },
+        inputs: { files: [] },
+        cache: { outputs: { files: [] } },
       },
     },
   }
@@ -434,7 +441,7 @@ const unitName = (u: Unit): string =>
  * The fields of a task and of its `exec`, each with every distinct value
  * the seed tasks give it, plus `exec` taken away. Whole blocks, not their
  * leaves: a cross-field rule is between blocks (`persistent` and `cache`),
- * and a leaf alone (`cache.inputs.env`) is refused by its own block.
+ * and a leaf alone (`inputs.env`) is refused by its own block.
  */
 function taskUnits(): Unit[] {
   const out = new Map<string, Unit>([['exec=<absent>', { path: ['exec'], value: ABSENT }]])

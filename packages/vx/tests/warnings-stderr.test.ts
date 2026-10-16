@@ -32,7 +32,7 @@ it(
         config: `export default { tasks: {
           build: {
             exec: { command: 'true' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
           },
         } }`,
         files: { 'src/a.ts': 'x' },

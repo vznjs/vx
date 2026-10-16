@@ -29,7 +29,7 @@ beforeAll(async () => {
   root = await makeWorkspace({ prefix: 'vx-repeat-' })
   await addProject(root, 'a', {
     config: `export default { tasks: {
-      build: { exec: { command: 'echo b > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } },
+      build: { exec: { command: 'echo b > out.txt' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } },
       srv: { dependsOn: ['build'], exec: { command: 'echo READY; exec sleep 30', persistent: { readyWhen: 'READY' } } },
       t: { dependsOn: ['srv'], exec: { command: 'true' } },
       sb: { exec: { command: 'true', sandbox: {} } },

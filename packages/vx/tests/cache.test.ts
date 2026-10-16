@@ -449,7 +449,7 @@ describe('Cache.key', () => {
   })
 
   it('is stable when inputs / env / upstream are all empty', async () => {
-    // Tasks with no file inputs (lint with `cache.inputs.files: []`) still
+    // Tasks with no file inputs (lint with `inputs.files: []`) still
     // get a deterministic key. Two runs in succession should match.
     const a = await cache.key({ ...baseInput() })
     const b = await cache.key({ ...baseInput() })
@@ -3275,7 +3275,7 @@ describe('an artifact on disk with no index row, through a run', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }

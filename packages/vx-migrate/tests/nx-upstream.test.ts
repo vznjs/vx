@@ -76,8 +76,7 @@ async function graph(opts: {
   return new Map(m.projects.flatMap((p) => p.tasks.map((t) => [`${p.name}#${t.name}`, t])))
 }
 
-const inputsOf = (t: GeneratedTask | undefined) =>
-  (t?.task?.['cache'] as { inputs: unknown } | undefined)?.inputs
+const inputsOf = (t: GeneratedTask | undefined) => t?.task?.['inputs']
 const depsOf = (t: GeneratedTask | undefined) => t?.task?.['dependsOn']
 
 describe('nx-upstream: what the sweep found unheld', () => {

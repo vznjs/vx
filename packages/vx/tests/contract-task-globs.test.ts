@@ -1,5 +1,5 @@
 // Task-glob semantics are a 1.0 contract surface (docs/design/versioning-1.0.md):
-// which paths a `cache.inputs.files` or `cache.outputs.files` pattern
+// which paths a `inputs.files` or `cache.outputs.files` pattern
 // selects. The answer is core's resolver over `Bun.Glob`, so it can move
 // without a line of vx changing: a Bun upgrade that reads `[`, a brace or a
 // dotfile differently re-keys or un-keys files, and a file dropped from a

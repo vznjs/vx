@@ -112,7 +112,7 @@ describe('a run on an empty local cache', () => {
       await addProject(ws, 'a', {
         config: `export default { tasks: { build: {
   exec: { command: 'echo a > out.txt' },
-  cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
+  inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out.txt'] } },
 } } }
 `,
       })

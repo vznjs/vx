@@ -44,8 +44,8 @@ same plugin key material a full run gives it). Keys are derived over
 the whole graph as it stands at the start of the run, once per task: a
 dropped task's own dependencies, scheduled or not, fold theirs, and a
 scheduled task that is itself a dropped dependency folds what IT lost.
-A persistent task is keyed as a task with no `cache`, as on the live
-path; a group rolls its members up (`computeGroupKey`).
+A persistent task is keyed as a task with no `cache` (on its `inputs`,
+or keyless), as on the live path; a group rolls its members up (`computeGroupKey`).
 
 The walk is a post-order on an explicit stack: each task's key promise
 is made after its dependencies' promises exist, so nothing recurses
@@ -64,11 +64,11 @@ outputs on disk may predate those inputs, and a save would file stale
 bytes under the key the next full run derives — a stale hit that run
 would replay. `excludedTaint` names the tasks whose key folds a
 dropped key (a group folds all of its dependencies; an exec task what
-its `cache.inputs.tasks` selects), `run()` seeds the taint tracker with
+its `inputs.tasks` selects), `run()` seeds the taint tracker with
 them (`admission.md`), and the save is withheld for them and everything
 built on them. A read is still correct: an entry under the full key was
 built by a run whose dependency matched it. A task with
-`cache.inputs.tasks: []` folds none and saves as usual. `run()` says
+`inputs.tasks: []` folds none and saves as usual. `run()` says
 once how many cacheable tasks the taint reaches; a persistent task or
 one with no `cache` saves nothing anyway and makes no line.
 

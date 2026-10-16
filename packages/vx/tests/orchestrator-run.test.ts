@@ -49,7 +49,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               build: {
                 exec: { command: "echo only-build" },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -72,7 +72,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -104,7 +104,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
                 exec: {
                   command: "node -e 'process.stdout.write(\\"OUT\\\\n\\"); process.stderr.write(\\"ERR\\\\n\\")'",
                 },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -141,7 +141,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
                 exec: {
                   command: "node -e 'for (let i = 0; i < ${lines}; i++) process.stdout.write(\\"line-\\" + i + \\"\\\\n\\")'",
                 },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -189,8 +189,8 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               build: {
                 exec: { command: "cat src/x.txt > dist.txt" },
+                inputs: { files: ['**/*'], env: ['API_URL'] },
                 cache: {
-                  inputs: { files: ['**/*'], env: ['API_URL'] },
                   outputs: { files: ['dist.txt'] },
                 },
               },
@@ -206,7 +206,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: ['^build'],
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -241,11 +241,11 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
     'a TRACKING-ONLY env input: the key moves on a value the command cannot read',
     async () => {
       // The direction the suite was missing. `orchestrator.test.ts` §
-      // "cache.inputs.env affects the cache key; exec.env.passThrough alone
+      // "inputs.env affects the cache key; exec.env.passThrough alone
       // does not" pins the common pairing, with both names ALSO passed
       // through; Turbo parity pins the same asymmetry against turbo.json.
       // Neither covers the shape schema.md calls "legal but rare": a name in
-      // `cache.inputs.env` and NOT in `exec.env.passThrough`, where the child
+      // `inputs.env` and NOT in `exec.env.passThrough`, where the child
       // environment is isolated so "the key varies on a value the command
       // never sees" — a miss that re-runs and reproduces identical bytes.
       const dir = await addProject(fixture.root, 'envtrack', {
@@ -255,8 +255,8 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               build: {
                 exec: { command: 'printf "%s" "[$VX_T_TRACKED]" > out.txt' },
+                inputs: { files: ['src/**'], env: ['VX_T_TRACKED'] },
                 cache: {
-                  inputs: { files: ['src/**'], env: ['VX_T_TRACKED'] },
                   outputs: { files: ['out.txt'] },
                 },
               },
@@ -307,7 +307,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -354,8 +354,8 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
                   command: ${JSON.stringify(STAMP_CMD)},
                   env: { passThrough: ['ONE'] },
                 },
+                inputs: { files: ['src/**'] },
                 cache: {
-                  inputs: { files: ['src/**'] },
                   outputs: { files: ['out.txt'] },
                 },
               },
@@ -378,8 +378,8 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
                   command: ${JSON.stringify(STAMP_CMD)},
                   env: { passThrough: ['ONE', 'TWO'] },
                 },
+                inputs: { files: ['src/**'] },
                 cache: {
-                  inputs: { files: ['src/**'] },
                   outputs: { files: ['out.txt'] },
                 },
               },
@@ -426,7 +426,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -454,16 +454,16 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               codegen: {
                 exec: { command: "cat src/codegen-input.txt > generated.txt" },
+                inputs: { files: ['src/codegen-input.txt'] },
                 cache: {
-                  inputs: { files: ['src/codegen-input.txt'] },
                   outputs: { files: ['generated.txt'] },
                 },
               },
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
                 dependsOn: ['codegen'],
+                inputs: { files: ['src/build-input.txt'] },
                 cache: {
-                  inputs: { files: ['src/build-input.txt'] },
                   outputs: { files: ['out.txt'] },
                 },
               },
@@ -475,7 +475,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
       const out1 = await readFile(path.join(dir, 'out.txt'), 'utf8')
 
       // Change codegen's input -> codegen reruns -> codegen hash changes ->
-      // build's hash changes (default `cache.inputs.tasks` = all upstream)
+      // build's hash changes (default `inputs.tasks` = all upstream)
       // -> build reruns even though build's own inputs are unchanged.
       await new Promise((r) => setTimeout(r, 5))
       await writeFile(path.join(dir, 'src/codegen-input.txt'), 'v2')
@@ -489,7 +489,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
   )
 
   it(
-    'cache.inputs.files: [] is a stable empty input set (project files do not bust the cache)',
+    'inputs.files: [] is a stable empty input set (project files do not bust the cache)',
     async () => {
       const dir = await addProject(fixture.root, 'no-files', {
         files: { 'src/x.txt': 'v1', 'random.md': 'a' },
@@ -498,7 +498,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: "echo a > out.txt" },
-                cache: { inputs: { files: [] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: [] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -525,7 +525,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: "echo from-task > out.txt" },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -553,7 +553,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: "mkdir -p dist && echo a > dist/a.txt" },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -584,7 +584,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: "mkdir -p dist && echo a > dist/a.txt" },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -615,7 +615,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: "mkdir -p dist && echo a > dist/a.txt" },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -654,7 +654,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -696,7 +696,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -720,7 +720,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
     async () => {
       const build = `
           export default {
-            tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } },
+            tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } },
           }
         `
       await addProject(fixture.root, 'keep', { config: build, files: { 'src/a.txt': 'a' } })
@@ -756,7 +756,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -769,7 +769,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               run: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -811,7 +811,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               stamp: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -838,7 +838,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -888,7 +888,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
               ci: { dependsOn: ['build'] },
             },
@@ -916,7 +916,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
               ci: { dependsOn: ['build'] },
             },
@@ -1021,7 +1021,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
                 // file we write before running, so cache.save has something
                 // to capture.
                 exec: { command: 'true' },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -1066,7 +1066,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               build: {
                 exec: { command: 'true' },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -1080,7 +1080,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
               build: {
                 exec: { command: 'true' },
                 dependsOn: ['^build'],
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -1218,11 +1218,11 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               a: {
                 exec: { command: 'true' },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
               },
               b: {
                 exec: { command: 'true' },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -1253,7 +1253,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
               ci: {
                 dependsOn: ['build'],
@@ -1296,16 +1296,16 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               slow: {
                 exec: { command: 'sleep 0.12 && echo s > slow.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['slow.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['slow.txt'] } },
               },
               dep: {
                 dependsOn: ['slow'],
                 exec: { command: 'sleep 0.04 && echo d > dep.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dep.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dep.txt'] } },
               },
               solo: {
                 exec: { command: 'echo q > solo.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['solo.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['solo.txt'] } },
               },
             },
           }
@@ -1347,7 +1347,7 @@ describe('orchestrator e2e — restores, groups, streams, plan and records', () 
             tasks: {
               build: {
                 exec: { command: ${JSON.stringify(STAMP_CMD)} },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -1462,14 +1462,14 @@ describe('the widest glob still stops at the project boundary', () => {
         files: { 'src/own.txt': 'own-1\n' },
         config: `export default { tasks: { build: {
           exec: { command: 'true' },
-          cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+          inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
         } } }`,
       })
       const b = await addProject(fixture.root, 'b', {
         files: { 'src/b.txt': 'b-1\n' },
         config: `export default { tasks: { build: {
           exec: { command: 'true' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
         } } }`,
       })
       // A workspace MEMBER nested inside a: without the second workspace
@@ -1489,7 +1489,7 @@ describe('the widest glob still stops at the project boundary', () => {
         path.join(nested, 'vx.config.mjs'),
         `export default { tasks: { build: {
           exec: { command: 'true' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
         } } }`,
       )
       await writeFile(path.join(nested, 'src', 'their.txt'), 'their-1\n')

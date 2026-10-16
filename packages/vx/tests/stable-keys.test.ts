@@ -24,8 +24,8 @@ const node = (
       cache === undefined
         ? {}
         : {
+            inputs: { files: cache.files ?? ['**'], workspaceFiles: cache.workspaceFiles ?? [] },
             cache: {
-              inputs: { files: cache.files ?? ['**'], workspaceFiles: cache.workspaceFiles ?? [] },
               outputs: { files: [] },
             },
           },
@@ -46,13 +46,13 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
       wide: new Set(wide),
       outputsOf: new Map([['B', outputs]]),
     })
-    const gate = (inputs: string[] | undefined, same: ReturnType<typeof declared>) =>
+    const gate = (inputs: string[], same: ReturnType<typeof declared>) =>
       dependsOnSiblingOutputs(
         {
           projectName: 'B',
           config: {
+            inputs: { files: inputs },
             cache: {
-              inputs: inputs === undefined ? {} : { files: inputs },
               outputs: { files: [] },
             },
           },
@@ -83,7 +83,7 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
         dependsOnSiblingOutputs(
           {
             projectName: 'B',
-            config: { cache: { inputs: { files: ['src/**'] }, outputs: { files: outputs } } },
+            config: { inputs: { files: ['src/**'] }, cache: { outputs: { files: outputs } } },
           } as unknown as TaskNode,
           new Set(['B']),
           false,
@@ -107,9 +107,8 @@ describe('dependsOnSiblingOutputs — restore-tier stability gate', () => {
       expect(gate(['**/*'], declared(['dist/**']))).toBe(true)
     })
 
-    it('stays project-wide for undeclared writes, default inputs, or no declared outputs', () => {
+    it('stays project-wide for undeclared writes or no declared outputs', () => {
       expect(gate(['src/**'], declared(['dist/**'], ['B']))).toBe(true)
-      expect(gate(undefined, declared(['dist/**']))).toBe(true)
       expect(gate(['src/**'], declared([]))).toBe(true)
     })
   })

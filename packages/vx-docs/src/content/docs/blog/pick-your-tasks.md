@@ -33,7 +33,7 @@ export default defineProject({
     build: {
       exec: { command: 'vite build' },
       dependsOn: ['^build'], // build every workspace dependency first
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
     test: { exec: { command: 'vitest run' }, dependsOn: ['build'] }, // this project's build
     e2e: { exec: { command: 'playwright test' }, dependsOn: ['@demo/api#build'] }, // another project's task

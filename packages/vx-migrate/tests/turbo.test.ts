@@ -111,12 +111,13 @@ describe('turbo()', () => {
       // `^build` reached lib, `codegen` is a same-package edge.
       expect(app.deps.sort()).toEqual(['app#codegen', 'lib#build'])
       const cache = app.config.cache!
+      const inputs = app.config.inputs!
       // `codegen`'s outputs taken back (core X-54).
-      expect(cache.inputs.files).toEqual(['**/*', '!**/*.md', '!src/gen/**'])
+      expect(inputs.files).toEqual(['**/*', '!**/*.md', '!src/gen/**'])
       // globalDependencies and the $TURBO_ROOT$/ input both name the
       // file; the mapper sees both strings and lists it once.
-      expect(cache.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
-      expect(cache.inputs.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
+      expect(inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
+      expect(inputs.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
       expect(cache.outputs.files).toEqual(['dist/**'])
       expect(app.config.exec?.env?.passThrough).toEqual(['GLOBAL_MODE', 'AWS_PROFILE', 'NODE_ENV'])
       expect(app.config.exec?.command).toBe('mkdir -p dist && cat src/gen/api.js > dist/app.js')
@@ -670,13 +671,7 @@ describe('input zero segments', () => {
       Bun.spawnSync({ cmd: ['git', 'add', '-A'], cwd: root })
       const plan = await planRun({ cwd: root, tasks: ['app#build'], log: silent() })
       const node = plan.tasks.find((t) => t.node.id === 'app#build')!.node
-      expect(node.config.cache?.inputs.files).toEqual([
-        '*/**',
-        '*',
-        '!*.md',
-        '!dist-*/**',
-        '!dist-*',
-      ])
+      expect(node.config.inputs?.files).toEqual(['*/**', '*', '!*.md', '!dist-*/**', '!dist-*'])
       const opts = { cwd: root, tasks: ['app#build'], log: silent(), handleSignals: false }
       const status = (r: Awaited<ReturnType<typeof run>>) =>
         r.outcomes.find((o) => o.node.id === 'app#build')!.status
@@ -708,9 +703,9 @@ describe('input zero segments', () => {
         }),
       )
       const plan = await planRun({ cwd: root, tasks: ['ws#gen', 'lib#build'], log: silent() })
-      const cache = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.cache!
-      expect(cache('ws#gen').inputs.workspaceFiles).toEqual(['*/**', '*'])
-      expect(cache('lib#build').inputs.files).toEqual(['**/*', 'package.json', 'src/**'])
+      const inputs = (id: string) => plan.tasks.find((t) => t.node.id === id)!.node.config.inputs!
+      expect(inputs('ws#gen').workspaceFiles).toEqual(['*/**', '*'])
+      expect(inputs('lib#build').files).toEqual(['**/*', 'package.json', 'src/**'])
     },
     TIMEOUT,
   )
@@ -988,7 +983,7 @@ describe('per-package turbo.json', () => {
       expect(lint.tasks.map((t) => t.node.id)).toEqual(['lib#lint'])
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       expect(app.deps).toEqual([])
-      expect(app.config.cache!.inputs.files).toEqual(['**/*', '!src/gen/**'])
+      expect(app.config.inputs?.files).toEqual(['**/*', '!src/gen/**'])
     },
     TIMEOUT,
   )
@@ -1015,8 +1010,9 @@ describe('per-package turbo.json', () => {
       const plan = await planRun({ cwd: root, tasks: ['build'], log: silent() })
       const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
       const cache = app.config.cache!
-      expect(cache.inputs.files).toEqual(['src/**', '!src/gen/**'])
-      expect(cache.inputs.workspaceFiles).toEqual([
+      const inputs = app.config.inputs!
+      expect(inputs.files).toEqual(['src/**', '!src/gen/**'])
+      expect(inputs.workspaceFiles).toEqual([
         'tsconfig.base.json',
         'packages/lib/src/**',
         '!packages/lib/src/**/*.test.ts',
@@ -1049,7 +1045,7 @@ describe('per-package turbo.json', () => {
       )
       const plan = await planRun({ cwd: root, tasks: ['web#build'], log: silent() })
       const node = plan.tasks.find((t) => t.node.id === 'web#build')!.node
-      expect(node.config.cache!.inputs.workspaceFiles).toEqual([
+      expect(node.config.inputs?.workspaceFiles).toEqual([
         'tsconfig.base.json',
         'nested/g\\{1\\}/shared/**',
       ])

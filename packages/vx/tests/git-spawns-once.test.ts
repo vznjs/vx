@@ -24,7 +24,7 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }

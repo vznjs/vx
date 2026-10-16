@@ -29,7 +29,8 @@ describe('summary.md says the footer never repeats a fact', () => {
         taskName: id.split('#')[1],
         config: {
           exec: { command: 'x' },
-          cache: { inputs: { files: [] }, outputs: { files: [] } },
+          inputs: { files: [] },
+          cache: { outputs: { files: [] } },
         },
       }) as unknown as TaskNode
     const outcomes: TaskOutcome[] = [

@@ -53,13 +53,13 @@ export interface InputFile {
  * secrets (cache.db stores only their digests).
  */
 export interface TaskInputs {
-  /** Declared `cache.inputs.files` + `workspaceFiles` (own outputs excluded), sorted by path. */
+  /** Declared `inputs.files` + `workspaceFiles` (own outputs excluded), sorted by path. */
   readonly files: readonly InputFile[]
-  /** Declared `cache.inputs.env` names with their resolved values; `undefined` when unset. */
+  /** Declared `inputs.env` names with their resolved values; `undefined` when unset. */
   readonly env: ReadonlyArray<{ readonly name: string; readonly value: string | undefined }>
-  /** `cache.inputs.runtime` commands and the output that was folded — a toolchain expectation. */
+  /** `inputs.runtime` commands and the output that was folded — a toolchain expectation. */
   readonly runtime: ReadonlyArray<{ readonly command: string; readonly output: string }>
-  /** `cache.inputs.workspaceRuntime`, same shape. */
+  /** `inputs.workspaceRuntime`, same shape. */
   readonly workspaceRuntime: ReadonlyArray<{ readonly command: string; readonly output: string }>
   /**
    * Dependencies whose cache keys are folded. `outputs` lists each one's

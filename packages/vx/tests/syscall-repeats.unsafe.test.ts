@@ -283,7 +283,7 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       const proj = await addProject(root, 'p', {
         config: `export default { tasks: { build: {
           exec: { command: 'mkdir -p dist && cp src/a.txt dist/out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
         } } }\n`,
         files: { 'src/a.txt': 'a' },
       })

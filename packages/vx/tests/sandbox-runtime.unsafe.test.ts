@@ -454,7 +454,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
         files: { 'src/x.txt': 'x\n' },
         config: `export default { tasks: { build: {
           exec: { command: 'cat src/x.txt > out.txt', sandbox: { allow: { read: ['**/*'], write: ['out.txt'] } } },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         } } }\n`,
       })
       const first = await run({
@@ -506,7 +506,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             tasks: {
               build: {
                 exec: { command: 'cat src/x.txt > out.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -536,7 +536,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                   command: 'cat src/x.txt > out.txt',
                   sandbox: { allow: { read: ['.', 'src/**'], write: ['out.txt'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -574,7 +574,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             tasks: {
               leak: {
                 exec: { command: 'cat ../secret/token.txt', sandbox: {} },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -637,7 +637,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             tasks: {
               leak: {
                 exec: { command: 'cat ../../root-secret.txt', sandbox: {} },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -678,7 +678,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                     'cat ../../node_modules/hoisted/index.js node_modules/local/index.js > out.txt',
                   sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -708,7 +708,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             tasks: {
               build: {
                 exec: { command: 'cat ../../shared.txt > out.txt', sandbox: { allow: { read: ['.', '../../shared.txt'], write: ['out.txt'] } } },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -750,7 +750,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
               tasks: {
                 build: {
                   exec: { command: 'cat ../../shared.txt > out.txt', sandbox: { allow: { read: ['.', '../../shared.txt'], write: ['out.txt'] } } },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
                 },
               },
             }
@@ -792,7 +792,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                     command: 'cat ../secret/token.txt > out.txt',
                     sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
                   },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
                 },
               },
             }
@@ -846,7 +846,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             tasks: {
               build: {
                 exec: { command: 'echo bad > ../../escaped.txt', sandbox: {} },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -872,7 +872,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             tasks: {
               build: {
                 exec: { command: 'echo ok > /tmp/vx-allowwrite-test.txt', sandbox: { allow: { write: ['/tmp'] } } },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/x.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['src/x.txt'] } },
               },
             },
           }
@@ -908,7 +908,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                   command: 'echo ok > src/x.txt',
                   sandbox: { allow: { read: ['.'], write: ['src/**', '~/.vx-never', '/tmp'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/x.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['src/x.txt'] } },
               },
             },
           }
@@ -983,7 +983,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                   command: 'mkdir .a1.tmp && cp src/x.txt .a1.tmp/f && mv .a1.tmp/f dist/f && rmdir .a1.tmp',
                   sandbox: { allow: { read: ['.'], write: ['dist/', '.*.tmp/**'], systemInfo: ['vfs.disk-space'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -1095,7 +1095,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                   command: 'mkdir -p dist && cp src/x.txt dist/out.txt',
                   sandbox: { allow: { read: ['.'], write: ['dist'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -1130,7 +1130,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                   command: 'mkdir -p dist && cp src/x.txt dist/out.txt',
                   sandbox: { allow: { read: ['.'], write: ['dist/'], systemInfo: ['vfs.disk-space'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -1193,7 +1193,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                   command: 'mkdir -p dist && touch dist/marker.txt',
                   sandbox: { allow: { read: ['.'], write: ['dist/**'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -1228,7 +1228,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
             tasks: {
               leak: {
                 exec: { command: 'cat ../secret/token.txt', sandbox: {} },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -1298,7 +1298,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
       files: { 'src/x.txt': 'hi' },
       config: `export default { tasks: { x: {
         exec: { command: 'ls > /dev/null && cat src/x.txt > /dev/null', sandbox: { allow: { read: ['**/*'] } } },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
       } } }`,
     })
     const r = await run({ cwd: fixture.root, tasks: ['x'], log: collectingLogger(fixture) })
@@ -1385,7 +1385,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                 command: 'cat src/x.txt > out.txt',
                 sandbox: { ${render(sandbox)} },
               },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
             },
           },
         }
@@ -1413,7 +1413,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
               // try to connect to a public IP that's allowed via DNS.
               // Network is blocked → connect fails → exit != 0.
               exec: { command: 'bash -c "exec 3<>/dev/tcp/1.1.1.1/80" 2>&1', sandbox: {} },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
             },
           },
         }
@@ -1549,7 +1549,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
                   command: 'cat ../secret/token.txt 2>&1 || true',
                   sandbox: { ignore: { read: ['../secret/token.txt'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -1569,7 +1569,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
 
 describe.skipIf(!available)('a cache declaration grants the sandbox nothing', () => {
   // "The sandbox derives NOTHING from `cache`" (owner, 2026-09-05) is stated
-  // in `sandbox-request.ts` and in schema.md — `cache.inputs` says what
+  // in `sandbox-request.ts` and in schema.md — `inputs` says what
   // INVALIDATES a task, `sandbox.allow` says what it may TOUCH, and deriving
   // one from the other coupled them in both directions: a declaration added
   // for caching silently widened the sandbox.
@@ -1598,8 +1598,8 @@ describe.skipIf(!available)('a cache declaration grants the sandbox nothing', ()
                 command: 'mkdir -p dist && cat src/x.txt > dist/out.txt',
                 sandbox: { allow: { read: ['src/**', '.'] ${write === undefined ? '' : `, write: ['${write}']`} } },
               },
+              inputs: { files: ['src/**'] },
               cache: {
-                inputs: { files: ['src/**'] },
                 outputs: { files: ['dist/out.txt'] },
               },
             },
@@ -1772,8 +1772,8 @@ describe.skipIf(!available)('a sandboxed task that produced nothing says why', (
                 command: 'true',
                 sandbox: ${allow},
               },
+              inputs: { files: ['src/**'] },
               cache: {
-                inputs: { files: ['src/**'] },
                 outputs: { files: ['nope/**'] },
               },
             },
@@ -1866,8 +1866,8 @@ describe.skipIf(!available || process.platform !== 'linux')(
                 command: 'mkdir -p dist && printf OUT > dist/app.js',
                 sandbox: ${write === undefined ? '{}' : `{ allow: { write: ['${write}'] } }`},
               },
+              inputs: { files: ['src/**'] },
               cache: {
-                inputs: { files: ['src/**'] },
                 outputs: { files: ['dist/**'] },
               },
             },
@@ -1954,7 +1954,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
                   command: 'cat undeclared.txt > probe/root.txt 2>/dev/null; cat dist/sibling.txt > probe/dist.txt 2>/dev/null; echo done',
                   sandbox: { allow: { read: ['src/**'], write: ['${write}', 'probe/'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -2023,7 +2023,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
               command: 'mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt',
               sandbox: { allow: { read: ${JSON.stringify(files)}, write: ['dist/'] } },
             },
-            cache: { inputs: { files: ${JSON.stringify(files)} }, outputs: { files: ['dist/**'] } },
+            inputs: { files: ${JSON.stringify(files)} }, cache: { outputs: { files: ['dist/**'] } },
           },
         },
       }
@@ -2194,7 +2194,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
               command: ${JSON.stringify(command)},
               sandbox: { allow: { read: ${JSON.stringify(files)}, write: ['dist/'] } },
             },
-            cache: { inputs: { files: ${JSON.stringify(files)} }, outputs: { files: ['dist/**'] } },
+            inputs: { files: ${JSON.stringify(files)} }, cache: { outputs: { files: ['dist/**'] } },
           },
         },
       }
@@ -2301,7 +2301,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
               sandbox: { allow: { read: ['.'], write: ['dist/'] } },
             },
             dependsOn: ${JSON.stringify(opts.dependsOn)},
-            ${opts.cache ? "cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }," : ''}
+            ${opts.cache ? "inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }," : ''}
           },
         },
       }
@@ -2319,7 +2319,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
             tasks: {
               source: {
                 exec: { command: 'true' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -2354,7 +2354,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
           'of @x/ui, so an edit there would not re-run it. Add a `dependsOn` edge that ' +
           'reaches one (`^build` where @x/ui#build keys its sources, or a `source` task: ' +
           '`@x/ui#source`), or grant and key the files yourself (`allow.read` plus ' +
-          '`cache.inputs.workspaceFiles`).',
+          '`inputs.workspaceFiles`).',
       ]
       const first = testOutcome(await runTest())
       expect(first?.status).toBe('failed')
@@ -2451,7 +2451,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
             source: {
               dependsOn: ${JSON.stringify(dependsOn)},
               exec: { command: 'true' },
-              cache: { inputs: { files: ['*.js'] }, outputs: { files: [] } },
+              inputs: { files: ['*.js'] }, cache: { outputs: { files: [] } },
             },
           },
         }
@@ -2479,7 +2479,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
                   sandbox: { allow: { read: ['.'], write: ['dist/'] } },
                 },
                 dependsOn: ['^source'],
-                ${opts.cache ? "cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }," : ''}
+                ${opts.cache ? "inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }," : ''}
               },
             },
           }
@@ -2534,7 +2534,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
             'and its key folds no task of @x/core, so an edit there would not re-run it. Add a ' +
             '`dependsOn` edge that reaches one (`^build` where @x/core#build keys its sources, or ' +
             'a `source` task: `@x/core#source`), or grant and key the files yourself ' +
-            '(`allow.read` plus `cache.inputs.workspaceFiles`).',
+            '(`allow.read` plus `inputs.workspaceFiles`).',
         )
       },
       TIMEOUT,
@@ -2579,7 +2579,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
                   command: 'sleep 0.4; mkdir -p probe; cat secret.txt > probe/got.txt 2>/dev/null; echo done',
                   sandbox: { allow: { read: ['src/**'], write: ['probe/'] } },
                 },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -4124,7 +4124,7 @@ describe('sandbox probe', () => {
               tasks: {
                 build: {
                   exec: { command: 'echo built', sandbox: {} },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
                 },
               },
             }
@@ -4232,7 +4232,7 @@ describe('sandbox probe', () => {
               tasks: {
                 build: {
                   exec: { command: 'echo built', sandbox: {} },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
                 },
               },
             }
@@ -4291,7 +4291,7 @@ describe('sandbox probe', () => {
               tasks: {
                 build: {
                   exec: { command: 'echo built', sandbox: {} },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
                 },
               },
             }
@@ -6376,7 +6376,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
                     command: 'echo OUT > g/a.txt',
                     sandbox: { allow: { read: ['src/**'], write: ['g/{a,b}.txt'] } },
                   },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
                 },
               },
             }

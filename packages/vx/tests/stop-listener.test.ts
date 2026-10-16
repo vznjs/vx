@@ -134,7 +134,8 @@ describe("an attempt's listener on the run's stop signal", () => {
       ...node('proj#build'),
       config: {
         exec: { command: 'true' },
-        cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['package.json'] },
+        cache: { outputs: { files: ['dist/**'] } },
       },
     }
     const outcome = await run(n, executor, stop.signal)

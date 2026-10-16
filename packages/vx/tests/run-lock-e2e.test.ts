@@ -22,7 +22,7 @@ const SLOW = `
         // run that started slowly under load take the lock inside the notice's
         // one second, and the row saw no notice (item 1047).
         exec: { command: 'touch started && while [ ! -f release ]; do sleep 0.05; done && mkdir -p dist && echo hi > dist/out.txt' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }
@@ -32,7 +32,7 @@ const MANY = `
     tasks: {
       build: {
         exec: { command: 'mkdir -p dist && for i in $(seq 1 200); do echo hi > dist/out$i.txt; done' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }

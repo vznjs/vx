@@ -258,7 +258,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
   // Turbo spells the root package `//` (`dependsOn: ['//#lint']`), as vx
   // names the root project unless something names it; a named root's
   // spelling is rewritten to its name once, here, for the closure, the
-  // graph and `cache.inputs.tasks` alike. With no root project it stays,
+  // graph and `inputs.tasks` alike. With no root project it stays,
   // and the graph's refusal says so.
   const root = path.resolve(workspaceRoot)
   const rootName = args.projectMetas.find((m) => path.resolve(m.dir) === root)?.name
@@ -357,10 +357,7 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
  */
 const DEFAULT_BUILD: TaskConfig = Object.freeze({
   dependsOn: Object.freeze(['^build']),
-  cache: Object.freeze({
-    inputs: Object.freeze({ files: Object.freeze(['**']) }),
-    outputs: Object.freeze({ files: Object.freeze([]) }),
-  }),
+  inputs: Object.freeze({ files: Object.freeze(['**']) }),
 })
 
 /** The default `build`, which a menu of the tasks a user declared leaves out. */
@@ -374,7 +371,7 @@ function withDefaultBuild(config: ProjectConfig): ProjectConfig {
 }
 
 /**
- * `config` with Turbo's `//#task` (in `dependsOn` and `cache.inputs.tasks`)
+ * `config` with Turbo's `//#task` (in `dependsOn` and `inputs.tasks`)
  * spelled `<root>#task`; the same object when it holds none. A copy, not
  * an edit: a loaded config may be a cached or a frozen one.
  */
@@ -386,14 +383,14 @@ function rootSpelled(config: ProjectConfig, rootName: string): ProjectConfig {
   let tasks: NonNullable<ProjectConfig['tasks']> | undefined
   for (const [name, task] of Object.entries(config.tasks ?? {})) {
     const dependsOn = fix(task.dependsOn)
-    const inputTasks = fix(task.cache?.inputs?.tasks)
-    if (dependsOn === task.dependsOn && inputTasks === task.cache?.inputs?.tasks) continue
+    const inputTasks = fix(task.inputs?.tasks)
+    if (dependsOn === task.dependsOn && inputTasks === task.inputs?.tasks) continue
     tasks ??= { ...config.tasks }
     tasks[name] = {
       ...task,
       ...(dependsOn !== undefined ? { dependsOn: [...dependsOn] } : {}),
-      ...(task.cache?.inputs !== undefined && inputTasks !== undefined
-        ? { cache: { ...task.cache, inputs: { ...task.cache.inputs, tasks: [...inputTasks] } } }
+      ...(task.inputs !== undefined && inputTasks !== undefined
+        ? { inputs: { ...task.inputs, tasks: [...inputTasks] } }
         : {}),
     }
   }

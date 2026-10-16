@@ -25,7 +25,7 @@ lint: {
     command: 'eslint .',
     sandbox: { allow: { read: ['.'] } },
   },
-  cache: { inputs: { files: ['src/**', '.eslintrc'] }, outputs: { files: [] } },
+  inputs: { files: ['src/**', '.eslintrc'] }, cache: { outputs: { files: [] } },
 }
 ```
 
@@ -60,8 +60,8 @@ that one task.
 
 ## Why it derives nothing from `cache`
 
-The obvious shortcut would be to grant the `cache.inputs` globs as
-reads. vx did that once and removed it. `cache.inputs` says what
+The obvious shortcut would be to grant the `inputs` globs as
+reads. vx did that once and removed it. `inputs` says what
 *invalidates* a task; `sandbox.allow` says what it may *touch*. When
 one was derived from the other, a path added for caching silently
 widened the sandbox, and a path the task genuinely needed had to be
@@ -69,7 +69,7 @@ laundered through the cache key to become readable. Two declarations,
 and the violation is judged against the grants alone: a sandboxed task
 that reads a project file its grants never named fails on the denied
 read. `read: ['.']` grants the whole project, inputs or not; grant
-reads no wider than `cache.inputs` (`read: ['src', '.eslintrc']`) and
+reads no wider than `inputs` (`read: ['src', '.eslintrc']`) and
 that denial is exactly the under-declaration you wanted to find.
 
 ## What a violation looks like
@@ -93,7 +93,7 @@ lets a task write its own inputs. Agents get the same grants as
 them as given, a credential path (`~/.ssh`, `~/.aws`, `~/.npmrc`, a
 `.env` file and the like) never goes in the line. It is listed apart,
 to grant only on purpose. A cached task's read that no input glob
-matches is named again as a `cache.inputs.files` entry: the grant lets
+matches is named again as an `inputs.files` entry: the grant lets
 the task read the file, and only an input makes a change to it miss the
 cache.
 

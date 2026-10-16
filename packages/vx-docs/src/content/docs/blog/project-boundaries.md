@@ -62,7 +62,7 @@ result an edit there would not re-run.
 
 ## The escape hatch
 
-`cache.inputs.workspaceFiles` and `cache.outputs.workspaceFiles` are
+`inputs.workspaceFiles` and `cache.outputs.workspaceFiles` are
 anchored at the workspace root and apply no fence. They exist for files
 that genuinely belong to the root, like a shared `tsconfig.base.json`.
 Reaching into another project's directory through them works, but it is

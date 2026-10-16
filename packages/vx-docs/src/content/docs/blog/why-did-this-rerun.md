@@ -29,7 +29,7 @@ app#build — run 019f5a02-…
     changed file  packages/app/src/input.txt  3fe2a1b0… → 91c47d22…
 
   what to do:
-    file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
+    file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
 ```
 
 One component moved and it is named. Forty-one did not.

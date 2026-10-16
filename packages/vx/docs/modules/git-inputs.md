@@ -210,7 +210,7 @@ holds one is split at its NULs and each record decoded fatally, and the
 records that fail are kept, spelled lossily so a glob still matches
 them, in `GitEnumeration.undecodable` and
 `GitFilesCache.undecodableNames`. `inputs.ts` refuses one a task's
-globs select while it is on disk (`cache.inputs.files matched … the
+globs select while it is on disk (`inputs.files matched … the
 name is not valid UTF-8`), rather than dropping it: nothing in vx can
 open a path a string cannot spell. The same refusal covers outputs,
 where `Bun.Glob` decodes a name the same lossy way.
@@ -228,7 +228,7 @@ which the nested repository answers, and the files hash by content — no
 index OID is trusted from here. One spawn per such project per run; a
 workspace without one pays nothing. (A directory ignored outright takes
 the same path and still enumerates nothing, as before.) Before
-2026-09-16 the empty slice was stored, `cache.inputs matched no files`,
+2026-09-16 the empty slice was stored, `inputs matched no files`,
 and the key never moved: a stale hit under a green run. `--affected` follows the same
 shape: git reports the nested repository as one changed path (the
 gitlink, or the untracked `dir/`), and every project under it is

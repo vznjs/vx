@@ -77,7 +77,7 @@ The same principle sets most of the schema:
   `exec.env`. A variable that merely
   has to be present goes under `passThrough` and stays out of the key.
   One that changes the output goes under `passThrough` and
-  `cache.inputs.env`: the first passes it to the task, the second puts
+  `inputs.env`: the first passes it to the task, the second puts
   it in the key.
 - The sandbox derives nothing from `cache`. What a task may *touch* and
   what *invalidates* it are two declarations, because when one was

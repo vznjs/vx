@@ -16,7 +16,7 @@ to do.
 ## No per-event glob matching
 
 The tempting design is to compare each filesystem event against each
-task's `cache.inputs.files` and re-run only the tasks whose inputs
+task's `inputs.files` and re-run only the tasks whose inputs
 matched. vx does not do this, because the cache key is already the
 source of truth for "does this change matter to this task," and a
 second copy of that rule, written in terms of events instead of hashes,

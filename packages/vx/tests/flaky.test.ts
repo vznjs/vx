@@ -20,7 +20,7 @@ const APP_CONFIG = `
     tasks: {
       test: {
         exec: { command: 'test -f ../../green' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
       },
     },
   }
@@ -36,7 +36,7 @@ const RETRY_CONFIG = `
           command: 'if test -f flag.txt; then echo winning; else touch flag.txt; exit 1; fi',
           retries: 1,
         },
-        cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+        inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
       },
     },
   }
@@ -175,11 +175,11 @@ describe('a failure behind a failed dependency (--continue=always)', () => {
           config: `
             export default {
               tasks: {
-                prep: { exec: { command: 'test -f ../../green' } },
+                prep: { exec: { command: 'test -f ../../green' }, inputs: { files: ['src/**'] } },
                 test: {
                   dependsOn: ['prep'],
                   exec: { command: 'test -f ../../green' },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
                 },
               },
             }
@@ -223,11 +223,11 @@ describe('a pass behind a failed dependency (--continue=always)', () => {
           config: `
             export default {
               tasks: {
-                prep: { exec: { command: 'test -f ../../prep-ok' } },
+                prep: { exec: { command: 'test -f ../../prep-ok' }, inputs: { files: ['src/**'] } },
                 test: {
                   dependsOn: ['prep'],
                   exec: { command: 'test -f ../../test-ok' },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
                 },
               },
             }
@@ -276,11 +276,11 @@ describe('a pass behind a failed dependency (--continue=always)', () => {
           config: `
             export default {
               tasks: {
-                prep: { exec: { command: 'test -f ../../green' } },
+                prep: { exec: { command: 'test -f ../../green' }, inputs: { files: ['src/**'] } },
                 test: {
                   dependsOn: ['prep'],
                   exec: { command: 'test -f ../../green' },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
                 },
               },
             }
@@ -303,7 +303,7 @@ describe('a pass behind a failed dependency (--continue=always)', () => {
   )
 })
 
-// A task with no cache block keys on its config alone: a run's row never
+// A task with no cache block keys on its inputs alone: a run's row never
 // calls it flaky, and the doctor's list did for thirty days.
 describe('a task with no cache block', () => {
   it(
@@ -312,7 +312,7 @@ describe('a task with no cache block', () => {
       const root = await makeWorkspace({ prefix: 'vx-flaky-uncached-' })
       try {
         await addProject(root, 'app', {
-          config: `export default { tasks: { check: { exec: { command: 'test -f ../../green' } } } }`,
+          config: `export default { tasks: { check: { exec: { command: 'test -f ../../green' }, inputs: { files: [] } } } }`,
         })
         await writeFile(path.join(root, 'green'), '')
         expect((await vx(root, ['run', 'check', '--all'])).code).toBe(0)

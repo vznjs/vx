@@ -37,6 +37,6 @@ it('a framework prefix spelled alone is no name', async () => {
   const p = await migrateTurbo(root, [
     { name: 'web', dir, packageJson: packageJson as never, configPath: null },
   ])
-  const t = p.projects[0]!.tasks[0]!.task as { cache: { inputs: { env?: unknown } } }
-  expect(t.cache.inputs.env).toEqual(['NEXT_PUBLIC_API', 'NEXT_DEPLOYMENT_ID'])
+  const t = p.projects[0]!.tasks[0]!.task as { inputs: { env?: unknown } }
+  expect(t.inputs.env).toEqual(['NEXT_PUBLIC_API', 'NEXT_DEPLOYMENT_ID'])
 })

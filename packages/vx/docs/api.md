@@ -166,7 +166,6 @@ type · `src/config.ts`
 
 ```ts
 export interface CacheConfig {
-  inputs: CacheInputs
   outputs: CacheOutputs
   inputStability?: InputStability
 }
@@ -194,21 +193,6 @@ type · `src/cache/policy.ts`
 export interface CacheFlags {
   noCache?: boolean
   force?: boolean
-}
-```
-
-## `CacheInputs`
-
-type · `src/config.ts`
-
-```ts
-export interface CacheInputs {
-  files: readonly string[]
-  workspaceFiles?: readonly string[]
-  env?: readonly string[]
-  tasks?: readonly string[]
-  runtime?: readonly string[]
-  workspaceRuntime?: readonly string[]
 }
 ```
 
@@ -412,8 +396,8 @@ export function defineProject<const T extends ProjectConfig>(
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
           dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
           exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
+          inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
           cache?: Known<At<NonNullable<T['tasks']>[K], 'cache'>, CacheConfig> & {
-            inputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'inputs'>, CacheInputs>
             outputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'outputs'>, CacheOutputs>
           }
         }
@@ -779,6 +763,21 @@ export interface HostContext {
   host: string | null
   os: string
   arch: string
+}
+```
+
+## `InputsConfig`
+
+type · `src/config.ts`
+
+```ts
+export interface InputsConfig {
+  files: readonly string[]
+  workspaceFiles?: readonly string[]
+  env?: readonly string[]
+  tasks?: readonly string[]
+  runtime?: readonly string[]
+  workspaceRuntime?: readonly string[]
 }
 ```
 
@@ -1322,7 +1321,7 @@ Returns a `RunPlan` predicting the cache hit/miss outcome of every
 task. Used by `--dry`.
 
 Side-effects are limited to opening + closing the local Cache handle
-(and running `cache.inputs.runtime` probe commands, which key
+(and running `inputs.runtime` probe commands, which key
 derivation requires). Cache probing is the byte-free `cache.has()`
 existence check — no artifact download, no ingest, no accessed_at bump.
 
@@ -2037,7 +2036,7 @@ every real block. The one grant vx makes for you is dependencies:
 `node_modules`, and through it the real path of every workspace
 package linked there.
 
-`cache` grants no access in either direction: `cache.inputs` says what
+`cache` grants no access in either direction: `inputs` says what
 INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
 from the other coupled them both ways — a declaration added for
 caching silently widened the sandbox, and a path the task needed had
@@ -2142,6 +2141,7 @@ export interface TaskConfig {
   description?: string
   exec?: ExecConfig
   dependsOn?: readonly string[]
+  inputs?: InputsConfig
   cache?: CacheConfig
 }
 ```
@@ -2286,6 +2286,7 @@ export interface TaskOutcome {
   peakRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
+  keyless?: true
   cacheOff?: true
   blockedBy?: string
   timedOut?: true

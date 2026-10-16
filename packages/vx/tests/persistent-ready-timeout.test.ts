@@ -65,7 +65,7 @@ describe('exec.timeout — normal task', () => {
           tasks: {
             build: {
               exec: { command: 'echo $$ > pid.txt && exec sleep 30', timeout: '1s' },
-              cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
             },
           },
         }

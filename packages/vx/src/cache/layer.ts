@@ -12,7 +12,7 @@ export interface CacheKeyInput {
   /**
    * Hash of the resolved task config (post-evaluation). Folds in everything
    * the user wrote — command, env declarations (passThrough names + define
-   * key/value pairs), dependsOn, cache.inputs declarations, outputs — including
+   * key/value pairs), dependsOn, inputs declarations, outputs — including
    * values that arrived via `import` at config-load time.
    */
   taskConfigHash: string
@@ -23,19 +23,19 @@ export interface CacheKeyInput {
    */
   envValues: Array<[name: string, value: string | undefined]>
   /**
-   * Resolved `cache.inputs.runtime` commands as [command, output] pairs
+   * Resolved `inputs.runtime` commands as [command, output] pairs
    * (output = trimmed stdout+stderr, resolved live at hash time). Folded
    * into the key in a namespace distinct from workspaceRuntimeValues.
    */
   runtimeValues?: Array<[command: string, output: string]>
-  /** Resolved `cache.inputs.workspaceRuntime` pairs (root-cwd commands). */
+  /** Resolved `inputs.workspaceRuntime` pairs (root-cwd commands). */
   workspaceRuntimeValues?: Array<[command: string, output: string]>
   /** Absolute paths to input files. */
   inputFiles: string[]
   /**
    * Refuse a symlinked input whose target is not an input itself
-   * (linked-inputs.ts). Never folded. A task with no cache block keys only
-   * for its dependents, declares nothing, and is not refused.
+   * (linked-inputs.ts): set for a task that declares `inputs`, which can
+   * declare the target too. Never folded.
    */
   linkTargetsKeyed?: boolean
   workspaceRoot: string
@@ -58,7 +58,7 @@ export interface CacheKeyInput {
    * - It expands groups, which contribute a synthetic roll-up hash and no
    *   outputs of their own, so a dependent of one would otherwise describe
    *   an empty closure.
-   * - It ignores `cache.inputs.tasks`. That filter says which upstream KEYS
+   * - It ignores `inputs.tasks`. That filter says which upstream KEYS
    *   this task's key folds; what the task may READ is `dependsOn`, and
    *   locally every dependency's outputs are on disk before the command runs
    *   however the filter is written.

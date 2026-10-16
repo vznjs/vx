@@ -60,7 +60,7 @@ it("core keeps a CI run's logs and failed outputs, a plugin its manifest, and a 
     path.join(root, 'lib/vx.config.mjs'),
     `export default { tasks: { test: {
       exec: { command: 'mkdir -p reports && echo "1 failing" && echo boom > reports/junit.xml && exit 1' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['reports/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['reports/**'] } },
     } } }`,
   )
   await Bun.write(path.join(root, 'lib/src/i.js'), 'x')
@@ -72,7 +72,7 @@ it("core keeps a CI run's logs and failed outputs, a plugin its manifest, and a 
     path.join(root, 'gen/vx.config.mjs'),
     `export default { tasks: { build: {
       exec: { command: 'echo generated' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     } } }`,
   )
   await Bun.write(path.join(root, 'gen/src/i.js'), 'x')

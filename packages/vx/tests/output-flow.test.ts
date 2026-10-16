@@ -909,7 +909,7 @@ describe('flow e2e against a real fixture workspace', () => {
         tasks: {
           cached: {
             exec: { command: "echo CACHED-OUTPUT" },
-            cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+            inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
           },
           fresh: {
             exec: { command: "echo FRESH-OUTPUT" },
@@ -933,7 +933,7 @@ describe('flow e2e against a real fixture workspace', () => {
           },
           build: {
             exec: { command: "echo BUILD-LINE-1 && echo BUILD-LINE-2 && echo BUILD-LINE-3" },
-            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+            inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
           },
           deploy: {
             exec: { command: "echo DEPLOY-LINE" },

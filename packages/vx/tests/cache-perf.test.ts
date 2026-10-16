@@ -234,7 +234,8 @@ describe('createHashCache + within-run hash memoization', () => {
     const hashCache = createHashCache()
     const sharedConfig = {
       exec: { command: 'noop' },
-      cache: { inputs: { files: [] }, outputs: { files: [] } },
+      inputs: { files: [] },
+      cache: { outputs: { files: [] } },
     }
     const node = {
       id: 'p#build',

@@ -40,8 +40,8 @@ as [Caching](../../caching/) numbers them:
 3. The **resolved task config**, the evaluated object, not the source
    text ([its own post](../resolved-config-hashing/)).
 4. Arguments forwarded after `--`.
-5. The resolved values of the env vars in `cache.inputs.env`.
-6. The output of each `cache.inputs.runtime` command (`node --version`,
+5. The resolved values of the env vars in `inputs.env`.
+6. The output of each `inputs.runtime` command (`node --version`,
    say), resolved live at hash time.
 7. The same for `workspaceRuntime`, resolved once per run.
 8. Every upstream task's cache key, filtered to the ones the graph says
@@ -50,7 +50,7 @@ as [Caching](../../caching/) numbers them:
    after the upstream keys and before the input files, and only when a
    plugin returned any. A lockfile plugin (`@vzn/vx-lockfile`) folds
    each project's dependency closure here.
-10. The content hashes of every file `cache.inputs.files` resolves to:
+10. The content hashes of every file `inputs.files` resolves to:
     each file's git blob id, with its mode when it is an executable or
     a symlink. A lockfile plugin also lists the project's
     `package.json` among them.
@@ -111,14 +111,14 @@ let the cascade carry it.
 
 ## Boundaries are hard
 
-`cache.inputs.files` globs are resolved inside the project's directory
+`inputs.files` globs are resolved inside the project's directory
 and nowhere else. `../shared/**` is an error, not a wider key. The
 reason is not purity: a glob that crosses into a sibling makes that
 sibling's edits invisible to the sibling's own dependents while making
 this project's key depend on files it does not own. What a project
 needs from another arrives as an upstream task's outputs, and its key
 arrives through part 8. The one deliberate exception is
-`cache.inputs.workspaceFiles`, which addresses files at the workspace
+`inputs.workspaceFiles`, which addresses files at the workspace
 root (a shared `tsconfig.base.json`) and says so in its name.
 
 ## What the key deliberately ignores
@@ -126,10 +126,10 @@ root (a shared `tsconfig.base.json`) and says so in its name.
 - `exec.env.passThrough` values. They reach the command but not the
   key, because a `HOME` or a `CI` that differs per machine would defeat
   a shared cache. If a variable changes the output, list it under
-  `cache.inputs.env` too: that puts it in the key, and `passThrough`
+  `inputs.env` too: that puts it in the key, and `passThrough`
   still passes it to the task.
 - Tool versions you did not declare. `node --version` is a
-  `cache.inputs.runtime` line away.
+  `inputs.runtime` line away.
 - `exec.remote`. Placement. Where a task ran says nothing about what it
   produced.
 - `.vx/projects.lock.json`, so that `vx lock` itself does not re-key the world.

@@ -49,10 +49,10 @@ afterEach(async () => {
 const env = async () => {
   const p = await migrateTurbo(root, metas)
   const t = p.projects.find((x) => x.name === 'web')!.tasks[0]!.task as {
-    cache: { inputs: { env?: unknown } }
+    inputs: { env?: unknown }
     exec: { env?: { passThrough?: unknown } }
   }
-  return { env: t.cache.inputs.env, pass: t.exec.env?.passThrough, notes: p.notes }
+  return { env: t.inputs.env, pass: t.exec.env?.passThrough, notes: p.notes }
 }
 
 describe('migrateTurbo: a framework Turbo infers', () => {
@@ -72,7 +72,7 @@ describe('migrateTurbo: a framework Turbo infers', () => {
       notes: [
         'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; the configs ' +
           'list the names the package and its workspace dependencies spell, so add any an ' +
-          'installed dependency reads to cache.inputs.env and exec.env.passThrough',
+          'installed dependency reads to inputs.env and exec.env.passThrough',
       ],
     })
   })

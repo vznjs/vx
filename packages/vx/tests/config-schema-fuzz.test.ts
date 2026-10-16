@@ -81,22 +81,20 @@ function genEnv(r: R): Obj {
   })
 }
 
-function genCache(r: R, dependsOn: string[] | undefined): Obj {
+function genInputs(r: R, dependsOn: string[] | undefined): Obj {
+  return fields({
+    files: pick(r, [['src/**'], ['src/**', '!src/**/*.test.ts'], ['**/*.ts', 'tsconfig.json'], []]),
+    env: maybe(r, () => some(r, ['NODE_ENV', 'API_URL'])),
+    // A filter names a declared dependency or a wildcard (item 994).
+    tasks: maybe(r, () => [...some(r, ['*', '^*']), ...some(r, dependsOn ?? [])]),
+    runtime: maybe(r, () => ['node --version']),
+    workspaceRuntime: maybe(r, () => ['bun --version']),
+    workspaceFiles: maybe(r, () => some(r, ['tsconfig.base.json', 'patches/**'])),
+  })
+}
+
+function genCache(r: R): Obj {
   return {
-    inputs: fields({
-      files: pick(r, [
-        ['src/**'],
-        ['src/**', '!src/**/*.test.ts'],
-        ['**/*.ts', 'tsconfig.json'],
-        [],
-      ]),
-      env: maybe(r, () => some(r, ['NODE_ENV', 'API_URL'])),
-      // A filter names a declared dependency or a wildcard (item 994).
-      tasks: maybe(r, () => [...some(r, ['*', '^*']), ...some(r, dependsOn ?? [])]),
-      runtime: maybe(r, () => ['node --version']),
-      workspaceRuntime: maybe(r, () => ['bun --version']),
-      workspaceFiles: maybe(r, () => some(r, ['tsconfig.base.json', 'patches/**'])),
-    }),
     outputs: fields({
       files: pick(r, [['dist/**'], ['dist/**', '!dist/cache/**'], []]),
       workspaceFiles: maybe(r, () => ['reports/pkg/**']),
@@ -106,10 +104,17 @@ function genCache(r: R, dependsOn: string[] | undefined): Obj {
 
 function genTask(r: R): Obj {
   const description = maybe(r, () => pick(r, ['Builds the package', '']))
-  if (chance(r, 0.15)) return fields({ dependsOn: some(r, DEPS), description })
+  if (chance(r, 0.15)) {
+    const dependsOn = some(r, DEPS)
+    // A group, keyed or not.
+    return fields({ dependsOn, description, inputs: maybe(r, () => genInputs(r, dependsOn)) })
+  }
   const dependsOn = maybe(r, () => some(r, DEPS))
   const mode = pick(r, ['plain', 'cached', 'persistent', 'interactive'] as const)
-  const cache = mode === 'cached' ? genCache(r, dependsOn) : undefined
+  // Inputs key a task whether it caches or not; `cache` needs them.
+  const inputs =
+    mode === 'cached' ? genInputs(r, dependsOn) : maybe(r, () => genInputs(r, dependsOn))
+  const cache = mode === 'cached' ? genCache(r) : undefined
   const exec = fields({
     command: pick(r, ['bun test', 'tsc -b', 'echo "hi" && exit 0']),
     timeout: maybe(r, () => pick(r, ['1ms', '1m', `${MAX_TIMEOUT_MS}ms`])),
@@ -123,7 +128,7 @@ function genTask(r: R): Obj {
         : undefined,
     sandbox: mode === 'interactive' ? undefined : maybe(r, () => genSandbox(r)),
   })
-  return fields({ description, exec, dependsOn, cache })
+  return fields({ description, exec, dependsOn, inputs, cache })
 }
 
 function genProject(r: R): Obj {

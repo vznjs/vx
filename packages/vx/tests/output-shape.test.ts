@@ -23,7 +23,7 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'sh build.sh' },
-        cache: { inputs: { files: ['shape.txt', 'build.sh'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['shape.txt', 'build.sh'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }
@@ -172,7 +172,7 @@ describe('an output directory that is a symlink inside the project (e2e)', () =>
               tasks: {
                 build: {
                   exec: { command: 'mkdir -p real-out && ln -sfn real-out dist && cat src/in.txt > dist/out.js' },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
                 },
               },
             }
@@ -207,7 +207,7 @@ describe('an output directory that is a symlink inside the project (e2e)', () =>
               tasks: {
                 build: {
                   exec: { command: 'mkdir -p real-out && ln -sfn real-out dist && cat src/s.txt > dist/$(cat src/s.txt).js' },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
                 },
               },
             }
@@ -252,7 +252,7 @@ describe('a symlinked output that leaves the project (e2e)', () => {
               tasks: {
                 build: {
                   exec: { command: 'rm -rf dist && mkdir dist && ln -s ${JSON.stringify(target).slice(1, -1)} dist/out' },
-                  cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+                  inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
                 },
               },
             }
@@ -290,7 +290,7 @@ describe('a symlinked workspace output (e2e)', () => {
       tasks: {
         build: {
           exec: { command: 'mkdir -p ../../gen && echo v2 > ../../gen/v2.txt && ln -sfn ${link} ../../gen/latest' },
-          cache: { inputs: { files: ['package.json'] }, outputs: { files: [], workspaceFiles: ['gen/**'] } },
+          inputs: { files: ['package.json'] }, cache: { outputs: { files: [], workspaceFiles: ['gen/**'] } },
         },
       },
     }
@@ -396,7 +396,7 @@ describe('a literal output across a shape change (e2e)', () => {
               tasks: {
                 build: {
                   exec: { command: 'sh build.sh' },
-                  cache: { inputs: { files: ['shape.txt', 'build.sh'] }, outputs: { files: ['dist/out'] } },
+                  inputs: { files: ['shape.txt', 'build.sh'] }, cache: { outputs: { files: ['dist/out'] } },
                 },
               },
             }
@@ -463,12 +463,12 @@ describe('a restore beside a sibling writing into its directory (e2e)', () => {
                 tasks: {
                   gate: {
                     exec: { command: 'while [ ! -e ../../ready ]; do sleep 0.01; done; echo g > gate.out' },
-                    cache: { inputs: { files: ['seed.txt'] }, outputs: { files: ['gate.out'] } },
+                    inputs: { files: ['seed.txt'] }, cache: { outputs: { files: ['gate.out'] } },
                   },
                   build: {
                     dependsOn: ['gate'],
                     exec: { command: 'true' },
-                    cache: { inputs: { files: ['gate.out'], tasks: [] }, outputs: ${outputs} },
+                    inputs: { files: ['gate.out'], tasks: [] }, cache: { outputs: ${outputs} },
                   },
                   after: { dependsOn: ['build'], exec: { command: 'touch ../../go' } },
                   other: {

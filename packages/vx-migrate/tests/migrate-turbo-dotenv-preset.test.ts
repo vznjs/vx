@@ -1,5 +1,5 @@
 // The `.env` probes were written inline, a shell line in every package's
-// cache.inputs.runtime: create-turbo's own `inputs: [..., ".env*"]` put it
+// inputs.runtime: create-turbo's own `inputs: [..., ".env*"]` put it
 // in each config. The preset names them, with why they exist.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -39,9 +39,9 @@ describe('migrateTurbo: the .env probes', () => {
     const project = p.projects[0]!
     const runtime = (name: string) => {
       const t = project.tasks.find((x) => x.name === name)!.task as {
-        cache: { inputs: { runtime?: unknown; workspaceRuntime?: unknown } }
+        inputs: { runtime?: unknown; workspaceRuntime?: unknown }
       }
-      return [t.cache.inputs.runtime, t.cache.inputs.workspaceRuntime]
+      return [t.inputs.runtime, t.inputs.workspaceRuntime]
     }
     const preset = p.extraFiles.find((f) => f.relPath === 'vx-preset.ts')!.contents
     expect({

@@ -8,8 +8,10 @@ invalidation_, _what's actually stored_, and _why_.
 ## Why caching is opt-in
 
 A task is cached iff its `TaskConfig` provides a `cache` block, with
-**both** `inputs.files` and `outputs.files`. Omit `cache` and the
-task always runs; no read, no write.
+`cache.outputs.files` and the task's `inputs.files`. Omit `cache` and
+the task always runs; no read, no write. `inputs` stands alone: a task
+is keyed on it whether it caches or not, and its dependents fold that
+key.
 
 The reasoning:
 
@@ -55,9 +57,9 @@ over (in order):
    `exec.remote` is dropped, because it says WHERE a task runs and not
    what it does (§ What's NOT in the key). Captures:
    - `exec` block (command, env declarations, timeout, persistent).
-   - `dependsOn` and `cache.inputs.tasks` declarations.
-   - `cache.outputs.files`, `cache.inputs.files`, `cache.inputs.env`,
-     `cache.inputs.runtime` / `workspaceRuntime` declarations (the
+   - `dependsOn` and `inputs.tasks` declarations.
+   - `cache.outputs.files`, `inputs.files`, `inputs.env`,
+     `inputs.runtime` / `workspaceRuntime` declarations (the
      strings themselves; their resolved file content / env values /
      command output contribute separately).
    - `description` (because it's part of the resolved object — even
@@ -73,14 +75,14 @@ over (in order):
    pulled deps don't see them (their cache identity stays clean) — and
    to a command: a requested default `build` runs none and folds none
    (X-119).
-5. **`cache.inputs.env` resolved values** — `[name, value]` pairs
+5. **`inputs.env` resolved values** — `[name, value]` pairs
    read from host `process.env` at hash time (delimited `name\0value`
    so boundaries are unambiguous). Listed names get their current
    values; an unset name folds its bare name, with no `\0`, so unset
    and set-to-empty are two keys (the child tells them apart:
    `passThrough` leaves an unset name out). A name holding a NUL is
    refused at load.
-6. **`cache.inputs.runtime` resolved output** — `[command, output]`
+6. **`inputs.runtime` resolved output** — `[command, output]`
    pairs, where `output` is the trimmed stdout of each command run via
    `sh -c` in the **project dir** at hash time; a command with stderr
    (or a NUL in stdout) folds `\0<stdout length>\0<stdout><stderr>`,
@@ -88,12 +90,12 @@ over (in order):
    The runtime-output analog of step 5: the command _strings_ are in
    the resolved config (step 3), their _output_ is resolved live every
    run. Folded with the command count + each `command\0output` pair.
-7. **`cache.inputs.workspaceRuntime` resolved output** — same as step
+7. **`inputs.workspaceRuntime` resolved output** — same as step
    8 but commands run at the **workspace root**, and the pairs fold
    into a **distinct namespace** (`ws-runtime-values:`) so an identical
    `(command, output)` never aliases the project-cwd `runtime` values.
 8. **Filtered upstream task cache hashes** — every upstream task's
-   own cache key, filtered by `cache.inputs.tasks` (default: all of
+   own cache key, filtered by `inputs.tasks` (default: all of
    them). Sorted by hash before folding so the ordering of `dependsOn`
    doesn't change the key. This is the cascade mechanism: if anything
    beneath you changes, your hash changes too. The set is `dependsOn`'s,
@@ -103,7 +105,7 @@ over (in order):
    whatever is on disk, which nothing proves current, so a task whose
    key folds one, and everything built on it, may hit but does not
    save (`orchestrator/excluded-keys.ts`); a task with
-   `cache.inputs.tasks: []` folds none and saves as usual.
+   `inputs.tasks: []` folds none and saves as usual.
 9. **Plugin key material** — the `{ name: value }` pairs a plugin's
    `key(task, ctx)` stage returned for this task, stored on the node as
    sorted `plugin/name` pairs and folded after the upstream keys and BEFORE the input files,
@@ -147,7 +149,7 @@ over (in order):
    [`modules/fingerprint-watch.md`](./modules/fingerprint-watch.md)).
    With nothing claimed, no root file is read or watched.
 
-10. **Input files' content hashes** — `cache.inputs.files` resolved to
+10. **Input files' content hashes** — `inputs.files` resolved to
     a concrete list of project-relative paths (gitignore-aware,
     declared-outputs-excluded, nested-projects-excluded), each file
     contributing its **git blob OID** (v20). On a clean tree the OID
@@ -216,19 +218,23 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     same shape — git reports the nested repository as one changed path,
     and every project under it is selected.
 
-    A task with **no `cache` block** derives a key too — its dependents
-    fold it (step 8) — and, declaring nothing, folds **every file in
-    its project**: `**/*`, gitignore-aware, untracked files included,
-    and its own outputs not excluded, since it declared none. So its
-    key moves whenever it writes a file git does not ignore: a cached
-    dependent misses once more after the upstream's first run and hits
-    from the third. `vx why` on the dependent names the upstream as
-    the moved component; on the upstream it says the file set moved
-    and that no fingerprints say which. Ignore the outputs in git, or
-    declare the block (`tests/uncached-upstream-key.test.ts` pins both
-    arms).
+    A task with **no `cache` block** derives a key too, from its
+    `inputs` — its dependents fold it (step 8), as Turbo and Nx hash
+    every task. That key is for its dependents only: the task always
+    runs, and no cache, local or remote, is asked about or handed
+    anything under it; its log goes to the run's own store
+    (`run/<id>/<task>/log`). A lookup follows `cache`, never a key
+    (`tests/uncached-no-lookup.test.ts`). One that also declares no
+    `inputs` is **keyless**: no
+    key can stand for what it read, so a key that folds it is this
+    run's alone, and every task behind it misses and saves nothing.
+    A task reading `**` with no `cache` folds its own outputs too,
+    since it declared none: its key moves whenever it writes a file
+    git does not ignore, so a cached dependent misses once more after
+    the upstream's first run. Ignore the outputs in git, narrow its
+    `inputs`, or declare the block (`tests/uncached-upstream-key.test.ts`).
 
-    Declaring nothing, such a task may also have **written** anywhere
+    Declaring no outputs, such a task may also have **written** anywhere
     in its project, so what the run learned about that project at its
     start — the git listing and the index OIDs — is dropped once its command exits, pass or fail, and a later key
     re-lists and hashes by content. For the same reason a task after it
@@ -269,7 +275,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     override gitignore; vx cannot, because the key would then depend on
     a change `git diff` cannot see and `--affected` would stop selecting
     the task. If the file is generated, depend on the task that produces
-    it via `cache.inputs.tasks`. A **glob** matching nothing stays
+    it via `inputs.tasks`. A **glob** matching nothing stays
     silent — that is legitimate — and so does a literal naming a file
     that does not exist. A literal naming a **directory** is judged the
     same way: an ignored one, or an empty one, has no file git lists
@@ -640,12 +646,14 @@ get/save and the file-hash memo's writes (never `recordRun` / `stats` / `prune` 
 read-through (`remoteRead`), upload (`remoteWrite`), and prefetch
 (`remoteRead`). The orchestrator derives two booleans per task:
 
-- `willRead = task has a cache block AND it is not remote-only AND (localRead || remoteRead)`
+- `willRead = task has a cache block AND it is not remote-only AND it folds no keyless task AND (localRead || remoteRead)`
 - `willWrite = task has a cache block AND it is not remote-only AND (localWrite || remoteWrite)`
 
 A task reads the cache only when `willRead`, saves only when
-`willWrite`, and cleans its declared outputs before exec only when
-`willWrite`. Remote-only is an `exec.remote: 'only'` task placed on a
+`willWrite` and it folds no keyless task, and cleans its declared outputs
+before exec only when `willWrite`. A keyless task runs a command and
+declares no `inputs`: its key is unknown, so a task that folds it
+(through `dependsOn`, directly or through a group) always misses. Remote-only is an `exec.remote: 'only'` task placed on a
 remote executor: it never touches this machine's disk (no probe, no
 restore, no output clean, no local save), and its result lives in the
 remote executor's own store.
@@ -796,7 +804,7 @@ from the snapshot's index OID for an output (or for an input the task
 rewrote) restored the bytes from before the command.
 
 A declared set that resolves to **nothing** is said on the run's
-status line. `cache.inputs matched no files (lib/**)` — the key would
+status line. `inputs matched no files (lib/**)` — the key would
 not change when the source does — is said on every miss of a cacheable
 task, right after `describeTaskInputs` and before the command, whether
 or not it saves. `cache.outputs matched no files (build/**)` — an empty
@@ -960,13 +968,13 @@ A task's cache becomes invalid when any of these change:
 | Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`)                                                                    | step 9 — the `key` material of the plugin that claims it (`@vzn/vx-lockfile`: only the projects whose dependency closure moved); **NOT a trigger** with no such plugin, since core keys no package file |
 | Edit an install setting (`.npmrc`, `bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`)                                                  | step 9 — the claiming lockfile plugin folds it whole into every task; **NOT a trigger** without one                                                                                                     |
 | Edit `package.json`'s `workspaces` field                                                                                                 | membership: a project that joins or leaves changes which projects exist and which nested dirs its parent's globs exclude (step 10)                                                                      |
-| Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 10 — an input file of every cached task when `@vzn/vx-lockfile` is declared (it adds `package.json` to `cache.inputs.files`), or when a task lists it; **NOT a trigger** otherwise                 |
+| Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 10 — an input file of every cached task when `@vzn/vx-lockfile` is declared (it adds `package.json` to `inputs.files`), or when a task lists it; **NOT a trigger** otherwise                       |
 | Edit the task's `vx.config.ts`                                                                                                           | step 3 (task config hash)                                                                                                                                                                               |
 | Edit a config file that the task config imports                                                                                          | step 3 (configHash sees the resolved object after Bun evaluates imports)                                                                                                                                |
 | Change CLI `forwardArgs` (after `--`)                                                                                                    | step 4                                                                                                                                                                                                  |
-| Change a `cache.inputs.env` host value                                                                                                   | step 5                                                                                                                                                                                                  |
-| Change the combined stdout+stderr of a `cache.inputs.runtime` command (resolved at hash time)                                            | step 6                                                                                                                                                                                                  |
-| Change the combined stdout+stderr of a `cache.inputs.workspaceRuntime` command (resolved at hash time)                                   | step 7                                                                                                                                                                                                  |
+| Change a `inputs.env` host value                                                                                                         | step 5                                                                                                                                                                                                  |
+| Change the combined stdout+stderr of a `inputs.runtime` command (resolved at hash time)                                                  | step 6                                                                                                                                                                                                  |
+| Change the combined stdout+stderr of a `inputs.workspaceRuntime` command (resolved at hash time)                                         | step 7                                                                                                                                                                                                  |
 | Upstream task's cache key changes (because its inputs changed)                                                                           | step 8                                                                                                                                                                                                  |
 | Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                                                                                                            |
 | Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                                                                                                      |
@@ -980,7 +988,7 @@ re-runs automatically.
 
 ## Cross-project boundaries
 
-A project's `cache.inputs.files` globs **never** reach into another
+A project's `inputs.files` globs **never** reach into another
 project's directory, even if a `**/*` pattern would otherwise match.
 
 `workspace/nested-dirs.ts` computes the set of nested project
@@ -997,21 +1005,22 @@ globs is `dependsOn` + upstream-hash propagation (step 8).
 For a task with `exec.sandbox` and `cache`, the sandbox enforces that
 "only". A workspace package reached through a `node_modules` link is
 granted only when the task's key folds a task of that package, walking
-the same selection `cache.inputs.tasks` applies at hash time
+the same selection `inputs.tasks` applies at hash time
 (`orchestrator/keyed-projects.ts`, over `upstream.ts`'s
 `selectFoldedDeps`); every other link target inside the root is
 withheld, so an import of a sibling the key never sees fails and is
 reported instead of caching a result an edit there would not re-run.
-Any exec task counts, cached or not: a task with no `cache` declares no
-`inputs.files`, so its key folds every file of its project. A persistent
-task counts the same way: its key folds its whole project, so a cached
-e2e behind a dev server re-runs when the server's sources change.
+Any exec task counts, cached or not: its key folds its project's files
+through its `inputs`, and one with no `inputs` is keyless, so a key that
+folds it is never stored or read. A persistent task counts the same way,
+so a cached e2e behind a dev server keyed on its sources re-runs when
+they change.
 The coverage is per package, not per file: an edge to `ui#source`
 (inputs `src/**`) also admits a read of `ui/README.md`, whose edit moves
 no key — the same limit a grant wider than a task's own inputs already
 has. A task with no `cache` keeps every link, having no key to be stale.
 
-**Exception:** `cache.inputs.workspaceFiles` /
+**Exception:** `inputs.workspaceFiles` /
 `cache.outputs.workspaceFiles` are workspace-root-anchored and apply
 NO boundary rule — a deliberate escape hatch (owner call: "they don't
 care about boundaries; it is bad practice but is there"). Prefer
@@ -1073,8 +1082,8 @@ the gate exists to avoid paying needlessly.
 
 ## Runtime inputs and the lock (the env parallel)
 
-`cache.inputs.runtime` / `cache.inputs.workspaceRuntime` are modeled
-exactly on `cache.inputs.env`, and they share its asymmetry with the
+`inputs.runtime` / `inputs.workspaceRuntime` are modeled
+exactly on `inputs.env`, and they share its asymmetry with the
 lockfile:
 
 - **The command _strings_ live in the resolved config**, so `vx lock`
@@ -1226,7 +1235,7 @@ by this user, or point cacheDir / --cache-dir at one that is.` (A-40).
 An input the key must hash that this user cannot read fails its task
 naming the read: `<path> is not readable by this user (EACCES), and vx
 reads it to derive a cache key. Make it readable, or, for a task input,
-take it out of cache.inputs.files.` (A-50).
+take it out of inputs.files.` (A-50).
 
 By default the entries and their artifacts live in a **shared store**
 in `~/.vx/<id>/cache`, and each workspace keeps only its own index in
@@ -1862,10 +1871,10 @@ moat.
   passthrough still bumps the key for affected tasks.
 - **Files outside the project directory that aren't declared.**
   Workspace-root configs (`tsconfig.base.json`, etc.) are not
-  auto-included — declare them via `cache.inputs.workspaceFiles`
+  auto-included — declare them via `inputs.workspaceFiles`
   (root-anchored globs).
 - **Node / Bun / OS / build-tool versions — unless you declare them.**
-  The canonical mechanism is `cache.inputs.runtime` /
+  The canonical mechanism is `inputs.runtime` /
   `workspaceRuntime` (e.g. `workspaceRuntime: ['node -v']`): the
   command output is resolved live at hash time, so it stays correct
   under the lock. Avoid baking versions via
@@ -2199,11 +2208,11 @@ breaking footer).
   committed, so git enumerates it, but it's vx's own frozen-config
   metadata — never a task input. Without this, a `vx lock` re-write
   busts every key on a project that globs the root lockfile (a broad
-  `**/*` on the root project). Tasks whose `cache.inputs.files` never
+  `**/*` on the root project). Tasks whose `inputs.files` never
   matched it derive byte-identical keys. No SCHEMA bump — only the
   hashed file set changed, not the key layout or on-disk format.
 
-- **v22 → v23**: fold `cache.inputs.runtime` / `workspaceRuntime`
+- **v22 → v23**: fold `inputs.runtime` / `workspaceRuntime`
   command output into the key (two namespaced sections after
   env-values). The command _strings_ stay in the config hash (step 3);
   their combined trimmed stdout+stderr is resolved live at hash time
@@ -2248,7 +2257,7 @@ breaking footer).
 - **v11 → v12** (PR #42): project's `package.json` bytes folded into
   every task's cache key implicitly. Matches Turbo / Nx "implicit
   dependencies" behavior — a `package.json` dep change invalidates
-  the project's tasks even when `cache.inputs.files` is narrow and
+  the project's tasks even when `inputs.files` is narrow and
   doesn't cover the file.
 - **v12 → v13** (PR #65): per-entry on-disk layout unified. Outputs
   moved from `<hash>/<rel>` (mixed with metadata) to

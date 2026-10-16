@@ -29,8 +29,8 @@ export default defineProject({
         command: 'bun perf-guard.ts',
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
+      inputs: { files: ['perf-guard.ts', 'perf-baseline.json', 'package.json'] },
       cache: {
-        inputs: { files: ['perf-guard.ts', 'perf-baseline.json', 'package.json'] },
         outputs: { files: [] },
       },
     },
@@ -47,10 +47,10 @@ export default defineProject({
         command: 'bun pr-bench.ts',
         sandbox: { allow: { read: ['**/*'] } },
       },
+      inputs: {
+        files: ['pr-bench.ts', 'pr-bench-baseline.json', 'bench-env.ts', 'package.json'],
+      },
       cache: {
-        inputs: {
-          files: ['pr-bench.ts', 'pr-bench-baseline.json', 'bench-env.ts', 'package.json'],
-        },
         outputs: { files: [] },
       },
     },
@@ -101,17 +101,17 @@ export default defineProject({
           },
         },
       },
+      inputs: {
+        files: ['update-site.ts', 'results.json'],
+        workspaceFiles: [
+          'packages/vx-docs/src/pages/index.astro',
+          'packages/vx/docs/benchmarks.md',
+          'README.md',
+          'packages/vx-docs/src/content/docs/compare/turborepo.md',
+          'packages/vx-docs/src/content/docs/compare/nx.md',
+        ],
+      },
       cache: {
-        inputs: {
-          files: ['update-site.ts', 'results.json'],
-          workspaceFiles: [
-            'packages/vx-docs/src/pages/index.astro',
-            'packages/vx/docs/benchmarks.md',
-            'README.md',
-            'packages/vx-docs/src/content/docs/compare/turborepo.md',
-            'packages/vx-docs/src/content/docs/compare/nx.md',
-          ],
-        },
         outputs: { files: [] },
       },
     },
@@ -134,18 +134,18 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
+      inputs: {
+        files: [
+          '*.ts',
+          'tests/**',
+          'playground-spike/**/*.ts',
+          'package.json',
+          '.oxlintrc.json',
+          'tsconfig.json',
+        ],
+        workspaceFiles: PLAYGROUND,
+      },
       cache: {
-        inputs: {
-          files: [
-            '*.ts',
-            'tests/**',
-            'playground-spike/**/*.ts',
-            'package.json',
-            '.oxlintrc.json',
-            'tsconfig.json',
-          ],
-          workspaceFiles: PLAYGROUND,
-        },
         outputs: { files: [] },
       },
     },
@@ -157,10 +157,10 @@ export default defineProject({
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
+      inputs: {
+        files: ['**/*'],
+      },
       cache: {
-        inputs: {
-          files: ['**/*'],
-        },
         outputs: { files: [] },
       },
     },
@@ -178,8 +178,8 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
+      inputs: { files: ['*.ts', 'tests/**', 'package.json'] },
       cache: {
-        inputs: { files: ['*.ts', 'tests/**', 'package.json'] },
         outputs: { files: [] },
       },
     },

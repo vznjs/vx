@@ -45,7 +45,7 @@ describe('sh absent from PATH', () => {
           tasks: {
             build: {
               exec: { command: 'echo built' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
             },
           },
         }
@@ -77,7 +77,7 @@ describe('sh absent from PATH', () => {
     expect(r.text).not.toContain('internal error')
   })
 
-  it('a cache.inputs.runtime probe names the shell too, before any task runs', async () => {
+  it('a inputs.runtime probe names the shell too, before any task runs', async () => {
     const bin = await pathWithoutSh(false)
     bins.push(bin)
     await addProject(root, 'probe', {
@@ -86,7 +86,7 @@ describe('sh absent from PATH', () => {
           tasks: {
             build: {
               exec: { command: 'echo built' },
-              cache: { inputs: { files: ['src/**'], runtime: ['echo v1'] }, outputs: { files: [] } },
+              inputs: { files: ['src/**'], runtime: ['echo v1'] }, cache: { outputs: { files: [] } },
             },
           },
         }
@@ -99,7 +99,7 @@ describe('sh absent from PATH', () => {
     const r = vx(root, bin, ['run', 'build', '--all'])
     expect(r.code).toBe(1)
     expect(r.text).toContain(
-      "cache.inputs runtime command could not run: vx runs it with sh -c and 'sh' is not on PATH (command: echo v1, cwd: ",
+      "inputs runtime command could not run: vx runs it with sh -c and 'sh' is not on PATH (command: echo v1, cwd: ",
     )
     expect(r.text).toContain('Install a POSIX sh and re-run.')
     expect(r.text).not.toContain('Executable not found')

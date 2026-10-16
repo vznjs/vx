@@ -919,7 +919,7 @@ Bun.spawn = (cmd, opts) => {
       await addProject(
         root,
         name,
-        `export default { tasks: { build: { exec: { command: 'true' }, cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } } } } }`,
+        `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } } } } }`,
       )
     const guards = async (): Promise<string[]> => {
       await rm(log, { force: true })

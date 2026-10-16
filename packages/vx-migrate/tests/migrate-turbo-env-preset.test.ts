@@ -47,10 +47,10 @@ describe('migrateTurbo: a task env several configs share', () => {
     const env = (name: string) => {
       const task = p.projects.find((x) => x.name === name)!.tasks.find((t) => t.name === 'build')!
         .task as {
-        cache: { inputs: { env: unknown[] } }
+        inputs: { env: unknown[] }
         exec: { env: { passThrough: unknown[] } }
       }
-      return [task.cache.inputs.env, task.exec.env.passThrough]
+      return [task.inputs.env, task.exec.env.passThrough]
     }
     const preset = p.extraFiles.find((f) => f.relPath === 'vx-preset.ts')!.contents
     expect({

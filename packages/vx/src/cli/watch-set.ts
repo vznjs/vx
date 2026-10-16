@@ -131,15 +131,15 @@ export async function sweepConfigs(
       add(dir, task.cache?.outputs?.files)
       add(workspaceRoot, task.cache?.outputs?.workspaceFiles)
       if (names !== null && !names.has(name)) continue
-      if (task.cache === undefined && task.exec !== undefined && task.exec.persistent === undefined)
-        uncached.add(dir)
-      for (const g of task.cache?.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
-      addInputs(dir, task.cache?.inputs?.files, task.cache?.outputs?.files)
-      addInputs(
-        workspaceRoot,
-        task.cache?.inputs?.workspaceFiles,
-        task.cache?.outputs?.workspaceFiles,
+      if (
+        task.inputs === undefined &&
+        task.exec !== undefined &&
+        task.exec.persistent === undefined
       )
+        uncached.add(dir)
+      for (const g of task.inputs?.workspaceFiles ?? []) workspaceInputs.add(g)
+      addInputs(dir, task.inputs?.files, task.cache?.outputs?.files)
+      addInputs(workspaceRoot, task.inputs?.workspaceFiles, task.cache?.outputs?.workspaceFiles)
     }
   }
   const result = (staged: Map<string, ProjectEntry> | null): ConfigSweep => ({

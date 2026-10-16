@@ -68,8 +68,8 @@ A task is one shell command with declared inputs and outputs:
 ```ts
 build: {
   exec: { command: 'tsc -b' },
+  inputs: { files: ['src/**', 'tsconfig.json'] },
   cache: {
-    inputs: { files: ['src/**', 'tsconfig.json'] },
     outputs: { files: ['dist/**'] },
   },
 }
@@ -78,8 +78,8 @@ build: {
 Three rules hold across the whole tool:
 
 - **Caching is opt-in.** No `cache` block, no cache. When there is one,
-  both `inputs` and `outputs` are required. vx never infers what a task
-  reads.
+  both `inputs` and `outputs` are required. `inputs` sits on the task and
+  keys it whether it caches or not. vx never infers what a task reads.
 - **One command per task.** A plugin may change *where* the command runs,
   never what it is. Chain with `&&` or split into tasks wired by
   `dependsOn` so each step caches on its own.

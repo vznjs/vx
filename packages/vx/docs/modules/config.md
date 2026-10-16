@@ -8,7 +8,7 @@ Pure types + two identity helpers; no runtime logic.
 Defines every interface the rest of the codebase consumes:
 `ProjectConfig`, `TaskConfig`, `ExecConfig`, `ExecEnv`,
 `PersistentConfig`, `SandboxConfig` (with its `SandboxGrants`,
-`SandboxDenials` and `SandboxIgnore`), `CacheConfig`, `CacheInputs`, `CacheOutputs`, `InputStability`,
+`SandboxDenials` and `SandboxIgnore`), `CacheConfig`, `InputsConfig`, `CacheOutputs`, `InputStability`,
 `WorkspaceConfig` — and the plugin contract a workspace file declares:
 `Plugin`, the `PLUGIN_HOOKS` list every table and host reads (with
 `PluginHook` and the function-valued subset `PLUGIN_FUNCTION_HOOKS`),
@@ -46,7 +46,7 @@ export interface SandboxGrants
 export interface SandboxDenials
 export interface SandboxIgnore
 export interface CacheConfig
-export interface CacheInputs
+export interface InputsConfig
 export interface CacheOutputs
 export interface InputStability
 
@@ -69,7 +69,7 @@ typo in a same-project dependency is a type error at the call site;
 `const T` keeps the literal types. The same intersection types every
 key the schema does not declare as `never`, at the top, on each task,
 and in its `exec`, `exec.env`, `exec.persistent`, `exec.sandbox` (and
-its `allow`, `deny`, `ignore`, D-156), `cache`, `cache.inputs` and
+its `allow`, `deny`, `ignore`, D-156), `cache`, `inputs` and
 `cache.outputs`: a
 generic argument skips TypeScript's excess-property check, so a
 Turbo-shaped `outputs` on a task or a `cwd` in `exec` type-checked and
@@ -81,7 +81,7 @@ D-155) type-checked.
 
 `TaskConfig.dependsOn` is `readonly string[]` (Turbo/Nx
 micro-syntax — see [`schema.md`](../schema.md)).
-`CacheInputs.tasks` is the same shape with `*` / `^*` / `!` filter
+`InputsConfig.tasks` is the same shape with `*` / `^*` / `!` filter
 extras.
 
 See [`../schema.md`](../schema.md) for the full reference of every
@@ -113,14 +113,14 @@ The function body is a one-liner today and that's by design.
 - The types and `config-schema.ts` name the same keys at every level
   (workspace, `cache.retention`, project, task, `exec`, `exec.env`,
   `exec.persistent`, `exec.sandbox` and its `allow` / `deny` /
-  `ignore`, `cache`, `cache.inputs`, `cache.outputs`):
+  `ignore`, `cache`, `inputs`, `cache.outputs`):
   `tests/config-types-schema.test.ts` holds each list to the type with
   the type-checker and to the validator by its own refusal (D-71). With
   undeclared keys typed `never` (D-69, D-70), a drift either way is a
   config that loads but does not type-check, or the reverse.
   Internal modules import them; user code imports them via `@vzn/vx`.
 - No field is optional in the schema if it's required for correctness.
-  When `cache` is provided, `cache.inputs.files` and
+  When `cache` is provided, `inputs.files` and
   `cache.outputs.files` are required by the type system (not just at
   runtime).
 - The types are JSON-serializable. No `Function` fields, no

@@ -73,12 +73,12 @@ describe.skipIf(!available || process.platform !== 'linux' || bwrap === null)(
         config: `export default { tasks: {
           wait: {
             exec: { command: ${JSON.stringify(waitForMark())} },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
           },
           check: {
             dependsOn: ['wait'],
             exec: { command: 'true', sandbox: {} },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
           },
         } }`,
         files: { 'src/a.txt': 'a' },
@@ -132,7 +132,7 @@ console.log('ok=' + r.ok)
         config: `export default { tasks: {
           check: {
             exec: { command: 'true', sandbox: {} },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
           },
         } }`,
         files: { 'src/a.txt': 'a' },

@@ -96,7 +96,7 @@ configuration, the environment variables it reads, and the results of
 the tasks it depends on. A runner can have you declare them, or infer
 them, and the choice decides what it can prove.
 
-- vx: `cache.inputs`, declared and required, never inferred ([caching](../caching/))
+- vx: `inputs`, declared and required, never inferred ([caching](../caching/))
 - Turborepo: `inputs` ([configuration](https://turborepo.com/docs/reference/configuration#inputs))
 - Nx: cache inputs ([glossary](https://nx.dev/docs/reference/glossary#cache-inputs))
 - Bazel: the declared input [artifacts](https://bazel.build/reference/glossary#artifact) of an action

@@ -26,15 +26,15 @@ export default defineProject({
   tasks: {
     build: {
       exec: { command: 'tsc -b' },
+      inputs: { files: ['src/**', 'tsconfig.json'] },
       cache: {
-        inputs: { files: ['src/**', 'tsconfig.json'] },
         outputs: { files: ['dist/**'] },
       },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'vitest run' },
-      cache: { inputs: { files: ['src/**', 'test/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**', 'test/**'] }, cache: { outputs: { files: [] } },
     },
   },
 })
@@ -55,7 +55,7 @@ A shared preset is a file:
 export const lib = (entry: string) => ({
   build: {
     exec: { command: `tsup ${entry}` },
-    cache: { inputs: { files: ['src/**', 'tsup.config.ts'] }, outputs: { files: ['dist/**'] } },
+    inputs: { files: ['src/**', 'tsup.config.ts'] }, cache: { outputs: { files: ['dist/**'] } },
   },
 })
 ```
@@ -83,7 +83,7 @@ by the compiler, refactorable by the editor.
 
 A program can do too much. Reading another project is refused: globs
 are resolved inside the project directory, `../shared/**` is an error,
-and `cache.inputs.workspaceFiles` is the one named exception for files
+and `inputs.workspaceFiles` is the one named exception for files
 at the workspace root.
 
 A config may read `process.env`, the clock or the network, but it reads

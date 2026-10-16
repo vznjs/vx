@@ -57,7 +57,7 @@ describe('expandNxInputs', () => {
     ])
     const todo = (e: unknown) =>
       `input ${JSON.stringify(e)}: vx keys only the files git lists, so a gitignored match is ` +
-      'not in the key — read it with a cache.inputs.workspaceRuntime probe'
+      'not in the key — read it with a inputs.workspaceRuntime probe'
     expect([got.files, got.wsFiles, got.runtimeCmds, got.todos]).toEqual([
       [],
       [],

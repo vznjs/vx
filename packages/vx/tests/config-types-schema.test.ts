@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'bun:test'
 import type {
   CacheConfig,
-  CacheInputs,
+  InputsConfig,
   CacheSettings,
   RunSettings,
   WatchSettings,
@@ -63,6 +63,7 @@ const TASK = [
   'dependsOn',
   'description',
   'exec',
+  'inputs',
 ] as const satisfies readonly Keys<TaskConfig>[]
 const EXEC = [
   'command',
@@ -75,11 +76,7 @@ const EXEC = [
   'timeout',
 ] as const satisfies readonly Keys<ExecConfig>[]
 const ENV = ['define', 'passThrough', 'secret'] as const satisfies readonly Keys<ExecEnv>[]
-const CACHE = [
-  'inputs',
-  'outputs',
-  'inputStability',
-] as const satisfies readonly Keys<CacheConfig>[]
+const CACHE = ['outputs', 'inputStability'] as const satisfies readonly Keys<CacheConfig>[]
 const STABILITY = ['severity', 'strategy'] as const satisfies readonly Keys<InputStability>[]
 const INPUTS = [
   'env',
@@ -88,7 +85,7 @@ const INPUTS = [
   'tasks',
   'workspaceFiles',
   'workspaceRuntime',
-] as const satisfies readonly Keys<CacheInputs>[]
+] as const satisfies readonly Keys<InputsConfig>[]
 const OUTPUTS = [
   'clean',
   'files',
@@ -144,7 +141,7 @@ const exhaustive: [
   Exhaustive<ExecConfig, typeof EXEC>,
   Exhaustive<ExecEnv, typeof ENV>,
   Exhaustive<CacheConfig, typeof CACHE>,
-  Exhaustive<CacheInputs, typeof INPUTS>,
+  Exhaustive<InputsConfig, typeof INPUTS>,
   Exhaustive<CacheOutputs, typeof OUTPUTS>,
   Exhaustive<InputStability, typeof STABILITY>,
   Exhaustive<NonNullable<CacheSettings['retention']>, typeof RETENTION>,
@@ -218,16 +215,16 @@ describe('the config types and the validator agree on every level (D-71)', () =>
       CACHE,
       () =>
         validateProjectConfig(
-          task({ cache: { inputs: { files: [] }, outputs: { files: [] }, ...X } }) as never,
+          task({ inputs: { files: [] }, cache: { outputs: { files: [] }, ...X } }) as never,
           'p',
         ),
     ],
     [
-      'cache.inputs',
+      'inputs',
       INPUTS,
       () =>
         validateProjectConfig(
-          task({ cache: { inputs: { files: [], ...X }, outputs: { files: [] } } }) as never,
+          task({ inputs: { files: [], ...X }, cache: { outputs: { files: [] } } }) as never,
           'p',
         ),
     ],
@@ -236,7 +233,7 @@ describe('the config types and the validator agree on every level (D-71)', () =>
       OUTPUTS,
       () =>
         validateProjectConfig(
-          task({ cache: { inputs: { files: [] }, outputs: { files: [], ...X } } }) as never,
+          task({ inputs: { files: [] }, cache: { outputs: { files: [], ...X } } }) as never,
           'p',
         ),
     ],
@@ -246,7 +243,8 @@ describe('the config types and the validator agree on every level (D-71)', () =>
       () =>
         validateProjectConfig(
           task({
-            cache: { inputs: { files: [] }, outputs: { files: [] }, inputStability: X },
+            inputs: { files: [] },
+            cache: { outputs: { files: [] }, inputStability: X },
           }) as never,
           'p',
         ),
@@ -330,15 +328,15 @@ describe('a config built from readonly lists type-checks and loads', () => {
             },
           },
         },
+        inputs: {
+          files: SRC,
+          workspaceFiles: ['tsconfig.base.json'] as const,
+          env: NAMES,
+          tasks: ['^build'] as const,
+          runtime: ['node -v'] as const,
+          workspaceRuntime: ['git -v'] as const,
+        },
         cache: {
-          inputs: {
-            files: SRC,
-            workspaceFiles: ['tsconfig.base.json'] as const,
-            env: NAMES,
-            tasks: ['^build'] as const,
-            runtime: ['node -v'] as const,
-            workspaceRuntime: ['git -v'] as const,
-          },
           outputs: { files: ['dist/**'] as const, workspaceFiles: ['out/x'] as const },
         },
       },

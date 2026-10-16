@@ -567,7 +567,7 @@ export function validateProjectConfig(
             )
           }
           // `VITE_*` passed nothing through and loaded clean (Turbo's
-          // passThroughEnv expands it), where `cache.inputs.env` refused the
+          // passThroughEnv expands it), where `inputs.env` refused the
           // same text below: one refusal for the class (item 1090).
           assertNoEnvNegation(passThrough as string[], `${where}.exec.env.passThrough`)
           const wild = (passThrough as string[]).find((n) => BUN_GLOB_WILDCARDS.test(n))
@@ -691,11 +691,11 @@ export function validateProjectConfig(
       // so a dependant's `^build` finds it and waits on nothing
       // (the quickstart). The comment here used to call that case
       // "almost certainly a config mistake" while the docs taught it.
-      // A keyed group (`cache` with no `exec`) is a declaration on its own:
+      // A keyed group (`inputs` with no `exec`) is a declaration on its own:
       // its inputs are a key that dependants fold, with no process.
-      if (dependsOn === undefined && cache === undefined) {
+      if (dependsOn === undefined && (task as { inputs?: unknown }).inputs === undefined) {
         throw new UserError(
-          `${where}: a task with no \`exec\` must declare \`dependsOn\` or \`cache.inputs\` ` +
+          `${where}: a task with no \`exec\` must declare \`dependsOn\` or \`inputs\` ` +
             `(group tasks exist to chain dependencies or carry a key)`,
         )
       }
@@ -712,31 +712,14 @@ export function validateProjectConfig(
         )
       }
     }
-    if (cache !== undefined) {
-      if (typeof cache !== 'object' || cache === null) {
-        throw new UserError(
-          `${where}.cache must be an object when present — \`cache: { inputs: { files: [...] }, outputs: { files: [...] } }\`, or no \`cache\` for a task that never caches`,
-        )
+    const inputs = (task as { inputs?: unknown }).inputs
+    if (inputs !== undefined) {
+      if (typeof inputs !== 'object' || inputs === null) {
+        throw new UserError(`${where}.inputs must be an object — \`inputs: { files: [...] }\``)
       }
-      assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
-      const stability = (cache as { inputStability?: unknown }).inputStability
-      if (stability !== undefined)
-        validateInputStability(stability, `${where}.cache.inputStability`)
-      const inputs = (cache as { inputs?: unknown }).inputs
-      const outputs = (cache as { outputs?: unknown }).outputs
-      // A present field of the wrong shape (`outputs: 'dist'`) was told it
-      // was missing; an array is named in `assertKnownFields`.
-      if (inputs === undefined || inputs === null) {
-        throw new UserError(`${where}.cache.inputs is required when \`cache\` is set`)
-      }
-      if (typeof inputs !== 'object') {
-        throw new UserError(
-          `${where}.cache.inputs must be an object — \`inputs: { files: [...] }\``,
-        )
-      }
-      assertKnownFields(inputs, CACHE_INPUT_FIELDS, `${where}.cache.inputs`)
+      assertKnownFields(inputs, INPUT_FIELDS, `${where}.inputs`)
       if (!Array.isArray((inputs as { files?: unknown }).files)) {
-        throw new UserError(`${where}.cache.inputs.files must be an array of glob strings`)
+        throw new UserError(`${where}.inputs.files must be an array of glob strings`)
       }
       const envList = (inputs as { env?: unknown }).env
       if (envList !== undefined) {
@@ -746,10 +729,10 @@ export function validateProjectConfig(
           envList.some((s) => !isEnvName(s))
         ) {
           throw new UserError(
-            `${where}.cache.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
+            `${where}.inputs.env must be an array of env var names (non-empty, no '=' or NUL)`,
           )
         }
-        assertNoEnvNegation(envList as string[], `${where}.cache.inputs.env`)
+        assertNoEnvNegation(envList as string[], `${where}.inputs.env`)
         for (const name of envList as string[]) {
           // Reject wildcards explicitly so users don't silently miss
           // env vars they thought they were tracking. Turbo supports
@@ -761,12 +744,123 @@ export function validateProjectConfig(
           // whole `Bun.Glob` alphabet stays refused here.
           if (BUN_GLOB_WILDCARDS.test(name)) {
             throw new UserError(
-              `${where}.cache.inputs.env: wildcards in env names are not supported ` +
+              `${where}.inputs.env: wildcards in env names are not supported ` +
                 `(got "${name}") — list explicit env var names instead`,
             )
           }
         }
       }
+      // Same for inputs.files.
+      for (const g of (inputs as { files: unknown[] }).files) {
+        if (typeof g !== 'string' || g.length === 0) {
+          throw new UserError(`${where}.inputs.files must be an array of non-empty strings`)
+        }
+        if (!g.startsWith('!/') && isAbsoluteGlob(g)) {
+          throw new UserError(
+            `${where}.inputs.files: absolute paths are not allowed (got "${g}") — ` +
+              `inputs must be project-relative globs`,
+          )
+        }
+        if (hasParentSegment(g)) {
+          throw new UserError(
+            `${where}.inputs.files: '..' path segments are not allowed (got "${g}") — ` +
+              `inputs must be project-relative (a '..' glob silently matches nothing; ` +
+              `use inputs.workspaceFiles for workspace-root-relative inputs)`,
+          )
+        }
+        assertPosixGlob(g, `${where}.inputs.files`, 'project')
+        assertNoForeignToken(g, `${where}.inputs.files`)
+        if (namesDirItself(g)) {
+          throw new UserError(
+            `${where}.inputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
+          )
+        }
+        // A negated absolute path subtracts nothing (the positive globs are
+        // project-relative), so it would sit in the config as a silent no-op;
+        // `workspaceFiles` refuses both spellings the same way (item 679).
+        if (g.startsWith('!/')) {
+          throw new UserError(
+            `${where}.inputs.files: absolute paths are not allowed (got "${g}") — ` +
+              `inputs must be project-relative globs`,
+          )
+        }
+        assertNotDoubleNegated(g, `${where}.inputs.files`)
+      }
+      // A list of ONLY negations selects nothing at all. `resolveFiles`
+      // builds the file set from the POSITIVE globs and uses the `!` entries
+      // purely to subtract, so with no positive pattern it returns `[]` — the
+      // task folds ZERO file inputs and its key stops moving with its source,
+      // which is a stale hit waiting to happen.
+      //
+      // Every gitignore-trained reader parses `['!**/*.spec.ts']` as
+      // "everything except specs", and Turbo makes exactly this a hard config
+      // error for the same reason. Refusing costs nothing: such a config was
+      // already silently broken, so no working key changes.
+      assertNotNegationOnly((inputs as { files: string[] }).files, `${where}.inputs.files`)
+      assertNoLiteralTakenBack((inputs as { files: string[] }).files, `${where}.inputs.files`)
+      // The only InputsConfig field that reached the run unvalidated: a
+      // non-string entry crashes deep in `filterUpstreamHashes` /
+      // `parseDependencySpec` with a raw TypeError naming neither the task
+      // nor the config. Entry SYNTAX is already checked downstream (a
+      // `DependencySpecError` becomes a UserError naming the task) — this
+      // only pins the shape.
+      const taskFilters = (inputs as { tasks?: unknown }).tasks
+      if (taskFilters !== undefined) {
+        if (
+          !Array.isArray(taskFilters) ||
+          taskFilters.some((s) => typeof s !== 'string' || s.length === 0)
+        ) {
+          throw new UserError(
+            `${where}.inputs.tasks must be an array of non-empty strings ` +
+              `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')`,
+          )
+        }
+        assertFilterNamesDeclaredDeps(taskFilters, task.dependsOn, where)
+      }
+      for (const field of ['runtime', 'workspaceRuntime'] as const) {
+        const list = (inputs as Record<string, unknown>)[field]
+        if (list !== undefined) {
+          if (
+            !Array.isArray(list) ||
+            // Whitespace alone ran as a no-op probe that folds nothing, as
+            // a blank `exec.command` did before item 1099 (X-22).
+            list.some((s) => typeof s !== 'string' || s.trim() === '' || s.includes('\0'))
+          ) {
+            throw new UserError(
+              `${where}.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
+            )
+          }
+        }
+      }
+      // workspaceFiles mirror the files validation: non-empty strings,
+      // never absolute (they're workspace-root-relative by definition).
+      const wsInputs = (inputs as { workspaceFiles?: unknown }).workspaceFiles
+      if (wsInputs !== undefined) {
+        validateWorkspaceGlobs(wsInputs, `${where}.inputs.workspaceFiles`, true)
+      }
+    }
+    if (cache !== undefined) {
+      if (typeof cache !== 'object' || cache === null) {
+        throw new UserError(
+          `${where}.cache must be an object when present — \`inputs: { files: [...] }, cache: { outputs: { files: [...] } }\`, or no \`cache\` for a task that never caches`,
+        )
+      }
+      assertKnownFields(cache, CACHE_FIELDS, `${where}.cache`)
+      const stability = (cache as { inputStability?: unknown }).inputStability
+      if (stability !== undefined)
+        validateInputStability(stability, `${where}.cache.inputStability`)
+      // The key is the task's inputs, and a group runs nothing to cache.
+      if (exec === undefined) {
+        throw new UserError(
+          `${where}: \`cache\` needs \`exec\` — a task with no command produces nothing to cache`,
+        )
+      }
+      if (inputs === undefined) {
+        throw new UserError(
+          `${where}: \`cache\` needs \`inputs\` — the key is the task's inputs, \`inputs: { files: [...] }\``,
+        )
+      }
+      const outputs = (cache as { outputs?: unknown }).outputs
       if (outputs === undefined || outputs === null) {
         throw new UserError(`${where}.cache.outputs is required when \`cache\` is set`)
       }
@@ -839,102 +933,9 @@ export function validateProjectConfig(
         }
       }
       assertOutputsNotNegationOnly(outFiles as string[], `${where}.cache.outputs.files`)
-      // Same for inputs.files.
-      for (const g of (inputs as { files: unknown[] }).files) {
-        if (typeof g !== 'string' || g.length === 0) {
-          throw new UserError(`${where}.cache.inputs.files must be an array of non-empty strings`)
-        }
-        if (!g.startsWith('!/') && isAbsoluteGlob(g)) {
-          throw new UserError(
-            `${where}.cache.inputs.files: absolute paths are not allowed (got "${g}") — ` +
-              `inputs must be project-relative globs`,
-          )
-        }
-        if (hasParentSegment(g)) {
-          throw new UserError(
-            `${where}.cache.inputs.files: '..' path segments are not allowed (got "${g}") — ` +
-              `inputs must be project-relative (a '..' glob silently matches nothing; ` +
-              `use cache.inputs.workspaceFiles for workspace-root-relative inputs)`,
-          )
-        }
-        assertPosixGlob(g, `${where}.cache.inputs.files`, 'project')
-        assertNoForeignToken(g, `${where}.cache.inputs.files`)
-        if (namesDirItself(g)) {
-          throw new UserError(
-            `${where}.cache.inputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
-          )
-        }
-        // A negated absolute path subtracts nothing (the positive globs are
-        // project-relative), so it would sit in the config as a silent no-op;
-        // `workspaceFiles` refuses both spellings the same way (item 679).
-        if (g.startsWith('!/')) {
-          throw new UserError(
-            `${where}.cache.inputs.files: absolute paths are not allowed (got "${g}") — ` +
-              `inputs must be project-relative globs`,
-          )
-        }
-        assertNotDoubleNegated(g, `${where}.cache.inputs.files`)
-      }
-      // A list of ONLY negations selects nothing at all. `resolveFiles`
-      // builds the file set from the POSITIVE globs and uses the `!` entries
-      // purely to subtract, so with no positive pattern it returns `[]` — the
-      // task folds ZERO file inputs and its key stops moving with its source,
-      // which is a stale hit waiting to happen.
-      //
-      // Every gitignore-trained reader parses `['!**/*.spec.ts']` as
-      // "everything except specs", and Turbo makes exactly this a hard config
-      // error for the same reason. Refusing costs nothing: such a config was
-      // already silently broken, so no working key changes.
-      assertNotNegationOnly((inputs as { files: string[] }).files, `${where}.cache.inputs.files`)
-      assertNoLiteralTakenBack((inputs as { files: string[] }).files, `${where}.cache.inputs.files`)
-      // The only CacheInputs field that reached the run unvalidated: a
-      // non-string entry crashes deep in `filterUpstreamHashes` /
-      // `parseDependencySpec` with a raw TypeError naming neither the task
-      // nor the config. Entry SYNTAX is already checked downstream (a
-      // `DependencySpecError` becomes a UserError naming the task) — this
-      // only pins the shape.
-      const taskFilters = (inputs as { tasks?: unknown }).tasks
-      if (taskFilters !== undefined) {
-        if (
-          !Array.isArray(taskFilters) ||
-          taskFilters.some((s) => typeof s !== 'string' || s.length === 0)
-        ) {
-          throw new UserError(
-            `${where}.cache.inputs.tasks must be an array of non-empty strings ` +
-              `(Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')`,
-          )
-        }
-        assertFilterNamesDeclaredDeps(taskFilters, task.dependsOn, where)
-      }
-      for (const field of ['runtime', 'workspaceRuntime'] as const) {
-        const list = (inputs as Record<string, unknown>)[field]
-        if (list !== undefined) {
-          if (
-            !Array.isArray(list) ||
-            // Whitespace alone ran as a no-op probe that folds nothing, as
-            // a blank `exec.command` did before item 1099 (X-22).
-            list.some((s) => typeof s !== 'string' || s.trim() === '' || s.includes('\0'))
-          ) {
-            throw new UserError(
-              `${where}.cache.inputs.${field} must be an array of non-empty shell command strings with no NUL`,
-            )
-          }
-        }
-      }
-      // workspaceFiles mirror the files validation: non-empty strings,
-      // never absolute (they're workspace-root-relative by definition).
-      const wsInputs = (inputs as { workspaceFiles?: unknown }).workspaceFiles
-      if (wsInputs !== undefined) {
-        validateWorkspaceGlobs(wsInputs, `${where}.cache.inputs.workspaceFiles`, true)
-      }
       const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
       if (wsOutputs !== undefined) {
         validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`, false)
-      }
-      if (exec === undefined && (outFiles.length > 0 || wsOutputs !== undefined)) {
-        throw new UserError(
-          `${where}.cache.outputs: a task with no \`exec\` writes nothing — \`outputs: { files: [] }\``,
-        )
       }
     }
   }
@@ -949,7 +950,7 @@ export function validateProjectConfig(
 // `tasks` first: `nearest` breaks a tie by order, and `taks` is one edit
 // from both.
 const PROJECT_FIELDS = new Set(['name', 'tasks', 'tags'])
-const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'cache'])
+const TASK_FIELDS = new Set(['description', 'exec', 'dependsOn', 'inputs', 'cache'])
 const EXEC_FIELDS = new Set([
   'command',
   'env',
@@ -962,8 +963,8 @@ const EXEC_FIELDS = new Set([
 ])
 const PERSISTENT_FIELDS = new Set(['readyWhen'])
 const ENV_FIELDS = new Set(['passThrough', 'define', 'secret'])
-const CACHE_FIELDS = new Set(['inputs', 'outputs', 'inputStability'])
-const CACHE_INPUT_FIELDS = new Set([
+const CACHE_FIELDS = new Set(['outputs', 'inputStability'])
+const INPUT_FIELDS = new Set([
   'files',
   'workspaceFiles',
   'env',
@@ -983,9 +984,8 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
   [
     TASK_FIELDS,
     {
-      inputs: '`cache.inputs.files`',
       outputs: '`cache.outputs.files`',
-      env: '`cache.inputs.env` (to key the task on a variable) or `exec.env` (to pass one)',
+      env: '`inputs.env` (to key the task on a variable) or `exec.env` (to pass one)',
       passThroughEnv: '`exec.env.passThrough`',
       command: '`exec.command`',
       cmd: '`exec.command`',
@@ -1027,15 +1027,15 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
   [
     CACHE_FIELDS,
     {
-      files: '`inputs.files`',
+      files: "the task's `inputs.files`",
       output: '`outputs.files`',
-      env: '`inputs.env`',
+      env: "the task's `inputs.env`",
       dependencies: "the task's `dependsOn` (an upstream's key folds into this one)",
       enabled: 'no field: a task with a `cache` block caches, one without runs every time',
     },
   ],
   [
-    CACHE_INPUT_FIELDS,
+    INPUT_FIELDS,
     {
       globs: '`files`',
       include: '`files`',
@@ -1065,19 +1065,18 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
       scripts:
         "`tasks` (a script is a task's `exec.command`; `vx init` writes them from package.json)",
       pipeline: '`tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)',
-      namedInputs: 'a module the vx.config imports, spread into `cache.inputs.files`',
+      namedInputs: 'a module the vx.config imports, spread into `inputs.files`',
       root: "no field: a project's directory is where its vx.config sits",
-      sourceRoot: "a task's `cache.inputs.files`",
+      sourceRoot: "a task's `inputs.files`",
       projectType: 'no field: vx runs every project alike',
       ...Object.fromEntries(
-        ['dependsOn', 'cache', 'exec', 'description'].map((k) => [
+        ['dependsOn', 'inputs', 'cache', 'exec', 'description'].map((k) => [
           k,
           `\`tasks.<name>.${k}\`: a project holds tasks, and each task its own \`${k}\``,
         ]),
       ),
-      inputs: '`tasks.<name>.cache.inputs.files`',
       outputs: '`tasks.<name>.cache.outputs.files`',
-      env: '`tasks.<name>.cache.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
+      env: '`tasks.<name>.inputs.env` (to key a task on it) or `tasks.<name>.exec.env`',
     },
   ],
   // Turbo's turbo.json and Nx's nx.json keys, written into .vx/workspace
@@ -1091,9 +1090,9 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
         "each package's `vx.config` `tasks` (`bunx @vzn/vx-migrate` writes them from turbo.json)",
       targetDefaults:
         "each package's `vx.config` `tasks`, sharing defaults through an imported module",
-      namedInputs: 'a module each `vx.config` imports, spread into `cache.inputs.files`',
-      globalEnv: '`cache.inputs.env` on the tasks it keys',
-      globalDependencies: '`cache.inputs.workspaceFiles` on the tasks it keys',
+      namedInputs: 'a module each `vx.config` imports, spread into `inputs.files`',
+      globalEnv: '`inputs.env` on the tasks it keys',
+      globalDependencies: '`inputs.workspaceFiles` on the tasks it keys',
       remoteCache:
         'a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
       parallel: '`run.concurrency`',
@@ -1113,7 +1112,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
         "pnpm-workspace.yaml's or package.json's `catalog`, where the package manager reads it",
       npmClient: "no field: a task's command runs as written, with no package manager in between",
       remote: 'a cache plugin in `plugins`',
-      env: '`cache.inputs.env` on the tasks it keys, or `exec.env` on the tasks it passes to',
+      env: '`inputs.env` on the tasks it keys, or `exec.env` on the tasks it passes to',
     },
   ],
 ])
@@ -1367,7 +1366,7 @@ function assertNotDoubleNegated(glob: string, where: string): void {
 }
 
 /**
- * An exact `cache.inputs.tasks` entry that no `dependsOn` entry names would
+ * An exact `inputs.tasks` entry that no `dependsOn` entry names would
  * match nothing at hash time and fold no upstream hash — the task silently
  * decoupled from its dependencies, which is a stale hit waiting for the
  * next upstream change. `['buidl']` for `['build']` is the shape. Patterns,
@@ -1407,7 +1406,7 @@ function assertFilterNamesDeclaredDeps(
     // `where` opens with the config's path; the message names it once.
     const task = where.slice(where.lastIndexOf(': tasks.') + 2)
     throw new UserError(
-      `${where}.cache.inputs.tasks: "${raw}" names no task in ${task}.dependsOn ` +
+      `${where}.inputs.tasks: "${raw}" names no task in ${task}.dependsOn ` +
         `(${declared.length === 0 ? 'none declared' : dependsOn!.map((d) => `'${d}'`).join(', ')}) — ` +
         `it would match nothing and fold no upstream hash, decoupling the task from its ` +
         `dependencies. \`name\` is this project's task, \`^name\` its dependencies', ` +
@@ -1450,7 +1449,7 @@ function isEnvName(name: unknown): name is string {
 }
 
 /**
- * A task name `dependsOn`, `cache.inputs.tasks` and the CLI can name. Each
+ * A task name `dependsOn`, `inputs.tasks` and the CLI can name. Each
  * refused shape loaded and could not be referenced: `x#y` read as project
  * `x`, `^gen` as every dependency's `gen`, a `*` as a pattern, `''` ran
  * under `--all` as `a#` and `vx run a#` refused it, and a padded name was
@@ -1460,7 +1459,7 @@ function assertTaskName(name: string, configPath: string): void {
   const why = taskNameProblem(name)
   if (why === null) return
   throw new UserError(
-    `${configPath}: task name ${JSON.stringify(name)} ${why} — dependsOn, cache.inputs.tasks and ` +
+    `${configPath}: task name ${JSON.stringify(name)} ${why} — dependsOn, inputs.tasks and ` +
       `the CLI could not name it. Rename the task.`,
   )
 }

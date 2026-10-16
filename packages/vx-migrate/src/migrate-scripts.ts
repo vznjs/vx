@@ -117,7 +117,7 @@ export function cacheTodo(command: string): string {
   const words = ` ${command.replace(/[;&|()]/g, ' ')} `
   const hit = BUILD_OUTPUTS.find(([re]) => re.test(words))
   const outputs = (hit?.[1] ?? namedOutputs(command) ?? ['dist/**']).map((o) => `'${o}'`).join(', ')
-  return `cache: add \`cache: { inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] } }\` with this package's real inputs and outputs — without it the task always runs and every file here, what it writes included, folds into the key its dependents fold; a block with EMPTY outputs would be a cached no-op, not an uncached task`
+  return `cache: add \`inputs: { files: ['src/**'] }, cache: { outputs: { files: [${outputs}] } }\` with this package's real inputs and outputs — without it the task always runs, and so does every task that depends on it; a block with EMPTY outputs would be a cached no-op, not an uncached task`
 }
 
 // `lint` is not here: a linter reads sources, and an edge to `build`

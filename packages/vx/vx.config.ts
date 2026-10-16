@@ -92,11 +92,11 @@ const shardTask = (i: number) => ({
       },
     },
   },
+  inputs: {
+    files: SOURCES,
+    workspaceFiles: ['README.md', 'skills/**'],
+  },
   cache: {
-    inputs: {
-      files: SOURCES,
-      workspaceFiles: ['README.md', 'skills/**'],
-    },
     outputs: { files: [] as string[] },
   },
 })
@@ -345,8 +345,8 @@ export default defineProject({
     source: {
       description: 'the source dependants import: a key, not a build',
       exec: { command: 'true', sandbox: { allow: { read: [] } } },
+      inputs: { files: ['src/**', 'index.ts', 'tsconfig.json'] },
       cache: {
-        inputs: { files: ['src/**', 'index.ts', 'tsconfig.json'] },
         outputs: { files: [] },
       },
     },
@@ -370,18 +370,18 @@ export default defineProject({
           },
         },
       },
+      inputs: {
+        files: [
+          'src/**',
+          'index.ts',
+          'package.json',
+          'scripts/check-binary.ts',
+          'scripts/binary-launch.ts',
+        ],
+        workspaceFiles: ['packages/vx-schedule-history/**'],
+        runtime: BUN_VERSION,
+      },
       cache: {
-        inputs: {
-          files: [
-            'src/**',
-            'index.ts',
-            'package.json',
-            'scripts/check-binary.ts',
-            'scripts/binary-launch.ts',
-          ],
-          workspaceFiles: ['packages/vx-schedule-history/**'],
-          runtime: BUN_VERSION,
-        },
         outputs: { files: [] },
       },
     },
@@ -427,33 +427,33 @@ export default defineProject({
           define: SUITE_ENV,
         },
       },
+      inputs: {
+        files: SOURCES,
+        // The repo-wide laws in this suite read every package, the
+        // workflows and the root files (bins, boundaries, exports, the
+        // runner, the site's samples); until item 613 the key saw only
+        // this package, so an edit elsewhere left the suite an up-to-date
+        // hit in the gate. CONTRIBUTING.md (readme-links, site-samples),
+        // LICENSE (build-npm, npm-pack) and the cache-bump skill
+        // (doc-references) were read unkeyed the same way, so CI's restored
+        // cache replayed the suite over an edit to them.
+        workspaceFiles: [
+          'packages/*/**',
+          'examples/**',
+          '.github/**',
+          'scripts/**',
+          'CLAUDE.md',
+          'README.md',
+          'CONTRIBUTING.md',
+          'LICENSE',
+          '.claude/skills/**',
+          'skills/**',
+          'vx.config.ts',
+          '.vx/workspace.ts',
+          ...OTHER_OUTPUTS,
+        ],
+      },
       cache: {
-        inputs: {
-          files: SOURCES,
-          // The repo-wide laws in this suite read every package, the
-          // workflows and the root files (bins, boundaries, exports, the
-          // runner, the site's samples); until item 613 the key saw only
-          // this package, so an edit elsewhere left the suite an up-to-date
-          // hit in the gate. CONTRIBUTING.md (readme-links, site-samples),
-          // LICENSE (build-npm, npm-pack) and the cache-bump skill
-          // (doc-references) were read unkeyed the same way, so CI's restored
-          // cache replayed the suite over an edit to them.
-          workspaceFiles: [
-            'packages/*/**',
-            'examples/**',
-            '.github/**',
-            'scripts/**',
-            'CLAUDE.md',
-            'README.md',
-            'CONTRIBUTING.md',
-            'LICENSE',
-            '.claude/skills/**',
-            'skills/**',
-            'vx.config.ts',
-            '.vx/workspace.ts',
-            ...OTHER_OUTPUTS,
-          ],
-        },
         outputs: { files: [] },
       },
     },
@@ -470,10 +470,10 @@ export default defineProject({
           },
         },
       },
+      inputs: {
+        files: SOURCES,
+      },
       cache: {
-        inputs: {
-          files: SOURCES,
-        },
         outputs: { files: [] },
       },
     },
@@ -490,10 +490,10 @@ export default defineProject({
           },
         },
       },
+      inputs: {
+        files: SOURCES,
+      },
       cache: {
-        inputs: {
-          files: SOURCES,
-        },
         outputs: { files: [] },
       },
     },
@@ -540,8 +540,8 @@ export default defineProject({
           },
         },
       },
+      inputs: { files: SOURCES, runtime: BUN_VERSION },
       cache: {
-        inputs: { files: SOURCES, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-linux-x64'] },
       },
     },
@@ -564,8 +564,8 @@ export default defineProject({
           },
         },
       },
+      inputs: { files: SOURCES, runtime: BUN_VERSION },
       cache: {
-        inputs: { files: SOURCES, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-linux-arm64'] },
       },
     },
@@ -588,8 +588,8 @@ export default defineProject({
           },
         },
       },
+      inputs: { files: SOURCES, runtime: BUN_VERSION },
       cache: {
-        inputs: { files: SOURCES, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-darwin-x64'] },
       },
     },
@@ -612,8 +612,8 @@ export default defineProject({
           },
         },
       },
+      inputs: { files: SOURCES, runtime: BUN_VERSION },
       cache: {
-        inputs: { files: SOURCES, runtime: BUN_VERSION },
         outputs: { files: ['dist/vx-darwin-arm64'] },
       },
     },

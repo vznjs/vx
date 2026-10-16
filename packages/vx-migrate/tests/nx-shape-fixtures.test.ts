@@ -238,7 +238,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       docs: ['lint'],
     })
     const build = r.configs['app']!['build']!
-    expect((build['cache'] as { inputs: unknown }).inputs).toEqual({
+    expect(build['inputs'] as unknown).toEqual({
       files: ['**/*'],
       workspaceFiles: ['.github/workflows/ci.yml', 'tsconfig.base.json'],
       workspaceRuntime: ['node -v'],
@@ -313,8 +313,8 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       '@ts/core': ['build', 'build-deps', 'typecheck', 'watch-deps'],
     })
     const build = r.configs['@ts/core']!['build']!
-    expect(build['cache']).toEqual({
-      inputs: {
+    expect([build['inputs'], build['cache']]).toEqual([
+      {
         files: [
           'package.json',
           'tsconfig.json',
@@ -325,13 +325,15 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
         ],
         workspaceFiles: ['tsconfig.base.json'],
       },
-      outputs: {
-        files: [
-          'dist/**/*.{js,cjs,mjs,jsx,d.ts,d.cts,d.mts}{,.map}',
-          'dist/tsconfig.lib.tsbuildinfo',
-        ],
+      {
+        outputs: {
+          files: [
+            'dist/**/*.{js,cjs,mjs,jsx,d.ts,d.cts,d.mts}{,.map}',
+            'dist/tsconfig.lib.tsbuildinfo',
+          ],
+        },
       },
-    })
+    ])
     // Nx's `build-deps` carries no executor: Nx normalizes it to a group (P2-31).
     expect(r.configs['@ts/core']!['build-deps']).toEqual({ dependsOn: ['^build'] })
   }, 30_000)
@@ -348,10 +350,10 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       '@ja/ui': ['nx-input:production', 'test'],
     })
     const auth = r.configs['@ja/auth']!
-    expect(auth['test']!['cache']).toEqual({
-      inputs: { files: ['**/*'], workspaceFiles: ['jest.preset.js'] },
-      outputs: { files: [], workspaceFiles: ['coverage/libs/auth'] },
-    })
+    expect([auth['test']!['inputs'], auth['test']!['cache']]).toEqual([
+      { files: ['**/*'], workspaceFiles: ['jest.preset.js'] },
+      { outputs: { files: [], workspaceFiles: ['coverage/libs/auth'] } },
+    ])
     expect(auth['test-ci']).toEqual({
       dependsOn: ['test-ci--src/lib/login.spec.ts', 'test-ci--src/lib/token.spec.ts'],
     })

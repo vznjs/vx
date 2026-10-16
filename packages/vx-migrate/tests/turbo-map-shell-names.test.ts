@@ -39,10 +39,10 @@ describe('turbo-map: an env name no shell can hold', () => {
       persistentTodo: 'P',
     })
     const t = m.projects[0]!.tasks[0]!.task as {
-      cache: { inputs: { env: unknown[] } }
+      inputs: { env: unknown[] }
       exec: { env: { passThrough: unknown[] } }
     }
-    expect([t.cache.inputs.env, t.exec.env.passThrough]).toEqual([
+    expect([t.inputs.env, t.exec.env.passThrough]).toEqual([
       ['my.var', 'A'],
       ['A', 'P'],
     ])

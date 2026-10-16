@@ -32,8 +32,8 @@ beforeEach(async () => {
   t: {
     description: 'deploys ${TOKEN} ${PAT}',
     exec: { command: 'true', env: { secret: ['GH_PAT'] } },
+    inputs: { files: ['package.json'], runtime: ['echo ${TOKEN} $STAMP', 'echo ${PAT} $STAMP'] },
     cache: {
-      inputs: { files: ['package.json'], runtime: ['echo ${TOKEN} $STAMP', 'echo ${PAT} $STAMP'] },
       outputs: { files: [] },
     },
   },
@@ -105,9 +105,9 @@ it('vx show masks every string of the task', () => {
     ].join('\n'),
   )
   const json = JSON.parse(vx(['show', 'app#t', '--format', 'json'])) as {
-    config: { description: string; cache: { inputs: { runtime: string[] } } }
+    config: { description: string; inputs: { runtime: string[] } }
   }
-  expect([json.config.description, json.config.cache.inputs.runtime]).toEqual([
+  expect([json.config.description, json.config.inputs.runtime]).toEqual([
     'deploys *** ***',
     ['echo *** $STAMP', 'echo *** $STAMP'],
   ])

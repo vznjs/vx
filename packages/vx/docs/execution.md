@@ -154,7 +154,7 @@ terminal and a task succeeding or failing. Read it alongside
  │    • SIGINT/SIGTERM/SIGHUP handlers (removed in a finally): on
  │                signal, forward it (SIGHUP as SIGTERM) to everything
  │                in liveChildren + persistentRegistry (and kill any
- │                running cache.inputs.runtime probe, C-65), wait
+ │                running inputs.runtime probe, C-65), wait
  │                2 s for their groups, SIGKILL
  │                what is still there, let the run finish its own
  │                end (flush, teardown, cache close), then
@@ -243,7 +243,7 @@ terminal and a task succeeding or failing. Read it alongside
  │              UserError that fails this task — its dependents skip,
  │              independent tasks continue)
  │       2. hashTaskConfig (memoized per run via HashCache)
- │       3. filterUpstreamHashes (apply cache.inputs.tasks filter)
+ │       3. filterUpstreamHashes (apply inputs.tasks filter)
  │       4. cache.key({ taskId, taskConfigHash,
  │                      forwardArgs, envValues, runtimeValues,
  │                      workspaceRuntimeValues, upstreamHashes,
@@ -430,7 +430,7 @@ broader access has cache-stability implications).
 | Two projects of one name                                                                                                                                         | `checkProjectNames` throws with both paths                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Cycle in task graph                                                                                                                                              | `detectCycle` throws with the cycle path                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Malformed config                                                                                                                                                 | `loadProjectConfigs` throws (UserError) with file + field                                                                                                                                                                                                                                                                                                                                                                                               |
-| `cache.inputs.runtime` command exits non-zero                                                                                                                    | UserError naming the command + exit code; that task is `failed`, dependents skip                                                                                                                                                                                                                                                                                                                                                                        |
+| `inputs.runtime` command exits non-zero                                                                                                                          | UserError naming the command + exit code; that task is `failed`, dependents skip                                                                                                                                                                                                                                                                                                                                                                        |
 
 By default (`--continue=deps-ok`) failures don't kill the scheduler —
 independent tasks already in flight finish, and unrelated tasks not yet
@@ -618,7 +618,7 @@ runs the same setup steps — workspace discovery, config load, package
 graph, task graph — and the same per-task hash derivation, then
 probes the cache. The probe is read-only; against a remote layer it
 is an existence check only (no artifact download, no ingest). The one
-deliberate side effect: `cache.inputs.runtime` / `workspaceRuntime`
+deliberate side effect: `inputs.runtime` / `workspaceRuntime`
 probe commands DO run, because predicting a key requires resolving
 them — keep runtime inputs side-effect-free.
 

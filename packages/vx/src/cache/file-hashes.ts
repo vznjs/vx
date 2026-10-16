@@ -367,7 +367,7 @@ export class FileHashStore {
       if (!isPermissionError(err)) throw err
       throw new UserError(
         `${filePath} is not readable by this user (${err.code}), and vx reads it to derive a ` +
-          'cache key. Make it readable, or, for a task input, take it out of cache.inputs.files.',
+          'cache key. Make it readable, or, for a task input, take it out of inputs.files.',
       )
     }
     return this.hashBytes(bytes, filePath)

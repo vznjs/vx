@@ -39,7 +39,7 @@ it('writes the lock minified, a pretty review copy per config, and .vx/.gitattri
   const lock = (await text(path.join(r, '.vx', 'projects.lock.json')))!
   expect(lock.split('\n')).toHaveLength(2)
   expect(lock).toStartWith(
-    '{"version":3,"projects":{"packages/a":{"file":"vx.config.mjs","config":',
+    '{"version":4,"projects":{"packages/a":{"file":"vx.config.mjs","config":',
   )
   const review = (await text(path.join(dir, 'vx.lock.json')))!
   const locked = (JSON.parse(lock) as { projects: Record<string, { config: object }> }).projects[

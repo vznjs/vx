@@ -72,7 +72,7 @@ $ vx run @demo/api#hang
   packages/api/vx.config.ts:8:42
   tasks.hang.exec.timeout takes a duration with its unit, like '1000ms' or '1s' (got 1000)
 
-    6 |       cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+    6 |       inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     7 |     },
   > 8 |     hang: { exec: { command: 'sleep 30', timeout: 1000 } },
       |                                          ^

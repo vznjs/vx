@@ -32,26 +32,26 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "astro.config.mjs",
+          "scripts/**",
+          "src/env.d.ts",
+          "src/blog/**",
+          "src/components/**",
+          "src/features/**",
+          "src/llms/**",
+          "src/nav/**",
+          "src/pages/**",
+          "src/playground/**",
+          "src/plugins/**",
+          "tests/**",
+          "package.json",
+          ".oxlintrc.json",
+          "tsconfig.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "astro.config.mjs",
-            "scripts/**",
-            "src/env.d.ts",
-            "src/blog/**",
-            "src/components/**",
-            "src/features/**",
-            "src/llms/**",
-            "src/nav/**",
-            "src/pages/**",
-            "src/playground/**",
-            "src/plugins/**",
-            "tests/**",
-            "package.json",
-            ".oxlintrc.json",
-            "tsconfig.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -75,35 +75,35 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "**/*",
+          "!src/content/docs/all-features.md",
+          "!src/content/docs/api.md",
+          "!src/content/docs/architecture.md",
+          "!src/content/docs/benchmarks.md",
+          "!src/content/docs/caching.md",
+          "!src/content/docs/cli.md",
+          "!src/content/docs/compare/turbo-nx-support.md",
+          "!src/content/docs/comparison.md",
+          "!src/content/docs/execution.md",
+          "!src/content/docs/flows.md",
+          "!src/content/docs/optimizations.md",
+          "!src/content/docs/overview.md",
+          "!src/content/docs/parity.md",
+          "!src/content/docs/patterns.md",
+          "!src/content/docs/schema.md",
+          "!src/content/docs/security.md",
+          "!src/content/docs/upstream-ledger.md",
+          "!src/content/docs/modules/**",
+          "!src/content/docs/design/**",
+          "!src/content/docs/plugins/**",
+          "!public/playground/planner.js",
+          "!dist/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!src/content/docs/all-features.md",
-            "!src/content/docs/api.md",
-            "!src/content/docs/architecture.md",
-            "!src/content/docs/benchmarks.md",
-            "!src/content/docs/caching.md",
-            "!src/content/docs/cli.md",
-            "!src/content/docs/compare/turbo-nx-support.md",
-            "!src/content/docs/comparison.md",
-            "!src/content/docs/execution.md",
-            "!src/content/docs/flows.md",
-            "!src/content/docs/optimizations.md",
-            "!src/content/docs/overview.md",
-            "!src/content/docs/parity.md",
-            "!src/content/docs/patterns.md",
-            "!src/content/docs/schema.md",
-            "!src/content/docs/security.md",
-            "!src/content/docs/upstream-ledger.md",
-            "!src/content/docs/modules/**",
-            "!src/content/docs/design/**",
-            "!src/content/docs/plugins/**",
-            "!public/playground/planner.js",
-            "!dist/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -133,18 +133,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "scripts/import-docs.ts",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx/docs/**",
+          "packages/vx-*/README.md",
+          "packages/vx-*/package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "scripts/import-docs.ts",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "packages/vx/docs/**",
-            "packages/vx-*/README.md",
-            "packages/vx-*/package.json"
-          ]
-        },
         "outputs": {
           "files": [
             "src/content/docs/all-features.md",
@@ -206,60 +206,60 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "tests/**",
+          "src/content/docs/**",
+          "src/components/demos/model/**",
+          "src/components/demos/playground.ts",
+          "src/nav/**",
+          "src/features/**",
+          "src/assets/features/**",
+          "src/components/guide/**",
+          "src/components/landing/**",
+          "src/components/Demo.astro",
+          "src/components/demos/widget.css",
+          "src/components/demos/Playground.astro",
+          "src/styles/theme.css",
+          "src/playground/**",
+          "scripts/build-playground.ts",
+          "astro.config.*",
+          ".gitignore",
+          "package.json",
+          "!src/content/docs/all-features.md",
+          "!src/content/docs/api.md",
+          "!src/content/docs/architecture.md",
+          "!src/content/docs/benchmarks.md",
+          "!src/content/docs/caching.md",
+          "!src/content/docs/cli.md",
+          "!src/content/docs/compare/turbo-nx-support.md",
+          "!src/content/docs/comparison.md",
+          "!src/content/docs/execution.md",
+          "!src/content/docs/flows.md",
+          "!src/content/docs/optimizations.md",
+          "!src/content/docs/overview.md",
+          "!src/content/docs/parity.md",
+          "!src/content/docs/patterns.md",
+          "!src/content/docs/schema.md",
+          "!src/content/docs/security.md",
+          "!src/content/docs/upstream-ledger.md",
+          "!src/content/docs/modules/**",
+          "!src/content/docs/design/**",
+          "!src/content/docs/plugins/**",
+          "!public/playground/planner.js",
+          "!dist/**"
+        ],
+        "workspaceFiles": [
+          "packages/vx/tests/config.test.ts",
+          "packages/vx/tests/sandbox-runtime.unsafe.test.ts",
+          "packages/vx/tests/task-hash-derive.test.ts",
+          "packages/vx/tests/plugin-pipeline.test.ts",
+          "packages/vx/tests/layered-cache.test.ts",
+          "packages/vx-reapi/tests/exec-e2e.test.ts",
+          "packages/vx-migrate/tests/turbo.test.ts"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "tests/**",
-            "src/content/docs/**",
-            "src/components/demos/model/**",
-            "src/components/demos/playground.ts",
-            "src/nav/**",
-            "src/features/**",
-            "src/assets/features/**",
-            "src/components/guide/**",
-            "src/components/landing/**",
-            "src/components/Demo.astro",
-            "src/components/demos/widget.css",
-            "src/components/demos/Playground.astro",
-            "src/styles/theme.css",
-            "src/playground/**",
-            "scripts/build-playground.ts",
-            "astro.config.*",
-            ".gitignore",
-            "package.json",
-            "!src/content/docs/all-features.md",
-            "!src/content/docs/api.md",
-            "!src/content/docs/architecture.md",
-            "!src/content/docs/benchmarks.md",
-            "!src/content/docs/caching.md",
-            "!src/content/docs/cli.md",
-            "!src/content/docs/compare/turbo-nx-support.md",
-            "!src/content/docs/comparison.md",
-            "!src/content/docs/execution.md",
-            "!src/content/docs/flows.md",
-            "!src/content/docs/optimizations.md",
-            "!src/content/docs/overview.md",
-            "!src/content/docs/parity.md",
-            "!src/content/docs/patterns.md",
-            "!src/content/docs/schema.md",
-            "!src/content/docs/security.md",
-            "!src/content/docs/upstream-ledger.md",
-            "!src/content/docs/modules/**",
-            "!src/content/docs/design/**",
-            "!src/content/docs/plugins/**",
-            "!public/playground/planner.js",
-            "!dist/**"
-          ],
-          "workspaceFiles": [
-            "packages/vx/tests/config.test.ts",
-            "packages/vx/tests/sandbox-runtime.unsafe.test.ts",
-            "packages/vx/tests/task-hash-derive.test.ts",
-            "packages/vx/tests/plugin-pipeline.test.ts",
-            "packages/vx/tests/layered-cache.test.ts",
-            "packages/vx-reapi/tests/exec-e2e.test.ts",
-            "packages/vx-migrate/tests/turbo.test.ts"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -292,14 +292,14 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "scripts/build-playground.ts",
+          "src/playground/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "scripts/build-playground.ts",
-            "src/playground/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": [
             "public/playground/planner.js"
@@ -340,35 +340,35 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!src/content/docs/all-features.md",
+          "!src/content/docs/api.md",
+          "!src/content/docs/architecture.md",
+          "!src/content/docs/benchmarks.md",
+          "!src/content/docs/caching.md",
+          "!src/content/docs/cli.md",
+          "!src/content/docs/compare/turbo-nx-support.md",
+          "!src/content/docs/comparison.md",
+          "!src/content/docs/execution.md",
+          "!src/content/docs/flows.md",
+          "!src/content/docs/optimizations.md",
+          "!src/content/docs/overview.md",
+          "!src/content/docs/parity.md",
+          "!src/content/docs/patterns.md",
+          "!src/content/docs/schema.md",
+          "!src/content/docs/security.md",
+          "!src/content/docs/upstream-ledger.md",
+          "!src/content/docs/modules/**",
+          "!src/content/docs/design/**",
+          "!src/content/docs/plugins/**",
+          "!public/playground/planner.js",
+          "!dist/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!src/content/docs/all-features.md",
-            "!src/content/docs/api.md",
-            "!src/content/docs/architecture.md",
-            "!src/content/docs/benchmarks.md",
-            "!src/content/docs/caching.md",
-            "!src/content/docs/cli.md",
-            "!src/content/docs/compare/turbo-nx-support.md",
-            "!src/content/docs/comparison.md",
-            "!src/content/docs/execution.md",
-            "!src/content/docs/flows.md",
-            "!src/content/docs/optimizations.md",
-            "!src/content/docs/overview.md",
-            "!src/content/docs/parity.md",
-            "!src/content/docs/patterns.md",
-            "!src/content/docs/schema.md",
-            "!src/content/docs/security.md",
-            "!src/content/docs/upstream-ledger.md",
-            "!src/content/docs/modules/**",
-            "!src/content/docs/design/**",
-            "!src/content/docs/plugins/**",
-            "!public/playground/planner.js",
-            "!dist/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": [
             "dist/**"

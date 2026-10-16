@@ -72,8 +72,8 @@ export const LABS: Record<LabId, PlaygroundState> = {
         `
     bundle: {
       exec: { command: 'vite build --mode bundle' },
+      inputs: { files: ['src/**'] },
       cache: {
-        inputs: { files: ['src/**'] },
         outputs: { files: ['dist/**'] },
       },
     },
@@ -131,8 +131,8 @@ export const LAB_STEPS: Record<LabId, LabEdit[][]> = {
       {
         file: UI_CONFIG,
         replace:
-          "--mode bundle' },\n      cache: {\n        inputs: { files: ['src/**'] },\n        outputs: { files: ['dist/**'] }",
-        with: "--mode bundle --outDir bundle' },\n      cache: {\n        inputs: { files: ['src/**'] },\n        outputs: { files: ['bundle/**'] }",
+          "--mode bundle' },\n      inputs: { files: ['src/**'] },\n      cache: {\n        outputs: { files: ['dist/**'] }",
+        with: "--mode bundle --outDir bundle' },\n      inputs: { files: ['src/**'] },\n      cache: {\n        outputs: { files: ['bundle/**'] }",
       },
     ],
     [],

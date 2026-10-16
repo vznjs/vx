@@ -35,8 +35,8 @@ function full(): Record<string, unknown> {
       // second task.
       c: {
         exec: { command: 'true' },
+        inputs: { files: ['src/**'], env: ['A'] },
         cache: {
-          inputs: { files: ['src/**'], env: ['A'] },
           outputs: { files: ['dist/**'] },
         },
       },
@@ -76,8 +76,8 @@ describe('an unknown key is refused at every object level of a config', () => {
       'tasks.t.exec.sandbox.ignore',
       'tasks.c',
       'tasks.c.exec',
+      'tasks.c.inputs',
       'tasks.c.cache',
-      'tasks.c.cache.inputs',
       'tasks.c.cache.outputs',
     ])
 
@@ -136,8 +136,9 @@ describe('an unknown key is refused at every object level of a config', () => {
 })
 
 describe('an array where an object is expected names the shape, not `unknown field "0"`', () => {
-  const withCache = (cache: unknown): Config =>
-    ({ tasks: { c: { exec: { command: 'true' }, cache } } }) as unknown as Config
+  /** `spec` is the task's `inputs` and its `cache` fields in one object. */
+  const withCache = ({ inputs, ...cache }: Record<string, unknown>): Config =>
+    ({ tasks: { c: { exec: { command: 'true' }, inputs, cache } } }) as unknown as Config
 
   it('`cache.outputs: [...]` (the Turbo spelling) says what it must be and what was meant', () => {
     expect(() =>
@@ -150,11 +151,11 @@ describe('an array where an object is expected names the shape, not `unknown fie
     )
   })
 
-  it('`cache.inputs: [...]` the same', () => {
+  it('`inputs: [...]` the same', () => {
     expect(() =>
       validateProjectConfig(withCache({ inputs: ['src/**'], outputs: { files: [] } }), 'f'),
     ).toThrow(
-      /tasks\.c\.cache\.inputs must be an object \(fields: .*\), not an array — did you mean `\{ files: \[\.\.\.\] \}`\?/,
+      /tasks\.c\.inputs must be an object \(fields: .*\), not an array — did you mean `\{ files: \[\.\.\.\] \}`\?/,
     )
   })
 

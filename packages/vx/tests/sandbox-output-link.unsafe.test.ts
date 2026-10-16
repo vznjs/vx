@@ -24,7 +24,7 @@ const config = (read: string, command = 'ln -sf ../.env dist/x') => `
           command: ${JSON.stringify(command)},
           sandbox: { allow: { read: [${JSON.stringify(read)}], write: ['dist/'] } },
         },
-        cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }

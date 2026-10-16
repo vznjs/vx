@@ -1269,7 +1269,7 @@ export function globToOutputPath(glob: string): string {
 }
 
 /**
- * The action's environment: `cache.inputs.env` (values read from THIS
+ * The action's environment: `inputs.env` (values read from THIS
  * machine's environment, already folded into the cache key) plus
  * `exec.env.define` (literals from the task config). A define wins on
  * collision — it is the more explicit statement of intent. An `inputs.env`

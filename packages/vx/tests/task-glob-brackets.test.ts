@@ -16,7 +16,7 @@ import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { workspaceWith } from './helpers/local-workspace.js'
 
 const workspaceGlobsMatch = (globs: string[], rel: string): boolean =>
-  declaresInput({ inputs: { files: [], workspaceFiles: globs }, outputs: { files: [] } }, null, rel)
+  declaresInput({ inputs: { files: [], workspaceFiles: globs } }, null, rel)
 const quiet = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
 const exists = async (p: string): Promise<boolean> =>
   (await stat(p).catch(() => undefined)) !== undefined
@@ -42,8 +42,8 @@ async function project(
         tasks: {
           build: {
             exec: { command: ${JSON.stringify(task.command)} },
+            inputs: ${JSON.stringify(inputs)},
             cache: {
-              inputs: ${JSON.stringify(inputs)},
               outputs: { files: ${JSON.stringify(task.outputs)} },
             },
           },
@@ -158,13 +158,13 @@ for (const [spelling, glob] of spellings) {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p app && cat src/in.txt > app/x.js' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['app/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['app/**'] } },
               },
               route: {
                 dependsOn: ['build'],
                 exec: { command: 'mkdir -p "app/[id]" && echo r > "app/[id]/page.js"' },
+                inputs: { files: ['src/**'] },
                 cache: {
-                  inputs: { files: ['src/**'] },
                   outputs: { files: [${JSON.stringify(glob('app/[id]/page.js'))}] },
                 },
               },

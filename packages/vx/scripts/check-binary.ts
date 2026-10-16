@@ -30,6 +30,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { launchVersion } from './binary-launch.ts'
+import { LOCKFILE_VERSION } from '../src/workspace/index.ts'
 
 const root = path.resolve(import.meta.dir, '..')
 const host = `${process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
@@ -98,7 +99,7 @@ writeFileSync(
 writeFileSync(
   path.join(ws, '.vx/projects.lock.json'),
   JSON.stringify({
-    version: 3,
+    version: LOCKFILE_VERSION,
     projects: { 'packages/a': { file: 'vx.config.mjs', config: { tasks: {} } } },
   }),
 )
@@ -245,7 +246,7 @@ writeFileSync(path.join(bare, 'packages', 'a', 'src', 'x.js'), 'x\n')
 writeFileSync(
   path.join(bare, 'packages', 'a', 'vx.config.mjs'),
   `import { defineProject } from '@vzn/vx'
-export default defineProject({ name: 'a', tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } })
+export default defineProject({ name: 'a', tasks: { build: { exec: { command: 'echo built-$(date +%s%N) > out.txt' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } } } })
 `,
 )
 mkdirSync(path.join(bare, '.vx'), { recursive: true })

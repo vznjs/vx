@@ -13,7 +13,7 @@ import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { dry, PARITY_TIMEOUT as TIMEOUT, summarized, vx } from './helpers/parity.js'
 
 const task = (inputs: string, command = 'true', extra = '') =>
-  `{ exec: { command: ${JSON.stringify(command)} }, ${extra} cache: { inputs: ${inputs}, outputs: { files: [] } } }`
+  `{ exec: { command: ${JSON.stringify(command)} }, ${extra} inputs: ${inputs}, cache: { outputs: { files: [] } } }`
 
 async function workspace(
   prefix: string,
@@ -325,7 +325,7 @@ describe('Nx parity — project roots, ignored files and refused spellings', () 
       const root = await workspace('vx-parity-nx-overlap-', {
         lib: {
           tasks: {
-            gen: `{ exec: { command: 'mkdir -p src/gen && echo g > src/gen/x.ts' }, cache: { inputs: { files: [] }, outputs: { files: ['src/gen/**'] } } }`,
+            gen: `{ exec: { command: 'mkdir -p src/gen && echo g > src/gen/x.ts' }, inputs: { files: [] }, cache: { outputs: { files: ['src/gen/**'] } } }`,
             build: task("{ files: ['src/**'] }", 'true', "dependsOn: ['gen'],"),
           },
           files: { 'src/a.ts': 'a\n' },
@@ -340,7 +340,7 @@ describe('Nx parity — project roots, ignored files and refused spellings', () 
         await writeFile(
           path.join(root, 'packages', 'lib', 'vx.config.mjs'),
           `export default { tasks: {
-    gen: { exec: { command: 'mkdir -p src/gen && cat seed.txt > src/gen/x.ts' }, cache: { inputs: { files: ['seed.txt'] }, outputs: { files: ['src/gen/**'] } } },
+    gen: { exec: { command: 'mkdir -p src/gen && cat seed.txt > src/gen/x.ts' }, inputs: { files: ['seed.txt'] }, cache: { outputs: { files: ['src/gen/**'] } } },
     build: ${task("{ files: ['src/**', '!src/gen/**'] }", 'cat src/gen/x.ts', "dependsOn: ['gen'],")},
   } }\n`,
         )

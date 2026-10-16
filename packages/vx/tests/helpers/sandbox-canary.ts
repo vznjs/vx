@@ -60,14 +60,14 @@ async function fixture(): Promise<string> {
            command: 'cat ../secret.txt > out.txt',
            sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
          },
-         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
        },
        control: {
          exec: {
            command: 'cat src/ok.txt > control.txt',
            sandbox: { allow: { read: ['.'], write: ['control.txt'] } },
          },
-         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['control.txt'] } },
+         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['control.txt'] } },
        },
      } }`,
   )

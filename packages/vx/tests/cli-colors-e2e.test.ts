@@ -23,7 +23,7 @@ beforeAll(async () => {
   await writeFile(path.join(app, 'src', 'a.txt'), 'x\n')
   await writeFile(
     path.join(app, 'vx.config.mjs'),
-    "export default { tasks: { build: { exec: { command: 'echo hi' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } }, paint: { exec: { command: `printf 'fc=%s \\\\033[31mred\\\\033[0m\\\\n' \"$FORCE_COLOR\"` }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n",
+    "export default { tasks: { build: { exec: { command: 'echo hi' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } }, paint: { exec: { command: `printf 'fc=%s \\\\033[31mred\\\\033[0m\\\\n' \"$FORCE_COLOR\"` }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n",
   )
   const git = gitIn(root)
   git('init', '-q')

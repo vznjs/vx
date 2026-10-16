@@ -21,7 +21,7 @@ const task = (command: string, outputs: string, extra = ''): string => `
     tasks: {
       build: {
         exec: { command: ${JSON.stringify(command)}, ${extra} },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**']${outputs} } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**']${outputs} } },
       },
     },
   }

@@ -17,7 +17,7 @@ const config = (tags: string, command = 'echo build') => `export default {
     build: {
       exec: { command: '${command}' },
       dependsOn: ['^build'],
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
   },
 }

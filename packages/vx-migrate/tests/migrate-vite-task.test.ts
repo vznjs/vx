@@ -143,12 +143,12 @@ describe('vx-migrate (vite-task)', () => {
         command: 'tsc && node copy.mjs',
         env: { passThrough: ['NODE_ENV', 'CI', 'GH_TOKEN'] },
       },
+      inputs: {
+        files: ['src/**', '!src/**/*.test.ts'],
+        workspaceFiles: ['tsconfig.base.json'],
+        env: ['NODE_ENV'],
+      },
       cache: {
-        inputs: {
-          files: ['src/**', '!src/**/*.test.ts'],
-          workspaceFiles: ['tsconfig.base.json'],
-          env: ['NODE_ENV'],
-        },
         outputs: { files: ['dist/**', '!dist/cache/**'] },
       },
     })
@@ -181,7 +181,7 @@ describe('vx-migrate (vite-task)', () => {
     expect(app['lintAll']!.exec!.command).toBe('eslint .')
     expect(result.out).toContain("cache: Vite Task traced this task's inputs and outputs")
     expect(result.out).toContain(
-      'cache: Vite Task traced this task\'s inputs and vx infers none — add `cache: { inputs: { files: [...] }, outputs: { files: [...] } }` with the real ones (declared so far: `{"outputs":{"files":[]}}`)',
+      'cache: Vite Task traced this task\'s inputs and vx infers none — add `inputs: { files: [...] }, cache: { outputs: { files: [...] } }` with the real ones (declared so far: `{"outputs":{"files":[]}}`)',
     )
   })
 
@@ -189,16 +189,17 @@ describe('vx-migrate (vite-task)', () => {
     const app = await load('app')
     expect(app['gen']).toEqual({
       exec: { command: 'node gen.mjs', env: { passThrough: ['API'] } },
-      cache: { inputs: { files: ['gen/**'], env: ['API'] }, outputs: { files: ['out/**'] } },
+      inputs: { files: ['gen/**'], env: ['API'] },
+      cache: { outputs: { files: ['out/**'] } },
     })
   })
 
   it('a root task keys the workspace’s files', async () => {
     const ws = (await loadProjectConfig(path.join(root, 'vx.config.ts'))).tasks!
-    expect(ws['check-all']!.cache).toEqual({
-      inputs: { files: [], workspaceFiles: ['**/*.ts', '!dist/**'] },
-      outputs: { files: [] },
-    })
+    expect([ws['check-all']!.inputs, ws['check-all']!.cache]).toEqual([
+      { files: [], workspaceFiles: ['**/*.ts', '!dist/**'] },
+      { outputs: { files: [] } },
+    ])
   })
 
   it('`from` covering every field that defines the task is `^task`', async () => {

@@ -18,7 +18,7 @@ const ROOT_CONFIG = `export default {
   tasks: {
     build: {
       exec: { command: 'mkdir -p out && cat tools/gen.txt > out/gen.txt' },
-      cache: { inputs: { files: ['**/*', '!out/**'] }, outputs: { files: ['out/**'] } },
+      inputs: { files: ['**/*', '!out/**'] }, cache: { outputs: { files: ['out/**'] } },
     },
   },
 }
@@ -106,14 +106,14 @@ describe('a root vx.config makes the root a project (D-39)', () => {
     const r = await run({ cwd: fixture.root, tasks: ['a#test'], log: silentLogger(fixture) })
     expect(r.ok).toBe(true)
     expect(r.outcomes.map((o) => o.node.id).sort()).toEqual(['a#test', 'fixture-root#build'])
-    // The same spelling in `cache.inputs.tasks`, a negated one included.
+    // The same spelling in `inputs.tasks`, a negated one included.
     await writeFile(
       path.join(fixture.root, 'packages', 'a', 'vx.config.mjs'),
-      `export default { tasks: { test: { dependsOn: ['//#build'], exec: { command: 'true' }, cache: { inputs: { files: [], tasks: ['//#build', '!//#lint'] }, outputs: { files: [] } } } } }\n`,
+      `export default { tasks: { test: { dependsOn: ['//#build'], exec: { command: 'true' }, inputs: { files: [], tasks: ['//#build', '!//#lint'] }, cache: { outputs: { files: [] } } } } }\n`,
     )
     await lock(fixture.root)
     const a = (await loadResolvedProjects(fixture.root)).get('a')!
-    expect(a.config.tasks!['test']!.cache!.inputs!.tasks).toEqual([
+    expect(a.config.tasks!['test']!.inputs!.tasks).toEqual([
       'fixture-root#build',
       '!fixture-root#lint',
     ])

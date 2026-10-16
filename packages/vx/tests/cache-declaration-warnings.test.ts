@@ -60,26 +60,28 @@ describe('cache declarations that match nothing', () => {
       `export default { tasks: {
         // Both globs against directories that do not exist.
         lost: { exec: { command: 'true' },
-          cache: { inputs: { files: ['lib/**'] }, outputs: { files: ['build/**'] } } },
+          inputs: { files: ['lib/**'] }, cache: { outputs: { files: ['build/**'] } } },
         // The control: matching inputs, matching outputs.
         found: { exec: { command: 'mkdir -p dist && echo x > dist/a.js' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
         // A deliberate cached no-op: empty outputs say nothing.
         noop: { exec: { command: 'true' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
         // Root-anchored outputs that match nothing. The warning counts
         // BOTH output arrays on each side — declared and resolved — and
         // every fixture above declares only \`files\`, so a task whose
         // whole output declaration is root-anchored went unwarned.
         wslost: { exec: { command: 'true' },
-          cache: { inputs: { files: ['src/**'] },
+          inputs: { files: ['src/**'] },
+          cache: { 
             outputs: { files: [], workspaceFiles: ['nowhere/**'] } } },
         // The other side of the sum: \`files\` matches nothing but the
         // root-anchored glob DOES match, so the outputs are not empty and
         // there is nothing to warn about. Not \`build/**\`: the lock refuses
         // two tasks declaring one output.
         wsfound: { exec: { command: 'mkdir -p ../../shared && echo x > ../../shared/a.js' },
-          cache: { inputs: { files: ['src/**'] },
+          inputs: { files: ['src/**'] },
+          cache: { 
             outputs: { files: ['out/**'], workspaceFiles: ['shared/**'] } } },
       } }\n`,
     )
@@ -92,7 +94,7 @@ describe('cache declarations that match nothing', () => {
   it('an input glob and an output glob that match nothing are each named once, on the miss only', async () => {
     const first = await runTask('lost')
     expect(first).toEqual([
-      "[vx] app#lost: cache.inputs matched no files (lib/**) — the key will not change when this project's source does",
+      "[vx] app#lost: inputs matched no files (lib/**) — the key will not change when this project's source does",
       '[vx] app#lost: cache.outputs matched no files (build/**) — an empty artifact is saved; a later hit restores nothing',
     ])
     // The hit says nothing: the warning belongs to the run that saved.
@@ -111,7 +113,7 @@ describe('cache declarations that match nothing', () => {
       await writeFile(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
         `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} dist' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n`,
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } } } }\n`,
       )
       const lines: string[] = []
       const summary = await run({
@@ -145,7 +147,7 @@ describe('cache declarations that match nothing', () => {
       await writeFile(
         path.join(root, 'packages', 'app', 'vx.config.mjs'),
         `export default { tasks: { linked: { exec: { command: 'ln -sfn ${outside} ../../shared' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['shared/**'] } } } } }\n`,
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['shared/**'] } } } } }\n`,
       )
       expect(await runTask('linked')).toEqual([
         `[vx] app#linked: cache.outputs matched no files (shared/**) — an empty artifact is saved; a later hit restores nothing — shared is a symlink to ${realpathSync(outside)}, outside the workspace, and vx keeps only outputs inside it: make shared a directory`,

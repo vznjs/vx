@@ -71,8 +71,8 @@ $ vx show @demo/web#build --format json
   "config": {
     "exec": { "command": "mkdir -p dist && sleep 0.3 && cp src/index.ts dist/index.js" },
     "dependsOn": ["^build"],
+    "inputs": { "files": ["src/**"] },
     "cache": {
-      "inputs": { "files": ["src/**"] },
       "outputs": { "files": ["dist/**"] }
     }
   }

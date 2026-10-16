@@ -299,11 +299,17 @@ export interface TaskConfig {
    */
   dependsOn?: readonly string[]
   /**
+   * What the task's key folds, whether or not it caches: its dependents
+   * fold that key. A task with `exec` and no `inputs` has no key, so every
+   * task that folds it runs and saves nothing. A group with `inputs` is a
+   * keyed group: its inputs are a key its dependents fold, with no process.
+   */
+  inputs?: InputsConfig
+  /**
    * Caching configuration. **Caching is opt-in.** If this field is omitted,
    * the task always runs and nothing is read from or written to the cache.
-   * Provide a `cache` block (with at least `outputs`) to enable caching.
-   * Requires `exec` — a group task can't cache anything because nothing
-   * runs.
+   * Requires `exec` and `inputs`: the key is the task's inputs, and a group
+   * runs nothing to cache.
    */
   cache?: CacheConfig
 }
@@ -324,7 +330,7 @@ export interface TaskConfig {
  * `node_modules`, and through it the real path of every workspace
  * package linked there.
  *
- * `cache` grants no access in either direction: `cache.inputs` says what
+ * `cache` grants no access in either direction: `inputs` says what
  * INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
  * from the other coupled them both ways — a declaration added for
  * caching silently widened the sandbox, and a path the task needed had
@@ -398,7 +404,7 @@ export interface SandboxIgnore {
 export interface SandboxGrants {
   /**
    * Readable paths or globs, added to the baseline — which is
-   * `node_modules`, NOT `cache.inputs.files`. A task that reads its own
+   * `node_modules`, NOT `inputs.files`. A task that reads its own
    * source in the sandbox says so here.
    */
   read?: readonly string[]
@@ -573,8 +579,6 @@ export interface ExecEnv {
 }
 
 export interface CacheConfig {
-  /** What participates in the cache key. */
-  inputs: CacheInputs
   /** What this task produces. Captured for restore on a cache hit. */
   outputs: CacheOutputs
   /**
@@ -634,7 +638,7 @@ export interface CacheOutputs {
   clean?: boolean
 }
 
-export interface CacheInputs {
+export interface InputsConfig {
   /**
    * Project-relative globs. Each entry is a positive glob, or a negation
    * prefixed with `!`. Required: pass a recursive glob to mean "all
@@ -773,8 +777,8 @@ export function defineProject<const T extends ProjectConfig>(
         [K in keyof NonNullable<T['tasks']>]?: Known<NonNullable<T['tasks']>[K], TaskConfig> & {
           dependsOn?: readonly DependsOnEntry<Extract<keyof NonNullable<T['tasks']>, string>>[]
           exec?: Known<At<NonNullable<T['tasks']>[K], 'exec'>, ExecConfig>
+          inputs?: Known<At<NonNullable<T['tasks']>[K], 'inputs'>, InputsConfig>
           cache?: Known<At<NonNullable<T['tasks']>[K], 'cache'>, CacheConfig> & {
-            inputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'inputs'>, CacheInputs>
             outputs?: Known<At<At<NonNullable<T['tasks']>[K], 'cache'>, 'outputs'>, CacheOutputs>
           }
         }

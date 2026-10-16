@@ -1,7 +1,7 @@
 // `--affected` must see every change that moves a cache key.
 //
 // `docs/cli.md` states the rule as a principle: "input hashing sees it, so
-// `--affected` must too." A workspace-root-anchored `cache.inputs.workspaceFiles`
+// `--affected` must too." A workspace-root-anchored `inputs.workspaceFiles`
 // glob is the documented escape hatch for shared files that belong to NO
 // project — so a change to one of those files re-keys the declaring task while
 // `projectsContaining` maps the path to no project at all.
@@ -87,8 +87,8 @@ beforeEach(async () => {
       '  tasks: {',
       '    build: {',
       '      exec: { command: "mkdir -p dist && echo built > dist/out.txt" },',
+      '      inputs: { files: ["src/**"], workspaceFiles: ["shared/**"] },',
       '      cache: {',
-      '        inputs: { files: ["src/**"], workspaceFiles: ["shared/**"] },',
       '        outputs: { files: ["dist/**"] },',
       '      },',
       '    },',
@@ -156,7 +156,7 @@ describe('--affected sees a workspaceFiles change', () => {
           '  tasks: {',
           '    build: {',
           '      exec: { command: "true" },',
-          '      cache: { inputs: { files: [], workspaceFiles: ["pkgs/app/data.json"] }, outputs: { files: [] } },',
+          '      inputs: { files: [], workspaceFiles: ["pkgs/app/data.json"] }, cache: { outputs: { files: [] } },',
           '    },',
           '  },',
           '}',
@@ -223,7 +223,7 @@ describe('--affected sees a workspaceFiles change', () => {
           '  tasks: {',
           '    build: {',
           '      exec: { command: "true" },',
-          '      cache: { inputs: { files: ["src/**"], workspaceFiles: ["shared/**"] }, outputs: { files: [] } },',
+          '      inputs: { files: ["src/**"], workspaceFiles: ["shared/**"] }, cache: { outputs: { files: [] } },',
           '    },',
           '    lint: { exec: { command: "true" } },',
           '  },',
@@ -276,7 +276,7 @@ describe('--affected sees a workspaceFiles change', () => {
         await write(path.join(root, `pkgs/${name}/package.json`), JSON.stringify({ name }))
         await write(
           path.join(root, `pkgs/${name}/vx.config.mjs`),
-          `export default { tasks: { build: { exec: { command: "true" }, cache: { inputs: { files: [], workspaceFiles: [${JSON.stringify(glob)}] }, outputs: { files: [] } } } } }\n`,
+          `export default { tasks: { build: { exec: { command: "true" }, inputs: { files: [], workspaceFiles: [${JSON.stringify(glob)}] }, cache: { outputs: { files: [] } } } } }\n`,
         )
       }
       // `git add` of an embedded repository records a gitlink, as a submodule's.

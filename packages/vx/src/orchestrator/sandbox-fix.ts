@@ -85,7 +85,7 @@ export function sandboxFix(
   projectDir: string,
   mask: (text: string) => string = (t) => t,
   /**
-   * The task's `cache.inputs.files`, undefined when it does not cache: a
+   * The task's `inputs.files`, undefined when it does not cache: a
    * write under one is granted exactly, and a read of the project no glob
    * matches is named for the key too.
    */

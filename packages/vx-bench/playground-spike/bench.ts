@@ -64,7 +64,8 @@ function synthetic(n: number, f: number) {
         build: {
           dependsOn: ['^build'],
           exec: { command: 'tsc' },
-          cache: { inputs: { files: ['src/**/*.ts'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**/*.ts'] },
+          cache: { outputs: { files: ['dist/**'] } },
         },
       },
     }

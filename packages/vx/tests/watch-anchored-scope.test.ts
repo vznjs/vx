@@ -19,7 +19,7 @@ describe('vx watch with anchored tasks (e2e)', () => {
   let watch: Watch | undefined
 
   const task = (id: string) =>
-    `{ exec: { command: 'echo ${id} >> ${log}' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } }`
+    `{ exec: { command: 'echo ${id} >> ${log}' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } }`
   const ran = async (): Promise<string[]> =>
     (await readFile(log, 'utf8').catch(() => '')).split('\n').filter(Boolean)
 

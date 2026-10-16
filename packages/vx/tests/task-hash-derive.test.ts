@@ -66,7 +66,8 @@ afterAll(async () => {
 function node(over: Partial<TaskNode> = {}, cfgOver: Partial<TaskConfig> = {}): TaskNode {
   const config: TaskConfig = {
     exec: { command: 'build' },
-    cache: { inputs: { files: [] }, outputs: { files: [] } },
+    inputs: { files: [] },
+    cache: { outputs: { files: [] } },
     ...cfgOver,
   }
   return {
@@ -220,7 +221,8 @@ describe('computeTaskHash — what the config contributes', () => {
       description: 'what it does',
       exec: { command: 'other' },
       dependsOn: ['^build'],
-      cache: { inputs: { files: ['nope/**'] }, outputs: { files: [] } },
+      inputs: { files: ['nope/**'] },
+      cache: { outputs: { files: ['dist/**'] } },
     }
     // A field added to either set without a value here fails on this line,
     // which is what makes the two loops below a claim about the whole list.
@@ -283,10 +285,10 @@ describe('computeTaskHash — what the config contributes', () => {
     // even in a project with no `src/` — which is what stops a user's
     // narrowing edit from silently reusing the broader run's artifact.
     const wide = await key({
-      node: node({}, { cache: { inputs: { files: ['nope/**'] }, outputs: { files: [] } } }),
+      node: node({}, { inputs: { files: ['nope/**'] }, cache: { outputs: { files: [] } } }),
     })
     const narrow = await key({
-      node: node({}, { cache: { inputs: { files: [] }, outputs: { files: [] } } }),
+      node: node({}, { inputs: { files: [] }, cache: { outputs: { files: [] } } }),
     })
     expect(wide).not.toBe(narrow)
   })
@@ -327,7 +329,7 @@ describe('computeTaskHash — forwardArgs are scoped to REQUESTED tasks', () => 
     // keyed on it that never saw them (app#build, not requested).
     const defaultBuild: TaskNode = {
       ...node({ requested: true }),
-      config: { dependsOn: ['^build'], cache: { inputs: { files: [] }, outputs: { files: [] } } },
+      config: { dependsOn: ['^build'], inputs: { files: [] }, cache: { outputs: { files: [] } } },
     }
     const groupKey = (forwardArgs: readonly string[]) =>
       computeGroupKey({
@@ -382,13 +384,14 @@ describe('computeTaskHash — upstream folding', () => {
     expect(await key({ upstream: [outcome('pkg#a', 'ha')] })).not.toBe(await key({ upstream: [] }))
   })
 
-  it('cache.inputs.tasks narrows WHICH upstreams fold', async () => {
+  it('inputs.tasks narrows WHICH upstreams fold', async () => {
     // The documented decoupling vector: a consumer declares it only cares
     // about some upstreams, so the others' churn does not invalidate it. Here
     // the filter selects `pkg#a` only, so changing `pkg#b` must not move the
     // key while changing `pkg#a` must.
     const cfg: Partial<TaskConfig> = {
-      cache: { inputs: { files: [], tasks: ['a'] }, outputs: { files: [] } },
+      inputs: { files: [], tasks: ['a'] },
+      cache: { outputs: { files: [] } },
     }
     const n = node({}, cfg)
     const base = await key({
@@ -412,7 +415,7 @@ describe('computeTaskHash — upstream folding', () => {
     // genuinely dangerous declaration — the user is asserting that no
     // upstream's output can affect this task — so it must be exact rather
     // than approximately-honoured.
-    const n = node({}, { cache: { inputs: { files: [], tasks: [] }, outputs: { files: [] } } })
+    const n = node({}, { inputs: { files: [], tasks: [] }, cache: { outputs: { files: [] } } })
     const none = await key({ node: n, upstream: [] })
     const some = await key({ node: n, upstream: [outcome('pkg#a', 'ha')] })
     expect(some).toBe(none)
@@ -449,7 +452,7 @@ describe('computeTaskHash — core keys no package file', () => {
 
   it('SENSITIVITY: a package.json an input glob names moves the key', async () => {
     // CONTROL for the row above: the file is an input like any other.
-    const n = node({}, { cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } } })
+    const n = node({}, { inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } })
     const pkgPath = path.join(root, 'package.json')
     const original = await Bun.file(pkgPath).text()
     try {
@@ -550,8 +553,8 @@ describe('computeTaskHash — the trusted-OID fast path for an input file', () =
     return gfc
   }
   const reads = (files: string[], workspaceFiles?: string[]): Partial<TaskConfig> => ({
+    inputs: { files, ...(workspaceFiles !== undefined ? { workspaceFiles } : {}) },
     cache: {
-      inputs: { files, ...(workspaceFiles !== undefined ? { workspaceFiles } : {}) },
       outputs: { files: [] },
     },
   })
@@ -701,8 +704,8 @@ describe('computeTaskHash — the folds only a digest held', () => {
     const rt = node(
       {},
       {
+        inputs: { files: [], workspaceRuntime: ['cat ws-rt.txt'] },
         cache: {
-          inputs: { files: [], workspaceRuntime: ['cat ws-rt.txt'] },
           outputs: { files: [] },
         },
       },

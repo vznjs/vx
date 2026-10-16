@@ -672,7 +672,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     let usesWorkspaceInputs = false
     for (const n of nodes.values()) {
       graphDirs.add(n.projectDir)
-      if ((n.config.cache?.inputs.workspaceFiles?.length ?? 0) > 0) usesWorkspaceInputs = true
+      if ((n.config.inputs?.workspaceFiles?.length ?? 0) > 0) usesWorkspaceInputs = true
     }
     const projectDirs = [...graphDirs]
     const enumerating =

@@ -73,7 +73,7 @@ const BUILD = `
     tasks: {
       build: {
         exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist; cat src/a.ts > dist/out.js' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }

@@ -41,17 +41,17 @@ beforeEach(async () => {
   tasks: {
     a: {
       exec: { command: 'mkdir -p out && echo partial > out/a.txt && test ! -f flag.txt' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
     },
     b: {
       dependsOn: ['a'],
       exec: { command: 'mkdir -p dist && cat out/a.txt > dist/b.txt' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
     c: {
       dependsOn: ['b'],
       exec: { command: 'echo c > c.txt' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['c.txt'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['c.txt'] } },
     },
   },
 }
@@ -132,7 +132,7 @@ describe('--continue=always carries the taint through a restore-tier hit', () =>
       `export default {
   tasks: {
     // Slow to fail: the hit below restores while gen is still running.
-    gen: { exec: { command: 'if [ -f ${flag} ]; then sleep 0.3; echo PARTIAL > ${gen}; exit 1; fi; echo GOOD > ${gen}' } },
+    gen: { exec: { command: 'if [ -f ${flag} ]; then sleep 0.3; echo PARTIAL > ${gen}; exit 1; fi; echo GOOD > ${gen}' }, inputs: { files: [] } },
   },
 }
 `,
@@ -146,12 +146,12 @@ describe('--continue=always carries the taint through a restore-tier hit', () =>
     pack: {
       dependsOn: ['g#gen'],
       exec: { command: 'echo packed > pack.txt' },
-      cache: { inputs: { files: ['src/p.txt'] }, outputs: { files: ['pack.txt'] } },
+      inputs: { files: ['src/p.txt'] }, cache: { outputs: { files: ['pack.txt'] } },
     },
     ship: {
       dependsOn: ['pack'],
       exec: { command: 'cat ${gen} > ship.txt' },
-      cache: { inputs: { files: ['src/s.txt'] }, outputs: { files: ['ship.txt'] } },
+      inputs: { files: ['src/s.txt'] }, cache: { outputs: { files: ['ship.txt'] } },
     },
   },
 }
@@ -210,17 +210,17 @@ describe('--continue=always taints through an order-only edge', () => {
   tasks: {
     a: {
       exec: { command: 'mkdir -p out && echo partial > out/a.txt && test ! -f flag.txt' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
     },
     gen: {
       dependsOn: ['a'],
       exec: { command: 'cp out/a.txt gen.txt' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['gen.txt'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['gen.txt'] } },
     },
     t: {
       dependsOn: ['gen'],
       exec: { command: 'cat out/a.txt > t.txt' },
-      cache: { inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['t.txt'] } },
+      inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: ['t.txt'] } },
     },
   },
 }

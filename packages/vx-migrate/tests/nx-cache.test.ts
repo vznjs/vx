@@ -244,7 +244,7 @@ describe('vx run with nxCache() layered over the local cache', () => {
     await writeFile(path.join(root, 'pkg', 'src', 'app.js'), 'console.log("app")\n')
     await writeFile(
       path.join(root, 'pkg', 'vx.config.mjs'),
-      "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/app.js dist/app.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n",
+      "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/app.js dist/app.js' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } } } }\n",
     )
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),

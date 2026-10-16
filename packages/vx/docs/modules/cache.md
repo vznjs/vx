@@ -186,8 +186,8 @@ export interface CacheKeyInput {
   taskId: string
   taskConfigHash: string
   envValues: Array<[name: string, value: string | undefined]> // undefined = unset
-  runtimeValues?: Array<[command: string, output: string]> // (v23) cache.inputs.runtime; folded as a namespaced section
-  workspaceRuntimeValues?: Array<[command: string, output: string]> // (v23) cache.inputs.workspaceRuntime; distinct namespace
+  runtimeValues?: Array<[command: string, output: string]> // (v23) inputs.runtime; folded as a namespaced section
+  workspaceRuntimeValues?: Array<[command: string, output: string]> // (v23) inputs.workspaceRuntime; distinct namespace
   inputFiles: string[] // absolute paths (sorted by caller before pass)
   workspaceRoot: string
   upstreamHashes: string[]

@@ -19,7 +19,7 @@ function config(inputs: string, command = 'true', extra = ''): string {
   tasks: {
     t: {
       exec: { command: ${JSON.stringify(command)} },
-      cache: { inputs: ${inputs}, outputs: { files: [] } },
+      inputs: ${inputs}, cache: { outputs: { files: [] } },
     },
     ${extra}
   },
@@ -246,9 +246,9 @@ describe('Turbo parity — file hashing: globs and literals (turborepo-scm manua
         config: config(
           "{ files: ['src/**', '!**/*.md'], workspaceFiles: ['shared/**'] }",
           'true',
-          `dir: { exec: { command: 'true' }, cache: { inputs: { files: ['src'] }, outputs: { files: [] } } },
-    reversed: { exec: { command: 'true' }, cache: { inputs: { files: ['!**/*.md', 'src/**'] }, outputs: { files: [] } } },
-    missing: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**', 'nope.txt'] }, outputs: { files: [] } } },`,
+          `dir: { exec: { command: 'true' }, inputs: { files: ['src'] }, cache: { outputs: { files: [] } } },
+    reversed: { exec: { command: 'true' }, inputs: { files: ['!**/*.md', 'src/**'] }, cache: { outputs: { files: [] } } },
+    missing: { exec: { command: 'true' }, inputs: { files: ['src/**', 'nope.txt'] }, cache: { outputs: { files: [] } } },`,
         ),
         files: { 'src/a.txt': 'a\n', 'src/notes.md': '# n\n' },
       },
@@ -458,20 +458,20 @@ describe('Turbo parity — task hash and global hash (turborepo-task-hash)', () 
     build: {
       exec: { command: 'mkdir -p dist && cat src/in.txt > dist/out.txt && date +%N >> dist/out.txt' },
       dependsOn: ['^build'],
-      cache: { inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: ['dist/**'] } },
     },
     gen: {
       exec: { command: 'mkdir -p gen && cp schema.txt gen/out.txt' },
-      cache: { inputs: { files: ['schema.txt'] }, outputs: { files: ['gen/**'] } },
+      inputs: { files: ['schema.txt'] }, cache: { outputs: { files: ['gen/**'] } },
     },
     use: {
       exec: { command: 'cat gen/out.txt' },
       dependsOn: ['gen'],
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
     lint: {
       exec: { command: 'echo lint-${name}' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
   },
 }

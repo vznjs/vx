@@ -78,7 +78,7 @@ export const CHOICES: readonly Choice[] = [
           {
             label: 'tests/config.test.ts',
             href: `${GH}packages/vx/tests/config.test.ts`,
-            row: 'requires cache.inputs.files — the one declaration vx will not infer',
+            row: 'requires inputs.files — the one declaration vx will not infer',
           },
         ],
       },

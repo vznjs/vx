@@ -27,14 +27,15 @@ describe('./-prefixed globs', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  async function project(cache: string): Promise<string> {
+  async function project(inputs: string, outputs: string): Promise<string> {
     const dir = await addProject(
       root,
       'app',
       `
         export default { tasks: { build: {
           exec: { command: 'mkdir -p dist && cat src/a.txt gen/g.txt > dist/out.txt' },
-          cache: ${cache},
+          inputs: ${inputs},
+          cache: { outputs: ${outputs} },
         } } }
       `,
     )
@@ -53,9 +54,7 @@ describe('./-prefixed globs', () => {
   })
 
   it('an input written as ./src/** keys on src: an edit under it is a miss, not a stale hit', async () => {
-    const dir = await project(
-      `{ inputs: { files: ['./src/**'] }, outputs: { files: ['./dist/**'] } }`,
-    )
+    const dir = await project(`{ files: ['./src/**'] }`, `{ files: ['./dist/**'] }`)
     expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
     const r = await run(opts())
@@ -65,7 +64,8 @@ describe('./-prefixed globs', () => {
 
   it('a negation written as !./gen/** subtracts gen: an edit there is a hit', async () => {
     const dir = await project(
-      `{ inputs: { files: ['**', '!./gen/**', '!dist/**'] }, outputs: { files: ['dist/**'] } }`,
+      `{ files: ['**', '!./gen/**', '!dist/**'] }`,
+      `{ files: ['dist/**'] }`,
     )
     expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])
     await writeFile(path.join(dir, 'gen', 'g.txt'), 'g2\n')
@@ -73,9 +73,7 @@ describe('./-prefixed globs', () => {
   }, 30_000)
 
   it('outputs written as ./dist/** are captured and restored (control)', async () => {
-    const dir = await project(
-      `{ inputs: { files: ['src/**', 'gen/**'] }, outputs: { files: ['./dist/**'] } }`,
-    )
+    const dir = await project(`{ files: ['src/**', 'gen/**'] }`, `{ files: ['./dist/**'] }`)
     expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])
     await rm(path.join(dir, 'dist'), { recursive: true, force: true })
     expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['cache-hit'])
@@ -96,7 +94,7 @@ describe('./-prefixed globs', () => {
   })
 
   it('an input written src/**/ (trailing slash on a pattern) keys on src too', async () => {
-    const dir = await project(`{ inputs: { files: ['src/**/'] }, outputs: { files: ['dist/**'] } }`)
+    const dir = await project(`{ files: ['src/**/'] }`, `{ files: ['dist/**'] }`)
     expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])
     await writeFile(path.join(dir, 'src', 'a.txt'), 'a2\n')
     expect((await run(opts())).outcomes.map((o) => o.status)).toEqual(['success'])
@@ -110,13 +108,13 @@ describe('./-prefixed globs', () => {
     it(`${field}.files ${entry} names the directory itself and is refused at load`, async () => {
       const dir = await addProject(root, 'app')
       const file = path.join(dir, 'vx.config.mjs')
-      const cache =
+      const spec =
         field === 'inputs'
-          ? `{ inputs: { files: [${entry}] }, outputs: { files: ['dist/**'] } }`
-          : `{ inputs: { files: ['src/**'] }, outputs: { files: [${entry}] } }`
+          ? `inputs: { files: [${entry}] }, cache: { outputs: { files: ['dist/**'] } }`
+          : `inputs: { files: ['src/**'] }, cache: { outputs: { files: [${entry}] } }`
       await writeFile(
         file,
-        `export default { tasks: { build: { exec: { command: 'true' }, cache: ${cache} } } }\n`,
+        `export default { tasks: { build: { exec: { command: 'true' }, ${spec} } } }\n`,
       )
       await expect(loadProjectConfig(file)).rejects.toThrow(
         /names the project directory itself and selects nothing/,

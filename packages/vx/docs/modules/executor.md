@@ -142,7 +142,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   persistent task (a worker cannot reach a port on the submitter), is
   sandboxed (the sandbox is this machine's machinery), depends on a
   sandboxed task, declares `exec.remote: false`, or folds a runtime
-  probe (`cache.inputs.runtime` / `workspaceRuntime`) into its key: the
+  probe (`inputs.runtime` / `workspaceRuntime`) into its key: the
   probe is this machine's answer, and a worker's output under it is a
   stale hit (C-2). `placement.ts`
   computes the set once per run (`tests/placement.test.ts`).

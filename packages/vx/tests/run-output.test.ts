@@ -81,7 +81,7 @@ const CONFIG = `
     tasks: {
       fail: {
         exec: { command: "printf '\\\\033[31merror\\\\033[0m src/a.ts:3:7 bad\\\\nsrc/a.ts(4,2): x\\\\nnope.ts:1\\\\n' >&2; exit 2" },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
       },
       failnc: {
         exec: { command: 'echo see src/a.ts:1; exit 3' },

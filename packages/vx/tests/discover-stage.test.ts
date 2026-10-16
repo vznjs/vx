@@ -33,7 +33,7 @@ const plugin = (name: string, discover: VxPlugin['discover']): VxPlugin =>
 const lockOf =
   (extra: Record<string, ProjectConfig> = {}) =>
   async (): Promise<Lockfile> => ({
-    version: 3,
+    version: 4,
     projects: Object.fromEntries(
       Object.entries({ 'packages/a': {}, ...extra }).map(([d, config]) => [
         d,

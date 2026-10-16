@@ -3,7 +3,7 @@ import { spareTrackedOutputs, trackedKinds } from '../src/tracked-outputs.js'
 
 const task = (outputs: Record<string, string[]>) => ({
   name: 'build',
-  task: { exec: { command: 'x' }, cache: { inputs: { files: ['**/*'] }, outputs } } as Record<
+  task: { exec: { command: 'x' }, inputs: { files: ['**/*'] }, cache: { outputs } } as Record<
     string,
     unknown
   >,
@@ -35,7 +35,7 @@ describe('spareTrackedOutputs', () => {
 describe('spareTrackedOutputs — a reader whose `!` hides a committed file (X-54)', () => {
   const reader = (files: string[]) => ({
     name: 'test',
-    task: { exec: { command: 't' }, cache: { inputs: { files } } } as Record<string, unknown>,
+    task: { exec: { command: 't' }, inputs: { files } } as Record<string, unknown>,
   })
   it('uncaches the reader whose `!` hides the committed file, keeps the one without', () => {
     const writer = task({ files: ['data'] })
@@ -47,7 +47,7 @@ describe('spareTrackedOutputs — a reader whose `!` hides a committed file (X-5
       [{ name: 'a', dir: '/w/packages/a', tasks: [writer, hides, plain] }],
       ['packages/a/data/sponsors.json'],
     )
-    expect([hides.task['cache'], plain.task['cache'] !== undefined, todos]).toEqual([
+    expect([hides.task['inputs'], plain.task['inputs'] !== undefined, todos]).toEqual([
       undefined,
       true,
       [
@@ -64,7 +64,7 @@ describe('spareTrackedOutputs — a reader whose `!` hides a committed file (X-5
 describe('spareTrackedOutputs — an output naming one committed file', () => {
   const reader = (inputs: Record<string, string[]>) => ({
     name: 'build',
-    task: { exec: { command: 'b' }, cache: { inputs } } as Record<string, unknown>,
+    task: { exec: { command: 'b' }, inputs } as Record<string, unknown>,
   })
   // hono/middleware: lint declared the committed `eslint-suppressions.json`,
   // and every build and typecheck beside it ran uncached.
@@ -73,8 +73,8 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
       name: 'lint',
       task: {
         exec: { command: 'eslint' },
+        inputs: { files: ['**/*'] },
         cache: {
-          inputs: { files: ['**/*'] },
           outputs: { files: ['.cache/.eslintcache', 'eslint-suppressions.json'] },
         },
       } as Record<string, unknown>,
@@ -96,15 +96,15 @@ describe('spareTrackedOutputs — an output naming one committed file', () => {
     )
     expect([
       lint.task['cache'],
-      build.task['cache'],
-      rootReader.task['cache'],
-      other.task['cache'],
+      build.task['inputs'],
+      rootReader.task['inputs'],
+      other.task['inputs'],
       todos,
     ]).toEqual([
-      { inputs: { files: ['**/*'] }, outputs: { files: ['.cache/.eslintcache'] } },
-      { inputs: { files: ['**/*', '!dist/**'] } },
-      { inputs: { files: ['src/**'], workspaceFiles: ['packages/a/**'] } },
-      { inputs: { files: ['**/*', '!eslint-suppressions.json'] } },
+      { outputs: { files: ['.cache/.eslintcache'] } },
+      { files: ['**/*', '!dist/**'] },
+      { files: ['src/**'], workspaceFiles: ['packages/a/**'] },
+      { files: ['**/*', '!eslint-suppressions.json'] },
       [],
     ])
   })

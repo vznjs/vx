@@ -42,7 +42,7 @@ async function addProject(name: string, config: string, deps: string[] = []): Pr
 
 const GOOD = `export default { tasks: { build: {
   exec: { command: 'echo ok > out.txt' },
-  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
 } } }`
 
 const BROKEN = `throw new Error('this config must never be evaluated for out-of-scope runs')`
@@ -99,7 +99,7 @@ describe('scoped config loading', () => {
         `export default { tasks: { build: {
           dependsOn: ['^build'],
           exec: { command: 'echo app > out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         } } }`,
         ['lib'],
       )
@@ -122,7 +122,7 @@ describe('scoped config loading', () => {
         `export default { tasks: { build: {
           dependsOn: ['app#build'],
           exec: { command: 'echo docs > out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         } } }`,
       )
       const r = await run({ cwd: root, tasks: ['docs#build'], log: silent() })
@@ -141,7 +141,7 @@ describe('scoped config loading', () => {
         `export default { tasks: { build: {
           dependsOn: ['tools#build'],
           exec: { command: 'echo app > out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         } } }`,
       )
       await addProject(
@@ -149,7 +149,7 @@ describe('scoped config loading', () => {
         `export default { tasks: { build: {
           dependsOn: ['app#build'],
           exec: { command: 'echo docs > out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         } } }`,
       )
       // Filter scope (not anchored) — the second hop is only reachable if
@@ -176,7 +176,7 @@ describe('scoped config loading', () => {
         `export default { tasks: { build: {
           dependsOn: ['^build'],
           exec: { command: 'echo app > out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         } } }`,
         ['lib'],
       )
@@ -185,7 +185,7 @@ describe('scoped config loading', () => {
         `export default { tasks: { build: {
           dependsOn: ['app#build'],
           exec: { command: 'echo docs > out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         } } }`,
       )
       const r = await run({ cwd: root, tasks: ['docs#build'], log: silent() })

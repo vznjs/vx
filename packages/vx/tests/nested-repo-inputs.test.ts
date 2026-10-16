@@ -1,7 +1,7 @@
 // A project inside a submodule or an embedded repository. The workspace
 // repository's `git ls-files` holds the nested repository as ONE entry (a
 // gitlink, or `dir/` for an untracked one) and none of its files, so the
-// project's partition of the workspace-wide enumeration was empty: `cache.inputs
+// project's partition of the workspace-wide enumeration was empty: `inputs
 // matched no files`, a key that never moved, and a stale hit under a green run
 // after the project's source changed (reproduced 2026-09-16). Such a project
 // gets no partition; its own repository's git enumerates it.
@@ -49,7 +49,7 @@ const CONFIG = `export default {
   tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cp src/x.txt dist/out.txt' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
   },
 }`
@@ -180,7 +180,7 @@ async function vendoredFixture(root: string): Promise<string> {
       tasks: {
         build: {
           exec: { command: 'mkdir -p dist && cat vendor/lib/x.txt vendor/loose/y.txt > dist/out.txt' },
-          cache: { inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist/**'] } },
         },
       },
     }`,

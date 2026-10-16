@@ -48,8 +48,7 @@ describe('an undefined named input', () => {
           p.tasks.map((t) => [`${p.name}#${t.name}` as string, t] as const),
         ),
       )
-      const files = (id: string) =>
-        (tasks.get(id)!.task!['cache'] as { inputs: { files: unknown } }).inputs.files
+      const files = (id: string) => (tasks.get(id)!.task!['inputs'] as { files: unknown }).files
       expect(files('a#build')).toEqual(['**/*'])
       expect(files('b#build')).toEqual(['**/*'])
       // `b#build`'s output taken back (core X-54).

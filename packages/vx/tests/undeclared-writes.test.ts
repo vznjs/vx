@@ -39,7 +39,7 @@ const config = (gen: string): string => `
       build: {
         dependsOn: ['gen'],
         exec: { command: 'mkdir -p dist && cat config.json > dist/out.txt' },
-        cache: { inputs: { files: ['config.json'], tasks: [] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['config.json'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }
@@ -128,8 +128,8 @@ describe('the run-start facts a producer can contradict, each one', () => {
               build: {
                 dependsOn: ['gen'],
                 exec: { command: 'mkdir -p dist && cat package.json > dist/out.txt' },
+                inputs: { files: ['src/**', 'package.json'], tasks: [] },
                 cache: {
-                  inputs: { files: ['src/**', 'package.json'], tasks: [] },
                   outputs: { files: ['dist/**'] },
                 },
               },
@@ -168,8 +168,8 @@ describe('the run-start facts a producer can contradict, each one', () => {
               build: {
                 dependsOn: ['^gen'],
                 exec: { command: 'mkdir -p dist && cat ../lib/config.json > dist/out.txt' },
+                inputs: { files: [], workspaceFiles: ['packages/lib/config.json'], tasks: [] },
                 cache: {
-                  inputs: { files: [], workspaceFiles: ['packages/lib/config.json'], tasks: [] },
                   outputs: { files: ['dist/**'] },
                 },
               },
@@ -305,7 +305,8 @@ describe('execute-task drops what the command may have written, and nothing else
       await rm(path.join(root, 'packages', 'app'), { recursive: true, force: true })
       const cached = {
         exec: { command: 'true' },
-        cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+        inputs: { files: ['package.json'] },
+        cache: { outputs: { files: [] } },
       }
       expect(await survivors(cached, ranHere)).toEqual(all)
     },
@@ -342,7 +343,7 @@ describe('undeclaredWriteReach — where a task may have written that nothing de
   it('a cached task is held to its declared outputs; a group runs nothing', () => {
     expect(
       undeclaredWriteReach(
-        node({ exec: { command: 'x' }, cache: { inputs: {}, outputs: { files: [] } } }),
+        node({ exec: { command: 'x' }, inputs: {}, cache: { outputs: { files: [] } } }),
         ws,
       ),
     ).toBe('none')
@@ -417,7 +418,7 @@ describe('the stability gate reads the reach', () => {
             build: {
               dependsOn: ['^gen'],
               exec: { command: 'true' },
-              cache: { inputs: { files: ['**'] }, outputs: { files: [] } },
+              inputs: { files: ['**'] }, cache: { outputs: { files: [] } },
             },
           },
         }
@@ -466,7 +467,7 @@ describe('the stability gate reads the reach', () => {
             build: {
               dependsOn: ${buildDeps},
               exec: { command: 'true' },
-              cache: { inputs: { files: ['config.json']${buildInputs} }, outputs: { files: ['dist/**'] } },
+              inputs: { files: ['config.json']${buildInputs} }, cache: { outputs: { files: ['dist/**'] } },
             },
           },
         }
@@ -498,7 +499,7 @@ describe('the stability gate reads the reach', () => {
     async () => {
       expect(
         await throughChain(
-          `fmt: { exec: { command: 'true' }, cache: { inputs: { files: ['**', '!dist/**'] }, outputs: { files: [] } } },
+          `fmt: { exec: { command: 'true' }, inputs: { files: ['**', '!dist/**'] }, cache: { outputs: { files: [] } } },
            mid: { dependsOn: ['fmt'], ...${QUIET} },
            mid2: { dependsOn: ['mid'], ...${QUIET} },`,
           "['mid2']",
@@ -517,7 +518,7 @@ describe('the stability gate reads the reach', () => {
         await throughChain(
           `fmt: {
              exec: { command: 'true', sandbox: { allow: { read: ['.'], write: ['../other/**'] } } },
-             cache: { inputs: { files: ['**', '!dist/**'] }, outputs: { files: [] } },
+             inputs: { files: ['**', '!dist/**'] }, cache: { outputs: { files: [] } },
            },
            mid: { dependsOn: ['fmt'], ...${QUIET} },`,
           "['mid']",

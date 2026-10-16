@@ -22,7 +22,7 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'mkdir -p dist && head -c 700000 /dev/urandom > dist/out.bin' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }

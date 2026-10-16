@@ -136,10 +136,10 @@ export default {
         command: 'mkdir -p dist && cp src/*.js dist/',
       },
       dependsOn: ['^build'],
+      inputs: {
+        files: ['src/**'],
+      },
       cache: {
-        inputs: {
-          files: ['src/**'],
-        },
         outputs: {
           files: ['dist/**'],
         },
@@ -181,23 +181,23 @@ npx @vzn/vx run test --all      # local 3✓
 | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
 | `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
-| `inputs`                                                    | `cache.inputs.files`; a glob that reaches a nested workspace package also in `cache.inputs.workspaceFiles` |
+| `inputs`                                                    | `inputs.files`; a glob that reaches a nested workspace package also in `inputs.workspaceFiles` |
 | `outputs`                                                   | `cache.outputs.files`                                                    |
-| `env`                                                       | `cache.inputs.env` **and** `exec.env.passThrough`                        |
+| `env`                                                       | `inputs.env` **and** `exec.env.passThrough`                        |
 | `passThroughEnv`                                            | `exec.env.passThrough`                                                   |
-| `cache: false`                                              | no `cache` block: the task always runs                                   |
+| `cache: false`                                              | no `cache` block: the task always runs, keyed on its `inputs`            |
 | `persistent: true`                                          | `exec.persistent: { … }`                                                 |
 | `with` | `dependsOn` a persistent sidecar, started beside the task |
 | `interactive: true` | `exec.interactive: true`: the task gets the terminal, alone |
 | `interruptible` | nothing: `vx watch` keeps a persistent task up and restarts it only when its config changes or it dies |
 | `tags` | nothing: labels Turbo keeps out of the hash and the behaviour |
 | `outputLogs` (Turbo 1: `outputMode`)                        | `"new-only"` is the default; other values are the run's `--output-logs` |
-| `dotEnv` (Turbo 1), a `.env` input                          | `cache.inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`, and `dotenvRootFiles` for the root globs); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `cache.inputs.workspaceRuntime`, a probe of just the files its globs name |
-| an input or `globalDependencies` path git ignores (`config.local.json`) | `cache.inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
+| `dotEnv` (Turbo 1), a `.env` input                          | `inputs.runtime`: a probe that prints every `.env` file's name and bytes, because a gitignored `.env` is invisible to a git glob (written configs name it from the preset: `dotenvFiles`, `dotenvFilesDeep`, and `dotenvRootFiles` for the root globs); a root one (`$TURBO_ROOT$/.env`, `globalDotEnv`) is `inputs.workspaceRuntime`, a probe of just the files its globs name |
+| an input or `globalDependencies` path git ignores (`config.local.json`) | `inputs.workspaceRuntime`: a probe that prints the file's name and bytes, since core refuses a file input git ignores; a gitignored file a glob matches is not keyed |
 | `command` (Turbo 2.11) | `exec.command` (the argv, quoted); `null` or `[]` is no task |
 | `description` | `description` |
 | `extends`                                                   | nothing: a package task merges over the root's, field by field           |
-| `$TURBO_ROOT$/file`                                         | `cache.inputs.workspaceFiles` / `outputs.workspaceFiles`                 |
+| `$TURBO_ROOT$/file`                                         | `inputs.workspaceFiles` / `outputs.workspaceFiles`                 |
 | `globalDependencies` / `globalEnv` / `globalPassThroughEnv` (and Turbo 1's `globalDotEnv`) | a generated `vx-preset.ts` each config imports as `vx-preset.js` (your `tsc` accepts it without `allowImportingTsExtensions`; Bun loads the `.ts`), except where a `tsconfig*.json` in the config's directory or above it (below the root) is a composite project or sets `rootDir` and takes the config in: there the config declares the values itself, as `tsc` refuses a file outside the package (TS6059); a wildcard env name is reported, not mapped |
 
 The command itself comes from your `package.json` script, with its
@@ -308,10 +308,10 @@ export default {
           },
         },
       },
+      inputs: {
+        files: ['src/**/*'],
+      },
       cache: {
-        inputs: {
-          files: ['src/**/*'],
-        },
         outputs: {
           files: ['dist'],
         },
@@ -338,10 +338,10 @@ test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --opti
 | a project's `targets`                | `tasks`                                                   |
 | `dependsOn` (`^build`, `app:build`)  | `dependsOn` (`^build`, `app#build`)                       |
 | `configurations`                     | one task per configuration: `build`, `build:ci`           |
-| `inputs` / `namedInputs`             | `cache.inputs.files`                                      |
-| `{workspaceRoot}/file`               | `cache.inputs.workspaceFiles`                             |
-| `{ "env": "VAR" }`                   | `cache.inputs.env` **and** `exec.env.passThrough`         |
-| `{ "runtime": "<cmd>" }`             | `cache.inputs.workspaceRuntime`: it runs at the workspace root, as Nx's does |
+| `inputs` / `namedInputs`             | `inputs.files`                                      |
+| `{workspaceRoot}/file`               | `inputs.workspaceFiles`                             |
+| `{ "env": "VAR" }`                   | `inputs.env` **and** `exec.env.passThrough`         |
+| `{ "runtime": "<cmd>" }`             | `inputs.workspaceRuntime`: it runs at the workspace root, as Nx's does |
 | `{ "json": "<file>", "fields": … }`  | the whole file in `files` / `workspaceFiles`: a superset of the fields |
 | `outputs`                            | `cache.outputs.files` (or `workspaceFiles` for `dist/<project>`) |
 | `nx build app`                       | `vx run app#build`                                        |

@@ -173,7 +173,7 @@ describe("vx migrate (turbo): a package without a ^ task's script", () => {
         const tasks = ui.tasks as Record<string, TaskConfig>
         // Core gives a project with no `build` this node itself (projects.ts).
         expect(Object.keys(tasks)).toEqual(['types'])
-        expect([tasks.types!.exec, tasks.types!.cache?.outputs?.files]).toEqual([undefined, []])
+        expect([tasks.types!.exec, tasks.types!.inputs !== undefined]).toEqual([undefined, true])
         const readme = await Bun.file(path.join(import.meta.dir, '..', 'README.md')).text()
         expect(readme).toContain(
           'A package without the script of a `^` task others run gets the same key-only task',
@@ -266,11 +266,11 @@ describe('vx migrate (turbo)', () => {
       // written twice the migrated config keyed apart from the live run.
       // `codegen`'s and `test`'s outputs taken back: no key reads another
       // task's outputs (core X-54).
-      expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md', '!src/gen/**', '!coverage/**'])
-      expect(build.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
-      // env → BOTH cache.inputs.env and passThrough; globalEnv spread into
+      expect(build.inputs?.files).toEqual(['**/*', '!**/*.md', '!src/gen/**', '!coverage/**'])
+      expect(build.inputs?.workspaceFiles).toEqual(['tsconfig.base.json'])
+      // env → BOTH inputs.env and passThrough; globalEnv spread into
       // both; globalPassThroughEnv into passThrough only; wildcard dropped.
-      expect(build.cache?.inputs.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
+      expect(build.inputs?.env).toEqual(['GLOBAL_MODE', 'NODE_ENV'])
       expect(build.exec?.env?.passThrough).toEqual(['GLOBAL_MODE', 'AWS_PROFILE', 'NODE_ENV'])
       // output negation dropped (TODO).
       expect(build.cache?.outputs.files).toEqual(['dist/**', '!dist/**/*.map'])
@@ -279,9 +279,9 @@ describe('vx migrate (turbo)', () => {
       // $TURBO_ROOT$/<path> output → outputs.workspaceFiles.
       const codegen = tasks.codegen!
       expect(codegen.exec?.command).toBe('node gen.js')
-      expect(codegen.cache?.inputs.files).toEqual(['**/*', '!dist/**', '!coverage/**'])
-      expect(codegen.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
-      expect(codegen.cache?.inputs.env).toEqual(['GLOBAL_MODE'])
+      expect(codegen.inputs?.files).toEqual(['**/*', '!dist/**', '!coverage/**'])
+      expect(codegen.inputs?.workspaceFiles).toEqual(['tsconfig.base.json'])
+      expect(codegen.inputs?.env).toEqual(['GLOBAL_MODE'])
       expect(codegen.cache?.outputs.files).toEqual(['src/gen/**'])
       expect(codegen.cache?.outputs.workspaceFiles).toEqual(['generated/api.ts'])
 
@@ -301,7 +301,7 @@ describe('vx migrate (turbo)', () => {
       expect(test.cache?.outputs.files).toEqual(['coverage/**'])
       expect(test.exec?.env?.passThrough).toEqual(['GLOBAL_MODE', 'AWS_PROFILE', 'CI'])
       // passThroughEnv is passThrough-only — not a cache input.
-      expect(test.cache?.inputs.env).toEqual(['GLOBAL_MODE'])
+      expect(test.inputs?.env).toEqual(['GLOBAL_MODE'])
 
       // interactive:true → exec.interactive and no cache (Turbo refuses one that caches).
       const seed = tasks.seed!
@@ -324,8 +324,8 @@ describe('vx migrate (turbo)', () => {
       expect(build.cache?.outputs.files).toEqual(['lib/**'])
       // Inherited inputs from root; same-project dep `codegen` dropped
       // silently because lib has no codegen script (turbo semantics).
-      expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.md'])
-      expect(build.cache?.inputs.workspaceFiles).toEqual(['tsconfig.base.json'])
+      expect(build.inputs?.files).toEqual(['**/*', '!**/*.md'])
+      expect(build.inputs?.workspaceFiles).toEqual(['tsconfig.base.json'])
       expect(build.dependsOn).toEqual(['^build'])
     },
     TIMEOUT,
@@ -809,16 +809,16 @@ describe('vx migrate (nx)', () => {
       )
       // namedInputs expansion: production → default + spec exclusion.
       // {workspaceRoot}/<path> → inputs.workspaceFiles, not a TODO.
-      expect(build.cache?.inputs.files).toEqual(['**/*', '!**/*.spec.ts'])
-      expect(build.cache?.inputs.workspaceFiles).toEqual(['babel.config.json'])
+      expect(build.inputs?.files).toEqual(['**/*', '!**/*.spec.ts'])
+      expect(build.inputs?.workspaceFiles).toEqual(['babel.config.json'])
       // {env: X} → cache input AND passThrough (isolated child env).
-      expect(build.cache?.inputs.env).toEqual(['NODE_ENV'])
+      expect(build.inputs?.env).toEqual(['NODE_ENV'])
       expect(build.exec?.env?.passThrough).toEqual(['NODE_ENV'])
-      // {runtime: "<cmd>"} → cache.inputs.workspaceRuntime: Nx runs it at
+      // {runtime: "<cmd>"} → inputs.workspaceRuntime: Nx runs it at
       // the workspace root (item 913). It used to reach the fall-through
       // and be reported "not representable in vx" (2026-09-20).
-      expect(build.cache?.inputs.workspaceRuntime).toEqual(['node --version'])
-      expect(build.cache?.inputs.runtime).toBeUndefined()
+      expect(build.inputs?.workspaceRuntime).toEqual(['node --version'])
+      expect(build.inputs?.runtime).toBeUndefined()
       // outputs: each path as written (core reads a bare path as the
       // file or the tree under it, Next 27), {options.*} resolution +
       // project-prefix strip; {workspaceRoot}/<path> →
@@ -852,7 +852,7 @@ describe('vx migrate (nx)', () => {
       // no inputs → files ['**/*'].
       const test = tasks.test!
       expect(test.exec?.command).toBe('jest')
-      expect(test.cache?.inputs.files).toEqual([
+      expect(test.inputs?.files).toEqual([
         '**/*',
         '!dist',
         '!build/main.js',
@@ -897,7 +897,7 @@ describe('vx migrate (nx)', () => {
       const build = tasks.build!
       // A declared cwd under the project: a cd relative to the project dir, no todo.
       expect(build.exec?.command).toBe('cd sub && make')
-      expect(build.cache?.inputs.files).toEqual(['src/**/*'])
+      expect(build.inputs?.files).toEqual(['src/**/*'])
       expect(build.cache?.outputs.files).toEqual(['out'])
 
       // Two targets on one output path: the one with the ^ edge keeps
@@ -1396,15 +1396,15 @@ describe('vx migrate (nx) — executors', () => {
       })
       expect(r.out).not.toContain('falls outside the project dir')
       // Cached by the legacy list, inputs from nx.json's `default` named input.
-      expect(tasks['odd']!.cache).toEqual({
-        inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
-        outputs: { files: [] },
-      })
+      expect([tasks['odd']!.inputs, tasks['odd']!.cache]).toEqual([
+        { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
+        { outputs: { files: [] } },
+      ])
       expect(tasks['test']!.cache).toBeUndefined()
-      expect(tasks['dev']!.cache).toEqual({
-        inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
-        outputs: { files: ['dist'] },
-      })
+      expect([tasks['dev']!.inputs, tasks['dev']!.cache]).toEqual([
+        { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
+        { outputs: { files: ['dist'] } },
+      ])
       expect(tasks['dev']!.exec?.persistent).toBeUndefined()
       // Every executor is its nx-exec line, a configuration named on it.
       expect(tasks['test']!.exec?.command).toBe(

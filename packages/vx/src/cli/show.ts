@@ -466,14 +466,17 @@ function taskRows(raw: TaskConfig): ui.FieldRow[] {
     )
   }
   add('interactive', exec?.interactive === undefined ? undefined : exec.interactive ? 'yes' : 'no')
+  const inputs = task.inputs
+  if (inputs !== undefined) {
+    add('inputs.files', list(inputs.files))
+    add('inputs.workspaceFiles', list(inputs.workspaceFiles))
+    add('inputs.env', list(inputs.env))
+    add('inputs.tasks', list(inputs.tasks))
+    add('inputs.runtime', list(inputs.runtime))
+    add('inputs.workspaceRuntime', list(inputs.workspaceRuntime))
+  }
   const cache = task.cache
   if (cache !== undefined) {
-    add('inputs.files', list(cache.inputs.files))
-    add('inputs.workspaceFiles', list(cache.inputs.workspaceFiles))
-    add('inputs.env', list(cache.inputs.env))
-    add('inputs.tasks', list(cache.inputs.tasks))
-    add('inputs.runtime', list(cache.inputs.runtime))
-    add('inputs.workspaceRuntime', list(cache.inputs.workspaceRuntime))
     add('outputs.files', list(cache.outputs.files))
     add('outputs.workspaceFiles', list(cache.outputs.workspaceFiles))
   }

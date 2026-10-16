@@ -306,10 +306,11 @@ the shipped standalone binary fail with `ModuleNotFound`.
     `readyWhen` is rejected.
   - `cache` + `persistent` together is a hard error (no exit to
     cache).
-  - A task with no `exec` MUST declare `dependsOn` or `cache` (group
+  - A task with no `exec` MUST declare `dependsOn` or `inputs` (group
     task) — a no-op task is rejected.
-  - `cache` requires both `inputs.files` and `outputs.files` arrays; on
-    a group (a keyed group) `outputs` names nothing.
+  - `cache` requires `exec`, the task's `inputs.files` and
+    `cache.outputs.files`; a group (a keyed group is `inputs` with no
+    `exec`) takes no `cache`.
   - `dependsOn` must be a `string[]`.
   - `description` must be a string.
 - Doesn't sandbox the evaluated config — config code runs with the

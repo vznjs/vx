@@ -64,7 +64,7 @@ describe('vx-migrate (vite-task): env wildcards', () => {
   it('lists the spelled names a wildcard matches, minus a `!` entry', async () => {
     const app = (await loadProjectConfig(path.join(root, 'packages', 'app', 'vx.config.ts'))).tasks!
     expect(app['build']!.exec!.env).toEqual({ passThrough: ['VITE_API_URL', 'VITE_LIB_URL'] })
-    expect(app['build']!.cache!.inputs.env).toEqual(['VITE_API_URL', 'VITE_LIB_URL'])
+    expect(app['build']!.inputs!.env).toEqual(['VITE_API_URL', 'VITE_LIB_URL'])
     expect(out).toContain('env "VITE_*": the configs list the names')
     expect(out).toContain('cache.untrackedEnv "NOPE_*": vx takes exact env names')
   })

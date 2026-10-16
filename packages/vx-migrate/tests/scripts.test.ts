@@ -2087,7 +2087,7 @@ describe('vx init (package.json scripts)', () => {
       expect(text).toContain('} satisfies ProjectConfig')
       expect(row(r.out, 'next')).toEqual(['vx run build --all'])
       expect(r.out).not.toContain('no task caches yet')
-      expect(text).toContain('TODO(vx-migrate): cache: add `cache: {')
+      expect(text).toContain('TODO(vx-migrate): cache: add `inputs: {')
       // Nothing depends on `dev`, so no readiness note.
       expect(text).not.toContain('TODO(vx-migrate): persistent')
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })

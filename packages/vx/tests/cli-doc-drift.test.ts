@@ -258,7 +258,7 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
       id,
       projectName: id.split('#')[0],
       taskName: id.split('#')[1],
-      config: { exec: { command: 'x' }, cache: { inputs: { files: [] }, outputs: { files: [] } } },
+      config: { exec: { command: 'x' }, inputs: { files: [] }, cache: { outputs: { files: [] } } },
     }) as unknown as TaskNode
 
   it('two rows and the footer, byte for byte', async () => {
@@ -321,7 +321,8 @@ describe('docs/cli.md — the frame sample is what the renderer prints', () => {
       taskName: 'test',
       config: {
         exec: { command: 'bun test', sandbox: { allow: { read: ['**/*'] } } },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'] },
+        cache: { outputs: { files: [] } },
       },
     } as unknown as TaskNode
     const outcome: TaskOutcome = {
@@ -454,7 +455,7 @@ describe('docs/cli.md — the glyph table is the renderer', () => {
       id: 'a#b',
       projectName: 'a',
       taskName: 'b',
-      config: { exec: { command: 'x' }, cache: { inputs: { files: [] }, outputs: { files: [] } } },
+      config: { exec: { command: 'x' }, inputs: { files: [] }, cache: { outputs: { files: [] } } },
     } as unknown as TaskNode
     const outcomes: TaskOutcome[] = [
       { node, status: 'success', exitCode: 0, durationMs: 1 },

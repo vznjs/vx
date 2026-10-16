@@ -54,12 +54,12 @@ const CONFIG = `export default {
     build: {
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cp src/index.ts dist/out.txt' },
-      cache: { inputs: { files: ['src/**', '!src/**/*.test.ts'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**', '!src/**/*.test.ts'] }, cache: { outputs: { files: ['dist/**'] } },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'true' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
     lint: { exec: { command: 'true' } },
   },
@@ -257,7 +257,7 @@ describe('--affected follows task edges (owner, 2026-10-04)', () => {
       // keyed on every file of lib (owner, 2026-10-04).
       await write(
         path.join(root, 'pkgs/lib/vx.config.mjs'),
-        `export default { tasks: { test: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n`,
+        `export default { tasks: { test: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
       )
       git(root, 'add', '-A')
       git(root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'no build')
@@ -339,7 +339,7 @@ describe('--affected follows the graph a `graph` plugin leaves', () => {
     'an input a plugin gives a task reaches it',
     async () => {
       await graphPlugin(
-        `const c = nodes.get('tool#build')?.config.cache; if (c) c.inputs.workspaceFiles = ['pkgs/lib/README.md']`,
+        `const i = nodes.get('tool#build')?.config.inputs; if (i) i.workspaceFiles = ['pkgs/lib/README.md']`,
       )
       await commitEdit('pkgs/lib/README.md', 'docs')
       expect(planned(['build'], '--affected=HEAD~1')).toEqual([

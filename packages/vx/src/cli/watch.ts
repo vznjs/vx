@@ -7,7 +7,7 @@
 //
 // The cache does the heavy lifting: re-runs are typically cache hits
 // (input hash matches), so spurious events from edits outside any
-// task's `cache.inputs.files` cost ~tens of ms of orchestrator
+// task's `inputs.files` cost ~tens of ms of orchestrator
 // overhead. We deliberately don't try to filter events through the
 // per-task input globs — the cache key is the source of truth, and
 // filtering would mean re-doing the glob/boundary work on every event.
