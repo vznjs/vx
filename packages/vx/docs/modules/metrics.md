@@ -73,6 +73,21 @@ answers from it.
 `runFailures` lists the run's failed `runs` rows and fills each from the
 file; `vx last --format json` answers from it.
 
+`run-steps.ts` keeps the steps a run did not wait on (`vx:prefetch`),
+which its output never shows, in `<cacheDir>/steps/<runId>.json` for
+`vx last`:
+
+```ts
+writeRunSteps(cacheDir, runId, steps, warn): void // at run end; nothing when no step ran; newest 50 kept; a refused write warns
+runSteps(cacheDir, runId): RunStep[] // [] when the run kept none
+
+export interface RunStep {
+  id: string // 'vx:prefetch'
+  durationMs: number
+  ok: boolean
+}
+```
+
 The module index re-exports `explainCacheKey` as `explainCacheKeyQuery`
 and `whyDidThisRerun` as `whyDidThisRerunQuery`.
 

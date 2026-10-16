@@ -177,10 +177,12 @@ before the final footer prints, removes it for good; the first
 requested-task start in focused mode removes it too. A step
 (`stepStart` / `stepEnd`, ids `<owner>:<step>`) shows as a row below
 the worker rows once it has run `STEP_SHOWN_MS` (150 ms), bounded by
-no worker slot, and ends as a list row (`formatStepLine`); a step can
-draw the region before `runStart`, with no footer. No step touches a
-counter. `showsSteps` is true only where the region can draw, and
-`run()` times no step otherwise (M, 2026-10-15;
+no worker slot, and ends as a list row (`formatStepLine`), `internal`
+in the cache column; a step can draw the region before `runStart`,
+with no footer. No step touches a counter. Only a step the run waits
+on is one: a background step (`vx:prefetch`) never reaches the logger
+and is kept for `vx last` (M, 2026-10-16). `showsSteps` is true only
+where the region can draw, and `run()` times no step otherwise (M, 2026-10-15;
 `tests/run-tail.test.ts`, `tests/steps.test.ts`). Every ordinary write
 clears it first, writes, then redraws, so it never interleaves with content.
 
