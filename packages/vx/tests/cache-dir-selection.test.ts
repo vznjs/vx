@@ -96,6 +96,23 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
     )
 
     it(
+      'an empty one is refused the same way, with no SQLite stack',
+      async () => {
+        // No index yet: bun:sqlite threw `unable to open database file`
+        // creating one, before the refusal ran (Growth's
+        // readonly-cache-dir-crash.sh, 2026-10-16).
+        const { chmod } = await import('node:fs/promises')
+        await chmod(ro, 0o555)
+        const r = await vx(['run', 'build', '--all'])
+        expect(r.code).toBe(1)
+        expect(r.err).toMatch(/cache directory .* is not writable \(EACCES: /)
+        expect(r.err).not.toContain('SQLiteError')
+        expect(r.err).not.toContain('\n    at ')
+      },
+      TIMEOUT,
+    )
+
+    it(
       'a reader evaluates live on it and stores nothing',
       async () => {
         // `vx show` reads the workspace's own cache (it takes no --cache-dir),

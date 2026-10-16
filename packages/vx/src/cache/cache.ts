@@ -958,8 +958,14 @@ export class Cache implements CacheLayer {
       (!existsSync(dbFile) || (mode === 'preview' && indexOfAnotherSchema(dbFile)))
     this.writeBlocked = absent ? 'no index there yet' : openCacheDir(cacheDir, repoDir)
     this.write = localPolicy.write && this.writeBlocked === null
+    // A directory this user cannot write with no index in it yet: SQLite
+    // cannot make one, and its `unable to open database file` stack reached
+    // the user before `assertWritable` could name the directory (a
+    // read-only mount, Growth's parity run 2026-10-16). Nothing there to
+    // read, so an empty index in memory, as a reader's typo gets.
+    const memory = absent || (this.writeBlocked !== null && !existsSync(dbFile))
     try {
-      this.db = new Database(absent ? ':memory:' : dbFile, { create: true })
+      this.db = new Database(memory ? ':memory:' : dbFile, { create: true })
     } catch (err) {
       throw outOfFdsAtOpen(dbFile, err) ?? err
     }
