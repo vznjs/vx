@@ -32,6 +32,19 @@ export function emptyNxInputs(): NxInputs {
   return { files: [], wsFiles: [], envNames: [], runtimeCmds: [], upstream: [] }
 }
 
+/**
+ * A runtime command with its path tokens written in, as the paths from the
+ * workspace root it runs at. Nx runs the command as written and hashes its
+ * output whatever it exits, so `cat {workspaceRoot}/v.txt` keyed on cat's
+ * error there and failed the task here (Growth, 2026-10-16).
+ */
+function runtimeCommand(cmd: string, rel: string, name: string): string {
+  return cmd
+    .replaceAll('{workspaceRoot}', '.')
+    .replaceAll('{projectRoot}', shellQuote(rel === '' ? '.' : rel))
+    .replaceAll('{projectName}', shellQuote(name))
+}
+
 /** Expands `entries` into `into`; a gap is a line in `todos`. */
 export function expandNxInputs(
   entries: readonly unknown[],
@@ -113,7 +126,7 @@ export function expandNxInputs(
         return
       }
       if (typeof o.runtime === 'string') {
-        into.runtimeCmds.push(o.runtime)
+        into.runtimeCmds.push(runtimeCommand(o.runtime, at.rel, at.name))
         return
       }
       if (typeof o.fileset === 'string' && o.includeIgnored === true) {

@@ -14,6 +14,19 @@ function inputs(entries: unknown[], named: Record<string, unknown[]> = {}) {
 }
 
 describe('expandNxInputs', () => {
+  // Nx runs a runtime command as written, at the workspace root, and
+  // hashes its stdout and stderr whatever it exits: `cat {workspaceRoot}/x`
+  // hashed cat's error, and vx's probe failed the task on its exit 1
+  // (Growth, 2026-10-16). The tokens are the paths they name, from the root.
+  it('a runtime command’s path tokens are the paths, from the workspace root', () => {
+    const got = inputs([
+      { runtime: 'cat {workspaceRoot}/toolver.txt' },
+      { runtime: 'ls {workspaceRoot}' },
+      { runtime: 'cat {projectRoot}/v.txt && echo {projectName}' },
+    ])
+    expect(got.runtimeCmds).toEqual(['cat ./toolver.txt', 'ls .', 'cat packages/a/v.txt && echo a'])
+  })
+
   // Nx 23's `{ workingDirectory }` keys where Nx was started; a vx task
   // runs in its project dir wherever vx starts. It was a todo, "not
   // representable". CONTROL: another value is still one.
