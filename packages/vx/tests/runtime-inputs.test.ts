@@ -231,4 +231,39 @@ describe('runtime inputs — e2e', () => {
     expect(r.code).toBe(0)
     expect(await readFile(log, 'utf8')).toBe('ambient\n')
   })
+
+  // A gitignored file a tool reads by itself (Vite's `.env.local`) is not a
+  // file git lists, so `files` cannot key it and naming it is refused. The
+  // documented route is a probe over its bytes: docs/caching.md § What's NOT
+  // in the key. Without one, an edit replays the old build.
+  it('a gitignored .env.local keys only through a probe, which survives the file being absent', async () => {
+    const config = (runtime: string) => `export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist; (cat .env.local 2>/dev/null || echo none) > dist/env' },
+          inputs: { files: ['src/**'], runtime: [${runtime}] },
+          cache: { outputs: { files: ['dist/**'] } },
+        },
+      },
+    }`
+    const plain = await addProject(root, 'plain', { config: config(''), files: { 'src/a.ts': '' } })
+    const keyed = await addProject(root, 'keyed', {
+      config: config(`'cat .env.local .env.production.local 2>/dev/null | cksum'`),
+      files: { 'src/a.ts': '' },
+    })
+    await writeFile(path.join(root, '.gitignore'), '.vx/cache/\ndist/\n.env*.local\n')
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', 'init')
+    const built = (dir: string) => readFile(path.join(dir, 'dist', 'env'), 'utf8')
+
+    for (const dir of [plain, keyed]) await writeFile(path.join(dir, '.env.local'), 'API=a\n')
+    expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+    for (const dir of [plain, keyed]) await writeFile(path.join(dir, '.env.local'), 'API=b\n')
+    expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+    expect([await built(plain), await built(keyed)]).toEqual(['API=a\n', 'API=b\n'])
+
+    await rm(path.join(keyed, '.env.local'))
+    expect((await vx(root, ['run', 'build', '--all'])).code).toBe(0)
+    expect(await built(keyed)).toBe('none\n')
+  })
 })

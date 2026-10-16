@@ -275,7 +275,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     override gitignore; vx cannot, because the key would then depend on
     a change `git diff` cannot see and `--affected` would stop selecting
     the task. If the file is generated, depend on the task that produces
-    it via `inputs.tasks`. A **glob** matching nothing stays
+    it via `inputs.tasks`; if a tool reads it by itself (`.env.local`),
+    key its bytes with a `runtime` probe (§ What's NOT in the key). A
+    **glob** matching nothing stays
     silent — that is legitimate — and so does a literal naming a file
     that does not exist. A literal naming a **directory** is judged the
     same way: an ignored one, or an empty one, has no file git lists
@@ -1873,6 +1875,13 @@ moat.
   Workspace-root configs (`tsconfig.base.json`, etc.) are not
   auto-included — declare them via `inputs.workspaceFiles`
   (root-anchored globs).
+- **Gitignored files a tool reads by itself.** Vite and Next load
+  `.env.local` on their own; git does not list it, so `files` cannot key
+  it and naming it is refused. Editing it replays the old build unless
+  the task keys its bytes with a probe, which also tolerates the file
+  being absent and keeps its values out of the key:
+  `runtime: ['cat .env.local .env.production.local 2>/dev/null | cksum']`.
+  `--affected` still cannot see such an edit.
 - **Node / Bun / OS / build-tool versions — unless you declare them.**
   The canonical mechanism is `inputs.runtime` /
   `workspaceRuntime` (e.g. `workspaceRuntime: ['node -v']`): the
