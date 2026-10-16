@@ -817,7 +817,7 @@ describe('vx migrate (nx)', () => {
       // {runtime: "<cmd>"} → inputs.workspaceRuntime: Nx runs it at
       // the workspace root (item 913). It used to reach the fall-through
       // and be reported "not representable in vx" (2026-09-20).
-      expect(build.inputs?.workspaceRuntime).toEqual(['node --version'])
+      expect(build.inputs?.workspaceRuntime).toEqual(['(node --version) || echo "exit $?"'])
       expect(build.inputs?.runtime).toBeUndefined()
       // outputs: each path as written (core reads a bare path as the
       // file or the tree under it, Next 27), {options.*} resolution +

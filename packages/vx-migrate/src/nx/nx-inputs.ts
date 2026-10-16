@@ -46,12 +46,19 @@ export function emptyNxInputs(): NxInputs {
  * workspace root it runs at. Nx runs the command as written and hashes its
  * output whatever it exits, so `cat {workspaceRoot}/v.txt` keyed on cat's
  * error there and failed the task here (Growth, 2026-10-16).
+ *
+ * vx's probe fails the task on a non-zero exit, so a failing command runs
+ * in a subshell and prints its exit code instead: the key holds the error
+ * and the code (more than Nx keys, never less), and a success prints
+ * exactly what the command does. A `#` comment would swallow the `)`, so
+ * then the subshell closes on its own line.
  */
 function runtimeCommand(cmd: string, rel: string, name: string): string {
-  return cmd
+  const c = cmd
     .replaceAll('{workspaceRoot}', '.')
     .replaceAll('{projectRoot}', shellQuote(rel === '' ? '.' : rel))
     .replaceAll('{projectName}', shellQuote(name))
+  return `(${c}${c.includes('#') ? '\n' : ''}) || echo "exit $?"`
 }
 
 /** Expands `entries` into `into`; a gap is a line in `todos`. */
