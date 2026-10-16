@@ -3020,7 +3020,8 @@ region stays through vx's closing steps, worker rows gone, and the
 final footer replaces it in place. Each task counts once, under its strongest state: a
 failed remote read or write, then an upload running, then saved to a
 remote, then saved here, then restored, then fresh, then no cache; so
-a task saved here and uploaded is a remote `↑`. Each count is painted
+a task saved here and uploaded is a remote `↑`. A key the remote already
+held is not sent, so it is no remote `↑`. Each count is painted
 in its segment's colour, number and glyph alike: `✓` green, `∅` dim,
 local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
 `local` and `remote` words are dim. A layer shows only when the run's

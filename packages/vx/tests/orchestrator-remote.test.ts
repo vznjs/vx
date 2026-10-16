@@ -1505,6 +1505,51 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
     TIMEOUT,
   )
 
+  // A remote with no `hasMany` is asked `has` per key before its upload;
+  // a held key is not sent, so it is counted nowhere (Docs, 2026-10-16:
+  // the footer read `remote 1↑` with no PUT made).
+  it(
+    'a --force run counts no upload for a key a has-only remote holds',
+    async () => {
+      const fixture = await makeFixture('vx-remote-e2e-')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const store = new Map<string, Uint8Array>()
+        let puts = 0
+        const remoteCache = {
+          has: async (h: string) => store.has(h),
+          get: async (h: string) => {
+            const b = store.get(h)
+            return b === undefined ? null : { body: new Blob([b]), durationMs: 1 }
+          },
+          put: async (h: string, body: Blob) => {
+            puts++
+            store.set(h, new Uint8Array(await body.arrayBuffer()))
+          },
+        }
+        await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture), remoteCache })
+        expect(puts).toBe(1)
+        fixture.log.length = 0
+        const forced = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache,
+          cacheFlags: { force: true },
+        })
+        expect(forced.outcomes[0]!.status).toBe('success')
+        const legend = fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]
+        expect({ puts, legend: legend?.trim() }).toEqual({ puts: 1, legend: 'local 1↑' })
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // M, 2026-10-15: a remote read's failure counts with a write's, as one
   // `N✗` in the footer, and `vx last` names each, though the upload's
   // failure lands after the run's rows went in.

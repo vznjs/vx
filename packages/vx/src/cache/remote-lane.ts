@@ -271,6 +271,10 @@ export class RemoteLane {
         await release?.()
         key.uploading--
         this.traffic.inFlight--
+        // Nothing sent and nothing failed (the remote held it, or the run
+        // stopped first): no traffic, so the footer counts no upload.
+        if (key.uploading === 0 && !key.landed && key.failures.length === 0)
+          this.traffic.keys.delete(hash)
       }
     })
     this.pump()
