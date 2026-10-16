@@ -601,7 +601,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         {
           named: new Set(tasks.filter((t) => t.includes('#'))),
           outright: new Set(options.selectedOutright),
-          workspaceRoot,
         },
         options.affectedReasons && { workspaceRoot, reasons: options.affectedReasons },
       )

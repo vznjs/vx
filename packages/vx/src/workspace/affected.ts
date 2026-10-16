@@ -94,11 +94,6 @@ export interface AffectedArgs {
     nested: readonly string[],
   ) => Promise<Iterable<string>>
   /**
-   * The projects with a task naming a gitignored input that exists: no diff
-   * shows an edit to one, so each is a candidate (`ignoredInputsNamed`).
-   */
-  ignoredInputOwners?: () => Promise<Iterable<string>>
-  /**
    * The fingerprint files a plugin claims (`VxPlugin.fingerprint`) and its
    * answer for a change to one. Resolved lazily: loading the workspace
    * file costs an evaluation, and a diff that touches no root file — the
@@ -400,9 +395,6 @@ export async function affectedChanges(
     ...(claimedOwned.size > 0 ? { wholeBy: claimedOwned } : {}),
     ...(nestedDirs.length > 0 ? { nested: nestedDirs } : {}),
   })
-  if (args.ignoredInputOwners !== undefined) {
-    for (const name of await args.ignoredInputOwners()) owned.add(name)
-  }
   if (changed.length === 0 || args.workspaceGlobOwners === undefined) return done()
   for (const name of await args.workspaceGlobOwners(changed, nestedDirs)) owned.add(name)
   return done()

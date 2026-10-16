@@ -358,10 +358,10 @@ A symlinked input keys what it points to, so a link whose target
 changed (a file the diff names, or one under a linked directory) is a
 changed path of its project, and a link to a target git cannot diff
 (outside the workspace, or git-ignored) is one on every run.
-So is a gitignored file a task's inputs name outright (`.env.local`,
-`dist/**`) while it exists: the key hashes it, git cannot diff it, so
-the task is selected on every `--affected` run (one `git check-ignore`
-over the paths tasks name, asked only under `--affected`).
+A gitignored file a task's inputs name outright (`.env.local`,
+`dist/**`) never selects the task on its own, as in Nx: `--affected`
+reflects only what git sees. The key still hashes it, so a run of the
+task misses when it changed.
 `.vx/projects.lock.json` is filtered out of the changed set — a `vx lock`
 re-write never marks every project affected.
 

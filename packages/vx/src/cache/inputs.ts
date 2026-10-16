@@ -29,7 +29,6 @@ import {
   normalizeGlob,
   outputMatcher,
   realpathOf,
-  checkIgnoreSync,
   relPosix,
   shellArgv,
   slashBraceExpansions,
@@ -1547,55 +1546,6 @@ export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean 
   const ws = task.inputs?.workspaceFiles
   if (ws === undefined || ws.length === 0) return false
   return reaches(reachOf(splitNegations(ws).positive).prefixes, dir)
-}
-
-/**
- * Each keyed task (`[id, config, projectDir]`) naming a gitignored input
- * that exists, with that path, workspace-relative. No diff shows an edit to
- * an ignored file, and the key hashes it, so `--affected` cannot say it is
- * unchanged: it reaches the task (owner, 2026-10-16). One `git
- * check-ignore` asks for every named path on disk; a tracked one is never
- * ignored, so a task naming none pays only the lstats.
- */
-export function ignoredInputsNamed(
-  root: string,
-  tasks: Iterable<readonly [string, TaskConfig, string]>,
-): Map<string, string> {
-  const asked = new Map<string, string[]>()
-  const onDisk = new Map<string, string | null>()
-  const probe = (rel: string): string | null => {
-    let p = onDisk.get(rel)
-    if (p === undefined) {
-      const st = lstatSync(path.join(root, rel), { throwIfNoEntry: false })
-      p = st === undefined ? null : st.isDirectory() ? `${rel}/` : rel
-      onDisk.set(rel, p)
-    }
-    return p
-  }
-  for (const [id, task, dir] of tasks) {
-    if (task.inputs === undefined || task.exec === undefined) continue
-    const at = relPosix(root, dir)
-    const named = namedOutright(task)
-    const paths: string[] = []
-    for (const rel of named.files) {
-      const p = probe(at === '' ? rel : `${at}/${rel}`)
-      if (p !== null) paths.push(p)
-    }
-    for (const rel of named.workspaceFiles) {
-      const p = probe(rel)
-      if (p !== null) paths.push(p)
-    }
-    if (paths.length > 0) asked.set(id, paths)
-  }
-  const out = new Map<string, string>()
-  if (asked.size === 0) return out
-  const ignored = checkIgnoreSync(root, [...new Set([...asked.values()].flat())])
-  if (ignored === null || ignored.size === 0) return out
-  for (const [id, paths] of asked) {
-    const hit = paths.find((p) => ignored.has(p))
-    if (hit !== undefined) out.set(id, hit.endsWith('/') ? hit.slice(0, -1) : hit)
-  }
-  return out
 }
 
 /**

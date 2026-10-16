@@ -825,8 +825,8 @@ Always applied to every glob pass (regardless of what you wrote):
   `src/**` over a listed `src`) still skips ignored files, so
   `node_modules` is never walked, and an install stays out either way.
   Its bytes differ per machine, so machines with different files miss
-  each other's shared entries. `--affected` always selects a task naming
-  an ignored file that exists (no diff can say it is unchanged); `vx
+  each other's shared entries. An ignored file never selects a task
+  under `--affected` on its own, as in Nx (only what git sees does); `vx
 watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
   `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction

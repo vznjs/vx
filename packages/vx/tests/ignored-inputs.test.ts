@@ -124,7 +124,7 @@ it(
 )
 
 it(
-  '--affected selects a task that names a gitignored input: git cannot say it is unchanged',
+  '--affected reflects only what git sees: a gitignored input never selects a task on its own, its key still moves',
   async () => {
     root = await workspace(
       {
@@ -140,8 +140,18 @@ it(
     expect((await vx(root, ['run', 't', 'plain', '--all', '--affected=HEAD'])).err).toContain(
       'nothing affected since HEAD',
     )
+    const before = await key()
     await writeFile(pkg('.env.local'), 'API=a\n')
-    expect(await planned(root, ['t', 'plain', '--all', '--affected=HEAD'])).toEqual(['lib#t'])
+    expect((await vx(root, ['run', 't', 'plain', '--all', '--affected=HEAD'])).err).toContain(
+      'nothing affected since HEAD',
+    )
+    expect(await key()).not.toBe(before)
+    // CONTROL: a tracked input of the same task selects it.
+    await writeFile(pkg('src/a.txt'), 'a2\n')
+    expect((await planned(root, ['t', 'plain', '--all', '--affected=HEAD'])).sort()).toEqual([
+      'lib#plain',
+      'lib#t',
+    ])
   },
   TIMEOUT,
 )

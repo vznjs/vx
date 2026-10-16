@@ -43,13 +43,6 @@ export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolea
  *  git-ignored edit there. */
 export function namedOutright(task: TaskConfig): { files: string[]; workspaceFiles: string[] }
 
-/** Each keyed task (`[id, config, projectDir]`) naming a gitignored input
- *  that exists, with that path; one `git check-ignore`. `--affected`'s seed. */
-export function ignoredInputsNamed(
-  root: string,
-  tasks: Iterable<readonly [string, TaskConfig, string]>,
-): Map<string, string>
-
 export interface ResolvedInputs {
   files: string[] // absolute paths, sorted
   listings: InputListing[] // what `files` was filtered from, for `addedInput`

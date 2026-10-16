@@ -22,9 +22,6 @@ export interface AffectedArgs {
   /** The fingerprint files a plugin claims and its answer for a change to
    *  one; resolved lazily, only when a diff touches a root file. */
   fingerprintClaims?: () => Promise<FingerprintClaims>
-  /** The projects with a task naming a gitignored input that exists: no
-   *  diff shows an edit to one, so each is a candidate. */
-  ignoredInputOwners?: () => Promise<Iterable<string>>
   /** The untracked files, from a walk shared with the run; null or absent
    *  spawns `git ls-files --others` here (I-26). */
   untracked?: () => Promise<readonly string[] | null>

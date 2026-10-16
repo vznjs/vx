@@ -272,8 +272,9 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     prefix git ignores (`dist/**`), walked on disk under that prefix
     only (owner, 2026-10-16). Such a file is hashed from disk with the
     blob formula an untracked file gets, and is never stored or
-    restored. Git cannot diff it, so `--affected` always selects a task
-    naming one that exists, and `vx watch` re-runs it on an edit there.
+    restored. `--affected` reflects only what git sees, so an edit to
+    one never selects a task on its own (as in Nx); `vx watch` re-runs
+    it on an edit there.
     A **glob** matching nothing stays silent, and so does a literal
     naming a path that does not exist, until it does. An ignored
     directory named outright folds every file under it; an empty one
@@ -1875,8 +1876,8 @@ moat.
   build. Name it: `files: ['src/**', '.env.local']`. Its bytes are
   hashed, never stored, and a missing file is simply not an input.
   Machines with different files compute different keys, so they miss
-  each other's shared entries. `--affected` always selects the task
-  while the file exists, and `vx watch` re-runs on its edit. A probe
+  each other's shared entries. `--affected` ignores it (only what git
+  sees selects a task), and `vx watch` re-runs on its edit. A probe
   (`runtime: ['cat .env.local 2>/dev/null | cksum']`) still works where
   a command, not a path, decides what to read.
 - **Node / Bun / OS / build-tool versions — unless you declare them.**

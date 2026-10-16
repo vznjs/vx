@@ -43,7 +43,6 @@ export {
   committedFiles,
   cleanWorkspaceOutputs,
   declaresInput,
-  ignoredInputsNamed,
   namedOutright,
   workspaceFilesReachInto,
   resolveInputs,
