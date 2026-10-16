@@ -6,7 +6,7 @@ authors:
 tags:
   - caching
   - correctness
-excerpt: 'Turborepo and Nx restore outputs on top of whatever is already there. vx wipes the declared outputs before a miss and removes what a hit's entry does not hold, so the tree after either is the cached snapshot and nothing else. Stale files cannot survive.'
+excerpt: 'Turborepo and Nx restore outputs on top of whatever is already there. vx wipes the declared outputs before a miss and removes from a hit what its entry does not hold, so the tree after either is the cached snapshot and nothing else. Stale files cannot survive.'
 ---
 
 Ask a monorepo tool what `dist/` contains after a cache hit and the
