@@ -37,7 +37,7 @@ vx show [PROJECT[#TASK] | TASK] [--filter <pattern>] [--affected[=<ref>]] [--for
 vx info [--format pretty|json] [--cache-dir <path>]
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--format pretty|json] [--cache-dir <path>]
-vx upgrade [TAG]      # upgrade vx the way it was installed
+vx upgrade [TAG] [-g|--global]
 vx docs <query> [--limit N] [--format pretty|json]
 vx completions bash|zsh|fish
 
@@ -1904,6 +1904,12 @@ line names its install, and a refusal names the one that failed
 project that fails leaves the global as it was. The project's vx run
 directly (a package script, `node_modules/.bin/vx`) has no global behind it, so only
 the project moves.
+
+**`vx upgrade -g`** (`--global`) moves only the global vx, wherever it
+runs: it never hands the call to a project's vx, and it never touches a
+`package.json` or a plugin. Run as the project's own vx, it refuses:
+`vx upgrade -g: no global vx ran — <path> is the project's own. Install
+one (npm install -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
 
 ```
 › vx upgrade  project 0.0.1 → 0.0.2

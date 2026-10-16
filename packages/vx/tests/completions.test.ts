@@ -273,6 +273,7 @@ describe('the bash script, run', () => {
     // A verb without the flag falls through to its own words.
     expect(await offers(full, { words: ['vx', 'upgrade', '--format', ''], cword: 3 })).toEqual([
       '--help',
+      '--global',
     ])
   })
 

@@ -16,7 +16,10 @@ manager installed is upgraded by that manager (`managedInstall`,
 Handed off by a global vx (`VX_HANDED_OFF` names it), the project's vx
 moves both to one version: its own install first, then the global
 (`upgradeGlobal`), each its own way; a refusal names the install that
-failed (owner, 2026-10-15).
+failed (owner, 2026-10-15). `vx upgrade -g` moves only the global: the
+compiled binary and npm-launcher.sh skip the hand-off for it
+(`upgradesOnlyItself`), and `upgradeOnlyGlobal` upgrades this vx its
+own way, refusing when it is a project's install (owner, 2026-10-16).
 
 ## Public surface
 
@@ -73,7 +76,13 @@ export async function upgradeManaged(
 ): Promise<void>
 // the global vx at `from` to `version`: replaced, or updated by its manager; refusals name it
 export async function upgradeGlobal(from: string, version: string, key?: SigningKey): Promise<void>
-export async function upgradeCmd(args: readonly string[]): Promise<number>
+// `vx upgrade -g`: this vx alone to `version`; a project's install refuses
+export async function upgradeOnlyGlobal(
+  self: string,
+  version: string,
+  current?: string,
+): Promise<void>
+export async function upgradeCmd(argv: readonly string[]): Promise<number>
 // `bin --version` when it answers as vx within the bound, else null: what `starts` asks
 export function startedVersion(bin: string, timeoutMs?: number): string | null // default 10 s
 ```

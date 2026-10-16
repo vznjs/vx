@@ -17,7 +17,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { localVx } from '../src/handoff.js'
+import { localVx, upgradesOnlyItself } from '../src/handoff.js'
 
 const LAUNCHER = path.resolve(import.meta.dir, '..', 'npm-launcher.sh')
 const HANDOFF = path.resolve(import.meta.dir, '..', 'src', 'handoff.ts')
@@ -80,6 +80,20 @@ describe.skipIf(!loaderPresent)('npm-launcher.sh hands off', () => {
     install(path.join(repo, 'node_modules'), 'local')
     mkdirSync(path.join(repo, 'apps', 'web'), { recursive: true })
     expect(run(path.join(repo, 'apps', 'web'))).toBe(`local [${globalLauncher}] run a`)
+  })
+
+  it('runs `vx upgrade -g` itself: it moves only the global (owner, 2026-10-16)', () => {
+    const repo = path.join(root, 'repo')
+    for (const argv of [
+      ['upgrade', '-g'],
+      ['upgrade', 'v1.2.3', '--global'],
+    ]) {
+      expect(
+        Bun.spawnSync({ cmd: [globalVx, ...argv], cwd: repo, env: { PATH: tools } })
+          .stdout.toString()
+          .trim(),
+      ).toBe(`global [] ${argv.join(' ')}`)
+    }
   })
 
   it('runs itself with no workspace, and stops at the git root', () => {
@@ -199,6 +213,14 @@ describe('the compiled binary hands off', () => {
     writeFileSync(path.join(self, '.vx/workspace.ts'), '')
     symlinkSync(standalone, path.join(self, 'node_modules', '.bin', 'vx'))
     expect(await localVx(self, standalone, true)).toBeNull()
+  })
+
+  it('never for `vx upgrade -g`, which moves only the global', () => {
+    expect(
+      [['upgrade', '-g'], ['upgrade', '--global', 'v1'], ['upgrade'], ['run', '-g'], []].map(
+        upgradesOnlyItself,
+      ),
+    ).toEqual([true, true, false, false, false])
   })
 
   it('never to a vx another user owns', async () => {

@@ -35,8 +35,15 @@ scope=${scope##*/}
 # directory up to the git top-level (handoff.ts workspaceFile, the same
 # rule). One hop (VX_HANDED_OFF, which also names this launcher), never to
 # this package itself (`-ef`: same inode, so a pnpm symlink counts as
-# itself). Shell tests and builtins only, no fork per level.
-if [ -z "${VX_HANDED_OFF-}" ]; then
+# itself). Shell tests and builtins only, no fork per level. `vx upgrade -g`
+# moves only this global vx, so it never hands off (owner, 2026-10-16).
+stay=
+if [ "${1-}" = upgrade ]; then
+  for a in "$@"; do
+    case $a in -g | --global) stay=1 ;; esac
+  done
+fi
+if [ -z "${VX_HANDED_OFF-}" ] && [ -z "$stay" ]; then
   d=$PWD
   while :; do
     root=

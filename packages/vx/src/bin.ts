@@ -1,7 +1,7 @@
 #!/usr/bin/env -S bun --no-env-file --no-install
 // Wrapped in an explicit async main so `bun build --compile` accepts
 // the file. The compile target doesn't allow top-level await.
-import { handOff, localVx, vxPath } from './handoff.js'
+import { handOff, localVx, upgradesOnlyItself, vxPath } from './handoff.js'
 
 let settled = false
 
@@ -10,11 +10,13 @@ async function main(): Promise<void> {
   try {
     // Inside the try: `process.cwd()` throws EMFILE when out of descriptors,
     // and that is a one-line UserError below, not a stack.
-    const local = await localVx(
-      process.cwd(),
-      process.execPath,
-      Bun.main.startsWith('/$bunfs') || (process.argv[1] ?? '').startsWith('/$bunfs'),
-    )
+    const local = upgradesOnlyItself(argv)
+      ? null
+      : await localVx(
+          process.cwd(),
+          process.execPath,
+          Bun.main.startsWith('/$bunfs') || (process.argv[1] ?? '').startsWith('/$bunfs'),
+        )
     if (local !== null) await handOff(local, argv)
     // `vx --version` needs one leaf module; the dispatcher and the util
     // barrel it pulled in were 20 ms of its 28 (2026-10-01).
