@@ -348,7 +348,7 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     _string_ (its mode-120000 index OID), and then the content behind
     it, as Nx reads a linked file where it points: a file's identity, or
     for a directory every file beneath it at any depth, tracked or not
-    (`.git` and `node_modules` aside, as Nx's walker skips them), a link
+    (`.git`, `node_modules`, `.vx/cache` and `.yarn/cache` aside, as Nx's walker skips them), a link
     among them followed in turn. The target may be anywhere: in the
     project, elsewhere in the workspace, outside it. Retargeting a link
     changes the key, to equal bytes too; an edit behind it changes the

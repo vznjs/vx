@@ -17,8 +17,13 @@ import { absentOr } from './key-fold.js'
 /** What a dangling link, or a loop of links, holds behind it: nothing to read. */
 const NOTHING_BEHIND = ''
 
-/** Directories a linked directory's walk never enters, as Nx's walker never does. */
-const SKIPPED = new Set(['.git', 'node_modules'])
+/**
+ * Directories a linked directory's walk never enters, as Nx's walker never
+ * does (its HARDCODED_IGNORE_PATTERNS): a link to a workspace would
+ * otherwise key the cache each run writes.
+ */
+const SKIPPED = ['.git', 'node_modules', '.vx/cache', '.yarn/cache']
+const skipped = (rel: string): boolean => SKIPPED.some((s) => rel === s || rel.endsWith(`/${s}`))
 
 /**
  * The files under `dir` a linked directory keys, relative and `/`-separated,
@@ -37,7 +42,7 @@ export function filesBehind(dir: string): string[] {
     for (const e of entries) {
       const childRel = rel === '' ? e.name : `${rel}/${e.name}`
       if (e.isDirectory()) {
-        if (!SKIPPED.has(e.name)) walk(path.join(abs, e.name), childRel)
+        if (!skipped(childRel)) walk(path.join(abs, e.name), childRel)
       } else if (e.isFile() || e.isSymbolicLink()) out.push(childRel)
     }
   }
