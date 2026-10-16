@@ -887,7 +887,19 @@ function buildTask(
   if (wild !== undefined && cacheWanted && !persistent) todos.push(wildcardTodo(wild))
   // The manifest or config an output covers is taken back, so core loads it.
   if (wild === undefined) outFiles.push(...ownFileTakeBacks(outFiles, opts.ownConfig?.(projectRel)))
-  const cacheEnabled = !persistent && cacheWanted && wild === undefined
+  // Nx keys the outputs of the tasks this one depends on, and vx their
+  // keys through `dependsOn`. With no such edge left (the producer is a
+  // project vx did not migrate: nx-examples' .NET ProductsApi), the key
+  // saw nothing the task reads, and a changed document replayed the old
+  // generated client (Growth, 2026-10-16).
+  const orphanReader =
+    inputs.dependentOutputs.length > 0 && !deps.some((d) => !d.includes('#nx-input:'))
+  if (orphanReader && cacheWanted && !persistent) {
+    todos.push(
+      `reads ${inputs.dependentOutputs.map((g) => `\`${g}\``).join(', ')} from the outputs of the tasks it depends on, and no task it depends on is migrated (dependsOn ${JSON.stringify(target.dependsOn ?? [])}) — uncached here, so it never replays output generated from an older input; migrate the producer and depend on it to cache this task`,
+    )
+  }
+  const cacheEnabled = !persistent && cacheWanted && wild === undefined && !orphanReader
   if (persistent && cacheWanted) {
     todos.push('Nx caches this target, and vx never caches a persistent task — uncached here')
   }
