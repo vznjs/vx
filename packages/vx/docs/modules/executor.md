@@ -95,6 +95,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   (outputs left remote, fetched only if a local consumer needs them).
   `spawnFailed: true` says the command never started (its 127 is the
   executor's, so no "command not found" line follows; A-41).
+  `leftRunning: true` says a process the command left still held its
+  output when vx stopped reading: core saves no entry for the task.
   Checked at the
   seam (`assertExecuteResult`): a plugin that resolves something else is
   refused with one line naming the executor, the task and the field

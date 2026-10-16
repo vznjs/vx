@@ -1278,6 +1278,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   } else if (
     effectiveExitCode === 0 &&
     willSave &&
+    nothingLeftRunning() &&
     (await keyStillTrue()) &&
     (own = await ownOutputs()) !== undefined
   ) {
@@ -1360,6 +1361,20 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       mine.ownWsOutputFiles = files
     }
     return mine
+  }
+
+  /**
+   * A process the shell left behind still held its output when the drain
+   * bound cut it, so it may still write outputs: a save now would file a
+   * tree the run does not leave, and a hit elsewhere would replay it.
+   */
+  function nothingLeftRunning(): boolean {
+    if (result.leftRunning !== true) return true
+    warnOf(log)(
+      `[vx] ${node.id}: a process it left running may still write its outputs — ` +
+        `the result stands, but is not saved; wait for it in the command (\`wait\`)`,
+    )
+    return false
   }
 
   /**

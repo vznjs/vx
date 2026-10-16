@@ -50,6 +50,10 @@ export interface RunResult {
   /** `Bun.spawn` threw: no shell ran, so its 127 is vx's and says nothing
    *  about the command (A-41). */
   spawnFailed?: true
+  /** The shell exited while a process it started still held its
+   *  stdout/stderr past the drain bound (`POST_EXIT_CUT_LINE`): that process
+   *  may still write the task's outputs, so the result is not saved. */
+  leftRunning?: true
 }
 
 /**
@@ -1034,6 +1038,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     stderr,
     ...(proc.signalCode ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
+    ...(cut ? { leftRunning: true } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor),
   }
 }
