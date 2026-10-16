@@ -58,9 +58,17 @@ export interface ManagedInstall {
   scope: 'global' | 'project'
   cwd: string
   field?: 'dependencies' | 'devDependencies' | 'optionalDependencies'
+  plugins?: string[] // the @vzn/vx-* plugins the same package.json lists from the registry
 }
 export function managedInstall(execPath: string, cwd: string): ManagedInstall | null
-export function upgradeArgv(install: ManagedInstall, version: string): string[]
+export function upgradeArgv(install: ManagedInstall, version: string): string[] // core and plugins pinned to `version`, one install
+// runs that argv; a plugin behind `version` runs it even when core is at it
+export async function upgradeManaged(
+  install: ManagedInstall,
+  version: string,
+  current?: string,
+  step?: string,
+): Promise<void>
 // the global vx at `from` to `version`: replaced, or updated by its manager; refusals name it
 export async function upgradeGlobal(from: string, version: string, key?: SigningKey): Promise<void>
 export async function upgradeCmd(args: readonly string[]): Promise<number>
@@ -91,6 +99,9 @@ A host the box cannot reach is one line naming the host and the step
   `yarn/global`), a project by the package.json that lists `@vzn/vx`
   (the tree's root, else the nearest above cwd), its manager by lockfile,
   then `packageManager`. An npx or bunx cache is refused.
+- Core and every `@vzn/vx-*` plugin beside it move in one install to one
+  release (M, 2026-10-16); a plugin in another field is refused before
+  anything runs.
 - The compiled path against the real registry stays manual (proven
   2026-10-13: `@vzn/vx-<os>-<arch>@0.0.635` for all four targets verified,
   extracted, and the linux-x64 binary answered `vx 0.0.635`).

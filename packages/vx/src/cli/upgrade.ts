@@ -395,6 +395,8 @@ export interface ManagedInstall {
   cwd: string
   /** The project field that lists `@vzn/vx`. */
   field?: 'dependencies' | 'devDependencies' | 'optionalDependencies'
+  /** The `@vzn/vx-*` plugins the same package.json lists from the registry, moved with core. */
+  plugins?: string[]
 }
 
 const FIELDS = ['devDependencies', 'dependencies', 'optionalDependencies'] as const
@@ -415,6 +417,45 @@ function listingField(dir: string): ManagedInstall['field'] | undefined {
     const deps = pkg?.[f]
     return typeof deps === 'object' && deps !== null && PACKAGE in deps
   })
+}
+
+/** A release's platform binary, which the launcher pulls in itself: no plugin. */
+const PLATFORM = /^@vzn\/vx-(?:darwin|linux)-(?:x64|arm64)$/
+
+/**
+ * The `@vzn/vx-*` plugins `dir`'s package.json lists from the registry
+ * (a `workspace:` or `file:` link is the repo's own). Every @vzn package
+ * releases together, so they move with core in its one install (M,
+ * 2026-10-16); one in another field would move fields under core's flag,
+ * so it is refused.
+ */
+function pluginsBeside(dir: string, field: NonNullable<ManagedInstall['field']>): string[] {
+  const pkg = readJson(path.join(dir, 'package.json'))
+  const plugins: string[] = []
+  for (const f of FIELDS) {
+    const deps = pkg?.[f]
+    if (typeof deps !== 'object' || deps === null) continue
+    for (const [name, spec] of Object.entries(deps as Record<string, unknown>)) {
+      if (!name.startsWith(`${PACKAGE}-`) || PLATFORM.test(name)) continue
+      if (typeof spec !== 'string' || /^(?:workspace|file|link|portal):/.test(spec)) continue
+      if (f !== field) {
+        throw new UserError(
+          `vx upgrade: ${name} is in ${f} and ${PACKAGE} in ${field}; list them in one field so one install moves them together`,
+        )
+      }
+      plugins.push(name)
+    }
+  }
+  return plugins.sort()
+}
+
+/** The version of `pkg` installed where `dir` resolves it, if any. */
+function installedVersion(dir: string, pkg: string): string | undefined {
+  for (let d = dir; ; d = path.dirname(d)) {
+    const v = readJson(path.join(d, 'node_modules', pkg, 'package.json'))?.['version']
+    if (typeof v === 'string') return v
+    if (path.dirname(d) === d) return undefined
+  }
 }
 
 /** The project's package manager: its lockfile, then `packageManager`, then the tree's shape. */
@@ -463,12 +504,15 @@ export function managedInstall(execPath: string, cwd: string): ManagedInstall | 
   if (/\/yarn\/global\//.test(p)) return { manager: 'yarn', scope: 'global', cwd: root }
   const field = listingField(root)
   if (field !== undefined) {
-    return { manager: projectManager(root, execPath), scope: 'project', cwd: root, field }
+    const plugins = pluginsBeside(root, field)
+    return { manager: projectManager(root, execPath), scope: 'project', cwd: root, field, plugins }
   }
   for (let d = path.resolve(cwd); d.startsWith(root); d = path.dirname(d)) {
     const f = listingField(d)
-    if (f !== undefined)
-      return { manager: projectManager(d, execPath), scope: 'project', cwd: d, field: f }
+    if (f !== undefined) {
+      const plugins = pluginsBeside(d, f)
+      return { manager: projectManager(d, execPath), scope: 'project', cwd: d, field: f, plugins }
+    }
     if (path.dirname(d) === d) break
   }
   // npm's global tree: `<prefix>/lib/node_modules` (nvm, volta, Homebrew alike).
@@ -503,7 +547,8 @@ export function upgradeArgv(install: ManagedInstall, version: string): string[] 
     bun: { devDependencies: '--dev', dependencies: '', optionalDependencies: '--optional' },
     yarn: { devDependencies: '--dev', dependencies: '', optionalDependencies: '--optional' },
   }[manager][field]
-  const argv = manager === 'npm' ? ['npm', 'install', spec] : [manager, 'add', spec]
+  const specs = [spec, ...(install.plugins ?? []).map((p) => `${p}@${version}`)]
+  const argv = manager === 'npm' ? ['npm', 'install', ...specs] : [manager, 'add', ...specs]
   if (flag !== '') argv.push(flag)
   // pnpm refuses an `add` at a workspace's root without saying it means the root.
   if (manager === 'pnpm' && existsSync(path.join(install.cwd, 'pnpm-workspace.yaml')))
@@ -527,13 +572,14 @@ async function targetVersion(tag: string | undefined): Promise<string> {
  * `version`; vx never installs one. `step` names the install when a run
  * moves two (`project `, `global `).
  */
-async function upgradeManaged(
+export async function upgradeManaged(
   install: ManagedInstall,
   version: string,
   current = VERSION,
   step = '',
 ): Promise<void> {
-  if (version === current) {
+  const plugins = install.plugins ?? []
+  if (version === current && plugins.every((p) => installedVersion(install.cwd, p) === version)) {
     ui.print('out', ui.status('info', 'vx upgrade', `${step}already at ${current}`))
     return
   }
@@ -547,7 +593,11 @@ async function upgradeManaged(
   }
   ui.print(
     'out',
-    ui.status('info', 'vx upgrade', `${step}${current} → ${version}`),
+    ui.status(
+      'info',
+      'vx upgrade',
+      `${step}${version === current ? 'plugins' : current} → ${version}`,
+    ),
     ui.text([ui.cmd(argv.join(' ')), ui.dim(` in ${install.cwd}`)]),
   )
   const proc = Bun.spawnSync({
@@ -557,7 +607,14 @@ async function upgradeManaged(
   })
   if (proc.exitCode !== 0) {
     throw new UserError(
-      `vx upgrade: ${argv.join(' ')} failed (exit ${proc.exitCode}) — vx changed nothing itself`,
+      `vx upgrade: ${argv.join(' ')} failed (exit ${proc.exitCode}) — vx changed nothing itself${
+        // The install is pinned, so pnpm refuses a release younger than
+        // its minimumReleaseAge instead of mixing releases; its words
+        // print above, so the way out is named (as vx-migrate does).
+        install.manager === 'pnpm'
+          ? `; if pnpm refused a version published within its minimumReleaseAge, list ${[PACKAGE, ...plugins].join(', ')} under minimumReleaseAgeExclude in pnpm-workspace.yaml`
+          : ''
+      }`,
     )
   }
 }
