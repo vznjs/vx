@@ -2,7 +2,7 @@
 // task's p50, a fresh cache orders run 2 by the file, a recorded p50 wins
 // over it, and a `--dry` plan writes nothing.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -49,6 +49,19 @@ describe('readTimings / writeTimings', () => {
       '{\n  "version": 1,\n  "tasks": {\n    "a#x": 7,\n    "b#x": 120\n  }\n}\n',
     )
     expect(readTimings(file, () => {})).toEqual({ 'a#x': 7, 'b#x': 120 })
+  })
+
+  // A CI cache that missed restores no directory: `file: '.cache/t.json'`
+  // failed every write with ENOENT, so the file never existed to be cached.
+  // A write that fails leaves no temp file behind.
+  it('writes into a directory that does not exist yet; a failed write leaves no temp', async () => {
+    const file = path.join(root, 'new', 'dir', 't.json')
+    writeTimings(file, { 'a#x': 1 }, new Map())
+    expect(readTimings(file, () => {})).toEqual({ 'a#x': 1 })
+    const dir = path.join(root, 'is-a-dir')
+    await mkdir(dir)
+    expect(() => writeTimings(dir, {}, new Map())).toThrow()
+    expect((await readdir(root)).sort()).toEqual(['is-a-dir', 'new'])
   })
 
   it('an absent file is empty; one that is not a timings file warns and is empty', async () => {

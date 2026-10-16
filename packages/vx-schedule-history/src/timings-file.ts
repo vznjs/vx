@@ -2,7 +2,8 @@
 // file a CI cache carries between runners. `{ version, tasks: { id: ms } }`,
 // keys sorted so an unchanged history writes the same bytes.
 
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
 import type { TaskResources } from '@vzn/vx'
 
 const VERSION = 1
@@ -45,7 +46,8 @@ export function readTimings(file: string, warn: (m: string) => void): Record<str
 /**
  * The carried durations with this machine's p50s over them, written whole:
  * a task this run did not see keeps its carried time. Through a temp and a
- * rename, so a reader never sees half a file.
+ * rename, so a reader never sees half a file. Its directory is made: a CI
+ * cache that missed restores none.
  */
 export function writeTimings(
   file: string,
@@ -59,6 +61,12 @@ export function writeTimings(
   const tasks: Record<string, number> = {}
   for (const id of Object.keys(merged).sort()) tasks[id] = merged[id]!
   const tmp = `${file}.${process.pid}.tmp`
-  writeFileSync(tmp, `${JSON.stringify({ version: VERSION, tasks }, null, 2)}\n`)
-  renameSync(tmp, file)
+  mkdirSync(path.dirname(file), { recursive: true })
+  try {
+    writeFileSync(tmp, `${JSON.stringify({ version: VERSION, tasks }, null, 2)}\n`)
+    renameSync(tmp, file)
+  } catch (err) {
+    rmSync(tmp, { force: true })
+    throw err
+  }
 }

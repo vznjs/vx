@@ -62,7 +62,8 @@ configure:
 
 A fresh CI runner has no history. `file` names a JSON file, from the
 workspace root, that carries it: read before ordering, rewritten after
-each run with every task's p50, so a CI cache keeps one file.
+each run with every task's p50 (its directory made if absent), so a
+CI cache keeps one file.
 
 ```ts
 export default {
