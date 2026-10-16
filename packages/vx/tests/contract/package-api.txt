@@ -1389,6 +1389,7 @@ export interface RunResult {
   cpuMs?: number
   peakRssBytes?: number
   spawnFailed?: true
+  leftRunning?: true
 }
 == type RunSettings (src/config.ts)
 export interface RunSettings {

@@ -532,8 +532,12 @@ not in the cache entry — and the frame says so with one line on stderr:
 running still held its stdout/stderr 250 ms later`. Until 2026-09-24 the
 cut was silent (nx#35302 reproduced on vx; `tests/runner.test.ts` ›
 "output a backgrounded child writes after the drain bound is cut, and
-the frame says so"). A task whose output matters waits for what it
-starts (`wait`).
+the frame says so"). A cached task cut this way is not saved: the
+leftover may still write its outputs, and a hit would replay a tree the
+run never leaves (`tsc & vite build` saved vite's output without tsc's;
+`tests/left-running-save.test.ts`). Turbo waits for the pipe instead,
+which a leftover server holds forever. A task whose output matters
+waits for what it starts (`wait`).
 
 Every surface uses one outcome vocabulary: task axis `success` /
 `failed` / `skipped` / `aborted` (+ `running` live), cache axis
