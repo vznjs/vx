@@ -289,13 +289,12 @@ export async function foldKey(
     const file = sortedInputs[i]!
     const rel = relOf(file)
     const oid = fileHashes[i]!
-    h = xxh3(`${rel}\0${oid}`, h)
+    const linked = behindLinks?.get(i)
+    // A link folds what it points to in its own step, so a key without one is unchanged.
+    h = xxh3(linked === undefined ? `${rel}\0${oid}` : `${rel}\0${oid}\0${linked}`, h)
     // The OID is already awaited — file capture is zero extra I/O.
     if (cap) cap.push({ kind: 'file', name: rel, hash: oid })
-    const linked = behindLinks?.get(i)
-    if (linked === undefined) continue
-    h = xxh3(`linked:${linked}`, h)
-    if (cap) cap.push({ kind: 'linked', name: rel, hash: xxh3hex(linked) })
+    if (linked !== undefined && cap) cap.push({ kind: 'linked', name: rel, hash: xxh3hex(linked) })
   }
 
   return h.toString(16).padStart(16, '0')

@@ -51,7 +51,8 @@ project config (the workspace file, once, for the cache directory,
 unless `--cache-dir` names it), re-hashes nothing, runs nothing. It
 compares the task's latest recorded run with the one before it (or a
 run you pin with `--run`) and diffs the stored components, one row per
-kind: `file` (path and blob id), `env` (a declared variable), `runtime`
+kind: `file` (path and blob id), `linked` (what a symlinked `file` points
+to), `env` (a declared variable), `runtime`
 and `ws-runtime` (a declared command's output, project- or
 workspace-rooted), `forward` (the argv forwarded after `--`), `config`
 (the evaluated task config), `upstream` (a dependency's input key, by
