@@ -20,7 +20,7 @@ import {
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
 import { OutageBreaker } from '../remote-breaker.js'
-import { withRetry } from '../remote-retry.js'
+import { Cooldown, withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
 
 export interface NxCacheOptions {
@@ -106,6 +106,8 @@ export class NxRemoteCache implements RemoteCacheLayer {
    */
   private writesRefused = false
   readonly endpoint: string
+  /** The remote's rate limit, which every request of this client waits out. */
+  private readonly cooldown = new Cooldown()
   constructor(
     private readonly config: NxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
@@ -148,6 +150,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
             }),
           this.config.retries,
           this.wait,
+          this.cooldown,
         ),
       method === 'GET',
     )
