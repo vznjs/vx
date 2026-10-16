@@ -588,7 +588,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       // task behind it would fold no upstream either.
       if (!packageGraph.edgeSource) {
         throw new UserError(
-          `${id}: ^${spec.task} needs project edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns \`deps\``,
+          `${id}: ^${spec.task} needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns \`deps\``,
           'VX_E_DEPENDS_ON',
         )
       }

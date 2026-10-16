@@ -676,8 +676,8 @@ Semantics:
   edge from a `package.json`) and the cross-project `pkg#task` edges.
   With no plugin returning `deps` the workspace has no edge source and
   a `'^name'` is refused (`VX_E_DEPENDS_ON`: "`^build` needs project
-  edges; add pnpm()/bun()/npm()/yarn() or a plugin that returns
-  `deps`"): it would resolve to nothing and fold no upstream into the
+  edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile
+  exists, or a plugin that returns `deps`"): it would resolve to nothing and fold no upstream into the
   key. With one, a project with no deps is a leaf; each path stops at the first dep
   that declares the task and an edge is added to it (Turbo/Nx
   direct-deps parity). The holder's own `dependsOn` is responsible
