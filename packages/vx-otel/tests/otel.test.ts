@@ -89,6 +89,37 @@ describe('parseOtlpHeaders', () => {
 })
 
 describe('resolveOtelConfig', () => {
+  // `localhost:4318` with no scheme parses as a URL of scheme `localhost:`;
+  // each export failed with "Unable to connect", three times, after a
+  // second of retries, and nothing was exported.
+  it('an endpoint that is not an http(s) URL is refused once, by setting', () => {
+    const warns: string[] = []
+    const none = resolveOtelConfig({}, { OTEL_EXPORTER_OTLP_ENDPOINT: 'localhost:4318' }, (m) =>
+      warns.push(m),
+    )
+    expect([none, warns]).toEqual([
+      undefined,
+      [
+        '[vx-otel] OTEL_EXPORTER_OTLP_ENDPOINT is not an http:// or https:// URL — traces, metrics and logs are not exported',
+      ],
+    ])
+    // One bad signal endpoint drops that signal only.
+    warns.length = 0
+    const c = resolveOtelConfig(
+      { metricsEndpoint: '127.0.0.1:4318/v1/metrics' },
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://c' },
+      (m) => warns.push(m),
+    )!
+    expect([c.tracesUrl, c.metricsEnabled, c.logsEnabled, warns]).toEqual([
+      'https://c/v1/traces',
+      false,
+      true,
+      [
+        '[vx-otel] the metricsEndpoint option is not an http:// or https:// URL — metrics are not exported',
+      ],
+    ])
+  })
+
   // A curl-style `Authorization: Basic …=` splits at its first `=` into a
   // NAME holding the credential; fetch refused it quoting the name, so the
   // secret reached the log and every export failed (item 1056).
