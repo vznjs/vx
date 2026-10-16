@@ -52,20 +52,15 @@ Seconds, min of 3. Shorter bars are less time; each chart keeps its table one cl
 | --- | ---: | ---: |
 | cold | 13.63 s | 10.97 s |
 | restore | 0.28 s | 0.09 s |
-| edit | 4.89 s | 4.53 s |
+| edit | 4.69 s | 4.89 s |
+| edit, outputs kept | 4.61 s | 3.83 s |
 | clone | 0.28 s | 0.11 s |
 
-:::tip[Edit row: `cache.outputs.clean: false`]
-By default vx deletes a task's declared outputs before it runs on a miss,
-so nothing stale reaches the cache. Here that includes tsc's
-`.cache/tsbuildinfo.json`, so tsc rebuilds `api` from scratch: 4.58 s
-Turborepo, 4.77 s vx.
-
-With `cache: { outputs: { clean: false } }` in `.vx/workspace.ts`, tsc
-keeps its build info and vx caches whatever the outputs hold. Both edit
-cells above come from that rerun (vx f094a70, released in 0.0.638;
-same machine shape, min of 3).
-:::
+Both edit rows are a rerun on vx 5b2b0a1 (same machine shape, min of
+3). The second sets `cache.outputs.clean: false` on the three tsc build
+tasks: by default vx deletes a task's declared outputs before it runs on
+a miss, tsc's `.cache/tsbuildinfo.json` included, so tsc rebuilds `api`
+from scratch.
 
 ### react-email vs Turborepo 2.9.14
 
