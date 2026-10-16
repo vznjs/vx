@@ -134,6 +134,41 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     expect(r.out).not.toContain('HEAD itself')
   })
 
+  // A script piping `--dry=json` to jq broke exactly when there was
+  // nothing to do: stdout was empty (Growth, affected-dry-json-empty.sh).
+  it('--dry=json with nothing to run still prints a plan, the note on stderr', async () => {
+    const dry = (...args: string[]) => {
+      const p = Bun.spawnSync({
+        cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
+      })
+      return { code: p.exitCode, stdout: p.stdout.toString(), stderr: p.stderr.toString() }
+    }
+    await writeFile(path.join(root, 'README.md'), 'docs only\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'docs')
+    const none = dry('--affected=HEAD~1')
+    expect(none.code).toBe(0)
+    expect(JSON.parse(none.stdout)).toEqual({ affectedBase: 'HEAD~1', tasks: [] })
+    expect(none.stderr).toContain('nothing affected since HEAD~1')
+    // An affected project that declares no such task.
+    await mkdir(path.join(root, 'pkgs/docs'), { recursive: true })
+    await writeFile(path.join(root, 'pkgs/docs/package.json'), JSON.stringify({ name: 'docs' }))
+    await writeFile(
+      path.join(root, 'pkgs/docs/vx.config.mjs'),
+      `export default { tasks: { lint: { exec: { command: 'true' } } } }\n`,
+    )
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'docs project')
+    const undeclared = dry('--affected=HEAD~1')
+    expect(undeclared.code).toBe(0)
+    expect(JSON.parse(undeclared.stdout)).toEqual({ affectedBase: 'HEAD~1', tasks: [] })
+    expect(undeclared.stderr).toContain('build')
+  })
+
   // nx#33330: an explicit base still probed the default branch first, and
   // a clone without one printed git's `fatal:` before the run.
   it('an explicit base never asks git for origin/HEAD or main, and no git error is printed', async () => {
