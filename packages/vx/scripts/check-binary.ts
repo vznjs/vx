@@ -30,6 +30,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { launchVersion } from './binary-launch.ts'
+import { LOCKFILE_VERSION } from '../src/workspace/index.ts'
 
 const root = path.resolve(import.meta.dir, '..')
 const host = `${process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
@@ -98,7 +99,7 @@ writeFileSync(
 writeFileSync(
   path.join(ws, '.vx/projects.lock.json'),
   JSON.stringify({
-    version: 3,
+    version: LOCKFILE_VERSION,
     projects: { 'packages/a': { file: 'vx.config.mjs', config: { tasks: {} } } },
   }),
 )
