@@ -23,11 +23,11 @@ flowchart LR
   style K stroke:#c6f84e,stroke-width:2px
 ```
 
-## Twelve parts, one chain
+## Ten parts, one chain
 
-A vx cache key is an xxh3 hash, seed-chained across twelve parts:
+A vx cache key is an xxh3 hash, seed-chained across ten parts:
 each part folds into the running digest under its own label
-(`task:`, `workspace:`, `config:`, `upstream:`, `inputs:`, …), and
+(`task:`, `config:`, `upstream:`, `plugin:`, `inputs:`, …), and
 every list of pairs folds its length first and delimits name from
 value with a `\0`, so no two layouts of the same bytes can collide by
 concatenation. Bun's xxh3 reads only 32 bits of a seed, so each step
@@ -37,33 +37,28 @@ as [Caching](../../caching/) numbers them:
 1. The key-derivation sentinel (`CACHE_VERSION`), so a change to how
    keys are derived can never be served by an entry from before it.
 2. The task id, `project#task`.
-3. The **workspace fingerprint**: every supported workspace-level file
-   at the root (lockfiles, `pnpm-workspace.yaml`), hashed once per run.
-4. The project's own `package.json` bytes. A dependency bump re-keys
-   the project it belongs to.
-5. The **resolved task config**, the evaluated object, not the source
+3. The **resolved task config**, the evaluated object, not the source
    text ([its own post](../resolved-config-hashing/)).
-6. Arguments forwarded after `--`.
-7. The resolved values of the env vars in `inputs.env`.
-8. The output of each `inputs.runtime` command (`node --version`,
+4. Arguments forwarded after `--`.
+5. The resolved values of the env vars in `inputs.env`.
+6. The output of each `inputs.runtime` command (`node --version`,
    say), resolved live at hash time.
-9. The same for `workspaceRuntime`, resolved once per run.
-10. Every upstream task's cache key, filtered to the ones the graph says
+7. The same for `workspaceRuntime`, resolved once per run.
+8. Every upstream task's cache key, filtered to the ones the graph says
     this task depends on ([cascade post](../cascade-through-inputs/)).
-11. Any material a plugin's `key` stage contributes — folded right
-    after the upstream keys and BEFORE the input files, and only when a
-    plugin returned any, so a workspace with no `key` plugin derives
-    the keys it derived before the stage existed.
-12. The content hashes of every file `inputs.files` resolves to:
+9. Any material a plugin's `key` stage contributes, folded right
+   after the upstream keys and before the input files, and only when a
+   plugin returned any. A lockfile plugin (`@vzn/vx-lockfile`) folds
+   each project's dependency closure here.
+10. The content hashes of every file `inputs.files` resolves to:
     each file's git blob id, with its mode when it is an executable or
-    a symlink.
+    a symlink. A lockfile plugin also lists the project's
+    `package.json` among them.
 
-(Since vx 0.0.637, two parts left the chain: core keys no package file,
-so parts 3 and 4 are gone and the rest move up. A lockfile plugin
-(`@vzn/vx-lockfile`) folds the lockfile as plugin key material (part
-11) and lists each `package.json` as an input file (part 12).)
+Core keys no package file of its own: a lockfile, an install setting or
+a `package.json` reaches a key only through a plugin.
 
-Part 12 is where the money is. A build task in a real package resolves
+Part 10 is where the money is. A build task in a real package resolves
 to hundreds of files, and a workspace has hundreds of packages.
 
 ## Ask git, once
@@ -122,7 +117,7 @@ reason is not purity: a glob that crosses into a sibling makes that
 sibling's edits invisible to the sibling's own dependents while making
 this project's key depend on files it does not own. What a project
 needs from another arrives as an upstream task's outputs, and its key
-arrives through part 10. The one deliberate exception is
+arrives through part 8. The one deliberate exception is
 `inputs.workspaceFiles`, which addresses files at the workspace
 root (a shared `tsconfig.base.json`) and says so in its name.
 
@@ -139,6 +134,6 @@ root (a shared `tsconfig.base.json`) and says so in its name.
   produced.
 - `.vx/projects.lock.json`, so that `vx lock` itself does not re-key the world.
 
-When a key does change and you want to know which of the twelve parts
+When a key does change and you want to know which of the ten parts
 moved, that is [`vx why`](../why-did-this-rerun/). The full derivation
 with every rule and its history is in [Caching](../../caching/).

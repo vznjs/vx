@@ -6,7 +6,7 @@ authors:
 tags:
   - dx
   - ci
-excerpt: 'One task shows everything. Fifty tasks show a line for each one that ran. CI shows every frame. Then pick a mode yourself, write a report for the PR, or open the run as a Chrome trace.'
+excerpt: 'One task shows everything. Fifty tasks show a line for each one that ran. CI shows every frame. Then pick a mode yourself, report to the PR through a plugin, or open the run as a Chrome trace.'
 ---
 
 `vx run test` in one package should feel like running the test command
@@ -54,9 +54,9 @@ from:
 
 ## A report for the pull request
 
-(Since vx 0.0.639, `--report` and `--report-file` are gone: the
-[@vzn/vx-ci plugin](https://vznjs.github.io/vx/blog/results-on-github/)
-writes the job summary, with a check run on the commit.)
+Declare `github()` from [@vzn/vx-ci](../results-on-github/) in
+`.vx/workspace.ts`, and each run on GitHub Actions writes its job
+summary, with a check run on the commit.
 
 ## The run as a timeline
 

@@ -59,13 +59,12 @@ vx run build --affected --dry=json
 
 ## The graph itself
 
-(Since vx 0.0.639, `--graph` is gone: `--dry=json` lists each task with
-its deps.)
-
-`--graph` writes the task graph as Graphviz DOT, to stdout or a file:
+Each task in `--dry=json` carries its `deps`, so the graph is one `jq`
+away from Graphviz DOT, or any other format a tool draws:
 
 ```sh frame="terminal"
-vx run build --all --graph=graph.dot
+vx run build --all --dry=json \
+  | jq -r '"digraph G {", (.tasks[] | .id as $t | .deps[] | "  \"\(.)\" -> \"\($t)\""), "}"' > graph.dot
 dot -Tsvg graph.dot > graph.svg
 ```
 

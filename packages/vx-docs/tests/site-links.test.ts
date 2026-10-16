@@ -25,9 +25,6 @@ const SITE = new URL(BASE, process.env['SITE_URL'] ?? 'https://vznjs.github.io')
 
 const EXCUSED: Record<string, Record<string, string>> = {
   '404.html': { [`${SITE}404/`]: "Starlight's canonical for the 404 route, built as 404.html" },
-  'blog/agents-and-mcp/index.html': {
-    '../../guides/plugins/#vx-mcp': 'the retired @vzn/vx-mcp post (2026-10-14), kept as written',
-  },
 }
 
 function unescape(s: string): string {

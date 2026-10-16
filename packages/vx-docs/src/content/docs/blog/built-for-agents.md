@@ -15,7 +15,7 @@ human eyes, the agent guesses. vx is built so it never has to.
 
 ```mermaid
 flowchart LR
-  A[agent] -->|vx run --format json| R[result on stdout]
+  A[agent] -->|vx last --format json| R[result on stdout]
   A -->|vx last --failed --format json| F[failed output + file:line]
   A -->|sqlite3 cache.db| H[run history]
   A -->|llms.txt + SKILL.md| D[how to use vx]
@@ -24,35 +24,37 @@ flowchart LR
 
 ## The result on stdout, the logs on stderr
 
-(Since vx 0.0.639, `vx run --format json` and its `summary.json`
-schema are gone: `vx last --format json` reads the run's result back
-from run history.)
-
-`vx run --format json` prints one JSON document when the run ends. The
-frame and the tasks' output go to stderr, so a pipe sees only the
-result.
+`vx run` prints the run for people: a live region on a terminal, plain
+rows on a pipe. Once it ends, `vx last --format json` reads the same
+run back from run history as one JSON document on stdout, a row per
+task. Notices go to stderr, so a pipe sees only the result.
 
 ```sh frame="terminal"
-$ vx run build --all --format json 2>/dev/null
+$ vx run build --all
+$ vx last --format json | jq
 {
-  "runId": "01a11f0d-014c-700d-a4ad-59e93a00a129",
-  "ok": true,
-  "exitCode": 0,
-  "totalMs": 223.951554,
-  "savedMs": 1270,
+  "invocation": {
+    "runId": "01a14427-c1f3-71a7-b2eb-79a8b88049c6",
+    "command": "vx run build --all",
+    "taskCount": 2,
+    "failedCount": 0,
+    "hitCount": 2,
+    "exitOk": true,
+    ...
+  },
   "tasks": [
     {
-      "id": "@demo/api#build",
+      "project": "@demo/web",
+      "task": "build",
       "status": "cache-hit",
       "exitCode": 0,
       "durationMs": 3,
-      "hash": "32b3a0bfa973a7a8",
-      "storedDurationMs": 326,
+      "hash": "e9871a2398d39794",
       ...
 ```
 
-`savedMs` is the time the cache saved this run. `vx show`, `vx info`,
-`vx why`, `vx last` and `vx cache clean` take the same `--format json`.
+`vx show`, `vx info`, `vx why` and `vx cache clean` take the same
+`--format json`, and `vx run --dry=json` prints the plan before a run.
 
 ## Every shape has a schema
 
@@ -117,10 +119,7 @@ $ mkdir -p .claude/skills/vx
 $ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 ```
 
-For live questions over the Model Context Protocol, see
-[Give your coding agent the build's memory](../agents-and-mcp/). (Since
-vx 0.0.637, `@vzn/vx-mcp` is retired; install the skill with
-`npx skills add vznjs/vx`.) The
+`npx skills add vznjs/vx` installs the same skill. The
 [agents guide](../../guides/agents/) and
 [machine-readable output](../../cli/#machine-readable-output) have the
 details.

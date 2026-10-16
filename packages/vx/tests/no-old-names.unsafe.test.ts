@@ -49,20 +49,11 @@ const SKIP = [
   /^packages\/vx-docs\/src\/content\/docs\/guides\/upgrading\.md$/,
 ]
 
-// A post may show the rename itself, as long as it names the new spelling,
-// and keeps what it measured or said with a "(Since vx X.Y.Z, …)" note for
-// what changed after (owner, 2026-10-15).
-const FROZEN = 'vx lock (runs read only the lock)'
+// A post is kept current, with no note on what changed (owner,
+// 2026-10-16). The one exception shows a misspelled flag refused with
+// the right one as its fix.
 const NAMES_THE_RENAME: ReadonlyMap<string, string> = new Map([
-  ['packages/vx-docs/src/content/docs/blog/one-path-per-setting.md', 'VX_DEBUG_TIMING'],
   ['packages/vx-docs/src/content/docs/blog/upgrade-you-can-trust.md', '--retries'],
-  ...[
-    'config-in-typescript',
-    'first-task-sooner',
-    'honest-benchmarks',
-    'lock-and-frozen',
-    'resolved-config-hashing',
-  ].map((p) => [`packages/vx-docs/src/content/docs/blog/${p}.md`, FROZEN] as const),
 ])
 
 const TEXT = /\.(md|mdx|ts|tsx|js|mjs|cjs|json|ya?ml|astro|sh)$/

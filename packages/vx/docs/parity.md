@@ -9,6 +9,12 @@ four-package fixture (`tests/helpers/parity.ts`: `app → ui → lib`,
 right column names the suite that pins the behaviour in depth. A
 deliberate divergence is marked **≠** and explained.
 
+Two more suites port the upstream projects' own cache-invalidation
+tests, each case named for the Turbo or Nx test it stands in for:
+`tests/parity-turbo-hashing.test.ts` (crates turborepo-scm,
+turborepo-env, turborepo-task-hash) and `tests/parity-nx-hashing.test.ts`
+(the native hashers and `hasher/*.spec.ts`).
+
 ## Turbo
 
 | Turbo                                                              | vx                                                                                                     | Deep pin                                                                                                                                          |

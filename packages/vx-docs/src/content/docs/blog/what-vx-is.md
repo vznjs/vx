@@ -35,10 +35,13 @@ flowchart LR
 A run is a pipeline with five stages, and each one has a documented
 seam a plugin can fill:
 
-1. **Discover** the projects in the workspace (the package manager's
-   workspace globs, one `package.json` each).
+1. **Discover** the projects in the workspace: every directory with a
+   `vx.config`, plus the package manager's members when a lockfile
+   plugin is declared.
 2. **Evaluate** each `vx.config.ts`. Configs are TypeScript programs,
-   not JSON; the pipeline sees the object they evaluate to.
+   not JSON; the pipeline sees the object they evaluate to. `vx lock`
+   does these first two stages once and writes the result to
+   `.vx/projects.lock.json`, and every run starts from the lock.
 3. **Build** one task graph across the whole workspace from `dependsOn`
    and the package dependency graph.
 4. **Derive** a content-addressed key per task from its declared inputs,
@@ -50,14 +53,13 @@ In plugin terms the stages are named `config` → `discover` → `project` → `
 `key` → `fingerprint` → `schedule` → `admit`, followed by the two
 behaviour capabilities `executor` (where a command runs) and `cache`
 (where artifacts live), the observe-only `telemetry` capability,
-`output` (who draws the terminal, since vx 0.0.637),
+`output` (who draws the terminal),
 `setup` and `teardown` around the run, and `commands` (CLI verbs).
 Core applies **no** plugin by default and names
-none. A workspace with no `.vx/workspace.ts` still runs and caches,
-because the local executor and the local cache are the floor under
-every list, not plugins you have to remember to add. (Since vx 0.0.637,
-the workspace file is required: `.vx/workspace.ts` marks the root, and
-one that declares no plugins runs and caches the same way.)
+none. `.vx/workspace.ts` marks the workspace root, and one that
+declares no plugins still runs and caches, because the local executor
+and the local cache are the floor under every list, not plugins you
+have to remember to add.
 
 ## What a task is
 

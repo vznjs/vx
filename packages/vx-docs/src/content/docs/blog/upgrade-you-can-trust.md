@@ -69,15 +69,13 @@ vx never installs Node or a package manager for you.
 
 ## The version the project pins
 
-_Since 2026-10-13._ A global vx hands every call to the project's own
+A global vx hands every call to the project's own
 `@vzn/vx` when the workspace root has one in `node_modules`, so each
 repo runs the version its lockfile pins, whatever version is on your
 `PATH`. Upgrading a project is then one lockfile change that the whole
-team and CI pick up together.
-
-(Since vx 0.0.639, `vx upgrade` run there moves both: the project's
-dependency first, then the global vx that handed it the call, to the
-same version.)
+team and CI pick up together. `vx upgrade` run there moves both: the
+project's dependency first, then the global vx that handed it the
+call, to the same version.
 
 ```sh frame="terminal"
 $ vx --version
