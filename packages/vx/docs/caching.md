@@ -220,7 +220,12 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
 
     A task with **no `cache` block** derives a key too, from its
     `inputs` — its dependents fold it (step 8), as Turbo and Nx hash
-    every task. One that also declares no `inputs` is **keyless**: no
+    every task. That key is for its dependents only: the task always
+    runs, and no cache, local or remote, is asked about or handed
+    anything under it; its log goes to the run's own store
+    (`run/<id>/<task>/log`). A lookup follows `cache`, never a key
+    (`tests/uncached-no-lookup.test.ts`). One that also declares no
+    `inputs` is **keyless**: no
     key can stand for what it read, so a key that folds it is this
     run's alone, and every task behind it misses and saves nothing.
     A task reading `**` with no `cache` folds its own outputs too,
