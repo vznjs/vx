@@ -271,6 +271,26 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       const manifest = manifestReader()
       const importers = await importersOf(ctx, manifest)
       if (importers === undefined) return []
+      // A workspace the root manifest names and the lockfile lacks is no
+      // project until an install adds it: lerna's 31 added Nx projects
+      // failed \`vx lock\` as "no such project" and nothing said why
+      // (Growth, 2026-10-16). pnpm reads pnpm-workspace.yaml instead.
+      if (manager.name !== 'pnpm') {
+        const missing = (
+          await workspaceDirs(ctx.workspaceRoot, await manifest(ctx.workspaceRoot))
+        ).filter((d) => !importers.has(d))
+        if (missing.length > 0) {
+          let file = manager.files[0]!
+          for (const f of manager.files)
+            if (await Bun.file(path.join(ctx.workspaceRoot, f)).exists()) {
+              file = f
+              break
+            }
+          ctx.warn(
+            `${file} does not list the workspace${missing.length > 1 ? 's' : ''} ${listed(missing)} that package.json names — run \`${manager.name} install\` to add ${missing.length > 1 ? 'them; until then each is' : 'it; until then it is'} named by its path, and a dependsOn naming it finds no project`,
+          )
+        }
+      }
       const rootIsProject = ctx.projects.some((p) => importerOf(ctx.workspaceRoot, p.dir) === '.')
       return await discovered(
         ctx.workspaceRoot,
@@ -299,6 +319,13 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       }
     },
   })
+}
+
+/** Up to five names, then a count of the rest. */
+function listed(names: readonly string[]): string {
+  return names.length <= 5
+    ? names.join(', ')
+    : `${names.slice(0, 5).join(', ')} and ${names.length - 5} more`
 }
 
 /** Each present settings file's content hash, by name. */

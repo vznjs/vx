@@ -297,6 +297,24 @@ describe('discover', () => {
     ])
   })
 
+  for (const c of CASES.filter((c) => c.name !== 'pnpm' && c.name !== 'yarn')) {
+    it(`${c.name}(): a workspace the lockfile does not list yet names the install that adds it`, async () => {
+      // lerna: \`vx init\` asked for 31 Nx projects in \`workspaces\`; added,
+      // \`vx lock\` refused a dependsOn on "no such project" until the lockfile
+      // was refreshed, and nothing said so (Growth round 2).
+      await writeFile(path.join(root, c.file), c.text)
+      const metas = await projects({ root: { name: 'root', workspaces: ['packages/*'] } })
+      expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      await mkdir(path.join(root, 'packages/f'), { recursive: true })
+      await writeFile(path.join(root, 'packages/f/package.json'), JSON.stringify({ name: 'f' }))
+      const warnings: string[] = []
+      await discover(c.make(), metas, warnings)
+      expect(warnings).toEqual([
+        `${c.file} does not list the workspace packages/f that package.json names — run \`${c.name} install\` to add it; until then it is named by its path, and a dependsOn naming it finds no project`,
+      ])
+    })
+  }
+
   it('yarn(): a classic dependency on a range the workspace misses is the registry copy', async () => {
     await writeFile(
       path.join(root, 'yarn.lock'),
