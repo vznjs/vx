@@ -382,8 +382,8 @@ asked first, then each plugin's remote in the order `plugins` lists them;
 remote can pick a credential per scope or check a token's branch. A remote error is a miss and one
 warning per kind of failure, naming the plugin, the request, the artifact
 and the remote's `endpoint` (`download <hash> from <endpoint> failed: HTTP
-500`). A read-only credential sets `access: { write: false }` and core
-never uploads to it. Core awaits every call and bounds none: a `get` that
+500`). A remote cannot narrow the policy: a read-only credential pairs
+with `remote:r`, and a refused upload is a warning. Core awaits every call and bounds none: a `get` that
 never settles holds its task, and a `put` holds the end of the run. So
 give every request a deadline; a timeout is an error, and an error is a
 miss:

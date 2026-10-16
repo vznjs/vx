@@ -43,8 +43,6 @@ embedder via `RunOptions.remoteCache`. Core builds every
 export interface RemoteCacheLayer {
   /** Where the artifacts live, named in every degrade warning; never a credential. */
   readonly endpoint?: string
-  /** What the credential allows when less than both (a read-only token); omitted → both. */
-  readonly access?: { readonly read?: boolean; readonly write?: boolean }
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
   has(hash: string): Promise<boolean>
   /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */

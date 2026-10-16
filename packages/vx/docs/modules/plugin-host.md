@@ -67,7 +67,7 @@ nothing runs and caches here.
   the `localCache` and `policy` core keeps from plugins. Each plugin's `cache`
   hook returns a remote (`RemoteCacheLayer`); core puts every remote, in
   declared order, behind `host.localCache` in one `LayeredCache`, each
-  gated by `host.policy` narrowed by its `access`, and names the plugin
+  gated by `host.policy` alone, and names the plugin
   in its warnings. No remote leaves the local store unwrapped.
   `REMOTE_CACHE_METHODS` is what a returned remote must carry.
 - `buildAdmission(plugins, nodes, concurrency, warn)` → the scheduler's

@@ -1730,7 +1730,6 @@ plugin guide's example shows it).
 ```ts
 export interface RemoteCacheLayer {
   readonly endpoint?: string
-  readonly access?: { readonly read?: boolean; readonly write?: boolean }
   has(hash: string): Promise<boolean>
   hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>

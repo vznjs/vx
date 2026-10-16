@@ -17,7 +17,6 @@ import {
   MIN_SIGNATURE_KEY_LENGTH,
   resolveTurboCacheConfig,
   TurboRemoteCache,
-  turboRemoteAccess,
 } from '../src/turbo-cache/index.js'
 import { turboCache } from '../src/index.js'
 
@@ -642,50 +641,23 @@ describe('vx run with turboCache() layered over the local cache', () => {
     }
   })
 
-  // A CI keeps an untrusted pull request off the shared cache with Turbo's
-  // own switches; vx read and wrote it regardless. They narrow `--cache-policy`.
-  it('Turbo’s TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY narrow the remote', () => {
-    const access = (env: Record<string, string>) => {
-      const a = turboRemoteAccess(env)
-      return `${a.read ? 'r' : ''}${a.write ? 'w' : ''}`
-    }
-    expect([
-      access({}),
-      access({ TURBO_CACHE: 'local:rw,remote:r' }),
-      access({ TURBO_CACHE: 'local:rw' }),
-      access({ TURBO_CACHE: 'remote:w' }),
-      access({ TURBO_REMOTE_CACHE_READ_ONLY: 'true' }),
-      access({ TURBO_REMOTE_CACHE_READ_ONLY: '1', TURBO_CACHE: 'remote:rw' }),
-      access({ TURBO_REMOTE_CACHE_READ_ONLY: 'false' }),
-    ]).toEqual(['rw', 'r', '', 'w', 'r', 'r', 'rw'])
-    expect(() => access({ TURBO_CACHE: 'remote:x' })).toThrow(
-      'vx/turbo-cache: TURBO_CACHE "remote:x" is not --cache-policy\'s syntax (e.g. local:rw,remote:r)',
-    )
+  // A plugin moves bytes; core's cache.policy alone decides reads and
+  // writes (M, 2026-10-16), so Turbo's own switches change nothing.
+  it('TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY leave the remote as it is', () => {
     const saved = { ...process.env }
     try {
       process.env['TURBO_TOKEN'] = 't'
       process.env['TURBO_API'] = 'https://c.example'
-      // What the remote tells core its credential allows; core ANDs it with
-      // the run's policy (chained-cache.test.ts).
       const remote = (env: Record<string, string>) => {
-        delete process.env['TURBO_CACHE']
-        delete process.env['TURBO_REMOTE_CACHE_READ_ONLY']
         Object.assign(process.env, env)
         const ctx = { warn: () => {}, workspaceRoot: root, cacheDir: root, scope: undefined }
         const r = turboCache({}).cache?.(ctx) as RemoteCacheLayer | undefined
-        return r === undefined ? 'declined' : r.access
+        return r === undefined ? 'declined' : Object.keys(r).includes('access')
       }
       expect([
-        remote({}),
         remote({ TURBO_REMOTE_CACHE_READ_ONLY: 'true' }),
         remote({ TURBO_CACHE: 'local:rw' }),
-        remote({ TURBO_CACHE: 'remote:w' }),
-      ]).toEqual([
-        { read: true, write: true },
-        { read: true, write: false },
-        'declined',
-        { read: false, write: true },
-      ])
+      ]).toEqual([false, false])
     } finally {
       for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]
       Object.assign(process.env, saved)

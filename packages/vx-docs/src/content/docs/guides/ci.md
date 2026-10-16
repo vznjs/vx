@@ -255,9 +255,10 @@ Then declare `plugins: [turboCache()]`. `nxCache()` does the same for a
 self-hosted Nx cache; your own backend is [a plugin](../plugins/#your-own-cache).
 Off CI a run reads the remote and does not write it (`local:rw,remote:r`);
 the [scopes](#cache-scopes-and-tokens) keep a pull request's writes apart.
-The plugins honour the tools' own switches for it too: Turbo's
-`TURBO_REMOTE_CACHE_READ_ONLY` and `TURBO_CACHE`, Nx's
-`NX_SKIP_REMOTE_CACHE`.
+vx's policy alone decides: the plugins do not read Turbo's
+`TURBO_REMOTE_CACHE_READ_ONLY` or `TURBO_CACHE`, or Nx's
+`NX_SKIP_REMOTE_CACHE`. A job you do not trust sets
+`--cache-policy=local:rw,remote:r` instead.
 
 ## Remote execution
 

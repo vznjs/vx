@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-migrate: leave reads and writes to core's cache policy
+
+turboCache() and nxCache() no longer read TURBO_CACHE, TURBO_REMOTE_CACHE_READ_ONLY, NX_SKIP_REMOTE_CACHE or NX_DISABLE_REMOTE_CACHE, and RemoteCacheLayer.access is removed. A CI keeping untrusted pull requests off the shared cache sets vx's cache.policy or --cache-policy=local:rw,remote:r instead.
+
 ## cache: stop ignoring Bun's compile temp files in core
 
 broad input globs (`**/*`) on a `bun build --compile` task, or on a task in the same directory, must exclude Bun's temp files themselves: add '!**/*.bun-build' and '!**/.????????????????-????????.tmp/**' to `inputs.files`.

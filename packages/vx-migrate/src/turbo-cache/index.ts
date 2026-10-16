@@ -393,8 +393,6 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   private readonly absent = new Set<string>()
   private readonly key: Uint8Array | undefined
   readonly endpoint: string
-  /** What `TURBO_REMOTE_CACHE_READ_ONLY` and friends leave this run (`turboRemoteAccess`). */
-  access?: { read: boolean; write: boolean }
   constructor(
     private readonly config: TurboCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
@@ -654,37 +652,6 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 }
 
 /**
- * What Turbo's own switches leave of the remote cache: `TURBO_CACHE`
- * (`--cache-policy`'s syntax, where an omitted source is off) and
- * `TURBO_REMOTE_CACHE_READ_ONLY`. A CI that sets either for an untrusted
- * pull request kept Turbo from writing the shared cache and not vx. They
- * only narrow what `--cache-policy` allows, never widen it.
- */
-export function turboRemoteAccess(env: Record<string, string | undefined>): {
-  read: boolean
-  write: boolean
-} {
-  let read = true
-  let write = true
-  const spec = env['TURBO_CACHE']
-  if (spec !== undefined && spec !== '') {
-    read = write = false
-    for (const part of spec.split(',')) {
-      const m = /^(local|remote):([rw]*)$/.exec(part.trim())
-      if (m === null)
-        throw new Error(
-          `vx/turbo-cache: TURBO_CACHE ${JSON.stringify(spec)} is not --cache-policy's syntax (e.g. local:rw,remote:r)`,
-        )
-      if (m[1] !== 'remote') continue
-      read = m[2]!.includes('r')
-      write = m[2]!.includes('w')
-    }
-  }
-  if (/^(1|true)$/i.test(env['TURBO_REMOTE_CACHE_READ_ONLY'] ?? '')) write = false
-  return { read, write }
-}
-
-/**
  * The repo's `.turbo/config.json`, by Turbo's field names and their
  * aliases (`apiurl`, `ApiUrl`, `APIURL`, …); `{}` when absent or unreadable.
  */
@@ -757,14 +724,10 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
         localConfigOf(ctx.workspaceRoot),
       )
       if (config === undefined) return undefined
-      const access = turboRemoteAccess(Bun.env)
-      if (!access.read && !access.write) return undefined
       // A signed download waits in a temp until its tag checks: in vx's
       // cache directory, which the sandbox walls, not the shared temp dir a
       // sandboxed task may read (L-45).
-      const remote = new TurboRemoteCache(config, fetch, ctx.cacheDir)
-      remote.access = access
-      return remote
+      return new TurboRemoteCache(config, fetch, ctx.cacheDir)
     },
   })
 }

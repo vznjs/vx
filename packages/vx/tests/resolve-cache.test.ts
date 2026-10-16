@@ -132,7 +132,7 @@ describe('resolveCache — a plugin returns the remote, core layers it', () => {
   )
 
   it(
-    "a remote's access narrows the run's policy: a read-only token never uploads",
+    "a remote cannot narrow the run's policy: core's policy alone decides (an old `access` field is ignored)",
     withTwo(async (a, _b, proj) => {
       const log: string[] = []
       const remote = { ...recording('ro', log), access: { read: true, write: false } }
@@ -144,7 +144,7 @@ describe('resolveCache — a plugin returns the remote, core layers it', () => {
       await resolved.get('absent')
       await saveEntry(resolved, 'h', proj)
       await resolved.drainUploads?.()
-      expect(log).toEqual(['get ro'])
+      expect(log).toEqual(['get ro', 'put ro h'])
     }),
   )
 

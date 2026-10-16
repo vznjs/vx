@@ -531,8 +531,8 @@ export interface CacheHost extends CacheContext {
  * Collect every plugin's remote (`cache` hook) in declaration order and
  * layer each over the local store: a lookup asks the local store first,
  * then each remote in order (owner, 2026-10-13), and a save reaches every
- * remote. The run's policy, narrowed by a remote's `access`, gates each
- * remote; a remote's throw is a miss and a warning naming its plugin. No
+ * remote. The run's policy alone gates each remote (M, 2026-10-16: a
+ * plugin moves bytes, it never decides reads or writes); a remote's throw is a miss and a warning naming its plugin. No
  * remote → the local store alone.
  */
 export async function resolveCache(
@@ -546,11 +546,10 @@ export async function resolveCache(
     const remote = await safe(plugin, 'cache', () => plugin.cache!(ctx))
     if (remote === undefined) continue
     assertShape(plugin, 'cache', remote, REMOTE_CACHE_METHODS, 'a remote cache layer')
-    const access = remote.access
     const entry: ResolvedRemote = {
       remote,
-      read: policy.remoteRead && access?.read !== false,
-      write: policy.remoteWrite && access?.write !== false,
+      read: policy.remoteRead,
+      write: policy.remoteWrite,
       onError: (err) => ctx.warn(`[vx] plugin '${plugin.name}': ${err.message}`),
     }
     resolved.push(entry)
