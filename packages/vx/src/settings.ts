@@ -174,7 +174,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'cache.upload.failures',
     kind: { type: 'enum', values: ['ci', 'local', 'always'] },
     default: 'ci',
-    doc: "Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.",
+    doc: "Which runs keep their failed tasks' logs and outputs, and uncached tasks' logs, in the remote: CI runs, local runs, or both.",
     env: false,
   },
   {

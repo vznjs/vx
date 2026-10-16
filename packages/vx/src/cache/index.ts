@@ -12,6 +12,7 @@ export {
   type CacheEntry,
   type CacheKeyInput,
   type CacheLayer,
+  type RemoteTraffic,
   type CachePolicy,
   cachesNothing,
   EXECUTED_RUNS_SQL,
