@@ -15,7 +15,7 @@
 import {
   cleanOutputs,
   committedFiles,
-  resolveOutputs,
+  resolveOutputTree,
   type CacheLayer,
   type GitFilesCache,
 } from '../cache/index.js'
@@ -144,7 +144,7 @@ export class DeferredOutputs {
         `could not fetch deferred outputs of ${taskId}: ${msg} — re-run it with --force, or use --cache-download=all`,
       )
     }
-    const outputFiles = await resolveOutputs(cleanArgs)
+    const { files: outputFiles, emptyDirs } = await resolveOutputTree(cleanArgs)
     this.args.gitFilesCache?.markOutputsChanged(
       producer.projectDir,
       outputFiles.map((f) => f.slice(producer.projectDir.length + 1)),
@@ -157,6 +157,7 @@ export class DeferredOutputs {
         hash: entry.hash,
         projectDir: producer.projectDir,
         outputFiles,
+        ...(emptyDirs.length > 0 ? { outputDirs: emptyDirs } : {}),
         entry: entry.entry,
       })
     }

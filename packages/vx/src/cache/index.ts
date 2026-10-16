@@ -47,6 +47,7 @@ export {
   namedOutright,
   workspaceFilesReachInto,
   resolveInputs,
+  resolveOutputTree,
   resolveOutputs,
   resolveWorkspaceOutputs,
   sweepRestoreTemps,

@@ -12,6 +12,7 @@ import path from 'node:path'
 import {
   type CacheLayer,
   type GitFilesCache,
+  resolveOutputTree,
   resolveOutputs,
   resolveWorkspaceOutputs,
   WORKSPACE_OUTPUT_PREFIX,
@@ -51,7 +52,9 @@ export function entryHolds(
 ): (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean {
   return (files, rows) => {
     const expected = new Set(
-      rows.map((r) => r.path).filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX)),
+      rows
+        .map((r) => r.path)
+        .filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX) && !p.endsWith('/')),
     )
     const seen = new Set(files)
     if ((node.addsToOutputsOf?.length ?? 0) > 0) return [...expected].every((p) => seen.has(p))
@@ -147,13 +150,16 @@ export interface SaveFacts {
 export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveFacts> }> {
   const { node, cache, log } = a
   const endResolve = span('miss: resolve outputs')
-  const outputFiles =
-    a.ownOutputFiles ??
-    (await resolveOutputs({
-      projectDir: node.projectDir,
-      outputs: a.outputs,
-      nestedProjectDirs: a.nestedProjectDirs,
-    }))
+  // An additive task owns only the files it wrote (item 588), no directory.
+  const tree =
+    a.ownOutputFiles !== undefined
+      ? { files: a.ownOutputFiles, emptyDirs: [] }
+      : await resolveOutputTree({
+          projectDir: node.projectDir,
+          outputs: a.outputs,
+          nestedProjectDirs: a.nestedProjectDirs,
+        })
+  const outputFiles = tree.files
   const wsOutputFiles =
     a.ownWsOutputFiles ??
     (await resolveWorkspaceOutputs({
@@ -204,6 +210,7 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       hash: a.hash,
       projectDir: node.projectDir,
       outputFiles,
+      ...(tree.emptyDirs.length > 0 ? { outputDirs: tree.emptyDirs } : {}),
       ...(wsOutputFiles.length > 0
         ? { workspaceOutputFiles: wsOutputFiles, workspaceRoot: a.workspaceRoot }
         : {}),

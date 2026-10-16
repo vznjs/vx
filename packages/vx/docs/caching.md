@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v43'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v44'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1315,7 +1315,8 @@ root) and it holds everything, shared with no other workspace:
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
     ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
-    │                                       packed under (v35), the miss's CPU and RSS
+    │                                       packed under (v35), the miss's CPU and RSS,
+    │                                       the empty output directories (v44)
     └── .vx-sum                             CRC-32 of every entry above (v36)
 ```
 
@@ -1409,7 +1410,7 @@ Its cost is the CRC's (~10 GB/s): a 32 MB restore 11.3 → 14.4 ms and
 Tar headers carry mode and second mtimes. vx needs both permission bits (a lost executable bit builds cold
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
-`.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, exec? }` —
+`.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, exec? }` —
 into the archive. Restore applies both, at their edges too: a mode of
 000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`), one before 1970, whose
 tar header carries 0 since ustar's field holds no sign, and one past
@@ -1423,7 +1424,15 @@ so a machine that never ran the task — a fresh runner on a remote hit —
 still learns what the task needs (`@vzn/vx-schedule-history` packs on
 it), every wire ships the bytes verbatim, and an artifact without it
 reads as before. The ingest side takes the numbers only as plain
-non-negative numbers; anything else in a foreign sidecar is dropped. Entries that are not regular
+non-negative numbers; anything else in a foreign sidecar is dropped.
+`dirs` (v44) names the empty directories the output globs matched at
+save (`outputs/dist/empty`): a tar of regular files cannot hold them, and
+a hit makes each one, so the tree a hit leaves is the one the miss left.
+Each name is held to a file entry's rules and to the declared outputs,
+and is reached only through directories that stay in the project. Its
+index row is the path with a trailing slash (`dist/empty/`); the
+skip-restore check asks only that a directory stands there, and a stale
+file found in it goes while the directory stays. Entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the
 reader reports them only to be skipped — so a
 poisoned artifact cannot smuggle one onto disk. Nor can it name a file
@@ -1990,6 +1999,10 @@ breaking footer).
 - **v43 kept** (2026-10-14): core stopped folding the project's
   `package.json` and the root fingerprint files; every key moved, so
   nothing replays wrong bytes and no bump was needed.
+- **v43 → v44**: the container changes. The sidecar lists the empty
+  directories under the outputs (`dirs`) and a hit makes them; a v43
+  artifact lists none, and its hit left `dist/empty/` out where the miss
+  had made it (Growth's parity run: Turbo and Nx restore it).
 - **v42 → v43**: stored bytes wrong under an unchanged key (Security
   F4, 2026-10-14). A scoped run stored its local entries under the
   default key, so a later default run on the same disk replayed a PR's
