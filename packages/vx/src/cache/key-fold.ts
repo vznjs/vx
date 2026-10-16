@@ -144,6 +144,8 @@ export async function foldKey(
    * prints nothing.
    */
   digestValue: (value: string) => string = xxh3hex,
+  /** Told each input that is a symlink: its fold is the target string, not the bytes behind it. */
+  onLink?: (file: string) => void,
 ): Promise<string> {
   // Seed-chained xxHash3: each step folds one field into the
   // running digest via `xxh3(part, prevDigest)`. Equivalent to the
@@ -273,6 +275,7 @@ export async function foldKey(
     const rel = relOf(file)
     const oid = fileHashes[i]!
     h = xxh3(`${rel}\0${oid}`, h)
+    if (onLink !== undefined && oid.startsWith('120000:')) onLink(file)
     // The OID is already awaited — file capture is zero extra I/O.
     if (cap) cap.push({ kind: 'file', name: rel, hash: oid })
   }

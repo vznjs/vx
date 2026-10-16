@@ -25,6 +25,8 @@ and key derivation logic live here.
 - `file-hashes.ts` — `FileHashStore`: the per-file blob-OID memo over
   `file_hashes` (a symlink hashes as its target string) and the repo's
   object format.
+- `linked-inputs.ts` — refuses a symlinked input whose target is not an
+  input itself: the link folds its target string, not the bytes behind it.
 - `fs-clock.ts` — how far the workspace's file system clock runs behind
   this process's, measured once a run; `racyWindowMs` adds it.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows

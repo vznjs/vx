@@ -34,6 +34,7 @@ src/cache/inputs.ts
 src/cache/key-fold.ts
 src/cache/layer.ts
 src/cache/layered-cache.ts
+src/cache/linked-inputs.ts
 src/cache/output-index.ts
 src/cache/plugin-cache.ts
 src/cache/policy.ts
