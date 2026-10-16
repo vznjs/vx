@@ -17,6 +17,7 @@ const FILE_PREFIX_MTIME = -2
 
 import type { Database } from 'bun:sqlite'
 import { inHashes, lazyStatement } from './schema.js'
+import { modeMatches } from './umask.js'
 import { lstatSync, statSync } from 'node:fs'
 import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
@@ -211,7 +212,7 @@ export class OutputIndex {
         if (e.path.endsWith('/')) return s.isDirectory()
         return (
           s.size === e.size &&
-          (s.mode & 0o777) === (e.mode & 0o777) &&
+          modeMatches(s.mode, e.mode) &&
           // MILLISECOND comparison (sub-ms tolerance for the float
           // round-trip through utimes). Save rows carry stat-ms and
           // restoreOutputs re-syncs restored files to the row value,
@@ -335,7 +336,7 @@ export class OutputIndex {
         const s = statSync(abs)
         if (
           s.size === e.size &&
-          (s.mode & 0o777) === (e.mode & 0o777) &&
+          modeMatches(s.mode, e.mode) &&
           Math.abs(s.mtimeMs - e.mtimeMs) < 1
         ) {
           stamps.push([e.path, s.ino, Math.floor(s.ctimeMs)])

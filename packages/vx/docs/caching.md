@@ -1411,7 +1411,11 @@ Tar headers carry mode and second mtimes. vx needs both permission bits (a lost 
 and breaks warm) and millisecond mtimes (the skip-restore probe compares
 them) exactly, so the pack stats each output once and writes
 `.vx-meta.json` — `{ version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, exec? }` —
-into the archive. Restore applies both, at their edges too: a mode of
+into the archive. Restore applies both, the mode minus the process
+umask as tar gives a non-root user (under `umask 077` a 0644 output comes
+back 0600; until 2026-10-16 it came back 0644, readable by every user,
+`tests/restore-umask.test.ts`), and a tree a restore left that way still
+reads as current. Both apply at their edges too: a mode of
 000, an mtime of 0 (`SOURCE_DATE_EPOCH=0`), one before 1970, whose
 tar header carries 0 since ustar's field holds no sign, and one past
 March 2242, whose header carries the field's 11-digit maximum (X-114:
