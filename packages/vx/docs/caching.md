@@ -219,7 +219,13 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     A task with **no `cache` block** derives a key too — its dependents
     fold it (step 8) — and, declaring nothing, folds **every file in
     its project**: `**/*`, gitignore-aware, untracked files included,
-    and its own outputs not excluded, since it declared none. So its
+    and its own outputs not excluded, since it declared none. It also
+    folds the **values** of its `exec.env.passThrough` names, the one
+    statement of the env it reads: a generator writing `API_URL` into a
+    gitignored file a cached dependent reads replayed the old value's
+    build until 2026-10-16. A file it reads outside its project is not
+    keyed; declare it on the dependent (`workspaceFiles`), or give the
+    task a `cache` block. So its
     key moves whenever it writes a file git does not ignore: a cached
     dependent misses once more after the upstream's first run and hits
     from the third. `vx why` on the dependent names the upstream as
@@ -969,7 +975,7 @@ A task's cache becomes invalid when any of these change:
 | Change the combined stdout+stderr of a `cache.inputs.workspaceRuntime` command (resolved at hash time)                                   | step 7                                                                                                                                                                                                  |
 | Upstream task's cache key changes (because its inputs changed)                                                                           | step 8                                                                                                                                                                                                  |
 | Bump `CACHE_VERSION`                                                                                                                     | step 1 — orphans every entry                                                                                                                                                                            |
-| Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific                                                                                                                                      |
+| Change `exec.env.passThrough` _values_ alone                                                                                             | **NOT a trigger** by design — passThrough values are host-specific; a task with no `cache` block folds them                                                                                             |
 | Change a file not in `inputs.files` / `inputs.workspaceFiles`                                                                            | **NOT a trigger** by design — declare it explicitly                                                                                                                                                     |
 | Edit `.vx/projects.lock.json`                                                                                                            | **NOT a trigger** — globally excluded from inputs (v24); it's vx's own metadata, never a task input                                                                                                     |
 | Change a file in a nested project's dir                                                                                                  | **NOT a trigger** for the parent's `files` globs — project boundaries are hard (workspaceFiles is the explicit exception)                                                                               |
@@ -1856,7 +1862,8 @@ moat.
 
 ## What's NOT in the key (and why)
 
-- **`exec.env.passThrough` _values_.** Would force cache misses across
+- **`exec.env.passThrough` _values_** of a task with a `cache` block.
+  Would force cache misses across
   machines with different CI flags, regions, or shell prompts. The
   _names_ are in the config hash (step 3) so adding/removing a
   passthrough still bumps the key for affected tasks.

@@ -122,6 +122,12 @@ export interface ResolveInputsArgs {
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
   inputs: CacheInputs | undefined
+  /**
+   * With no `inputs`, the env names whose values the key folds: a task
+   * with no `cache` block keys only for its dependents, and the env it is
+   * handed by name is all it says of the env it reads.
+   */
+  uncachedEnv?: readonly string[]
   /** Project-relative output globs to exclude from inputs. */
   ownOutputs: readonly string[]
   /** Root-relative `outputs.workspaceFiles` globs to exclude from
@@ -256,7 +262,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
   return {
     files,
     listings,
-    envValues: resolveEnvValues(args.inputs?.env ?? [], args.envSource),
+    envValues: resolveEnvValues(args.inputs?.env ?? args.uncachedEnv ?? [], args.envSource),
     runtimeValues,
     workspaceRuntimeValues,
   }

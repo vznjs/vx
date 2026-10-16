@@ -550,6 +550,8 @@ highest priority:
    spawn time. A project config cannot set one for it: a first load
    that writes `process.env` is refused (D-76). _NOT_ folded into the cache key — for secrets,
    regional values, CI flags that legitimately vary between machines.
+   A task with no `cache` block is the exception: its key exists only
+   for its dependents, and it folds the values (docs/caching.md).
 3. **`define`** → explicit literal values. _ARE_ folded into the
    cache key via the task config hash (the values are in your config
    file, so they participate naturally).

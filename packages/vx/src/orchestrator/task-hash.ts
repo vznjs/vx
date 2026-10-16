@@ -258,6 +258,9 @@ async function resolveKeyInput(
     workspaceRoot: args.workspaceRoot,
     envSource: process.env,
     inputs: cacheCfg?.inputs,
+    ...(cacheCfg === undefined && cfg.exec?.env?.passThrough !== undefined
+      ? { uncachedEnv: cfg.exec.env.passThrough }
+      : {}),
     ownOutputs: outputs,
     ownWorkspaceOutputs: cacheCfg?.outputs.workspaceFiles ?? [],
     nestedProjectDirs: args.nestedProjectDirs,

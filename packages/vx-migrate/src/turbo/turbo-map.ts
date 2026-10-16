@@ -1519,6 +1519,78 @@ export async function mapTurboWorkspace(
     }
   }
 
+  // Core keys a task with no cache block on its own package for its
+  // dependents. What a `cache: false` producer reads outside it
+  // (`$TURBO_ROOT$/…`, a climbing glob) Turbo hashes into every dependent
+  // through the producer's hash, and an edit to a schema such a generator
+  // copied replayed the dependent's old build (Growth, 2026-10-16). Each
+  // cached dependent keys those inputs, through a chain of uncached tasks.
+  const outsideInputs = (pm: PackageMeta, pdef: TurboTask, todos: string[]): string[] => {
+    const at = literalGlob(relPosix(root, pm.dir))
+    const out: string[] = []
+    for (const i of pdef.inputs ?? []) {
+      if (typeof i !== 'string' || i.startsWith('!') || i === '$TURBO_DEFAULT$') continue
+      const wax = minimatchToVx(i, false)
+      const rel =
+        wax === null
+          ? null
+          : wax.startsWith('$TURBO_ROOT$/')
+            ? wax.slice('$TURBO_ROOT$/'.length)
+            : wax.startsWith('../')
+              ? path.posix.normalize(path.posix.join(at, wax))
+              : undefined
+      if (rel === undefined) continue
+      if (rel === null || rel.startsWith('../') || isDotenvGlob(rel)) {
+        todos.push(
+          `input ${JSON.stringify(i)} of uncached ${pm.name}: not keyed for this task — map manually`,
+        )
+        continue
+      }
+      out.push(...withZeroSegments(rel))
+    }
+    return out
+  }
+  for (const meta of metas) {
+    const { defFor } = definitions(meta)
+    for (const t of projects.find((p) => p.name === meta.name)?.tasks ?? []) {
+      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      const def = defFor(t.name)
+      if (inputs === undefined || def === undefined) continue
+      const seen = new Set<string>()
+      const read: string[] = []
+      const visit = (from: PackageMeta, deps: readonly string[]): void => {
+        for (const sel of deps) {
+          if (envDependency(sel) !== null) continue
+          const hash = sel.indexOf('#')
+          const producers: [PackageMeta | undefined, string][] = sel.startsWith('^')
+            ? metas.filter((m) => declares(from, m.name)).map((m) => [m, sel.slice(1)])
+            : hash === -1
+              ? [[from, sel]]
+              : [
+                  [
+                    sel.startsWith(`${ROOT}#`) ? rootMeta : metaNamed.get(sel.slice(0, hash)),
+                    sel.slice(hash + 1),
+                  ],
+                ]
+          for (const [pm, task] of producers) {
+            if (pm === undefined || seen.has(`${pm.name}#${task}`)) continue
+            seen.add(`${pm.name}#${task}`)
+            const pdef = definitions(pm).defFor(task)
+            if (pdef?.cache !== false) continue
+            read.push(...outsideInputs(pm, pdef, t.todos))
+            visit(pm, pdef.dependsOn ?? [])
+          }
+        }
+      }
+      visit(meta, def.dependsOn ?? [])
+      if (read.length === 0) continue
+      inputs['workspaceFiles'] = uniq([
+        ...((inputs['workspaceFiles'] as unknown[] | undefined) ?? []),
+        ...read,
+      ])
+    }
+  }
+
   if (opts.ignored !== undefined) {
     const ignored = await opts.ignored([
       ...new Set(literals.tasks.flatMap((l) => [...l.rels.keys()])),

@@ -107,7 +107,7 @@
   {
     "key": "turbo.json tasks.*.cache",
     "status": "supported",
-    "reason": "`cache: false` means no cache block: the task always runs."
+    "reason": "`cache: false` means no cache block: the task always runs. Its `inputs` outside its package key each cached dependent instead (`workspaceFiles`)."
   },
   {
     "key": "turbo.json tasks.*.dependsOn",
