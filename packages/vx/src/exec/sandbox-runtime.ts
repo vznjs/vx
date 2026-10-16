@@ -2332,7 +2332,7 @@ function outsideWritesHint(
     ? `${refused} The task has its own temp directory, empty at its start: write under ` +
       `$TMPDIR (os.tmpdir() in Node and Bun) instead of a fixed path.`
     : `${refused} If the task needs one, grant its directory, e.g. ` +
-      `\`allow: { write: [${jsString(`${spelled}/`)}] }\`.`
+      `\`allow: { write: [${jsString(spelled.endsWith('/') ? spelled : `${spelled}/`)}] }\`.`
   return { timestamp: new Date(), hint: true, line }
 }
 

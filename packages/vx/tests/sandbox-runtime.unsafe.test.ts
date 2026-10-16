@@ -1042,6 +1042,40 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
     TIMEOUT,
   )
 
+  it.skipIf(process.platform !== 'linux')(
+    'the refused-write note spells a grant for a directory at the filesystem root',
+    async () => {
+      // The parent of `/x` is `/`, and the grant was spelled `'//'`.
+      const target = `/vx-refused-${process.pid}-${Date.now()}`
+      await addProject(fixture.root, 'rootwriter', {
+        files: { 'src/x.txt': 'hi' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                exec: {
+                  command: 'mkdir -p ${target}/a',
+                  sandbox: { allow: { read: ['.'] } },
+                },
+              },
+            },
+          }
+        `,
+      })
+      const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
+      expect(r.ok).toBe(false)
+      const outcome = r.outcomes.find((o) => o.node.id === 'rootwriter#build')
+      const hints = (outcome?.sandboxViolationLines ?? []).filter((l) =>
+        l.includes('refused writes outside the project'),
+      )
+      expect(hints).toHaveLength(1)
+      expect(hints[0]).toContain(`violations: ${target}.`)
+      expect(hints[0]).toContain("allow: { write: ['/'] }")
+      expect(existsSync(target)).toBe(false)
+    },
+    TIMEOUT,
+  )
+
   it(
     'a literal write grant that meant a directory: the failure says `dist/`, and nothing is left behind',
     async () => {
@@ -3574,6 +3608,21 @@ describe('reportableViolations', () => {
       { within: PROJ, config: cfg, skip: [tmp] },
     )
     expect(outside).toEqual([`${cache}/bun-darwin-x64-v1`, `${cache}/linux`])
+  })
+
+  it('names the directory mkdir -p was refused, not the ones it walked through', () => {
+    // `mkdir -p ~/.cache/tool` is refused at every directory on its way,
+    // existing ones too, so the note listed `/root` first and its grant
+    // spelled the parent of `/root`: `allow: { write: ['//'] }`.
+    const home = path.join(ROOT, '..', 'home')
+    const outside = refusedWritesOutside(
+      refusedWrites(
+        [`deny mkdir ${home}`, `deny mkdir ${home}/.cache`, `deny mkdir ${home}/.cache/tool`],
+        [],
+      ),
+      { within: PROJ, config: resolveSandboxConfig({}, PROJ), skip: [] },
+    )
+    expect(outside).toEqual([`${home}/.cache/tool`])
   })
 
   it('a write under a scratch glob, or in a directory it matches, is granted', () => {
