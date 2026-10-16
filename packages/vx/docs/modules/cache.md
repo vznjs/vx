@@ -151,6 +151,12 @@ export function racyWindowMs(stampMs: number, windowMs: number): number
 export function measureFsClockLag(dir: string): void
 export function setFsClockLag(lagMs: number): void
 
+// What a symlinked directory input keys (linked-inputs.ts): every regular
+// file and link under `dir`, relative and sorted, `.git`, `node_modules`,
+// `.vx/cache` and `.yarn/cache` skipped. `vx watch` judges a change behind
+// a link by the same list.
+export function filesBehind(dir: string): string[]
+
 export class Cache implements CacheLayer {
   // repoDir: where the file hasher asks git for the object format — the
   // workspace root in a run, so it shares the enumeration's `rev-parse`
