@@ -34,7 +34,7 @@ Same graph, commands and concurrency, each tool in its own native config: [how i
 | -------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------- |
 | Config                     | TypeScript, evaluated into the cache key                                                   | JSON (`turbo.json`), static                  |
 | Default inputs             | None: you declare `inputs.files`                                                           | Every tracked file in the package            |
-| Outputs on run and restore | Wiped first: no stale file survives a hit                                                  | Additive: stale files survive                |
+| Outputs on run and restore | Exactly the cached files: no stale file survives a hit                                     | Additive: stale files survive                |
 | Task sandbox               | Free and local, opt-in per task (Linux, macOS)                                             | Its docs describe no file sandbox            |
 | Clean-tree hashing         | No source reads: git index OIDs                                                            | git OIDs                                     |
 | Daemon                     | None                                                                                       | None for `turbo run` since 2.8.11            |
@@ -56,9 +56,9 @@ links each claim to its source.
 
 - **Your config is in the key.** vx evaluates each TypeScript config
   before hashing, so imports and computed values move the key.
-- **Outputs are owned.** Declared outputs are wiped before every run and
-  every restore, so a file from last week's build cannot ride along on a
-  hit.
+- **Outputs are owned.** Declared outputs are wiped before every run,
+  and a restore removes what its entry does not hold, so a file from last
+  week's build cannot ride along on a hit.
 - **Tasks can prove their reads.** Opt a task into the
   [sandbox](../../guides/sandboxing/), and a workspace file it did not
   declare is out of its reach. A violation fails the task, and a failed

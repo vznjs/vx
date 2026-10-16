@@ -64,8 +64,9 @@ reach zero, and the run costs one pass over the edges plus an
 
 ## 3. Strict output ownership makes restore cheap
 
-Declared outputs are wiped before a miss executes and before a hit
-restores, so the tree after either is exactly the cached snapshot.
+Declared outputs are wiped before a miss executes, and a hit rewrites
+the files that differ and removes the ones its entry does not hold, so
+the tree after either is exactly the cached snapshot.
 That is a correctness rule first (no stale `dist/old.js` survives), but
 it also means vx *knows* what the tree looks like after a hit. On a
 warm-on-warm run it verifies the recorded `(size, mode, mtime, inode, ctime)` of each
