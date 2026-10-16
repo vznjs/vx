@@ -18,6 +18,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   rmSync,
   statSync,
@@ -99,6 +100,8 @@ interface Want {
   data: Uint8Array
   mode: number
   mtimeMs: number
+  /** A symlink's target: it restores as the link, with no data, mode or mtime of its own. */
+  link?: string
 }
 
 const MODES = [0o644, 0o755, 0o600, 0o700, 0o444, 0o555]
@@ -150,13 +153,9 @@ function makeTree(
       }
       const abs = path.join(root, rel)
       mkdirSync(path.dirname(abs), { recursive: true })
-      symlinkSync(path.relative(path.dirname(abs), path.join(root, target)), abs)
-      const st = statSync(abs)
-      want.set(rel, {
-        data: new Uint8Array(readFileSync(abs)),
-        mode: st.mode & 0o777,
-        mtimeMs: Math.floor(st.mtimeMs),
-      })
+      const to = path.relative(path.dirname(abs), path.join(root, target))
+      symlinkSync(to, abs)
+      want.set(rel, { data: new Uint8Array(), mode: 0, mtimeMs: 0, link: to })
     }
     outputs.push(path.join(root, rel))
   }
@@ -165,7 +164,7 @@ function makeTree(
   return { outputs, want }
 }
 
-/** Every regular file under `dir` (none may be a link), as rel → Want. */
+/** Every regular file and symlink under `dir`, as rel → Want. */
 function snapshot(dir: string): Map<string, Want> {
   const out = new Map<string, Want>()
   let rels: string[]
@@ -177,6 +176,11 @@ function snapshot(dir: string): Map<string, Want> {
   for (const rel of rels.sort()) {
     const st = lstatSync(path.join(dir, rel))
     if (st.isDirectory()) continue
+    if (st.isSymbolicLink()) {
+      const link = readlinkSync(path.join(dir, rel))
+      out.set(rel.split(path.sep).join('/'), { data: new Uint8Array(), mode: 0, mtimeMs: 0, link })
+      continue
+    }
     expect(st.isFile(), `${rel} restored as a non-file`).toBe(true)
     out.set(rel.split(path.sep).join('/'), {
       data: new Uint8Array(readFileSync(path.join(dir, rel))),
@@ -192,6 +196,7 @@ function expectTree(got: Map<string, Want>, want: Map<string, Want>, ctx: string
   for (const [rel, w] of want) {
     const g = got.get(rel)!
     const at = `${ctx}: ${JSON.stringify(rel)}`
+    expect(g.link, at).toBe(w.link)
     expect(same(g.data, w.data), at).toBe(true)
     expect([g.mode, g.mtimeMs], at).toEqual([w.mode, w.mtimeMs])
   }
@@ -240,10 +245,11 @@ describe('Cache.save → restoreOutputs, seeded', () => {
             'stdout',
             '.vx-meta.json',
             '.vx-sum',
-            ...[...want.keys()].map((r) => `outputs/${r}`),
+            ...[...want].filter(([, w]) => w.link === undefined).map(([r]) => `outputs/${r}`),
           ].sort(),
         )
         for (const [rel, w] of want) {
+          if (w.link !== undefined) continue
           const f = oracle.get(`outputs/${rel}`)!
           expect(same(new Uint8Array(await f.arrayBuffer()), w.data), `${ctx}: ${rel}`).toBe(true)
         }
@@ -260,28 +266,30 @@ describe('Cache.save → restoreOutputs, seeded', () => {
     }
   })
 
-  it('refuses a dangling symlinked output and stores nothing', async () => {
+  it('refuses a symlinked output out of the project and stores nothing', async () => {
     const cache = new Cache(fresh('cache'))
     try {
       const proj = fresh('p')
       mkdirSync(path.join(proj, 'out'), { recursive: true })
       writeFileSync(path.join(proj, 'out', 'ok.txt'), 'ok')
-      symlinkSync('../gone.txt', path.join(proj, 'out', 'dead'))
-      const outputFiles = [path.join(proj, 'out', 'ok.txt'), path.join(proj, 'out', 'dead')]
+      symlinkSync('../../gone.txt', path.join(proj, 'out', 'out'))
+      const outputFiles = [path.join(proj, 'out', 'ok.txt'), path.join(proj, 'out', 'out')]
       const err = await cache
-        .save({ hash: 'dangling', entry, projectDir: proj, outputFiles })
+        .save({ hash: 'outside', entry, projectDir: proj, outputFiles })
         .catch((e: unknown) => e)
       expect(err).toBeInstanceOf(UserError)
-      expect((err as Error).message).toStartWith('output out/dead is a dangling symlink')
-      expect(await cache.get('dangling')).toBeNull()
+      expect((err as Error).message).toStartWith(
+        'output out/out is a symlink to ../../gone.txt, outside the workspace',
+      )
+      expect(await cache.get('outside')).toBeNull()
       // CONTROL: the same save without the link stores.
       await cache.save({
-        hash: 'dangling',
+        hash: 'outside',
         entry,
         projectDir: proj,
         outputFiles: outputFiles.slice(0, 1),
       })
-      expect((await cache.get('dangling'))?.stdout).toBe('built\n')
+      expect((await cache.get('outside'))?.stdout).toBe('built\n')
     } finally {
       cache.close()
     }

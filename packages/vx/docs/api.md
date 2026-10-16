@@ -145,7 +145,6 @@ export class Cache implements CacheLayer {
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
-    readable?: ((real: string) => boolean) | undefined
   }): Promise<void>
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
@@ -256,7 +255,6 @@ export interface CacheLayer {
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
-    readable?: ((real: string) => boolean) | undefined
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void

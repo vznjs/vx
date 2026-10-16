@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: keep symlinks under outputs as links
+
+Every cached task misses once after upgrading (cache version v45). A symlink under a task's outputs is cached and restored as the link, not a copy of its target; an absolute link, or one leading out of the workspace, fails the save. CacheLayer.save drops `readable`.
+
 ## cache: bring back empty output directories on a hit
 
 Every cached task misses once after upgrading (cache version v44): a v43 artifact records no empty directories.

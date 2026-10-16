@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v44'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v45'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1318,7 +1318,8 @@ root) and it holds everything, shared with no other workspace:
     │                                       WORKSPACE-ROOT-relative (when any)
     ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
     │                                       packed under (v35), the miss's CPU and RSS,
-    │                                       the empty output directories (v44)
+    │                                       the empty output directories (v44),
+    │                                       the output symlinks (v45)
     └── .vx-sum                             CRC-32 of every entry above (v36)
 ```
 
@@ -1438,7 +1439,14 @@ Each name is held to a file entry's rules and to the declared outputs,
 and is reached only through directories that stay in the project. Its
 index row is the path with a trailing slash (`dist/empty/`); the
 skip-restore check asks only that a directory stands there, and a stale
-file found in it goes while the directory stays. Entries that are not regular
+file found in it goes while the directory stays. `links` (v45) maps each
+symlink under the outputs to its target as written (`outputs/dist/latest`
+→ `v2.txt`). A hit makes the link apart from its place and renames it
+over the target like a file, and only if the target is relative and
+stays inside the workspace; any other fails the whole restore. Its index
+row carries the link type in its mode and the target's length and CRC-32
+where a file has its size and mtime, so the skip-restore check compares
+the target and never follows the link. Tar entries that are not regular
 files (symlinks, hardlinks, devices) are never materialised — the
 reader reports them only to be skipped — so a
 poisoned artifact cannot smuggle one onto disk. Nor can it name a file
@@ -1456,14 +1464,12 @@ back, one under `.git`, `.vx` or a `vx.lock.json`, or one under a
 anything is written; the entry is dropped and the task runs. Remote
 execution (`@vzn/vx-reapi`) writes a remote action's outputs through the
 same gate (`restorableOutput`). On the save side a
-**symlinked output** is captured as its target's bytes and comes back
-as a regular file (a hit that finds the task's own link still current
-leaves it); a link to a directory, or a dangling one, has no bytes to
-store, so the save refuses it by name rather than cache an entry that
-restores to nothing. So does a link whose target is outside the
-project: vx reads outputs outside the task's sandbox, and a planted
-link packed a file the task could not read (L-23). Each refusal names
-the path as the config spells it (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
+**symlinked output** is stored as the link, as Turbo and Nx keep it: a
+link to a file, to a directory or to nothing comes back as that link,
+and no byte of its target is read, so a link a sandboxed task planted to
+a file it could not read packs nothing of it (L-23). An absolute link, or
+one leading out of the workspace, fails the save by name, as the config
+spells the path (`workspaceFiles output gen/latest`). The clean before exec and restore removes every
 file AND symlink the output globs cover (a link is unlinked, never
 followed). An output directory that is a symlink (`dist -> real-out`) is
 followed by the clean as by the save and restore, so its target is the
@@ -2005,6 +2011,10 @@ breaking footer).
 - **v43 kept** (2026-10-14): core stopped folding the project's
   `package.json` and the root fingerprint files; every key moved, so
   nothing replays wrong bytes and no bump was needed.
+- **v44 → v45**: the container changes. The sidecar lists the symlinks
+  under the outputs (`links`) and a hit makes them; a v44 artifact holds
+  a link to a file as a copy of its target, and a link to a directory
+  never cached (M's call: keep links, as Turbo and Nx do).
 - **v43 → v44**: the container changes. The sidecar lists the empty
   directories under the outputs (`dirs`) and a hit makes them; a v43
   artifact lists none, and its hit left `dist/empty/` out where the miss

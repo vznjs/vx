@@ -342,8 +342,8 @@ error.
   [`../schema.md`](../schema.md). A workspace-level `globalInputs` field is
   an owner-rejected non-goal.
 - Doesn't follow symlinks. Inputs come from git, which reports a link as
-  a link, and the key reads what it points to (`linked-inputs.ts`); the OUTPUT scan yields symlinks as outputs (captured as the
-  target's bytes, unlinked on clean) and never descends through one below
+  a link, and the key reads what it points to (`linked-inputs.ts`); the OUTPUT scan yields symlinks as outputs (cached as the
+  link, unlinked on clean) and never descends through one below
   a glob's literal head. A link IN that head (`dist -> real-out` for
   `dist/**`) is followed by the scan and the clean alike; one resolving
   outside the project is a `UserError` naming it (X-88).

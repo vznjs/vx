@@ -114,8 +114,6 @@ export interface SaveMissArgs {
   ownOutputFiles?: string[] | undefined
   /** `ownOutputFiles` for `cache.outputs.workspaceFiles` (A-43). */
   ownWsOutputFiles?: string[] | undefined
-  /** A sandboxed task's reach: a symlinked output it could not read is refused (`sandboxReadable`). */
-  readable?: ((real: string) => boolean) | undefined
   /** The Tier-3 input fingerprint rows captured by the pre-exec describe. */
   captured: readonly TaskInputComponent[]
   command: string
@@ -213,11 +211,10 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
       projectDir: node.projectDir,
       outputFiles,
       ...(tree.emptyDirs.length > 0 ? { outputDirs: tree.emptyDirs } : {}),
-      ...(wsOutputFiles.length > 0
-        ? { workspaceOutputFiles: wsOutputFiles, workspaceRoot: a.workspaceRoot }
-        : {}),
+      // The root an output symlink's target must stay inside, outputs.workspaceFiles or not.
+      workspaceRoot: a.workspaceRoot,
+      ...(wsOutputFiles.length > 0 ? { workspaceOutputFiles: wsOutputFiles } : {}),
       inputComponents: a.captured.map((c) => ({ entryHash: a.hash, ...c })),
-      readable: a.readable,
       // No `exitCode`: the save only runs under `effectiveExitCode === 0`, and
       // the contract no longer accepts one — so the invariant is enforced by
       // the type rather than by every call site remembering the gate.

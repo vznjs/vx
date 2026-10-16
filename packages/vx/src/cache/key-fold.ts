@@ -112,7 +112,9 @@ import type { CacheKeyInput } from './layer.js'
 // unchanged key holds wrong bytes.
 // v44: the sidecar lists the empty directories under the outputs; a v43
 // artifact holds none and a hit left them out (Growth's parity, 2026-10-16).
-export const CACHE_VERSION = 'vx-cache-v44'
+// v45: the sidecar lists the symlinks under the outputs and a hit makes
+// them; a v44 artifact holds a link as a copy of its target (M, 2026-10-16).
+export const CACHE_VERSION = 'vx-cache-v45'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

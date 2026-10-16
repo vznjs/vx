@@ -172,14 +172,20 @@ describe("the sidecar's order", () => {
     const src = fresh()
     writeFileSync(path.join(src, 'target.txt'), 't')
     symlinkSync('target.txt', path.join(src, 'link.txt'))
+    writeFileSync(path.join(src, 'z.txt'), 'z')
     writeFileSync(path.join(src, 'plain.txt'), 'p')
     const outputs = new Map([
+      ['outputs/z.txt', path.join(src, 'z.txt')],
       ['outputs/link.txt', path.join(src, 'link.txt')],
       ['outputs/plain.txt', path.join(src, 'plain.txt')],
     ])
-    const tar = await packArtifact({ stdout: '', outputs, within: src })
+    const tar = await packArtifact({ stdout: '', outputs, root: src })
     const meta = (await new Bun.Archive(tar).files()).get('.vx-meta.json')!
-    const files = (JSON.parse(await meta.text()) as { files: Record<string, unknown> }).files
-    expect(Object.keys(files)).toEqual([...outputs.keys()])
+    const parsed = JSON.parse(await meta.text()) as {
+      files: Record<string, unknown>
+      links: Record<string, string>
+    }
+    expect(Object.keys(parsed.files)).toEqual(['outputs/z.txt', 'outputs/plain.txt'])
+    expect(parsed.links).toEqual({ 'outputs/link.txt': 'target.txt' })
   })
 })

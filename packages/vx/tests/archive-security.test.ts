@@ -23,6 +23,7 @@ import {
   mkdtemp,
   readFile,
   readdir,
+  readlink,
   rm,
   stat,
   symlink,
@@ -990,30 +991,20 @@ describe('packArtifact → restore round trip', () => {
     expect(Math.abs(outExe.mtimeMs - Math.floor(srcExe.mtimeMs))).toBeLessThan(1)
   })
 
-  it('packs a symlinked output whose path holds a backslash as its target', async () => {
-    // Bun's realpath answers ENOENT for any path holding a backslash (1.4.2),
-    // and the save called such a link dangling and refused the task.
-    const target = path.join(src, 'real.txt')
-    await writeFile(target, 'bytes')
+  it('keeps a symlinked output whose path holds a backslash as its link', async () => {
+    // Bun's realpath answers ENOENT for any path holding a backslash (1.4.2);
+    // a link is read with readlink, never resolved.
+    await writeFile(path.join(src, 'real.txt'), 'bytes')
     const dir = path.join(src, 'a\\b')
     await mkdir(dir)
     await symlink('../real.txt', path.join(dir, 'l\\nk'))
     const bytes = await packArtifact({
       stdout: '',
       outputs: new Map([['outputs/a\\b/l\\nk', path.join(dir, 'l\\nk')]]),
-      within: src,
+      root: src,
     })
     await restore(bytes, dest)
-    expect(await readFile(path.join(dest, 'a\\b', 'l\\nk'), 'utf8')).toBe('bytes')
-    // CONTROL: a link there that leads nowhere is still dangling.
-    await symlink('../gone.txt', path.join(dir, 'dead'))
-    await expect(
-      packArtifact({
-        stdout: '',
-        outputs: new Map([['outputs/a\\b/dead', path.join(dir, 'dead')]]),
-        within: src,
-      }),
-    ).rejects.toThrow('output a\\b/dead is a dangling symlink')
+    expect(await readlink(path.join(dest, 'a\\b', 'l\\nk'))).toBe('../real.txt')
   })
 
   it('round-trips a path longer than 100 bytes and a >100-byte component', async () => {

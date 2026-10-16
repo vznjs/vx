@@ -1209,16 +1209,15 @@ Outputs are **NOT** filtered through gitignore — typical artifact
 dirs like `dist/`, `coverage/`, `.next/`, `pkg/` are captured normally
 even when gitignored (they usually are).
 
-A **symlink** the globs match is an output: it is captured as its
-target's bytes and restored as a regular file, and the clean unlinks
-it (never following it). An output DIRECTORY that is a symlink
-(`dist -> real-out`) is followed: its target is cleaned, saved and
-restored as the output; one that resolves outside the project refuses
-the task, naming the link. A link to a directory, a dangling one, or
-one whose target is outside the project or, for a sandboxed task, a file its grants do not let it read cannot be stored — the save refuses it by name and caches nothing, so
-the next run executes again. A link to another output of the same task
-is stored wherever it is: `gen/latest -> v2.txt` under a
-`workspaceFiles` output caches (A-53). The clean also prunes the directories it
+A **symlink** the globs match is an output: it is cached and restored
+as the link, its target as written (a link to a file, to a directory,
+or to nothing yet), and the clean unlinks it (never following it). No
+byte of its target is read. A link must be relative and lead somewhere
+inside the workspace: an absolute one, or `../../../etc/hosts`, fails
+the save by name and caches nothing, so the next run executes again. An
+output DIRECTORY that is a symlink (`dist -> real-out`) is followed: its
+target is cleaned, saved and restored as the output; one that resolves
+outside the project refuses the task, naming the link. The clean also prunes the directories it
 emptied, so an output that is a directory one run and a file the next
 restores either way.
 

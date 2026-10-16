@@ -7,7 +7,7 @@
 // each hit, read fresh — never "the run was green".
 
 import { lstatSync } from 'node:fs'
-import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, readdir, readFile, readlink, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -41,11 +41,8 @@ esac
 
 type Shape = 'dir' | 'file' | 'link'
 
-// A symlinked output is captured as its target's bytes and restored as a
-// regular file (the archive never materialises a link), so `link` reads
-// as a file with the target's content whichever way it got there — the
-// link the task wrote (an up-to-date hit keeps it) or the file a restore
-// wrote. Both are read through.
+// A symlinked output is cached and restored as the link, so `link` reads
+// through to the target's content.
 async function shapeOf(dir: string): Promise<{ kind: 'dir' | 'file'; detail: string }> {
   const out = path.join(dir, 'dist', 'out')
   const st = await lstat(out)
@@ -115,44 +112,23 @@ describe('restore across an output-shape change (e2e)', () => {
   )
 
   it(
-    'a symlink to a directory, or a dangling one, fails the save loudly instead of caching nothing',
+    'a symlink to a directory, or a dangling one, is cached and comes back as the link',
     async () => {
       await writeFile(path.join(dir, 'shape.txt'), 'dir-link')
-      await rm(path.join(dir, 'dist'), { recursive: true, force: true })
-      await mkdir(path.join(dir, 'dist'))
-      // The task's own script would rebuild dist; a task that only links is
-      // the shape under test, so the command becomes the link itself.
-      await writeFile(
-        path.join(dir, 'build.sh'),
-        'rm -rf dist && mkdir dist && ln -s ../src-dir dist/out\n',
-      )
       await mkdir(path.join(dir, 'src-dir'))
-      // The task itself succeeded; the SAVE refuses, loudly, and stores
-      // nothing — so the next run executes again instead of hitting an
-      // entry that would restore to nothing.
-      const r = await summarized(root, ['app#build'])
-      expect(r.code).toBe(0)
-      expect(r.text).toMatch(/output dist\/out is not a regular file/)
-      // The remedy must be one the schema accepts: narrower globs, or a `!`
-      // entry that takes the path back (A-44).
-      expect(r.text).toContain(
-        "narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry",
-      )
-      const again = await summarized(root, ['app#build'])
-      expect(again.tasks.get('app#build')?.['status']).toBe('success')
-
-      await writeFile(
-        path.join(dir, 'build.sh'),
-        'rm -rf dist && mkdir dist && ln -s ../missing dist/out\n',
-      )
-      const dangling = await summarized(root, ['app#build'])
-      expect(dangling.code).toBe(0)
-      expect(dangling.text).toMatch(/output dist\/out is a dangling symlink/)
-      // The remedy must be one the schema accepts: narrower globs, or a `!`
-      // entry that takes the path back (A-44).
-      expect(dangling.text).toContain(
-        "narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry",
-      )
+      for (const to of ['../src-dir', '../missing']) {
+        await writeFile(
+          path.join(dir, 'build.sh'),
+          `rm -rf dist && mkdir dist && ln -s ${to} dist/out\n`,
+        )
+        const r = await summarized(root, ['app#build'])
+        expect(r.code).toBe(0)
+        expect(r.tasks.get('app#build')?.['status']).toBe('success')
+        await rm(path.join(dir, 'dist'), { recursive: true, force: true })
+        const hit = await summarized(root, ['app#build'])
+        expect(hit.tasks.get('app#build')?.['status']).toBe('cache-hit')
+        expect(await readlink(path.join(dir, 'dist', 'out'))).toBe(to)
+      }
     },
     TIMEOUT,
   )
@@ -233,25 +209,23 @@ describe('an output directory that is a symlink inside the project (e2e)', () =>
   )
 })
 
-// vx packs outputs outside the task's sandbox, following a link to its
-// target: a link a sandboxed task planted to a file it could not read
-// (another project's, the home directory's) put that file's bytes in the
-// artifact and the remote (L-23). The `link` shape above, a link inside
-// the project, is the control that still caches.
+// vx packs outputs outside the task's sandbox: following a link a task
+// planted to a file it could not read (another project's) put that file's
+// bytes in the artifact and the remote (L-23). A link is kept as the link,
+// so the artifact holds its target's name and none of its bytes.
 describe('a symlinked output that leaves the project (e2e)', () => {
   it(
-    'fails the save loudly and stores none of the target',
+    'is cached as the link and stores none of the target',
     async () => {
       const root = await makeWorkspace({ prefix: 'vx-output-linkout-' })
       try {
-        const other = await addProject(root, 'other', { files: { 'secret.txt': 'L23-SECRET\n' } })
-        const target = path.join(other, 'secret.txt')
+        await addProject(root, 'other', { files: { 'secret.txt': 'L23-SECRET\n' } })
         await addProject(root, 'app', {
           config: `
             export default {
               tasks: {
                 build: {
-                  exec: { command: 'rm -rf dist && mkdir dist && ln -s ${JSON.stringify(target).slice(1, -1)} dist/out' },
+                  exec: { command: 'rm -rf dist && mkdir dist && ln -s ../../other/secret.txt dist/out' },
                   inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
                 },
               },
@@ -259,12 +233,7 @@ describe('a symlinked output that leaves the project (e2e)', () => {
           `,
         })
         const r = await summarized(root, ['app#build'])
-        expect(r.code).toBe(0)
-        expect(r.text).toContain(
-          `output dist/out is a symlink to ${await realpath(target)}, outside the project`,
-        )
-        const again = await summarized(root, ['app#build'])
-        expect(again.tasks.get('app#build')?.['status']).toBe('success')
+        expect([r.code, r.text.includes('cache save failed')]).toEqual([0, false])
         const held: string[] = []
         for (const [f, bytes] of storedBytesUnder(root)) {
           const tar = Bun.zstdDecompressSync(bytes)
@@ -281,9 +250,8 @@ describe('a symlinked output that leaves the project (e2e)', () => {
 
 // A root-anchored output tree is outside every project, so a link there to
 // another file of the same tree (`gen/latest -> v2.txt`) was refused as
-// leaving the project, and the task never cached (J's lead). The task wrote
-// that file, so packing it leaks nothing; a link to another project's file
-// is still refused.
+// leaving the project, and the task never cached (J's lead). A link out of
+// the workspace is refused.
 describe('a symlinked workspace output (e2e)', () => {
   const config = (link: string): string => `
     export default {
@@ -297,7 +265,7 @@ describe('a symlinked workspace output (e2e)', () => {
   `
 
   it(
-    'to another output of its own caches, and restores as its bytes',
+    'to another output of its own caches, and restores as the link',
     async () => {
       const root = await makeWorkspace({ prefix: 'vx-ws-output-link-' })
       try {
@@ -307,7 +275,7 @@ describe('a symlinked workspace output (e2e)', () => {
         await rm(path.join(root, 'gen'), { recursive: true, force: true })
         const again = await summarized(root, ['app#build'])
         expect(again.tasks.get('app#build')?.['status']).toBe('cache-hit')
-        expect(await readFile(path.join(root, 'gen', 'latest'), 'utf8')).toBe('v2\n')
+        expect(await readlink(path.join(root, 'gen', 'latest'))).toBe('v2.txt')
       } finally {
         await rm(root, { recursive: true, force: true })
       }
@@ -316,16 +284,14 @@ describe('a symlinked workspace output (e2e)', () => {
   )
 
   it(
-    "to another project's file is still refused",
+    'out of the workspace is refused',
     async () => {
       const root = await makeWorkspace({ prefix: 'vx-ws-output-linkout-' })
       try {
-        const other = await addProject(root, 'other', { files: { 'secret.txt': 'L23-SECRET\n' } })
-        const target = path.join(other, 'secret.txt')
-        await addProject(root, 'app', { config: config(JSON.stringify(target).slice(1, -1)) })
+        await addProject(root, 'app', { config: config('../../outside') })
         const r = await summarized(root, ['app#build'])
         expect(r.text).toContain(
-          `workspaceFiles output gen/latest is a symlink to ${await realpath(target)}, outside the project`,
+          'workspaceFiles output gen/latest is a symlink to ../../outside, outside the workspace',
         )
       } finally {
         await rm(root, { recursive: true, force: true })

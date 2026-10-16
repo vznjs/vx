@@ -34,10 +34,10 @@
 // cache artifact is attacker-reachable (a poisoned remote, a tampered
 // local entry) and "zip slip" is the class.
 //
-// Entries that are not regular files (symlinks, hardlinks, devices,
+// Tar entries that are not regular files (symlinks, hardlinks, devices,
 // FIFOs) are never materialised — the reader reports them only to be
-// skipped — vx's outputs are regular files, and an artifact that claims
-// otherwise silently loses the claim rather than acting on it.
+// skipped. An output symlink rides the sidecar instead (`links`), its
+// target held to the workspace on both sides.
 
 import {
   chmodSync,
@@ -51,6 +51,7 @@ import {
   lstatSync,
   openSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   statSync,
   utimesSync,
@@ -66,6 +67,7 @@ import {
   rename,
   rmdir,
   stat,
+  symlink,
   unlink,
   writeFile,
 } from 'node:fs/promises'
@@ -204,6 +206,12 @@ interface MetaFile {
    */
   dirs?: string[]
   /**
+   * The symlinks under the outputs, entry name → the link's target as
+   * written (relative, inside the workspace): a hit makes the link, as
+   * Turbo and Nx do, where it once packed a copy of the target (v45).
+   */
+  links?: Record<string, string>
+  /**
    * What the PRODUCING execution used (2026-09-12, additive: an artifact
    * without it reads as before). Rides the artifact so a machine that
    * never ran the task — a fresh CI runner on a remote hit — still learns
@@ -253,20 +261,8 @@ interface PackArgs {
   dirs?: readonly string[] | undefined
   /** The producing execution's usage, when the runner reported it. */
   exec?: ExecUsage | undefined
-  /**
-   * The project directory a symlinked output must resolve inside. vx reads
-   * outputs outside the task's sandbox, so a link a sandboxed task planted
-   * to a file it could not read (another project's, the user's home) packed
-   * that file into the artifact and the remote (L-23). A link to another
-   * output of the same artifact is packed wherever it is.
-   */
-  within?: string
-  /**
-   * For a sandboxed task: whether it could read this canonical path. A
-   * symlinked output inside `within` whose target it could not read is
-   * refused like one outside it.
-   */
-  readable?: ((real: string) => boolean) | undefined
+  /** The workspace root an output symlink's target must stay inside; absent, every link is refused. */
+  root?: string
 }
 
 /** The largest second count ustar's 12-byte mtime field holds: 11 octal digits. */
@@ -286,8 +282,7 @@ export interface ArtifactPlan {
  * mtime) and lay out the tar — stdout first, the outputs, the sidecar
  * last — with its exact size, so the caller can choose the one-call pack
  * for a small artifact and the streamed one for a large one before a
- * byte is read. A symlinked output is stored as its target's content,
- * when that target is inside `within`.
+ * byte is read. A symlinked output is stored as its link (`links`).
  */
 export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   const meta: MetaFile = { version: 1, files: {} }
@@ -295,30 +290,13 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
   // cost more than the stat. Many go to the pool together, as before.
   const few = args.outputs.size <= ON_THREAD_STATS
   const lstatOf = few ? async (p: string) => lstatSync(p) : lstat
-  const statOf = few ? async (p: string) => statSync(p) : stat
-  const realpathOf = (p: string) => realOf(p, few)
-  let withinReal: Promise<string> | undefined
-  // Where this artifact's own non-link outputs really are: a link to one of
-  // them packs bytes the task wrote itself. A root-anchored output tree is
-  // outside every project, so `gen/latest -> v2.txt` there was refused and
-  // the task never cached (J's lead).
-  let ownReal: Promise<Set<string>> | undefined
-  const ownOutputs = (): Promise<Set<string>> =>
-    (ownReal ??= Promise.all(
-      [...args.outputs.values()].map(async (abs) =>
-        (await lstatOf(abs)).isSymbolicLink() ? null : realpathOf(abs),
-      ),
-    ).then((all) => new Set(all.filter((p): p is string => p !== null))))
+  const readlinkOf = few ? async (p: string) => readlinkSync(p) : readlink
   if (args.key !== undefined) meta.key = args.key
   if (args.dirs !== undefined && args.dirs.length > 0) meta.dirs = [...args.dirs]
   const exec = usageOf(args.exec)
   if (exec !== undefined) meta.exec = exec
   const files = await Promise.all(
     [...args.outputs].map(async ([name, abs]) => {
-      // `stat` follows a symlink, so a link to a file is packed as that
-      // file's bytes and comes back as a regular file. A link to a
-      // directory, or a dangling one, has no bytes to pack: refuse loudly
-      // rather than store an entry that restores to nothing.
       // The path as the config spells it: a root-anchored output's entry
       // name is vx's own `workspace-outputs/…` (M-66).
       const shown = name.startsWith('outputs/')
@@ -336,45 +314,33 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
           `${shown} is under workspace-outputs/, a name vx's artifacts reserve for outputs.workspaceFiles — write the task's files to another directory, or take them back with a '!' entry`,
         )
       }
-      const dangling = (err: NodeJS.ErrnoException): never => {
-        if (err.code === 'ENOENT') {
-          throw new UserError(
-            `${shown} is a dangling symlink: vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
-          )
-        }
-        throw err
-      }
-      // lstat, so a regular file costs no second call; only a link is
-      // resolved, and its body is read from the path this check resolved.
-      let src = abs
-      let st = await lstatOf(abs)
+      const st = await lstatOf(abs)
       if (st.isSymbolicLink()) {
-        src = await realpathOf(abs).catch(dangling)
-        if (args.within !== undefined) {
-          withinReal ??= realpathOf(args.within)
-          const root = await withinReal
-          if (!src.startsWith(root + path.sep) && !(await ownOutputs()).has(src)) {
-            throw new UserError(
-              `${shown} is a symlink to ${src}, outside the project: vx packs a symlinked output as its target's bytes, and a project's outputs come from its own directory — emit a file there, or take it back with a '!' entry`,
-            )
-          }
-        }
-        if (args.readable !== undefined && !args.readable(src) && !(await ownOutputs()).has(src)) {
+        // Kept as the link, never read through: no byte of its target
+        // enters the artifact, so a link to a file the task could not
+        // read packs nothing of it (L-23).
+        const to = await readlinkOf(abs)
+        if (path.isAbsolute(to)) {
           throw new UserError(
-            `${shown} is a symlink to ${src}, which the task's sandbox does not let it read: vx packs a symlinked output as its target's bytes — emit a file there, grant the target in exec.sandbox.allow.read, or take it back with a '!' entry`,
+            `${shown} is a symlink to an absolute path (${to}): vx restores a link as written, and an absolute one names this machine's checkout — make it relative, or take it back with a '!' entry`,
           )
         }
-        st = await statOf(src).catch(dangling)
+        if (args.root === undefined || !inside(path.resolve(path.dirname(abs), to), args.root)) {
+          throw new UserError(
+            `${shown} is a symlink to ${to}, outside the workspace: vx restores a link as written, and a project's outputs stay in its workspace — emit a file there, or take it back with a '!' entry`,
+          )
+        }
+        return { name, link: to }
       }
       if (!st.isFile()) {
         throw new UserError(
-          `${shown} is not a regular file (a symlink to a directory?): vx stores regular files only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
+          `${shown} is not a regular file: vx stores regular files and symlinks only — emit a file there, or narrow cache.outputs.files to the files the task produces, or take it back with a '!' entry`,
         )
       }
       const mode = st.mode & 0o777
       return {
         name,
-        abs: src,
+        abs,
         size: st.size,
         mode,
         mtimeMs: Math.floor(st.mtimeMs),
@@ -386,12 +352,19 @@ export async function planArtifact(args: PackArgs): Promise<ArtifactPlan> {
     }),
   )
   // In the outputs' order, not as each stat settled: one tree, one artifact.
-  for (const f of files) meta.files[f.name] = [f.mode, f.mtimeMs]
+  const regular: Array<Exclude<(typeof files)[number], { link: string }>> = []
+  for (const f of files) {
+    if ('link' in f) (meta.links ??= {})[f.name] = f.link
+    else {
+      meta.files[f.name] = [f.mode, f.mtimeMs]
+      regular.push(f)
+    }
+  }
   const stdout = new TextEncoder().encode(args.stdout)
   const metaBytes = new TextEncoder().encode(JSON.stringify(meta))
   const inputs: TarInput[] = [
     { name: STDOUT_ENTRY, size: stdout.byteLength, body: stdout },
-    ...files.map((f) => ({
+    ...regular.map((f) => ({
       name: f.name,
       size: f.size,
       mode: f.mode,
@@ -502,6 +475,8 @@ interface ArtifactScan {
   entries: ArchiveEntry[]
   /** The sidecar's empty directories, each name proven safe. */
   dirs: string[]
+  /** The sidecar's symlinks, `[name, target]`, each name and target proven safe. */
+  links: Array<[name: string, target: string]>
   stdout: string | null
   exec: ExecUsage | undefined
   key: string | undefined
@@ -512,6 +487,7 @@ class ScanFold {
   private readonly seen: Array<{ name: string; size: number; mtimeMs: number }> = []
   private files: MetaFile['files'] = {}
   private dirs: string[] = []
+  private links: Array<[string, string]> = []
   private exec: ExecUsage | undefined
   private key: string | undefined
   stdout: string | null = null
@@ -520,6 +496,7 @@ class ScanFold {
     const parsed = JSON.parse(text) as MetaFile
     this.files = parsed.files ?? {}
     this.dirs = dirsOf(parsed)
+    this.links = linksOf(parsed)
     // The ingest side is the untrusted boundary: a foreign sidecar's
     // usage is taken only when it is a plain non-negative number.
     this.exec = usageOf(parsed.exec)
@@ -540,6 +517,7 @@ class ScanFold {
         return { name: s.name, size: s.size, mode: m?.[0] ?? 0o644, mtimeMs: m?.[1] ?? s.mtimeMs }
       }),
       dirs: this.dirs,
+      links: this.links,
       stdout: this.stdout,
       exec: this.exec,
       key: this.key,
@@ -626,6 +604,35 @@ function dirsOf(meta: MetaFile): string[] {
   })
 }
 
+/**
+ * The sidecar's links, each name held to a file entry's rules and each
+ * target to a relative path with no NUL: where it may point is decided at
+ * the restore, which knows the workspace.
+ */
+function linksOf(meta: MetaFile): Array<[string, string]> {
+  const raw: unknown = meta.links
+  if (raw === undefined) return []
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new ArchiveSecurityError('archive sidecar links is not a map')
+  }
+  return Object.entries(raw as Record<string, unknown>).map(([name, to]) => {
+    if (!(name.startsWith('outputs/') || name.startsWith(WORKSPACE_PREFIX))) {
+      throw new ArchiveSecurityError(`archive link is not an output: ${name}`)
+    }
+    assertSafeName(name)
+    if (typeof to !== 'string' || to.length === 0 || to.includes('\0') || path.isAbsolute(to)) {
+      throw new ArchiveSecurityError(`archive link ${name} has an unsafe target: ${String(to)}`)
+    }
+    return [name, to]
+  })
+}
+
+/** `p` is `root` or under it, lexically. */
+const inside = (p: string, root: string): boolean => {
+  const r = path.resolve(root)
+  return p === r || p.startsWith(r + path.sep)
+}
+
 /** The usage worth carrying: each axis a finite non-negative number, or absent; nothing → undefined. */
 function usageOf(raw: unknown): ExecUsage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined
@@ -667,6 +674,7 @@ export async function extractArtifactStream(
   const headerMtime = new Map<string, number>()
   let meta: MetaFile['files'] = {}
   let dirs: string[] = []
+  let links: Array<[string, string]> = []
   try {
     const check = new SumCheck()
     for await (const e of tarEntries(tar)) {
@@ -677,6 +685,7 @@ export async function extractArtifactStream(
         const parsed = JSON.parse(await textOf(body)) as MetaFile
         meta = parsed.files ?? {}
         dirs = dirsOf(parsed)
+        links = linksOf(parsed)
         continue
       }
       assertSafeName(e.name)
@@ -712,6 +721,24 @@ export async function extractArtifactStream(
       await x.makeDir(dest.base, target)
       // The index rows name a directory with a trailing slash.
       provided.add(`${name}/`)
+    }
+    // A link may point only inside the workspace (the project, without one).
+    const bound = stageRoot ?? workspaceDest ?? destDir
+    for (const [name, to] of links) {
+      if (accept !== undefined && !accept(name)) {
+        throw new ArchiveSecurityError(
+          `archive link is not one of the task's declared outputs: ${name}`,
+        )
+      }
+      const dest = x.destFor(name)
+      if (dest === null || dest.rel.length === 0) continue
+      const target = path.join(dest.base, dest.rel)
+      await x.assertContained(dest.base, target, name)
+      if (!inside(path.resolve(path.dirname(target), to), bound)) {
+        throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
+      }
+      await x.stageLink(name, dest.base, target, to)
+      provided.add(name)
     }
     verify?.(provided)
     // The sidecar's stat is the truth, a mode of 000 and an mtime at or
@@ -802,6 +829,8 @@ interface Staged {
   same?: number
   /** `tmp` was copied beside `target`, which is on another filesystem than the staging (`crossOver`). */
   beside?: true
+  /** A symlink to this target, made at `tmp`: no mode, no mtime. */
+  link?: string
 }
 
 /**
@@ -1077,6 +1106,30 @@ class Extractor {
     }
   }
 
+  /** A symlink: made apart from the target like a file, renamed over it on commit. */
+  async stageLink(name: string, base: string, target: string, to: string): Promise<void> {
+    const dir = path.dirname(target)
+    let created: string | undefined
+    if (!this.ensuredDirs.has(dir)) {
+      try {
+        created = await mkdir(dir, { recursive: true })
+      } catch (err) {
+        created = await this.mkdirThroughLink(base, dir, err as NodeJS.ErrnoException)
+      }
+      this.ensuredDirs.add(dir)
+    }
+    if (created === undefined) {
+      const st = lstatSync(target, { throwIfNoEntry: false })
+      if (st?.isSymbolicLink() === true && readlinkSync(target) === to) return
+    }
+    const staged = this.stageRoot !== undefined
+    const tmp = staged
+      ? path.join(await stagingDir(this.stageRoot!), (tmpSeq++).toString(36))
+      : siblingTemp(target)
+    this.staged.push({ staged, name, tmp, target, created, streamed: false, base, link: to })
+    await symlink(to, tmp)
+  }
+
   private async drain(): Promise<void> {
     const pending = this.inflight
     this.inflight = []
@@ -1124,6 +1177,14 @@ class Extractor {
         const [mode, mtimeMs] = metaFor(s.name)
         if (s.same !== undefined) {
           keep(s, s.same, mode, mtimeMs)
+          continue
+        }
+        if (s.link !== undefined) {
+          renames.push(handled(this.place(s, mode, undefined)))
+          if (++n % RENAME_BATCH === 0) {
+            await settle(renames)
+            renames = []
+          }
           continue
         }
         if (s.beside === true) {
@@ -1194,7 +1255,8 @@ class Extractor {
         cross.slice(i, i + RENAME_BATCH).map(async (s) => {
           const side = siblingTemp(s.target)
           try {
-            await copyFile(s.tmp, side)
+            if (s.link !== undefined) await symlink(s.link, side)
+            else await copyFile(s.tmp, side)
           } catch (err) {
             await unlink(side).catch(() => undefined)
             throw err
@@ -1220,9 +1282,12 @@ class Extractor {
       if (!s.staged || (err as NodeJS.ErrnoException).code !== 'EXDEV') throw err
       const side = siblingTemp(s.target)
       try {
-        await copyFile(s.tmp, side)
-        chmodSync(side, restoredMode(mode))
-        if (t !== undefined) utimesSync(side, t, t)
+        if (s.link !== undefined) await symlink(s.link, side)
+        else {
+          await copyFile(s.tmp, side)
+          chmodSync(side, restoredMode(mode))
+          if (t !== undefined) utimesSync(side, t, t)
+        }
         await rename(side, s.target)
       } catch (e) {
         await unlink(side).catch(() => undefined)
