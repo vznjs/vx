@@ -3,7 +3,7 @@
 // 2026-10-04: configs were written and nothing installed vx. The repo's
 // own scripts are never edited (owner, 2026-10-06).
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -736,4 +736,63 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
       'installing vx failed (pnpm add -D -w @vzn/vx exited -1: ENOEXEC',
     )
   })
+})
+
+describe('vx-migrate and the core it loads', () => {
+  // `bun x @vzn/vx-migrate@latest` reuses its install directory: Bun took
+  // vx-migrate 0.0.639 and kept the @vzn/vx 0.0.636 already there, a peer
+  // range it does not enforce, and the run crashed on a missing export
+  // before a line of its own ran (Growth, 2026-10-16: configs written by
+  // one release beside another).
+  it(
+    'refuses a core of another release, naming both and where it loaded',
+    async () => {
+      const dir = await tmp('vx-migrate-skew-')
+      try {
+        const own = path.join(dir, 'node_modules', '@vzn', 'vx-migrate')
+        const core = path.join(dir, 'node_modules', '@vzn', 'vx')
+        await mkdir(path.join(core, 'src'), { recursive: true })
+        await mkdir(own, { recursive: true })
+        Bun.spawnSync([
+          'cp',
+          '-R',
+          path.resolve(import.meta.dir, '..', 'src'),
+          path.join(own, 'src'),
+        ])
+        const pkg = JSON.parse(
+          await readFile(path.resolve(import.meta.dir, '..', 'package.json'), 'utf8'),
+        )
+        await writeFile(
+          path.join(own, 'package.json'),
+          JSON.stringify({ ...pkg, version: '0.0.9' }),
+        )
+        await writeFile(
+          path.join(core, 'package.json'),
+          JSON.stringify({
+            name: '@vzn/vx',
+            version: '0.0.8',
+            type: 'module',
+            exports: { '.': './src/index.ts' },
+          }),
+        )
+        // An older core: VERSION and the error classes, none of what this release imports.
+        await writeFile(
+          path.join(core, 'src', 'index.ts'),
+          "export const VERSION = '0.0.8'\nexport class UserError extends Error {}\nexport const isUserError = (e: unknown) => e instanceof UserError\n",
+        )
+        const p = Bun.spawnSync([process.execPath, path.join(own, 'src', 'bin.ts'), '--help'], {
+          cwd: dir,
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        expect(p.stderr.toString()).toBe(
+          `vx-migrate: vx-migrate 0.0.9 loaded @vzn/vx 0.0.8 from ${path.join(realpathSync(dir), 'node_modules')}; every @vzn package releases together — install @vzn/vx@0.0.9 there, or delete that node_modules and run it again\n`,
+        )
+        expect(p.exitCode).toBe(1)
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
 })
