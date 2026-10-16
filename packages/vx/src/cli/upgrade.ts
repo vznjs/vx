@@ -712,6 +712,31 @@ export async function upgradeGlobal(
   })
 }
 
+/**
+ * `vx upgrade -g`: bring this vx, the global one, to `version` and nothing
+ * else (owner, 2026-10-16) — no project's package.json, no plugin. The
+ * project's own vx refuses: no global ran.
+ */
+export async function upgradeOnlyGlobal(
+  self: string,
+  version: string,
+  current = VERSION,
+): Promise<void> {
+  if (current === version) {
+    ui.print('out', ui.status('info', 'vx upgrade', `global already at ${current}`))
+    return
+  }
+  // Read from the binary's own directory, not cwd: a project there is not this install's.
+  const install = managedInstall(self, path.dirname(self))
+  if (install?.scope === 'project') {
+    throw new UserError(
+      `vx upgrade -g: no global vx ran — ${self} is the project's own. Install one (npm install -g ${PACKAGE}), or run \`vx upgrade\` to move the project's`,
+    )
+  }
+  if (install === null) await upgradeBinary(self, version, current, 'global ')
+  else await upgradeManaged(install, version, current, 'global ')
+}
+
 /** `run`, its refusal naming `what` after the verb: a run that moves two installs says which failed. */
 async function named(what: string, run: () => Promise<void>): Promise<void> {
   try {
@@ -722,7 +747,9 @@ async function named(what: string, run: () => Promise<void>): Promise<void> {
   }
 }
 
-export async function upgradeCmd(args: readonly string[]): Promise<number> {
+export async function upgradeCmd(argv: readonly string[]): Promise<number> {
+  const global = argv.some((a) => a === '-g' || a === '--global')
+  const args = argv.filter((a) => a !== '-g' && a !== '--global')
   const unknown = args.find((a) => a.startsWith('-'))
   if (unknown !== undefined) {
     sayNotice(
@@ -746,10 +773,18 @@ export async function upgradeCmd(args: readonly string[]): Promise<number> {
     )
   }
   const dest = process.execPath
+  const handedOffFrom = process.env['VX_HANDED_OFF']
+  if (global) {
+    // A launcher from before -g handed the call over: the global is the one that did.
+    const version = await targetVersion(tag)
+    if (handedOffFrom !== undefined) await upgradeGlobal(handedOffFrom, version)
+    else await upgradeOnlyGlobal(dest, version)
+    return 0
+  }
   const install = managedInstall(dest, process.cwd())
   // A global vx handed this run to the project's own: both move, to one
   // version, the project first (owner, 2026-10-15).
-  const from = process.env['VX_HANDED_OFF']
+  const from = handedOffFrom
   if (from !== undefined) {
     const version = await targetVersion(tag)
     await named('project vx', () =>

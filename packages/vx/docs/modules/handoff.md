@@ -17,6 +17,8 @@ A global vx runs the project's own `@vzn/vx` when one exists (owner,
 ## Public surface
 
 ```ts
+// `vx upgrade -g`: moves only the global, so bin.ts hands nothing off
+export function upgradesOnlyItself(argv: readonly string[]): boolean
 // the root's own vx to run instead, or null: handed off already, not a
 // standalone compiled binary (source; an npm install, whose launcher
 // walked), no workspace, itself, or owned by another user than `uid`

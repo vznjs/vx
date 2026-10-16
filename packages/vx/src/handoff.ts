@@ -5,6 +5,11 @@
 // walk runs before anything else loads, through `Bun.file(…).exists()`:
 // importing `node:fs` alone was ~1.1 ms of a 4 ms start (2026-10-13).
 
+/** `vx upgrade -g`: moves only the global vx, so it never hands off (owner, 2026-10-16). */
+export function upgradesOnlyItself(argv: readonly string[]): boolean {
+  return argv[0] === 'upgrade' && argv.some((a) => a === '-g' || a === '--global')
+}
+
 /**
  * The project-local vx to run instead of this one, or null: the workspace
  * root's ({@link workspaceFile}) `node_modules/@vzn/vx`, run through its

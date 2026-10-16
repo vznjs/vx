@@ -80,6 +80,7 @@
       "--help"
     ],
     "upgrade": [
+      "--global",
       "--help"
     ],
     "version": [

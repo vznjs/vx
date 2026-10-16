@@ -32,6 +32,7 @@ import {
   upgradeArgv,
   upgradeGlobal,
   upgradeManaged,
+  upgradeOnlyGlobal,
   verifiedRelease,
   versionSpec,
   type SigningKey,
@@ -753,6 +754,53 @@ describe('upgradeGlobal: the global vx that handed the run to the project', () =
     await expect(upgradeGlobal(bin, '9.9.9', TEST_KEY)).rejects.toThrow(
       `vx upgrade: global vx ${bin}: it did not answer \`--version\`, so it is left as it is`,
     )
+  })
+})
+
+describe('upgradeOnlyGlobal: `vx upgrade -g` moves only the global vx', () => {
+  // M (2026-10-16): "vx upgrade -g should only update global".
+  it("updates a manager's global install with that manager, and touches no project", async () => {
+    const prefix = mkdtempSync(path.join(dir, 'og-'))
+    const bin = path.join(prefix, 'lib/node_modules/@vzn/vx-linux-x64/vx')
+    await mkdir(path.dirname(bin), { recursive: true })
+    await writeFile(bin, '')
+    const tools = path.join(prefix, 'tools')
+    const said = path.join(prefix, 'npm-said')
+    await mkdir(tools)
+    await writeFile(path.join(tools, 'npm'), `#!/bin/sh\necho "$PWD $*" > ${said}\n`)
+    await chmod(path.join(tools, 'npm'), 0o755)
+    const PATH = process.env['PATH']
+    process.env['PATH'] = `${tools}:${PATH}`
+    try {
+      await upgradeOnlyGlobal(bin, '9.9.9', '0.0.1')
+    } finally {
+      process.env['PATH'] = PATH
+    }
+    expect(await readFile(said, 'utf8')).toBe(
+      `${realpathSync(path.join(prefix, 'lib'))} install -g @vzn/vx@9.9.9\n`,
+    )
+  })
+
+  it("refuses the project's own vx, naming what to run instead", async () => {
+    const project = mkdtempSync(path.join(dir, 'op-'))
+    await writeFile(
+      path.join(project, 'package.json'),
+      JSON.stringify({ devDependencies: { '@vzn/vx': '^0.0.1' } }),
+    )
+    const bin = path.join(project, 'node_modules/@vzn/vx-linux-x64/vx')
+    await mkdir(path.dirname(bin), { recursive: true })
+    await writeFile(bin, '')
+    await expect(upgradeOnlyGlobal(bin, '9.9.9', '0.0.1')).rejects.toThrow(
+      `vx upgrade -g: no global vx ran — ${bin} is the project's own. Install one (npm install -g @vzn/vx), or run \`vx upgrade\` to move the project's`,
+    )
+  })
+
+  it('a global already at the version does nothing', async () => {
+    const asked = await withFetch({}, async (asked) => {
+      await upgradeOnlyGlobal(path.join(dir, 'nowhere', 'vx'), '9.9.9', '9.9.9')
+      return asked
+    })
+    expect(asked).toEqual([])
   })
 })
 
