@@ -63,6 +63,13 @@ function startArtifactEndpoint(opts?: {
   getLatencyMs?: number
   failAll?: boolean
   failBatch?: boolean
+  /**
+   * Hold every HEAD and GET until a batch probe arrives. The prefetch is
+   * detached from execution: on a slow runner both tasks fetched lazily,
+   * ran and saved locally before it asked the local index, which then held
+   * every key, so no batch was sent (macOS CI, #3684).
+   */
+  holdUntilBatch?: boolean
 }): ArtifactEndpoint {
   const store = new Map<string, Uint8Array>()
   const getCounts = new Map<string, number>()
@@ -71,6 +78,11 @@ function startArtifactEndpoint(opts?: {
   let inFlight = 0
   let maxInFlight = 0
   let batchCalls = 0
+  const batched = Promise.withResolvers<void>()
+  // Bounded: a run that never batches fails on `batchCalls`, not the timeout.
+  const holdForBatch = async (): Promise<void> => {
+    if (opts?.holdUntilBatch) await Promise.race([batched.promise, Bun.sleep(5_000)])
+  }
   const probes = { delayMs: 0, fail: false }
   const probe = async (): Promise<Response | undefined> => {
     if (probes.delayMs > 0) await Bun.sleep(probes.delayMs)
@@ -85,6 +97,7 @@ function startArtifactEndpoint(opts?: {
     // Batch existence probe — one round-trip for many hashes.
     if (url.pathname === '/artifacts/batch' && req.method === 'POST') {
       batchCalls++
+      batched.resolve()
       if (opts?.failBatch) return new Response('boom', { status: 500 })
       const held = await probe()
       if (held !== undefined) return held
@@ -100,12 +113,14 @@ function startArtifactEndpoint(opts?: {
       return new Response(null, { status: 200 })
     }
     if (req.method === 'HEAD') {
+      await holdForBatch()
       const held = await probe()
       if (held !== undefined) return held
       headCounts.set(hash, (headCounts.get(hash) ?? 0) + 1)
       return new Response(null, { status: store.has(hash) ? 200 : 404 })
     }
     if (req.method === 'GET') {
+      await holdForBatch()
       getCounts.set(hash, (getCounts.get(hash) ?? 0) + 1)
       inFlight++
       maxInFlight = Math.max(maxInFlight, inFlight)
@@ -455,7 +470,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         const [presentHash, absentHash] = [...seed.store.keys()] as [string, string]
         await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
 
-        const remote = startArtifactEndpoint()
+        const remote = startArtifactEndpoint({ holdUntilBatch: true })
         // Carry over ONLY one artifact — the other stays a remote miss.
         remote.store.set(presentHash, seed.store.get(presentHash)!)
         try {
