@@ -578,7 +578,9 @@ export function refusedWritesOutside(
     if (v.path === undefined || !path.isAbsolute(v.path) || !write || reported(v)) continue
     if (!skip.some((s) => atOrUnder(v.path!, s))) paths.add(v.path)
   }
-  return [...paths]
+  // `mkdir -p ~/.cache/tool` is refused at each directory on its way;
+  // the one it wanted is the deepest.
+  return [...paths].filter((p) => ![...paths].some((q) => q !== p && atOrUnder(q, p)))
 }
 
 /**

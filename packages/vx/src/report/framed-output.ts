@@ -541,8 +541,10 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
             : []),
           '',
         ]
+  // vx's own notes (`vx: …`) explain a failure; they are not denials.
+  const denials = body.filter((l) => !l.startsWith('vx: ')).length
   return [
-    sectionLine(`SANDBOX VIOLATIONS (${body.length})`, ERROR, colors),
+    sectionLine(denials > 0 ? `SANDBOX VIOLATIONS (${denials})` : 'SANDBOX', ERROR, colors),
     '',
     ...body,
     '',

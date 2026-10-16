@@ -109,7 +109,9 @@ The block format is:
   keeps `STDOUT (since ready)` / `STDERR (since ready)` apart, since
   its two bounded tails hold no order
 - **`├─ SANDBOX VIOLATIONS (n)` section:** when present — unique
-  lines, verbatim, with the header in error red. The buffered renderer
+  lines, verbatim, with the header in error red. `n` counts denials,
+  not vx's own `vx:` notes; a section holding only notes is headed
+  `SANDBOX`. The buffered renderer
   and the live frame share one builder, so a focused run shows it too
 - **Bottom line:** `└─ <task-id> ── (<duration>) <status tag>`
 

@@ -2960,8 +2960,8 @@ write ../shared/notes.txt
 Every section is conditional: the `$ <command>` line only for an
 executed task (success or failed — a hit replays its stored output and
 shows none), `OUTPUT` only when the task wrote something,
-`SANDBOX VIOLATIONS (N)` only when the sandbox recorded some or vx
-has a note on a failure. The
+`SANDBOX VIOLATIONS (N)` only when the sandbox recorded some (`N`
+counts them) or `SANDBOX` when vx has only a note on a failure. The
 header carries the outcome (`restored-local • abc12345`, `failed (exit
 N)`, …) and the footer repeats it after the duration. A test renders
 this block and checks it against this page, byte for byte.

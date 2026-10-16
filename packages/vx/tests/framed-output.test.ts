@@ -617,6 +617,41 @@ describe('persistent task framing', () => {
     expect(close).toContain('bun(2) deny(1) file-read-data /repo')
   })
 
+  it("vx's own notes are not counted as violations in the header", () => {
+    // The header counted the `vx:` note lines: "(2)" over one denial and
+    // a closing "1 sandbox violation", and "(1)" over a note alone.
+    const n = node('@vzn/vx#test', 'bun test')
+    const denial = 'openat(/repo/a) = -1 ENOENT  [/repo/a]'
+    const note =
+      'vx: the sandbox refused writes outside the project, which are not reported as violations: /x.'
+    const counted = formatFrameClose(
+      n,
+      outcome('@vzn/vx#test', 'failed', {
+        durationMs: 10,
+        exitCode: 1,
+        sandboxViolations: 1,
+        sandboxViolationLines: [denial, note],
+      }),
+    )
+    expect(counted).toContain('SANDBOX VIOLATIONS (1)')
+    const noted = formatFrameClose(
+      n,
+      outcome('@vzn/vx#test', 'failed', {
+        durationMs: 10,
+        exitCode: 1,
+        sandboxViolations: 0,
+        sandboxViolationLines: [note],
+      }),
+    )
+    expect(noted).toBe(
+      '├─ SANDBOX ─────────────────────────────────────────────────\n' +
+        '\n' +
+        `${note}\n` +
+        '\n' +
+        '└─ @vzn/vx#test ── (10ms) failed (exit 1)',
+    )
+  })
+
   it('the LIVE frame shows sandbox violations too — a focused run is where they are read', () => {
     // The focused/live frame omitted the section entirely, so `vx run
     // <one-task>` — exactly how someone debugging a single task invokes it —
