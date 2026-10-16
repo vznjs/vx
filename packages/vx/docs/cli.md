@@ -1867,8 +1867,16 @@ manager is its lockfile (`pnpm-lock.yaml`, `bun.lock`, `yarn.lock`,
 `package-lock.json`), else `packageManager`, else npm; the field it is
 listed in is kept (`--save-dev`, `--dev`, …), and pnpm at a workspace
 root adds `--workspace-root`. The lockfile is updated by that manager.
-vx prints what it runs, runs it there, and exits with an error if it
-fails:
+Every `@vzn/vx-*` plugin the same package.json lists from the registry
+moves in the same install, to the same release, since every @vzn
+package releases together: `pnpm add @vzn/vx@0.0.2 @vzn/vx-otel@0.0.2
+--save-dev`. A plugin left behind is installed even when core is
+already at the release (`› vx upgrade  plugins → 0.0.2`); a plugin in
+another field than core is refused, so no install moves a dependency's
+field. The versions are pinned, so pnpm's `minimumReleaseAge` refuses a
+release too young rather than mixing releases, and the error names
+`minimumReleaseAgeExclude`. vx prints what it runs, runs it there, and
+exits with an error if it fails:
 
 ```
 › vx upgrade  0.0.1 → 0.0.2

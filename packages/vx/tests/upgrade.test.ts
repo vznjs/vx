@@ -15,7 +15,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { generateKeyPairSync, sign } from 'node:crypto'
-import { mkdtempSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -31,6 +31,7 @@ import {
   startedVersion,
   upgradeArgv,
   upgradeGlobal,
+  upgradeManaged,
   verifiedRelease,
   versionSpec,
   type SigningKey,
@@ -529,7 +530,7 @@ describe('managedInstall', () => {
     for (const [manager, lock, field, argv] of cases) {
       const root = await tree({ 'package.json': lists(field), ...lock })
       const install = managedInstall(path.join(root, BIN), root)
-      expect(install).toEqual({ manager, scope: 'project', cwd: root, field } as never)
+      expect(install).toEqual({ manager, scope: 'project', cwd: root, field, plugins: [] } as never)
       expect(upgradeArgv(install!, '1.2.3').join(' ')).toBe(argv)
     }
   })
@@ -548,6 +549,7 @@ describe('managedInstall', () => {
       scope: 'project',
       cwd: path.join(root, 'apps/web'),
       field: 'devDependencies',
+      plugins: [],
     })
     expect(upgradeArgv(member!, '1.2.3')).toEqual(['pnpm', 'add', '@vzn/vx@1.2.3', '--save-dev'])
     await writeFile(path.join(root, 'package.json'), lists('devDependencies'))
@@ -558,6 +560,45 @@ describe('managedInstall', () => {
       '--save-dev',
       '--workspace-root',
     ])
+  })
+
+  it('moves every @vzn/vx-* plugin the manifest lists to the same release, in one install', async () => {
+    // M, 2026-10-16: core and a plugin on different releases is a broken
+    // workspace; one `add` installs them all or none. Platform packages and
+    // workspace links are no plugins to pin.
+    const manifest = (deps: Record<string, string>): string =>
+      JSON.stringify({ devDependencies: { '@vzn/vx': '^0.0.1', ...deps } })
+    const root = await tree({
+      'package.json': manifest({
+        '@vzn/vx-lockfile': '^0.0.1',
+        '@vzn/vx-otel': '0.0.1',
+        '@vzn/vx-linux-x64': '0.0.1',
+        '@vzn/vx-local': 'workspace:*',
+        '@vzn/other': '1.0.0',
+      }),
+      'pnpm-lock.yaml': '',
+    })
+    const install = managedInstall(path.join(root, BIN), root)
+    expect(install?.plugins).toEqual(['@vzn/vx-lockfile', '@vzn/vx-otel'])
+    expect(upgradeArgv(install!, '1.2.3')).toEqual([
+      'pnpm',
+      'add',
+      '@vzn/vx@1.2.3',
+      '@vzn/vx-lockfile@1.2.3',
+      '@vzn/vx-otel@1.2.3',
+      '--save-dev',
+    ])
+    // A plugin in another field would move fields under core's flag: refused.
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({
+        devDependencies: { '@vzn/vx': '^0.0.1' },
+        dependencies: { '@vzn/vx-otel': '^0.0.1' },
+      }),
+    )
+    expect(() => managedInstall(path.join(root, BIN), root)).toThrow(
+      'vx upgrade: @vzn/vx-otel is in dependencies and @vzn/vx in devDependencies; list them in one field so one install moves them together',
+    )
   })
 
   it('global argv per manager', () => {
@@ -711,6 +752,70 @@ describe('upgradeGlobal: the global vx that handed the run to the project', () =
     await chmod(bin, 0o755)
     await expect(upgradeGlobal(bin, '9.9.9', TEST_KEY)).rejects.toThrow(
       `vx upgrade: global vx ${bin}: it did not answer \`--version\`, so it is left as it is`,
+    )
+  })
+})
+
+describe('upgradeManaged: core and its plugins move together', () => {
+  /** A project at `core` with `plugin` installed at `pluginAt`, and a fake `manager` that records its argv and exits `code`. */
+  const project = async (
+    core: string,
+    pluginAt: string,
+    code = 0,
+  ): Promise<{ root: string; said: string; run: () => Promise<void> }> => {
+    const root = mkdtempSync(path.join(dir, 'p-'))
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ devDependencies: { '@vzn/vx': core, '@vzn/vx-otel': pluginAt } }),
+    )
+    for (const [pkg, version] of [
+      ['@vzn/vx', core],
+      ['@vzn/vx-otel', pluginAt],
+    ] as const) {
+      await mkdir(path.join(root, 'node_modules', pkg), { recursive: true })
+      await writeFile(
+        path.join(root, 'node_modules', pkg, 'package.json'),
+        JSON.stringify({ version }),
+      )
+    }
+    const tools = path.join(root, 'tools')
+    const said = path.join(root, 'said')
+    await mkdir(tools)
+    await writeFile(path.join(tools, 'pnpm'), `#!/bin/sh\necho "$*" > ${said}\nexit ${code}\n`)
+    await chmod(path.join(tools, 'pnpm'), 0o755)
+    const install = {
+      manager: 'pnpm' as const,
+      scope: 'project' as const,
+      cwd: root,
+      field: 'devDependencies' as const,
+      plugins: ['@vzn/vx-otel'],
+    }
+    const run = async (): Promise<void> => {
+      const PATH = process.env['PATH']
+      process.env['PATH'] = `${tools}:${PATH}`
+      try {
+        await upgradeManaged(install, '9.9.9', core)
+      } finally {
+        process.env['PATH'] = PATH
+      }
+    }
+    return { root, said, run }
+  }
+
+  it('a core already at the release still installs a plugin left behind', async () => {
+    const { said, run } = await project('9.9.9', '0.0.1')
+    await run()
+    expect(await readFile(said, 'utf8')).toBe('add @vzn/vx@9.9.9 @vzn/vx-otel@9.9.9 --save-dev\n')
+    // Control: both at the release, nothing runs.
+    const both = await project('9.9.9', '9.9.9')
+    await both.run()
+    expect(existsSync(both.said)).toBe(false)
+  })
+
+  it("pnpm's refusal names minimumReleaseAgeExclude with every package it pinned", async () => {
+    const { run } = await project('0.0.1', '0.0.1', 1)
+    await expect(run()).rejects.toThrow(
+      'vx upgrade: pnpm add @vzn/vx@9.9.9 @vzn/vx-otel@9.9.9 --save-dev failed (exit 1) — vx changed nothing itself; if pnpm refused a version published within its minimumReleaseAge, list @vzn/vx, @vzn/vx-otel under minimumReleaseAgeExclude in pnpm-workspace.yaml',
     )
   })
 })
