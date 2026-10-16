@@ -54,6 +54,7 @@ export class Cache implements CacheLayer {
     outputs?: DeclaredOutputs,
   ): Promise<void>
   assertWritable(): void
+  readOnlyNotice(): string | null
   async save(args: {
     hash: string
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>

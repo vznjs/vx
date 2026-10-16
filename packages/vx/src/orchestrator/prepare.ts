@@ -325,16 +325,18 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const readOnly =
     options.remoteReadOnlyByDefault === true &&
     !(options.cache === undefined && namesRemote(workspaceConfig?.cache?.policy))
-  const policy: CachePolicy = readOnly ? { ...asked, remoteWrite: false } : asked
+  const wanted: CachePolicy = readOnly ? { ...asked, remoteWrite: false } : asked
   const localCache = new Cache(
     cacheDir,
-    { read: policy.localRead, write: policy.localWrite },
+    { read: wanted.localRead, write: wanted.localWrite },
     workspaceRoot,
     options.artifactCeiling,
     'open',
     await storeRoot,
   )
-  localCache.assertWritable()
+  const unwritable = localCache.readOnlyNotice()
+  if (unwritable !== null) warnOf(log)(`[vx] ${unwritable}`)
+  const policy: CachePolicy = unwritable === null ? wanted : { ...wanted, localWrite: false }
   // The root files the plugins claim (`VxPlugin.fingerprint`), whose bytes
   // their claimants fold: read now so a task that rewrites one is caught.
   const fingerprintsAt = Date.now()

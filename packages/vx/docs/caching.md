@@ -1211,10 +1211,13 @@ only read keeps the entry (`…; left it (this cache is read-only)`).
 
 ## Storage layout
 
-The run must be able to write here — it records its history at the
-end of every run, hit or miss — so a directory this user cannot write
-into (another user's `.vx/cache`, a read-only checkout) fails the run before
-any task: `cache directory <path> is not writable (EACCES: …)`, with
+A directory this user cannot write into (another user's `.vx/cache`,
+a cache baked read-only into a CI image) serves its hits: the run says
+`[vx] cache directory <path> is not writable (EACCES: …) — serving hits
+from it; this run saves nothing and records no history` once, before
+any task, then restores what it holds and runs the rest without saving
+it. An empty one has nothing to serve and fails the run before any task:
+`cache directory <path> is not writable (EACCES: …)`, with
 `--cache-dir <path>` as the way out. `vx cache clean` is refused the
 same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on.
