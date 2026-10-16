@@ -68,20 +68,18 @@ it('a restore writes nothing into an output folder before it renames', async () 
   mkdirSync(path.join(dest, 'dist'), { recursive: true })
   writeFileSync(path.join(dest, 'dist', 'a.js'), 'old\n')
   let during: string[] = []
-  let staged: string[] = []
   await extractArtifactStream(
     streamOf(await artifact({ 'dist/a.js': 'new\n', 'dist/sub/b.js': 'b\n' })),
     dest,
     undefined,
     () => {
       during = filesUnder(dest)
-      staged = filesUnder(path.join(ws, '.vx', 'tmp'))
     },
     undefined,
     ws,
   )
+  // Small entries may still be in flight to `.vx/tmp/` here; none is in dest.
   expect(during).toEqual(['dist/a.js'])
-  expect(staged.filter((f) => f !== '.gitignore')).toHaveLength(2)
   expect(readFileSync(path.join(dest, 'dist', 'a.js'), 'utf8')).toBe('new\n')
   // The renames empty the staging; its ignore file stays.
   expect(filesUnder(path.join(ws, '.vx', 'tmp'))).toEqual(['.gitignore'])
