@@ -274,7 +274,7 @@ describe('Nx parity — project roots, ignored files and refused spellings', () 
   )
 
   it(
-    'ignored files are not inputs (Nx default); vx refuses an ignored file named outright (`an_exact_path_changes_the_hash…` is opt-in `includeIgnored`)',
+    'ignored files are not inputs (Nx default); one named outright is, as with `an_exact_path_changes_the_hash…` under `includeIgnored`',
     async () => {
       const root = await workspace('vx-parity-nx-ignored-', {
         lib: {
@@ -290,9 +290,9 @@ describe('Nx parity — project roots, ignored files and refused spellings', () 
           path.join(root, 'packages', 'lib', 'vx.config.mjs'),
           `export default { tasks: { t: ${task("{ files: ['src/**', 'src/local.env'] }")} } }\n`,
         )
-        const r = await vx(root, ['run', 'lib#t'])
-        expect(r.code).not.toBe(0)
-        expect(r.out + r.err).toContain('src/local.env')
+        const named = await key(root, 'lib#t')
+        await writeFile(path.join(root, 'packages', 'lib', 'src', 'local.env'), 'X=2\n')
+        expect(await key(root, 'lib#t')).not.toBe(named)
       } finally {
         await rm(root, { recursive: true, force: true })
       }

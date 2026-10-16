@@ -233,8 +233,8 @@ describe('runtime inputs — e2e', () => {
   })
 
   // A gitignored file a tool reads by itself (Vite's `.env.local`) is not a
-  // file git lists, so `files` cannot key it and naming it is refused. The
-  // documented route is a probe over its bytes: docs/caching.md § What's NOT
+  // file git lists, so a broad glob skips it. Named outright it is keyed;
+  // a probe over its bytes still works: docs/caching.md § What's NOT
   // in the key. Without one, an edit replays the old build.
   it('a gitignored .env.local keys only through a probe, which survives the file being absent', async () => {
     const config = (runtime: string) => `export default {

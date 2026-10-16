@@ -88,7 +88,7 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   command and may read anywhere, so its answer taken up front is the
   previous run's bytes. A writer is an upstream whose command may write
   (`commandWriteReach`) or that declares outputs; "does not fold" is
-  `keyed-projects.ts`' `foldedDeps`, transitively (a writer behind a
+  `graph/folds.ts`' `foldedDeps`, transitively (a writer behind a
   folded dependency that leaves it out counts). `deriveStableKeys`
   takes no key for such a task (unstable, so never probed or restored
   ahead of its writer, and its probe is not spawned up front), and

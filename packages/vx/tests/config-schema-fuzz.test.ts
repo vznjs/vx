@@ -151,7 +151,6 @@ function genWorkspace(r: R): Obj {
         rules: maybe(r, () =>
           fields({
             exclusiveOutputs: maybe(r, () => chance(r)),
-            upfrontKeys: maybe(r, () => chance(r)),
           }),
         ),
       }),

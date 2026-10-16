@@ -24,7 +24,7 @@ import {
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
-import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
+import { declaresInput, ignoredInputsNamed, workspaceFilesReachInto } from '../cache/index.js'
 import {
   isUserError,
   listed,
@@ -332,6 +332,17 @@ export async function resolveFilters(
         projects,
         workspaceGlobOwners: (changed: readonly string[], nested: readonly string[]) =>
           workspaceGlobOwners(root, projects, changed, load, stagedOnce, nested),
+        ignoredInputOwners: async () => {
+          const owners = new Map<string, string>()
+          const tasks = [...(await stagedOnce()).values()].flatMap((p) =>
+            Object.entries(p.config.tasks ?? {}).map(([name, t]) => {
+              const id = `${p.name}#${name}`
+              owners.set(id, p.name)
+              return [id, t, p.dir] as const
+            }),
+          )
+          return [...ignoredInputsNamed(root, tasks).keys()].map((id) => owners.get(id)!)
+        },
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
         ...(git !== undefined
           ? {

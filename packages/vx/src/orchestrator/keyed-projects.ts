@@ -5,8 +5,7 @@
 // is decided — on the graph, before any hash exists, through the same
 // selection the hash path applies (`selectFoldedDeps`).
 
-import { isGroupTask, type TaskNode } from '../graph/index.js'
-import { keyedDeps, selectFoldedDeps, type FoldCandidate } from './upstream.js'
+import { foldedDeps, isGroupTask, type FoldCandidate, type TaskNode } from '../graph/index.js'
 
 /**
  * A run's keyed-set lookup: for a task, the directories of every project
@@ -63,41 +62,4 @@ export function keyedProjects(
     }
     return below.get(root.id)!
   }
-}
-
-/**
- * The dependencies `node`'s key folds, per the hash path's rules above, as
- * `keyUpstream` hands them to the key: the scheduled ones less the edges
- * `--exclude-dependencies` left for order alone, plus the dropped ones it
- * keys all the same (`excludedUpstream`), whose own dependencies the walk
- * reads from the run's `keyOnly` map. `node.deps` held the order-only
- * edges and lacked the dropped ones: the sandbox granted a sibling the key
- * does not answer for.
- */
-export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): FoldCandidate[] {
-  const candidates: FoldCandidate[] = []
-  for (const id of keyedDeps(node)) {
-    const dep = nodeOf(id)
-    candidates.push({ node: dep, unit: foldUnit(dep) })
-  }
-  for (const { node: dep } of node.excludedUpstream ?? []) {
-    candidates.push({ node: dep, unit: foldUnit(dep) })
-  }
-  if (isGroupTask(node) && node.config.inputs === undefined) return candidates
-  return selectFoldedDeps(candidates, node.config.inputs?.tasks, node.projectName, node.id)
-}
-
-/**
- * What stands in for a dependency's hash in the dedup: equal exactly when
- * the hashes are. An exec task's key folds its own id (`task:<id>`), so its
- * id is enough; a group's hash is a roll-up of its members' ids and hashes
- * with no id of its own, so two groups over the same members hash alike.
- * The members are `keyUpstream`'s, which `computeGroupHash` is handed: under
- * `--exclude-dependencies` `node.deps` holds order-only edges and lacks the
- * dropped ones, and two groups the key told apart shared a unit.
- */
-function foldUnit(node: TaskNode): string {
-  if (!isGroupTask(node) || node.config.inputs !== undefined) return `task|${node.id}`
-  const members = [...keyedDeps(node), ...(node.excludedUpstream ?? []).map((u) => u.node.id)]
-  return `group|${members.sort().join('|')}`
 }

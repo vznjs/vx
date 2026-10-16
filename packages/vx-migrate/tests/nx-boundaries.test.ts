@@ -102,8 +102,8 @@ describe('nx() config stage', () => {
 
   it('fills run.rules.dependencies when the workspace sets none, and keeps its own', async () => {
     await writeFile(path.join(root, 'eslint.config.mjs'), FLAT)
-    expect(await stage({ run: { rules: { upfrontKeys: false } } })).toEqual({
-      upfrontKeys: false,
+    expect(await stage({ run: { rules: { exclusiveOutputs: false } } })).toEqual({
+      exclusiveOutputs: false,
       dependencies: MAPPED,
     })
     const own = [{ from: 'a', deny: ['b'] }]

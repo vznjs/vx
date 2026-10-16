@@ -24,7 +24,7 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { waitForProducers, writeLocalWorkspace } from './helpers/local-workspace.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { edgesSource, writeEdges } from './helpers/plugin.js'
 import {
   GitFilesCache,
@@ -395,7 +395,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -439,7 +439,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       vx(root, 'run', 'codegen')
       expect(await readFile(path.join(sub, 'x.txt'), 'utf8')).toBe('pinned')
       await rm(path.join(root, 'gen/a.js'))
@@ -496,7 +496,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -514,7 +514,8 @@ describe('stale cache hits', () => {
     'a workspace output written mid-run reaches a consumer whose partition was read before it',
     async () => {
       // The ADDITION twin, on the miss path: `early` reads the workspace
-      // partition first (codegen waits on it), codegen then writes gen/b.ts
+      // partition first (codegen waits on it; it reads no output, which
+      // `vx lock` refuses before the producer), codegen then writes gen/b.ts
       // at the root, and consume resolves `gen/*.ts` against a partition
       // enumerated before that write. Two lines in miss-save.ts keep it
       // honest — the root-anchored mark and the partition invalidation —
@@ -530,7 +531,7 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, cache: { outputs: { files: [] } },
+               inputs: { files: [], workspaceFiles: ['package.json'] }, cache: { outputs: { files: [] } },
              },
              codegen: {
                dependsOn: ['early'],
@@ -559,7 +560,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       vx(root, 'run', 'consume', '--concurrency', '1')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -586,7 +587,7 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               inputs: { files: ['gen/*.ts'] }, cache: { outputs: { files: [] } },
+               inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
              },
              codegen: {
                dependsOn: ['early'],
@@ -614,7 +615,7 @@ describe('stale cache hits', () => {
       git(root, 'commit', '-q', '-m', 'initial')
 
       // Cold: codegen keeps old.ts and emits b.js.
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-old')
 
@@ -640,7 +641,7 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, cache: { outputs: { files: [] } },
+               inputs: { files: [], workspaceFiles: ['package.json'] }, cache: { outputs: { files: [] } },
              },
              codegen: {
                dependsOn: ['early'],
@@ -670,7 +671,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-old')
 
@@ -700,7 +701,7 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, cache: { outputs: { files: [] } },
+               inputs: { files: [], workspaceFiles: ['package.json'] }, cache: { outputs: { files: [] } },
              },
              codegen: {
                dependsOn: ['early'],
@@ -728,7 +729,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('N')
       await rm(path.join(root, 'gen'), { recursive: true })
@@ -769,7 +770,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       expect(vx(root, 'run', 'build')).not.toMatch(/not saved/)
       expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
       await write(path.join(root, 'data/sponsors.json'), '["b"]')
@@ -816,7 +817,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       await write(path.join(root, 'routes/b.tsx'), 'b')
       expect(vx(root, 'run', 'build')).not.toMatch(/changed after its key/)
       expect(await readFile(path.join(root, 'src/routeTree.gen.ts'), 'utf8')).toBe('a.tsx\nb.tsx\n')
@@ -867,7 +868,7 @@ describe('stale cache hits', () => {
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'initial')
 
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       vx(root, 'run', 'consume')
       expect(await readFile(path.join(root, 'out/all.txt'), 'utf8')).toBe('content-of-b')
 
@@ -1422,7 +1423,7 @@ describe('stale cache hits', () => {
         path.join(root, 'package.json'),
         JSON.stringify({ name: 'r', workspaces: ['pkgs/*'] }),
       )
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       await write(path.join(root, 'pkgs/gen/package.json'), JSON.stringify({ name: 'gen' }))
       await write(
         path.join(root, 'pkgs/app/package.json'),
@@ -1859,14 +1860,14 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
            build: {
              dependsOn: ['^build', 'prep'],
              exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt gen/a.txt > dist/app.txt' },
-             inputs: { files: ['src/**', 'gen/**'] }, cache: { outputs: { files: ['dist/**'] } },
+             inputs: { files: ['src/**', 'gen/**'], tasks: ['^build'] }, cache: { outputs: { files: ['dist/**'] } },
            },
          } }\n`,
       )
       await write(path.join(root, '.gitignore'), 'dist/\ngen/\n.vx/cache/\n')
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'prep')
-      await waitForProducers(root, [edgesSource({ app: ['lib'] })])
+      await writeLocalWorkspace(root, [edgesSource({ app: ['lib'] })])
       vx(root, 'run', 'build', '--all')
       const out = vx(root, 'run', 'app#build', '--exclude-dependencies=build', '--output-logs=none')
       // `prep` and `app#build` both current: the run's key is the full one.

@@ -11,7 +11,13 @@
 // fall back to lazy read-through in execute-task, which is always
 // correct. The check is conservative: when unsure, treat as unstable.
 
-import { isGroupTask, outputTakenBack, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import {
+  foldedDeps,
+  isGroupTask,
+  outputTakenBack,
+  type TaskNode,
+  type TaskOutcome,
+} from '../graph/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import {
   checkIgnore,
@@ -23,7 +29,6 @@ import {
   wholeIgnored,
 } from '../util/index.js'
 import { commandWriteReach, mayWriteFingerprint, undeclaredWriteReach } from './sandbox-request.js'
-import { foldedDeps } from './keyed-projects.js'
 import {
   computeGroupHash,
   computeTaskHash,
@@ -566,10 +571,16 @@ export function dependsOnSiblingOutputs(
     if (outputs.length === 0) return true
     // An output the reader's own `!` inputs take back whole is not in its
     // key: `['**/*', '!dist/**']` beside a `dist/**` producer keys the same
-    // before and after it, which is what `run.rules.upfrontKeys` asks a config
-    // to write (X-54).
+    // before and after it, which is what `vx lock` asks a config to write
+    // (X-54).
     // Nor is an output git ignores whole: a key reads only what git lists.
-    const readable = sameProject.readableOf?.get(node.projectName) ?? outputs
+    // Unless an entry starts inside it (`dist/**`): naming an ignored path
+    // makes it an input (`ignoredReach` in cache/inputs.ts).
+    const readable = withNamedIgnored(
+      inputs,
+      outputs,
+      sameProject.readableOf?.get(node.projectName) ?? outputs,
+    )
     const back = inputs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
     const reach = back.length === 0 ? readable : readable.filter((o) => !outputTakenBack(o, back))
     if (reach.length > 0 && workspaceInputsReach(inputs, reach.map(literalPrefix))) return true
@@ -614,6 +625,29 @@ export function dependsOnSiblingOutputs(
     return workspaceInputsReach(wsInputs, dirs)
   }
   return false
+}
+
+/**
+ * `readable`, plus each output git ignores whole that a positive entry of
+ * `inputs` starts inside: its literal prefix at or below the output's.
+ */
+function withNamedIgnored(
+  inputs: readonly string[],
+  outputs: readonly string[],
+  readable: readonly string[],
+): readonly string[] {
+  if (readable.length === outputs.length) return readable
+  const named = outputs.filter((o) => {
+    if (readable.includes(o)) return false
+    const at = literalPrefix(o)
+    if (at === '') return false
+    return inputs.some((g) => {
+      if (g.startsWith('!')) return false
+      const p = literalPrefix(g)
+      return p === at || p.startsWith(`${at}/`)
+    })
+  })
+  return named.length === 0 ? readable : [...readable, ...named]
 }
 
 /**

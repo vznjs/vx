@@ -34,6 +34,7 @@ export interface ConfigSweep {
   outputs: Map<string, string[]>
   inputs: Map<string, string[][]>
   uncached: Set<string>
+  namedIgnored: string[]
   configImports: string[]
   workspaceConfigImports: string[]
   staged: Map<string, ProjectEntry> | null
@@ -47,6 +48,7 @@ export interface JudgeContext {
   armedAt: number
   held(): boolean
   uncached(): ReadonlySet<string>
+  namedIgnored?(): readonly string[] // paths inputs name outright: a git-ignored file at or under one is an edit
   fenced?(ownDir: string, abs: string): boolean // in a project nested under ownDir (makeFence)
   existedAtArm?: ReadonlySet<string> // what git listed at the arm; absent when it could not answer
   trackedAtArm?: ReadonlySet<string> // what git tracked at the arm: a held server is never blamed for one

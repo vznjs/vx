@@ -14,9 +14,9 @@
 // full run looks up.
 
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
-import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
+import { isGroupTask, keyedDeps, type TaskNode, type TaskOutcome } from '../graph/index.js'
 import { computeGroupKey, computeTaskHash, type HashCache } from './task-hash.js'
-import { filterUpstreamHashes, keyedDeps, keyedOutcome } from './upstream.js'
+import { filterUpstreamHashes, keyedOutcome } from './upstream.js'
 
 export interface KeyExcludedArgs {
   /** The scheduled graph, after `excludeDependencies`. */

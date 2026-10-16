@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
-import { waitForProducers } from './helpers/local-workspace.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
@@ -253,7 +253,7 @@ describe('restoring through a dangling link inside the project', () => {
   it(
     'probed in its own slot: the same',
     async () => {
-      await waitForProducers(root)
+      await writeLocalWorkspace(root)
       const appDir = await addProject(root, 'app', {
         files: { 'src/seed.txt': 'seed', '.gitignore': 'dist\nreal-out\n' },
         config: `
@@ -266,7 +266,7 @@ describe('restoring through a dangling link inside the project', () => {
               build: {
                 dependsOn: ['codegen'],
                 exec: { command: 'mkdir -p dist && cat generated.txt > dist/o.txt' },
-                inputs: { files: ['generated.txt'] }, cache: { outputs: { files: ['dist/**'] } },
+                inputs: { files: ['generated.txt'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }

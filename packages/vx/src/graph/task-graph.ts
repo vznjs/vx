@@ -23,6 +23,7 @@ import {
   parseDependencySpec,
   type DependencySpec,
 } from './dependency-spec.js'
+import { foldedDeps, isGroupTask } from './folds.js'
 import type { TaskOutcome } from './scheduler.js'
 
 // Re-exported so existing importers keep working while the type's home
@@ -99,20 +100,6 @@ export function taskId(project: string, task: string): string {
 // reads the same rule instead of a copy; re-exported here because the
 // graph is where every reader of a task id looks for it.
 export { splitTaskId } from '../util/index.js'
-
-/**
- * A task is a "group" if it has no `exec` — it exists only to chain
- * `dependsOn` (an umbrella for `vx run ci`). Group tasks:
- *   - never spawn a process,
- *   - never read/write the cache (it's a config error to declare one),
- *   - never appear in the run summary or `runs` analytics table,
- *   - render no framed block in the live output.
- * Six call sites used to repeat `node.config.exec === undefined`;
- * centralising the predicate prevents that check from drifting.
- */
-export function isGroupTask(node: TaskNode): boolean {
-  return node.config.exec === undefined
-}
 
 /** A keyed group: the default `build` (orchestrator/projects.ts), or a config's group with `inputs`. */
 function isKeyedGroup(task: TaskConfig): boolean {
@@ -789,7 +776,7 @@ export function checkGraph(
   // Under a lock an exclusive graph has no overlap to mark; a non-exclusive
   // one still needs the addition marks the walk derives.
   if (!locked || !exclusive) detectOutputCollisions(nodes, workspaceRoot, exclusive)
-  if (rules?.upfrontKeys !== false && !locked) detectInputOverlaps(nodes, workspaceRoot)
+  if (!locked) detectInputOverlaps(nodes, workspaceRoot)
 }
 
 /**
@@ -1575,13 +1562,14 @@ interface Side {
 }
 
 /**
- * `run.rules.upfrontKeys` (X-54): refuse a task whose input globs can match
- * another task's declared outputs. Such a key reads bytes a producer writes
- * this run, so it is not known until the producer ran (`stable-keys.ts`
- * keeps it waiting); refused, every key reads only what no task writes and
- * can be derived before anything runs (M, 2026-10-07: "hash ahead of time,
- * not waterfall"). A dependency's own key already cascades through
- * `dependsOn`, so the bytes it wrote add nothing a key needs.
+ * Refuse a task whose input globs can match another task's declared
+ * outputs (X-54; no opt-out, owner 2026-10-16). Such a key reads bytes a
+ * producer writes this run, so it is not known until the producer ran;
+ * refused, every key reads only what no task writes and can be derived
+ * before anything runs (M, 2026-10-07: "hash ahead of time, not
+ * waterfall"). A dependency's own key already cascades through
+ * `dependsOn`, so the bytes it wrote add nothing a key needs; the one
+ * exception is `refuseOverlaps`'s unfolded dependency.
  *
  * Proven overlaps only (`outputsOverlap`), as for outputs: a pair the rule
  * cannot decide passes, and the stability gate still keeps it waiting. The
@@ -1631,7 +1619,8 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
     const inFiles = positives(inputs.files)
     const inWs = positives(inputs.workspaceFiles ?? [])
     if (inFiles.length > 0) {
-      bucket(n.projectName).push({ node: n, globs: inFiles, reads: true })
+      const anchor = workspaceRoot === undefined ? undefined : relPosix(workspaceRoot, n.projectDir)
+      bucket(n.projectName).push({ node: n, globs: inFiles, reads: true, anchor })
       filesReaders.push(n)
       projectReaders = true
     }
@@ -1670,7 +1659,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
     }
   }
   if (rootReaders) readsRootedOutputs(memo, found, rooted, filesWriters, workspaceRoot)
-  refuseUnlessIgnored(found, workspaceRoot)
+  refuseOverlaps(found, nodes, workspaceRoot)
 }
 
 function readsRootedOutputs(
@@ -1698,33 +1687,98 @@ function readsRootedOutputs(
   }
 }
 
-/** Each overlapped output, root-relative, and the refusal it meets; the first pair found per output. */
-type Found = Map<string, () => UserError>
+/** One reader of another task's output: the reader's glob's fixed prefix, root-relative. */
+interface Overlap {
+  reader: TaskNode
+  writer: TaskNode
+  prefix: string
+  refuse: () => UserError
+}
+
+/** Each overlapped output, root-relative, and every reader of it. */
+type Found = Map<string, Overlap[]>
 
 /**
- * An output git ignores is no overlap (M, 2026-10-15): a key reads only what
- * git lists, so such an output never reaches it. Asked of git once, for
- * every overlapped output together; an output git cannot speak for (no work
- * tree, a glob no few paths stand for) is refused as before. The answer
- * holds for the lock; a run's stability gate asks git again for itself.
+ * Which overlaps stand. A reader may read the outputs of a task in its
+ * `dependsOn` closure whose key its own does not fold (it sets
+ * `inputs.tasks` and leaves the producer out, also through the tasks it
+ * folds): its key waits for the producer and hashes the bytes (owner,
+ * 2026-10-16). Otherwise an output git ignores whole is no overlap (M,
+ * 2026-10-15), a key reading only what git lists, unless the reader's
+ * glob starts in an ignored path (`dist/**`): naming it is asking for it.
+ * Git is asked once, for every output and prefix together; one it cannot
+ * speak for is refused. The answer holds for the lock; a run's stability
+ * gate asks git again for itself.
  */
-function refuseUnlessIgnored(found: Found, workspaceRoot: string | undefined): void {
+function refuseOverlaps(
+  found: Found,
+  nodes: ReadonlyMap<string, TaskNode>,
+  workspaceRoot: string | undefined,
+): void {
   if (found.size === 0) return
-  if (workspaceRoot !== undefined) {
-    const asks = [...found.keys()].map(ignoreProbes)
-    const paths = asks.flatMap((a) => a?.paths ?? [])
-    const ignored = checkIgnoreSync(workspaceRoot, paths)
-    let listed: string[] | null | undefined
-    const pass = wholeIgnored(found.keys(), ignored, (g) => {
-      listed ??= listedSync(workspaceRoot, [
-        ...new Set(asks.flatMap((a) => (a?.deep === true ? [a.dir] : []))),
-      ])
-      return listed === null || listed.some((f) => taskGlob(g).match(f))
-    })
-    for (const [g, refuse] of found) if (!pass.has(g)) throw refuse()
-    return
+  const reads = dependencyReads(nodes)
+  const left = new Map<string, Overlap[]>()
+  for (const [g, list] of found) {
+    const refused = list.filter((o) => !reads(o.reader, o.writer))
+    if (refused.length > 0) left.set(g, refused)
   }
-  throw found.values().next().value!()
+  if (left.size === 0) return
+  if (workspaceRoot === undefined) throw left.values().next().value![0]!.refuse()
+  const asks = [...left.keys()].map(ignoreProbes)
+  const prefixes = new Set<string>()
+  for (const list of left.values()) {
+    for (const o of list) if (o.prefix !== '') prefixes.add(o.prefix).add(`${o.prefix}/`)
+  }
+  const ignored = checkIgnoreSync(workspaceRoot, [
+    ...asks.flatMap((a) => a?.paths ?? []),
+    ...prefixes,
+  ])
+  let listed: string[] | null | undefined
+  const pass = wholeIgnored(left.keys(), ignored, (g) => {
+    listed ??= listedSync(workspaceRoot, [
+      ...new Set(asks.flatMap((a) => (a?.deep === true ? [a.dir] : []))),
+    ])
+    return listed === null || listed.some((f) => taskGlob(g).match(f))
+  })
+  const named = (o: Overlap): boolean =>
+    o.prefix !== '' && ignored !== null && (ignored.has(o.prefix) || ignored.has(`${o.prefix}/`))
+  for (const [g, list] of left) {
+    for (const o of list) if (!pass.has(g) || named(o)) throw o.refuse()
+  }
+}
+
+/**
+ * Whether a reader may read a writer's outputs: the writer is in the
+ * reader's `dependsOn` closure and not in its folded closure. Each closure
+ * walked once per reader.
+ */
+function dependencyReads(
+  nodes: ReadonlyMap<string, TaskNode>,
+): (reader: TaskNode, writer: TaskNode) => boolean {
+  const nodeOf = (id: string): TaskNode => nodes.get(id)!
+  const deps = new Map<string, Set<string>>()
+  const folded = new Map<string, Set<string>>()
+  const closure = (
+    memo: Map<string, Set<string>>,
+    root: TaskNode,
+    next: (n: TaskNode) => Iterable<TaskNode>,
+  ): Set<string> => {
+    let out = memo.get(root.id)
+    if (out !== undefined) return out
+    out = new Set()
+    const stack = [...next(root)]
+    while (stack.length > 0) {
+      const n = stack.pop()!
+      if (out.has(n.id)) continue
+      out.add(n.id)
+      stack.push(...next(n))
+    }
+    memo.set(root.id, out)
+    return out
+  }
+  return (reader, writer) =>
+    closure(deps, reader, (n) => n.deps.flatMap((d) => nodes.get(d) ?? [])).has(writer.id) &&
+    !closure(folded, reader, (n) => foldedDeps(n, nodeOf).map((c) => c.node)).has(writer.id)
 }
 
 /**
@@ -1778,28 +1832,35 @@ function readsOutputs(
   if (x.reads === y.reads || x.node === y.node) return
   const [reader, writer] = x.reads ? [x, y] : [y, x]
   const at = reader.rel === undefined || reader.rel === '' ? '' : `${reader.rel}/`
+  const readerAt = reader.anchor === undefined || reader.anchor === '' ? '' : `${reader.anchor}/`
   for (const go of writer.globs) {
     const rooted =
       writer.anchor === undefined || writer.anchor === '' ? go : `${writer.anchor}/${go}`
-    if (found.has(rooted) || takenBack(memo, reader, field, go)) continue
+    let list = found.get(rooted)
+    if (list?.some((o) => o.reader === reader.node) === true) continue
+    if (takenBack(memo, reader, field, go)) continue
     for (const gi of reader.globs) {
       if (!outputsOverlap(gi, go)) continue
       const shown =
         writer.rel === undefined || writer.rel === '' ? go : go.slice(writer.rel.length + 1)
       const out = at !== '' && go.startsWith(at) ? go.slice(at.length) : go
-      found.set(
-        rooted,
-        () =>
+      const prefix = staticPrefix(readerAt + gi)
+      if (list === undefined) found.set(rooted, (list = []))
+      list.push({
+        reader: reader.node,
+        writer: writer.node,
+        prefix: prefix === '.' ? '' : prefix,
+        refuse: () =>
           new UserError(
             `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in inputs.${field}, which matches ` +
               `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
-              `another task's outputs (the dependency's key already cascades through dependsOn). ` +
+              `the outputs of a task it does not depend on, or whose key it already folds. ` +
               `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
-              `inputs.${field}, or set run.rules.upfrontKeys: false in .vx/workspace.ts to ` +
-              `let it wait for its producer.`,
+              `inputs.${field}, or depend on ${writer.node.id} and leave it out of ` +
+              `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`,
             'VX_E_INPUT_IS_OUTPUT',
           ),
-      )
+      })
       break
     }
   }

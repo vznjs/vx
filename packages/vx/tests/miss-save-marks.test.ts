@@ -11,7 +11,7 @@ import { Cache, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
-import { waitForProducers } from './helpers/local-workspace.js'
+import { writeLocalWorkspace } from './helpers/local-workspace.js'
 import { edgesSource } from './helpers/plugin.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
@@ -67,7 +67,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         'mkdir -p ../../shared && echo g > ../../shared/gen.txt',
         'shared/**',
       )
-      await waitForProducers(root, [edgesSource({ rd: ['gen'] })])
+      await writeLocalWorkspace(root, [edgesSource({ rd: ['gen'] })])
       expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
       expect(keyedFiles('rd')).toEqual(['shared/gen.txt'])
     },
@@ -82,7 +82,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         'mkdir -p dist && echo g > dist/x.txt',
         'packages/gen/dist/**',
       )
-      await waitForProducers(root, [edgesSource({ rd: ['gen'] })])
+      await writeLocalWorkspace(root, [edgesSource({ rd: ['gen'] })])
       expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
       expect(keyedFiles('rd')).toEqual(['packages/gen/dist/x.txt'])
     },
@@ -95,7 +95,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
   it(
     "a workspace output landing in another project's dir is keyed by that project's reader",
     async () => {
-      await waitForProducers(root, [edgesSource({ rd: ['gen'] })])
+      await writeLocalWorkspace(root, [edgesSource({ rd: ['gen'] })])
       await addProject(root, 'gen', {
         files: { 'src/a.txt': 'a' },
         config: `export default { tasks: { build: {

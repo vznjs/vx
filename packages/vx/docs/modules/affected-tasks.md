@@ -63,6 +63,7 @@ export function affectedRoots(
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph, // the `^name` walk, for the packages it passes through
   explain?: AffectedExplain, // `--dry` only: fills each kept id's reason
+  ignored?: ReadonlyMap<string, string>, // task id → a gitignored input it names that exists
 ): string[] // the ids whose closure the change reaches
 
 export interface AffectedReason {

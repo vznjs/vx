@@ -9,7 +9,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { localWorkspaceSource, WAIT_FOR_PRODUCERS } from './helpers/local-workspace.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { planRun, run } from './helpers/orchestrator.js'
 import { formatPlanJson, formatPlanText } from '../src/cli/plan-format.js'
 import { deferralEligibility, resolveDownloadModes } from '../src/orchestrator/download-policy.js'
@@ -458,15 +458,12 @@ async function fixture(
        } }`,
     )
   }
-  // The downgrade gate keeps a producer eager for a reader of its outputs,
-  // a config the default `rules.upfrontKeys` refuses (X-54).
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    localWorkspaceSource(
-      [
-        pluginSource(
-          'org/fake-remote',
-          `{ executor() {
+    localWorkspaceSource([
+      pluginSource(
+        'org/fake-remote',
+        `{ executor() {
            return {
              name: 'fake-remote',
              remote: true,
@@ -497,12 +494,9 @@ async function fixture(
            }
          },
        }`,
-        ),
-        edgesSource(edges),
-      ],
-      '',
-      WAIT_FOR_PRODUCERS,
-    ),
+      ),
+      edgesSource(edges),
+    ]),
   )
   await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
   const g = globalThis as unknown as { __vxDownload?: Fake }
@@ -710,8 +704,9 @@ describe('--cache-download end to end', () => {
              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
            },
            reader: {
+             dependsOn: ['gen'],
              exec: { command: 'true' },
-             inputs: { files: ['out/**'] }, cache: { outputs: { files: ['d/**'] } },
+             inputs: { files: ['out/**'], tasks: [] }, cache: { outputs: { files: ['d/**'] } },
            },
          } }`,
       )
@@ -748,8 +743,9 @@ describe('--cache-download end to end', () => {
              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out/**'] } },
            },
            reader: {
+             dependsOn: ['gen'],
              exec: { command: 'true' },
-             inputs: { files: ['out/**'] }, cache: { outputs: { files: ['d/**'] } },
+             inputs: { files: ['out/**'], tasks: [] }, cache: { outputs: { files: ['d/**'] } },
            },
          } }`,
       )
@@ -1001,22 +997,19 @@ async function sameProjectFixture(
        use: {
          exec: { command: 'cat out/gen.txt > used.txt' },
          dependsOn: ['gen'],
-         inputs: { files: ${JSON.stringify([readGlob])} },
+         inputs: { files: ${JSON.stringify([readGlob])}, tasks: [] },
          cache: {
            outputs: { files: ['used.txt'] },
          },
        },
      } }`,
   )
-  // The downgrade gate keeps a producer eager for a reader of its outputs,
-  // a config the default `rules.upfrontKeys` refuses (X-54).
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    localWorkspaceSource(
-      [
-        pluginSource(
-          'org/fake-remote',
-          `{ executor() {
+    localWorkspaceSource([
+      pluginSource(
+        'org/fake-remote',
+        `{ executor() {
            return {
              name: 'fake-remote',
              remote: true,
@@ -1038,11 +1031,8 @@ async function sameProjectFixture(
            }
          },
        }`,
-        ),
-      ],
-      '',
-      WAIT_FOR_PRODUCERS,
-    ),
+      ),
+    ]),
   )
   await Bun.spawn(['git', 'init', '-q'], { cwd: root }).exited
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }

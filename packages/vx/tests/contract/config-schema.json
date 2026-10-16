@@ -3,7 +3,7 @@
     "levels": {
       "": ["cache", "lock", "plugins", "run", "watch"],
       "run": ["affectedBase", "concurrency", "continue", "retries", "rules", "schedule", "timeout"],
-      "run.rules": ["dependencies", "exclusiveOutputs", "upfrontKeys"],
+      "run.rules": ["dependencies", "exclusiveOutputs"],
       "cache": [
         "dir",
         "download",
@@ -482,7 +482,7 @@
       },
       "run.rules": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `run.rules` must be an object (fields: exclusiveOutputs, upfrontKeys, dependencies)": [
+        "$CONFIG: `run.rules` must be an object (fields: exclusiveOutputs, dependencies)": [
           "null",
           "true",
           "false",
@@ -513,7 +513,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `run.rules` has unknown field \"x\" (allowed: dependencies, exclusiveOutputs, upfrontKeys)": [
+        "$CONFIG: `run.rules` has unknown field \"x\" (allowed: dependencies, exclusiveOutputs)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -558,42 +558,6 @@
         "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
         "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got {})": ["{}"],
         "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "run.rules.upfrontKeys": {
-        "ok": ["<absent>", "true", "false"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got null)": ["null"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 0)": ["0"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 1)": ["1"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 1.5)": ["1.5"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got -1)": ["-1"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 65536)": ["65536"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got 2147483648)": ["2147483648"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"\")": ["\"\""],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"x\")": ["\"x\""],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"(\")": ["\"(\""],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"30d\")": ["\"30d\""],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"10G\")": ["\"10G\""],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got \"10\")": ["\"10\""],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [])": ["[]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"x\"])": ["[\"x\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"\"])": ["[\"\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [1])": ["[1]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [3000])": ["[3000]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\".\"])": ["[\".\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"**\"])": ["[\"**\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got {})": ["{}"],
-        "$CONFIG: `run.rules.upfrontKeys` must be true or false (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },

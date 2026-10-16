@@ -38,6 +38,18 @@ export function declaresInput(
  *  one path for all its files; `--affected` asks this of it. */
 export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolean
 
+/** Paths a task names outright (literals, globs' fixed prefixes): `files`
+ *  project-relative, `workspaceFiles` root-relative. `vx watch` judges a
+ *  git-ignored edit there. */
+export function namedOutright(task: TaskConfig): { files: string[]; workspaceFiles: string[] }
+
+/** Each keyed task (`[id, config, projectDir]`) naming a gitignored input
+ *  that exists, with that path; one `git check-ignore`. `--affected`'s seed. */
+export function ignoredInputsNamed(
+  root: string,
+  tasks: Iterable<readonly [string, TaskConfig, string]>,
+): Map<string, string>
+
 export interface ResolvedInputs {
   files: string[] // absolute paths, sorted
   listings: InputListing[] // what `files` was filtered from, for `addedInput`
@@ -203,11 +215,12 @@ other walker: a project outside a git work tree is a `UserError`
    compile to the path plus `<path>/**` (`asTrees`, defined in
    `util/paths.ts` and re-exported here — the graph's
    overlapping-output refusal reads the same rule), as in Turbo and
-   every `.gitignore`. A literal that exists on disk but git does not
-   list (gitignored) is refused as a `UserError`: it would contribute
-   nothing to the key, and the task would report up-to-date after
-   that file changed. A literal that does not exist stays silent — an
-   optional file is an ordinary declaration.
+   every `.gitignore`. An entry git answers nothing for — a literal, or
+   a glob's fixed prefix (`dist` of `dist/**`), with no listed path at
+   or under it — is read from disk (`ignoredReach`, `ignoredInputs`):
+   gitignored, named outright, so an input (owner, 2026-10-16). Outside
+   the per-run memo, since a dependency writes there mid-run. One that
+   does not exist stays silent until it does.
 3. **Negative globs** — entries starting with `!`. The `!` is
    stripped; the rest becomes a `Bun.Glob` (a literal is a tree here
    too) and any matched path is removed.

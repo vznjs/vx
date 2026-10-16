@@ -36,7 +36,7 @@ const SUITE_ENV = {
 const BUN_RUNTIME_WRITES = ['~/.bun/install/cache/', '.*.tmp/**']
 const BUN_RUNTIME_NETWORK = ['registry.npmjs.org']
 const BUN_VERSION = ['bun --version']
-// A key reads no other task's outputs (`rules.upfrontKeys`, X-54): the
+// A key reads no other task's outputs (`vx lock`, X-54): the
 // compiled binaries land in `dist/`, so every `**/*` here takes it back.
 // `dist/` is gitignored, so no key read it before either.
 const SOURCES = ['**/*', '!dist/**']

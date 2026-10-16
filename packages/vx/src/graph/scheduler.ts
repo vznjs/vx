@@ -12,7 +12,8 @@ import {
   tieredReverseDepCount,
   type ScheduleStrategy,
 } from './priorities.js'
-import { isGroupTask, type TaskNode } from './task-graph.js'
+import { isGroupTask } from './folds.js'
+import type { TaskNode } from './task-graph.js'
 import type { TaskStatus } from './task-status.js'
 
 /**

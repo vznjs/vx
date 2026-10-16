@@ -144,12 +144,6 @@ export interface WorkspaceRules {
    */
   exclusiveOutputs?: boolean
   /**
-   * Refuse a task whose input globs can match another task's declared
-   * outputs, so every key is derived before any task runs. Off, such a key
-   * waits for its producer (`caching.md` § Local restore tier).
-   */
-  upfrontKeys?: boolean
-  /**
    * Which workspace projects a project may depend on, checked by `vx lock`
    * over each project's direct dependencies (its manifest's and its tasks'
    * cross-project `dependsOn`). Every rule whose `from` selects a project

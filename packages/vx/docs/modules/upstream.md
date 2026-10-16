@@ -22,8 +22,6 @@ NOT the same question:
 // plan and the up-front classify all go through it.
 // `node.orderOnly` edges are left out: they order the run and fold into no key.
 export function keyUpstream(node: TaskNode, upstream: TaskOutcome[]): TaskOutcome[]
-// `node.deps` less `node.orderOnly`: the dependencies a key may fold.
-export function keyedDeps(node: TaskNode): readonly string[]
 // A dependency as a key reads it (only `node` and `hash` matter): the
 // synthetic upstream the plan, the stable keys and the excluded-dependency
 // keys fold.
@@ -36,17 +34,6 @@ export function filterUpstreamHashes(
   selfTaskId: string,
 ): Array<[upstreamTaskId: string, hash: string]>
 
-export interface FoldCandidate {
-  node: TaskNode
-  unit: string // what the fold dedups by: the hash, or a stand-in equal exactly when the hashes are
-}
-export function selectFoldedDeps(
-  deps: readonly FoldCandidate[],
-  filter: readonly string[] | undefined,
-  selfProjectName: string,
-  selfTaskId: string,
-): FoldCandidate[]
-
 export function expandGroupUpstream(upstream: readonly TaskOutcome[]): TaskOutcome[]
 ```
 
@@ -57,11 +44,13 @@ never folded). Order is the iteration order of the internal `Map` —
 the caller of `cache.key` sorts before folding, so order doesn't
 affect identity.
 
-`selectFoldedDeps` is the selection itself, over nodes, split out on
-2026-09-24 so the sandbox's keyed set (`keyed-projects.ts`) walks the
-graph through the SAME matcher the hash path applies — one copy of the
-rule, so what the key folds and what the sandbox believes it folds
-cannot drift. The hash path passes each upstream with its hash as the
+`selectFoldedDeps` (`graph/folds.ts`, with `keyedDeps`, `foldedDeps`
+and `refuseFiltersThroughGroups`) is the selection itself, over nodes,
+split out on 2026-09-24 so the sandbox's keyed set (`keyed-projects.ts`)
+walks the graph through the SAME matcher the hash path applies, and
+moved into the graph on 2026-10-16 so `vx lock`'s input-overlap rule
+reads it too — one copy of the rule, so what the key folds and what the
+sandbox and the lock believe it folds cannot drift. The hash path passes each upstream with its hash as the
 unit; the graph walk passes a structural stand-in (a task's id, which
 its key folds; a group's sorted member ids as `keyUpstream` reads them,
 since two groups over the same members hash alike and excluding either

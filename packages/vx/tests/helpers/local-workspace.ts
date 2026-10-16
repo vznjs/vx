@@ -28,23 +28,12 @@ export default { plugins: [${plugins.join(', ')}]${rules === undefined ? '' : `,
 `
 }
 
-/**
- * The `rules` of a fixture whose key reads another task's outputs: the
- * default `rules.upfrontKeys` refuses that config (X-54), and the rows
- * that pin how vx keeps such a key correct need it loaded.
- */
-export const WAIT_FOR_PRODUCERS = '{ upfrontKeys: false }'
-
-/** Rewrites `root`'s `.vx/workspace.mjs` with `WAIT_FOR_PRODUCERS` and only the `extra` plugins. */
-export async function waitForProducers(root: string, extra: readonly string[] = []): Promise<void> {
-  await Bun.write(
-    path.join(root, '.vx/workspace.mjs'),
-    localWorkspaceSource(extra, '', WAIT_FOR_PRODUCERS),
-  )
-}
-
-export async function writeLocalWorkspace(root: string): Promise<void> {
-  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource())
+/** Rewrites `root`'s `.vx/workspace.mjs` with only the `extra` plugins. */
+export async function writeLocalWorkspace(
+  root: string,
+  extra: readonly string[] = [],
+): Promise<void> {
+  await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource(extra))
 }
 
 /** `localWorkspaceSource()` with `fields` (an object-literal body) beside its plugins. */

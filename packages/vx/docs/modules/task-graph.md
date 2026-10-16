@@ -54,7 +54,6 @@ export function excludeDependencies(
 // Lives in `src/util/task-id.ts` (the cache reads the same rule and may
 // not import the graph); re-exported here and on the façade.
 export function splitTaskId(id: string): [project: string, task: string]
-export function isGroupTask(node: TaskNode): boolean
 // The task a config declares under `name`, by OWN property: `constructor`
 // or `toString` is no task unless the config names it (item 897).
 export function declaredTask(
@@ -64,7 +63,7 @@ export function declaredTask(
 export function checkGraph(
   nodes: Map<string, TaskNode>,
   workspaceRoot?: string,
-  rules?: GraphRules, // `exclusiveOutputs`: edge-ordered overlap; `upfrontKeys`: inputs over outputs
+  rules?: GraphRules, // `exclusiveOutputs`: edge-ordered overlap
 ): void // id keys, deps, cycle, output collisions, inputs reading outputs; `locked` skips the rules
 // Does `negatives` (an input list's `!` entries, `!` stripped) take back
 // every path `output` can select? (X-54)
@@ -216,7 +215,7 @@ order. One project of 4,000 tasks with outputs built its graph in
 
 ## Inputs that read outputs
 
-While `rules.upfrontKeys` is on (the default, X-54), `detectInputOverlaps`
+Unless the graph is locked, `detectInputOverlaps` (X-54, no opt-out)
 refuses a cached task whose input globs can match another task's
 declared outputs: `inputs.files` against the same project's
 `outputs.files`, and `inputs.workspaceFiles` against every

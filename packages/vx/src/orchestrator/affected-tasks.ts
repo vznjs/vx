@@ -5,8 +5,8 @@
 // and a spec edit `ui#build`'s inputs leave out stops at `ui`'s own tasks.
 
 import path from 'node:path'
-import type { WorkspaceRules } from '../config.js'
-import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
+import type { TaskConfig, WorkspaceRules } from '../config.js'
+import { declaresInput, ignoredInputsNamed, workspaceFilesReachInto } from '../cache/index.js'
 import {
   buildTaskGraph,
   compileTaskPattern,
@@ -99,6 +99,8 @@ export function affectedRoots(
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph,
   explain?: AffectedExplain,
+  /** Task id → a gitignored input it names that exists (`ignoredInputSeeds`). */
+  ignored?: ReadonlyMap<string, string>,
 ): string[] {
   const whole = wholeProjects(changes, projects)
   const seeds = explain === undefined ? null : new Map<string, AffectedReason>()
@@ -144,6 +146,11 @@ export function affectedRoots(
     // Asked of every node, not only the changed projects' (the
     // `workspaceFiles` owners): a `graph` hook may have given the glob.
     if (keyed) {
+      const named = ignored?.get(n.id)
+      if (named !== undefined) {
+        seeds?.set(n.id, { kind: 'input', file: named })
+        return true
+      }
       const file = changes.changed.find((rel) => declaresInput(task, null, rel))
       const dir =
         file === undefined
@@ -226,6 +233,19 @@ export function affectedRoots(
   return kept
 }
 
+function ignoredInputSeeds(
+  nodes: ReadonlyMap<string, TaskNode>,
+  projects: ReadonlyMap<string, ProjectEntry>,
+  root: string,
+): Map<string, string> {
+  const tasks: Array<[string, TaskConfig, string]> = []
+  for (const n of nodes.values()) {
+    const dir = projects.get(n.projectName)?.dir
+    if (dir !== undefined) tasks.push([n.id, n.config, dir])
+  }
+  return ignoredInputsNamed(root, tasks)
+}
+
 /**
  * The requested tasks `--affected` keeps, in their order: one the user
  * named (`pkg#task`), one in a project another include selected outright
@@ -237,11 +257,22 @@ export function keptByAffected<R extends { project: string; task: string }>(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph,
-  keep: { named?: ReadonlySet<string>; outright?: ReadonlySet<string> } = {},
+  keep: {
+    named?: ReadonlySet<string>
+    outright?: ReadonlySet<string>
+    /** Given, a task naming a gitignored input that exists is reached (`ignoredInputSeeds`). */
+    workspaceRoot?: string
+  } = {},
   explain?: AffectedExplain,
 ): R[] {
   const ids = requested.map((r) => `${r.project}#${r.task}`)
-  const reached = new Set(affectedRoots(nodes, ids, changes, projects, packageGraph, explain))
+  const ignored =
+    keep.workspaceRoot === undefined
+      ? undefined
+      : ignoredInputSeeds(nodes, projects, keep.workspaceRoot)
+  const reached = new Set(
+    affectedRoots(nodes, ids, changes, projects, packageGraph, explain, ignored),
+  )
   return requested.filter((r, i) => {
     const id = ids[i]!
     const why: AffectedReason['kind'] | null =
@@ -285,6 +316,7 @@ export async function affectedTaskProjects(args: {
   if (hasHook(args.plugins, 'graph')) await applyGraphStage(args.plugins, nodes, args)
   const kept = keptByAffected(nodes, requested, args.changes, args.projects, args.packageGraph, {
     outright: new Set(args.outright),
+    workspaceRoot: args.workspaceRoot,
   })
   return kept.map((r) => r.project)
 }

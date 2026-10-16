@@ -49,7 +49,7 @@
     "[\"**/.*\"]": [".env", ".gitignore", "src/deep/.hidden.ts"],
     "[\".github/**\"]": [".github/ci.yml"],
     "[\"README.md\"]": ["README.md"],
-    "[\"ignored.txt\"]": "refused: inputs.files: \"ignored.txt\" exists in $ROOT/pkg but git does not report it, so it contributes NOTHING to the cache key — input globs filter the files git lists, and a filter cannot add one back. The task would keep reporting up-to-date after that file changed. If it is generated, depend on the task that produces it via inputs.tasks; if it should be tracked, remove it from .gitignore.",
+    "[\"ignored.txt\"]": ["ignored.txt"],
     "[\"node_modules/**\"]": [],
     "[\"src\"]": [
       "src/(group)/page.ts",

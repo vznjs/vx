@@ -29,6 +29,7 @@ import {
   normalizeGlob,
   outputMatcher,
   realpathOf,
+  checkIgnoreSync,
   relPosix,
   shellArgv,
   slashBraceExpansions,
@@ -354,10 +355,21 @@ function resolveWorkspaceFiles(args: {
   const ownsAny =
     splitNegations(args.ownWorkspaceOutputs).positive.length > 0 ||
     splitNegations(args.ownOutputs).positive.length > 0
+  const reach = ignoredReach(reachOf(positive), gitFiles)
   const files = base.then((all) => {
     const kept = ownsAny ? all.filter((abs) => !own(relPosix(args.workspaceRoot, abs))) : all
     refuseUndecodable(kept, undecodable, args.workspaceRoot, 'workspaceFiles')
-    return kept
+    if (reach.length === 0) return kept
+    // Outside the memo: an ignored file a task writes mid-run leaves the
+    // snapshot as it was.
+    isPositive ??= anyTaskGlob(asTrees(positive))
+    const accept = isPositive
+    const extra = ignoredInputs(
+      args.workspaceRoot,
+      reach,
+      (rel) => accept(rel) && !excludedByDeclaration(rel) && !own(rel),
+    )
+    return extra.length === 0 ? kept : mergeSorted(kept, extra)
   })
   return { files, listing }
 }
@@ -369,22 +381,11 @@ async function resolveWorkspaceFilesOver(
   isPositive: (rel: string) => boolean,
   excluded: (rel: string) => boolean,
 ): Promise<string[]> {
-  // Second call site of the literal-input guard. `resolveWorkspaceFiles`
-  // carries its own copy of the filter-over-git-set design, so the same
-  // silently-folds-nothing hazard exists here — and a fix applied only to the
-  // project half would pass that half's tests while leaving this one live.
-  const unmatchedLiterals = unanswered(
-    positive.map(normalizeGlob).filter(isLiteralPattern).map(stripTrailingSlash),
-    gitFiles,
-  )
   const candidates: string[] = []
   for (const rel of gitFiles) {
     if (!isPositive(rel)) continue
     if (excluded(rel)) continue
     candidates.push(path.resolve(args.workspaceRoot, rel))
-  }
-  if (unmatchedLiterals.size > 0) {
-    await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.workspaceRoot, 'workspaceFiles')
   }
   // Same OID-trust shortcut as project files: a clean-per-status
   // tracked file necessarily exists on disk.
@@ -1282,51 +1283,84 @@ function lowerBound(files: readonly string[], key: string): number {
 }
 
 /**
- * Refuse a literal `inputs.files` entry that EXISTS ON DISK but is
- * invisible to git — gitignored, or otherwise absent from
- * `git ls-files --cached --others --exclude-standard`.
- *
- * Such an entry contributes nothing to the cache key, so the task stops
- * tracking a file its own config names as an input. That is a stale hit, and a
- * quiet one: the run replays cached stdout, so it even LOOKS like it executed.
- *
- * Turbo honours the declaration instead (an explicit `inputs` entry overrides
- * gitignore). vx cannot afford to, and the reason is not cost: honouring it
- * would make the cache key depend on a change that `git diff` and
- * `git ls-files --others` CANNOT SEE, so editing that input would re-key the
- * task while `--affected` selected nothing. `docs/cli.md` states the invariant
- * those two surfaces owe each other as a principle — "input hashing sees it, so
- * `--affected` must too" — and it was closed for lockfiles only recently.
- * Honouring a gitignored input would reopen it from the other side.
- *
- * An entry that does NOT exist on disk stays silent: that is an ordinary stale
- * declaration, and refusing it would break every config that lists an
- * optional file.
- *
- * "Exists" is lstat, not `Bun.file(p).exists()`: that answers false for a
- * DIRECTORY, so a literal naming a gitignored `gen/` was never judged and
- * folded nothing in silence — the stale hit this refusal exists to stop, one
- * directory above where it looked (item 565, fixed in 576). A literal naming
- * an EMPTY directory is refused by the same rule, and that is right: git
- * lists no file under it, so it folds nothing whether tracked or not.
+ * The entries a declaration names outright that git answers nothing for: a
+ * literal, or a glob's fixed prefix (`dist` of `dist/**`), with no listed
+ * path at or under it. Such a path is gitignored or absent, and naming it
+ * is asking for it (owner, 2026-10-16), so {@link ignoredInputs} reads it
+ * from disk. A broad glob (`**`, or `src/**` over a listed `src`) reaches
+ * no ignored file: `node_modules` is never walked.
  */
-async function assertNoInvisibleLiteralInputs(
-  literals: ReadonlySet<string>,
-  base: string,
-  field: 'files' | 'workspaceFiles' = 'files',
-): Promise<void> {
-  for (const rel of literals) {
-    if (!existsOnDisk(path.resolve(base, rel))) continue
-    throw new UserError(
-      `inputs.${field}: "${rel}" exists in ${base} but git does not report it, ` +
-        `so it contributes NOTHING to the cache key — input globs filter the files git ` +
-        `lists, and a filter cannot add one back. The task would keep reporting ` +
-        `up-to-date after that file changed. If it is generated, depend on the task ` +
-        `that produces it via inputs.tasks; if it should be tracked, remove it ` +
-        `from .gitignore.`,
-    )
-  }
+function ignoredReach(
+  reach: { prefixes: readonly string[]; literals: readonly string[] },
+  listed: readonly string[],
+): readonly string[] {
+  const named = outright(reach)
+  if (named.length === 0) return []
+  // Per listing and entries: thousands of tasks share a few declarations.
+  let memo = reachMemo.get(listed)
+  if (memo === undefined) reachMemo.set(listed, (memo = new Map()))
+  const key = named.join('\0')
+  let left = memo.get(key)
+  if (left === undefined) memo.set(key, (left = [...unanswered(named, listed)]))
+  return left
 }
+
+const reachMemo = new WeakMap<readonly string[], Map<string, readonly string[]>>()
+
+/**
+ * A declaration's literals and globs' fixed prefixes, each once: none for a
+ * glob that starts with a wildcard, and none that leaves the directory the
+ * entries are relative to (a project's boundary is hard).
+ */
+function outright(reach: { prefixes: readonly string[]; literals: readonly string[] }): string[] {
+  return [
+    ...new Set(
+      [...reach.literals, ...reach.prefixes].filter(
+        (p) => p !== '' && p !== '.' && p !== '..' && !p.startsWith('../') && !path.isAbsolute(p),
+      ),
+    ),
+  ]
+}
+
+/**
+ * The files on disk under the {@link ignoredReach} entries that `accept`
+ * keeps, sorted and absolute. A file is hashed from disk like any untracked
+ * one; nothing here is stored or restored. An install (`node_modules`)
+ * stays out, as in the enumeration: lockfile plugins key it. lstat, not
+ * `exists()`: that answers false for a directory. Never memoized: a dependency writes these
+ * mid-run.
+ */
+function ignoredInputs(
+  root: string,
+  reach: readonly string[],
+  accept: (rel: string) => boolean,
+): string[] {
+  const found = new Set<string>()
+  for (const entry of reach) {
+    const abs = path.resolve(root, entry)
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    if (st === undefined) continue
+    if (!st.isDirectory()) {
+      if ((st.isFile() || st.isSymbolicLink()) && !isInstalledPath(entry) && accept(entry))
+        found.add(abs)
+      continue
+    }
+    for (const rel of WALK.scanSync({
+      cwd: abs,
+      onlyFiles: false,
+      followSymlinks: false,
+      dot: true,
+    })) {
+      const full = `${entry}/${rel.split(path.sep).join('/')}`
+      if (isInstalledPath(full) || !accept(full)) continue
+      const file = path.join(abs, rel)
+      if (isInputOnDisk(file)) found.add(file)
+    }
+  }
+  return [...found].sort()
+}
+
+const WALK = new Bun.Glob('**')
 
 interface ResolveFilesArgs {
   projectDir: string
@@ -1515,6 +1549,71 @@ export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean 
   return reaches(reachOf(splitNegations(ws).positive).prefixes, dir)
 }
 
+/**
+ * Each keyed task (`[id, config, projectDir]`) naming a gitignored input
+ * that exists, with that path, workspace-relative. No diff shows an edit to
+ * an ignored file, and the key hashes it, so `--affected` cannot say it is
+ * unchanged: it reaches the task (owner, 2026-10-16). One `git
+ * check-ignore` asks for every named path on disk; a tracked one is never
+ * ignored, so a task naming none pays only the lstats.
+ */
+export function ignoredInputsNamed(
+  root: string,
+  tasks: Iterable<readonly [string, TaskConfig, string]>,
+): Map<string, string> {
+  const asked = new Map<string, string[]>()
+  const onDisk = new Map<string, string | null>()
+  const probe = (rel: string): string | null => {
+    let p = onDisk.get(rel)
+    if (p === undefined) {
+      const st = lstatSync(path.join(root, rel), { throwIfNoEntry: false })
+      p = st === undefined ? null : st.isDirectory() ? `${rel}/` : rel
+      onDisk.set(rel, p)
+    }
+    return p
+  }
+  for (const [id, task, dir] of tasks) {
+    if (task.inputs === undefined || task.exec === undefined) continue
+    const at = relPosix(root, dir)
+    const named = namedOutright(task)
+    const paths: string[] = []
+    for (const rel of named.files) {
+      const p = probe(at === '' ? rel : `${at}/${rel}`)
+      if (p !== null) paths.push(p)
+    }
+    for (const rel of named.workspaceFiles) {
+      const p = probe(rel)
+      if (p !== null) paths.push(p)
+    }
+    if (paths.length > 0) asked.set(id, paths)
+  }
+  const out = new Map<string, string>()
+  if (asked.size === 0) return out
+  const ignored = checkIgnoreSync(root, [...new Set([...asked.values()].flat())])
+  if (ignored === null || ignored.size === 0) return out
+  for (const [id, paths] of asked) {
+    const hit = paths.find((p) => ignored.has(p))
+    if (hit !== undefined) out.set(id, hit.endsWith('/') ? hit.slice(0, -1) : hit)
+  }
+  return out
+}
+
+/**
+ * The paths a task names outright (literals, and globs' fixed prefixes),
+ * `files` relative to its project and `workspaceFiles` to the root: where a
+ * gitignored input can be (`ignoredReach`).
+ */
+export function namedOutright(task: TaskConfig): { files: string[]; workspaceFiles: string[] } {
+  const inputs = task.inputs
+  const plan =
+    inputs === undefined ? null : filesPlan(inputs.files, task.cache?.outputs.files ?? [])
+  const ws = inputs?.workspaceFiles ?? []
+  return {
+    files: plan === null ? [] : outright(plan),
+    workspaceFiles: ws.length === 0 ? [] : outright(reachOf(splitNegations(ws).positive)),
+  }
+}
+
 function inPlan(plan: FilesPlan, rel: string): boolean {
   let input = plan.verdicts.get(rel)
   if (input === undefined) {
@@ -1579,7 +1678,14 @@ async function resolveFiles(
     // inputs must be walked again.
     if (memo !== undefined && memo.snapshot === gitFiles) {
       return {
-        files: [...memo.result],
+        files: withIgnored(
+          args.projectDir,
+          memo.result,
+          ignoredReach(plan, gitFiles),
+          plan,
+          nested,
+          ownWsOutput,
+        ),
         listing: listingFor(args, gitFiles, plan, nested, ownWsOutput),
       }
     }
@@ -1637,10 +1743,7 @@ async function resolveFiles(
     if (!input && !committed(abs)) continue
     candidates.push(abs)
   }
-  const unmatchedLiterals = unanswered(plan.literals, gitFiles)
-  if (unmatchedLiterals.size > 0) {
-    await assertNoInvisibleLiteralInputs(unmatchedLiterals, args.projectDir, 'files')
-  }
+  const reach = ignoredReach(plan, gitFiles)
   refuseUndecodable(candidates, undecodable, args.projectDir, 'files')
   // Second pass: existence check — but ONLY for paths without a
   // trusted index OID. A clean-per-status tracked file necessarily
@@ -1658,13 +1761,29 @@ async function resolveFiles(
       break
     }
   }
-  // Stored only on the way out: a declaration whose literal named an
-  // invisible file threw above, and every task sharing it must throw too.
   args.projectFilesCache?.set(memoKey, { snapshot: gitFiles, result: resolved })
   return {
-    files: [...resolved],
+    files: withIgnored(args.projectDir, resolved, reach, plan, nested, ownWsOutput),
     listing: listingFor(args, gitFiles, plan, nested, ownWsOutput),
   }
+}
+
+/** The resolved files, plus the gitignored ones the declaration names outright. */
+function withIgnored(
+  projectDir: string,
+  resolved: readonly string[],
+  reach: readonly string[],
+  plan: FilesPlan,
+  nested: (rel: string) => boolean,
+  ownWsOutput: (rel: string) => boolean,
+): string[] {
+  if (reach.length === 0) return [...resolved]
+  const extra = ignoredInputs(
+    projectDir,
+    reach,
+    (rel) => inPlan(plan, rel) && !nested(rel) && !ownWsOutput(rel),
+  )
+  return extra.length === 0 ? [...resolved] : mergeSorted(resolved, extra)
 }
 
 function listingFor(

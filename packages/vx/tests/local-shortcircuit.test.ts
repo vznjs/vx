@@ -45,7 +45,7 @@ const silentLogger = (fixture: Fixture): Logger => {
 }
 
 // The gate this file pins decides only for a key that MAY read another
-// task's outputs, which `rules.upfrontKeys` refuses by default (X-54).
+// task's outputs: a dependency's its key does not fold (X-54).
 // Every row's edges, whichever of the projects a row adds.
 const EDGES = edgesSource({
   app: ['lib'],
@@ -58,7 +58,7 @@ const EDGES = edgesSource({
   'dp-app': ['dp-lib'],
   fapp: ['fprep'],
 })
-const WAITING = localWorkspaceSource([EDGES], '', '{ upfrontKeys: false }')
+const WAITING = localWorkspaceSource([EDGES])
 
 async function makeWorkspace(): Promise<Fixture> {
   const root = await makeWorkspaceRoot({ prefix: 'vx-sc-' })
@@ -197,7 +197,7 @@ describe('local cache short-circuit', () => {
               consume: {
                 dependsOn: ['codegen'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -225,9 +225,9 @@ describe('local cache short-circuit', () => {
   )
 
   it(
-    'under rules.upfrontKeys a reader that takes the output back is restore-tier (X-54)',
+    'a reader that takes the output back is restore-tier (X-54)',
     async () => {
-      // The default rule refuses `**/*` beside build's output; with the
+      // `vx lock` refuses `**/*` beside build's output; with the
       // output excluded, test's key cannot see it, so it is known before
       // build runs and both restore ahead of the schedule.
       await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), localWorkspaceSource([EDGES]))
@@ -408,7 +408,7 @@ describe('local cache short-circuit', () => {
               consume: {
                 dependsOn: ['b#mid'],
                 exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['out.txt'] } },
+                inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }
@@ -479,7 +479,7 @@ describe('local cache short-circuit', () => {
               read: {
                 dependsOn: ['codegen'],
                 exec: { command: 'true' },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -540,7 +540,7 @@ describe('local cache short-circuit', () => {
               read: {
                 dependsOn: ['codegen'],
                 exec: { command: 'true' },
-                inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['**/*'], tasks: [] }, cache: { outputs: { files: [] } },
               },
               all: { dependsOn: ['read'] },
             },
@@ -711,52 +711,6 @@ describe('local cache short-circuit', () => {
   )
 
   it(
-    "a task whose workspaceFiles INPUTS read the writer's output stays OUT, edge or no edge",
-    async () => {
-      // `rdr` lives where no output lands and has no edge to the writer, so
-      // its key is stable and probed; but its up-front key folded
-      // `shared/**` as it was BEFORE this run's writer ran. Restoring it
-      // early would restore an artifact keyed on the old bytes — the
-      // `workspaceInputsReach` term of the exclusion, held by nothing until
-      // item 640. CONTROL: `solo`, which reads nothing there, keeps the tier.
-      await soloAndWriter(`{ files: [], workspaceFiles: ['shared/g.txt'] }`)
-      // The writer's bytes are on disk before the cold run, so rdr's key is
-      // the same whether it ran before or after the writer in that run.
-      await Bun.write(path.join(fixture.root, 'shared', 'g.txt'), 'x\n')
-      await addProject(fixture.root, 'rdr', {
-        files: { 'src/r.txt': 'r' },
-        config: `
-          export default {
-            tasks: {
-              build: {
-                exec: { command: "cat ../../shared/g.txt > out.txt 2>/dev/null || : > out.txt" },
-                inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
-                cache: {
-                  outputs: { files: ['out.txt'] },
-                },
-              },
-            },
-          }
-        `,
-      })
-      const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
-      expect(cold.ok).toBe(true)
-      // The cold run's rdr read g.txt before the writer rewrote it, so its
-      // save was withheld; the second run saves it, and only a HIT can be
-      // kept out of the tier (a miss never enters it).
-      expect(
-        (await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })).ok,
-      ).toBe(true)
-      const c = await classify(fixture, ['build'])
-      expect(c.preProbedIds.has('rdr#build')).toBe(true)
-      expect(c.hitIds.has('rdr#build')).toBe(true)
-      expect(c.restoreTier.has('rdr#build')).toBe(false)
-      expect(c.restoreTier.has('solo#build')).toBe(true)
-    },
-    TIMEOUT,
-  )
-
-  it(
     'a cache without getMany classifies through per-task probes, exclusions intact',
     async () => {
       // `getMany` is optional on CacheLayer; a layer without it takes the
@@ -819,7 +773,7 @@ describe('local cache short-circuit', () => {
               e2e: {
                 dependsOn: ['build'],
                 exec: { command: 'true' },
-                inputs: { files: ['dist/**'] }, cache: { outputs: { files: [] } },
+                inputs: { files: ['dist/**'], tasks: [] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -918,8 +872,15 @@ describe('local cache short-circuit', () => {
     async () => {
       // `**/g.txt` can land anywhere, so every task stays out, the writer
       // included — exactly the rule 584 replaced, kept for the spelling
-      // that earns it.
+      // that earns it. `solo` reads only what that output cannot match.
       await soloAndWriter(`{ files: [], workspaceFiles: ['**/g.txt'] }`)
+      await addProject(fixture.root, 'solo', {
+        files: { 'src/a.md': 'a' },
+        config: `export default { tasks: { build: {
+          exec: { command: "node -e 'process.stdout.write(String(Date.now()))' > out.txt" },
+          inputs: { files: ['src/*.md'] }, cache: { outputs: { files: ['out.txt'] } },
+        } } }`,
+      })
       const cold = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
       expect(cold.ok).toBe(true)
       const c = await classify(fixture, ['build'])
@@ -1069,7 +1030,7 @@ describe('local cache short-circuit', () => {
       // only with `rules.exclusiveOutputs` off (X-53).
       await Bun.write(
         path.join(fixture.root, '.vx/workspace.mjs'),
-        localWorkspaceSource([EDGES], '', '{ exclusiveOutputs: false, upfrontKeys: false }'),
+        localWorkspaceSource([EDGES], '', '{ exclusiveOutputs: false }'),
       )
       await addProject(fixture.root, 'a', {
         files: { 'src/a.txt': 'a' },

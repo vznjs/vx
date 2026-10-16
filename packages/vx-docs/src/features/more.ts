@@ -828,7 +828,7 @@ export const MORE: readonly Feature[] = [
     hook: '`vx lock` refuses an input glob another task’s outputs could match, so keys never wait on a build.',
     body: [
       'If `test` reads `dist/**` that `build` writes, its key depends on what `build` produces, and no one can know it until `build` runs. Plans and remote caches stop working.',
-      'The `upfrontKeys` rule, on by default, makes `vx lock` refuse that overlap and name the fix: exclude the output from the glob. The dependency’s key already reaches the reader through `dependsOn`.',
+      '`vx lock` always refuses that overlap and names the fix: exclude the output from the glob, or depend on `build` and leave it out of `inputs.tasks`, so the key waits for `build` and hashes the bytes it wrote.',
       'An output git ignores is no overlap: a key reads only what git lists, so `**/*` beside a gitignored `**/dist/**` keys before the build. A tracked output is still refused.',
     ],
     example: {
@@ -1403,14 +1403,14 @@ export const MORE: readonly Feature[] = [
     slug: 'workspace-rules',
     title: 'Rules that catch slow configs',
     category: 'config',
-    hook: 'Checks for configs that would make runs slow or wrong, on by default, each one optional.',
+    hook: 'Checks for configs that would make runs slow or wrong, on by default.',
     body: [
       'Two tasks writing the same `dist/**` delete each other’s output. An input glob that reads another task’s output makes keys wait on builds. `vx lock` refuses both, with the fix; runs never check.',
-      'Each rule can be turned off in `.vx/workspace.ts` when you know better.',
+      '`exclusiveOutputs` can be turned off in `.vx/workspace.ts` so a dependant adds to its upstream’s outputs. The input check has no switch.',
     ],
     example: {
       lang: 'ts',
-      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  run: { rules: { exclusiveOutputs: false, upfrontKeys: true } },\n})",
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\n\nexport default defineWorkspace({\n  run: { rules: { exclusiveOutputs: false } },\n})",
     },
     image: 'workspace-rules.png',
     imageAlt: 'Workspace rules turned on and off.',

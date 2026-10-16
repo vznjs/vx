@@ -358,6 +358,10 @@ A symlinked input keys what it points to, so a link whose target
 changed (a file the diff names, or one under a linked directory) is a
 changed path of its project, and a link to a target git cannot diff
 (outside the workspace, or git-ignored) is one on every run.
+So is a gitignored file a task's inputs name outright (`.env.local`,
+`dist/**`) while it exists: the key hashes it, git cannot diff it, so
+the task is selected on every `--affected` run (one `git check-ignore`
+over the paths tasks name, asked only under `--affected`).
 `.vx/projects.lock.json` is filtered out of the changed set — a `vx lock`
 re-write never marks every project affected.
 
@@ -1296,7 +1300,8 @@ Always ignored (no re-trigger):
 
 - `node_modules/`, `.git/`, `.vx/cache/` anywhere in the path.
 - A path git ignores (`git check-ignore`, asked once per debounce
-  window, never per event): invisible to every cache key — inputs are
+  window, never per event), unless a task's inputs name it outright
+  (`.env.local`, `dist/**`): invisible to every other cache key — inputs are
   tracked + untracked-not-ignored — so a cycle it started could change
   nothing. A tracked file that matches a pattern is not ignored, by
   git's own rule; outside a repository nothing is.
@@ -2918,7 +2923,6 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_RUN_CONTINUE`                   | [`run.continue`](schema.md#settings)                  | What a failed task takes down: `never` stops the run, `deps-ok` skips its dependents, `always` runs them too.                                               |
 | `VX_RUN_OUTPUT_LOGS`                | [`run.outputLogs`](schema.md#settings)                | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                  |
 | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | [`run.rules.exclusiveOutputs`](schema.md#settings)    | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                       |
-| `VX_RUN_RULES_UPFRONT_KEYS`         | [`run.rules.upfrontKeys`](schema.md#settings)         | Refuse a task whose inputs can match another task's outputs.                                                                                                |
 | `VX_CACHE_DIR`                      | [`cache.dir`](schema.md#settings)                     | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                     |
 | `VX_CACHE_RETENTION_MAX_SIZE`       | [`cache.retention.maxSize`](schema.md#settings)       | Evict least-recently-used entries at each run's end until the cache is under this (`'10GB'`).                                                               |
 | `VX_CACHE_RETENTION_OLDER_THAN`     | [`cache.retention.olderThan`](schema.md#settings)     | Evict entries unused for this long at each run's end (`'30d'`).                                                                                             |
