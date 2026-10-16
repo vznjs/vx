@@ -6,7 +6,7 @@ authors:
 tags:
   - caching
   - correctness
-excerpt: 'Turborepo and Nx restore outputs on top of whatever is already there. vx wipes the declared outputs first, on a miss and on a hit, so the tree after either is the cached snapshot and nothing else. Stale files cannot survive.'
+excerpt: 'Turborepo and Nx restore outputs on top of whatever is already there. vx wipes the declared outputs before a miss and removes what a hit's entry does not hold, so the tree after either is the cached snapshot and nothing else. Stale files cannot survive.'
 ---
 
 Ask a monorepo tool what `dist/` contains after a cache hit and the
@@ -26,9 +26,13 @@ those globs as territory the task owns:
 - **Before a miss executes**, the current matches are removed. A
   leftover `dist/old.js` from a previous build cannot be picked up by
   the new build's globs and cached as if it were produced now.
-- **Before a hit restores**, the current matches are removed. The
+- **When a hit restores**, each cached file is renamed over the one it
+  replaces, a file that already holds the cached bytes is left alone,
+  and then every match the entry does not hold is removed. The
   post-restore tree is the snapshot, not the snapshot merged with the
-  present.
+  present, and a reader never finds a file missing while it lands.
+  The restore writes only what the globs declare: an entry holding
+  anything else is dropped and the task runs.
 
 Outputs are a task's territory in the other direction too: two tasks
 whose output declarations provably overlap (equal literals, or a

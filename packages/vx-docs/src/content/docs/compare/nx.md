@@ -41,7 +41,7 @@ a nothing-changed run of this benchmark took 87 s against 25 s off
 | ----------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
 | Config                              | TypeScript, evaluated into the cache key                                                   | JSON (`project.json`, `nx.json`), plus inferred targets |
 | Daemon                              | None; nothing boots per task                                                               | On by default locally                                   |
-| Outputs on run and restore          | Wiped first: no stale file survives a hit                                                  | Additive                                                |
+| Outputs on run and restore          | Exactly the cached files: no stale file survives a hit                                     | Additive                                                |
 | Task sandbox                        | Free and local, opt-in per task (Linux, macOS)                                             | An Nx Cloud feature                                     |
 | Remote cache                        | Any wire through a plugin: Bazel REAPI, Turbo's, Nx's self-hosted spec                     | Nx Cloud or a plugin                                    |
 | Flaky task detection                | Local: the same key failed after it passed                                                 | Nx Cloud                                                |

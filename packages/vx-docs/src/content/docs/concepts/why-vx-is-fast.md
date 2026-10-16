@@ -48,9 +48,9 @@ and faster:
 2. **Resolved-config hashing.** vx hashes the evaluated `vx.config.ts`
    object, so imports, presets, and computed values participate in the
    key. Static-JSON config can't see them.
-3. **Strict output ownership.** Declared outputs are wiped before exec
-   *and* restore, so the tree ends as the cached snapshot, with no stale
-   files. Two tasks whose outputs overlap are refused by default
+3. **Strict output ownership.** Declared outputs are wiped before exec,
+   and a restore removes what its entry does not hold, so the tree ends
+   as the cached snapshot, with no stale files. Two tasks whose outputs overlap are refused by default
    (`rules.exclusiveOutputs`); with that rule off, a task that adds files
    to an upstream task's outputs cleans nothing before exec and only the
    files it recorded before a restore. Turborepo/Nx

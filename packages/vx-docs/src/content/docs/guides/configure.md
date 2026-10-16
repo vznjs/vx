@@ -120,15 +120,19 @@ export default defineProject({
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the keys of the tasks it depends on, the task's config, arguments after `--` |
 | In, with a lockfile plugin | the package's `package.json` and its own dependencies from the lockfile ([Lockfiles](#lockfiles)) |
-| Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `.vx/projects.lock.json`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `.vx/tmp` (restore staging), files git ignores, the task's own outputs, a nested project's files |
+| Always excluded        | an untracked `node_modules` git does not ignore (an install), `.git`, `.vx/cache`, `.vx/projects.lock.json`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `.vx/tmp` (restore staging), the task's own outputs, a nested project's files |
+| Excluded unless named  | files git ignores, an ignored `node_modules` included: a broad glob like `src/**` skips them, an exact path or a glob whose fixed part git ignores (`.env.local`, `node_modules/.prisma/client/**`) keys them |
 | In, when you say so    | a tool's version: `inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
-Declared outputs are wiped before every run that writes the cache and every
-restore, so `dist/`
-ends as the cache stored it; a hit that finds them already as stored skips
-both. A task that adds files beside an upstream task's outputs wipes
-nothing before a run and only the files it recorded before a restore. A failed task is never saved. `--force` runs
+Declared outputs are wiped before every run that writes the cache. A hit
+rewrites in place only the files that differ from the entry, then
+removes the ones it does not hold, so `dist/` ends as the cache stored
+it and a reader never finds a file missing; a hit that finds them
+already as stored writes nothing. A restore writes only files the
+task's `cache.outputs` declare. A task that adds files beside an
+upstream task's outputs wipes nothing before a run and restores only
+the files it recorded. A failed task is never saved. `--force` runs
 and refreshes the cache; `--no-cache` ignores it.
 
 Overhead on a 9,603-task run where nothing changed: vx 856 ms,
