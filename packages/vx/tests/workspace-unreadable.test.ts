@@ -28,7 +28,7 @@ describe.skipIf(skipAsRoot('a workspace file this user may not read'))(
         await writeFile(path.join(root, 'packages', p, 'package.json'), `{"name":"${p}"}`)
         await writeFile(
           path.join(root, 'packages', p, 'vx.config.mjs'),
-          `export default { tasks: { build: { exec: { command: 'echo ${p}' } } } }\n`,
+          `export default { tasks: { build: { exec: { command: 'echo ${p}' }, inputs: { files: [] } } } }\n`,
         )
       }
       // A run reads only the lock, so each case starts locked.
