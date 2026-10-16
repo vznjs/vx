@@ -174,12 +174,13 @@ terminal and a task succeeding or failing. Read it alongside
  │      overlap is the point); drained before cache.close(). At most
  │      one remote GET per key (shared in-flight map with the lazy
  │      read-through).
- │    • LOCAL SHORT-CIRCUIT (no remote layer, local reads on, ≥1
- │      task) — derive the same stable keys and probe them in ONE
- │      batched cache.getMany (a layer without getMany: cache.get once
- │      per task under a bounded pool) → a `preProbed` map (hits AND
- │      stable misses; execute reuses these probes) + a `restoreTier`
- │      set (confirmed hits). Awaited before scheduling; never throws
+ │    • LOCAL SHORT-CIRCUIT (local reads on, ≥1 task) — derive the
+ │      same stable keys and probe the LOCAL store in ONE batched
+ │      getMany (a layer without getMany: get once per task under a
+ │      bounded pool) → a `preProbed` map (hits AND stable misses;
+ │      with a remote declared, hits only: a local miss may be a
+ │      remote hit) + a `restoreTier` set (confirmed hits). Awaited
+ │      before scheduling; never asks a remote; never throws
  │      (degrades to the normal schedule).
  │
  ├─ Scheduling (src/graph/scheduler.ts:runGraph — two-tier)

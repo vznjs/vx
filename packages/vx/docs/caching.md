@@ -497,10 +497,11 @@ the glob matches (a tracked output, a directory a `!` rule takes back);
 anything git cannot answer keeps the key late. Undeclared writes, an
 `outputs.workspaceFiles` producer upstream, a rewriter the key does not
 fold, and runtime probes after a writer still leave a key preliminary.
-The
-short-circuit never runs under a `LayeredCache` (remote prefetch owns
-those runs — an up-front `get` there would put remote GETs on the
-critical path), never fires with local reads off or on a local cache
+With a
+remote declared the short-circuit probes the local store alone, so a
+local hit still restores ahead of its dependencies and no remote GET
+sits on the critical path (remote prefetch asks the remote for the
+rest). It never fires with local reads off or on a local cache
 that holds no artifact (`Cache.holdsNothing`: every probe would miss,
 and a cold 1,090-package run started its first task ~90 ms sooner
 without it), and never throws —

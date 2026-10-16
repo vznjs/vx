@@ -8,7 +8,6 @@ import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
   Cache,
-  type CacheLayer,
   type CachePolicy,
   cachesNothing,
   formatCachePolicy,
@@ -163,17 +162,14 @@ function effectiveCachePolicy(requested: CachePolicy, hasRemoteLayer: boolean): 
 /**
  * The perf firewall for the local short-circuit. Always-on; the only
  * gates are correctness/no-op gates:
- *   - LOCAL-ONLY cache. Behind a remote layer, `cache.get` is a remote
- *     READ-THROUGH — the up-front classify is awaited before scheduling,
- *     so N remote GETs would land on the critical path before any task
- *     starts. Remote runs are owned by `startRemotePrefetch`, which
- *     overlaps the GETs with execution instead (fire-and-forget) and
- *     ingests hits into local for execute-task's lazy probe. The gate asks
- *     the layer (`hasRemote`), not `instanceof LayeredCache` — a
- *     third-party remote layer stalls on the classify just as hard.
  *   - the policy reads locally (a `--no-cache`/`--force`/`--cache-policy=local:`
  *     run reads nothing locally → nothing to restore → skip);
  *   - there is at least one task.
+ * A remote layer does not close it: the local cache sits in front of every
+ * remote (#3619), so the classify probes that local store alone and a local
+ * hit runs ahead of its dependencies as it does with no remote; the remote
+ * GETs stay on `startRemotePrefetch`'s fire-and-forget path (M's solid
+ * run, 2026-10-16: a local hit waited 18 s on a dependency it never read).
  * A flat graph has no ordering to bypass, but the classify pass is worth
  * paying for anyway: it probes every stable key through ONE batched
  * `getMany` instead of a `cache.get` per task inside the run, which
@@ -181,12 +177,7 @@ function effectiveCachePolicy(requested: CachePolicy, hasRemoteLayer: boolean): 
  * (2026-09-03, interleaved arms). The per-task correctness gates (stable
  * key, no workspace-outputs in graph) live in `startLocalShortCircuit`.
  */
-export function shouldShortCircuit(
-  nodes: Map<string, TaskNode>,
-  policy: CachePolicy,
-  cache: CacheLayer,
-): boolean {
-  if (cache.hasRemote === true) return false
+export function shouldShortCircuit(nodes: Map<string, TaskNode>, policy: CachePolicy): boolean {
   if (!policy.localRead) return false
   return nodes.size > 0
 }
@@ -877,16 +868,22 @@ async function runOnBus(
     // An empty local cache answers every probe with a miss: each task
     // derives its key as it starts instead (~100 ms before a cold 1,090-
     // package run's first spawn), and every sandboxed task runs.
+    const remote = cache.hasRemote === true
     const coldLocal =
-      cache === prepared.localCache &&
-      shouldShortCircuit(nodes, policy, cache) &&
-      prepared.localCache.holdsNothing()
-    if (coldLocal) prewarm()
-    else if (shouldShortCircuit(nodes, policy, cache)) {
+      shouldShortCircuit(nodes, policy) && (remote || cache === prepared.localCache)
+        ? prepared.localCache.holdsNothing()
+        : false
+    // A remote may still hold what an empty local store does not: the
+    // prefetch asks it, and no confirmed miss warms the sandbox early.
+    if (coldLocal && !remote) prewarm()
+    else if (!coldLocal && shouldShortCircuit(nodes, policy)) {
       shortCircuit = await step('vx:keys', () =>
         startLocalShortCircuit({
           nodes,
-          cache,
+          // Behind a remote, the local store alone: its hits are certain
+          // now, and a local miss may still be a remote hit.
+          cache: remote ? prepared.localCache : cache,
+          localOnly: remote,
           workspaceRoot,
           claimedFiles: fingerprintWatch.names,
           forwardArgs: options.forwardArgs,
@@ -897,7 +894,8 @@ async function runOnBus(
         }),
       )
       // A confirmed miss runs too.
-      if (sandboxed.some((n) => shortCircuit.preProbed.get(n.id)?.hit === null)) prewarm()
+      if (!remote && sandboxed.some((n) => shortCircuit.preProbed.get(n.id)?.hit === null))
+        prewarm()
     }
 
     // Whether this task runs behind a failure (`continueMode: 'always'`
@@ -1609,7 +1607,7 @@ async function planRestorable(
   const serves = [...nodes.values()].some(
     (n) => n.config.exec?.persistent !== undefined && !n.requested && n.surfaced !== true,
   )
-  if (!serves || !shouldShortCircuit(nodes, policy, prepared.cache)) return {}
+  if (!serves || !shouldShortCircuit(nodes, policy)) return {}
   const keptOut = restoreTierExclusions(nodes, prepared.workspaceRoot)
   const stable = await deriveStableKeys({
     nodes,

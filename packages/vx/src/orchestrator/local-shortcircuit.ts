@@ -60,6 +60,12 @@ export interface ShortCircuitArgs {
   hashCache: HashCache
   /** Cap on concurrent probes — the run's concurrency. */
   concurrency: number
+  /**
+   * `cache` is the local store in front of a remote: a hit is certain, a
+   * miss is not (the remote may hold it), so only hits are recorded and
+   * execute probes every other task through the layers.
+   */
+  localOnly?: boolean | undefined
 }
 
 /** Per-task result of the up-front probe. `hit` null = a confirmed
@@ -159,6 +165,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
       endProbe()
       for (const { hash, node } of candidates) {
         const hit = hits.get(hash) ?? null
+        if (hit === null && args.localOnly === true) continue
         preProbed.set(node.id, { hash, hit })
         if (hit !== null && !keptOut.has(node.id)) restoreTier.add(node.id)
       }
@@ -175,6 +182,7 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
       const { hash, node } = candidates[next++]!
       try {
         const hit = await args.cache.get(hash, getContext(node, node.config.exec?.command ?? ''))
+        if (hit === null && args.localOnly === true) continue
         preProbed.set(node.id, { hash, hit })
         if (hit !== null && !keptOut.has(node.id)) restoreTier.add(node.id)
       } catch {
