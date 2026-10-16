@@ -1681,6 +1681,7 @@ export default defineWorkspace({
     scope: 'main',
     inputStability: { strategy: 'immutable', severity: 'warn' },
     outputs: { clean: true },
+    upload: { failures: 'ci' },
   },
   lock: { reviewFiles: true },
   watch: { poll: false },
@@ -1864,6 +1865,7 @@ interface CacheSettings {
   whose policy writes a remote keeps any, and it always keeps the log of
   a task that saved no entry. `ctx.cache.getRun` reads them
   (`docs/modules/plugin.md` § Run report and run bytes).
+
 - **`cache.scope`** — where this run's cache writes land (2026-10-14).
   Omitted, a run reads and writes the default keys. A name (`'pr-123'`;
   letters, digits, `. _ - / @`, at most 128) reads the default key first,
