@@ -1719,6 +1719,41 @@ describe('vx init — the generated build is not a cached no-op', () => {
     }
   })
 
+  it('the next step runs a task name, never an Nx executor or a Turbo package task', async () => {
+    // nx.json `targetDefaults` keys may name an executor (nx-recipes'
+    // angular-monorepo: "@angular/build:application"), and the next line
+    // said `vx run @angular/build:application --all`, which no project
+    // declares (Growth's real-repo runs, 2026-10-16).
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-next-task-'))
+    const ua = process.env['npm_config_user_agent']
+    delete process.env['npm_config_user_agent']
+    try {
+      for (const p of ['vx', 'vx-migrate']) {
+        await mkdir(path.join(root, 'node_modules', '@vzn', p), { recursive: true })
+        await writeFile(path.join(root, 'node_modules', '@vzn', p, 'package.json'), '{}')
+      }
+      const next = async (file: string, json: unknown, runner: 'nx' | 'turbo') => {
+        await writeFile(path.join(root, file), JSON.stringify(json))
+        return adoptionNext(root, runner, file)
+      }
+      expect([
+        await next('nx.json', { targetDefaults: { '@angular/build:application': {} } }, 'nx'),
+        await next('nx.json', { targetDefaults: { '@nx/js:tsc': {}, test: {} } }, 'nx'),
+        await next('turbo.json', { tasks: { 'web#lint': {}, check: {} } }, 'turbo'),
+        await next('turbo.json', { tasks: { 'web#build': {}, build: {} } }, 'turbo'),
+      ]).toEqual([
+        'vx run build --all',
+        'vx run test --all',
+        'vx run check --all',
+        'vx run build --all',
+      ])
+    } finally {
+      if (ua === undefined) delete process.env['npm_config_user_agent']
+      else process.env['npm_config_user_agent'] = ua
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('run from a package directory, it scaffolds at the WORKSPACE ROOT', async () => {
     // `init` resolves the root before it plans; run it from inside a package
     // and the workspace file still belongs at the top. Take the cwd for the
