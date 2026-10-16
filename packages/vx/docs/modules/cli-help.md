@@ -85,6 +85,7 @@ gap before its description.
 - `Cache management` — `vx cache clean` examples.
 - `Introspection` — `vx show`, `vx info`, `vx why`, `vx last`.
 - `Migration` — `vx init` and the pointer to `bunx @vzn/vx-migrate`.
+- `Upgrade` — `vx upgrade [TAG]` and `-g` (only the global vx).
 - `Shell completions` — `vx completions bash|zsh|fish`.
 - `Docs` — `vx docs <query>`.
 - `Config lock` — `vx lock`.
