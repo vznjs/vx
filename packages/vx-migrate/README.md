@@ -151,6 +151,8 @@ Every task gets `NX_TASK_TARGET_PROJECT`, `NX_TASK_TARGET_TARGET`, `LERNA_PACKAG
 
 ### Inputs that key nothing here
 
+Nx hashes the root TypeScript config (`tsconfig.base.json`, else `tsconfig.json`) into every task, so every mapped task lists it in `inputs.workspaceFiles`: a `compilerOptions` edit re-runs it, as under Nx. vx keys the whole file, where Nx leaves other projects' `paths` entries out, so a `paths` edit re-runs every task.
+
 `{ dependentTasksOutputFiles }` hashes the outputs of the tasks a target depends on; vx folds those tasks' keys through `dependsOn`, and an output follows from its inputs. `{ workingDirectory }` hashes the directory Nx was started from; a vx task runs in its project dir from wherever vx is started. Neither is a todo.
 
 ### The environment a task sees

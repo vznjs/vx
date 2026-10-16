@@ -16,6 +16,7 @@
 // configuration is a task of its own, `<target>:<configuration>`; the
 // default configuration is folded into the base task.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { type Duration, type GeneratedProject, type GeneratedTask, UserError } from '@vzn/vx'
 import type { PackageMeta } from '../packages.js'
@@ -270,6 +271,8 @@ export const BUILTIN_EXECUTORS: ReadonlySet<string> = new Set([
 /** The options with what the mapper reads itself: the root's dependency names. */
 type MapOpts = MapNxOptions & {
   readonly rootDeps: ReadonlySet<string>
+  /** The root TypeScript config Nx folds into every task's hash, if any. */
+  readonly rootTsConfig: string | undefined
   readonly pnp: boolean
   /** Tasks per `syncGenerators` list, said once in the notes. */
   readonly syncTasks: Map<string, number>
@@ -317,6 +320,9 @@ export async function mapNxWorkspace(
     ...opts,
     cacheable: new Set([...opts.cacheable, ...cacheable]),
     rootDeps: await rootDependencies(root),
+    rootTsConfig: ['tsconfig.base.json', 'tsconfig.json'].find((f) =>
+      existsSync(path.join(root, f)),
+    ),
     pnp: yarnPnp(root),
     syncTasks: new Map(),
   }
@@ -969,6 +975,12 @@ function buildTask(
   const task: Record<string, unknown> = { exec }
   if (deps.length > 0) task.dependsOn = deps
   const keyed: Record<string, unknown> = { files: withoutTakenBack(inputs.files) }
+  // Nx hashes the root TypeScript config into every task (its
+  // TsConfiguration input, other projects' `paths` left out): a
+  // compilerOptions edit re-ran Nx's tests and replayed vx's (Growth,
+  // 2026-10-16). The whole file here: a `paths` edit re-keys every task.
+  if (opts.rootTsConfig !== undefined && !inputs.wsFiles.includes(opts.rootTsConfig))
+    inputs.wsFiles.push(opts.rootTsConfig)
   if (inputs.wsFiles.length > 0) keyed.workspaceFiles = withoutTakenBack(inputs.wsFiles)
   if (inputs.envNames.length > 0) keyed.env = inputs.envNames
   // The `.env` files the task loads are inputs, and gitignored ones
