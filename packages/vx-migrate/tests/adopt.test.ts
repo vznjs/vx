@@ -519,6 +519,34 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
     TIMEOUT,
   )
 
+  // M, 2026-10-16: `vx init` on solid, whose `.vx/workspace.ts` an earlier
+  // init wrote, installed only vx and vx-migrate; the lock then could not
+  // find the @vzn/vx-lockfile the file imports.
+  it(
+    'the install takes every @vzn/vx-* package the workspace file imports',
+    async () => {
+      const { root, env } = await solidShaped()
+      try {
+        // M's file: three plugins package.json does not list, one by subpath.
+        const ws =
+          'import { pnpm } from "@vzn/vx-lockfile";\nimport { scheduleHistory } from "@vzn/vx-schedule-history";\nimport { ci } from "@vzn/vx-ci/sub";\n\nexport default {\n  plugins: [pnpm(), scheduleHistory(), ci()],\n};\n'
+        await Bun.write(path.join(root, '.vx/workspace.ts'), ws)
+        await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'r' }))
+        const r = await migrate(root, env, [])
+        const add = ((await calls(root)).split('\n')[0] ?? '').split(' ')
+        expect([
+          r.code,
+          ['@vzn/vx-lockfile', '@vzn/vx-schedule-history', '@vzn/vx-ci'].filter(
+            (p) => !add.includes(p),
+          ),
+        ]).toEqual([0, []])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // M, 2026-10-16: "vx init should always install latest and upgrade all".
   it(
     'the install moves every @vzn/vx-* plugin the root lists with core',
