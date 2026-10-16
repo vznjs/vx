@@ -21,6 +21,7 @@ export interface ShortCircuitArgs {
   gitFilesCache: GitFilesCache
   hashCache: HashCache // the run's memo — no double hashing
   concurrency: number // the probe pump's width
+  localOnly?: boolean | undefined // `cache` is the local store before a remote: only hits are recorded
 }
 export interface ProbedEntry {
   hash: string
@@ -58,9 +59,12 @@ export function restoreTierExclusions(
 
 ## Invariants
 
-- Gated by `shouldShortCircuit` (run.ts): a cache with no remote
-  layer (`hasRemote` unset — a remote run belongs to remote-prefetch),
-  `localRead` on, and at least one node.
+- Gated by `shouldShortCircuit` (run.ts): `localRead` on and at least
+  one node. With a remote declared the classify probes the local store
+  alone (`localOnly`): a local hit is certain and joins the restore tier
+  as it does with no remote; a local miss is left out of `preProbed`, so
+  execute asks the layers and the remote GETs stay on remote-prefetch's
+  fire-and-forget path, never before the first spawn.
 - An `outputs.workspaceFiles` producer upstream takes its dependents out
   of BOTH tiers — not just the restore tier. A root-anchored output is
   boundary-ignoring, so it can land in a dependent's own project dir; and

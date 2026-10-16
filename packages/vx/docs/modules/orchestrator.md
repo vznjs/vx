@@ -36,7 +36,7 @@ export function run(options: RunOptions): Promise<RunSummary>
 export function planRun(options: RunOptions): Promise<RunPlan>
 export function nxProjectTarget(spec: string, projects): string | undefined // Nx's `web:build` as `web#build`, when web declares build
 export function projectNamed(typed: string, projects): string | undefined // `cart` as `@scope/cart`, when that is the one such project
-export function shouldShortCircuit(nodes, policy, cache): boolean
+export function shouldShortCircuit(nodes, policy): boolean
 export function invocationCommand(argv: readonly string[]): string // the args after `--` as `<n arguments>`
 export function runLockPath(workspaceRoot: string, dir?: string): string // the lock directory
 // The workspace's run lock (below); `vx cache clean` takes it too.
@@ -99,7 +99,7 @@ export interface RunSummary {
 7. **`markSurfacedDeps(nodes)`** — transparent-group display marking;
    the footer run context is built (there is no top-of-run header).
 8. **Cache acceleration.** LayeredCache → `startRemotePrefetch`
-   (background, drained before close). Local-only + local reads on +
+   (background, drained before close). Local reads on +
    a non-empty graph (`shouldShortCircuit`) → `startLocalShortCircuit`,
    producing `preProbed` (probe reuse) + `restoreTier`.
 9. **`runGraph({..., priorities, restoreTier})`.** Two-tier schedule;

@@ -12,7 +12,6 @@ import { run } from './helpers/orchestrator.js'
 import { startLocalShortCircuit } from '../src/orchestrator/local-shortcircuit.js'
 import { shouldShortCircuit } from '../src/orchestrator/run.js'
 import { createHashCache } from '../src/orchestrator/task-hash.js'
-import { layeredOver } from './helpers/layered.js'
 
 interface Fixture {
   root: string
@@ -1291,29 +1290,95 @@ describe('local cache short-circuit', () => {
     TIMEOUT * 4,
   )
 
-  it('gate: LayeredCache runs never classify — remote-prefetch owns those', async () => {
-    // Under a LayeredCache, cache.get is a remote READ-THROUGH and the
-    // up-front classify is awaited before scheduling — N remote GETs
-    // would land on the critical path. The gate must decline so remote
-    // runs stay on the fire-and-forget prefetch path (decision log
-    // 2026-06-28).
-    const nodes = new Map([
-      ['a#build', { id: 'a#build', deps: [] }],
-      ['a#test', { id: 'a#test', deps: ['a#build'] }],
-    ]) as never
-    const local = new Cache(path.join(fixture.root, '.vx', 'cache'))
-    const stubRemote: RemoteCacheLayer = {
+  it(
+    'with a remote declared, a local hit restores while its dependency still runs',
+    async () => {
+      // M's solid run (0.0.640): `solid-element#build` waited ~18 s on
+      // `solid-js#types`, then restored from the LOCAL cache. The local
+      // cache sits in front of every remote (#3619), so its hits run ahead
+      // as they do with no remote; only the remote GETs stay off the path.
+      await addProject(fixture.root, 'lib', {
+        files: { 'src/a.txt': 'a' },
+        config: `
+          export default {
+            tasks: { build: { exec: { command: 'sleep 2' }, inputs: { files: ['src/**'] } } },
+          }
+        `,
+      })
+      const appDir = await addProject(fixture.root, 'app', {
+        files: { 'src/b.txt': 'b', '.gitignore': 'dist/\n' },
+        config: `
+          export default {
+            tasks: {
+              build: {
+                dependsOn: ['^build'],
+                exec: { command: 'mkdir -p dist && echo built > dist/built.txt' },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+              },
+            },
+          }
+        `,
+      })
+      const store = new Map<string, Blob>()
+      const remote: RemoteCacheLayer = {
+        has: (h) => Promise.resolve(store.has(h)),
+        get: (h) => {
+          const body = store.get(h)
+          return Promise.resolve(body === undefined ? null : { body, durationMs: undefined })
+        },
+        put: (h, bytes) => {
+          store.set(h, bytes)
+          return Promise.resolve()
+        },
+      }
+      const opts = {
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: silentLogger(fixture),
+        remoteCache: remote,
+      }
+      expect((await run(opts)).ok).toBe(true)
+      await rm(path.join(appDir, 'dist'), { recursive: true, force: true })
+      const warm = await run(opts)
+      expect(warm.ok).toBe(true)
+      expect(warm.outcomes.find((o) => o.node.id === 'app#build')?.status).toBe('cache-hit')
+      // Restored before lib finished: the hit completes first in the log.
+      const order = fixture.log.filter((l) => /^task (app|lib)#build /.test(l)).slice(-2)
+      expect(order).toEqual(['task app#build cache-hit', 'task lib#build success'])
+    },
+    TIMEOUT,
+  )
+
+  it('with a remote declared, the classify asks only the local store', async () => {
+    // The classify is awaited before scheduling: a remote GET there would
+    // put the network on the critical path. Local hits answer it; the
+    // remote is asked only by the fire-and-forget prefetch, for misses.
+    await addProject(fixture.root, 'lib', {
+      files: { 'src/a.txt': 'a' },
+      config: `export default { tasks: { build: {
+        exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+      } } }`,
+    })
+    let gets = 0
+    const remote: RemoteCacheLayer = {
       has: () => Promise.resolve(false),
-      get: () => Promise.resolve(null),
+      get: () => {
+        gets++
+        return Promise.resolve(null)
+      },
       put: () => Promise.resolve(),
     }
-    try {
-      const layered = layeredOver(local, stubRemote)
-      expect(shouldShortCircuit(nodes, FULL_CACHE_POLICY, layered)).toBe(false)
-      // Identical graph + policy with a plain local Cache → gate opens.
-      expect(shouldShortCircuit(nodes, FULL_CACHE_POLICY, local)).toBe(true)
-    } finally {
-      local.close()
+    const opts = {
+      cwd: fixture.root,
+      tasks: ['build'],
+      log: silentLogger(fixture),
+      remoteCache: remote,
     }
+    expect((await run(opts)).ok).toBe(true)
+    gets = 0
+    const warm = await run(opts)
+    expect(warm.outcomes.map((o) => o.status)).toEqual(['cache-hit'])
+    expect(gets).toBe(0)
+    expect(shouldShortCircuit(new Map([['lib#build', {}]]) as never, FULL_CACHE_POLICY)).toBe(true)
   })
 })

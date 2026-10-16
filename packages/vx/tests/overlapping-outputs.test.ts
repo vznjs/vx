@@ -244,20 +244,24 @@ describe.each(Object.entries(SHAPES))('overlapping outputs, addition shape: %s',
       await run({ cwd: ws.root, tasks: TASKS, log: silent })
       const prepared = await prepareRun({ cwd: ws.root, tasks: TASKS, log: silent }, silent)
       try {
-        const sc = await startLocalShortCircuit({
-          nodes: prepared.nodes,
-          cache: prepared.cache,
-          workspaceRoot: prepared.workspaceRoot,
-          claimedFiles: prepared.fingerprintWatch.names,
-          nestedDirsByProject: prepared.nestedDirsByProject,
-          gitFilesCache: prepared.gitFilesCache,
-          hashCache: prepared.hashCache,
-          concurrency: 4,
-        })
-        expect(sc.restoreTier.has('app#individual')).toBe(false)
-        expect(sc.restoreTier.has('app#noop')).toBe(false)
-        // CONTROL: the upstream's own hit is restore-tier as any leaf hit is.
-        expect(sc.restoreTier.has('app#build')).toBe(true)
+        // `localOnly`: the classify a run with a remote declared makes.
+        for (const localOnly of [false, true]) {
+          const sc = await startLocalShortCircuit({
+            nodes: prepared.nodes,
+            cache: prepared.cache,
+            localOnly,
+            workspaceRoot: prepared.workspaceRoot,
+            claimedFiles: prepared.fingerprintWatch.names,
+            nestedDirsByProject: prepared.nestedDirsByProject,
+            gitFilesCache: prepared.gitFilesCache,
+            hashCache: prepared.hashCache,
+            concurrency: 4,
+          })
+          expect(sc.restoreTier.has('app#individual')).toBe(false)
+          expect(sc.restoreTier.has('app#noop')).toBe(false)
+          // CONTROL: the upstream's own hit is restore-tier as any leaf hit is.
+          expect(sc.restoreTier.has('app#build')).toBe(true)
+        }
       } finally {
         prepared.cache.close()
       }
