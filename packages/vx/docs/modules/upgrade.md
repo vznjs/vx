@@ -30,7 +30,7 @@ export function isBunfsPath(p: string): boolean // a path inside the compiled bi
 export function isCompiledBinary(): boolean
 export function npmOwnedBinary(execPath: string): string | null // the package that owns this file, or null
 export function versionSpec(tag: string | undefined): string // `latest`, or the version a tag names
-export async function fetchManifest(pkg: string, spec: string): Promise<unknown> // the registry's document
+export async function fetchManifest(pkg: string, spec: string, verb?: string): Promise<unknown> // the registry's document
 export interface SignedRelease {
   version: string
   tarball: string
@@ -61,6 +61,8 @@ export interface ManagedInstall {
   plugins?: string[] // the @vzn/vx-* plugins the same package.json lists from the registry
 }
 export function managedInstall(execPath: string, cwd: string): ManagedInstall | null
+// the version `tag` names, else the registry's latest; `vx init` asks it too (verb prefixes refusals)
+export async function targetVersion(tag: string | undefined, verb?: string): Promise<string>
 export function upgradeArgv(install: ManagedInstall, version: string): string[] // core and plugins pinned to `version`, one install
 // runs that argv; a plugin behind `version` runs it even when core is at it
 export async function upgradeManaged(

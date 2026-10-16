@@ -48,6 +48,7 @@ import {
   install,
   installArgv,
   listedPackages,
+  listedPlugins,
   missingPackages,
   MODE_QUESTION,
   ownVersion,
@@ -355,7 +356,13 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   // Nothing written imports vx-migrate or runs its bins: a `--keep`
   // adoption's install of it is dropped with turbo() / nx().
   const finalWorkspace = workspaceText ?? readFileSync(path.join(root, existingWorkspace!), 'utf8')
-  const needsSelf = runsBins || finalWorkspace.includes("'@vzn/vx-migrate'")
+  // Imports parsed, not matched: a formatter's double quotes hid it, and
+  // the file still imported the package removed (owner, 2026-10-16).
+  const needsSelf =
+    runsBins ||
+    new Bun.Transpiler({ loader: 'ts' })
+      .scanImports(finalWorkspace)
+      .some((i) => i.path === '@vzn/vx-migrate')
   const cacheNote =
     runner === 'vite-task'
       ? undefined
@@ -490,7 +497,8 @@ async function prepareRepo(
   if (args.noInstall === true) return []
   const steps: Step[] = []
   const version = ownVersion()
-  const missing = missingPackages(root, wanted, version)
+  const all = [...new Set([...wanted, ...listedPlugins(root).filter((p) => !unwanted.includes(p))])]
+  const missing = missingPackages(root, all, version)
   if (missing.length > 0) {
     steps.push(
       args.dry ? ['install', missing.join(' ')] : ['ran', await install(root, missing, version)],

@@ -1934,9 +1934,11 @@ or is missing.
 runs in, or one above it up to the git top-level, holds a
 `package.json`, `pnpm-workspace.yaml`, `turbo.json`, `turbo.jsonc` or
 `nx.json`, it runs `@vzn/vx-migrate` there, so `vx init` is the one
-command (owner, 2026-10-08): the installed one (the nearest
-`node_modules/@vzn/vx-migrate` up from the working directory), else
-this vx's version through `bun x` (`BUN_BE_BUN=1` makes the compiled
+command (owner, 2026-10-08): the latest release through `bun x`,
+never an installed one, so init always installs the latest `@vzn/vx`
+and moves every `@vzn/vx-*` plugin the root lists to it (M,
+2026-10-16; a source checkout runs the nearest installed
+`node_modules/@vzn/vx-migrate` instead) (`BUN_BE_BUN=1` makes the compiled
 binary that runtime). `--dry`, `--format`, `--force`, `--mjs`,
 `--native` and `--keep` pass through, and the exit is vx-migrate's.
 vx-migrate maps a Turbo, Nx or Vite Task repo, else the `package.json`

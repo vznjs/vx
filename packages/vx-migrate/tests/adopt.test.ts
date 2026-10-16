@@ -496,6 +496,59 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
     TIMEOUT,
   )
 
+  // owner, 2026-10-16: `vx init --force` on solid removed vx-migrate while
+  // the workspace file, formatted with double quotes, still imported it.
+  it(
+    'a formatted workspace file that imports vx-migrate keeps it installed',
+    async () => {
+      const { root, env } = await solidShaped()
+      try {
+        const ws =
+          'import { turboCache } from "@vzn/vx-migrate";\n\nexport default {\n  plugins: [turboCache()],\n};\n'
+        await Bun.write(path.join(root, '.vx/workspace.ts'), ws)
+        await writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({ name: 'r', devDependencies: { '@vzn/vx-migrate': '*' } }),
+        )
+        const r = await migrate(root, env, ['--force'])
+        expect([r.code, (await calls(root)).includes('remove')]).toEqual([0, false])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  // M, 2026-10-16: "vx init should always install latest and upgrade all".
+  it(
+    'the install moves every @vzn/vx-* plugin the root lists with core',
+    async () => {
+      const { root, env } = await solidShaped()
+      try {
+        await writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({
+            name: 'r',
+            devDependencies: {
+              '@vzn/vx-otel': '0.0.637',
+              // CONTROL: the repo's own link and core's platform binary stay put.
+              '@vzn/vx-own': 'workspace:*',
+              '@vzn/vx-linux-x64': '0.0.637',
+            },
+          }),
+        )
+        const r = await migrate(root, env, [])
+        expect([r.code, (await calls(root)).split('\n')[0]]).toEqual([
+          0,
+          'add -D -w @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history @vzn/vx-otel',
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     '--dry and --no-install leave package.json and the manager alone',
     async () => {
