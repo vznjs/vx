@@ -766,22 +766,26 @@ other persistent task`), and a non-zero exit makes the run exit 1
    local history knows the task, its row also shows its usual duration
    (its executed p50) in the cache column, fixed while the elapsed time
    counts up toward it (`3.33s running ~5.2s  solid-js#types`).
-4. **vx's own steps** — what vx does around the tasks, as rows of
+4. **vx's own steps** — what vx does around the tasks that the run
+   waits on, before its first task starts or before it ends, as rows of
    their own below the worker rows: `vx:load` (configs and graph from
    the lock), `vx:run-lock`, `<plugin>:setup`, `vx:keys` (keys and local
-   probes), `vx:prefetch`, `vx:schedule`, then after the graph
-   `vx:uploads`, `vx:history`, `vx:keep-run`, `vx:telemetry`,
-   `<plugin>:teardown`, `vx:snapshots`, `vx:retention`, `vx:close` and
-   `vx:sandbox`. A step shows once it has run 150 ms, ticking like a
-   task (`     1.2s running   vx:uploads`); no worker slot or
+   probes), `vx:schedule`, then after the graph `vx:uploads`,
+   `vx:history`, `vx:keep-run`, `vx:telemetry`, `<plugin>:teardown`,
+   `vx:snapshots`, `vx:retention`, `vx:close` and `vx:sandbox`. A step
+   shows once it has run 150 ms, ticking like a task
+   (`     1.2s running internal vx:uploads`); no worker slot or
    `--concurrency` holds it back. When it ends it leaves a list row
-   like a task's, with no cache column (`⏺︎ 1.2s success   vx:uploads`);
-   a quicker one shows nowhere. `:` is no task id's separator, so a
-   step never reads as a task: a project named `vx` keeps `vx#build`.
-   No step is a task: no count, bar, history row, forecast, flaky
-   verdict, `vx last` row or telemetry record holds one; `--profile`
-   and `VX_DEBUG_TIMING` time vx's stages their own way. Steps show only
-   beside a live region; a log (CI, a pipe) prints none.
+   like a task's, `internal` in the cache column
+   (`⏺︎ 4.60s success internal vx:keep-run`); a quicker one shows
+   nowhere. A step that runs beside the tasks, `vx:prefetch` (a
+   remote's downloads), never shows: `vx last` lists it. `:` is no task
+   id's separator, so a step never reads as a task: a project named
+   `vx` keeps `vx#build`. No step is a task: no count, bar, history
+   row, forecast, flaky verdict or telemetry record holds one;
+   `--profile` and `VX_DEBUG_TIMING` time vx's stages their own way.
+   Steps show only beside a live region; a log (CI, a pipe) prints
+   none.
 5. **The live summary section** — the SAME meters the final footer
    prints (`tasks` + `cache` bars with legends, `time`), filling in as
    the run progresses, under a bare `vx` wordmark rule. A second in,
@@ -2687,6 +2691,11 @@ their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
 prompt — and the sixteen shown are the slowest restores, the one thing
 a hit's row tells. `--format json` lists every row.
+Below the tasks, the steps the run did not wait on (`vx:prefetch`, a
+remote's downloads beside the tasks), which its own output never shows:
+`success  vx:prefetch  1.20s  internal`. They are kept per run, the
+newest 50, in `<cache dir>/steps/<run id>.json`, written only by a run
+that had one; `--format json` adds them as `steps`.
 `vx last --list` prints the N most recent runs (default 10), one per
 line in aligned columns (verdict, start, run id, counts, duration,
 command), each run id cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`

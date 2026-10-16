@@ -3,6 +3,7 @@
 // plugin package's own `#setup` task. No step is a task: the outcomes and
 // the run history hold the tasks alone.
 
+import { readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
@@ -10,6 +11,8 @@ import { expect, it } from 'bun:test'
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import { run } from './helpers/orchestrator.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
+import { runSteps } from '../src/orchestrator/index.js'
+import { formatStepLine } from '../src/report/status-line.js'
 
 const TASK = (project: string, task: string) => `
   export default { name: '${project}', tasks: { ${task}: { exec: { command: 'true' } } } }
@@ -83,3 +86,76 @@ it(
   },
   TIMEOUT,
 )
+
+// A run shows only the steps it waits on (M, 2026-10-16). The remote
+// prefetch runs beside the tasks: it showed as a row of its own, and a
+// local run never had it. `vx last` keeps it for debugging.
+const CACHED = `
+  export default {
+    tasks: {
+      build: {
+        exec: { command: 'echo built > out.txt' },
+        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+      },
+    },
+  }
+`
+
+it(
+  'a step the run does not wait on is never shown, and vx last keeps it',
+  async () => {
+    const fixture = await makeWorkspace('vx-steps-bg-')
+    try {
+      await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CACHED })
+      const store = new Map<string, Uint8Array>()
+      const steps: string[] = []
+      const result = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: { ...silentLogger(fixture), stepStart: (id) => steps.push(id), stepEnd() {} },
+        remoteCache: {
+          has: async (hash) => store.has(hash),
+          get: async (hash) => {
+            const body = store.get(hash)
+            return body === undefined ? null : { body: new Blob([body.slice()]), durationMs: 1 }
+          },
+          put: async (hash, body) => void store.set(hash, await body.bytes()),
+        },
+      })
+      expect(result.ok).toBe(true)
+      expect(steps).toContain('vx:uploads')
+      expect(steps).not.toContain('vx:prefetch')
+      const cacheDir = path.join(fixture.root, '.vx/cache')
+      const db = new Database(path.join(cacheDir, 'cache.db'), { readonly: true })
+      const { run_id } = db.query('SELECT run_id FROM invocations').get() as { run_id: string }
+      db.close()
+      expect(runSteps(cacheDir, run_id).map((s) => [s.id, s.ok])).toEqual([['vx:prefetch', true]])
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)
+
+it(
+  'CONTROL: a run with no remote keeps no background steps',
+  async () => {
+    const fixture = await makeWorkspace('vx-steps-bg-off-')
+    try {
+      await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: CACHED })
+      const result = await run({ cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) })
+      expect(result.ok).toBe(true)
+      expect(await Bun.file(path.join(fixture.root, '.vx/cache/steps')).exists()).toBe(false)
+      expect(readdirSync(path.join(fixture.root, '.vx/cache'))).not.toContain('steps')
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  },
+  TIMEOUT,
+)
+
+it('a step row reads as a task row, `internal` in the cache column', () => {
+  expect(formatStepLine('vx:keep-run', 4600, true)).toMatch(
+    /^ ⏺︎ +4\.60s success +internal vx:keep-run$/,
+  )
+})

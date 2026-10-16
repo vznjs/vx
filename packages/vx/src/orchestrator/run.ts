@@ -79,6 +79,7 @@ import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
 import { keepRunBytes } from './run-report.js'
 import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { createSteps } from './steps.js'
+import { writeRunSteps } from './run-steps.js'
 import { subscribeTelemetry, type TelemetryHandle } from './telemetry-host.js'
 import { claimOutput, guardedOutput } from './output-host.js'
 import { assembleRunSummary } from './telemetry.js'
@@ -358,7 +359,8 @@ async function runOnBus(
   takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
-  const { step, stepSync } = createSteps(log, showsSteps)
+  const steps = createSteps(log, showsSteps)
+  const { step, stepSync } = steps
   // A server's output goes through a cell of its own: a later watch cycle
   // that keeps the server points it at that cycle's bus (`RunOptions.keep`).
   const serverOuts = new Map<string, { bus: EventBus }>()
@@ -823,7 +825,7 @@ async function runOnBus(
     // unchanged (no upfront key pass, no local probing).
     let prefetchDone: Promise<void> = Promise.resolve()
     if (prepared.hasRemoteLayer) {
-      prefetchDone = step('vx:prefetch', () =>
+      prefetchDone = steps.background('vx:prefetch', () =>
         startRemotePrefetch({
           nodes,
           cache,
@@ -1252,6 +1254,7 @@ async function runOnBus(
       await prefetchDone
       await cache.drainUploads?.()
     })
+    writeRunSteps(prepared.cacheDir, runId, steps.ended, warnOf(log))
     // An upload that failed after the rows went in: its row says so too.
     if (prepared.localCache.uploads.failed > 0 && stop.stoppedBy === undefined && !historyAfterWait)
       recordHistory(() => recordLateRemoteErrors(prepared.localCache, records.runs, runId))

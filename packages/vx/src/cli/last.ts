@@ -22,6 +22,8 @@ import {
   exitSignal,
   resolveRunId,
   runFailures,
+  type RunStep,
+  runSteps,
   shortRunId,
   taskLog,
 } from '../orchestrator/index.js'
@@ -336,6 +338,22 @@ const HITS_SHOWN = 16
  * count; the ones shown are the slowest restores, the one thing a hit's
  * row tells. `--format json` lists every row.
  */
+/**
+ * The steps the run did not wait on (`vx:prefetch`), which its own output
+ * never showed (M, 2026-10-16): here for debugging, marked `internal`.
+ */
+function formatStepRows(steps: readonly RunStep[]): string[] {
+  if (steps.length === 0) return []
+  const idW = Math.max(...steps.map((s) => s.id.length), 4)
+  return [
+    '',
+    ...steps.map(
+      (s) =>
+        `  ${(s.ok ? 'success' : 'failed').padEnd(17)} ${s.id.padEnd(idW)}  ${fmtMs(s.durationMs).padStart(8)}  internal`,
+    ),
+  ]
+}
+
 export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
   if (tasks.length === 0) return []
   const failed = tasks.filter((t) => t.status === 'failed')
@@ -545,7 +563,10 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
               ...(f.fixedIn !== undefined ? { fixedIn: f.fixedIn } : {}),
             }
       })
-      process.stdout.write(`${JSON.stringify({ invocation: inv, tasks })}\n`)
+      const steps = runSteps(cacheDir, inv.runId)
+      process.stdout.write(
+        `${JSON.stringify({ invocation: inv, tasks, ...(steps.length > 0 ? { steps } : {}) })}\n`,
+      )
       return 0
     }
 
@@ -563,6 +584,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         `${inv.failedCount > 0 ? ` · ${inv.failedCount} failed` : ''}`,
     )
     lines.push(...formatTaskRows(detail?.tasks ?? []))
+    lines.push(...formatStepRows(runSteps(cacheDir, inv.runId)))
     // The next command after reading a failed run, with the arguments the
     // run forwarded to the tasks that got them (a failure under `-- --shard
     // 2` is that shard's); a dependency never got them, so its line has none.

@@ -125,5 +125,6 @@ export {
   type TaskLog,
   taskLog,
 } from './run-failures.js'
+export { type RunStep, runSteps } from './run-steps.js'
 export { resolveRunId, shortRunId } from './run-id.js'
 export { collectInfo, type CollectInfoOptions, type InfoFacts } from './doctor.js'
