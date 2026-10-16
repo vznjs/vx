@@ -163,9 +163,6 @@ export default defineConfig({
         ThemeProvider: './src/components/starlight/ThemeProvider.astro',
       },
       customCss: ['./src/styles/theme.css', './src/styles/charts.css', './src/styles/blog.css'],
-      // A code block wraps rather than scrolls: on a phone the end of a
-      // command hid past the edge, and nothing said it was there.
-      expressiveCode: { defaultProps: { wrap: true } },
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/vznjs/vx' },
         { icon: 'blueSky', label: 'Bluesky', href: 'https://bsky.app/profile/vzn-vx.bsky.social' },
