@@ -80,8 +80,8 @@ it('writes them into the .vx/workspace.ts it writes; one it cannot read stays a 
   const out = await new Response(proc.stdout).text()
   expect(await proc.exited).toBe(0)
   const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
-  // Beside it, the ignore that keeps only the machine-local cache out of git.
-  expect(await readFile(path.join(root, '.vx/.gitignore'), 'utf8')).toBe('/cache\n')
+  // Beside it, the ignore that keeps only the machine-local cache and staging out of git.
+  expect(await readFile(path.join(root, '.vx/.gitignore'), 'utf8')).toBe('/cache\n/tmp\n')
   expect([ws.match(/^ {2}\w+: .*,$/gm), out.includes('to .vx/workspace.ts')]).toEqual([
     [
       "  run: { concurrency: 2, affectedBase: 'main' },",

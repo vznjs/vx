@@ -82,9 +82,13 @@ describe('a process out of file descriptors', () => {
   it('fails the restore of an inline artifact the same way, at the first file it stages', async () => {
     const { name, message } = await outOfFds('restore')
     const staged = message.match(/open '(.*)'\) — /)?.[1]
-    expect([name, path.dirname(staged ?? ''), message.replace(staged ?? '', '<staged>')]).toEqual([
+    expect([
+      name,
+      path.dirname(path.dirname(staged ?? '')),
+      message.replace(staged ?? '', '<staged>'),
+    ]).toEqual([
       'UserError',
-      `${root}/p/dist`,
+      `${root}/.vx/tmp`,
       `restore of h1 into ${root}/p could not open a file (EMFILE: too many open files, open '<staged>') — ${HINT}`,
     ])
   })

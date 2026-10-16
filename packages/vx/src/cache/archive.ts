@@ -669,6 +669,9 @@ export async function extractArtifactStream(
   return provided
 }
 
+/** BSD gives every new file its directory's group, setgid or not. */
+const INHERITS_GROUP = process.platform === 'darwin'
+
 /**
  * Entries up to this size are buffered and written without waiting, so a
  * thousand tiny outputs restore in parallel; larger ones stream chunk by
@@ -970,8 +973,9 @@ class Extractor {
   ): Promise<void> {
     await this.drain()
     const created = new Map<boolean, { mode: number; uid: number; gid: number }>()
-    // A setgid directory's group, by directory: a file staged elsewhere
-    // took the staging directory's, where one written in place inherits it.
+    // The group a file written in place would take, by directory: a setgid
+    // directory's on Linux, every directory's on BSD/macOS. A file staged
+    // elsewhere took the staging directory's.
     const setgid = new Map<string, number | null>()
     let n = 0
     let renames: Promise<void>[] = []
@@ -995,7 +999,7 @@ class Extractor {
         let gid = setgid.get(dir)
         if (gid === undefined) {
           const st = statSync(dir)
-          gid = (st.mode & 0o2000) !== 0 ? st.gid : null
+          gid = INHERITS_GROUP || (st.mode & 0o2000) !== 0 ? st.gid : null
           setgid.set(dir, gid)
         }
         if (gid !== null && gid !== made.gid) chownSync(s.tmp, made.uid, gid)

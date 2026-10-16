@@ -43,7 +43,8 @@ where it was.
 Each file is renamed over the one it replaces (archive.ts stages every
 entry in the workspace's `.vx/tmp/<pid>-0/` first, never in an output
 folder; a target on another filesystem goes through a temp beside it,
-and a setgid directory's group is kept; ACLs are not copied, a restored
+and a file takes the group its directory gives new files (setgid on
+Linux, any directory on macOS); ACLs are not copied, a restored
 file gets the default ACL of `.vx/tmp/`), so a reader of the output tree never
 finds a declared output missing or half-written, and a restore that fails
 before its renames (a full disk, a damaged entry) leaves the outputs it

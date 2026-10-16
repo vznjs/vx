@@ -52,7 +52,13 @@ async function artifact(files: Record<string, string>): Promise<Uint8Array> {
 function filesUnder(root: string): string[] {
   return readdirSync(root, { recursive: true, withFileTypes: true })
     .filter((e) => e.isFile())
-    .map((e) => path.relative(root, path.join(e.parentPath, e.name)))
+    .map((e) =>
+      path
+        .join(e.parentPath, e.name)
+        .slice(root.length + 1)
+        .split(path.sep)
+        .join('/'),
+    )
     .sort()
 }
 
@@ -150,27 +156,46 @@ it.skipIf(!otherFs)(
   },
 )
 
-it('a file restored into a setgid directory takes its group', async () => {
-  const egid = process.getegid!()
-  const group =
-    process.getgroups!().find((g) => g !== egid) ?? (process.getuid!() === 0 ? 4242 : undefined)
-  expect(group).toBeDefined()
-  const ws = dir('vx-staging-sgid-')
-  const dest = path.join(ws, 'app')
-  const out = path.join(dest, 'dist')
-  mkdirSync(out, { recursive: true })
-  chownSync(out, process.getuid!(), group!)
-  chmodSync(out, 0o2775)
-  await extractArtifactStream(
-    streamOf(await artifact({ 'dist/a.js': 'new\n' })),
-    dest,
-    undefined,
-    undefined,
-    undefined,
-    ws,
-  )
-  expect(statSync(path.join(out, 'a.js')).gid).toBe(group!)
-})
+// A group this process may give a file other than its own: a supplementary
+// one, or for root any gid a chown accepts (root in a user namespace may
+// give only mapped ones: EINVAL).
+function chownable(): number | undefined {
+  const supplementary = process.getgroups!().find((g) => g !== process.getegid!())
+  if (supplementary !== undefined || process.getuid!() !== 0) return supplementary
+  const probe = path.join(mkdtempSync(path.join(os.tmpdir(), 'vx-chown-')), 'f')
+  writeFileSync(probe, '')
+  try {
+    chownSync(probe, 0, 4242)
+    return 4242
+  } catch {
+    return undefined
+  } finally {
+    rmSync(path.dirname(probe), { recursive: true })
+  }
+}
+const otherGroup = chownable()
+
+it.skipIf(otherGroup === undefined)(
+  'a file restored into a setgid directory takes its group',
+  async () => {
+    const group = otherGroup
+    const ws = dir('vx-staging-sgid-')
+    const dest = path.join(ws, 'app')
+    const out = path.join(dest, 'dist')
+    mkdirSync(out, { recursive: true })
+    chownSync(out, process.getuid!(), group!)
+    chmodSync(out, 0o2775)
+    await extractArtifactStream(
+      streamOf(await artifact({ 'dist/a.js': 'new\n' })),
+      dest,
+      undefined,
+      undefined,
+      undefined,
+      ws,
+    )
+    expect(statSync(path.join(out, 'a.js')).gid).toBe(group!)
+  },
+)
 
 it("the next run sweeps a killed run's staging and leaves a live run's", async () => {
   const root = await makeWorkspace({ prefix: 'vx-staging-sweep-' })

@@ -32,12 +32,12 @@ describe('the cache directory is git-ignored by construction', () => {
   })
 
   // The default is named by `.vx/.gitignore`, committed beside the workspace
-  // config and the lock, so git sees those and nothing under `.vx/cache`
+  // config and the lock, so git sees those and nothing under `.vx/cache` or `.vx/tmp`
   // (owner, 2026-10-14: no `*` in it).
   it('the default .vx/cache is ignored by .vx/.gitignore, which git sees', async () => {
     await Bun.write(path.join(root, '.vx', 'workspace.ts'), 'export default {}\n')
     new Cache(path.join(root, '.vx', 'cache')).close()
-    expect(await readFile(path.join(root, '.vx', '.gitignore'), 'utf8')).toBe('/cache\n')
+    expect(await readFile(path.join(root, '.vx', '.gitignore'), 'utf8')).toBe('/cache\n/tmp\n')
     expect(await Bun.file(path.join(root, '.vx', 'cache', '.gitignore')).exists()).toBe(false)
     expect(status()).toBe('?? .vx/.gitignore\n?? .vx/workspace.ts\n')
   })

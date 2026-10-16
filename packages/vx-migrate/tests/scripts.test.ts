@@ -141,7 +141,7 @@ describe('vx init and .vx/.gitignore', () => {
       await addPackage(root, 'a', { build: 'tsc' })
       await Bun.write(path.join(root, '.gitignore'), 'node_modules\n')
       expect((await vx(root, ['init'])).code).toBe(0)
-      expect(await Bun.file(path.join(root, '.vx', '.gitignore')).text()).toBe('/cache\n')
+      expect(await Bun.file(path.join(root, '.vx', '.gitignore')).text()).toBe('/cache\n/tmp\n')
       expect(await Bun.file(path.join(root, '.gitignore')).text()).toBe('node_modules\n')
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -153,7 +153,7 @@ describe('vx init and .vx/.gitignore', () => {
     try {
       await Bun.write(path.join(root, 'turbo.json'), '{ "tasks": {} }\n')
       expect((await vx(root, ['init', '--keep'])).code).toBe(0)
-      expect(await Bun.file(path.join(root, '.vx', '.gitignore')).text()).toBe('/cache\n')
+      expect(await Bun.file(path.join(root, '.vx', '.gitignore')).text()).toBe('/cache\n/tmp\n')
       await Bun.write(path.join(root, '.vx', '.gitignore'), 'mine\n')
       expect((await vx(root, ['init', '--keep'])).code).toBe(0)
       expect(await Bun.file(path.join(root, '.vx', '.gitignore')).text()).toBe('mine\n')

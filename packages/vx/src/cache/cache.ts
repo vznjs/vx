@@ -2062,10 +2062,7 @@ export class Cache implements CacheLayer {
       // on one workspace, a `vx watch` beside a `vx run` — a clean landing
       // 4–32 ms into a 2,000-file restore reproduces it, 2026-09-16). The
       // artifact is intact; the tree was not ours alone.
-      if (
-        code === 'ENOENT' &&
-        /\.vx-tmp-|[\\/]\.vx[\\/]tmp[\\/]/.test((err as Error).message)
-      ) {
+      if (code === 'ENOENT' && /\.vx-tmp-|[\\/]\.vx[\\/]tmp[\\/]/.test((err as Error).message)) {
         throw new UserError(
           `restore of ${hash} into ${projectDir} was interrupted: a file it had just written vanished (${(err as Error).message}). ` +
             `Another vx run is using this workspace — re-run once it is done.`,

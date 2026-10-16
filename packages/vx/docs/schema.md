@@ -1669,8 +1669,9 @@ The loader rejects:
 
 Loaded from `.vx/workspace.{ts,mts,js,mjs,cts,cjs}`: the directory holding
 `.vx` is the workspace root. `.vx` also holds the lock (`.vx/projects.lock.json`)
-and `.vx/cache`, the machine-local state (the cache, the workspace id),
-which is the only part git ignores: `.vx/.gitignore` says `/cache`. Every field falls back to its
+`.vx/cache`, the machine-local state (the cache, the workspace id), and
+`.vx/tmp`, where a restore stages files; git ignores only those two:
+`.vx/.gitignore` says `/cache` and `/tmp`. Every field falls back to its
 built-in default.
 
 ```ts
@@ -1830,7 +1831,7 @@ interface CacheSettings {
   workspace (`'..'`, `'/'`) is refused before anything is written, since its `*`
   `.gitignore` would hide the sources from git and the cache keys. A
   directory other than the default `.vx/cache` gets that `*` `.gitignore`;
-  the default is ignored by `.vx/.gitignore` (`/cache`) instead, written
+  the default is ignored by `.vx/.gitignore` (`/cache`, `/tmp`) instead, written
   when missing and never edited.
 - **`cache.retention`** — the `vx cache clean` policy, applied at the
   end of every run: entries unused for
