@@ -20,12 +20,12 @@ const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 const config = `export default { tasks: {
   build: {
     exec: { command: 'mkdir -p dist && cp src/a.txt dist/a.txt' },
-    cache: { inputs: { files: ['src/**'] }, outputs: { files: ['**/dist/**'] } },
+    inputs: { files: ['src/**'] }, cache: { outputs: { files: ['**/dist/**'] } },
   },
   test: {
     dependsOn: ['build'],
     exec: { command: 'cat dist/a.txt' },
-    cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+    inputs: { files: ['**/*'] }, cache: { outputs: { files: [] } },
   },
 } }`
 
@@ -68,7 +68,7 @@ async function keyedTheSameAcrossTheBuild(root: string): Promise<void> {
 }
 
 const refusal =
-  /app#test reads "\*\*\/\*" in cache\.inputs\.files, which matches app#build's output "\*\*\/dist\/\*\*"/
+  /app#test reads "\*\*\/\*" in inputs\.files, which matches app#build's output "\*\*\/dist\/\*\*"/
 
 describe('an output git ignores is no overlap', () => {
   for (const [where, ignore] of [

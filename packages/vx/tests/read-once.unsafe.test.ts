@@ -94,7 +94,7 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
   tasks: {
     build: {
       exec: { command: 'true' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
   },
 }

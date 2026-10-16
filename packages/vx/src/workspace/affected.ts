@@ -75,7 +75,7 @@ export interface AffectedArgs {
   since: string
   projects: readonly ProjectMeta[]
   /**
-   * Which projects declare a `cache.inputs.workspaceFiles` glob matching one of
+   * Which projects declare a `inputs.workspaceFiles` glob matching one of
    * these workspace-relative paths.
    *
    * A workspace-anchored glob is the documented escape hatch for inputs

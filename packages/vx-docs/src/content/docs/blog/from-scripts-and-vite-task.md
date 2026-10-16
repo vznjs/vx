@@ -40,7 +40,7 @@ $ vx init --dry
   dry run   nothing written
   tasks     1 todo
   todo      app#build: npm ran `prebuild` and `postbuild` around this script without being asked; folded into the command in that order
-            app#build: cache: add `cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs …
+            app#build: cache: add `inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs …
 ```
 
 Each part runs in its own subshell, so the chain stops at the first

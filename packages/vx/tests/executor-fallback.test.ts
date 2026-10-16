@@ -29,7 +29,7 @@ async function fixture(remote: 'only' | undefined): Promise<void> {
     path.join(root, 'a', 'vx.config.mjs'),
     `export default { tasks: { gen: {
        exec: { command: 'echo here > out.txt'${remote === 'only' ? ", remote: 'only'" : ''} },
-       cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+       inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
      } } }`,
   )
   await Bun.write(

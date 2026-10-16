@@ -26,7 +26,7 @@ describe.skipIf(!available)('the empty-outputs warning for a sandboxed task', ()
       files: { 'src/a.txt': 'a' },
       config: `export default { tasks: { build: {
         exec: { command: 'true', sandbox: { allow: { read: ['.']${write} } } },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['build/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['build/**'] } },
       } } }`,
     })
     const lines: string[] = []

@@ -46,7 +46,7 @@ export const EXTGLOB: RegExp // /[!@+*?]\(/
 export function printable(s: string): string
 ```
 
-**Two alphabets (item 667).** In a TASK glob (`cache.inputs.files`,
+**Two alphabets (item 667).** In a TASK glob (`inputs.files`,
 `cache.outputs.files`, `workspaceFiles`) a bracket is a literal
 character and there are no character classes: `app/[id]/**` is the
 route directory, not the class that matches `app/i`. `GLOB_WILDCARDS`,

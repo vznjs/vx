@@ -78,26 +78,26 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
+      inputs: {
+        files: [
+          'astro.config.mjs',
+          'scripts/**',
+          'src/env.d.ts',
+          'src/blog/**',
+          'src/components/**',
+          'src/features/**',
+          'src/llms/**',
+          'src/nav/**',
+          'src/pages/**',
+          'src/playground/**',
+          'src/plugins/**',
+          'tests/**',
+          'package.json',
+          '.oxlintrc.json',
+          'tsconfig.json',
+        ],
+      },
       cache: {
-        inputs: {
-          files: [
-            'astro.config.mjs',
-            'scripts/**',
-            'src/env.d.ts',
-            'src/blog/**',
-            'src/components/**',
-            'src/features/**',
-            'src/llms/**',
-            'src/nav/**',
-            'src/pages/**',
-            'src/playground/**',
-            'src/plugins/**',
-            'tests/**',
-            'package.json',
-            '.oxlintrc.json',
-            'tsconfig.json',
-          ],
-        },
         outputs: { files: [] },
       },
     },
@@ -115,10 +115,10 @@ export default defineProject({
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
+      inputs: {
+        files: ['**/*', ...NOT_GENERATED],
+      },
       cache: {
-        inputs: {
-          files: ['**/*', ...NOT_GENERATED],
-        },
         outputs: { files: [] },
       },
     },
@@ -145,15 +145,15 @@ export default defineProject({
           },
         },
       },
+      inputs: {
+        files: ['scripts/import-docs.ts'],
+        workspaceFiles: [
+          'packages/vx/docs/**',
+          'packages/vx-*/README.md',
+          'packages/vx-*/package.json',
+        ],
+      },
       cache: {
-        inputs: {
-          files: ['scripts/import-docs.ts'],
-          workspaceFiles: [
-            'packages/vx/docs/**',
-            'packages/vx-*/README.md',
-            'packages/vx-*/package.json',
-          ],
-        },
         outputs: { files: IMPORTED },
       },
     },
@@ -190,42 +190,42 @@ export default defineProject({
           },
         },
       },
+      inputs: {
+        files: [
+          'tests/**',
+          'src/content/docs/**',
+          // The compare and playground pins import the widgets' model to
+          // hold the built pages to it.
+          'src/components/demos/model/**',
+          // playground-page.test.ts reads the element's source for the
+          // markup it queries.
+          'src/components/demos/playground.ts',
+          // sidebar-coverage.test.ts imports the sidebars; diagram-kit.test.ts
+          // reads the kit's styles, the widgets' and the theme's tokens, and
+          // with landing.test.ts the landing's picture.
+          'src/nav/**',
+          // features.test.ts holds the feature data's copy, commands and
+          // config examples, and its images on disk.
+          'src/features/**',
+          'src/assets/features/**',
+          'src/components/guide/**',
+          'src/components/landing/**',
+          'src/components/Demo.astro',
+          'src/components/demos/widget.css',
+          'src/components/demos/Playground.astro',
+          'src/styles/theme.css',
+          // The playground rows: its glob and xxh3 against Bun's, and the
+          // shipped bundle against a fresh build.
+          'src/playground/**',
+          'scripts/build-playground.ts',
+          'astro.config.*',
+          '.gitignore',
+          'package.json',
+          ...NOT_GENERATED,
+        ],
+        workspaceFiles: PROOFS,
+      },
       cache: {
-        inputs: {
-          files: [
-            'tests/**',
-            'src/content/docs/**',
-            // The compare and playground pins import the widgets' model to
-            // hold the built pages to it.
-            'src/components/demos/model/**',
-            // playground-page.test.ts reads the element's source for the
-            // markup it queries.
-            'src/components/demos/playground.ts',
-            // sidebar-coverage.test.ts imports the sidebars; diagram-kit.test.ts
-            // reads the kit's styles, the widgets' and the theme's tokens, and
-            // with landing.test.ts the landing's picture.
-            'src/nav/**',
-            // features.test.ts holds the feature data's copy, commands and
-            // config examples, and its images on disk.
-            'src/features/**',
-            'src/assets/features/**',
-            'src/components/guide/**',
-            'src/components/landing/**',
-            'src/components/Demo.astro',
-            'src/components/demos/widget.css',
-            'src/components/demos/Playground.astro',
-            'src/styles/theme.css',
-            // The playground rows: its glob and xxh3 against Bun's, and the
-            // shipped bundle against a fresh build.
-            'src/playground/**',
-            'scripts/build-playground.ts',
-            'astro.config.*',
-            '.gitignore',
-            'package.json',
-            ...NOT_GENERATED,
-          ],
-          workspaceFiles: PROOFS,
-        },
         outputs: { files: [] },
       },
     },
@@ -257,8 +257,8 @@ export default defineProject({
           },
         },
       },
+      inputs: { files: ['scripts/build-playground.ts', 'src/playground/**', 'package.json'] },
       cache: {
-        inputs: { files: ['scripts/build-playground.ts', 'src/playground/**', 'package.json'] },
         outputs: { files: ['public/playground/planner.js'] },
       },
     },
@@ -302,15 +302,15 @@ export default defineProject({
           },
         },
       },
+      // The generated pages are gitignored, so `**/*` does not see them;
+      // `import`'s key does (its inputs are the docs), and it cascades
+      // through `dependsOn`. This used to name `docs/**` at the workspace
+      // root — a path that stopped existing when core moved under
+      // `packages/`, so a docs edit never re-keyed the build.
+      inputs: {
+        files: ['**/*', ...NOT_GENERATED],
+      },
       cache: {
-        // The generated pages are gitignored, so `**/*` does not see them;
-        // `import`'s key does (its inputs are the docs), and it cascades
-        // through `dependsOn`. This used to name `docs/**` at the workspace
-        // root — a path that stopped existing when core moved under
-        // `packages/`, so a docs edit never re-keyed the build.
-        inputs: {
-          files: ['**/*', ...NOT_GENERATED],
-        },
         outputs: { files: ['dist/**'] },
       },
     },

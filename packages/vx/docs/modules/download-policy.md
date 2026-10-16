@@ -35,7 +35,7 @@ export function resolveDownloadModes(args: {
 
 A dependent's key folds an upstream's KEY, never its output content
 (pure-input transitive hashing), so deferral cannot move a key that way.
-The one real channel is a task whose `cache.inputs` can OBSERVE a
+The one real channel is a task whose `inputs` can OBSERVE a
 producer's outputs on disk — then its key differs by whether the bytes
 arrived. Ineligible producers run `eager`; a refusal would break a
 working build, so the gate is a DOWNGRADE, never an error.
@@ -47,16 +47,17 @@ matters:
   the producer's output-glob prefixes (`src/**` vs `dist/**` cannot, and
   the coarse "same project" rule the design first sketched would have
   left `--cache-download=none` with nothing to defer);
-- any task declaring `cache.inputs.runtime` / `workspaceRuntime` — a
+- any task declaring `inputs.runtime` / `workspaceRuntime` — a
   shell command's reads cannot be bounded, and deferral SKIPS the output
   clean, so a stale prior build is exactly what it would sample;
-- any task declaring `cache.inputs.workspaceFiles` (boundary-free);
+- any task declaring `inputs.workspaceFiles` (boundary-free);
 - the producer declaring `cache.outputs.workspaceFiles` (root-anchored).
 
-A leading wildcard yields prefix `.` and reaches everything; a cacheable
-task with no declared `files` counts as reading its whole project, and so
-does a task with no `cache` block that a cached task depends on (its key
-folds every file in its project, and the cached task folds that key). The
+A leading wildcard yields prefix `.` and reaches everything; a task with
+empty `inputs.files` counts as reading its whole project. A task with
+`inputs` and no `cache` block counts as a reader when a cached task
+depends on it (the cached task folds its key); one with no `inputs` has
+no key to read. The
 prefixes are compared as PATHS, not as strings: `staticPrefix` normalizes
 the spelling, because `./out/**` and `out/**` name one tree to the input
 resolver and two different prefixes to a raw comparison — which deferred

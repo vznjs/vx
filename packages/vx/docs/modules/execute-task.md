@@ -321,7 +321,7 @@ extensions:
   approach (CLAUDE.md § Rejected): inputs stay declared and explicit.
   A task that wants its reads confined to the paths it declared asks
   for that with `exec.sandbox`, which enforces rather than infers.
-  The user's grants derive NOTHING from `cache`: `cache.inputs` says
+  The user's grants derive NOTHING from `cache`: `inputs` says
   what invalidates a task, `exec.sandbox.allow` says what it may touch.
   Declaring `cache` only narrows core's own `node_modules` link grant to
   the packages the key answers for (`keyed-projects.md`).

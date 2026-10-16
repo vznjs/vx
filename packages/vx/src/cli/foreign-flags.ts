@@ -343,7 +343,7 @@ export const FOREIGN_FLAGS: readonly ForeignFlag[] = [
     names: ['--global-deps'],
     value: true,
     outcome: 'refuse',
-    vx: "declare them in `cache.inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)",
+    vx: "declare them in `inputs.workspaceFiles` (under `turbo()`, turbo.json's `globalDependencies`)",
   },
   {
     runner: 'turbo',

@@ -71,7 +71,7 @@ it("the variable's value moves the key; the same value keeps it", async () => {
     'a',
     `export default { tasks: { build: {
       exec: { command: 'true' },
-      cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+      inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
     } } }`,
   )
   await workspace(`envKey(['EXAMPLE_FLAG'])`)

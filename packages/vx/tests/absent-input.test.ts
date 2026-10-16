@@ -35,7 +35,7 @@ describe('an input an upstream deletes before its dependant is keyed', () => {
         files: { 'src/x': 'x' },
         config: `export default { tasks: { build: {
           exec: { command: 'rm -f ../b/src/gen.txt && echo a > out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         } } }`,
       })
       const b = await addProject(fx.root, 'b', {
@@ -43,7 +43,7 @@ describe('an input an upstream deletes before its dependant is keyed', () => {
         config: `export default { tasks: { build: {
           dependsOn: ['^build'],
           exec: { command: 'ls src > out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         } } }`,
       })
       await Bun.write(path.join(b, 'src', 'gen.txt'), 'g')
@@ -122,7 +122,8 @@ describe('the inputs an executor is handed', () => {
           taskName: 't',
           config: {
             exec: { command: 'true' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+            inputs: { files: ['src/**'] },
+            cache: { outputs: { files: [] } },
           },
           deps: [],
           requested: true,

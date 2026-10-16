@@ -47,7 +47,7 @@ export function taskShell(): string
 
 ## Not here
 
-The `cache.inputs.runtime` probe (`cache/inputs.ts`) spawns
+The `inputs.runtime` probe (`cache/inputs.ts`) spawns
 `shellArgv` with a PATH led by the task's `node_modules/.bin`.
 
 ## Tests

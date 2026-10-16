@@ -510,7 +510,7 @@ describe('warm hits through run() with the short-circuit', () => {
     await writeFile(path.join(root, 'packages/a/src/index.js'), 'export const v = 1\n')
     await writeFile(
       path.join(root, 'packages/a/vx.config.mjs'),
-      "export default { tasks: { build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } } } }\n",
+      "export default { tasks: { build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } } } }\n",
     )
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
   })
@@ -588,7 +588,7 @@ describe('warm hits through run() with the short-circuit', () => {
     await writeFile(
       path.join(root, 'packages/a/vx.config.mjs'),
       `export default { tasks: {
-        build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } },
+        build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
         post: { dependsOn: ['build'], exec: { command: 'echo stray > dist/sub/stray.js && sleep ${(OUTPUT_DIRS_RACY_MS * 3) / 1000}' } },
       } }\n`,
     )
@@ -620,7 +620,7 @@ describe('warm hits through run() with the short-circuit', () => {
     writeFile(
       path.join(root, 'packages/a/vx.config.mjs'),
       `export default { tasks: {
-        build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } },
+        build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
         post: { dependsOn: ['build'], exec: { command: '${post}sleep ${(OUTPUT_DIRS_RACY_MS * 3) / 1000}' } },
       } }\n`,
     )
@@ -656,7 +656,7 @@ describe('warm hits through run() with the short-circuit', () => {
   it('a bare literal directory output records its directories; a stray still forces the restore', async () => {
     await writeFile(
       path.join(root, 'packages/a/vx.config.mjs'),
-      "export default { tasks: { build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist'] } } } } }\n",
+      "export default { tasks: { build: { exec: { command: 'mkdir -p dist/sub && cp src/index.js dist/out.js && cp src/index.js dist/sub/in.js' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist'] } } } } }\n",
     )
     expect((await runBuild()).ok).toBe(true)
     await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
@@ -679,7 +679,7 @@ describe('warm hits through run() with the short-circuit', () => {
   it('a bare literal FILE output records the file, skips the walk, and is still restored when it changes (U-5)', async () => {
     await writeFile(
       path.join(root, 'packages/a/vx.config.mjs'),
-      "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/index.js dist/tool' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/tool'] } } } } }\n",
+      "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/index.js dist/tool' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/tool'] } } } } }\n",
     )
     const recorded = () => {
       const c = db()
@@ -710,7 +710,7 @@ describe('warm hits through run() with the short-circuit', () => {
   it('a root-anchored glob records nothing and keeps the walk (control)', async () => {
     await writeFile(
       path.join(root, 'packages/a/vx.config.mjs'),
-      "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/index.js dist/out.js' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**/*.js'] } } } } }\n",
+      "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/index.js dist/out.js' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**/*.js'] } } } } }\n",
     )
     expect((await runBuild()).ok).toBe(true)
     expect((await runBuild()).ok).toBe(true)

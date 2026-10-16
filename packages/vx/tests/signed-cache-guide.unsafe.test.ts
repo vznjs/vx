@@ -23,7 +23,7 @@ function example(): string {
 
 const CFG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },
-  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } }`
+  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } } } }`
 
 /** A remote that is a directory: what a bucket anyone can write looks like. */
 const DIR_REMOTE = `

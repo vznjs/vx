@@ -1,6 +1,6 @@
-// A task with no `cache` block derives a key for its dependents to fold,
-// and, declaring nothing, folds every file in its project — its own
-// outputs included, since it declared none. So when it writes a file git
+// A task with no `cache` block derives a key from its `inputs` for its
+// dependents to fold, and an input of `**` folds every file in its
+// project — its own outputs included, since it declared none. So when it writes a file git
 // does not ignore, its key moves after its first run and a cached
 // dependent misses once more; ignored outputs keep the key still. Found
 // on a first-run walk (2026-09-15): the migrated build had no block yet,
@@ -17,7 +17,7 @@ const TIMEOUT = 30_000
 const LIB = `
   export default {
     tasks: {
-      build: { exec: { command: 'echo lib > dist.txt' } },
+      build: { exec: { command: 'echo lib > dist.txt' }, inputs: { files: ['**'] } },
     },
   }
 `
@@ -27,7 +27,7 @@ const WEB = `
       build: {
         exec: { command: 'cat ../lib/dist.txt > out.txt' },
         dependsOn: ['^build'],
-        cache: { inputs: { files: ['package.json'] }, outputs: { files: ['out.txt'] } },
+        inputs: { files: ['package.json'] }, cache: { outputs: { files: ['out.txt'] } },
       },
     },
   }

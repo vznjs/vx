@@ -44,7 +44,7 @@ package-manager parts come from a plugin.
 Core keys no package file (2026-10-14): the lockfile and each
 project's `package.json` key a task through `@vzn/vx-lockfile`, which
 claims the lockfile and adds `package.json` to every cached task's
-inputs, so narrow `cache.inputs.files` like `['src/**']` doesn't miss a
+inputs, so narrow `inputs.files` like `['src/**']` doesn't miss a
 `package.json` dep bump.
 
 The two **divergences** from Turbo's recipe — TypeScript-resolved

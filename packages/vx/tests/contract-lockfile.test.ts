@@ -45,7 +45,7 @@ beforeAll(async () => {
     build: {
       description: 'compile',
       exec: { command: 'echo lib', env: { passThrough: ['HOME'] }, timeout: '1m', retries: 1 },
-      cache: { inputs: { files: ['src/**'], env: ['LOCK_FIXTURE_MODE'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'], env: ['LOCK_FIXTURE_MODE'] }, cache: { outputs: { files: ['dist/**'] } },
     },
   },
 }
@@ -59,7 +59,7 @@ export default {
     build: {
       dependsOn: ['^build'],
       exec: { command: 'echo app ' + mode },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
     dev: { exec: { command: 'echo dev', persistent: {} } },
   },

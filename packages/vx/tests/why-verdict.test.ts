@@ -17,7 +17,7 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'cat src/a.txt > out.txt', env: { passThrough: ['MODE'] } },
-        cache: { inputs: { files: ['src/**'], env: ['MODE'] }, outputs: { files: ['out.txt'] } },
+        inputs: { files: ['src/**'], env: ['MODE'] }, cache: { outputs: { files: ['out.txt'] } },
       },
     },
   }

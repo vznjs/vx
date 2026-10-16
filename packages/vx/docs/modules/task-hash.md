@@ -72,8 +72,8 @@ export interface UpfrontGroupKey {
 }
 ```
 
-- `computeTaskHash` — resolves `cache.inputs.files` (git-backed) and
-  `workspaceFiles`, reads `cache.inputs.env` host values, runs the
+- `computeTaskHash` — resolves `inputs.files` (git-backed) and
+  `workspaceFiles`, reads `inputs.env` host values, runs the
   `runtime` commands once per run, hashes the resolved task config, folds in the filtered upstream hashes,
   and calls `cache.key({...})`. Timed as the `task hash` span.
 - `captureInto` — on a miss the orchestrator persists the captured

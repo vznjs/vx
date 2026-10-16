@@ -302,8 +302,8 @@ describe('computeTaskHash over random resolved configs', () => {
     return {
       ...(r() < 0.5 ? { description: str(r, NAME_CHARS) } : {}),
       exec,
+      inputs: { files: [], ...(r() < 0.5 ? { env: [...ENV] } : {}) },
       cache: {
-        inputs: { files: [], ...(r() < 0.5 ? { env: [...ENV] } : {}) },
         outputs: { files: [] },
       },
     }
@@ -426,13 +426,13 @@ describe('computeTaskHash over random resolved configs', () => {
     for (const n of applied.values()) expect(n).toBeGreaterThan(10)
   })
 
-  it('a cache.inputs.env value moves the key only for the task that declares it', async () => {
+  it('a inputs.env value moves the key only for the task that declares it', async () => {
     for (const { c } of draws(0xe7, 20)) {
       process.env.VX_KEYPROP_A = 'one'
       const before = await key(c)
       process.env.VX_KEYPROP_A = 'one='
       const after = await key(c)
-      if (c.cfg.cache!.inputs.env === undefined) expect(after).toBe(before)
+      if (c.cfg.inputs?.env === undefined) expect(after).toBe(before)
       else expect(after).not.toBe(before)
     }
   })

@@ -25,7 +25,7 @@ export default defineProject({
   tasks: {
     codegen: {
       exec: { command: 'graphql-codegen' },
-      cache: { inputs: { files: ['schema.graphql'] }, outputs: { files: ['src/gen/**'] } },
+      inputs: { files: ['schema.graphql'] }, cache: { outputs: { files: ['src/gen/**'] } },
     },
     build: {
       description: 'compile TypeScript to dist/',
@@ -33,7 +33,7 @@ export default defineProject({
       exec: { command: 'tsc -b' },
       // codegen's output reaches this key through codegen's own key; a key
       // that read it could not be known until codegen ran, so vx refuses it.
-      cache: { inputs: { files: ['src/**', '!src/gen/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**', '!src/gen/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
     e2e: {
       dependsOn: ['build', 'api#build'],
@@ -84,10 +84,14 @@ included, so editing a description costs one re-run.
 ## Caching
 
 A task with a `cache` block runs once per set of inputs. List every file
-the command reads, and what it writes (`[]` for test or lint). Unsure the
+the command reads under `inputs`, and what it writes under
+`cache.outputs` (`[]` for test or lint). A task with no `cache` block is
+keyed on its `inputs` all the same, so a cached task behind it re-runs
+when they change; one that declares no `inputs` has no key, and every
+task behind it misses. Unsure the
 list is complete? Add [`exec.sandbox`](../sandboxing/) with `allow.read`
 listing the same files: a workspace read outside it fails the task. The
-sandbox checks `allow.read`, never `cache.inputs`, so it catches a missing
+sandbox checks `allow.read`, never `inputs`, so it catches a missing
 input only while the two lists match.
 
 ```ts
@@ -99,12 +103,12 @@ export default defineProject({
     build: {
       dependsOn: ['^build'],
       exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },
+      inputs: {
+        files: ['src/**', 'index.html', '!**/*.test.ts'],
+        env: ['NODE_ENV'],
+        workspaceFiles: ['tsconfig.base.json'], // from the workspace root
+      },
       cache: {
-        inputs: {
-          files: ['src/**', 'index.html', '!**/*.test.ts'],
-          env: ['NODE_ENV'],
-          workspaceFiles: ['tsconfig.base.json'], // from the workspace root
-        },
         outputs: { files: ['dist/**'] },
       },
     },
@@ -117,8 +121,8 @@ export default defineProject({
 | Always in it           | the keys of the tasks it depends on, the task's config, arguments after `--` |
 | In, with a lockfile plugin | the package's `package.json` and its own dependencies from the lockfile ([Lockfiles](#lockfiles)) |
 | Always excluded        | an untracked `node_modules` (an install), `.git`, `.vx/cache`, `.vx/projects.lock.json`, `vx.lock.json`, `.vx/.gitattributes`, `.vx/.gitignore`, `*.bun-build`, `.????????????????-????????.tmp` (Bun's compile scratch), `.vx-tmp-*` (a restore in progress), files git ignores, the task's own outputs, a nested project's files |
-| In, when you say so    | a tool's version: `cache.inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
-| Out, when you say so   | a dependency only for order: `cache.inputs.tasks: []`, as the [dev task](#dev-tasks) does |
+| In, when you say so    | a tool's version: `inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
+| Out, when you say so   | a dependency only for order: `inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
 Declared outputs are wiped before every run that writes the cache and every
 restore, so `dist/`
@@ -151,7 +155,7 @@ app#build — run 019f5a02-…
     changed file  packages/app/src/index.ts  a1b2c3… → d4e5f6…
 
   what to do:
-    file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
+    file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
 ```
 
 | The verdict line says | It means |
@@ -182,7 +186,7 @@ Past a small essential allowlist (below), a task sees only the variables you pas
 | List                   | The command sees it | The key sees it | Use it for                                          |
 | ---------------------- | ------------------- | --------------- | --------------------------------------------------- |
 | `exec.env.passThrough` | yes                 | no              | secrets and CI flags (`GITHUB_ACTIONS`, `GH_TOKEN`); stays on this machine |
-| `cache.inputs.env`     | no                  | yes             | with `passThrough`: a variable that changes the output |
+| `inputs.env`     | no                  | yes             | with `passThrough`: a variable that changes the output |
 | `exec.env.define`      | yes                 | yes             | a literal value; a remote task gets it too          |
 | `exec.env.secret`      | —                   | —               | names whose values (6 characters or more) print as `***`; names holding `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` are masked without it |
 
@@ -214,10 +218,8 @@ export default defineProject({
     e2e: {
       dependsOn: ['dev'],
       exec: { command: 'playwright test' },
-      cache: {
-        inputs: { files: ['e2e/**'], tasks: [] }, // dev is for order, not the key
-        outputs: { files: ['playwright-report/**'] },
-      },
+      inputs: { files: ['e2e/**'], tasks: [] }, // dev is for order, not the key
+      cache: { outputs: { files: ['playwright-report/**'] } },
     },
   },
 })
@@ -313,7 +315,7 @@ task's PATH. So bumping a root devDependency re-runs every package.
 Each plugin also folds its manager's install settings into every task
 (`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`: `bunfig.toml`,
 `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`), adds a package's
-`package.json` to its cached tasks' inputs, and gives vx the project
+`package.json` to its tasks' inputs, and gives vx the project
 edges the lockfile records: what `^build` waits on, and what `--filter`
 and `--affected` follow. A yarn 1 lockfile records no workspaces, so
 `yarn()` takes its edges from the workspaces' `package.json` files, as

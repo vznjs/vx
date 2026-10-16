@@ -57,7 +57,8 @@ function node(id: string, description?: string): TaskNode {
     config: {
       ...(description !== undefined ? { description } : {}),
       exec: { command: 'true' },
-      cache: { inputs: { files: [] }, outputs: { files: [] } },
+      inputs: { files: [] },
+      cache: { outputs: { files: [] } },
     },
     deps: [],
     requested: true,

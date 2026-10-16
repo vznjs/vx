@@ -23,9 +23,10 @@ beforeAll(async () => {
   await addProject(
     root,
     'a',
-    `const cache = { inputs: { files: ['package.json'] }, outputs: { files: [] } }
+    `const cache = { outputs: { files: [] } }
+const inputs = { files: ['package.json'] }
 export default { tasks: {
-  build: { exec: { command: 'echo built-ok' }, cache },
+  build: { exec: { command: 'echo built-ok' }, inputs, cache },
   plain: { exec: { command: 'echo plain' } },
   bad: { exec: { command: 'echo boom; exit 3' } },
 } }

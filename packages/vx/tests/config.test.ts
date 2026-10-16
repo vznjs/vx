@@ -18,7 +18,8 @@ describe('defineProject', () => {
       tasks: {
         build: {
           exec: { command: 'tsc' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] },
+          cache: { outputs: { files: ['dist/**'] } },
         },
       },
     })
@@ -74,8 +75,9 @@ describe('defineProject', () => {
       tasks: {
         build: {
           exec: { command: 'tsc' },
+          inputs: { files: [] },
           // @ts-expect-error `remote` is not a CacheConfig key.
-          cache: { inputs: { files: [] }, outputs: { files: [] }, remote: true },
+          cache: { outputs: { files: [] }, remote: true },
         },
       },
     })
@@ -83,8 +85,9 @@ describe('defineProject', () => {
       tasks: {
         build: {
           exec: { command: 'tsc' },
-          // @ts-expect-error `globs` is not a CacheInputs key.
-          cache: { inputs: { files: [], globs: [] }, outputs: { files: [] } },
+          // @ts-expect-error `globs` is not a InputsConfig key.
+          inputs: { files: [], globs: [] },
+          cache: { outputs: { files: [] } },
         },
       },
     })
@@ -92,8 +95,9 @@ describe('defineProject', () => {
       tasks: {
         build: {
           exec: { command: 'tsc' },
+          inputs: { files: [] },
           // @ts-expect-error `logs` is not a CacheOutputs key.
-          cache: { inputs: { files: [] }, outputs: { files: [], logs: 1 } },
+          cache: { outputs: { files: [], logs: 1 } },
         },
       },
     })
@@ -106,7 +110,8 @@ describe('defineProject', () => {
           description: 'd',
           dependsOn: ['^build'],
           exec: { command: 'tsc', env: { passThrough: ['A'] }, ...(ci ? { timeout: '1s' } : {}) },
-          cache: { inputs: { files: ['src/**'], env: ['X'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'], env: ['X'] },
+          cache: { outputs: { files: ['dist/**'] } },
         },
         lint: { exec: { command: 'x' }, dependsOn: ['build'] },
       },
@@ -220,16 +225,16 @@ describe('defineProject', () => {
     })
   })
 
-  it('requires cache.inputs.files — the one declaration vx will not infer', () => {
-    // Architecture principle #2: caching is opt-in and `cache.inputs.files`
+  it('requires inputs.files — the one declaration vx will not infer', () => {
+    // Architecture principle #2: caching is opt-in and `inputs.files`
     // is REQUIRED; there is no inferred-input path. The requirement lives
     // only in this type, and nothing asserted it, so it could become
     // optional with the whole suite green — and a task declaring `cache`
     // with no `files` would then key on nothing it reads.
     defineProject({
       tasks: {
-        // @ts-expect-error `files` is required on cache.inputs.
-        build: { exec: { command: 'tsc' }, cache: { inputs: {}, outputs: { files: [] } } },
+        // @ts-expect-error `files` is required on inputs.
+        build: { exec: { command: 'tsc' }, inputs: {}, cache: { outputs: { files: [] } } },
       },
     })
     // CONTROL: the same task with an explicit (even empty) files list is fine.
@@ -237,7 +242,8 @@ describe('defineProject', () => {
       tasks: {
         build: {
           exec: { command: 'tsc' },
-          cache: { inputs: { files: [] }, outputs: { files: [] } },
+          inputs: { files: [] },
+          cache: { outputs: { files: [] } },
         },
       },
     })

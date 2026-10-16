@@ -105,8 +105,8 @@ describe('config import closure freshness', () => {
           `  tasks: {\n` +
           `    build: {\n` +
           `      exec: { command: COMMAND },\n` +
+          `      inputs: { files: ['src/**'] },\n` +
           `      cache: {\n` +
-          `        inputs: { files: ['src/**'] },\n` +
           `        outputs: { files: ['out.txt'] },\n` +
           `      },\n` +
           `    },\n` +
@@ -173,8 +173,8 @@ describe('worker-evaluated repeat loads', () => {
           retries: 2,
           env: { passThrough: ['HOME'], define: { A: 'b' } },
         },
+        inputs: { files: ['src/**'], env: ['CI'], tasks: ['^build'], runtime: ['node -v'] },
         cache: {
-          inputs: { files: ['src/**'], env: ['CI'], tasks: ['^build'], runtime: ['node -v'] },
           outputs: { files: ['dist/**'] },
         },
       },
@@ -237,7 +237,7 @@ describe('worker-evaluated repeat loads', () => {
   it('report a validation error with the same text a first load gives', async () => {
     const bad = `export default { tasks: { build: {
       exec: { command: 'echo hi' },
-      cache: { inputs: { files: ['src/**'], workspaceFile: ['x'] }, outputs: { files: ['o'] } },
+      inputs: { files: ['src/**'], workspaceFile: ['x'] }, cache: { outputs: { files: ['o'] } },
     } } }\n`
 
     const viaFirst = await write(bad)
@@ -256,7 +256,7 @@ describe('worker-evaluated repeat loads', () => {
       (e: unknown) => (e as Error).message,
     )
 
-    expect(firstErr).toMatch(/cache\.inputs has unknown field "workspaceFile"/)
+    expect(firstErr).toMatch(/inputs has unknown field "workspaceFile"/)
     expect(repeatErr).toBe(firstErr.replace(viaFirst, viaRepeat))
   })
 
@@ -296,8 +296,8 @@ describe('a typo in a cache-key field', () => {
           tasks: {
             build: {
               exec: { command: 'cat shared.txt > out.txt' },
+              inputs: { files: ['pkg/**'], workspaceFile: ['shared.txt'] },
               cache: {
-                inputs: { files: ['pkg/**'], workspaceFile: ['shared.txt'] },
                 outputs: { files: ['out.txt'] },
               },
             },
@@ -321,7 +321,7 @@ describe('a typo in a cache-key field', () => {
         proc.exited,
       ])
       expect(code).not.toBe(0)
-      expect(`${out}${err}`).toMatch(/cache\.inputs has unknown field "workspaceFile"/)
+      expect(`${out}${err}`).toMatch(/inputs has unknown field "workspaceFile"/)
     },
     TIMEOUT,
   )

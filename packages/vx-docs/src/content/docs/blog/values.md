@@ -41,7 +41,7 @@ a number is not done. This has killed features that felt obviously
 good: lookahead scheduling was measured against the plain critical-path
 priority and lost, so it is on the rejected list.
 
-**Explicit over magical.** Caching is opt-in; `cache.inputs.files` is
+**Explicit over magical.** Caching is opt-in; `inputs.files` is
 required; nothing is inferred. The sandbox is how a task proves what it
 touches. [The argument](../explicit-over-magical/) is that an
 under-declared input is the worst failure a cache can have, and

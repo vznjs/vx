@@ -191,12 +191,12 @@ export default defineProject({
     build: {
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cp src/*.ts dist/' },
-      cache: { inputs: { ...inputs.build, env: ['API_URL'] }, outputs: { files: ['dist'] } },
+      inputs: { ...inputs.build, env: ['API_URL'] }, cache: { outputs: { files: ['dist'] } },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'true' },
-      cache: { inputs: inputs.test, outputs: { files: [] } },
+      inputs: inputs.test, cache: { outputs: { files: [] } },
     },
   },
 })
@@ -214,15 +214,15 @@ export default defineProject({
       description: undefined,
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cp src/*.ts dist/', timeout: undefined },
+      inputs: { files: ['src/**', 'package.json'], env: ['API_URL'], workspaceFiles: undefined },
       cache: {
-        inputs: { files: ['src/**', 'package.json'], env: ['API_URL'], workspaceFiles: undefined },
         outputs: { files: ['dist'] },
       },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'true' },
-      cache: { inputs: { files: ['src/**', 'test/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**', 'test/**'] }, cache: { outputs: { files: [] } },
     },
   },
 })
@@ -241,15 +241,15 @@ export default defineProject({
     build: {
       dependsOn: UPSTREAM,
       exec: { command: 'mkdir -p dist && cp src/*.ts dist/' },
+      inputs: { files: ['src/**', 'package.json'], env: ['API_URL'] },
       cache: {
-        inputs: { files: ['src/**', 'package.json'], env: ['API_URL'] },
         outputs: { files: ['dist'] },
       },
     },
     test: {
       dependsOn: [...UPSTREAM, 'build'],
       exec: { command: 'true' },
-      cache: { inputs: { files: ['src/**', 'test/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**', 'test/**'] }, cache: { outputs: { files: [] } },
     },
   },
 })

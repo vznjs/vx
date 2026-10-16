@@ -17,7 +17,7 @@ import { run } from './helpers/orchestrator.js'
 
 const CONFIG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },
-  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
 } } }`
 
 let fx: Fixture
@@ -48,7 +48,7 @@ describe('an input this user cannot read', () => {
       expect(fx.err.filter((l) => l.includes('[vx] app#build:')).map((l) => l.trim())).toEqual([
         `[vx] app#build: ${secret} is not readable by this user (EACCES), and vx reads it to ` +
           'derive a cache key. Make it readable, or, for a task input, take it out of ' +
-          'cache.inputs.files.',
+          'inputs.files.',
       ])
     },
     TIMEOUT,

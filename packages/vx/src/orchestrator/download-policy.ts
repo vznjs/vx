@@ -19,7 +19,7 @@ export type DownloadMode = 'eager' | 'deferred' | 'never'
  * The channel this closes is narrow and specific. A dependent's key folds
  * an upstream's KEY, never its output content (pure-input transitive
  * hashing), so deferral cannot move a dependent's key that way. The one
- * real channel is a task whose `cache.inputs` globs can MATCH a producer's
+ * real channel is a task whose `inputs` globs can MATCH a producer's
  * declared outputs on disk: then its key differs by whether the bytes
  * arrived.
  *
@@ -30,7 +30,7 @@ export type DownloadMode = 'eager' | 'deferred' | 'never'
  * `--cache-download=none` with nothing to defer. Comparing the globs' static
  * prefixes answers the question actually being asked, and stays
  * conservative in every direction that matters: a leading wildcard yields
- * `.` and reaches everything, a cacheable task with no declared `files`
+ * `.` and reaches everything, a task with empty `inputs.files`
  * is treated as reading its whole project, and `workspaceFiles` on either
  * side ignores project boundaries — all three force ineligible.
  */
@@ -44,10 +44,10 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
     if (list) list.push({ taskId: n.id, prefixes, via })
     else readersByProject.set(n.projectName, [{ taskId: n.id, prefixes, via }])
   }
-  // A task with no `cache` block keys on every file in its project, and a
-  // cached task that depends on it folds that key: deferring a producer
-  // there moved both keys with the transfer flag. Only such a task is a
-  // reader — one nothing cached folds keys nothing that lasts.
+  // A task with no `cache` block keys on its inputs, and a cached task that
+  // depends on it folds that key: deferring a producer there moved both
+  // keys with the transfer flag. Only such a task is a reader — one nothing
+  // cached folds keys nothing that lasts.
   const folded = new Set<string>()
   const stack = [...nodes.values()]
     .filter((n) => n.config.cache !== undefined)
@@ -60,14 +60,11 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
   let workspaceReader: string | undefined
   let runtimeReader: string | undefined
   for (const n of nodes.values()) {
-    const cache = n.config.cache
-    if (cache === undefined) {
-      if (folded.has(n.id) && !isGroupTask(n) && n.config.exec?.persistent === undefined) {
-        addReader(n, ['.'], 'as a task with no cache block that a cached task folds')
-      }
-      continue
-    }
-    if ((cache.inputs?.workspaceFiles?.length ?? 0) > 0) workspaceReader ??= n.id
+    const inputs = n.config.inputs
+    // A task with no inputs has no key to read; an uncached one with inputs
+    // is read only for the cached tasks that fold its key.
+    if (inputs === undefined || (n.config.cache === undefined && !folded.has(n.id))) continue
+    if ((inputs?.workspaceFiles?.length ?? 0) > 0) workspaceReader ??= n.id
     // A `runtime` input is a SHELL COMMAND whose reads are unknowable —
     // the same reason vx refuses to infer inputs by tracing. It can `cat` a
     // producer's output (or path-escape its project to do it), and its
@@ -77,17 +74,14 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
     // is exactly what such a command would sample. Nothing defers in a run
     // that declares one — worse than nothing would be a key that moves with
     // a transfer flag.
-    if (
-      (cache.inputs?.runtime?.length ?? 0) > 0 ||
-      (cache.inputs?.workspaceRuntime?.length ?? 0) > 0
-    ) {
+    if ((inputs?.runtime?.length ?? 0) > 0 || (inputs?.workspaceRuntime?.length ?? 0) > 0) {
       runtimeReader ??= n.id
     }
-    const files = cache.inputs?.files
+    const files = inputs?.files
     addReader(
       n,
       files === undefined || files.length === 0 ? ['.'] : files.map(staticPrefix),
-      'with cache.inputs.files',
+      'with inputs.files',
     )
   }
 
@@ -105,14 +99,14 @@ export function deferralEligibility(nodes: Map<string, TaskNode>): Map<string, s
     if (runtimeReader !== undefined) {
       ineligible.set(
         n.id,
-        `${runtimeReader} declares a cache.inputs.runtime command, whose reads cannot be bounded`,
+        `${runtimeReader} declares a inputs.runtime command, whose reads cannot be bounded`,
       )
       continue
     }
     if (workspaceReader !== undefined) {
       ineligible.set(
         n.id,
-        `${workspaceReader} declares cache.inputs.workspaceFiles, which can read any project`,
+        `${workspaceReader} declares inputs.workspaceFiles, which can read any project`,
       )
       continue
     }

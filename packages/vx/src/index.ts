@@ -37,7 +37,7 @@ export type {
   ExecConfig,
   ExecEnv,
   CacheConfig,
-  CacheInputs,
+  InputsConfig,
   CacheOutputs,
   InputStability,
   SandboxConfig,

@@ -40,11 +40,13 @@ async function makeWorkspace(opts?: { withDep?: boolean }): Promise<string> {
     [
       'export default {',
       '  tasks: {',
-      ...(opts?.withDep ? ["    pre: { exec: { command: 'echo pre' } },"] : []),
+      ...(opts?.withDep
+        ? ["    pre: { exec: { command: 'echo pre' }, inputs: { files: [] } },"]
+        : []),
       '    slow: {',
       "      exec: { command: 'sleep 0.5 && printf x >> counter.txt && printf done > out.txt' },",
       ...(opts?.withDep ? ["      dependsOn: ['pre'],"] : []),
-      "      cache: { inputs: { files: ['input.txt'] }, outputs: { files: ['out.txt'] } },",
+      "      inputs: { files: ['input.txt'] }, cache: { outputs: { files: ['out.txt'] } },",
       '    },',
       '  },',
       '}',
@@ -65,7 +67,7 @@ async function counter(root: string): Promise<string> {
 
 // Two projects, so a restore-tier task can exist with an UNFINISHED
 // dependency. `app#build`'s key is stable (its inputs live in its own
-// directory, `lib`'s declared output in `lib`'s), and `cache.inputs.tasks: []`
+// directory, `lib`'s declared output in `lib`'s), and `inputs.tasks: []`
 // folds no upstream key, so editing `lib/src.txt` evicts `lib#build` alone
 // and leaves `app#build` a warm, confirmed local hit — the restore tier.
 // The scheduler makes it ready at once, dep-independently, so its `upstream`
@@ -85,7 +87,7 @@ async function makeCrossProject(): Promise<string> {
         '  tasks: {',
         '    build: {',
         "      exec: { command: 'sleep 0.5 && printf L >> ../../counter.txt && printf lib > out.txt' },",
-        "      cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] } },",
+        "      inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['out.txt'] } },",
         '    },',
         '  },',
         '}',
@@ -100,7 +102,7 @@ async function makeCrossProject(): Promise<string> {
         '    build: {',
         "      exec: { command: 'printf A >> ../../counter.txt && printf app > out.txt' },",
         "      dependsOn: ['lib#build'],",
-        "      cache: { inputs: { files: ['src.txt'], tasks: [] }, outputs: { files: ['out.txt'] } },",
+        "      inputs: { files: ['src.txt'], tasks: [] }, cache: { outputs: { files: ['out.txt'] } },",
         '    },',
         '  },',
         '}',
@@ -222,7 +224,7 @@ describe('in-flight dedup', () => {
   tasks: {
     meet: {
       exec: { command: 'printf s >> starts.txt; i=0; until [ $(wc -c < starts.txt) -ge 2 ]; do i=$((i+1)); [ $i -gt 200 ] && exit 1; sleep 0.05; done' },
-      cache: { inputs: { files: ['input.txt'] }, outputs: { files: [] } },
+      inputs: { files: ['input.txt'] }, cache: { outputs: { files: [] } },
     },
   },
 }

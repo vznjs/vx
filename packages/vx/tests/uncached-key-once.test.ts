@@ -56,13 +56,13 @@ describe('an uncached task key is derived once', () => {
       'a',
       `
         export default { tasks: {
-          t1: { exec: { command: 'true' } },
-          t2: { exec: { command: 'true' } },
-          t3: { exec: { command: 'true' } },
-          t4: { exec: { command: 'true' } },
+          t1: { exec: { command: 'true' }, inputs: { files: ['**'] } },
+          t2: { exec: { command: 'true' }, inputs: { files: ['**'] } },
+          t3: { exec: { command: 'true' }, inputs: { files: ['**'] } },
+          t4: { exec: { command: 'true' }, inputs: { files: ['**'] } },
           seed: {
             exec: { command: 'true' },
-            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+            inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
           },
         } }
       `,
@@ -92,8 +92,8 @@ describe('an uncached task key is derived once', () => {
       'c',
       `
         export default { tasks: {
-          w: { exec: { command: 'echo made > made.txt' } },
-          r: { exec: { command: 'true' }, dependsOn: ['w'] },
+          w: { exec: { command: 'echo made > made.txt' }, inputs: { files: ['**'] } },
+          r: { exec: { command: 'true' }, dependsOn: ['w'], inputs: { files: ['**'] } },
         } }
       `,
     )
@@ -110,15 +110,19 @@ describe('an uncached task key is derived once', () => {
         export default { tasks: {
           gen: {
             exec: { command: 'mkdir -p ../e/gen && echo g > ../e/gen/f' },
+            inputs: { files: ['package.json'] },
             cache: {
-              inputs: { files: ['package.json'] },
               outputs: { files: [], workspaceFiles: ['packages/e/gen/**'] },
             },
           },
         } }
       `,
     )
-    await addProject(root, 'e', `export default { tasks: { u: { exec: { command: 'true' } } } }`)
+    await addProject(
+      root,
+      'e',
+      `export default { tasks: { u: { exec: { command: 'true' }, inputs: { files: ['keep.txt'] } } } }`,
+    )
     await writeFile(path.join(root, 'packages', 'e', 'keep.txt'), 'k\n')
     const out = await run(root, ['gen', 'u'])
     // Both up front; e#u again (d#gen reuses its probed key).

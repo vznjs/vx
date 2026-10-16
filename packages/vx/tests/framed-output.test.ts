@@ -456,16 +456,16 @@ describe('formatTaskBlock', () => {
     expect(read.slice(at + 1, at + 5)).toEqual([
       '',
       "fix: exec.sandbox.allow: { read: ['tsconfig.json'], network: ['example.com'] }",
-      "and, if the output depends on them, cache.inputs.files: ['tsconfig.json']",
+      "and, if the output depends on them, inputs.files: ['tsconfig.json']",
       '',
     ])
     // A read the inputs already match, or an uncached task's: no inputs note.
     const keyed = fixed({ read: ['tsconfig.json'] })
-    expect(keyed.filter((l) => l.includes('cache.inputs'))).toEqual([])
+    expect(keyed.filter((l) => l.includes('inputs'))).toEqual([])
     // A write is no key input: no inputs note.
     const write = fixed({ write: ['dist/'] })
     expect(write).toContain("fix: exec.sandbox.allow: { write: ['dist/'] }")
-    expect(write.filter((l) => l.includes('cache.inputs'))).toEqual([])
+    expect(write.filter((l) => l.includes('inputs'))).toEqual([])
     // A credential path is named, never put in the line an agent applies.
     const secret = fixed({ withheld: ['~/.ssh/id_rsa'] })
     const s = secret.indexOf('openat(tsconfig.json) = -1 ENOENT  [/w/a/tsconfig.json]')

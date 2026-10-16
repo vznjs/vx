@@ -51,7 +51,7 @@ import {
 import { resolveSetting } from '../settings.js'
 
 /**
- * The projects whose tasks declare a `cache.inputs.workspaceFiles` glob
+ * The projects whose tasks declare an `inputs.workspaceFiles` glob
  * matching a changed path, one inside another project included (item
  * 954): `--affected` selects them, since the glob is that task's input. Through the run
  * path's staged load, so a glob a `project` plugin gave a config-less
@@ -71,10 +71,8 @@ export async function workspaceGlobOwners(
 ): Promise<string[]> {
   const declaresMatch = (config: ProjectConfig): boolean => {
     for (const task of Object.values(config.tasks ?? {})) {
-      const cache = task.cache
-      if (cache === undefined) continue
-      if (changed.some((rel) => declaresInput(cache, null, rel))) return true
-      if (nested.some((dir) => workspaceFilesReachInto(cache, dir))) return true
+      if (changed.some((rel) => declaresInput(task, null, rel))) return true
+      if (nested.some((dir) => workspaceFilesReachInto(task, dir))) return true
     }
     return false
   }

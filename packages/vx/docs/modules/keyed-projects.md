@@ -39,18 +39,17 @@ of a sandboxed task that declares `cache`.
 ## Rules
 
 - **The fold relation is the hash path's, on the graph.** An exec task
-  folds its dependencies as its own `cache.inputs.tasks` selects them
-  (absent, or no `cache`, means all), through `upstream.ts`'s
+  folds its dependencies as its own `inputs.tasks` selects them
+  (absent means all), through `upstream.ts`'s
   `selectFoldedDeps` — the one copy of the matcher. A group folds every
   dependency. The walk is transitive.
-- **Every exec task reached counts its project, cached or not.** A key
-  folds the task's own project files, and a task with no `cache`
-  declares no `inputs.files`, so it folds every file of its project (the
-  design assumed it folded none; the key-level rows refuted it). A group
-  counts nothing of its own.
-- **A persistent task counts as a task with no `cache`.** Every key path
-  keys it over its whole project (A-17; before, none did, and a cached
-  e2e behind a dev server kept its key when the server changed).
+- **Every exec task reached counts its project, cached or not.** Its
+  key folds its own project's files through its `inputs`, and one with
+  no `inputs` is keyless: a key that folds it is never stored or read. An
+  unkeyed group counts nothing of its own; a keyed one (`inputs`) counts
+  its project.
+- **A persistent task counts as any task with no `cache`** (A-17): keyed
+  on its `inputs`, or keyless.
 - **The task itself is not counted**, and its own project is never
   granted through a link anyway (`sandbox-request.ts`).
 - **Lazy and memoized by task id.** A run of hits asks nothing; a shared

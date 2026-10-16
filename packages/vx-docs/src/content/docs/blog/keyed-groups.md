@@ -6,7 +6,7 @@ authors:
 tags:
   - caching
   - migration
-excerpt: 'A group task can carry cache inputs now. A task that depends on it re-runs when those files change, and nothing spawns for the group itself.'
+excerpt: 'A group task can carry inputs now. A task that depends on it re-runs when those files change, and nothing spawns for the group itself.'
 ---
 
 Some inputs belong to no command. Test fixtures, a shared config, or the
@@ -21,11 +21,11 @@ import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
   tasks: {
-    fixtures: { cache: { inputs: { files: ['fixtures/**'] }, outputs: { files: [] } } },
+    fixtures: { inputs: { files: ['fixtures/**'] } },
     test: {
       exec: { command: 'bun test' },
       dependsOn: ['fixtures'],
-      cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**', 'tests/**'] }, cache: { outputs: { files: [] } },
     },
   },
 })
@@ -34,6 +34,8 @@ export default defineProject({
 Edit a file under `fixtures/` and `test` misses. Edit anything else and it
 hits. `fixtures` spawns no process, writes no cache entry, and the run
 summary does not count it. `--affected` follows it like any other edge.
+A keyed group is `inputs` with no `exec`, and it takes no `cache`: a group
+writes nothing.
 
 ## Why now
 

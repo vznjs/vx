@@ -42,7 +42,7 @@ beforeAll(async () => {
   await addProject(root, 'a', {
     config: `export default {
   tasks: {
-    build: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
+    build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
     fail: { exec: { command: 'exit 3' } },
   },
 }

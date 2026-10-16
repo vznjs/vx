@@ -34,7 +34,7 @@ it(
       files: { 'src/x.txt': 'x\n' },
       config: `export default { tasks: { build: {
         exec: { command: 'mkdir -p dist && cp src/x.txt dist/out.txt' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       } } }\n`,
     })
     // Keeps the run alive past the racy window after a's writes. After a, by

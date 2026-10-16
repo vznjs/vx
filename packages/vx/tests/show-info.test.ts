@@ -28,8 +28,8 @@ const APP_CONFIG = `
         description: 'compile the app',
         exec: { command: 'echo build' },
         dependsOn: ['^build'],
+        inputs: { files: ['src/**'], env: ['NODE_ENV'] },
         cache: {
-          inputs: { files: ['src/**'], env: ['NODE_ENV'] },
           outputs: { files: ['dist/**'] },
         },
       },
@@ -48,8 +48,8 @@ const APP_CONFIG = `
           env: { passThrough: ['HOME'], define: { CI: '1' } },
           remote: 'only',
         },
+        inputs: { files: ['src/**/*.ts'], workspaceFiles: ['tsconfig.base.json'], runtime: ['node -v'] },
         cache: {
-          inputs: { files: ['src/**/*.ts'], workspaceFiles: ['tsconfig.base.json'], runtime: ['node -v'] },
           outputs: { files: [] },
         },
       },
@@ -218,8 +218,8 @@ describe('vx show (e2e)', () => {
         description: 'compile the app',
         exec: { command: 'echo build' },
         dependsOn: ['^build'],
+        inputs: { files: ['src/**'], env: ['NODE_ENV'] },
         cache: {
-          inputs: { files: ['src/**'], env: ['NODE_ENV'] },
           outputs: { files: ['dist/**'] },
         },
       })

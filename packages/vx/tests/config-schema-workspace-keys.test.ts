@@ -29,7 +29,7 @@ it("names vx's home for a workspace key another tool spells (D-98)", () => {
   )
   expect(where('remote')).toBe('vx spells it a cache plugin in `plugins`')
   expect(where('env')).toBe(
-    'vx spells it `cache.inputs.env` on the tasks it keys, or `exec.env` on the tasks it passes to',
+    'vx spells it `inputs.env` on the tasks it keys, or `exec.env` on the tasks it passes to',
   )
   // `cache` is vx's own run policy here; Turbo's `cache: true` is told where tasks cache.
   expect(() => validateWorkspace({ cache: true } as never, '.vx/workspace.ts')).toThrow(

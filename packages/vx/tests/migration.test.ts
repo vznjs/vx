@@ -28,7 +28,7 @@ import { withForwardArgs } from '../src/exec/index.js'
 
 /** The cache TODO a mapper writes (vx-migrate's wording), suggesting `outputs`. */
 const cacheTodo = (outputs: string): string =>
-  `cache: add \`cache: { inputs: { files: ['src/**'] }, outputs: { files: [${outputs}] } }\` with this package's real inputs and outputs`
+  `cache: add \`inputs: { files: ['src/**'] }, cache: { outputs: { files: [${outputs}] } }\` with this package's real inputs and outputs`
 
 let root: string
 let stdout: string
@@ -216,7 +216,7 @@ describe('applyMigration', () => {
 
   it('puts the suggested cache block in the task, commented', async () => {
     mkdirSync(path.join(root, 'app'))
-    const built = { ...exec('tsc'), cache: { inputs: { files: [] }, outputs: { files: [] } } }
+    const built = { ...exec('tsc'), inputs: { files: [] }, cache: { outputs: { files: [] } } }
     await apply(
       plan([
         [
@@ -229,9 +229,9 @@ describe('applyMigration', () => {
       ]),
     )
     const lines = readFileSync(path.join(root, 'app', 'vx.config.ts'), 'utf8').split('\n')
-    const suggested = lines.filter((l) => l.startsWith('      // cache: '))
+    const suggested = lines.filter((l) => l.startsWith('      // inputs: '))
     expect(suggested).toEqual([
-      "      // cache: { inputs: { files: ['src/**'] }, outputs: { files: ['.next/**', '!.next/cache/**'] } },",
+      "      // inputs: { files: ['src/**'] }, cache: { outputs: { files: ['.next/**', '!.next/cache/**'] } },",
     ])
     expect(lines[lines.indexOf(suggested[0]!) - 1]).toBe('    build: {')
   })
@@ -372,7 +372,8 @@ describe('a written config passes the repo’s own checks', () => {
     const metas = [pkg('cjs', {})]
     const build = task('build', {
       exec: { command: 'tsc', env: {} },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['*', '!vx.config.ts'] } },
+      inputs: { files: ['src/**'] },
+      cache: { outputs: { files: ['*', '!vx.config.ts'] } },
     })
     expect(await apply(plan([['cjs', [build]]]), { metas })).toBe(0)
     const file = readFileSync(path.join(root, 'cjs', 'vx.config.mts'), 'utf8')

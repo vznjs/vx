@@ -56,7 +56,7 @@ describe('a tool that is not on the PATH vx built', () => {
           tasks: {
             build: {
               exec: { command: 'tsc --version' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
             },
           },
         }

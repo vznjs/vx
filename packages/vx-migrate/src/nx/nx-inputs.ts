@@ -17,7 +17,7 @@ export interface NxInputs {
   readonly envNames: string[]
   /**
    * Nx's `{ runtime: "<cmd>" }` hashes the command's output, run at the
-   * WORKSPACE ROOT (`hash_runtime.rs`): `cache.inputs.workspaceRuntime`.
+   * WORKSPACE ROOT (`hash_runtime.rs`): `inputs.workspaceRuntime`.
    * It was mapped to `runtime`, which runs in the project dir, so
    * `cat tools/version.txt` failed the run and a command that runs in both
    * hashed a different fact (item 913). It was once reported "not
@@ -208,7 +208,7 @@ export function expandNxInputs(
     if (deps || p === null || /[*?[{]/.test(p)) {
       todos.push(
         `input ${JSON.stringify(entry)}: vx keys only the files git lists, so a gitignored ` +
-          'match is not in the key — read it with a cache.inputs.workspaceRuntime probe',
+          'match is not in the key — read it with a inputs.workspaceRuntime probe',
       )
       return
     }

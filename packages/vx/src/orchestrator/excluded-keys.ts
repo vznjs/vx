@@ -124,7 +124,7 @@ export function excludedTaint(nodes: ReadonlyMap<string, TaskNode>): {
 
 /**
  * Whether `node`'s key folds a dropped dependency's key: a group folds all
- * of its dependencies, an exec task what its `cache.inputs.tasks` selects.
+ * of its dependencies, an exec task what its `inputs.tasks` selects.
  * A task with `tasks: []` folds none, so its entry claims nothing about a
  * dependency and it saves as usual.
  */
@@ -133,7 +133,6 @@ function foldsExcludedKey(node: TaskNode): boolean {
   if (excluded === undefined) return false
   if (isGroupTask(node)) return true
   return (
-    filterUpstreamHashes(excluded, node.config.cache?.inputs?.tasks, node.projectName, node.id)
-      .length > 0
+    filterUpstreamHashes(excluded, node.config.inputs?.tasks, node.projectName, node.id).length > 0
   )
 }

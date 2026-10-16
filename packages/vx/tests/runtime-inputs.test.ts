@@ -1,4 +1,4 @@
-// e2e for cache.inputs.runtime / workspaceRuntime. Spawns the real CLI:
+// e2e for inputs.runtime / workspaceRuntime. Spawns the real CLI:
 // the headline property (output resolved live though the command is the
 // lock's) only holds across real invocations.
 
@@ -55,8 +55,8 @@ describe('runtime inputs — e2e', () => {
         tasks: {
           build: {
             exec: { command: "echo built >> ${log}" },
+            inputs: { files: [], workspaceRuntime: ['cat marker'] },
             cache: {
-              inputs: { files: [], workspaceRuntime: ['cat marker'] },
               outputs: { files: [] },
             },
           },
@@ -90,8 +90,8 @@ describe('runtime inputs — e2e', () => {
         tasks: {
           build: {
             exec: { command: "echo built >> ${log}" },
+            inputs: { files: [], workspaceRuntime: ['cat marker'] },
             cache: {
-              inputs: { files: [], workspaceRuntime: ['cat marker'] },
               outputs: { files: [] },
             },
           },
@@ -104,7 +104,7 @@ describe('runtime inputs — e2e', () => {
     const r = await vx(root, ['run', 'build', '--all'])
     expect(r.code).not.toBe(0)
     expect(r.out + r.err).toContain(
-      'cache.inputs runtime command printed bytes that are not UTF-8: cat marker',
+      'inputs runtime command printed bytes that are not UTF-8: cat marker',
     )
     expect(existsSync(log)).toBe(false)
   })
@@ -119,8 +119,8 @@ describe('runtime inputs — e2e', () => {
         tasks: {
           build: {
             exec: { command: "echo built >> ${log}" },
+            inputs: { files: [], workspaceRuntime: ['cat marker'] },
             cache: {
-              inputs: { files: [], workspaceRuntime: ['cat marker'] },
               outputs: { files: [] },
             },
           },
@@ -152,7 +152,7 @@ describe('runtime inputs — e2e', () => {
         tasks: {
           build: {
             exec: { command: "echo hi" },
-            cache: { inputs: { files: [], runtime: ['sh -c "exit 7"'] }, outputs: { files: [] } },
+            inputs: { files: [], runtime: ['sh -c "exit 7"'] }, cache: { outputs: { files: [] } },
           },
         },
       }`,
@@ -173,8 +173,8 @@ describe('runtime inputs — e2e', () => {
       tasks: {
         build: {
           exec: { command: "echo ${n}" },
+          inputs: { files: [], workspaceRuntime: ["sh -c 'printf x >> ${counter}; echo v1'"] },
           cache: {
-            inputs: { files: [], workspaceRuntime: ["sh -c 'printf x >> ${counter}; echo v1'"] },
             outputs: { files: [] },
           },
         },
@@ -208,15 +208,15 @@ describe('runtime inputs — e2e', () => {
         tasks: {
           build: {
             exec: { command: 'true', env: { define: { MY_PROBE: 'a' } } },
+            inputs: { files: [], runtime: ['printenv MY_PROBE >> ${log} || echo unset >> ${log}'] },
             cache: {
-              inputs: { files: [], runtime: ['printenv MY_PROBE >> ${log} || echo unset >> ${log}'] },
               outputs: { files: [] },
             },
           },
           test: {
             exec: { command: 'true', env: { define: { MY_PROBE: 'b' } } },
+            inputs: { files: [], runtime: ['printenv MY_PROBE >> ${log} || echo unset >> ${log}'] },
             cache: {
-              inputs: { files: [], runtime: ['printenv MY_PROBE >> ${log} || echo unset >> ${log}'] },
               outputs: { files: [] },
             },
           },

@@ -117,7 +117,7 @@ describe('filterUpstreamHashes', () => {
     const up = [outcome('self#a', 'h-a')]
     expect(() => filterUpstreamHashes(up, ['^'], 'self', 'self#build')).toThrow(UserError)
     expect(() => filterUpstreamHashes(up, ['^'], 'self', 'self#build')).toThrow(
-      /self#build: cache\.inputs\.tasks/,
+      /self#build: inputs\.tasks/,
     )
   })
 
@@ -289,7 +289,7 @@ describe('keyUpstream', () => {
           files: { 'src/index.js': 'export const ui = 1\n' },
           config: `export default { tasks: { build: {
             exec: { command: 'true' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
           } } }`,
         })
         await addProject(fixture.root, '@x/app', {
@@ -298,12 +298,12 @@ describe('keyUpstream', () => {
             gen: {
               exec: { command: 'true' },
               dependsOn: ['^build'],
-              cache: { inputs: { files: ['src/**'], tasks: [] }, outputs: { files: [] } },
+              inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: [] } },
             },
             test: {
               exec: { command: 'true' },
               dependsOn: ['gen'],
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
             },
           } }`,
         })
@@ -328,21 +328,23 @@ describe('keyUpstream', () => {
 // A filter selects among the task's own dependencies. A pattern that reached
 // a group's member only through the group selected nothing, and the key
 // stopped moving with that member: a stale hit. The run refuses it.
-describe('cache.inputs.tasks through a group', () => {
+describe('inputs.tasks through a group', () => {
   const runWith = async (filter: string[], dependsOn = ['build']) => {
     const fixture = await makeWorkspace('vx-filter-group-')
     try {
       await addProject(fixture.root, '@x/a', {
         files: { 'src/a.js': '1\n' },
-        config: `const cache = { inputs: { files: ['src/**'] }, outputs: { files: [] } }
+        config: `const inputs = { files: ['src/**'] }
+          const cache = { outputs: { files: [] } }
           export default { tasks: {
-            'build.a': { exec: { command: 'true' }, cache },
-            'build.b': { exec: { command: 'true' }, cache },
+            'build.a': { exec: { command: 'true' }, inputs, cache },
+            'build.b': { exec: { command: 'true' }, inputs, cache },
             build: { dependsOn: ['build.*'] },
             test: {
               exec: { command: 'true' },
               dependsOn: ${JSON.stringify(dependsOn)},
-              cache: { ...cache, inputs: { ...cache.inputs, tasks: ${JSON.stringify(filter)} } },
+              inputs: { ...inputs, tasks: ${JSON.stringify(filter)} },
+              cache,
             },
           } }`,
       })
@@ -363,7 +365,7 @@ describe('cache.inputs.tasks through a group', () => {
     'a pattern that matches only a member is refused, naming the member and the group',
     async () => {
       expect(await runWith(['build.*'])).toBe(
-        "@x/a#test: cache.inputs.tasks: 'build.*' matches @x/a#build.a only through the group @x/a#build, so it selects nothing; name 'build' or depend on @x/a#build.a directly",
+        "@x/a#test: inputs.tasks: 'build.*' matches @x/a#build.a only through the group @x/a#build, so it selects nothing; name 'build' or depend on @x/a#build.a directly",
       )
       expect(await runWith(['*.b'])).toContain("'*.b' matches @x/a#build.b only through")
     },

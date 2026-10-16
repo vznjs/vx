@@ -166,7 +166,7 @@ const HOIST_MIN = 3
 /**
  * Turbo states a task's `env` once, in the root turbo.json; written inline,
  * vercel/ai's 63 `build` names repeated twice in each of ~100 configs. A
- * task's own `cache.inputs.env` names (after the spliced globals) that two
+ * task's own `inputs.env` names (after the spliced globals) that two
  * or more configs share become one preset export, spread where they stood
  * and where they lead `exec.env.passThrough` (its `passThroughEnv` names
  * follow): the evaluated arrays, and so every key, are unchanged. A
@@ -177,10 +177,7 @@ function hoistTaskEnv(projects: readonly TurboMappedProject[]): {
   lists: SharedList[]
   usedBy: Map<string, Set<string>>
 } {
-  const lists = (t: Task): (unknown[] | undefined)[] => [
-    t.cache?.inputs?.env,
-    t.exec?.env?.passThrough,
-  ]
+  const lists = (t: Task): (unknown[] | undefined)[] => [t.inputs?.env, t.exec?.env?.passThrough]
   // The trailing run of names after the spliced globals, or null when the
   // list is all names or mixes them in.
   const own = (list: unknown[] | undefined): string[] | null => {
@@ -194,7 +191,7 @@ function hoistTaskEnv(projects: readonly TurboMappedProject[]): {
   for (const p of projects)
     for (const t of p.tasks) {
       if (t.task === null) continue
-      const names = own((t.task as Task).cache?.inputs?.env)
+      const names = own((t.task as Task).inputs?.env)
       if (names === null || names.length < HOIST_MIN) continue
       const k = keyOf(t.name, names)
       counts.set(k, (counts.get(k) ?? 0) + 1)
@@ -219,7 +216,7 @@ function hoistTaskEnv(projects: readonly TurboMappedProject[]): {
   for (const p of projects)
     for (const t of p.tasks) {
       if (t.task === null) continue
-      const env = own((t.task as Task).cache?.inputs?.env)
+      const env = own((t.task as Task).inputs?.env)
       const name = env === null ? undefined : nameOf.get(keyOf(t.name, env))
       if (name === undefined) continue
       for (const list of lists(t.task)) {
@@ -236,7 +233,7 @@ function hoistTaskEnv(projects: readonly TurboMappedProject[]): {
 }
 
 type Task = {
-  cache?: { inputs?: { env?: unknown[] } }
+  inputs?: { env?: unknown[] }
   exec?: { env?: { passThrough?: unknown[] } }
 }
 
@@ -289,7 +286,7 @@ function nameProbes(projects: readonly TurboMappedProject[]): {
   }
   for (const p of projects)
     for (const t of p.tasks) {
-      const inputs = (t.task?.['cache'] as { inputs?: Record<string, unknown> } | undefined)?.inputs
+      const inputs = t.task?.['inputs'] as Record<string, unknown> | undefined
       for (const field of ['runtime', 'workspaceRuntime']) {
         const list = inputs?.[field]
         if (!Array.isArray(list)) continue

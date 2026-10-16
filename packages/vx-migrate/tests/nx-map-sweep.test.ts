@@ -188,8 +188,8 @@ describe('nx-map: what the sweep found unheld', () => {
     const t = await tasksOf([a], {
       a: node('packages/a', { build: { command: 'tsc', cache: true } }),
     })
-    const cache = t.get('a#build')!.task!['cache'] as { inputs: { files: string[] } }
-    expect(cache.inputs.files).toEqual(['**/*'])
+    const inputs = t.get('a#build')!.task!['inputs'] as { files: string[] }
+    expect(inputs.files).toEqual(['**/*'])
   })
 
   it('a plain `command` target is its shorthand for run-commands', async () => {
@@ -491,7 +491,7 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
   })
   const shape = (t: GeneratedTask | undefined) => ({
     dependsOn: t?.task?.['dependsOn'],
-    inputs: (t?.task?.['cache'] as { inputs: unknown } | undefined)?.inputs,
+    inputs: t?.task?.['inputs'],
     todos: t?.todos,
   })
   // A twin lists its manifests first: Nx keys each task on them, and they
@@ -597,9 +597,7 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
       twin(undefined, { files: ['**/*', '!**/*.spec.ts'] }),
     )
     expect(t.get('base#nx-input:production')?.task?.['exec']).toBeUndefined()
-    expect(t.get('base#nx-input:production')?.task?.['cache']).toMatchObject({
-      outputs: { files: [] },
-    })
+    expect(t.get('base#nx-input:production')?.task?.['cache']).toBeUndefined()
   })
 
   it('no `inputs` is Nx’s `default` and `^default`', async () => {
@@ -895,5 +893,23 @@ describe('nx-map: a configuration reaches its edges', () => {
       task: { dependsOn: ['^make', 'd#make'] },
       todos: [],
     })
+  })
+})
+
+// Nx hashes a target it does not cache too, and vx folds that key into a
+// dependant's: dropped with the cache block, an uncached generator's env
+// and files never reached the cached task that reads what it writes.
+describe('nx-map: an uncached target keeps its key', () => {
+  it('its inputs become the task’s inputs, with no cache block', async () => {
+    const a = await meta('a')
+    const t = await tasksOf([a], {
+      a: node('packages/a', {
+        gen: { command: 'g', inputs: ['{projectRoot}/schema/**', { env: 'API_URL' }] },
+      }),
+    })
+    expect([t.get('a#gen')!.task!['inputs'], t.get('a#gen')!.task!['cache']]).toEqual([
+      { files: ['schema/**'], env: ['API_URL'] },
+      undefined,
+    ])
   })
 })

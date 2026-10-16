@@ -48,7 +48,7 @@ import {
   resolveWorkspaceOutputs,
 } from '../src/cache/inputs.js'
 import { loadProjectConfig, validateProjectConfig } from '../src/workspace/project-loader.js'
-import type { CacheInputs } from '../src/config.js'
+import type { InputsConfig } from '../src/config.js'
 import { relPosix } from '../src/util/index.js'
 
 // Every fixture git-inits a real repo; under full-suite load the default 5s
@@ -219,7 +219,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
     await writeFile(
       path.join(dir, 'vx.config.mjs'),
       'export default { tasks: { build: { exec: { command: "true" }, ' +
-        'cache: { inputs: { files: ["**/*", "!!vendor/**"] }, outputs: { files: [] } } } } }',
+        'inputs: { files: ["**/*", "!!vendor/**"] }, cache: { outputs: { files: [] } } } } }',
     )
     await expect(loadProjectConfig(path.join(dir, 'vx.config.mjs'))).rejects.toThrow(
       /'!!' is not a double negation/,
@@ -238,7 +238,8 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
           tasks: {
             build: {
               exec: { command: 'true' },
-              cache: { inputs: { files: ['**/*', '!!vendor/**'] }, outputs: { files: [] } },
+              inputs: { files: ['**/*', '!!vendor/**'] },
+              cache: { outputs: { files: [] } },
             },
           },
         },
@@ -250,7 +251,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
     expect(msg).toContain('INVERTS')
     expect(msg).toContain('"!vendor/**"')
     expect(msg).toContain('"vendor/**"')
-    expect(msg).toContain('cache.inputs.files')
+    expect(msg).toContain('inputs.files')
   })
 
   it('the workspace half is refused too — a one-sided fix would leave it live', () => {
@@ -263,8 +264,8 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
           tasks: {
             build: {
               exec: { command: 'true' },
+              inputs: { files: [], workspaceFiles: ['**/*', '!!pkg/vendor/**'] },
               cache: {
-                inputs: { files: [], workspaceFiles: ['**/*', '!!pkg/vendor/**'] },
                 outputs: { files: [] },
               },
             },
@@ -284,8 +285,8 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
           tasks: {
             build: {
               exec: { command: 'true' },
+              inputs: { files: ['**/*', '!vendor/**'], workspaceFiles: ['a/**', '!a/b/**'] },
               cache: {
-                inputs: { files: ['**/*', '!vendor/**'], workspaceFiles: ['a/**', '!a/b/**'] },
                 outputs: { files: ['dist/**'] },
               },
             },
@@ -1251,13 +1252,13 @@ describe('runtime input memoization is scoped by design', () => {
 
   function args(
     projectDir: string,
-    inputs: Partial<CacheInputs>,
+    inputs: Partial<InputsConfig>,
   ): Parameters<typeof resolveInputs>[0] {
     return {
       projectDir,
       workspaceRoot: root,
       envSource: {} as NodeJS.ProcessEnv,
-      inputs: { files: [], ...inputs } as CacheInputs,
+      inputs: { files: [], ...inputs } as InputsConfig,
       ownOutputs: [],
       nestedProjectDirs: [],
     }
@@ -1374,7 +1375,7 @@ describe('a declared literal settles on its own tree, and only its own', () => {
     // A literal is settled by `rel === lit` OR `rel.startsWith(lit + '/')`,
     // and only the second arm covers a directory: git reports
     // `src/gen/a.ts`, never `src/gen`. Drop that arm and every config
-    // naming a directory — a perfectly ordinary `cache.inputs.files:
+    // naming a directory — a perfectly ordinary `inputs.files:
     // ['src']` — is refused outright, because the directory EXISTS on disk
     // and nothing settled it. The suite had no witness: every literal in
     // it names a file.
@@ -1387,7 +1388,7 @@ describe('a declared literal settles on its own tree, and only its own', () => {
   it('REFUSES a gitignored DIRECTORY named as a literal', async () => {
     // This row was a FINDING (item 565): `Bun.file(<a directory>).exists()`
     // is FALSE (measured on 1.3.11 and 1.4.2), so the refusal `continue`d
-    // past every literal naming a directory, and `cache.inputs.files:
+    // past every literal naming a directory, and `inputs.files:
     // ['gen']` on a gitignored `gen/` folded ZERO files and said nothing —
     // the stale hit the refusal exists to stop, one directory above where it
     // looked. A directory literal never settles (git lists files, not
@@ -1701,7 +1702,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
     // The candidate set is `git ls-files` output and the user's globs are a
     // FILTER over it. A filter can only remove, so a path git never reported can
     // never be filtered back IN — no matter how explicitly it is named. That
-    // made `cache.inputs.files: ['generated.ts']` on a gitignored
+    // made `inputs.files: ['generated.ts']` on a gitignored
     // `generated.ts` resolve to zero files, silently: the task cached on its
     // FIRST run and reported `up-to-date` forever while the file changed
     // underneath it.
@@ -1728,7 +1729,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
     // The remedy has to be named, because the honest answer is not "un-ignore
     // it" for the common case (generated code) — it is to depend on the task
     // that produces it, which is how vx expresses that relationship.
-    expect(err?.message).toContain('cache.inputs.tasks')
+    expect(err?.message).toContain('inputs.tasks')
   })
 
   it('a BROAD glob over the same tree stays silent — only literals are judged', async () => {
@@ -1924,7 +1925,7 @@ describe('inputs.files can only ever narrow the git file set', () => {
       () => null,
       (e: unknown) => e as Error,
     )
-    expect(err?.message).toContain('cache.inputs.workspaceFiles')
+    expect(err?.message).toContain('inputs.workspaceFiles')
     expect(err?.message).toContain('shared-gen.ts')
   })
 

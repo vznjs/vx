@@ -21,7 +21,7 @@ import { validateProjectConfig } from './config-schema.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
 
 export const LOCKFILE_NAME = '.vx/projects.lock.json'
-export const LOCKFILE_VERSION = 3
+export const LOCKFILE_VERSION = 4
 
 /** One project as the lock holds it. */
 export interface LockedProject {

@@ -41,7 +41,7 @@ const config = (read: string, inputs: string) => `
     tasks: {
       build: {
         exec: { command: 'cat ${read} > out.txt' },
-        cache: { inputs: ${inputs}, outputs: { files: ['out.txt'] } },
+        inputs: ${inputs}, cache: { outputs: { files: ['out.txt'] } },
       },
     },
   }
@@ -87,7 +87,7 @@ describe('a symlinked input', () => {
       commit('fixture')
       // Before the fix: `success`, then a `cache-hit` restoring V1 over V2.
       await refused(
-        'cache.inputs: "packages/a/src/x.txt" is a symlink to "shared/x.txt", whose content the key does not see — an edit to it would replay the old output. Add "shared/x.txt" to cache.inputs.workspaceFiles.',
+        'inputs: "packages/a/src/x.txt" is a symlink to "shared/x.txt", whose content the key does not see — an edit to it would replay the old output. Add "shared/x.txt" to inputs.workspaceFiles.',
       )
     },
     TIMEOUT,
@@ -120,7 +120,7 @@ describe('a symlinked input', () => {
       await symlink('../../../shared', path.join(app, 'src', 'sh'))
       commit('fixture')
       await refused(
-        'cache.inputs: "packages/a/src/sh" is a symlink to "shared", and "shared/x.txt" behind it is not an input — an edit to it would replay the old output. Add "shared/**" to cache.inputs.workspaceFiles.',
+        'inputs: "packages/a/src/sh" is a symlink to "shared", and "shared/x.txt" behind it is not an input — an edit to it would replay the old output. Add "shared/**" to inputs.workspaceFiles.',
       )
       await writeFile(
         path.join(app, 'vx.config.mjs'),
@@ -197,7 +197,7 @@ describe('a symlinked input', () => {
       await symlink('../../../secret.txt', path.join(app, 'src', 'x.txt'))
       commit('fixture')
       await refused(
-        'cache.inputs: "packages/a/src/x.txt" is a symlink to "secret.txt", which git does not list (gitignored, or outside the workspace), so no glob can key it — an edit to it would replay the old output. Point the link at a tracked file, or exclude it from the inputs and key its content with cache.inputs.runtime.',
+        'inputs: "packages/a/src/x.txt" is a symlink to "secret.txt", which git does not list (gitignored, or outside the workspace), so no glob can key it — an edit to it would replay the old output. Point the link at a tracked file, or exclude it from the inputs and key its content with inputs.runtime.',
       )
     },
     TIMEOUT,

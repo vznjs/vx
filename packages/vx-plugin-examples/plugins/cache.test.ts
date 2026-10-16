@@ -71,7 +71,7 @@ it('a run on an empty local cache restores from the directory', async () => {
     'a',
     `export default { tasks: { build: {
       exec: { command: 'mkdir -p dist && echo built > dist/out.txt' },
-      cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
     } } }`,
   )
   await workspace(`dirCache(${JSON.stringify(path.join(root, 'remote'))})`)

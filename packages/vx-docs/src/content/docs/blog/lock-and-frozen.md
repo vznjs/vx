@@ -75,9 +75,9 @@ first line, which is the point.
   task's input set and from the workspace fingerprint, so running `vx
   lock` does not re-key the workspace. (Since vx 0.0.637 core has no
   workspace fingerprint; the lock is still in no input set.)
-- **Not a substitute for `cache.inputs.env`.** The lock freezes what a
+- **Not a substitute for `inputs.env`.** The lock freezes what a
   config *evaluated to*. An env var a task reads at run time is still a
-  run-time input and belongs under `cache.inputs.env`, where it joins
+  run-time input and belongs under `inputs.env`, where it joins
   the key. The two mechanisms are parallel on purpose: config-time
   values are locked, run-time values are keyed.
 - **Not a performance feature.** Evaluation is already cheap and cached

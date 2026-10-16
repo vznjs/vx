@@ -188,7 +188,7 @@ describe('buildIsolatedEnv', () => {
 //
 // vx's answer is the explicit one, consistent with how it refuses to infer
 // inputs anywhere else: a build whose output depends on one of these declares
-// it in `cache.inputs.env`. These tests exist so that decision cannot be
+// it in `inputs.env`. These tests exist so that decision cannot be
 // reversed silently in either direction — folding an essential into the key
 // would destroy cross-machine sharing, and dropping one from the allowlist
 // would break tools that need it.

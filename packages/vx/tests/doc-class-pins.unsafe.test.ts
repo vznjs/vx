@@ -816,7 +816,7 @@ describe('every page numbering the key parts folds plugin before inputs', () => 
       const items = [...text.matchAll(/^(\d+)\.[ ]([\s\S]*?)(?=^\d+\. |^\n*##? |\n\n(?!\s))/gm)]
       const sentinel = items.find((m) => m[2]!.includes('CACHE_VERSION'))
       // "content hashes", not the glob NAME: caching.md's config step
-      // mentions `cache.inputs.files` among the declarations it captures,
+      // mentions `inputs.files` among the declarations it captures,
       // so a search for the glob found step 5 and called the order wrong.
       const inputs = items.find((m) => /content hashes/i.test(m[2]!))
       const plugin = items.find((m) => /plugin'?s? `key` stage|Plugin key material/.test(m[2]!))

@@ -4,7 +4,7 @@
 //   - envValues: [name, value] pairs from parent process.env (value
 //     undefined for an unset name)
 //
-// `cache.inputs.env` is the cache-tracking axis for env vars; it's
+// `inputs.env` is the cache-tracking axis for env vars; it's
 // independent of `exec.env`, which controls what reaches the child.
 //
 // File enumeration defers to git — same as Turbo and Nx. git-inputs.ts
@@ -19,7 +19,7 @@
 import path from 'node:path'
 import { lstatSync, readdirSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs'
 import { rm, rmdir } from 'node:fs/promises'
-import type { CacheConfig, CacheInputs } from '../config.js'
+import type { InputsConfig, TaskConfig } from '../config.js'
 import {
   anyTaskGlob,
   asTrees,
@@ -121,7 +121,7 @@ export interface ResolveInputsArgs {
   projectDir: string
   workspaceRoot: string
   envSource: NodeJS.ProcessEnv
-  inputs: CacheInputs | undefined
+  inputs: InputsConfig | undefined
   /** Project-relative output globs to exclude from inputs. */
   ownOutputs: readonly string[]
   /** Root-relative `outputs.workspaceFiles` globs to exclude from
@@ -137,7 +137,7 @@ export interface ResolveInputsArgs {
    */
   gitFilesCache?: GitFilesCache
   /**
-   * Run-scoped memo for `cache.inputs.runtime` command execution, keyed
+   * Run-scoped memo for `inputs.runtime` command execution, keyed
    * by `projectDir + '\0' + command`. Shared across a run's tasks so a
    * project's command runs once even across build/test/lint and across
    * the hash + sandbox-baseline resolveInputs calls. The key is sound
@@ -148,7 +148,7 @@ export interface ResolveInputsArgs {
    */
   runtimeCache?: Map<string, Promise<string>>
   /**
-   * Run-scoped memo for `cache.inputs.workspaceRuntime`, keyed by command
+   * Run-scoped memo for `inputs.workspaceRuntime`, keyed by command
    * only — global dedup so a root-level probe spawns once per run.
    */
   workspaceRuntimeCache?: Map<string, Promise<string>>
@@ -160,7 +160,7 @@ export interface ResolveInputsArgs {
    */
   runtimeScope?: string
   /**
-   * Run-scoped memo for `cache.inputs.workspaceFiles`, keyed by the
+   * Run-scoped memo for `inputs.workspaceFiles`, keyed by the
    * declaration and valid for one enumeration snapshot. A Turbo-mapped
    * workspace gives every task the same `globalDependencies`, and
    * resolving one literal against medusa's 24k-file enumeration per task
@@ -177,7 +177,7 @@ export type WorkspaceFilesCache = Map<
 >
 
 /**
- * Per-run memo of `cache.inputs.files` resolution, keyed by the project and
+ * Per-run memo of `inputs.files` resolution, keyed by the project and
  * the DECLARATION — tasks of one project that declare the same inputs and
  * the same outputs resolve to the same list, and this repo's own config is
  * the shape that pays for it: twelve shard tasks, each declaring the same
@@ -263,7 +263,7 @@ export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedIn
 }
 
 /**
- * Resolve `cache.inputs.workspaceFiles` — workspace-root-relative
+ * Resolve `inputs.workspaceFiles` — workspace-root-relative
  * globs matched against the workspace-wide git file set (tracked +
  * untracked-not-ignored, same visibility as project inputs).
  *
@@ -536,10 +536,10 @@ async function runRuntimeCommand(
     // the shell, not the command (item 244).
     if (isExecutableMissing(err)) {
       throw new UserError(
-        `cache.inputs runtime command could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
+        `inputs runtime command could not run: vx runs it with sh -c and 'sh' is not on PATH (command: ${command}, cwd: ${cwd}). Install a POSIX sh and re-run.`,
       )
     }
-    throw new UserError(`cache.inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
+    throw new UserError(`inputs runtime command failed to spawn: ${command} (cwd: ${cwd})`)
   }
   liveProbes.add(proc)
   let mine: Set<ReturnType<typeof Bun.spawn>> | undefined
@@ -564,7 +564,7 @@ async function runRuntimeCommand(
     const lossy = new TextDecoder()
     const shown = `${lossy.decode(stdout)}${lossy.decode(stderr)}`.trim()
     throw new UserError(
-      `cache.inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
+      `inputs runtime command exited ${exitCode}: ${command} (cwd: ${cwd})` +
         (shown ? `\n${shown}` : ''),
     )
   }
@@ -577,7 +577,7 @@ async function runRuntimeCommand(
     // A lossy decode keys every invalid byte as U+FFFD: Latin-1 é and è
     // folded the same output and replayed each other's build.
     throw new UserError(
-      `cache.inputs runtime command printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
+      `inputs runtime command printed bytes that are not UTF-8: ${command} (cwd: ${cwd}). ` +
         `Pipe it through a hash or od.`,
     )
   }
@@ -1282,7 +1282,7 @@ function lowerBound(files: readonly string[], key: string): number {
 }
 
 /**
- * Refuse a literal `cache.inputs.files` entry that EXISTS ON DISK but is
+ * Refuse a literal `inputs.files` entry that EXISTS ON DISK but is
  * invisible to git — gitignored, or otherwise absent from
  * `git ls-files --cached --others --exclude-standard`.
  *
@@ -1318,11 +1318,11 @@ async function assertNoInvisibleLiteralInputs(
   for (const rel of literals) {
     if (!existsOnDisk(path.resolve(base, rel))) continue
     throw new UserError(
-      `cache.inputs.${field}: "${rel}" exists in ${base} but git does not report it, ` +
+      `inputs.${field}: "${rel}" exists in ${base} but git does not report it, ` +
         `so it contributes NOTHING to the cache key — input globs filter the files git ` +
         `lists, and a filter cannot add one back. The task would keep reporting ` +
         `up-to-date after that file changed. If it is generated, depend on the task ` +
-        `that produces it via cache.inputs.tasks; if it should be tracked, remove it ` +
+        `that produces it via inputs.tasks; if it should be tracked, remove it ` +
         `from .gitignore.`,
     )
   }
@@ -1373,7 +1373,7 @@ function refuseUndecodable(
   if (bad.length === 0) return
   const names = bad.map((abs) => JSON.stringify(relPosix(root, abs)))
   throw new UserError(
-    `cache.inputs.${field} matched ${names.join(', ')} in ${root}: the name is not valid UTF-8 ` +
+    `inputs.${field} matched ${names.join(', ')} in ${root}: the name is not valid UTF-8 ` +
       `(shown with \ufffd), and vx cannot read a file by it. Rename it, or exclude it with a ` +
       `negated glob.`,
   )
@@ -1396,7 +1396,7 @@ function refuseOneAlternativeBrace(
     if (m === null) continue
     const inner = m[0].slice(1, -1)
     throw new UserError(
-      `cache.inputs.${field}: "${entry}" holds a brace with one alternative, which matches ` +
+      `inputs.${field}: "${entry}" holds a brace with one alternative, which matches ` +
         `"${inner}" and never a name holding "${m[0]}". Write "${entry.replace(m[0], inner)}", ` +
         `or "${entry.replace(m[0], `\\{${inner}\\}`)}" for the braces themselves.`,
     )
@@ -1478,37 +1478,39 @@ function filesPlan(
 }
 
 /**
- * Whether a changed path is one of a cached task's declared file inputs:
+ * Whether a changed path is one of a task's declared file inputs:
  * `projectRel` (the path relative to the project that owns it) against
  * `files`, `workspaceRel` (relative to the workspace root) against
  * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a path under
  * the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (owner, 2026-10-04).
  */
 export function declaresInput(
-  cache: CacheConfig,
+  task: TaskConfig,
   projectRel: string | null,
   workspaceRel: string | null,
 ): boolean {
+  const inputs = task.inputs
+  if (inputs === undefined) return false
   if (projectRel !== null) {
     // A changed path under the task's own outputs is a committed file
     // (`git diff` lists only what git tracks) or a stray `git status`
     // lists: either way it may be an input, so it counts.
-    const plan = filesPlan(cache.inputs.files, cache.outputs.files)
+    const plan = filesPlan(inputs.files, task.cache?.outputs.files ?? [])
     if (plan !== null && (inPlan(plan, projectRel) || ownOnly(plan, projectRel))) return true
   }
-  const ws = cache.inputs.workspaceFiles
+  const ws = inputs.workspaceFiles
   if (workspaceRel === null || ws === undefined || ws.length === 0) return false
   return workspaceMatcher(ws)(workspaceRel)
 }
 
 /**
- * Whether a cached task's `workspaceFiles` may name a file under `dir`
+ * Whether a task's `workspaceFiles` may name a file under `dir`
  * (workspace-relative): a nested repository git reports as that one path,
  * whose files the key folds and a match against the path alone misses.
  * By the entries' static prefixes, so a glob that may descend counts.
  */
-export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolean {
-  const ws = cache.inputs.workspaceFiles
+export function workspaceFilesReachInto(task: TaskConfig, dir: string): boolean {
+  const ws = task.inputs?.workspaceFiles
   if (ws === undefined || ws.length === 0) return false
   return reaches(reachOf(splitNegations(ws).positive).prefixes, dir)
 }

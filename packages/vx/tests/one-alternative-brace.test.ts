@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { resolveInputs } from '../src/cache/inputs.js'
-import type { CacheInputs } from '../src/config.js'
+import type { InputsConfig } from '../src/config.js'
 import { relPosix } from '../src/util/index.js'
 
 let root: string
@@ -31,7 +31,7 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-async function resolve(inputs: CacheInputs): Promise<string[]> {
+async function resolve(inputs: InputsConfig): Promise<string[]> {
   const r = await resolveInputs({
     projectDir,
     workspaceRoot: root,
@@ -43,7 +43,7 @@ async function resolve(inputs: CacheInputs): Promise<string[]> {
   return r.files.map((f) => relPosix(root, f)).sort()
 }
 
-async function refusal(inputs: CacheInputs): Promise<string> {
+async function refusal(inputs: InputsConfig): Promise<string> {
   return resolve(inputs).then(
     () => 'resolved',
     (err: Error) => err.message,
@@ -53,24 +53,22 @@ async function refusal(inputs: CacheInputs): Promise<string> {
 describe('a brace of one alternative', () => {
   it('is refused in files, naming both spellings', async () => {
     expect(await refusal({ files: ['src/{b}.ts'] })).toBe(
-      'cache.inputs.files: "src/{b}.ts" holds a brace with one alternative, which matches "b" ' +
+      'inputs.files: "src/{b}.ts" holds a brace with one alternative, which matches "b" ' +
         'and never a name holding "{b}". Write "src/b.ts", or "src/\\{b\\}.ts" for the braces themselves.',
     )
   })
 
   it('is refused in workspaceFiles', async () => {
     expect(await refusal({ files: [], workspaceFiles: ['pkg/src/{b}.ts'] })).toStartWith(
-      'cache.inputs.workspaceFiles: "pkg/src/{b}.ts" holds a brace with one alternative',
+      'inputs.workspaceFiles: "pkg/src/{b}.ts" holds a brace with one alternative',
     )
   })
 
   it('is refused in a negation and when empty', async () => {
     expect(await refusal({ files: ['src/**', '!src/{b}.ts'] })).toStartWith(
-      'cache.inputs.files: "!src/{b}.ts" holds',
+      'inputs.files: "!src/{b}.ts" holds',
     )
-    expect(await refusal({ files: ['src/{}.ts'] })).toStartWith(
-      'cache.inputs.files: "src/{}.ts" holds',
-    )
+    expect(await refusal({ files: ['src/{}.ts'] })).toStartWith('inputs.files: "src/{}.ts" holds')
   })
 
   it('control: the escaped form selects the braces, two alternatives select both', async () => {

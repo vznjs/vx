@@ -302,7 +302,7 @@ never branches on layering.
 - **`graph/dependency-spec.ts`** — shared Turbo/Nx micro-syntax parser
   (`'name'`, `'^name'`, `'pkg#name'`, plus `'*'` / `'^*'` / `'!form'`
   for filter contexts). Used by `task-graph` for `dependsOn` edges
-  and by `orchestrator/upstream` for `cache.inputs.tasks` filtering.
+  and by `orchestrator/upstream` for `inputs.tasks` filtering.
 
 ### Runner
 
@@ -331,7 +331,7 @@ never branches on layering.
   sandboxing via `@anthropic-ai/sandbox-runtime`, activated by a
   `exec.sandbox` block in the task config. Fail-on-violation policy.
   Without that block, tasks run unsandboxed and under-declared
-  `cache.inputs.files` silently produce stale cache hits — the
+  `inputs.files` silently produce stale cache hits — the
   standard task-runner tradeoff (Turbo and Nx behave the same).
 
 ## Data flow on `vx run <task>`
@@ -428,12 +428,12 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       Stash the child handle in the registry. Return `success` once
       ready.
    3. **Normal task**:
-      a. `resolveInputs` — glob `cache.inputs.files` (+
+      a. `resolveInputs` — glob `inputs.files` (+
       `workspaceFiles`), git-backed, declared-outputs-excluded,
       nested-projects-excluded. Read host values for
-      `cache.inputs.env`; resolve `runtime` / `workspaceRuntime`
+      `inputs.env`; resolve `runtime` / `workspaceRuntime`
       command outputs (deduped per run).
-      b. `filterUpstreamHashes` — apply `cache.inputs.tasks` filters
+      b. `filterUpstreamHashes` — apply `inputs.tasks` filters
       to the upstream outcomes (default = all upstream).
       c. `hashTaskConfig` (resolved config JSON, memoized per run).
       d. `cache.key({...})` → 16-hex xxHash3 key.
@@ -483,7 +483,7 @@ The loader validates each task's shape at load time and surfaces a
 `UserError` (clean output, no stack) on malformed configs. Among the
 rules enforced: `exec.persistent` rejects malformed shapes; a
 persistent task with a `cache` block is rejected (no exit to cache);
-group tasks (no `exec`) must declare `dependsOn` or a `cache` with no outputs; `cache.inputs.files`
+group tasks (no `exec`) must declare `dependsOn` or a `cache` with no outputs; `inputs.files`
 and `cache.outputs.files` are required when `cache` is set;
 `.vx/workspace.ts`'s `plugins` array is shape-checked too.
 
@@ -676,7 +676,7 @@ The codebase consistently chooses the same trade-offs:
 
 1. **Explicit over magical.** Defaults exist but are narrow and
    documented. Where ambiguity is dangerous (cache inputs, outputs,
-   env isolation), declaration is required. `cache.inputs.files` has
+   env isolation), declaration is required. `inputs.files` has
    no default; you state what the task reads.
 2. **One command per task.** `exec: { command }` runs a single shell
    command. To chain steps, use shell composition (`&&`, `;`) or split

@@ -23,8 +23,8 @@ const APP_CONFIG = `
     tasks: {
       build: {
         exec: { command: 'cat src/input.txt > out.txt' },
+        inputs: { files: ['src/**'] },
         cache: {
-          inputs: { files: ['src/**'] },
           outputs: { files: ['out.txt'] },
         },
       },
@@ -186,7 +186,7 @@ describe('vx why (e2e) — every component kind names its row', () => {
         build: {
           exec: { command: 'mkdir -p dist && echo hi > dist/out.txt' },
           dependsOn: ['^build'],
-          cache: { inputs: { files: ['src/**', 'package.json'], env: ['APP_MODE'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**', 'package.json'], env: ['APP_MODE'] }, cache: { outputs: { files: ['dist/**'] } },
         },
       },
     }
@@ -196,7 +196,7 @@ describe('vx why (e2e) — every component kind names its row', () => {
       tasks: {
         build: {
           exec: { command: 'mkdir -p dist && echo lib > dist/out.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
         },
       },
     }
@@ -455,7 +455,7 @@ describe('vx why (e2e) — the exact lines', () => {
       tasks: {
         build: {
           exec: { command: 'cat src/*.txt > out.txt' },
-          cache: { inputs: { files: ['src/**', 'package.json'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**', 'package.json'] }, cache: { outputs: { files: ['out.txt'] } },
         },
       },
     }
@@ -825,7 +825,7 @@ describe('vx why — a secret-named env input', () => {
         await writeFile(
           path.join(appDir, 'vx.config.mjs'),
           `export default { tasks: { build: { exec: { command: 'cat src/input.txt > out.txt' },
-            cache: { inputs: { files: ['src/**'], env: ['API_TOKEN', 'REGION'] }, outputs: { files: ['out.txt'] } } } } }\n`,
+            inputs: { files: ['src/**'], env: ['API_TOKEN', 'REGION'] }, cache: { outputs: { files: ['out.txt'] } } } } }\n`,
         )
         const git = gitIn(root)
         git('init', '-q')
@@ -867,7 +867,7 @@ describe('vx why — a secret-named env input', () => {
         await writeFile(
           path.join(appDir, 'vx.config.mjs'),
           `export default { tasks: { build: { exec: { command: 'cat src/input.txt > out.txt', env: { secret: ['GH_PAT'] } },
-            cache: { inputs: { files: ['src/**'], env: ['GH_PAT', 'REGION'] }, outputs: { files: ['out.txt'] } } } } }\n`,
+            inputs: { files: ['src/**'], env: ['GH_PAT', 'REGION'] }, cache: { outputs: { files: ['out.txt'] } } } } }\n`,
         )
         const git = gitIn(root)
         git('init', '-q')
@@ -914,7 +914,7 @@ describe('vx why — an input another task rewrites', () => {
         await writeFile(
           path.join(libDir, 'vx.config.mjs'),
           `export default {
-            tasks: { check: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } },
+            tasks: { check: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } },
           }`,
         )
         await writeFile(
@@ -924,7 +924,7 @@ describe('vx why — an input another task rewrites', () => {
               build: {
                 dependsOn: ['lib#check'],
                 exec: { command: 'cat src/input.txt > out.txt && date +%s%N > ../lib/src/gen.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
               },
             },
           }`,

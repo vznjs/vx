@@ -1,5 +1,5 @@
 // Parser for the Turbo/Nx-style task-edge micro-syntax used in
-// `dependsOn` and `cache.inputs.tasks`. Returns a small discriminated
+// `dependsOn` and `inputs.tasks`. Returns a small discriminated
 // union the graph builder + cache filter both consume.
 
 export type DependencySpec =
@@ -32,7 +32,7 @@ export function compileTaskPattern(pattern: string): RegExp {
 }
 
 /**
- * Parse one `dependsOn` / `cache.inputs.tasks` entry.
+ * Parse one `dependsOn` / `inputs.tasks` entry.
  *
  *   `name`       → self.name
  *   `^name`      → every dep workspace's `name` task

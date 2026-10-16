@@ -48,7 +48,7 @@ const CONFIG = `export default {
   tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cat src/x.txt > dist/out.txt' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
   },
 }`

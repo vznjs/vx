@@ -48,11 +48,11 @@ describe('a keyed group in a config', () => {
       'a',
       `
         export default { tasks: {
-          fixtures: { cache: { inputs: { files: ['fixtures/**'] }, outputs: { files: [] } } },
+          fixtures: { inputs: { files: ['fixtures/**'] } },
           test: {
             exec: { command: 'echo ran' },
             dependsOn: ['fixtures'],
-            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+            inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
           },
         } }
       `,

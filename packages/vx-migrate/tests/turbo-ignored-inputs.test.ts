@@ -85,10 +85,7 @@ describe('turbo-map: gitignored inputs named by path', () => {
       },
     })
     const inputs = Object.fromEntries(
-      m.projects[0]!.tasks.map((t) => [
-        t.name,
-        (t.task as { cache: { inputs: unknown } }).cache.inputs,
-      ]),
+      m.projects[0]!.tasks.map((t) => [t.name, (t.task as { inputs: unknown }).inputs]),
     )
     expect({ globals: m.globals.inputs, asked, inputs }).toEqual({
       globals: ['tsconfig.json', 'certs/*.pem'],

@@ -33,7 +33,7 @@ const KEYED_BY_EVERY_TASK: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAME
 
 /**
  * The projects every task of which the change reaches: the whole ones the
- * diff named, and those holding a changed path no cached task of theirs
+ * diff named, and those holding a changed path no task of theirs
  * declares as an input. vx cannot prove such a path re-keys nothing (a
  * `project` plugin may read it), so it reaches the whole project, as it did
  * before selection was per task.
@@ -42,15 +42,15 @@ function wholeProjects(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
 ): Map<string, string | undefined> {
-  // Each whole project, with the path no cached task claims when one did it.
+  // Each whole project, with the path no task claims when one did it.
   const whole = new Map<string, string | undefined>([...changes.whole].map((n) => [n, undefined]))
   for (const [name, rels] of changes.paths) {
     if (whole.has(name)) continue
-    const caches = Object.values(projects.get(name)?.config.tasks ?? {}).flatMap((t) =>
-      t.exec !== undefined && t.cache !== undefined ? [t.cache] : [],
+    const keyed = Object.values(projects.get(name)?.config.tasks ?? {}).filter(
+      (t) => t.exec !== undefined && t.inputs !== undefined,
     )
     const unclaimed = (rel: string): boolean =>
-      KEYED_BY_EVERY_TASK.has(rel) || !caches.some((c) => declaresInput(c, rel, null))
+      KEYED_BY_EVERY_TASK.has(rel) || !keyed.some((t) => declaresInput(t, rel, null))
     const rel = rels.find(unclaimed)
     if (rel !== undefined) whole.set(name, rel)
   }
@@ -60,8 +60,8 @@ function wholeProjects(
 /**
  * Why `--affected` kept a requested task (`vx run --affected --dry`):
  * `input`, a changed `file` is one of its declared inputs; `project`, its
- * project changed and the task reads it whole (an uncached task, a path no
- * cached task declares, or no single `file`: a lockfile claim, a manifest
+ * project changed and the task reads it whole (a task with no inputs, a
+ * path no task declares, or no single `file`: a lockfile claim, a manifest
  * edge, a config import); `workspace`, a workspace-wide `file` (the
  * workspace config, a root file a plugin claims) reached every task of its
  * project; `package`, a `^` edge passes through `project`, a
@@ -86,9 +86,9 @@ export interface AffectedExplain {
 /**
  * The task ids of `ids` whose closure the change reaches, in their order.
  * A group seeds nothing (it runs nothing) unless it is keyed, as the default
- * `build` is; an uncached task seeds when a changed path lies in its project
- * (or the whole project is reached); a cached one when a changed path is one
- * of its declared inputs. A `^name` edge the
+ * `build` is; a task with no inputs seeds when a changed path lies in its
+ * project (or the whole project is reached); one with inputs when a changed
+ * path is one of them. A `^name` edge the
  * graph passes through a package it loaded no config for reaches it as the
  * default `build` would: any change there reaches the task.
  */
@@ -139,14 +139,15 @@ export function affectedRoots(
     return false
   }
   const seeded = (n: TaskNode): boolean => {
-    const cache = n.config.cache
+    const task = n.config
+    const keyed = task.inputs !== undefined
     // Asked of every node, not only the changed projects' (the
     // `workspaceFiles` owners): a `graph` hook may have given the glob.
-    if (cache !== undefined) {
-      const file = changes.changed.find((rel) => declaresInput(cache, null, rel))
+    if (keyed) {
+      const file = changes.changed.find((rel) => declaresInput(task, null, rel))
       const dir =
         file === undefined
-          ? (changes.nested ?? []).find((d) => workspaceFilesReachInto(cache, d))
+          ? (changes.nested ?? []).find((d) => workspaceFilesReachInto(task, d))
           : undefined
       if (file !== undefined || dir !== undefined) {
         seeds?.set(n.id, { kind: 'input', file: (file ?? dir)! })
@@ -155,10 +156,10 @@ export function affectedRoots(
     }
     if (!changes.projects.has(n.projectName)) return false
     const rels = changes.paths.get(n.projectName) ?? []
-    // A group runs nothing; only the default `build` (projects.ts) is keyed.
-    // An uncached task reads its project: a root file another task of it
-    // declares (`workspaceFiles`) is no change there.
-    if (cache === undefined) {
+    // An unkeyed group runs nothing. A task with no inputs may read anything
+    // in its project: a root file another task of it declares
+    // (`workspaceFiles`) is no change there.
+    if (!keyed) {
       const hit = !isGroupTask(n) && (whole.has(n.projectName) || changes.paths.has(n.projectName))
       if (hit) seeds?.set(n.id, inProject(n.projectName, rels[0]))
       return hit
@@ -167,7 +168,7 @@ export function affectedRoots(
       seeds?.set(n.id, inProject(n.projectName, whole.get(n.projectName)))
       return true
     }
-    const rel = rels.find((r) => declaresInput(cache, r, null))
+    const rel = rels.find((r) => declaresInput(task, r, null))
     if (rel === undefined) return false
     if (seeds !== null) seeds.set(n.id, { ...inProject(n.projectName, rel), kind: 'input' })
     return true

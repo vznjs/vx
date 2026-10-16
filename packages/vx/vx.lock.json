@@ -36,18 +36,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -89,18 +89,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -142,18 +142,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -195,18 +195,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -248,18 +248,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -301,18 +301,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -354,18 +354,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -407,18 +407,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -460,18 +460,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -513,18 +513,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -566,18 +566,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -619,18 +619,18 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "README.md",
-            "skills/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -1035,15 +1035,15 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "src/**",
+          "index.ts",
+          "tsconfig.json",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "src/**",
-            "index.ts",
-            "tsconfig.json",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -1081,22 +1081,22 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "src/**",
+          "index.ts",
+          "package.json",
+          "scripts/check-binary.ts",
+          "scripts/binary-launch.ts"
+        ],
+        "workspaceFiles": [
+          "packages/vx-schedule-history/**"
+        ],
+        "runtime": [
+          "bun --version"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "src/**",
-            "index.ts",
-            "package.json",
-            "scripts/check-binary.ts",
-            "scripts/binary-launch.ts"
-          ],
-          "workspaceFiles": [
-            "packages/vx-schedule-history/**"
-          ],
-          "runtime": [
-            "bun --version"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -1148,51 +1148,51 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/*/**",
+          "examples/**",
+          ".github/**",
+          "scripts/**",
+          "CLAUDE.md",
+          "README.md",
+          "CONTRIBUTING.md",
+          "LICENSE",
+          ".claude/skills/**",
+          "skills/**",
+          "vx.config.ts",
+          ".vx/workspace.ts",
+          "!packages/vx/dist/**",
+          "!packages/vx-docs/dist/**",
+          "!packages/vx-docs/public/playground/planner.js",
+          "!packages/vx-docs/src/content/docs/all-features.md",
+          "!packages/vx-docs/src/content/docs/api.md",
+          "!packages/vx-docs/src/content/docs/architecture.md",
+          "!packages/vx-docs/src/content/docs/benchmarks.md",
+          "!packages/vx-docs/src/content/docs/caching.md",
+          "!packages/vx-docs/src/content/docs/cli.md",
+          "!packages/vx-docs/src/content/docs/compare/turbo-nx-support.md",
+          "!packages/vx-docs/src/content/docs/comparison.md",
+          "!packages/vx-docs/src/content/docs/execution.md",
+          "!packages/vx-docs/src/content/docs/flows.md",
+          "!packages/vx-docs/src/content/docs/optimizations.md",
+          "!packages/vx-docs/src/content/docs/overview.md",
+          "!packages/vx-docs/src/content/docs/parity.md",
+          "!packages/vx-docs/src/content/docs/patterns.md",
+          "!packages/vx-docs/src/content/docs/schema.md",
+          "!packages/vx-docs/src/content/docs/security.md",
+          "!packages/vx-docs/src/content/docs/upstream-ledger.md",
+          "!packages/vx-docs/src/content/docs/modules/**",
+          "!packages/vx-docs/src/content/docs/design/**",
+          "!packages/vx-docs/src/content/docs/plugins/**"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "packages/*/**",
-            "examples/**",
-            ".github/**",
-            "scripts/**",
-            "CLAUDE.md",
-            "README.md",
-            "CONTRIBUTING.md",
-            "LICENSE",
-            ".claude/skills/**",
-            "skills/**",
-            "vx.config.ts",
-            ".vx/workspace.ts",
-            "!packages/vx/dist/**",
-            "!packages/vx-docs/dist/**",
-            "!packages/vx-docs/public/playground/planner.js",
-            "!packages/vx-docs/src/content/docs/all-features.md",
-            "!packages/vx-docs/src/content/docs/api.md",
-            "!packages/vx-docs/src/content/docs/architecture.md",
-            "!packages/vx-docs/src/content/docs/benchmarks.md",
-            "!packages/vx-docs/src/content/docs/caching.md",
-            "!packages/vx-docs/src/content/docs/cli.md",
-            "!packages/vx-docs/src/content/docs/compare/turbo-nx-support.md",
-            "!packages/vx-docs/src/content/docs/comparison.md",
-            "!packages/vx-docs/src/content/docs/execution.md",
-            "!packages/vx-docs/src/content/docs/flows.md",
-            "!packages/vx-docs/src/content/docs/optimizations.md",
-            "!packages/vx-docs/src/content/docs/overview.md",
-            "!packages/vx-docs/src/content/docs/parity.md",
-            "!packages/vx-docs/src/content/docs/patterns.md",
-            "!packages/vx-docs/src/content/docs/schema.md",
-            "!packages/vx-docs/src/content/docs/security.md",
-            "!packages/vx-docs/src/content/docs/upstream-ledger.md",
-            "!packages/vx-docs/src/content/docs/modules/**",
-            "!packages/vx-docs/src/content/docs/design/**",
-            "!packages/vx-docs/src/content/docs/plugins/**"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -1216,14 +1216,14 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -1247,14 +1247,14 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -1319,17 +1319,17 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "runtime": [
+          "bun --version"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "runtime": [
-            "bun --version"
-          ]
-        },
         "outputs": {
           "files": [
             "dist/vx-linux-x64"
@@ -1368,17 +1368,17 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "runtime": [
+          "bun --version"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "runtime": [
-            "bun --version"
-          ]
-        },
         "outputs": {
           "files": [
             "dist/vx-linux-arm64"
@@ -1417,17 +1417,17 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "runtime": [
+          "bun --version"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "runtime": [
-            "bun --version"
-          ]
-        },
         "outputs": {
           "files": [
             "dist/vx-darwin-x64"
@@ -1466,17 +1466,17 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "package.json"
+        ],
+        "runtime": [
+          "bun --version"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "!dist/**",
-            "package.json"
-          ],
-          "runtime": [
-            "bun --version"
-          ]
-        },
         "outputs": {
           "files": [
             "dist/vx-darwin-arm64"

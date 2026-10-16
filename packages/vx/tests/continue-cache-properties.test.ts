@@ -5,7 +5,7 @@
 // keys. That run must execute exactly the changed tasks the failing run did
 // not save, and every output must hold its healthy bytes: an output is its
 // input plus its deps' outputs, and a failure writes PARTIAL, so a saved
-// partial tree reads wrong. `g`'s tasks have no cache and sit apart, so
+// partial tree reads wrong. `g`'s tasks have no cache and a fixed key, and sit apart, so
 // their failure moves no key: a hit above one is restored ahead of it (the
 // shape of C-1). Under `always`, a task behind any failure, through hits
 // too, is not saved; otherwise a task that ran is saved, since every dep it
@@ -64,7 +64,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
   const gTasks = gs
     .map(
       (x) =>
-        `${x}: { exec: { command: 'if [ -e ${flags}/g-${x} ]; then sleep 0.3; echo PARTIAL > ${gOut}/${x}; exit 1; fi; echo GOOD-${x} > ${gOut}/${x}' } }`,
+        `${x}: { exec: { command: 'if [ -e ${flags}/g-${x} ]; then sleep 0.3; echo PARTIAL > ${gOut}/${x}; exit 1; fi; echo GOOD-${x} > ${gOut}/${x}' }, inputs: { files: [] } }`,
     )
     .join(',\n')
   await writeFile(path.join(g, 'vx.config.mjs'), `export default { tasks: { ${gTasks} } }\n`)
@@ -75,7 +75,7 @@ async function scenario(mode: ContinueMode, seed: number, iter: number): Promise
       const ins = ['src/' + t + '.txt', ...deps.get(t)!.map(read)].join(' ')
       const cmd = `mkdir -p out && if [ -e ${flags}/${t} ]; then echo PARTIAL > out/${t}.txt; exit 1; fi; cat ${ins} > out/${t}.txt`
       return `${t}: { dependsOn: ${JSON.stringify(deps.get(t))}, exec: { command: ${JSON.stringify(cmd)} },
-        cache: { inputs: { files: ['src/${t}.txt'] }, outputs: { files: ['out/${t}.txt'] } } }`
+        inputs: { files: ['src/${t}.txt'] }, cache: { outputs: { files: ['out/${t}.txt'] } } }`
     })
     .join(',\n')
   await writeFile(path.join(p, 'vx.config.mjs'), `export default { tasks: { ${pTasks} } }\n`)

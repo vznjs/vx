@@ -289,7 +289,7 @@ executor declines it, but what depends on it can still go remote. Workers have n
 the install a `remote: 'only'` task the others depend on. The image needs
 `/bin/sh` and your toolchain.
 
-A worker gets only what `cache.inputs` declares, so a task that fails
+A worker gets only what `inputs` declares, so a task that fails
 there and passes here reads a file it never declared.
 
 - A down server is a cache miss, never a hung run.

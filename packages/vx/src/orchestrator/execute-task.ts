@@ -84,6 +84,7 @@ import {
   describeTaskInputs,
   type HashCache,
   type InputFact,
+  isKeyless,
   movedInput,
   type UpfrontGroupKey,
 } from './task-hash.js'
@@ -394,7 +395,7 @@ function fingerprintMoved(args: ExecuteArgs): boolean {
  * through us.
  */
 async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
-  if (args.node.config.cache === undefined) {
+  if (args.node.config.inputs === undefined) {
     return unkeyedGroupOutcome(
       args.node,
       args.upstream,
@@ -417,7 +418,7 @@ async function executeGroupTask(args: ExecuteArgs): Promise<TaskOutcome> {
 }
 
 /**
- * An unkeyed group's outcome (no `cache`, no key of its own): its key is
+ * An unkeyed group's outcome (no `inputs`, no key of its own): its key is
  * its upstream's alone (`computeGroupKey`), so the up-front one stands when
  * that upstream is unchanged. Synchronous: the scheduler settles such a
  * group in place (`ScheduleOptions.settleNow`), and `upstream` is the key's
@@ -490,7 +491,17 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // exists to prevent), no output clean, no local artifact save. Its result
   // lives in the remote executor's own store.
   const remoteOnly = args.remoteOnly === true
-  const willRead = !remoteOnly && cfgCacheable && (policy.localRead || policy.remoteRead)
+  // A key that folds a task with no inputs is this run's alone (`isKeyless`):
+  // nothing to read under it, and nothing a later run could find.
+  const present = upstream.filter((u): u is TaskOutcome => u !== undefined)
+  const folded = new Set(
+    filterUpstreamHashes(present, cfg.inputs?.tasks, node.projectName, node.id).map(([id]) => id),
+  )
+  const foldedTasks = expandGroupUpstream(present.filter((u) => folded.has(u.node.id)))
+  const keyless =
+    isKeyless(cfg) || foldedTasks.some((u) => u.keyless === true || isKeyless(u.node.config))
+  const reads = policy.localRead || policy.remoteRead
+  const willRead = !remoteOnly && cfgCacheable && !keyless && reads
   const willWrite = !remoteOnly && cfgCacheable && (policy.localWrite || policy.remoteWrite)
   // `willWrite` governs output hygiene (clean before exec); the save itself
   // is also withheld from a task downstream of a failure (see `taintedUpstream`),
@@ -503,17 +514,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // (`tasks: []` and a file input) is judged by its bytes. `upstream` holds
   // a hole where a dependency did not run (a skipped one, a restore-tier
   // task's unfinished deps).
-  const present = upstream.filter((u): u is TaskOutcome => u !== undefined)
-  const folded = new Set(
-    filterUpstreamHashes(present, cacheCfg?.inputs?.tasks, node.projectName, node.id).map(
-      ([id]) => id,
-    ),
-  )
-  const unkeyedUpstream = expandGroupUpstream(present.filter((u) => folded.has(u.node.id))).find(
-    (u) => u.unkeyed === true,
-  )
+  const unkeyedUpstream = foldedTasks.find((u) => u.unkeyed === true)
   let unkeyed = unkeyedUpstream !== undefined
-  const willSave = willWrite && args.taintedUpstream !== true && !unkeyed
+  const willSave = willWrite && args.taintedUpstream !== true && !unkeyed && !keyless
 
   // The executor retains nothing: the entry's output is the attempt's
   // `output` log, both streams in the order they reached the logger, kept
@@ -615,7 +618,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const taskStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
 
   // Hash is computed mid-run, not at prepareRun time. Tasks whose
-  // `cache.inputs.files` matches sibling outputs (e.g. `'**/*'` after
+  // `inputs.files` matches sibling outputs (e.g. `'**/*'` after
   // a `codegen` step has written `generated.txt`) need the upstream
   // outputs ALREADY on disk when their hash is computed — so we
   // can't lift this into prepareRun. Same model as Turbo / Nx.
@@ -812,13 +815,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // is a hit. Almost always a glob written against the wrong directory
   // (`lib/**` in a package that builds `src/`). Said once per miss, on the
   // run's status line — the task itself succeeds.
-  const declaredInputs = [
-    ...(cacheCfg?.inputs.files ?? []),
-    ...(cacheCfg?.inputs.workspaceFiles ?? []),
-  ]
+  const declaredInputs = [...(cfg.inputs?.files ?? []), ...(cfg.inputs?.workspaceFiles ?? [])]
   if (inputs !== undefined && declaredInputs.length > 0 && inputs.files.length === 0) {
     warnOf(log)(
-      `[vx] ${node.id}: cache.inputs matched no files (${declaredInputs.join(', ')}) — ` +
+      `[vx] ${node.id}: inputs matched no files (${declaredInputs.join(', ')}) — ` +
         `the key will not change when this project's source does`,
     )
   }
@@ -1456,6 +1456,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       : {}),
     ...(inputChanges !== undefined ? { inputChanges } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
+    ...(keyless ? { keyless: true as const } : {}),
     ...(saved ? { saved: true as const } : {}),
     ...(effectiveExitCode !== 0 && output !== undefined
       ? { failedOutput: failedOutputLog(output, willSave || args.keepRunLog === true) }
@@ -1484,7 +1485,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
               finalViolations,
               node.projectDir,
               (t) => secrets?.mask(t) ?? t,
-              cacheCfg?.inputs.files,
+              cfg.inputs?.files,
             ),
           ),
         }

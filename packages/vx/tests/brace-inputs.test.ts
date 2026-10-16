@@ -33,7 +33,7 @@ it('a brace alternative ending in ** folds files below its first directory', asy
         tasks: {
           build: {
             exec: { command: 'true' },
-            cache: { inputs: { files: ['{src/**,lib/**}'] }, outputs: { files: [] } },
+            inputs: { files: ['{src/**,lib/**}'] }, cache: { outputs: { files: [] } },
           },
         },
       }

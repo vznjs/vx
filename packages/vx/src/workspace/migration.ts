@@ -67,7 +67,7 @@ const QUOTE_ARGS =
   `vx_r="$vx_r\${vx_s%%"$vx_q"*}'\\''"; vx_s=\${vx_s#*"$vx_q"};; *) break;; esac; done; ` +
   `vx_a="$vx_a '$vx_r$vx_s'"; done`
 
-const isCacheTodo = (todo: string): boolean => todo.startsWith('cache: add `cache: {')
+const isCacheTodo = (todo: string): boolean => todo.startsWith('cache: add `inputs: {')
 
 /** The one wording every mapper emits for a task it made persistent. */
 export const PERSISTENT_TODO =
@@ -624,7 +624,7 @@ const EXAMPLE_BODY = `export default {
     build: {
       exec: { command: 'tsc -b' },
       dependsOn: ['^build'],
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
   },
 }`

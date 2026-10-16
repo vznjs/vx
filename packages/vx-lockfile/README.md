@@ -56,7 +56,7 @@ A file has one claimant, so two of these plugins that share a settings file (`pn
 
 ## `package.json` as an input
 
-Every cached task of a project the lockfile lists gets its literal `package.json` appended to `cache.inputs.files` (the `project` stage), so an edit to a manifest re-keys that project's tasks and, through `^` keys, its dependants. A task with no `cache` block stays uncached; one whose inputs already name `package.json` is left alone. A task that rewrites its own `package.json` with the same bytes (tsdown) keeps its hits under `inputStability: { strategy: 'mutable' }`.
+Every task with `inputs` of a project the lockfile lists, cached or not, gets its literal `package.json` appended to `inputs.files` (the `project` stage), so an edit to a manifest re-keys that project's tasks and, through `^` keys, its dependants. A task with no `inputs` stays keyless; one whose inputs already name `package.json` is left alone. A task that rewrites its own `package.json` with the same bytes (tsdown) keeps its hits under `inputStability: { strategy: 'mutable' }`.
 
 ## Project edges
 

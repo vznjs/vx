@@ -33,7 +33,7 @@ it('a brace over two directories saves and restores both, and nothing beside the
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist lib/esm lib/cjs && echo a > dist/a.js && echo b > lib/esm/b.js && echo c > lib/cjs/c.js' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['{dist,lib/esm}/**'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['{dist,lib/esm}/**'] } },
           },
         },
       }

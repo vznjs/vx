@@ -82,10 +82,7 @@ describe('an nx-input twin over a sibling output', () => {
     const spec = plan.projects.find((p) => p.name === 'spec')!
     const twin = spec.tasks.find((t) => t.name === 'nx-input:default')!
     expect(twin.task).toEqual({
-      cache: {
-        inputs: { files: ['package.json', 'project.json', '**/*'] },
-        outputs: { files: [] },
-      },
+      inputs: { files: ['package.json', 'project.json', '**/*'] },
     })
     expect(twin.todos).toEqual([])
   })

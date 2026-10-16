@@ -37,11 +37,11 @@ describe('a cache hit on a task with no outputs', () => {
         export default { tasks: {
           check: {
             exec: { command: 'echo checked' },
-            cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+            inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
           },
           build: {
             exec: { command: 'mkdir -p dist && echo built > dist/out.txt' },
-            cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+            inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
           },
         } }
       `,

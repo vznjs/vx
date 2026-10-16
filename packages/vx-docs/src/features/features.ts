@@ -227,8 +227,8 @@ export default defineProject({
   tasks: {
     build: {
       exec: { command: 'vite build' },
+      inputs: { files: ['src/**', 'index.html'] },
       cache: {
-        inputs: { files: ['src/**', 'index.html'] },
         outputs: { files: ['dist/**'] }, // wiped before run and restore
       },
     },
@@ -262,8 +262,8 @@ export default defineProject({
         command: 'vite build',
         sandbox: { allow: { read: ['.'], write: ['dist/**'] } },
       },
+      inputs: { files: ['src/**', 'index.html'] },
       cache: {
-        inputs: { files: ['src/**', 'index.html'] },
         outputs: { files: ['dist/**'] },
       },
     },

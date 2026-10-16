@@ -27,7 +27,7 @@ const BUILD_CONFIG = `
     tasks: {
       build: {
         exec: { command: 'cat src/in.txt > out.txt' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
       },
     },
   }

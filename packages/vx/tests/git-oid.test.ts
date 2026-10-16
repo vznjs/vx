@@ -543,7 +543,8 @@ describe('semantic guardrails — key stability across dirty↔clean transitions
       taskName: 'build',
       config: {
         exec: { command: 'noop' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'] },
+        cache: { outputs: { files: [] } },
       },
       deps: [],
       requested: true,

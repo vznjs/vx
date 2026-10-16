@@ -23,7 +23,7 @@ describe('vx watch on a root project with a nested project (e2e)', () => {
       tasks: {
         build: {
           exec: { command: 'echo root >> ${log}' },
-          cache: { inputs: ${inputs}, outputs: { files: [] } },
+          inputs: ${inputs}, cache: { outputs: { files: [] } },
         },
       },
     }
@@ -40,7 +40,7 @@ describe('vx watch on a root project with a nested project (e2e)', () => {
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'r.txt'), 'r1\n')
     await addProject(root, 'a', {
-      config: `export default { tasks: { build: { exec: { command: 'echo a >> ${log}' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n`,
+      config: `export default { tasks: { build: { exec: { command: 'echo a >> ${log}' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
       files: { 'src/a.txt': 'a1\n' },
     })
   })

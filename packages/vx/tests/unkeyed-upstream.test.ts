@@ -39,11 +39,11 @@ it(
     const app = await addProject(root, 'app', {
       config: `export default { tasks: {
         gen: { exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist && cp src/a.txt dist/gen.txt' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
         use: { dependsOn: ['gen'], exec: { command: 'mkdir -p out && cat dist/gen.txt > out/use.txt' },
-               cache: { inputs: { files: ['lib/**'] }, outputs: { files: ['out/**'] } } },
+               inputs: { files: ['lib/**'] }, cache: { outputs: { files: ['out/**'] } } },
         pack: { dependsOn: ['use'], exec: { command: 'mkdir -p pkg && cat out/use.txt > pkg/p.txt' },
-                cache: { inputs: { files: ['lib/**'] }, outputs: { files: ['pkg/**'] } } } } }`,
+                inputs: { files: ['lib/**'] }, cache: { outputs: { files: ['pkg/**'] } } } } }`,
       files: {
         'src/a.txt': 'one',
         'lib/x.txt': 'x',
@@ -91,13 +91,14 @@ it(
     await addProject(root, 'lib', {
       config: `export default { tasks: {
         fmt: { exec: { command: 'while [ ! -f ../app/started ]; do sleep 0.01; done; echo more >> src/a.txt; touch ../app/go' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }`,
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }`,
       files: { 'src/a.txt': 'one\n' },
     })
     await addProject(root, 'app', {
       config: `export default { tasks: {
         read: { exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; cat ../lib/src/a.txt > out.txt' },
-                cache: { inputs: { files: ['src/**'], workspaceFiles: ['packages/lib/src/a.txt'] },
+                inputs: { files: ['src/**'], workspaceFiles: ['packages/lib/src/a.txt'] },
+                cache: { 
                          outputs: { files: ['out.txt'] } } } } }`,
       files: { 'src/x.txt': 'x', '.gitignore': 'out.txt\ngo\nstarted\n' },
     })

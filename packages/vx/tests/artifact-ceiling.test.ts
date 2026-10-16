@@ -49,7 +49,7 @@ describe('an output set past the artifact ceiling', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && head -c ${bytes} /dev/urandom > dist/out.bin' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
             },
           },
         }

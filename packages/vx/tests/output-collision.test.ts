@@ -32,8 +32,8 @@ import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../src/config.js
 function task(outputs: string[], wsOutputs?: string[]): TaskConfig {
   return {
     exec: { command: 'build' },
+    inputs: { files: [] },
     cache: {
-      inputs: { files: [] },
       outputs: { files: outputs, ...(wsOutputs ? { workspaceFiles: wsOutputs } : {}) },
     },
   }

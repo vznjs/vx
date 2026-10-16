@@ -71,7 +71,7 @@ describe('vx watch loop (e2e): the watched set', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
             },
           },
         }
@@ -126,7 +126,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-            cache: { inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: ['dist/**'] } },
           },
         },
       }\n`,
@@ -167,7 +167,7 @@ describe('vx watch loop (e2e): the watched set', () => {
           tasks: {
             build: {
               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo lib >> ${f.log}' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
             },
           },
         }
@@ -181,7 +181,7 @@ describe('vx watch loop (e2e): the watched set', () => {
           build: {
             dependsOn: ['^build'],
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
           },
         },
       }\n`,
@@ -210,7 +210,7 @@ describe('vx watch loop (e2e): the watched set', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo ${name} >> ${f.log}' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -249,7 +249,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         build: {
           ${extra}
           exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo ${tag} >> ${f.log}' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
         },
       },
     }
@@ -311,7 +311,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-            cache: { inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: ['dist/**'] } },
           },
         },
       }\n`,
@@ -340,7 +340,8 @@ describe('vx watch loop (e2e): the watched set', () => {
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-            cache: { inputs, outputs: { files: ['dist/**'] } },
+            inputs,
+            cache: { outputs: { files: ['dist/**'] } },
           },
         },
       }\n`,
@@ -383,7 +384,7 @@ describe('vx watch loop (e2e): the watched set', () => {
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
-            cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
           },
         },
       }\n`,

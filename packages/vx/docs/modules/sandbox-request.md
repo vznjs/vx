@@ -134,7 +134,7 @@ export function mayWriteFingerprint(
 
 ## Rules
 
-- **The user's grants derive nothing from `cache`.** `cache.inputs`
+- **The user's grants derive nothing from `cache`.** `inputs`
   says what INVALIDATES a task; `sandbox.allow` says what it may TOUCH.
   A sandboxed task declares its own reads and writes.
 - **`node_modules` is the one grant core makes** — the project's and

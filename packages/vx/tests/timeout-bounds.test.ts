@@ -209,7 +209,7 @@ describe('the refusal reaches a real run', () => {
     await writeFile(
       path.join(dir, 'vx.config.mjs'),
       'export default { tasks: { build: { exec: { command: "sleep 2 && echo BUILT > out.txt", ' +
-        'timeout: "9999999999999ms" }, cache: { inputs: { files: ["src/**"] }, ' +
+        'timeout: "9999999999999ms" }, inputs: { files: ["src/**"] }, cache: { ' +
         'outputs: { files: ["out.txt"] } } } } }',
     )
     Bun.spawnSync(['git', 'init', '-q'], { cwd: root })

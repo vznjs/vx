@@ -6,7 +6,7 @@
 // unrelated `docs`. It covers `^build` and same-project `dependsOn`, a
 // `pkg#task` edge, cache inputs with a negation and braces, a route
 // directory with LITERAL brackets (item 667), `outputs.files`, one
-// `cache.inputs.env` entry, one `workspaceFiles` entry, a task with no
+// `inputs.env` entry, one `workspaceFiles` entry, a task with no
 // cache block and a group task. Each config is the `vx.config.mjs` source
 // a reader edits: the CLI evaluates the file, the playground the same text
 // (`evaluateConfig`, item 699).
@@ -19,8 +19,8 @@ export default defineProject({
   tasks: {
     build: {
       exec: { command: 'mkdir -p dist && cp src/*.ts dist/' },
+      inputs: { files: ['src/**/*.ts'], workspaceFiles: ['tsconfig.base.json'] },
       cache: {
-        inputs: { files: ['src/**/*.ts'], workspaceFiles: ['tsconfig.base.json'] },
         outputs: { files: ['dist/**'] },
       },
     },
@@ -34,15 +34,15 @@ export default defineProject({
     build: {
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cp src/*.ts dist/' },
+      inputs: { files: ['src/**', 'package.json'], env: ['API_URL'] },
       cache: {
-        inputs: { files: ['src/**', 'package.json'], env: ['API_URL'] },
         outputs: { files: ['dist'] },
       },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'true' },
-      cache: { inputs: { files: ['src/**', 'test/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**', 'test/**'] }, cache: { outputs: { files: [] } },
     },
   },
 })
@@ -54,9 +54,9 @@ export default defineProject({
     build: {
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cp -r src dist/' },
+      // [id] is a literal route directory, not a character class.
+      inputs: { files: ['src/**/*.{ts,tsx}', '!src/**/*.test.ts', 'src/app/[id]/**'] },
       cache: {
-        // [id] is a literal route directory, not a character class.
-        inputs: { files: ['src/**/*.{ts,tsx}', '!src/**/*.test.ts', 'src/app/[id]/**'] },
         outputs: { files: ['dist/**'] },
       },
     },
@@ -67,15 +67,15 @@ export default defineProject({
 
 export default defineProject({
   tasks: {
-    codegen: { exec: { command: 'echo generated > gen.txt' } },
+    codegen: { exec: { command: 'echo generated > gen.txt' }, inputs: { files: [] } },
     build: {
       dependsOn: ['^build', 'codegen', '@pg/core#test'],
       exec: { command: 'mkdir -p dist && cp src/*.ts dist/', timeout: '1m' },
+      inputs: {
+        files: ['src/**', 'gen.txt'],
+        workspaceFiles: ['tsconfig.base.json', '!**/*.md'],
+      },
       cache: {
-        inputs: {
-          files: ['src/**', 'gen.txt'],
-          workspaceFiles: ['tsconfig.base.json', '!**/*.md'],
-        },
         outputs: { files: ['dist/**'] },
       },
     },
@@ -87,7 +87,7 @@ export default defineProject({
 
 export default defineProject({
   tasks: {
-    build: { exec: { command: 'echo docs' } },
+    build: { exec: { command: 'echo docs' }, inputs: { files: ['**'] } },
   },
 })
 `,

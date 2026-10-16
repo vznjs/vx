@@ -55,9 +55,9 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
   const effectiveForwardArgs = node.requested ? (args.forwardArgs ?? []) : []
   const env = taskEnv(node, step, args.workspaceRoot)
   const wallclockStartNs = process.hrtime.bigint() - args.runStartHrTimeNs
-  // Keyed like an uncached task (its whole project), so a cached dependant
-  // behind a dev server re-runs when the server's sources change; with no
-  // key the dependant folded nothing of it and replayed a stale e2e (A-17).
+  // Keyed on its inputs like any task, so a cached dependant behind a dev
+  // server re-runs when the server's sources change; with none it has no
+  // key and the dependant always runs (A-17).
   const hash =
     args.noDependants === true
       ? undefined

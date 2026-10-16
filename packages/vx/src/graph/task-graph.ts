@@ -114,9 +114,9 @@ export function isGroupTask(node: TaskNode): boolean {
   return node.config.exec === undefined
 }
 
-/** A keyed group: the default `build` (orchestrator/projects.ts), or a config's group with `cache`. */
+/** A keyed group: the default `build` (orchestrator/projects.ts), or a config's group with `inputs`. */
 function isKeyedGroup(task: TaskConfig): boolean {
-  return task.exec === undefined && task.cache !== undefined
+  return task.exec === undefined && task.inputs !== undefined
 }
 
 /**
@@ -511,7 +511,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
 
     // dependsOn is about which tasks to ADD to the graph, not which
     // to filter. BARE wildcards ("*"/"^*" = "everything upstream") and
-    // negation aren't meaningful here — they're cache.inputs.tasks
+    // negation aren't meaningful here — they're inputs.tasks
     // operations. PARTIAL patterns (`build.*`, `^build.*`) are legal:
     // they name a namespace of tasks to add (Nx 19.5 parity).
     if (spec.kind === 'wildcardSelf' || spec.kind === 'wildcardDeps') {
@@ -1497,10 +1497,11 @@ export function outputTakenBack(output: string, negatives: readonly string[]): b
  */
 function refuseSelfClean(node: TaskNode): void {
   const cache = node.config.cache
-  if (cache === undefined) return
+  const declared = node.config.inputs
+  if (cache === undefined || declared === undefined) return
   for (const field of ['files', 'workspaceFiles'] as const) {
-    if (!coversAny(cache.inputs[field], cache.outputs[field])) continue
-    const inputs = splitNegations(cache.inputs[field] ?? [])
+    if (!coversAny(declared[field], cache.outputs[field])) continue
+    const inputs = splitNegations(declared[field] ?? [])
     const out = splitNegations(cache.outputs[field] ?? [])
     const outputs = out.positive
     if (outputs.length === 0) continue
@@ -1519,7 +1520,7 @@ function refuseSelfClean(node: TaskNode): void {
       if (outputTakenBack(gi, out.negative)) continue
       if (!outputTakenBack(gi, near)) continue
       throw new UserError(
-        `${node.id}: every file ${JSON.stringify(gi)} in cache.inputs.${field} selects is also ` +
+        `${node.id}: every file ${JSON.stringify(gi)} in inputs.${field} selects is also ` +
           `its own output — vx removes a task's outputs before it runs, so the task would ` +
           `delete its own sources. A task that rewrites files in place (a formatter) declares ` +
           `no outputs.`,
@@ -1612,9 +1613,10 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
   }
   for (const n of nodes.values()) {
     const cache = n.config.cache
-    if (cache === undefined) continue
-    const outFiles = positives(cache.outputs.files)
-    const outWs = positives(cache.outputs.workspaceFiles ?? [])
+    const inputs = n.config.inputs
+    if (inputs === undefined) continue
+    const outFiles = positives(cache?.outputs.files ?? [])
+    const outWs = positives(cache?.outputs.workspaceFiles ?? [])
     if (outFiles.length > 0) {
       const anchor = workspaceRoot === undefined ? undefined : relPosix(workspaceRoot, n.projectDir)
       bucket(n.projectName).push({ node: n, globs: outFiles, reads: false, anchor })
@@ -1626,8 +1628,8 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
       wsWriters.push(side)
     }
     if (isGroupTask(n)) continue
-    const inFiles = positives(cache.inputs.files)
-    const inWs = positives(cache.inputs.workspaceFiles ?? [])
+    const inFiles = positives(inputs.files)
+    const inWs = positives(inputs.workspaceFiles ?? [])
     if (inFiles.length > 0) {
       bucket(n.projectName).push({ node: n, globs: inFiles, reads: true })
       filesReaders.push(n)
@@ -1654,7 +1656,7 @@ function detectInputOverlaps(nodes: Map<string, TaskNode>, workspaceRoot?: strin
     const sides = [...wsWriters]
     for (const node of filesReaders) {
       const rel = relPosix(workspaceRoot, node.projectDir)
-      const globs = positives(node.config.cache!.inputs.files).map((g) =>
+      const globs = positives(node.config.inputs!.files).map((g) =>
         rel === '' ? g : `${rel}/${g}`,
       )
       sides.push({ node, globs, reads: true, rel })
@@ -1745,16 +1747,15 @@ function takenBack(
 ): boolean {
   let tb = memo.bySide.get(reader)
   if (tb === undefined) {
-    const cache = reader.node.config.cache!
+    const inputs = reader.node.config.inputs!
+    const cache = reader.node.config.cache
     // A reader rebased to the root (X-135) speaks in its project's terms.
     const at = reader.rel === undefined || reader.rel === '' ? '' : `${reader.rel}/`
     // What the reader's key never reads: its `!` entries and its own outputs.
     const list = [
+      ...splitNegations(field === 'files' ? inputs.files : (inputs.workspaceFiles ?? [])).negative,
       ...splitNegations(
-        field === 'files' ? cache.inputs.files : (cache.inputs.workspaceFiles ?? []),
-      ).negative,
-      ...splitNegations(
-        field === 'files' ? cache.outputs.files : (cache.outputs.workspaceFiles ?? []),
+        field === 'files' ? (cache?.outputs.files ?? []) : (cache?.outputs.workspaceFiles ?? []),
       ).positive,
     ].map((g) => at + g)
     const key = list.join('\0')
@@ -1790,11 +1791,11 @@ function readsOutputs(
         rooted,
         () =>
           new UserError(
-            `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in cache.inputs.${field}, which matches ` +
+            `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in inputs.${field}, which matches ` +
               `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
               `another task's outputs (the dependency's key already cascades through dependsOn). ` +
               `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
-              `cache.inputs.${field}, or set run.rules.upfrontKeys: false in .vx/workspace.ts to ` +
+              `inputs.${field}, or set run.rules.upfrontKeys: false in .vx/workspace.ts to ` +
               `let it wait for its producer.`,
             'VX_E_INPUT_IS_OUTPUT',
           ),

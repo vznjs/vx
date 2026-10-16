@@ -63,7 +63,7 @@ describe('an output that covers the project’s own package.json', () => {
   tasks: {
     build: {
       exec: { command: 'b' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [${JSON.stringify(g)}] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [${JSON.stringify(g)}] } },
     },
   },
 }
@@ -111,10 +111,10 @@ describe('an output that covers the project’s own package.json', () => {
       persistentTodo: 'PERSIST',
     })
     const t = m.projects[0]!.tasks[0]!
-    expect([t.name, t.task?.['cache'], t.todos]).toEqual([
+    expect([t.name, t.task?.['inputs'], t.task?.['cache'], t.todos]).toEqual([
       'build',
+      { files: ['**/*'] },
       {
-        inputs: { files: ['**/*'] },
         outputs: { files: ['package.json', 'dist/**', '!package.json'] },
         inputStability: { strategy: 'mutable' },
       },

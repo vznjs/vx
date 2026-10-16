@@ -45,12 +45,14 @@ $ vx run build --filter @demo/ap
   package gives `build` a command, so vx ran only its default group.
   Give `build` an `exec.command` in the packages that build.
 - **A task runs every time.** It has no `cache` block. `vx init` leaves
-  a TODO with the block to add.
+  a TODO with the block to add. Or a task it depends on declares no
+  `inputs`: that task has no key, so nothing behind it hits. Give it
+  `inputs`.
 - **A task hit after you changed a file.** The file is not in
-  `cache.inputs.files`. `vx why <project#task>` shows what the key saw;
+  `inputs.files`. `vx why <project#task>` shows what the key saw;
   [`exec.sandbox`](../sandboxing/), with reads granted no wider than
   the inputs, refuses that read and names it.
-- **`cache.inputs matched no files`.** The globs name nothing in the
+- **`inputs matched no files`.** The globs name nothing in the
   project, so the key ignores its source. Fix the paths; they are
   relative to the project directory.
 - **`cache.outputs matched no files`.** The task wrote elsewhere, so a
@@ -73,7 +75,7 @@ $ vx run build --filter @demo/ap
       changed file  packages/app/src/a.ts  a853d874… → d14600f9…
 
     what to do:
-      file  an edit re-runs by design; a file the task does not read belongs out of cache.inputs.files
+      file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
   ```
 - **A variable is empty inside the command.** Past a small essential
   allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what

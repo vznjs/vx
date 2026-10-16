@@ -105,7 +105,7 @@ describe('commandEnvironment', () => {
     ])
   })
 
-  it('carries cache.inputs.env values, which are already folded into the key', () => {
+  it('carries inputs.env values, which are already folded into the key', () => {
     expect(
       commandEnvironment(
         inputs([{ name: 'API_URL', value: 'https://x' }]),
@@ -117,7 +117,7 @@ describe('commandEnvironment', () => {
 
   // Item 1092: a name the config only tracks is keyed but never reaches the
   // local child, and the worker ran on it under the same key.
-  it('leaves out a cache.inputs.env name the local child does not get', () => {
+  it('leaves out a inputs.env name the local child does not get', () => {
     expect(commandEnvironment(inputs([{ name: 'TRACKED', value: 'prod' }]), {}, {})).toEqual([])
     expect(
       commandEnvironment(inputs([{ name: 'TRACKED', value: 'prod' }]), {}, { TRACKED: 'other' }),
@@ -126,7 +126,7 @@ describe('commandEnvironment', () => {
 
   // The worker runs what the key describes: an unset name is absent there, as
   // `passThrough` leaves it absent here, and an empty one is carried empty.
-  it('leaves an unset cache.inputs.env name out, and carries an empty one', () => {
+  it('leaves an unset inputs.env name out, and carries an empty one', () => {
     expect(
       commandEnvironment(
         inputs([
@@ -159,7 +159,7 @@ describe('commandEnvironment', () => {
     expect([...b].map((e) => e.name).sort()).toEqual(['ALPHA', 'MID', 'ZED'])
   })
 
-  it('a define wins over a same-named cache.inputs.env value, once', () => {
+  it('a define wins over a same-named inputs.env value, once', () => {
     expect(
       commandEnvironment(
         inputs([{ name: 'MODE', value: 'ambient' }]),

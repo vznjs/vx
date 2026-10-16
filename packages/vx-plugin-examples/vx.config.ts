@@ -21,10 +21,10 @@ export default defineProject({
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
+      inputs: {
+        files: ['plugins/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+      },
       cache: {
-        inputs: {
-          files: ['plugins/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
-        },
         outputs: { files: [] },
       },
     },
@@ -36,10 +36,10 @@ export default defineProject({
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       dependsOn: ['install'],
+      inputs: {
+        files: ['**/*'],
+      },
       cache: {
-        inputs: {
-          files: ['**/*'],
-        },
         outputs: { files: [] },
       },
     },
@@ -58,8 +58,8 @@ export default defineProject({
         },
       },
       dependsOn: ['install'],
+      inputs: { files: ['plugins/**', 'package.json'] },
       cache: {
-        inputs: { files: ['plugins/**', 'package.json'] },
         outputs: { files: [] },
       },
     },

@@ -325,7 +325,7 @@ function silent(): Logger {
 
 describe('vx run with bun() declared', () => {
   const BUILD = (inputs: string) =>
-    `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'echo built' }, cache: { inputs: { files: ${inputs} }, outputs: { files: [] } } }, lint: { exec: { command: 'echo lint' } } } }\n`
+    `export default { tasks: { build: { dependsOn: ['^build'], exec: { command: 'echo built' }, inputs: { files: ${inputs} }, cache: { outputs: { files: [] } } }, lint: { exec: { command: 'echo lint' }, inputs: { files: ['src/**'] } } } }\n`
 
   beforeEach(async () => {
     await writeFile(
@@ -364,12 +364,14 @@ describe('vx run with bun() declared', () => {
 
   it("adds each importer's package.json to its cached tasks' inputs, once", async () => {
     const tasks = new Map((await plan()).tasks.map((t) => [t.node.id, t.node]))
-    expect(tasks.get('a#build')!.config.cache?.inputs.files).toEqual(['src/**', 'package.json'])
-    expect(tasks.get('e#build')!.config.cache?.inputs.files).toEqual(['package.json', 'src/**'])
+    expect(tasks.get('a#build')!.config.inputs?.files).toEqual(['src/**', 'package.json'])
+    expect(tasks.get('e#build')!.config.inputs?.files).toEqual(['package.json', 'src/**'])
     // A project the lockfile does not list is no importer: nothing added,
     // and no name given, so its path names it.
-    expect(tasks.get('packages/f#build')!.config.cache?.inputs.files).toEqual(['src/**'])
-    // An uncached task gains no cache block: caching stays opt-in.
+    expect(tasks.get('packages/f#build')!.config.inputs?.files).toEqual(['src/**'])
+    // An uncached task is keyed all the same, and gains no cache block:
+    // caching stays opt-in.
+    expect(tasks.get('a#lint')!.config.inputs?.files).toEqual(['src/**', 'package.json'])
     expect(tasks.get('a#lint')!.config.cache).toBeUndefined()
   })
 
@@ -437,7 +439,7 @@ describe('vx run with bun() declared', () => {
   it('a task rewriting its own package.json identically still hits (tsdown), as `mutable` allows', async () => {
     await writeFile(
       path.join(root, 'packages', 'b', 'vx.config.mjs'),
-      `export default { tasks: { build: { exec: { command: 'c=$(cat package.json); printf "%s" "$c" > package.json' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] }, inputStability: { strategy: 'mutable' } } } } }\n`,
+      `export default { tasks: { build: { exec: { command: 'c=$(cat package.json); printf "%s" "$c" > package.json' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] }, inputStability: { strategy: 'mutable' } } } } }\n`,
     )
     const once = () =>
       run({ cwd: root, tasks: ['b#build'], log: silent(), handleSignals: false }).then((r) =>
@@ -463,7 +465,7 @@ describe('a package.json edit re-keys a cached task only through the plugin', ()
       await writeFile(path.join(dir, 'src', 'index.js'), `// ${name}\n`)
       await writeFile(
         path.join(dir, 'vx.config.mjs'),
-        `export default { tasks: { build: { exec: { command: 'echo built' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n`,
+        `export default { tasks: { build: { exec: { command: 'echo built' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,
       )
     }
     await writeFile(path.join(root, 'bun.lock'), BUN)

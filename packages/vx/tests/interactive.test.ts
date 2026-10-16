@@ -40,7 +40,7 @@ const refusal = (task: Record<string, unknown>): string => {
 
 describe('exec.interactive in the schema', () => {
   it('refuses cache, sandbox and readyWhen beside it, and nothing else', () => {
-    const cache = { inputs: { files: ['src/**'] }, outputs: { files: [] } }
+    const cache = { outputs: { files: [] } }
     expect({
       cache: refusal({ exec: { command: 'x', interactive: true }, cache }),
       sandbox: refusal({ exec: { command: 'x', interactive: true, sandbox: {} } }),
@@ -51,7 +51,7 @@ describe('exec.interactive in the schema', () => {
       // CONTROLS: a server with no readyWhen, a timeout, and `false` beside a cache.
       server: refusal({ exec: { command: 'x', interactive: true, persistent: {} } }),
       timeout: refusal({ exec: { command: 'x', interactive: true, timeout: '1s' } }),
-      off: refusal({ exec: { command: 'x', interactive: false }, cache }),
+      off: refusal({ exec: { command: 'x', interactive: false }, inputs: { files: [] }, cache }),
     }).toEqual({
       cache:
         'vx.config.ts: tasks.t: `cache` is not allowed on an interactive task — what it does depends on what is typed, which no key holds',

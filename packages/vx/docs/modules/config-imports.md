@@ -10,7 +10,7 @@ config imports participates in the cache key. Editing such a file
 re-keys the task — and `affected.ts` states the rule this module exists
 to keep: _"input hashing sees it, so `--affected` must too."_ Neither
 existing channel can see it. Containment maps a file to the project
-that OWNS it, and `cache.inputs.workspaceFiles` maps a file a project
+that OWNS it, and `inputs.workspaceFiles` maps a file a project
 DECLARED. A config import is neither.
 
 ## Public surface
@@ -77,7 +77,7 @@ a config that reads `shared/cfg.json` with `readFileSync` folds its
 bytes into the key (resolved-config hashing) while selection never
 learns of the edge. Import the file instead (`import cfg from
 '../../shared/cfg.json' with { type: 'json' }` is followed), or declare
-it in `cache.inputs.workspaceFiles`. Selecting every config the purity
+it in `inputs.workspaceFiles`. Selecting every config the purity
 gate cannot vouch for on any unowned change was weighed and left: it
 would run every such project on a README edit.
 

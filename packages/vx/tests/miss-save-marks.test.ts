@@ -1,6 +1,6 @@
 // What a miss marks after it writes (miss-save.ts), end to end: a later
 // task in the same run that reads the written files through
-// `cache.inputs.workspaceFiles` must key them, or its entry is saved under
+// `inputs.workspaceFiles` must key them, or its entry is saved under
 // a key that does not describe what it read. The cache-layer rows call the
 // marks directly; these hold `saveMiss`'s calls (A-26).
 
@@ -45,7 +45,7 @@ async function genAndReader(genOutputs: string, genCommand: string, reads: strin
     files: { 'src/a.txt': 'a' },
     config: `export default { tasks: { build: {
       exec: { command: '${genCommand}' },
-      cache: { inputs: { files: ['src/**'] }, outputs: ${genOutputs} },
+      inputs: { files: ['src/**'] }, cache: { outputs: ${genOutputs} },
     } } }`,
   })
   await addProject(root, 'rd', {
@@ -53,7 +53,7 @@ async function genAndReader(genOutputs: string, genCommand: string, reads: strin
     config: `export default { tasks: { build: {
       dependsOn: ['^build'],
       exec: { command: 'true' },
-      cache: { inputs: { files: [], workspaceFiles: ['${reads}'], tasks: [] }, outputs: { files: [] } },
+      inputs: { files: [], workspaceFiles: ['${reads}'], tasks: [] }, cache: { outputs: { files: [] } },
     } } }`,
   })
 }
@@ -100,7 +100,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         files: { 'src/a.txt': 'a' },
         config: `export default { tasks: { build: {
           exec: { command: 'echo g > ../rd/gen.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: [], workspaceFiles: ['packages/rd/gen.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: [], workspaceFiles: ['packages/rd/gen.txt'] } },
         } } }`,
       })
       await addProject(root, 'rd', {
@@ -108,7 +108,7 @@ describe('a miss marks what it wrote for the rest of the run', () => {
         config: `export default { tasks: { build: {
           dependsOn: ['^build'],
           exec: { command: 'true' },
-          cache: { inputs: { files: ['*.txt', 'src/**'], tasks: [] }, outputs: { files: [] } },
+          inputs: { files: ['*.txt', 'src/**'], tasks: [] }, cache: { outputs: { files: [] } },
         } } }`,
       })
       expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
@@ -140,7 +140,7 @@ it(
       config: `export default { tasks: {
         build: {
           exec: { command: 'mkdir -p dist ../../shared && echo p > dist/p.txt && echo w > ../../shared/w.txt' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'], workspaceFiles: ['shared/**'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'], workspaceFiles: ['shared/**'] } },
         },
         tail: { dependsOn: ['build'], exec: { command: 'sleep ${(OUTPUT_DIRS_RACY_MS * 3) / 1000}' } },
       } }`,

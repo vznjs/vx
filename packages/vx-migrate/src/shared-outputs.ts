@@ -354,11 +354,21 @@ function prefixIndex(): {
  * task core refuses, and every verb failed.
  */
 export const isKeyedGroup = (t: { readonly task: Record<string, unknown> | null }): boolean =>
-  t.task !== null && t.task['exec'] === undefined && t.task['cache'] !== undefined
+  t.task !== null && t.task['exec'] === undefined && t.task['inputs'] !== undefined
 
-/** A task's cached `inputs` block, when it has one with a `files` list. */
+/**
+ * A task whose key cannot be complete: no cache and no key, so it runs
+ * every time and every dependant misses (core's keyless task). Uncached
+ * alone, its incomplete key still let a dependant hit stale.
+ */
+export function unkey(task: Record<string, unknown>): void {
+  delete task['cache']
+  delete task['inputs']
+}
+
+/** A task's `inputs` block, when it has one with a `files` list. */
 function inputsOf(t: GeneratedTask): { files: string[]; workspaceFiles?: unknown } | undefined {
-  const inputs = (t.task?.['cache'] as { inputs?: { files?: unknown } } | undefined)?.inputs
+  const inputs = t.task?.['inputs'] as { files?: unknown } | undefined
   return Array.isArray(inputs?.files)
     ? (inputs as { files: string[]; workspaceFiles?: unknown })
     : undefined
@@ -396,7 +406,7 @@ export function excludeSiblingOutputs(tasks: GeneratedTask[]): GeneratedTask[] {
         const literal = read.find((g) => isLiteralPattern(g))
         if (literal !== undefined && isKeyedGroup(t)) continue
         if (literal !== undefined) {
-          delete t.task!['cache']
+          unkey(t.task!)
           t.todos.push(
             `reads ${JSON.stringify(literal)}, which ${JSON.stringify(w.name)} writes — vx keys a ` +
               'task only on files no other task writes, so it runs uncached; read the source ' +
@@ -480,7 +490,7 @@ export function resolveSharedWorkspaceOutputs(
 }
 
 /**
- * `excludeSiblingOutputs` for root-anchored `cache.inputs.workspaceFiles`:
+ * `excludeSiblingOutputs` for root-anchored `inputs.workspaceFiles`:
  * every other task's `outputs.workspaceFiles`, and its `outputs.files` at
  * their workspace path, is taken back from a reader's workspace inputs
  * (Turbo's `globalDependencies` and `$TURBO_ROOT$` entries, Nx's
@@ -530,8 +540,7 @@ export function excludeWorkspaceOutputs(
   if (writers.length === 0) return
   for (const p of projects) {
     for (const t of p.tasks) {
-      const inputs = (t.task?.['cache'] as { inputs?: { workspaceFiles?: unknown } } | undefined)
-        ?.inputs
+      const inputs = t.task?.['inputs'] as { workspaceFiles?: unknown } | undefined
       if (inputs === undefined || !Array.isArray(inputs.workspaceFiles)) continue
       const files = inputs.workspaceFiles as string[]
       const reads = positive(files.flatMap((f) => (typeof f === 'string' ? [f] : expand(f))))
@@ -546,7 +555,7 @@ export function excludeWorkspaceOutputs(
           const literal = read.find((g) => isLiteralPattern(g))
           if (literal !== undefined && isKeyedGroup(t)) continue
           if (literal !== undefined) {
-            delete t.task!['cache']
+            unkey(t.task!)
             t.todos.push(
               `reads ${JSON.stringify(literal)}, which ${w.id} writes — vx keys a task only on ` +
                 'files no other task writes, so it runs uncached; read the source instead in a ' +
@@ -556,7 +565,7 @@ export function excludeWorkspaceOutputs(
           }
           files.push(`!${out}`)
         }
-        if (t.task?.['cache'] === undefined) break
+        if (t.task?.['inputs'] === undefined) break
       }
     }
   }
@@ -581,7 +590,7 @@ export function excludeWorkspaceOutputs(
           const literal = out.startsWith(at) ? read.find((g) => isLiteralPattern(g)) : read[0]
           if (literal !== undefined && isKeyedGroup(t)) continue
           if (literal !== undefined) {
-            delete t.task!['cache']
+            unkey(t.task!)
             t.todos.push(
               `reads ${JSON.stringify(literal.slice(at.length))}, which ${w.id} writes — vx keys ` +
                 'a task only on files no other task writes, so it runs uncached; read the ' +
@@ -591,7 +600,7 @@ export function excludeWorkspaceOutputs(
           }
           files.push(back)
         }
-        if (t.task?.['cache'] === undefined) break
+        if (t.task?.['inputs'] === undefined) break
       }
     }
   }

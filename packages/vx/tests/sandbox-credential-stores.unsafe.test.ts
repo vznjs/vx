@@ -126,7 +126,7 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
       `export default { name: 'a', tasks: {
   link: {
     exec: { command: 'mkdir -p dist && ln "$HOME/.ssh/id_ed25519" dist/k || true', sandbox: { allow: { read: ['.'], write: ['dist/'] } } },
-    cache: { inputs: { files: ['vx.config.mjs'] }, outputs: { files: ['dist/**'] } },
+    inputs: { files: ['vx.config.mjs'] }, cache: { outputs: { files: ['dist/**'] } },
   },
   open: { exec: { command: 'mkdir -p dist && ln "$HOME/.ssh/id_ed25519" dist/k' } },
 } }

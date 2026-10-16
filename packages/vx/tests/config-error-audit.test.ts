@@ -72,17 +72,17 @@ it.each([
   ],
   [
     'a string `cache.outputs`',
-    task(`exec: { command: 'x' }, cache: { ${CACHE_IN}, outputs: 'dist' }`),
+    task(`exec: { command: 'x' }, ${CACHE_IN}, cache: { outputs: 'dist' }`),
     framed(100, 'tasks.build.cache.outputs must be an object — `outputs: { files: [...] }`'),
   ],
   [
-    'a string `cache.inputs`',
-    task(`exec: { command: 'x' }, cache: { inputs: 'src/**', outputs: { files: [] } }`),
-    framed(69, 'tasks.build.cache.inputs must be an object — `inputs: { files: [...] }`'),
+    'a string `inputs`',
+    task(`exec: { command: 'x' }, inputs: 'src/**', cache: { outputs: { files: [] } }`),
+    framed(60, 'tasks.build.inputs must be an object — `inputs: { files: [...] }`'),
   ],
   [
     'a missing `cache.outputs`',
-    task(`exec: { command: 'x' }, cache: { ${CACHE_IN} }`),
+    task(`exec: { command: 'x' }, ${CACHE_IN}, cache: {}`),
     `${REFUSED}<root>/p/vx.config.ts: tasks.build.cache.outputs is required when \`cache\` is set`,
   ],
   [

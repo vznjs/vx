@@ -52,7 +52,7 @@ describe('vx show //', () => {
     const check = '  top#check\n  command   true\n'
     // The project lists its default build too (a group keyed on its files).
     const build =
-      '  top#build\n  command        (group)\n  dependsOn      ^build\n  inputs.files   **\n  outputs.files\n'
+      '  top#build\n  command       (group)\n  dependsOn     ^build\n  inputs.files  **\n'
     expect([show(root, '//'), show(root, '//#check')]).toEqual([
       { code: 0, out: `\n${rule('top')}\n  dir       .\n\n${check}\n${build}`, err: '' },
       {

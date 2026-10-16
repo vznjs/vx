@@ -51,8 +51,8 @@ tasks reserve none of the local CPU budget.
 
 ## What goes remote
 
-- **Only cacheable tasks.** A task with no `cache` block has no
-  declared inputs, so a worker would run it against an empty tree.
+- **Only cacheable tasks.** A task with no `cache` block ships no
+  inputs to a worker, so it would run against an empty tree.
 - **Not persistent tasks, or anything depending on one.** A worker
   cannot reach a port on your machine; the placement stage knows.
 - **Not sandboxed tasks, or anything depending on one.** The sandbox
@@ -61,12 +61,12 @@ tasks reserve none of the local CPU budget.
 - **Not `exec.remote: false`, or anything depending on it.** A task
   that talks to Docker, a device or a local daemon is pinned by one
   field.
-- **Not a task whose key folds a runtime probe** (`cache.inputs.runtime`,
+- **Not a task whose key folds a runtime probe** (`inputs.runtime`,
   `workspaceRuntime`): the key holds this machine's `node -v`, which a
   worker cannot prove it shares. Its dependants may still go.
 
 A task's inputs on the worker are exactly what its cache key declares:
-`cache.inputs.files`, resolved env values, upstream outputs. Ambient
+`inputs.files`, resolved env values, upstream outputs. Ambient
 state such as an undeclared `tsconfig.json`, `.npmrc` or
 `node_modules` is not in the key and therefore not on the worker. The
 [sandbox](../the-sandbox/) is how you find the gap before you mark a
@@ -81,15 +81,15 @@ explicit install task pinned to the pool with `exec.remote: 'only'`:
 ```ts
 install: {
   exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
+  inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
   cache: {
-    inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
     outputs: { files: ['node_modules/**'] },
   },
 },
 build: {
   dependsOn: ['install'],
   exec: { command: 'tsc -p .' },
-  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
 },
 ```
 

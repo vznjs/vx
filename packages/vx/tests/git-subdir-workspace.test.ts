@@ -155,7 +155,7 @@ describe('workspace inside a linked git worktree', () => {
           tasks: {
             build: {
               exec: { command: 'cat src/in.txt > out.txt' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
             },
           },
         }
@@ -203,8 +203,8 @@ describe('workspace inside a linked git worktree', () => {
           tasks: {
             build: {
               exec: { command: 'cat src/in.txt > out.txt' },
+              inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
               cache: {
-                inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
                 outputs: { files: ['out.txt'] },
               },
             },
@@ -268,7 +268,7 @@ describe('vx run inside a git pre-commit hook', () => {
           tasks: {
             lint: {
               exec: { command: 'cat src/*.txt' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
             },
           },
         }
@@ -369,8 +369,8 @@ describe('vx watch over a workspace in a git subdirectory', () => {
             tasks: {
               build: {
                 exec: { command: 'cat src/in.txt > out.txt && echo run >> ${log}' },
+                inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
                 cache: {
-                  inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] },
                   outputs: { files: ['out.txt'] },
                 },
               },

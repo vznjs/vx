@@ -44,7 +44,7 @@ export function keyedDeps(node: TaskNode): readonly string[] {
 
 /**
  * Pick which upstream task hashes participate in the current task's
- * cache key, filtered by `cache.inputs.tasks`. The folded value is the
+ * cache key, filtered by `inputs.tasks`. The folded value is the
  * upstream's own cache key (its input-based task hash) — pure-input
  * transitive hashing, like Turbo/Nx. An upstream change propagates
  * through its key into every dependent's key. There is deliberately NO
@@ -90,7 +90,7 @@ export function filterUpstreamHashes(
  */
 export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>): void {
   for (const node of nodes.values()) {
-    const filter = node.config.cache?.inputs?.tasks
+    const filter = node.config.inputs?.tasks
     if (filter === undefined || filter.length === 0) continue
     const deps = keyedDeps(node).flatMap((id) => nodes.get(id) ?? [])
     const groups = deps.filter(isGroupTask)
@@ -105,7 +105,7 @@ export function refuseFiltersThroughGroups(nodes: ReadonlyMap<string, TaskNode>)
         const member = groupMembers(group, nodes).find(hit)
         if (member === undefined) continue
         throw new UserError(
-          `${node.id}: cache.inputs.tasks: '${raw}' matches ${member.id} only through the group ${group.id}, so it selects nothing; name '${group.taskName}' or depend on ${member.id} directly`,
+          `${node.id}: inputs.tasks: '${raw}' matches ${member.id} only through the group ${group.id}, so it selects nothing; name '${group.taskName}' or depend on ${member.id} directly`,
         )
       }
     }
@@ -117,7 +117,7 @@ function parseSpec(raw: string, selfTaskId: string): DependencySpec {
     return parseDependencySpec(raw)
   } catch (err) {
     if (err instanceof DependencySpecError) {
-      throw new UserError(`${selfTaskId}: cache.inputs.tasks: ${err.message}`)
+      throw new UserError(`${selfTaskId}: inputs.tasks: ${err.message}`)
     }
     throw err
   }
@@ -151,7 +151,7 @@ export interface FoldCandidate {
 }
 
 /**
- * The dependencies a task's key folds, per its `cache.inputs.tasks`.
+ * The dependencies a task's key folds, per its `inputs.tasks`.
  *
  * Patterns (Turbo/Nx micro-syntax + filter extensions):
  *   '*'         all same-project upstream
@@ -223,7 +223,7 @@ export function selectFoldedDeps(
  * along two paths (a group `build` whose `^build` meets a package diamond)
  * is expanded once, or the walk doubles per layer. Only what the FILTER
  * already selected is passed in, so a group excluded from a task's
- * `cache.inputs.tasks` brings no members with it.
+ * `inputs.tasks` brings no members with it.
  */
 export function expandGroupUpstream(upstream: readonly TaskOutcome[]): TaskOutcome[] {
   const out: TaskOutcome[] = []

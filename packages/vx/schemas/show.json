@@ -90,24 +90,24 @@
             }
           }
         },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["files"],
+          "properties": {
+            "files": { "$ref": "#/$defs/stringList" },
+            "workspaceFiles": { "$ref": "#/$defs/stringList" },
+            "env": { "$ref": "#/$defs/stringList" },
+            "tasks": { "$ref": "#/$defs/stringList" },
+            "runtime": { "$ref": "#/$defs/stringList" },
+            "workspaceRuntime": { "$ref": "#/$defs/stringList" }
+          }
+        },
         "cache": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["inputs", "outputs"],
+          "required": ["outputs"],
           "properties": {
-            "inputs": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["files"],
-              "properties": {
-                "files": { "$ref": "#/$defs/stringList" },
-                "workspaceFiles": { "$ref": "#/$defs/stringList" },
-                "env": { "$ref": "#/$defs/stringList" },
-                "tasks": { "$ref": "#/$defs/stringList" },
-                "runtime": { "$ref": "#/$defs/stringList" },
-                "workspaceRuntime": { "$ref": "#/$defs/stringList" }
-              }
-            },
             "outputs": {
               "type": "object",
               "additionalProperties": false,

@@ -44,7 +44,7 @@ describe('a workspaceFiles glob over a nested repository', () => {
   tasks: {
     w: {
       exec: { command: 'true' },
-      cache: { inputs: { files: [], workspaceFiles: ['vendor/**'] }, outputs: { files: [] } },
+      inputs: { files: [], workspaceFiles: ['vendor/**'] }, cache: { outputs: { files: [] } },
     },
   },
 }

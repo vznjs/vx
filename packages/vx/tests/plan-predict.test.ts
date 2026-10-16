@@ -67,7 +67,7 @@ function makeNode(spec: NodeSpec): TaskNode {
     config: {
       ...(spec.group ? {} : { exec: { command: `echo ${task}` } }),
       ...(cacheable && !spec.group
-        ? { cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } }
+        ? { inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } }
         : {}),
     },
     deps: spec.deps ?? [],
@@ -337,7 +337,7 @@ describe('plan() — cache-status prediction', () => {
 
 describe('plan() — a key that cannot be derived', () => {
   it('degrades an underivable key AND its dependents to no-cache with an empty hash', async () => {
-    // Reachable in production: `cache.inputs.runtime: ['<cmd>']` throws a
+    // Reachable in production: `inputs.runtime: ['<cmd>']` throws a
     // UserError when the probe command exits non-zero, so `computeTaskHash`
     // rejects. The scheduler then marks that task `failed` and SKIPS its
     // dependents without ever calling plan's execute closure — so neither
@@ -697,7 +697,7 @@ describe('planRun() — planning executes nothing', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && echo built > dist/out.txt && echo x >> ran.log' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -774,12 +774,12 @@ describe('planRun() — the plan describes the run you will get', () => {
           tasks: {
             codegen: {
               exec: { command: 'echo gen' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
             },
             build: {
               dependsOn: ['codegen'],
               exec: { command: 'echo b' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
             },
           },
         }
@@ -973,7 +973,7 @@ describe('planRun() — unresolved requests', () => {
           tasks: {
             build: {
               exec: { command: 'echo b' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
             },
           },
         }
@@ -1008,7 +1008,7 @@ describe('planRun() — unresolved requests', () => {
     'reports an underivable cache key as no-cache with an empty hash (known defect)',
     async () => {
       // The production reachability of the unit pin above: a
-      // `cache.inputs.runtime` probe that exits non-zero is a documented
+      // `inputs.runtime` probe that exits non-zero is a documented
       // fail-loud UserError. `vx run` turns it into a FAILED run (exit 1);
       // `vx run --dry` resolves happily and prints "not cacheable" for two
       // tasks that both declare a cache block. The only signal is a raw
@@ -1022,15 +1022,15 @@ describe('planRun() — unresolved requests', () => {
               tasks: {
                 codegen: {
                   exec: { command: 'echo gen' },
+                  inputs: { files: ['src/**'], runtime: ['exit 3'] },
                   cache: {
-                    inputs: { files: ['src/**'], runtime: ['exit 3'] },
                     outputs: { files: [] },
                   },
                 },
                 build: {
                   dependsOn: ['codegen'],
                   exec: { command: 'echo b' },
-                  cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
                 },
               },
             }

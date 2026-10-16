@@ -46,15 +46,15 @@ export default defineProject({
     build: {
       dependsOn: ['^build'], // my dependencies' build first
       exec: { command: 'tsc -b' },
+      inputs: { files: ['src/**', 'tsconfig.json'] },
       cache: {
-        inputs: { files: ['src/**', 'tsconfig.json'] },
         outputs: { files: ['dist/**'] },
       },
     },
     test: {
       dependsOn: ['build'], // my own build first
       exec: { command: 'bun test' },
-      cache: { inputs: { files: ['src/**', 'tests/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**', 'tests/**'] }, cache: { outputs: { files: [] } },
     },
   },
 })

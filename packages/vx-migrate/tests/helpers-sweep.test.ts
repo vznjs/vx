@@ -58,7 +58,8 @@ describe('resolveSharedOutputs: an edge keeps no pair cached (core default rules
       task: {
         exec: { command: name },
         ...(dependsOn.length > 0 ? { dependsOn } : {}),
-        cache: { inputs: { files: ['**/*'] }, outputs: { files: outputs } },
+        inputs: { files: ['**/*'] },
+        cache: { outputs: { files: outputs } },
       },
     }
   }

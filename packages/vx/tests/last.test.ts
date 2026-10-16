@@ -23,8 +23,8 @@ const APP_CONFIG = `
           command:
             'bun -e "const fs = require(\\'fs\\'); const b = Buffer.alloc(150 * 1024 * 1024, 1); fs.writeFileSync(\\'out.txt\\', fs.readFileSync(\\'src/input.txt\\')); console.log(b.length)"',
         },
+        inputs: { files: ['src/**'] },
         cache: {
-          inputs: { files: ['src/**'] },
           outputs: { files: ['out.txt'] },
         },
       },

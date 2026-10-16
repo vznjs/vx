@@ -26,15 +26,15 @@ export default defineProject({
   tasks: {
     build: {
       exec: { command: 'tsc -b' },
+      inputs: { files: ['src/**', 'tsconfig.json'] },
       cache: {
-        inputs: { files: ['src/**', 'tsconfig.json'] },
         outputs: { files: ['dist/**'] },
       },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'vitest run' },
-      cache: { inputs: { files: ['src/**', 'test/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**', 'test/**'] }, cache: { outputs: { files: [] } },
     },
   },
 })
@@ -55,7 +55,7 @@ A shared preset is a file:
 export const lib = (entry: string) => ({
   build: {
     exec: { command: `tsup ${entry}` },
-    cache: { inputs: { files: ['src/**', 'tsup.config.ts'] }, outputs: { files: ['dist/**'] } },
+    inputs: { files: ['src/**', 'tsup.config.ts'] }, cache: { outputs: { files: ['dist/**'] } },
   },
 })
 ```
@@ -84,7 +84,7 @@ A program can do too much, and two things are refused rather than
 allowed:
 
 - **Reading another project.** Globs are resolved inside the project
-  directory. `../shared/**` is an error, and `cache.inputs.workspaceFiles`
+  directory. `../shared/**` is an error, and `inputs.workspaceFiles`
   is the one named exception for files at the workspace root.
 - **Being impure without saying so.** A config that names `process`,
   `Date`, `fetch`, `import.meta`, a dynamic `import()` or any of the

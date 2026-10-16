@@ -26,7 +26,7 @@ beforeAll(async () => {
     'a',
     `export default { tasks: { build: { exec: { command: 'true' } } } }\n`,
   )
-  const out = `cache: { inputs: { files: ['in/**'] }, outputs: { files: ['dist/**'] } }`
+  const out = `inputs: { files: ['in/**'] }, cache: { outputs: { files: ['dist/**'] } }`
   for (const [name, config] of Object.entries({
     cycle: `export default { tasks: {
       x: { exec: { command: 'true' }, dependsOn: ['y'] },
@@ -38,7 +38,7 @@ beforeAll(async () => {
       q: { exec: { command: 'true' }, ${out} },
     } }\n`,
     inputIsOutput: `export default { tasks: {
-      s: { exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: ['src/**'] } } },
+      s: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['src/**'] } } },
     } }\n`,
     config: `export default { tasks: { b: { exec: { command: 'true' }, nope: 1 } } }\n`,
   })) {
@@ -147,7 +147,7 @@ describe('a refusal under --format json', () => {
         "p#p and p#q both write dist/**\n  vx clears a task's outputs before it runs, so one deletes the other's\n\n  fix  give each task its own output path",
       ),
       inputIsOutput: refused(
-        'p#s: every file "src/**" in cache.inputs.files selects is also its own output — vx removes a task\'s outputs before it runs, so the task would delete its own sources\n  A task that rewrites files in place (a formatter) declares no outputs',
+        'p#s: every file "src/**" in inputs.files selects is also its own output — vx removes a task\'s outputs before it runs, so the task would delete its own sources\n  A task that rewrites files in place (a formatter) declares no outputs',
       ),
       // The text is config-error-audit.test.ts's to pin.
       config: [

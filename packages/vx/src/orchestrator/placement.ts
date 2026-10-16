@@ -59,7 +59,7 @@ export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
 }
 
 /**
- * A key that folds `cache.inputs.runtime` / `workspaceRuntime` holds what
+ * A key that folds `inputs.runtime` / `workspaceRuntime` holds what
  * THIS machine answered (`node -v`); a worker runs its own runtime, which no
  * executor can prove equal, and its output saved under this key is a stale
  * hit here (C-2). Such a task runs here. Its dependants are not pinned with
@@ -68,7 +68,7 @@ export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
  */
 function withProbedRuntime(nodes: Map<string, TaskNode>, pinned: Set<string>): Set<string> {
   for (const node of nodes.values()) {
-    const inputs = node.config.cache?.inputs
+    const inputs = node.config.inputs
     if ((inputs?.runtime?.length ?? 0) > 0 || (inputs?.workspaceRuntime?.length ?? 0) > 0) {
       pinned.add(node.id)
     }

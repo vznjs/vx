@@ -32,7 +32,7 @@ async function addProject(name: string, command: string): Promise<string> {
       tasks: {
         build: {
           exec: { command: ${JSON.stringify(command)} },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
         },
       },
     }

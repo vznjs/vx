@@ -22,13 +22,13 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "src/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "src/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -64,16 +64,16 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "src/**",
+          "tests/**",
+          "package.json",
+          ".oxlintrc.json",
+          "tsconfig.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "src/**",
-            "tests/**",
-            "package.json",
-            ".oxlintrc.json",
-            "tsconfig.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -97,13 +97,13 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "**/*",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -136,15 +136,15 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "src/**",
+          "tests/**",
+          "schemas/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "src/**",
-            "tests/**",
-            "schemas/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }

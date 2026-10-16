@@ -173,7 +173,7 @@ describe('a project is a directory with a vx.config', () => {
         JSON.stringify({ version: 2, projects: { a: { tasks: {} } } }),
       )
       expect(planned(root, 'hello', '--all')).toBe(
-        'exit 1: ✗ vx run  .vx/projects.lock.json has unsupported version 2 (this vx expects 3) — re-run `vx lock`',
+        'exit 1: ✗ vx run  .vx/projects.lock.json has unsupported version 2 (this vx expects 4) — re-run `vx lock`',
       )
     },
     TIMEOUT,
@@ -206,7 +206,7 @@ describe('--affected without a plugin: containment and task edges only', () => {
       await write(path.join(root, 'vx.config.mjs'), config())
       await write(
         path.join(root, 'lib/vx.config.mjs'),
-        `export default { tasks: { hello: { exec: { command: 'echo lib' }, cache: { inputs: { files: ['**'] }, outputs: { files: [] } } } } }\n`,
+        `export default { tasks: { hello: { exec: { command: 'echo lib' }, inputs: { files: ['**'] }, cache: { outputs: { files: [] } } } } }\n`,
       )
       await write(path.join(root, 'lib/src/a.txt'), 'a\n')
       await write(

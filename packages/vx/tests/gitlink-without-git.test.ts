@@ -62,7 +62,7 @@ it(
         tasks: {
           build: {
             exec: { command: 'mkdir -p dist && cat vendor/lib/x.txt > dist/out.txt' },
-            cache: { inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] } },
+            inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist/**'] } },
           },
         },
       }`,

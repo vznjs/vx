@@ -11,7 +11,7 @@ import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { isLiteralPattern, outputsOverlap } from '@vzn/vx'
 import { relPosix } from './paths.js'
-import { isKeyedGroup } from './shared-outputs.js'
+import { isKeyedGroup, unkey } from './shared-outputs.js'
 
 /** The files git tracks under `root`, root-relative; null outside a repo or without git. */
 export async function trackedFiles(root: string): Promise<string[] | null> {
@@ -243,7 +243,7 @@ export function spareTrackedOutputs(
     for (const q of projects) {
       const qrel = relPosix(root, q.dir)
       for (const r of q.tasks) {
-        const inputs = (r.task?.['cache'] as { inputs?: Outputs } | undefined)?.inputs
+        const inputs = r.task?.['inputs'] as Outputs | undefined
         if (inputs === undefined) continue
         const own =
           q === owner &&
@@ -309,7 +309,7 @@ export function spareTrackedOutputs(
       for (const q of projects) {
         for (const r of q.tasks) {
           if (r === t) continue
-          const inputs = (r.task?.['cache'] as { inputs?: Outputs } | undefined)?.inputs
+          const inputs = r.task?.['inputs'] as Outputs | undefined
           if (inputs === undefined) continue
           const f =
             (q === p ? hidden(inputs.files, local) : undefined) ??
@@ -324,7 +324,7 @@ export function spareTrackedOutputs(
               inputs.workspaceFiles = unhidden(inputs.workspaceFiles, wsBacks, rooted)
             continue
           }
-          delete r.task!['cache']
+          unkey(r.task!)
           todos.push([
             `${q.name}#${r.name}`,
             `reads the committed ${f}, which its inputs take back with ${p.name}#${t.name}'s ` +

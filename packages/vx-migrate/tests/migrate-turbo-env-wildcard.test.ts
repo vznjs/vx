@@ -46,7 +46,7 @@ it('a task `*` env name lists what its package spells; one nothing spells stays 
     const task = (pkg: string, name: string) =>
       p.projects.find((x) => x.name === pkg)!.tasks.find((t) => t.name === name)!
     const env = (pkg: string, name: string) =>
-      (task(pkg, name).task as { cache?: { inputs: { env?: unknown } } }).cache?.inputs.env
+      (task(pkg, name).task as { inputs: { env?: unknown } }).inputs.env
     expect({
       e2e: env('ws', 'e2e'),
       build: env('a', 'build'),
@@ -57,8 +57,8 @@ it('a task `*` env name lists what its package spells; one nothing spells stays 
       build: ['A_KEY'],
       lintTodos: ['passThroughEnv "B_*": wildcards are not supported — list explicit names'],
       notes: [
-        'env "A_*": the configs list the names the files of each task\'s package and its workspace dependencies spell (1 task) — add any other a task reads to cache.inputs.env and exec.env.passThrough',
-        'env "E2E_APP_*": the configs list the names the files of each task\'s package and its workspace dependencies spell (1 task) — add any other a task reads to cache.inputs.env and exec.env.passThrough',
+        'env "A_*": the configs list the names the files of each task\'s package and its workspace dependencies spell (1 task) — add any other a task reads to inputs.env and exec.env.passThrough',
+        'env "E2E_APP_*": the configs list the names the files of each task\'s package and its workspace dependencies spell (1 task) — add any other a task reads to inputs.env and exec.env.passThrough',
       ],
     })
   } finally {

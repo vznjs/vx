@@ -135,7 +135,7 @@ it("an exit 0 after exec.timeout's abort is a timeout on a plugin executor too (
         command: "trap 'exit 0' TERM; mkdir -p dist; echo partial > dist/out.txt; while :; do sleep 0.05; done",
         timeout: '300ms',
       },
-      cache: { inputs: { files: ['package.json'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
     } } }`,
   )
   const once = async () => {

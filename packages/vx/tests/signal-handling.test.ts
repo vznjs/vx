@@ -505,7 +505,7 @@ describe('signal handling during vx run (e2e)', () => {
         fixture.root,
         'app',
         `export default { tasks: { t: {
-          cache: { inputs: { files: ['in.txt'] }, outputs: { files: ['out/**'] } },
+          inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out/**'] } },
           exec: { command: "trap 'exit 0' INT; mkdir -p out; echo partial > out/x; if [ ! -f done.flag ]; then echo $$ > pid.txt; while :; do sleep 0.05; done; fi; echo full > out/x" },
         } } }`,
       )

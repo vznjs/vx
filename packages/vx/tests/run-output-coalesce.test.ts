@@ -21,7 +21,7 @@ describe('a run writes its task lines to stdout coalesced', () => {
         `
           export default {
             tasks: {
-              t: { exec: { command: 'true' }, cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } } },
+              t: { exec: { command: 'true' }, inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } } },
             },
           }
         `,

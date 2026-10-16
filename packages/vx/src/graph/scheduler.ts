@@ -115,6 +115,12 @@ export interface TaskOutcome {
    */
   unkeyed?: true
   /**
+   * This task's key folds a task with no `inputs` (or it is one): no run
+   * can derive that key again, so it neither read nor saved an entry, and a
+   * dependant that folds `hash` does neither.
+   */
+  keyless?: true
+  /**
    * The run's cache policy read and wrote nothing (`--no-cache`,
    * `--cache-policy=local:`): no cache answered for this task, so a run of it is
    * `no-cache`, not a miss. Set by `run()`; `ranNoCache` reads it.
@@ -219,7 +225,7 @@ export interface TaskOutcome {
     /** Credential paths denied and left out of the grants: an agent applies the fix as given. */
     withheld?: string[]
     /**
-     * Reads of the project the task's `cache.inputs.files` does not match:
+     * Reads of the project the task's `inputs.files` does not match:
      * add them there too when the output depends on them, or a hit replays
      * output built from an older copy. Cached tasks only.
      */
@@ -1008,7 +1014,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               return
             }
             // A UserError is a config/input failure (e.g. a failed
-            // `cache.inputs.runtime` command), not a vx bug — report it
+            // `inputs.runtime` command), not a vx bug — report it
             // plainly, never as an "internal error".
             let line: string
             // Out of descriptors is the environment's limit too: a stack

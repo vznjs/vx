@@ -520,7 +520,7 @@ describe('buildTaskGraph', () => {
     })
   })
 
-  // ─── dependsOn rejects wildcards/negation; cache.inputs.tasks accepts ──
+  // ─── dependsOn rejects wildcards/negation; inputs.tasks accepts ──
   //
   // Turbo and Nx draw the same line: dependsOn adds edges to the
   // graph (must resolve to a concrete target) while inputs.tasks
@@ -548,18 +548,18 @@ describe('buildTaskGraph', () => {
     }
   })
 
-  it('cache.inputs.tasks accepts the same forms dependsOn rejects', () => {
-    // The graph builder ignores cache.inputs.tasks entirely (it's a
+  it('inputs.tasks accepts the same forms dependsOn rejects', () => {
+    // The graph builder ignores inputs.tasks entirely (it's a
     // cache-key filter, not an edge source). So passing wildcards /
-    // negation through cache.inputs.tasks must succeed without
+    // negation through inputs.tasks must succeed without
     // touching the dependsOn validation.
     const nodes = buildTaskGraph({
       projects: projects(
         project('app', {
           build: {
             ...cmd('build'),
+            inputs: { files: [], tasks: ['*', '^*', '!build', '!^build', '!lib#build'] },
             cache: {
-              inputs: { files: [], tasks: ['*', '^*', '!build', '!^build', '!lib#build'] },
               outputs: { files: [] },
             },
           },
@@ -914,11 +914,12 @@ describe('checkGraph re-derives the addition marks (item 981)', () => {
     const nodes = buildTaskGraph({
       projects: projects(
         project('a', {
-          gen: { ...cmd('gen'), cache: { inputs: { files: [] }, outputs: { files: ['dist/**'] } } },
+          gen: { ...cmd('gen'), inputs: { files: [] }, cache: { outputs: { files: ['dist/**'] } } },
           extra: {
             ...cmd('extra'),
             dependsOn: ['gen'],
-            cache: { inputs: { files: [] }, outputs: { files: ['dist/**'] } },
+            inputs: { files: [] },
+            cache: { outputs: { files: ['dist/**'] } },
           },
         }),
       ),
@@ -932,7 +933,8 @@ describe('checkGraph re-derives the addition marks (item 981)', () => {
     extra.deps = []
     extra.config = {
       ...extra.config,
-      cache: { inputs: { files: [] }, outputs: { files: ['out/**'] } },
+      inputs: { files: [] },
+      cache: { outputs: { files: ['out/**'] } },
     }
     checkGraph(nodes, undefined, { exclusiveOutputs: false })
     expect([extra.addsToOutputsOf, nodes.get('a#gen')!.outputsAddedToBy]).toEqual([
@@ -1237,7 +1239,8 @@ describe('buildTaskGraph — cycle topologies (Nx parity)', () => {
   const defaultBuild = {
     build: {
       dependsOn: ['^build'],
-      cache: { inputs: { files: ['**'] }, outputs: { files: [] } },
+      inputs: { files: ['**'] },
+      cache: { outputs: { files: [] } },
     } as TaskConfig,
   }
   const depsOf = (nodes: Map<string, TaskNode>) =>

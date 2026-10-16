@@ -26,8 +26,8 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `extends` | supported | Package configs' `extends` chains are followed as Turbo does; cycles and missing parents are refused. |
 | `futureFlags` | mapped, with a note | The flags are not read; what they gate (`global`, structured inputs) is detected by shape. |
 | `global` | mapped, with a note | `inputs`, `env` and `passThroughEnv` are read as the `global*` fields they replace; `envMode: loose` gets a note. |
-| `globalDependencies` | mapped, with a note | Becomes `cache.inputs.workspaceFiles`; `$NAME` entries become env inputs. Under `turbo()` every package's `microfrontends.json` (or `.jsonc`, or the name `VC_MICROFRONTENDS_CONFIG_FILE_NAME` gives) joins them, as in Turbo, unless it is a child's `partOf`, and so do the files of every package the root depends on, transitively, as in Turbo 2's global hash (Turbo 1, a `pipeline` turbo.json, leaves them out, and so does the mapping). A path git ignores (`config.local.json`) is keyed by a `cache.inputs.workspaceRuntime` probe of its name and bytes, as Turbo hashes it; a glob reaches only files git reports. |
-| `globalEnv` | mapped, with a note | Added to every task's `cache.inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note. |
+| `globalDependencies` | mapped, with a note | Becomes `inputs.workspaceFiles`; `$NAME` entries become env inputs. Under `turbo()` every package's `microfrontends.json` (or `.jsonc`, or the name `VC_MICROFRONTENDS_CONFIG_FILE_NAME` gives) joins them, as in Turbo, unless it is a child's `partOf`, and so do the files of every package the root depends on, transitively, as in Turbo 2's global hash (Turbo 1, a `pipeline` turbo.json, leaves them out, and so does the mapping). A path git ignores (`config.local.json`) is keyed by a `inputs.workspaceRuntime` probe of its name and bytes, as Turbo hashes it; a glob reaches only files git reports. |
+| `globalEnv` | mapped, with a note | Added to every task's `inputs.env` and passthrough; under `turbo()` a `*` name expands over the run's environment, as Turbo does; otherwise a wildcard is dropped with a note. |
 | `globalPassThroughEnv` | mapped, with a note | Added to every task's `exec.env.passThrough`, not hashed; under `turbo()` a `*` name expands over the run's environment; otherwise a wildcard is dropped with a note. |
 | `noUpdateNotifier` | not applicable | Turbo CLI update notice. |
 | `remoteCache` | mapped, with a note | `turboCache()` reads `apiUrl`, `teamId`, `teamSlug`, `enabled`, `signature`, `preflight`, `timeout` and `uploadTimeout`, below env vars and options. |
@@ -37,8 +37,8 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `tasks.*.cache` | supported | `cache: false` means no cache block: the task always runs. |
 | `tasks.*.dependsOn` | mapped, with a note | Same syntax; edges to tasks nobody runs are dropped; `$TURBO_ROOT$` deps get a TODO; `$NAME` becomes env. A package without the script of a `^` task others run keys it as Turbo's no-op node does: a cached `true` task with no outputs, its own edges kept. A task name no package has a script for (`ci: { dependsOn: ["lint", "build"] }`) is a group wherever it has an edge, so `vx run ci` runs them as `turbo run ci` does. |
 | `tasks.*.description` | supported | Copied to the task's `description`. |
-| `tasks.*.env` | mapped, with a note | Goes to `cache.inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. |
-| `tasks.*.inputs` | mapped, with a note | Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `cache.inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `cache.inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's. |
+| `tasks.*.env` | mapped, with a note | Goes to `inputs.env` and `exec.env.passThrough`; under `turbo()` a `*` name expands over the run's environment, as Turbo does; the CLI lists the names the package's files spell, and a wildcard nothing spells gets a TODO. |
+| `tasks.*.inputs` | mapped, with a note | Globs translated; `$TURBO_DEFAULT$` becomes `**/*`, `$TURBO_ROOT$` workspace files; unsafe globs get a TODO; a path git ignores is keyed by a `inputs.workspaceRuntime` probe, as for `globalDependencies`; a glob that reaches a workspace package nested in the task's package is also listed in `inputs.workspaceFiles`, since Turbo hashes the nested package's files with its parent's. |
 | `tasks.*.interactive` | mapped, with a note | `true` becomes `exec.interactive: true`, uncached (Turbo requires `cache: false` of it): the task holds the terminal when vx's stdin is one. |
 | `tasks.*.interruptible` | not applicable | Maps to nothing, silently: `vx watch` stops and re-spawns every persistent task each cycle. |
 | `tasks.*.outputLogs` | mapped, with a note | `new-only` is vx's default; other values get a TODO pointing at `--output-logs`. Turbo 1's `outputMode` is read as it. |
@@ -86,7 +86,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `extends` | supported | The chain is followed and merged as Nx does, before named inputs are read. |
 | `defaultBase` | mapped, with a note | `nx()` sets `run.affectedBase`, the base a bare `--affected` compares with; `NX_BASE` wins over it, as in Nx. |
 | `tasksRunnerOptions` | mapped, with a note | Only `default.options.cacheableOperations` is read, as the legacy cached-targets list. |
-| `namedInputs` | mapped, with a note | Expanded per project (project entries win) into each task's `cache.inputs`; vx has no named inputs. |
+| `namedInputs` | mapped, with a note | Expanded per project (project entries win) into each task's `inputs`; vx has no named inputs. |
 | `targetDefaults` | mapped, with a note | Applied by Nx while it builds the graph vx reads; vx sees the merged targets. |
 | `workspaceLayout` | not applicable | Where generators create projects; vx has no generators. |
 | `cli` | not applicable | Nx CLI and generator defaults. |
@@ -143,7 +143,7 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `targets.*.outputs` | mapped, with a note | Tokens and `{options.x}` resolved; paths outside the project become workspace files, and one outside the workspace is dropped with a TODO; negations kept; vx cleans outputs before a run but never a file git tracks, committed or only `git add`ed; the project's own `package.json` or vx.config is taken back with `!`; a wildcard first segment stays cached under git and leaves the task uncached with a TODO without it. |
 | `targets.*.defaultConfiguration` | supported | The base task carries the default configuration's options, as `nx run` does. |
 | `targets.*.configurations` | mapped, with a note | One task per configuration (`build:ci`); own, named and `^` edges take the configuration where declared, else the default (a `^` edge becomes one edge per dependency Nx links). |
-| `targets.*.inputs` | mapped, with a note | Expanded into `cache.inputs`; none means `default` and `^default`; forms without an equivalent get TODOs. |
+| `targets.*.inputs` | mapped, with a note | Expanded into `inputs`; none means `default` and `^default`; forms without an equivalent get TODOs. |
 | `targets.*.dependsOn` | mapped, with a note | `project:target` becomes `pkg#target`; project patterns and tags resolved; a target glob (`test:e2e--*`) expands over the workspace's target names, as Nx 19.5+ does, a same-project one over its own; `params: forward` gets a TODO. |
 | `targets.*.command` | mapped, with a note | Run as the `run-commands` shorthand: one POSIX sh line. |
 | `targets.*.cache` | supported | `cache: true` (or `cacheableOperations`) gives a cache block; persistent tasks stay uncached. |
@@ -159,8 +159,8 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `a string` | mapped, with a note | Named inputs expanded, token paths made project or workspace globs, `^name` folded over dependencies. |
 | `{fileset, dependencies}` | mapped, with a note | The fileset becomes a glob; with `dependencies: true` it is folded through the dependencies. |
 | `{projects, dependencies, input}` | mapped, with a note | Folded through the named projects' inputs (a superset); unknown project names get a TODO. |
-| `{runtime}` | supported | Becomes `cache.inputs.workspaceRuntime`, run at the workspace root as Nx does. |
-| `{env}` | supported | Goes to `cache.inputs.env` and `exec.env.passThrough`. |
+| `{runtime}` | supported | Becomes `inputs.workspaceRuntime`, run at the workspace root as Nx does. |
+| `{env}` | supported | Goes to `inputs.env` and `exec.env.passThrough`. |
 | `{externalDependencies}` | not supported | Dropped: vx keys every task on the lockfile already. Silent for names the root package.json declares; a TODO names any other. |
 | `{dependentTasksOutputFiles, transitive}` | supported | Nothing to map: vx folds each dependency's cache key (its inputs, transitively) through `dependsOn`, and an output follows from its inputs. |
 | `{json, fields, excludeFields}` | mapped, with a note | The whole file is hashed, a superset of the selected fields. |

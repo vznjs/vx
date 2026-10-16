@@ -45,7 +45,7 @@ describe('git absent from PATH', () => {
           tasks: {
             build: {
               exec: { command: 'cat src/a.txt > out.txt' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
             },
           },
         }

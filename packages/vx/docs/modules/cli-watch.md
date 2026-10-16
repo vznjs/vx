@@ -324,7 +324,7 @@ git checkout packages`) was no event to its own arm, nor to the
    default (exit 143) and orphaned the cycle's child
    (`tests/watch-signals.test.ts`).
 
-## Why not filter by `cache.inputs.files`
+## Why not filter by `inputs.files`
 
 We could pre-compute the union of every task's input globs in the
 resolved graph and reject events outside it. We don't, for two

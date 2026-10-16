@@ -45,7 +45,7 @@ describe('vx cache clean with no bound clears the cache', () => {
     await addProject(root, 'app', {
       config: `export default { tasks: { build: {
         exec: { command: 'mkdir -p dist && echo built > dist/out.txt' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       } } }\n`,
       files: { 'src/i.txt': 'x\n' },
     })

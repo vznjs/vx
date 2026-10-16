@@ -97,7 +97,7 @@ describe('a task killed by a shutdown signal', () => {
         `export default {
            tasks: {
              build: {
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
                exec: {
                  command:
                    'mkdir -p dist; printf PARTIAL > dist/out.txt; if [ -f ../../kill.flag ]; then kill -TERM $$; sleep 5; fi; printf COMPLETE > dist/out.txt',
@@ -115,7 +115,7 @@ describe('a task killed by a shutdown signal', () => {
            tasks: {
              build: {
                dependsOn: ['^build'],
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
                exec: { command: 'mkdir -p dist; cat ../a/dist/out.txt > dist/copy.txt' },
              },
            },

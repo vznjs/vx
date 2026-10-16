@@ -35,15 +35,15 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "plugins/**",
+          "package.json",
+          ".oxlintrc.json",
+          "tsconfig.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "plugins/**",
-            "package.json",
-            ".oxlintrc.json",
-            "tsconfig.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -67,13 +67,13 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "**/*",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -104,13 +104,13 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "plugins/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "plugins/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -120,15 +120,10 @@
       "dependsOn": [
         "^build"
       ],
-      "cache": {
-        "inputs": {
-          "files": [
-            "**"
-          ]
-        },
-        "outputs": {
-          "files": []
-        }
+      "inputs": {
+        "files": [
+          "**"
+        ]
       }
     }
   }

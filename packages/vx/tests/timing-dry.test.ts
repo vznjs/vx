@@ -36,7 +36,7 @@ describe('VX_DEBUG_TIMING on a dry run', () => {
   tasks: {
     build: {
       exec: { command: 'echo built' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
   },
 }

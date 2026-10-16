@@ -115,7 +115,7 @@ describe('dependsOn patterns e2e', () => {
     expect(seen).toContain('DTS')
   })
 
-  it("cache.inputs.tasks: ['build.*'] COUPLES the dependent — upstream change re-runs it", async () => {
+  it("inputs.tasks: ['build.*'] COUPLES the dependent — upstream change re-runs it", async () => {
     // The stale-hit trap the adversarial review found: dependsOn expands the
     // pattern but a literal-matching filter would select ZERO upstream hashes,
     // so the dependent cache-hit stale bytes after the upstream changed. Both
@@ -124,13 +124,13 @@ describe('dependsOn patterns e2e', () => {
         tasks: {
           'build.x': {
             exec: { command: "cp src.txt out.txt" },
-            cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] } },
+            inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['out.txt'] } },
           },
           top: {
             dependsOn: ['build.*'],
             exec: { command: "cp out.txt final.txt" },
+            inputs: { files: ['top-src.txt'], tasks: ['build.*'] },
             cache: {
-              inputs: { files: ['top-src.txt'], tasks: ['build.*'] },
               outputs: { files: ['final.txt'] },
             },
           },
@@ -153,7 +153,7 @@ describe('dependsOn patterns e2e', () => {
     expect(await Bun.file(path.join(dir, 'final.txt')).text()).toBe('v2-CHANGED')
   })
 
-  it("cache.inputs.tasks: ['acme-*#build'] COUPLES the dependent across projects", async () => {
+  it("inputs.tasks: ['acme-*#build'] COUPLES the dependent across projects", async () => {
     // Same trap as the sibling test above, in the PROJECT half of `pkg#task`:
     // matched literally it selected ZERO upstream hashes, so app cache-hit
     // stale bytes after its dependency changed.
@@ -164,7 +164,7 @@ describe('dependsOn patterns e2e', () => {
         tasks: {
           build: {
             exec: { command: 'cp src.txt out.txt' },
-            cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] } },
+            inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['out.txt'] } },
           },
         },
       }
@@ -178,8 +178,8 @@ describe('dependsOn patterns e2e', () => {
           build: {
             dependsOn: ['^build'],
             exec: { command: 'echo ran >> ran.log && cp src.txt out.txt' },
+            inputs: { files: ['src.txt'], tasks: ['acme-*#build'] },
             cache: {
-              inputs: { files: ['src.txt'], tasks: ['acme-*#build'] },
               outputs: { files: ['out.txt'] },
             },
           },

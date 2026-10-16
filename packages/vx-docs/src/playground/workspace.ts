@@ -24,16 +24,16 @@ export default defineProject({
     build: {
       dependsOn: ['^build'],
       exec: { command: '${build}' },
+      inputs: { files: ['src/**']${env} },
       cache: {
-        inputs: { files: ['src/**']${env} },
         outputs: { files: ['dist/**'] },
       },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'bun test' },
+      inputs: { files: ['src/**', 'test/**'] },
       cache: {
-        inputs: { files: ['src/**', 'test/**'] },
         outputs: { files: [] },
       },
     },${more}
@@ -52,8 +52,8 @@ export const CONFIG_TEXTS: Record<string, string> = {
     `
     docs: {
       exec: { command: 'astro build --root docs' },
+      inputs: { files: ['docs/src/**'] },
       cache: {
-        inputs: { files: ['docs/src/**'] },
         outputs: { files: ['docs/dist/**'] },
       },
     },`,

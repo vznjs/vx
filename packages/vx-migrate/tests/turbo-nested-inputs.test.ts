@@ -72,8 +72,7 @@ describe('turbo-map: a nested workspace package', () => {
           .find((p) => p.name === 'p')!
           .tasks.map((t) => [
             t.name,
-            (t.task as { cache: { inputs: { workspaceFiles?: unknown } } }).cache.inputs
-              .workspaceFiles,
+            (t.task as { inputs: { workspaceFiles?: unknown } }).inputs.workspaceFiles,
           ]),
       )
       expect(ws).toEqual({

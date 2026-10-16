@@ -115,7 +115,7 @@ describe('exec.retries — e2e', () => {
                 command: 'if test -f flag.txt; then echo winning-run; else touch flag.txt; echo losing-run; exit 1; fi',
                 retries: 1,
               },
-              cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
             },
           },
         }
@@ -271,11 +271,11 @@ describe('exec.retries — e2e', () => {
                   command: 'while [ ! -e ready ]; do sleep 0.01; done; if [ -e tried ]; then touch go; exit 1; fi; touch tried; echo a > ${dir}/a.txt; exit 1',
                   retries: 1,
                 },
-                cache: { inputs: { files: ['package.json'] }, outputs: ${outputs('a.txt')} },
+                inputs: { files: ['package.json'] }, cache: { outputs: ${outputs('a.txt')} },
               },
               other: {
                 exec: { command: 'mkdir -p ${dir} && touch ready && while [ ! -e go ]; do sleep 0.01; done; echo b > ${dir}/b.txt' },
-                cache: { inputs: { files: ['package.json'] }, outputs: ${outputs('b.txt')} },
+                inputs: { files: ['package.json'] }, cache: { outputs: ${outputs('b.txt')} },
               },
             },
           }
@@ -309,7 +309,7 @@ describe('exec.retries — e2e', () => {
                 command: 'if test -f flag.txt; then echo win; else touch flag.txt; exit 1; fi',
                 retries: 1,
               },
-              cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
             },
           },
         }
@@ -407,7 +407,7 @@ describe('--retries — run-level default (real CLI)', () => {
           tasks: {
             build: {
               exec: { command: 'echo x >> count.txt && echo built' },
-              cache: { inputs: { files: ['package.json'] }, outputs: { files: [] } },
+              inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
             },
           },
         }

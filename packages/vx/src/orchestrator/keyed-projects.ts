@@ -14,18 +14,17 @@ import { keyedDeps, selectFoldedDeps, type FoldCandidate } from './upstream.js'
  * task itself is not counted.
  *
  * The fold relation is the hash path's, computed on the graph:
- *   - an exec task folds its dependencies as its own `cache.inputs.tasks`
- *     selects them (absent, or no `cache` at all, means all);
- *   - a group folds every dependency (`computeGroupKey`) and folds no
- *     files of its own, but for the default `build`, which folds every
- *     file of its project as a task does;
- *   - a persistent task is keyed as a task with no `cache` (A-17).
+ *   - an exec task folds its dependencies as its own `inputs.tasks`
+ *     selects them (absent means all);
+ *   - a group folds every dependency (`computeGroupKey`); a keyed one
+ *     (`inputs`, the default `build`) folds its project's files as a task
+ *     does;
+ *   - a persistent task is keyed as any task with no `cache` (A-17).
  *
- * Every exec task reached contributes its project, cached or not: a key
- * folds the task's own project files, and a task with no `cache` declares
- * no `inputs.files`, so it folds every file of its project (inputs.ts's
- * `DEFAULT_FILE_GLOBS`). `tests/keyed-projects.test.ts` holds that to the
- * key itself.
+ * Every exec task reached contributes its project, cached or not: its key
+ * folds its own project's files through its `inputs`, and one with no
+ * `inputs` is keyless, so a key that folds it is never stored or read.
+ * `tests/keyed-projects.test.ts` holds that to the key itself.
  *
  * Lazy and memoized by task id: only a sandboxed task that executes asks,
  * so a run of hits walks nothing, and a shared subgraph is walked once.
@@ -57,7 +56,7 @@ export function keyedProjects(
       stack.pop()
       const out = new Set<string>()
       for (const { node: dep } of deps) {
-        if (!isGroupTask(dep) || dep.config.cache !== undefined) out.add(dep.projectDir)
+        if (!isGroupTask(dep) || dep.config.inputs !== undefined) out.add(dep.projectDir)
         for (const dir of below.get(dep.id)!) out.add(dir)
       }
       below.set(node.id, out)
@@ -84,8 +83,8 @@ export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): Fo
   for (const { node: dep } of node.excludedUpstream ?? []) {
     candidates.push({ node: dep, unit: foldUnit(dep) })
   }
-  if (isGroupTask(node) && node.config.cache === undefined) return candidates
-  return selectFoldedDeps(candidates, node.config.cache?.inputs?.tasks, node.projectName, node.id)
+  if (isGroupTask(node) && node.config.inputs === undefined) return candidates
+  return selectFoldedDeps(candidates, node.config.inputs?.tasks, node.projectName, node.id)
 }
 
 /**
@@ -98,7 +97,7 @@ export function foldedDeps(node: TaskNode, nodeOf: (id: string) => TaskNode): Fo
  * dropped ones, and two groups the key told apart shared a unit.
  */
 function foldUnit(node: TaskNode): string {
-  if (!isGroupTask(node) || node.config.cache !== undefined) return `task|${node.id}`
+  if (!isGroupTask(node) || node.config.inputs !== undefined) return `task|${node.id}`
   const members = [...keyedDeps(node), ...(node.excludedUpstream ?? []).map((u) => u.node.id)]
   return `group|${members.sort().join('|')}`
 }

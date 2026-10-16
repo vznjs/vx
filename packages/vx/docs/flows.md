@@ -184,7 +184,7 @@ and the stat poller where they fail). One recursive `fs.watch` per project dir p
 non-recursive watch of the workspace root, which fires for the
 root files a plugin claims (a lockfile), `.vx/projects.lock.json`
 (the projects), `.vx/workspace.*` and `.gitignore`. When any task declares
-`cache.inputs.workspaceFiles`, one recursive root watcher replaces them
+`inputs.workspaceFiles`, one recursive root watcher replaces them
 all; on macOS one recursive root watcher always does, handing each event
 to the project it lies in (one FSEvents stream per project polled past
 ~1000 projects). Path filter drops the segments `node_modules`, `.git` and `.vx/cache`,
@@ -300,7 +300,7 @@ Owner: `orchestrator/plan.ts` + `cli/plan-format.ts`. Shares
 `prepareRun` with the real path, probes the cache for predicted
 hits with the byte-free `has`, spawns no task, and writes nothing —
 not even the `accessed_at` bump a real `get` makes. It does run
-`cache.inputs.runtime` / `workspaceRuntime` probe commands: a key
+`inputs.runtime` / `workspaceRuntime` probe commands: a key
 needs their answers.
 
 ```mermaid

@@ -29,7 +29,8 @@ beforeAll(async () => {
   await addProject(root, 'app', {
     deps: { lib: 'workspace:*' },
     config: `export default { tasks: { build: { exec: { command: 'true' },
-      cache: { inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
+      inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
+      cache: { 
         outputs: { files: [] } } } } }\n`,
   })
   // A sibling that shares the member's name as a PREFIX and is no project.

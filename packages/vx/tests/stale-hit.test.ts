@@ -118,7 +118,7 @@ describe('stale cache hits', () => {
         path.join(pkg, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o && cat src/l.txt >> dist/o' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
          } } }\n`,
       )
       git(root, 'init', '-q')
@@ -168,7 +168,7 @@ describe('stale cache hits', () => {
           path.join(pkg, 'vx.config.mjs'),
           `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && (test -x src/run.sh && echo exec || echo plain) > dist/o' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
          } } }\n`,
         )
         git(root, 'init', '-q')
@@ -213,7 +213,7 @@ describe('stale cache hits', () => {
         path.join(pkg, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cp src/v.txt dist/v.txt && touch -t 200109090146.40 dist/v.txt' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
          } } }\n`,
       )
       git(root, 'init', '-q')
@@ -248,8 +248,8 @@ describe('stale cache hits', () => {
         path.join(pkg, 'vx.config.mjs'),
         `export default { tasks: { gen: {
            exec: { command: 'mkdir -p ../../shared && printf g > ../../shared/g.txt' },
+           inputs: { files: ['src/**'] },
            cache: {
-             inputs: { files: ['src/**'] },
              outputs: { files: [], workspaceFiles: ['shared/**'] },
            },
          } } }\n`,
@@ -287,7 +287,7 @@ describe('stale cache hits', () => {
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && printf a > dist/a.txt && printf b > dist/b.txt' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
          } } }\n`,
       )
       git(root, 'init', '-q')
@@ -323,7 +323,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cp src/in.txt dist/out.txt' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
              },
            },
          }`,
@@ -359,7 +359,7 @@ describe('stale cache hits', () => {
       // before codegen's run leaves it, and the consumer still reads it
       // after codegen stops writing it. Until then the clean deleted it.
       //
-      // `cache.inputs.tasks: []` decouples the consumer from the producer's
+      // `inputs.tasks: []` decouples the consumer from the producer's
       // hash — a documented pattern (docs/schema.md).
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
       await writeLocalWorkspace(root)
@@ -369,13 +369,13 @@ describe('stale cache hits', () => {
            tasks: {
              codegen: {
                exec: { command: 'sh emit.sh' },
-               cache: { inputs: { files: ['emit.sh'] }, outputs: { files: ['gen/**'] } },
+               inputs: { files: ['emit.sh'] }, cache: { outputs: { files: ['gen/**'] } },
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               inputs: { files: ['gen/*.ts'], tasks: [] },
                cache: {
-                 inputs: { files: ['gen/*.ts'], tasks: [] },
                  outputs: { files: ['out/**'] },
                },
              },
@@ -421,7 +421,7 @@ describe('stale cache hits', () => {
            tasks: {
              codegen: {
                exec: { command: 'mkdir -p gen && printf a > gen/a.js' },
-               cache: { inputs: { files: [] }, outputs: { files: ['gen/**'] } },
+               inputs: { files: [] }, cache: { outputs: { files: ['gen/**'] } },
              },
            },
          }`,
@@ -459,7 +459,7 @@ describe('stale cache hits', () => {
       // OID-carrying paths. Unless the removal is seen, a file GONE FROM
       // DISK stays in the consumer's input set and its key never moves.
       //
-      // `cache.inputs.tasks: []` decouples the consumer from the producer's
+      // `inputs.tasks: []` decouples the consumer from the producer's
       // hash — a documented pattern (docs/schema.md), and what makes the
       // defect observable rather than masked by the upstream cascade.
       await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
@@ -470,13 +470,13 @@ describe('stale cache hits', () => {
            tasks: {
              codegen: {
                exec: { command: 'sh emit.sh' },
-               cache: { inputs: { files: ['emit.sh'] }, outputs: { files: ['gen/**'] } },
+               inputs: { files: ['emit.sh'] }, cache: { outputs: { files: ['gen/**'] } },
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               inputs: { files: ['gen/*.ts'], tasks: [] },
                cache: {
-                 inputs: { files: ['gen/*.ts'], tasks: [] },
                  outputs: { files: ['out/**'] },
                },
              },
@@ -530,21 +530,21 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               cache: { inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, outputs: { files: [] } },
+               inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, cache: { outputs: { files: [] } },
              },
              codegen: {
                dependsOn: ['early'],
                exec: { command: 'sh emit.sh' },
+               inputs: { files: ['emit.sh'], tasks: [] },
                cache: {
-                 inputs: { files: ['emit.sh'], tasks: [] },
                  outputs: { files: [], workspaceFiles: ['gen/**'] },
                },
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
                cache: {
-                 inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
                  outputs: { files: ['out/**'] },
                },
              },
@@ -586,18 +586,18 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               cache: { inputs: { files: ['gen/*.ts'] }, outputs: { files: [] } },
+               inputs: { files: ['gen/*.ts'] }, cache: { outputs: { files: [] } },
              },
              codegen: {
                dependsOn: ['early'],
                exec: { command: 'sh emit.sh' },
-               cache: { inputs: { files: ['emit.sh'], tasks: [] }, outputs: { files: ['gen/**'] } },
+               inputs: { files: ['emit.sh'], tasks: [] }, cache: { outputs: { files: ['gen/**'] } },
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               inputs: { files: ['gen/*.ts'], tasks: [] },
                cache: {
-                 inputs: { files: ['gen/*.ts'], tasks: [] },
                  outputs: { files: ['out/**'] },
                },
              },
@@ -640,21 +640,21 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               cache: { inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, outputs: { files: [] } },
+               inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, cache: { outputs: { files: [] } },
              },
              codegen: {
                dependsOn: ['early'],
                exec: { command: 'sh emit.sh' },
+               inputs: { files: ['emit.sh'], tasks: [] },
                cache: {
-                 inputs: { files: ['emit.sh'], tasks: [] },
                  outputs: { files: [], workspaceFiles: ['gen/**'] },
                },
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
                cache: {
-                 inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
                  outputs: { files: ['out/**'] },
                },
              },
@@ -700,21 +700,21 @@ describe('stale cache hits', () => {
            tasks: {
              early: {
                exec: { command: 'true' },
-               cache: { inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, outputs: { files: [] } },
+               inputs: { files: [], workspaceFiles: ['gen/*.ts'] }, cache: { outputs: { files: [] } },
              },
              codegen: {
                dependsOn: ['early'],
                exec: { command: 'mkdir -p gen && printf N > gen/new.ts' },
+               inputs: { files: ['package.json'], tasks: [] },
                cache: {
-                 inputs: { files: ['package.json'], tasks: [] },
                  outputs: { files: [], workspaceFiles: ['gen/**'] },
                },
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt && echo ran >> runs.log' },
+               inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
                cache: {
-                 inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
                  outputs: { files: ['out/**'] },
                },
              },
@@ -756,7 +756,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'cp data/sponsors.json data/sponsors.json.tmp && mv data/sponsors.json.tmp data/sponsors.json && mkdir -p data && cp data/sponsors.json data/gen.json' },
-               cache: { inputs: { files: ['**/*'] }, outputs: { files: ['data'] } },
+               inputs: { files: ['**/*'] }, cache: { outputs: { files: ['data'] } },
              },
            },
          }`,
@@ -798,8 +798,8 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'ls routes > src/routeTree.gen.ts' },
+               inputs: { files: ['routes/**', 'src/**'] },
                cache: {
-                 inputs: { files: ['routes/**', 'src/**'] },
                  outputs: { files: ['src/routeTree.gen.ts'] },
                  inputStability: { severity: 'error' },
                },
@@ -840,16 +840,16 @@ describe('stale cache hits', () => {
            tasks: {
              codegen: {
                exec: { command: 'sh emit.sh' },
+               inputs: { files: ['emit.sh'] },
                cache: {
-                 inputs: { files: ['emit.sh'] },
                  outputs: { files: [], workspaceFiles: ['gen/**'] },
                },
              },
              consume: {
                dependsOn: ['codegen'],
                exec: { command: 'mkdir -p out && cat gen/*.ts > out/all.txt 2>/dev/null || : > out/all.txt' },
+               inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
                cache: {
-                 inputs: { files: [], workspaceFiles: ['gen/*.ts'], tasks: [] },
                  outputs: { files: ['out/**'] },
                },
              },
@@ -895,7 +895,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
              },
            },
          }`,
@@ -947,7 +947,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
              },
            },
          }`,
@@ -1002,7 +1002,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
              },
            },
          }`,
@@ -1053,7 +1053,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
              },
            },
          }`,
@@ -1113,7 +1113,7 @@ describe('stale cache hits', () => {
             path.join(root, 'vx.config.mjs'),
             `export default { tasks: { build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
              } } }`,
           )
           await write(path.join(root, '.gitignore'), 'dist/\n.vx/cache/\n')
@@ -1171,7 +1171,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && wc -c < src/a.txt > dist/out.txt' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
              },
            },
          }`,
@@ -1214,7 +1214,7 @@ describe('stale cache hits', () => {
              tasks: {
                build: {
                  exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
-                 cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                 inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
                },
              },
            }`,
@@ -1408,7 +1408,7 @@ describe('stale cache hits', () => {
       // `cache.outputs.workspaceFiles` is root-anchored and deliberately
       // boundary-IGNORING — it may write inside ANOTHER project's dir. So a
       // consumer in that project, reading the same path with an ordinary
-      // PROJECT-RELATIVE `cache.inputs.files`, has a preliminary key until the
+      // PROJECT-RELATIVE `inputs.files`, has a preliminary key until the
       // producer runs.
       //
       // The stability gate missed exactly this pairing: `upstreamOutputProjects`
@@ -1433,8 +1433,8 @@ describe('stale cache hits', () => {
         [
           'export default { tasks: { codegen: {',
           '  exec: { command: "mkdir -p ../app/gen out && cat src/version.txt > ../app/gen/out.txt && cp src/version.txt out/marker.txt" },',
+          '  inputs: { files: ["src/**"] },',
           '  cache: {',
-          '    inputs: { files: ["src/**"] },',
           '    outputs: { files: ["out/**"], workspaceFiles: ["pkgs/app/gen/**"] },',
           '  },',
           '} } }',
@@ -1451,7 +1451,7 @@ describe('stale cache hits', () => {
           // content-invalidation pattern. Without it the upstream's own input
           // key cascades into this key and masks the defect, which is exactly
           // how the 2026-07-19 stale hit had to be reproduced too.
-          '  cache: { inputs: { files: ["gen/**"], tasks: [] }, outputs: { files: ["dist/**"] } },',
+          '  inputs: { files: ["gen/**"], tasks: [] }, cache: { outputs: { files: ["dist/**"] } },',
           '} } }',
           '',
         ].join('\n'),
@@ -1508,7 +1508,7 @@ describe('stale cache hits', () => {
              tasks: {
                build: {
                  exec: { command: 'cat src/a.txt' },
-                 cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                 inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
                },
              },
            }`,
@@ -1556,7 +1556,7 @@ describe('stale cache hits', () => {
            tasks: {
              build: {
                exec: { command: 'mkdir -p dist && for f in src/*.ts; do cp "$f" "dist/$(basename "$f" .ts).js"; done' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
              },
            },
          }`,
@@ -1622,7 +1622,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
       path.join(root, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: ${JSON.stringify(command)} },
-         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
        } } }\n`,
     )
     await write(path.join(root, 'src', 'a'), 'v1')
@@ -1684,7 +1684,7 @@ describe.skipIf(process.platform === 'darwin')('a name that is not UTF-8', () =>
         path.join(root, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cat shared/* > dist/all' },
-           cache: { inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'], workspaceFiles: ['shared/**'] }, cache: { outputs: { files: ['dist/**'] } },
          } } }\n`,
       )
       await write(path.join(root, 'shared', 'ok'), 'o')
@@ -1758,7 +1758,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       path.join(lib, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
-         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
        } } }\n`,
     )
     await write(
@@ -1766,7 +1766,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       `export default { tasks: { build: {
          dependsOn: ['^build'],
          exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
-         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
        } } }\n`,
     )
     await write(path.join(lib, 'src', 'x.txt'), 'L1')
@@ -1787,7 +1787,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       path.join(base, 'vx.config.mjs'),
       `export default { tasks: { build: {
          exec: { command: 'mkdir -p dist && cat src/b.txt > dist/b.txt' },
-         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
        } } }\n`,
     )
     await write(path.join(base, 'src', 'b.txt'), 'b')
@@ -1797,7 +1797,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       `export default { tasks: { build: {
          dependsOn: ['^build'],
          exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
-         cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+         inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
        } } }\n`,
     )
     git(root, 'add', '-A')
@@ -1854,12 +1854,12 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: {
            prep: {
              exec: { command: 'mkdir -p gen && cat src/a.txt > gen/a.txt' },
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['gen/**'] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['gen/**'] } },
            },
            build: {
              dependsOn: ['^build', 'prep'],
              exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt gen/a.txt > dist/app.txt' },
-             cache: { inputs: { files: ['src/**', 'gen/**'] }, outputs: { files: ['dist/**'] } },
+             inputs: { files: ['src/**', 'gen/**'] }, cache: { outputs: { files: ['dist/**'] } },
            },
          } }\n`,
       )
@@ -1919,11 +1919,11 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         await write(
           path.join(root, 'packages', dir, 'vx.config.mjs'),
           `export default { tasks: {
-             gen: { dependsOn: [${dep}], exec: { command: 'true' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
+             gen: { dependsOn: [${dep}], exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
              build: {
                dependsOn: ['gen'],
                exec: { command: 'mkdir -p dist && cp src/* dist/' },
-               cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
              },
            } }\n`,
         )
@@ -1960,7 +1960,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: {
            compile: {
              exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
            },
            build: { dependsOn: ['compile'] },
          } }\n`,
@@ -1976,6 +1976,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await withLibConfig(
         `export default { tasks: { build: {
            exec: { command: 'echo ready && exec sleep 30', persistent: { readyWhen: 'ready' } },
+           inputs: { files: ['src/**'] },
          } } }\n`,
       )
       expect(appHash('--exclude-dependencies')).toBe(appHash())
@@ -1992,6 +1993,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await withLibConfig(
         `export default { tasks: { build: {
            exec: { command: 'echo ready && exec sleep 30', persistent: { readyWhen: 'ready' } },
+           inputs: { files: ['src/**'] },
          } } }\n`,
       )
       await write(
@@ -1999,7 +2001,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
          } } }\n`,
       )
       git(root, 'add', '-A')
@@ -2022,10 +2024,12 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
     async () => {
       // The persistent `lib#build` had no key, so `app#build` folded nothing
       // of it: a cached e2e behind a dev server replayed after the server
-      // changed (A-17). It is keyed now as a task with no `cache`.
+      // changed (A-17). It is keyed now on its inputs; with none, its
+      // dependant never hits.
       await withLibConfig(
         `export default { tasks: { build: {
            exec: { command: 'echo ready && exec sleep 30', persistent: { readyWhen: 'ready' } },
+           inputs: { files: ['src/**'] },
          } } }\n`,
       )
       await write(
@@ -2033,7 +2037,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
          } } }\n`,
       )
       git(root, 'add', '-A')
@@ -2052,7 +2056,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
       await withLibConfig(
         `export default { tasks: { build: {
            exec: { command: 'mkdir -p dist && cat src/x.txt > dist/lib.txt' },
-           cache: { inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist/**'] } },
          } } }\n`,
       )
       const inner = path.join(root, 'packages', 'lib', 'inner')
@@ -2112,7 +2116,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         path.join(tool, 'vx.config.mjs'),
         `export default { tasks: { build: {
            exec: { command: 'true' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
          } } }\n`,
       )
       await write(path.join(tool, 'src', 't.txt'), 't')
@@ -2122,7 +2126,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'true' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
          } } }\n`,
       )
       await write(path.join(top, 'src', 't.txt'), 't')
@@ -2151,7 +2155,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
         `export default { tasks: { build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat src/a.txt > dist/app.txt' },
-           cache: { inputs: { files: ['src/**'], tasks: [] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
          } } }\n`,
       )
       git(root, 'add', '-A')
@@ -2211,7 +2215,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          build: {
            dependsOn: ['^build'],
            exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
          },
          check: { dependsOn: ['^build'], exec: { command: 'true' } },
        } }\n`,
@@ -2243,7 +2247,7 @@ describe('--exclude-dependencies keys on the dependency it skips', () => {
          build: {
            dependsOn: ['deps'],
            exec: { command: 'mkdir -p dist && cat ../lib/dist/lib.txt > dist/app.txt' },
-           cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
          },
        } }\n`,
       )

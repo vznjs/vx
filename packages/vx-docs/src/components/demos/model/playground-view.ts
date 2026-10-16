@@ -278,7 +278,7 @@ export function parseTasks(
 
 interface TaskShape {
   dependsOn?: string[]
-  cache?: { inputs?: { files?: string[]; env?: string[] } }
+  inputs?: { files?: string[]; env?: string[] }
 }
 
 function taskConfigs(config: unknown): Record<string, TaskShape> {
@@ -335,8 +335,8 @@ function allRows(projects: readonly StaticProject[]): StaticRow[] {
         }
         return [d.includes('#') ? d : `${p.name}#${d}`]
       }),
-      files: t.cache?.inputs?.files ?? [],
-      env: t.cache?.inputs?.env ?? [],
+      files: t.inputs?.files ?? [],
+      env: t.inputs?.env ?? [],
     })),
   )
 }

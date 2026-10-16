@@ -76,9 +76,9 @@ try {
       path.join(dir, 'vx.config.mjs'),
       `export default { tasks: {
   build: { dependsOn: ['^build'], exec: { command: 'mkdir -p dist && cp src/index.js dist/out.js' },
-    cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } } },
+    inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } } },
   test: { dependsOn: ['build'], exec: { command: 'true' },
-    cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } },
+    inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } },
 } }\n`,
     )
   }

@@ -120,7 +120,7 @@ entry is parsed via [`dependency-spec.ts`](./dependency-spec.md):
 | `'*'`, `'^*'` | Rejected in `dependsOn` (filter-only). UserError.                                                                                                                                                                                                                                                                                                                                |
 | `'!form'`     | Rejected in `dependsOn` (filter-only). UserError.                                                                                                                                                                                                                                                                                                                                |
 
-The micro-syntax parser is shared with `cache.inputs.tasks`; the
+The micro-syntax parser is shared with `inputs.tasks`; the
 builder enforces the dependsOn-specific rejections.
 
 **The default `build` on a package cycle** (X-100). Every project the
@@ -246,7 +246,7 @@ in-place rewriter (a formatter) declares no outputs.
 
 ## What this does NOT do
 
-- It doesn't check that `cache.inputs.tasks` names resolve to declared
+- It doesn't check that `inputs.tasks` names resolve to declared
   upstream. The schema refuses an exact name no `dependsOn` entry names
   (`workspace/config-schema.ts`, item 994), and
   [`orchestrator/upstream.ts:filterUpstreamHashes`](./upstream.md)

@@ -41,7 +41,7 @@ describe('a CI log receives the CLI plain', () => {
           tasks: {
             build: {
               exec: { command: 'echo building && mkdir -p dist && echo hi > dist/out.txt' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
             },
             fail: { exec: { command: 'echo boom >&2; exit 3' } },
             fc: { exec: { command: 'echo "FC=[$FORCE_COLOR]"' } },

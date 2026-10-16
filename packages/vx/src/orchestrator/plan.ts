@@ -6,7 +6,7 @@
 // restoreOutputs. Cache probing uses the byte-free `cache.has()`
 // existence probe (a remote layer answers it its own way — no
 // artifact download, no local ingest), so the plan is read-only — with
-// one deliberate exception: `cache.inputs.runtime` / `workspaceRuntime`
+// one deliberate exception: `inputs.runtime` / `workspaceRuntime`
 // probe commands DO run, because predicting a task's key requires
 // resolving them (same as a real run). Keep runtime inputs
 // side-effect-free pure probes.

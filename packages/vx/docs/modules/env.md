@@ -106,7 +106,7 @@ Adjusting policy:
 - **Different essentials list** — edit `ESSENTIAL_ENV`. Bump
   `CACHE_VERSION` if you think this changes task identity (technically
   it changes what the child sees, but not the cache key directly — env
-  values participate via `cache.inputs.env`, not via the essential
+  values participate via `inputs.env`, not via the essential
   list).
 - **No essentials at all** — start with `{}`, only apply `passThrough`
   - `define`. Most tools won't find `PATH`; user must declare it.

@@ -1262,7 +1262,7 @@ function stripPrefixFromSet(paths: Set<string>, prefix: string): Set<string> {
  * directly — clean-tree input hashing costs zero reads/stats/SQLite.
  *
  * `workspaceWide`: set when any loaded task declares
- * `cache.inputs.workspaceFiles`. Disables pathspec scoping (those
+ * `inputs.workspaceFiles`. Disables pathspec scoping (those
  * globs must see every file from the root) and additionally stores a
  * workspace-wide partition keyed by `workspaceRoot` (files + trusted
  * OIDs), which `resolveWorkspaceFiles` consumes. When false, the
@@ -1839,7 +1839,7 @@ export async function applyGitEnumeration(
     // workspace's git holds as ONE entry (a gitlink, `dir/` when untracked)
     // — is listed through its own git above (`expandNestedRepos`), but under
     // a pathspec naming a project inside it the workspace's git lists
-    // nothing at all; so is a directory ignored outright. Storing the empty slice made the key never move: `cache.inputs
+    // nothing at all; so is a directory ignored outright. Storing the empty slice made the key never move: `inputs
     // matched no files`, then a stale hit under a green run once the source
     // changed (2026-09-16). No partition instead: `resolveFiles` spawns
     // `git ls-files` in the project's own directory, which a nested

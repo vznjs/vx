@@ -1413,7 +1413,7 @@ describe('the tasks guide states which wildcards dependsOn takes', () => {
     // where `build.*` and `^build.*` ARE (Nx 19.5 parity) and only bare
     // wildcards, negation and patterns in `pkg#task` are refused.
     // comparison.md had it right; item 348 read the guide and checked only
-    // that `cache.inputs.tasks` accepts the filter forms (item 354).
+    // that `inputs.tasks` accepts the filter forms (item 354).
     const src = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'graph', 'task-graph.ts'),
       'utf8',

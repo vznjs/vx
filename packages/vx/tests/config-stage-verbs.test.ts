@@ -38,7 +38,7 @@ const APP_CONFIG = `
     tasks: {
       build: {
         exec: { command: 'mkdir -p dist && echo built > dist/out.txt' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }

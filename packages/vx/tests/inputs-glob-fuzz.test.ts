@@ -1,4 +1,4 @@
-// Seeded random `cache.inputs.files` declarations GENERATED from a glob
+// Seeded random `inputs.files` declarations GENERATED from a glob
 // grammar, against an oracle that walks the disk and asks `Bun.Glob` one
 // brace-free pattern at a time. `inputs-property.test.ts` draws from a fixed
 // menu with hand predicates and owns git visibility (ignored, untracked,

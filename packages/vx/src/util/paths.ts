@@ -163,7 +163,7 @@ export function isLiteralPattern(glob: string): boolean {
 }
 
 /**
- * The alphabet of a TASK glob (`cache.inputs.files`, `cache.outputs.files`,
+ * The alphabet of a TASK glob (`inputs.files`, `cache.outputs.files`,
  * `workspaceFiles`), behind {@link isLiteralPattern}, for the callers that
  * need the POSITION of the first wildcard rather than a verdict. Every site
  * that asks "must this declaration be matched?" reads this one regex: item

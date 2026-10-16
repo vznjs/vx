@@ -5,7 +5,7 @@
 // out so the two callers can never drift on the stability gate.
 //
 // A task's key is "stable" only if its inputs can't be altered by an
-// upstream's outputs (a `cache.inputs.files` glob that could match a
+// upstream's outputs (a `inputs.files` glob that could match a
 // sibling's declared output has a PRELIMINARY key until that upstream
 // runs — probing it would target the wrong artifact). Unstable tasks
 // fall back to lazy read-through in execute-task, which is always
@@ -129,12 +129,12 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
   const unfoldedById = new Map<string, ProjectSet>()
   const wsRewriters = new Set<string>()
   // A cached rewriter matters only to a key that leaves a dependency's key
-  // out: a `cache.inputs.tasks` filter. With none in the graph every edge
+  // out: a `inputs.tasks` filter. With none in the graph every edge
   // folds and the sets above stay empty, so they are not built (about 2 ms,
   // median, of a 27 ms memoised walk over the 3,000-task bench; item 750).
   let anyUnfolded = false
   for (const n of args.nodes.values()) {
-    if (n.config.cache?.inputs?.tasks !== undefined) {
+    if (n.config.inputs?.tasks !== undefined) {
       anyUnfolded = true
       break
     }
@@ -241,7 +241,7 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
       // cascade (and forward their producers, above). They inherit
       // instability from any unstable member.
       // `computeGroupKey`, with the unkeyed branch kept synchronous.
-      if (node.config.cache === undefined) {
+      if (node.config.inputs === undefined) {
         const key = computeGroupHash(upstream)
         keyById.set(id, key)
         args.groupKeys?.set(id, { key, upstream })
@@ -293,9 +293,8 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
 
     const cacheEnabled = node.config.cache !== undefined
     if (cacheEnabled && !unstable) stableKeys.push({ hash, node })
-    // An uncached key reads its whole project, so `dependsOnSiblingOutputs`
-    // (which answers false for it) is not the gate: any upstream that may
-    // write into this project, or anywhere, leaves the key preliminary.
+    // An uncached key stays preliminary behind any upstream that may write
+    // into this project, or anywhere: none of its writes is declared.
     else if (
       !cacheEnabled &&
       !unstable &&
@@ -332,7 +331,7 @@ export function gatedOutputs(
   }
   if (outputsOf.size === 0) return out
   for (const n of nodes.values()) {
-    const inputs = n.config.cache?.inputs?.files
+    const inputs = n.config.inputs?.files
     const outputs = outputsOf.get(n.projectName)
     if (inputs === undefined || outputs === undefined || isGroupTask(n)) continue
     let back: string[] | undefined
@@ -396,7 +395,7 @@ function readableOutputs(
 const probesAfterWritesOf = new WeakMap<ReadonlyMap<string, TaskNode>, ReadonlySet<string>>()
 
 /**
- * The cached tasks whose `cache.inputs.runtime` / `workspaceRuntime` probes
+ * The cached tasks whose `inputs.runtime` / `workspaceRuntime` probes
  * may read what an upstream writes this run while the key folds nothing of
  * that upstream (X-34). A probe is a shell command and may read anywhere,
  * so no glob bounds it, and its answer taken before the writer ran is the
@@ -424,8 +423,8 @@ export function probesAfterWrites(
   const late = new Set<string>()
   probesAfterWritesOf.set(nodes, late)
   const probes = (n: TaskNode): boolean =>
-    (n.config.cache?.inputs?.runtime?.length ?? 0) > 0 ||
-    (n.config.cache?.inputs?.workspaceRuntime?.length ?? 0) > 0
+    (n.config.inputs?.runtime?.length ?? 0) > 0 ||
+    (n.config.inputs?.workspaceRuntime?.length ?? 0) > 0
   let anyProbe = false
   for (const n of nodes.values()) {
     if (probes(n)) {
@@ -455,7 +454,7 @@ export function probesAfterWrites(
     let writer = false
     let unfolded = false
     // No filter and no order-only edge: the key folds every dependency.
-    const foldsAll = node.orderOnly === undefined && node.config.cache?.inputs?.tasks === undefined
+    const foldsAll = node.orderOnly === undefined && node.config.inputs?.tasks === undefined
     let folds: Set<string> | undefined
     for (const dep of node.deps) {
       if (!nodes.has(dep)) continue
@@ -483,7 +482,7 @@ function foldedBy(
   upstream: TaskOutcome[],
   keyById: Map<string, string>,
 ): (dep: string) => boolean {
-  const filter = node.config.cache?.inputs?.tasks
+  const filter = node.config.inputs?.tasks
   if (isGroupTask(node) || filter === undefined) return (dep) => keyById.has(dep)
   const hashes = new Set(
     filterUpstreamHashes(upstream, filter, node.projectName, node.id).map(([, h]) => h),
@@ -525,7 +524,7 @@ function synthUpstream(
  *     `outputs.files` — direct or transitive — makes the key
  *     preliminary. Project boundaries are hard, so only SAME-project
  *     outputs can reach a project-relative input.
- *   - `cache.inputs.workspaceFiles` is boundary-free: it can read ANY
+ *   - `inputs.workspaceFiles` is boundary-free: it can read ANY
  *     project's dir (so any upstream `outputs.files`, in any project,
  *     matters) or a root-anchored location (so any upstream
  *     `outputs.workspaceFiles` matters). Either → preliminary key. This
@@ -551,9 +550,9 @@ export function dependsOnSiblingOutputs(
   },
 ): boolean {
   const cache = node.config.cache
-  // A cache-disabled task has no key to prefetch anyway; treat as
-  // unstable-irrelevant (caller filters on cacheEnabled).
-  if (cache === undefined) return false
+  const declared = node.config.inputs
+  // A task with no inputs has no key to take up front.
+  if (declared === undefined) return false
   if (upstreamOutputProjects.has(node.projectName)) {
     // A same-project producer whose writes are all declared reaches this
     // task's inputs only where the globs can meet: a `test` reading `src/**`
@@ -562,9 +561,9 @@ export function dependsOnSiblingOutputs(
     // projects (A-20). Undeclared writes, and a rewriter this key does not
     // fold, may land anywhere: those stay project-wide.
     if (sameProject === undefined || sameProject.wide?.has(node.projectName) === true) return true
-    const inputs = cache.inputs?.files
+    const inputs = declared.files
     const outputs = sameProject.outputsOf.get(node.projectName) ?? []
-    if (inputs === undefined || outputs.length === 0) return true
+    if (outputs.length === 0) return true
     // An output the reader's own `!` inputs take back whole is not in its
     // key: `['**/*', '!dist/**']` beside a `dist/**` producer keys the same
     // before and after it, which is what `run.rules.upfrontKeys` asks a config
@@ -578,7 +577,7 @@ export function dependsOnSiblingOutputs(
     // that producer, its restore raced the producer's clean and extract
     // (M-5; invariant 2 of docs/design/overlapping-outputs-2026-09.md).
     // `outputsOf` holds this task's own globs too; set them aside once.
-    const own = cache.outputs.files
+    const own = cache?.outputs.files ?? []
     if (own.length > 0) {
       const others = [...outputs]
       for (const g of own) {
@@ -597,7 +596,7 @@ export function dependsOnSiblingOutputs(
   // `app` read `gen/**` project-relative), so the mere presence of a
   // workspace-output producer upstream makes the key preliminary.
   if (hasWsOutputUpstream) return true
-  const wsInputs = cache.inputs?.workspaceFiles ?? []
+  const wsInputs = declared.workspaceFiles ?? []
   if (wsInputs.length > 0 && upstreamOutputProjects.size > 0) {
     // Without the dirs the old answer stands: a workspace reader over any
     // producer is preliminary. With them, only a reader whose globs can

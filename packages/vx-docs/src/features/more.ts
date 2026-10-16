@@ -729,14 +729,14 @@ export const MORE: readonly Feature[] = [
     slug: 'explicit-inputs',
     title: 'Caching you opt into',
     category: 'cache',
-    hook: 'A task caches only when it names its inputs, so a hit is never a guess.',
+    hook: 'A task is keyed on the inputs it names, so a hit is never a guess.',
     body: [
-      'A cache that guesses what a task reads will one day replay a stale result and call the run green. vx never guesses: a task caches only when its config lists the files it reads.',
-      'No `cache` block, no caching. Add one, name the inputs, and every hit is backed by what you declared. The sandbox can prove the list is complete.',
+      'A cache that guesses what a task reads will one day replay a stale result and call the run green. vx never guesses: a task is keyed on the files its config lists under `inputs`, cached or not, and every task behind it folds that key.',
+      'No `cache` block, no caching. Add one beside the inputs and every hit is backed by what you declared. A task that names no inputs has no key, so nothing behind it hits. The sandbox can prove the list is complete.',
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      cache: { inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: ['dist/**'] } },\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      inputs: { files: ['src/**', 'tsconfig.json'] }, cache: { outputs: { files: ['dist/**'] } },\n    },\n  },\n})",
     },
     image: 'explicit-inputs.png',
     imageAlt: 'A task’s cache block naming its inputs and outputs.',
@@ -756,11 +756,11 @@ export const MORE: readonly Feature[] = [
     hook: 'Env vars, tool versions, upstream tasks and root files all go into the key.',
     body: [
       'A build depends on more than its source: `NODE_ENV`, the Bun version, a shared `tsconfig.base.json`. Leave one out and a hit can replay the wrong bytes.',
-      'Name each one under `cache.inputs`: `env` for variables, `runtime` for a command whose output is a version, `workspaceFiles` for files at the root. Change any of them and the key changes.',
+      'Name each one under `inputs`: `env` for variables, `runtime` for a command whose output is a version, `workspaceFiles` for files at the root. Change any of them and the key changes.',
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    bundle: {\n      exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },\n      cache: {\n        inputs: {\n          files: ['src/**'],\n          env: ['NODE_ENV'],\n          runtime: ['bun --version'],\n          workspaceFiles: ['tsconfig.base.json'],\n        },\n        outputs: { files: ['dist/**'] },\n      },\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    bundle: {\n      exec: { command: 'vite build', env: { passThrough: ['NODE_ENV'] } },\n      inputs: {\n        files: ['src/**'],\n        env: ['NODE_ENV'],\n        runtime: ['bun --version'],\n        workspaceFiles: ['tsconfig.base.json'],\n      },\n      cache: { outputs: { files: ['dist/**'] } },\n    },\n  },\n})",
     },
     image: 'key-inputs.png',
     imageAlt: 'Env, runtime and workspace files declared as key inputs.',
@@ -784,7 +784,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'vite build' },\n      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**', 'stats.json'] } },\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'vite build' },\n      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**', 'stats.json'] } },\n    },\n  },\n})",
     },
     image: 'cache-outputs.png',
     imageAlt: 'Declared outputs restored on a cache hit.',
@@ -833,7 +833,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'text',
-      code: '@demo/web#test reads "src/**" in cache.inputs.files, which matches\n@demo/web#build\'s output "src/gen/**". Exclude it: add "!src/gen/**".',
+      code: '@demo/web#test reads "src/**" in inputs.files, which matches\n@demo/web#build\'s output "src/gen/**". Exclude it: add "!src/gen/**".',
     },
     image: 'upfront-keys.png',
     imageAlt: 'An input glob that overlaps an output, refused at load.',
@@ -1386,7 +1386,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      dependsOn: ['^build'],\n      description: 'Type-check and emit',\n      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    build: {\n      exec: { command: 'tsc -b' },\n      dependsOn: ['^build'],\n      description: 'Type-check and emit',\n      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },\n    },\n  },\n})",
     },
     image: 'one-command-tasks.png',
     imageAlt: 'A task: a command, its edges and its cache block.',
@@ -1506,7 +1506,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/ui/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nconst lib = (entry: string) => ({\n  build: {\n    exec: { command: `tsup ${entry}` },\n    cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },\n  },\n})\n\nexport default defineProject({ tasks: { ...lib('src/index.ts') } })",
+      code: "// packages/ui/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nconst lib = (entry: string) => ({\n  build: {\n    exec: { command: `tsup ${entry}` },\n    inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },\n  },\n})\n\nexport default defineProject({ tasks: { ...lib('src/index.ts') } })",
     },
     image: 'presets.png',
     imageAlt: 'A preset function shared across configs.',
@@ -1866,7 +1866,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    install: {\n      exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },\n      cache: {\n        inputs: { files: ['package.json', 'pnpm-lock.yaml'] },\n        outputs: { files: ['node_modules/**'] },\n      },\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    install: {\n      exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },\n      inputs: { files: ['package.json', 'pnpm-lock.yaml'] },\n      cache: { outputs: { files: ['node_modules/**'] } },\n    },\n  },\n})",
     },
     image: 'remote-install.png',
     imageAlt: 'An install task run as a remote action.',

@@ -31,14 +31,14 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "perf-guard.ts",
+          "perf-baseline.json",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "perf-guard.ts",
-            "perf-baseline.json",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -59,15 +59,15 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "pr-bench.ts",
+          "pr-bench-baseline.json",
+          "bench-env.ts",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "pr-bench.ts",
-            "pr-bench-baseline.json",
-            "bench-env.ts",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -137,21 +137,21 @@
           }
         }
       },
+      "inputs": {
+        "files": [
+          "update-site.ts",
+          "results.json",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx-docs/src/pages/index.astro",
+          "packages/vx/docs/benchmarks.md",
+          "README.md",
+          "packages/vx-docs/src/content/docs/compare/turborepo.md",
+          "packages/vx-docs/src/content/docs/compare/nx.md"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "update-site.ts",
-            "results.json",
-            "package.json"
-          ],
-          "workspaceFiles": [
-            "packages/vx-docs/src/pages/index.astro",
-            "packages/vx/docs/benchmarks.md",
-            "README.md",
-            "packages/vx-docs/src/content/docs/compare/turborepo.md",
-            "packages/vx-docs/src/content/docs/compare/nx.md"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -185,23 +185,23 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "*.ts",
+          "tests/**",
+          "playground-spike/**/*.ts",
+          "package.json",
+          ".oxlintrc.json",
+          "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx-docs/scripts/build-playground.ts",
+          "packages/vx-docs/src/playground/**",
+          "packages/vx-docs/tests/glob-fuzz.ts",
+          "packages/vx-docs/tests/helpers/rng.ts"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "*.ts",
-            "tests/**",
-            "playground-spike/**/*.ts",
-            "package.json",
-            ".oxlintrc.json",
-            "tsconfig.json"
-          ],
-          "workspaceFiles": [
-            "packages/vx-docs/scripts/build-playground.ts",
-            "packages/vx-docs/src/playground/**",
-            "packages/vx-docs/tests/glob-fuzz.ts",
-            "packages/vx-docs/tests/helpers/rng.ts"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -225,13 +225,13 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "**/*",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "**/*",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -261,14 +261,14 @@
       "dependsOn": [
         "install"
       ],
+      "inputs": {
+        "files": [
+          "*.ts",
+          "tests/**",
+          "package.json"
+        ]
+      },
       "cache": {
-        "inputs": {
-          "files": [
-            "*.ts",
-            "tests/**",
-            "package.json"
-          ]
-        },
         "outputs": {
           "files": []
         }
@@ -278,15 +278,10 @@
       "dependsOn": [
         "^build"
       ],
-      "cache": {
-        "inputs": {
-          "files": [
-            "**"
-          ]
-        },
-        "outputs": {
-          "files": []
-        }
+      "inputs": {
+        "files": [
+          "**"
+        ]
       }
     }
   }

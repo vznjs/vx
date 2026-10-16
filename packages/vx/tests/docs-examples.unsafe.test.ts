@@ -124,7 +124,7 @@ describe('every example an agent reads from the docs', () => {
     }
     expect(commands(f)).toEqual([{ verb: 'run', flags: ['--all', '--nope'] }])
     expect(acceptedFlags('run')).not.toContain('--nope')
-    expect(sets("  cache: { inputs: { files: ['x'] } },", 'files')).toBe(true)
+    expect(sets("  inputs: { files: ['x'] },", 'files')).toBe(true)
     expect(sets('  profiles: 1', 'files')).toBe(false)
   })
 })

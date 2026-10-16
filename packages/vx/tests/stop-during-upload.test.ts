@@ -13,7 +13,7 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'echo built > out.txt' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
       },
     },
   }

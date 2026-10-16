@@ -10,7 +10,7 @@ Prove a task reads only what it declares.
 1. Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing in the workspace, not even the package. Outside the workspace root (`~/.cache`, `/etc`) reads are open and fold into no key: declare what the output depends on as a key input. The credential stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like) are the exception: denied unless `allow.read` names one.
 2. Grant the package: `allow: { read: ['.'] }`. Its `node_modules` is readable already. Another package of yours, linked there, is readable when the task depends on one of that package's command tasks; an uncached task reads every linked package.
 3. Grant each output directory in `write`, and each host in `network`. The sandbox does not read `cache`: declare both.
-4. Run the task. An undeclared read or write fails it and names the path; the failure ends with a `fix:` line, the grants that would have allowed it (`fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`). `vx last --format json` carries the same grants as `sandboxFix`. A credential path is named apart, never in the line. A cached task's read that no `cache.inputs.files` glob matches is named once more (`and, if the output depends on them, cache.inputs.files: ['tsconfig.json']`; `sandboxFix.inputs` in JSON): a grant alone lets the task read it, but only an input re-keys the task when it changes.
+4. Run the task. An undeclared read or write fails it and names the path; the failure ends with a `fix:` line, the grants that would have allowed it (`fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`). `vx last --format json` carries the same grants as `sandboxFix`. A credential path is named apart, never in the line. A cached task's read that no `inputs.files` glob matches is named once more (`and, if the output depends on them, inputs.files: ['tsconfig.json']`; `sandboxFix.inputs` in JSON): a grant alone lets the task read it, but only an input re-keys the task when it changes.
 5. Declare that path, or silence a noisy tool's path with `ignore`.
 
 ## Config
@@ -34,7 +34,7 @@ export default defineProject({
           ignore: { write: ['*.bun-build'] },
         },
       },
-      cache: { inputs: { files: ['src/**', 'index.html'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**', 'index.html'] }, cache: { outputs: { files: ['dist/**'] } },
     },
   },
 })
@@ -51,7 +51,7 @@ build: {
     command: 'mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js',
     sandbox: { allow: { read: ['src/'] } },
   },
-  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
 },
 ```
 
@@ -76,10 +76,10 @@ cat: tsconfig.json: No such file or directory
 ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
 openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]
 fix: exec.sandbox.allow: { read: ['tsconfig.json'] }
-and, if the output depends on them, cache.inputs.files: ['tsconfig.json']
+and, if the output depends on them, inputs.files: ['tsconfig.json']
 ```
 
-Grant it and add it to `cache.inputs.files`, and the task passes. Without
+Grant it and add it to `inputs.files`, and the task passes. Without
 the sandbox, this build would have cached with `tsconfig.json` outside its
 key, and an edit to that file would have replayed the old `dist/`.
 

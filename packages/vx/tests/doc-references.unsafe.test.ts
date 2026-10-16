@@ -182,7 +182,7 @@ describe('docs/parity.md names suites that exist and the versions its suites cit
   // dropping them would have left their rows with no token at all, which
   // is a row the check stops reading, not a row it passes.
   const ALIAS: Record<string, string> = {
-    'cache.inputs.files': 'resolveInputs',
+    'inputs.files': 'resolveInputs',
     'exec.env.passThrough': 'passThrough',
   }
 

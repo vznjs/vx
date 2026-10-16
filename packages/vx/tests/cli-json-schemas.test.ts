@@ -17,7 +17,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'bun:test'
 import { applyMigration } from '../src/workspace/index.js'
 import type {
   CacheConfig,
-  CacheInputs,
+  InputsConfig,
   CacheOutputs,
   InputStability,
   ExecConfig,
@@ -69,7 +69,7 @@ const CONFIG = (dep: boolean) => `export default {
     build: {
       exec: { command: 'mkdir -p dist && cat src/a.txt > dist/o.txt' },
       ${dep ? "dependsOn: ['^build']," : ''}
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
     fail: { exec: { command: 'exit 3' } },
     // Rewrites an input build reads, so \`vx why\` names a writer.
@@ -77,7 +77,7 @@ const CONFIG = (dep: boolean) => `export default {
     flaky: {
       // A failure names a file, so vx last prints its locations.
       exec: { command: 'test -f ../../flag || { echo src/a.txt:1:2; exit 1; }' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
   },
 }`
@@ -98,15 +98,15 @@ const KITCHEN = `export default {
         env: { passThrough: ['HOME'], define: { MODE: 'x' }, secret: ['TOKEN'] },
         sandbox: {},
       },
+      inputs: {
+        files: ['src/**'],
+        workspaceFiles: ['tsconfig.json'],
+        env: ['NODE_ENV'],
+        tasks: ['*'],
+        runtime: ['echo r'],
+        workspaceRuntime: ['echo w'],
+      },
       cache: {
-        inputs: {
-          files: ['src/**'],
-          workspaceFiles: ['tsconfig.json'],
-          env: ['NODE_ENV'],
-          tasks: ['*'],
-          runtime: ['echo r'],
-          workspaceRuntime: ['echo w'],
-        },
         outputs: { files: ['dist/**'], workspaceFiles: ['out.txt'], clean: false },
         inputStability: { strategy: 'mutable', severity: 'error' },
       },
@@ -587,7 +587,13 @@ describe('each schema object is its source type', () => {
       keys<ProjectConfig>({ name: true, tags: true, tasks: true }),
     )
     expect(def('show', 'taskConfig')).toEqual(
-      keys<TaskConfig>({ description: true, exec: true, dependsOn: true, cache: true }),
+      keys<TaskConfig>({
+        description: true,
+        exec: true,
+        dependsOn: true,
+        inputs: true,
+        cache: true,
+      }),
     )
     const exec = ['taskConfig', 'properties', 'exec'] as const
     expect(def('show', ...exec)).toEqual(
@@ -610,10 +616,10 @@ describe('each schema object is its source type', () => {
     )
     const cache = ['taskConfig', 'properties', 'cache'] as const
     expect(def('show', ...cache)).toEqual(
-      keys<CacheConfig>({ inputs: true, outputs: true, inputStability: true }),
+      keys<CacheConfig>({ outputs: true, inputStability: true }),
     )
-    expect(def('show', ...cache, 'properties', 'inputs')).toEqual(
-      keys<CacheInputs>({
+    expect(def('show', 'taskConfig', 'properties', 'inputs')).toEqual(
+      keys<InputsConfig>({
         files: true,
         workspaceFiles: true,
         env: true,

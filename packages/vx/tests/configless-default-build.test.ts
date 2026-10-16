@@ -31,7 +31,7 @@ it(
       config: `export default { tasks: { build: {
         dependsOn: ['^build'],
         exec: { command: 'true' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
       } } }\n`,
     })
     const hash = async (): Promise<string | undefined> => {

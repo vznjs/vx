@@ -36,7 +36,7 @@ export function refuseUnkeyedLinks(
     const rel = path.relative(realRoot, real)
     const outside = rel.startsWith('..') || path.isAbsolute(rel)
     const targetRel = rel.split(path.sep).join('/')
-    const head = `cache.inputs: "${relPosix(workspaceRoot, link)}" is a symlink to "${outside ? real : targetRel}"`
+    const head = `inputs: "${relPosix(workspaceRoot, link)}" is a symlink to "${outside ? real : targetRel}"`
     const target = path.join(workspaceRoot, rel)
     if (!outside && statSync(real).isDirectory()) {
       const behind = runGitLsFiles(target).files
@@ -45,17 +45,17 @@ export function refuseUnkeyedLinks(
       )
       if (missing === undefined) continue
       throw new UserError(
-        `${head}, and "${targetRel}/${missing}" behind it is not an input — an edit to it would replay the old output. Add "${targetRel}/**" to cache.inputs.workspaceFiles.`,
+        `${head}, and "${targetRel}/${missing}" behind it is not an input — an edit to it would replay the old output. Add "${targetRel}/**" to inputs.workspaceFiles.`,
       )
     }
     if (inputs.has(target)) continue
     if (outside || !listed(target)) {
       throw new UserError(
-        `${head}, which git does not list (gitignored, or outside the workspace), so no glob can key it — an edit to it would replay the old output. Point the link at a tracked file, or exclude it from the inputs and key its content with cache.inputs.runtime.`,
+        `${head}, which git does not list (gitignored, or outside the workspace), so no glob can key it — an edit to it would replay the old output. Point the link at a tracked file, or exclude it from the inputs and key its content with inputs.runtime.`,
       )
     }
     throw new UserError(
-      `${head}, whose content the key does not see — an edit to it would replay the old output. Add "${targetRel}" to cache.inputs.workspaceFiles.`,
+      `${head}, whose content the key does not see — an edit to it would replay the old output. Add "${targetRel}" to inputs.workspaceFiles.`,
     )
   }
 }

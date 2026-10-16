@@ -39,9 +39,9 @@ describe('migrateTurbo: a root dependency with outputs', () => {
     const ws = (name: string) =>
       (
         p.projects.find((x) => x.name === name)!.tasks.find((t) => t.name === 'build')!.task as {
-          cache: { inputs: { workspaceFiles: unknown[] } }
+          inputs: { workspaceFiles: unknown[] }
         }
-      ).cache.inputs.workspaceFiles
+      ).inputs.workspaceFiles
     expect(ws('app')).toEqual([{ raw: '...globalInputs' }, '!packages/lib/dist/**'])
     expect(p.extraFiles.find((f) => f.relPath === 'vx-preset.ts')!.contents).toContain(
       "export const globalInputs = ['packages/lib/**']",

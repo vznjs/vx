@@ -1167,12 +1167,12 @@ describe('resolveInputs — runtime values', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  function args(inputs: Partial<import('../src/config.js').CacheInputs>) {
+  function args(inputs: Partial<import('../src/config.js').InputsConfig>) {
     return {
       projectDir,
       workspaceRoot: root,
       envSource: {} as NodeJS.ProcessEnv,
-      inputs: { files: [], ...inputs } as import('../src/config.js').CacheInputs,
+      inputs: { files: [], ...inputs } as import('../src/config.js').InputsConfig,
       ownOutputs: [],
       nestedProjectDirs: [],
     }
@@ -1312,7 +1312,7 @@ describe('a named pipe under an input or output glob (e2e)', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist && cat src/a.txt > dist/out.txt' },
-                cache: { inputs: { files: ['**/*'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['**/*'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }

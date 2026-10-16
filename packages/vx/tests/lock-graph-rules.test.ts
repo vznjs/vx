@@ -17,7 +17,7 @@ afterAll(async () => {
 })
 
 const task = (outputs: string[], inputs: string[] = ['src/**']) =>
-  `{ exec: { command: 'true' }, cache: { inputs: { files: ${JSON.stringify(inputs)} }, outputs: { files: ${JSON.stringify(outputs)} } } }`
+  `{ exec: { command: 'true' }, inputs: { files: ${JSON.stringify(inputs)} }, cache: { outputs: { files: ${JSON.stringify(outputs)} } } }`
 
 /** A git workspace with one project `a` whose tasks are `tasks` (source text). */
 async function workspace(tasks: string): Promise<string> {
@@ -138,7 +138,8 @@ describe('checkGraph under a lock', () => {
       requested: true,
       config: {
         exec: { command: 'true' },
-        cache: { inputs: { files: inputs }, outputs: { files: outputs } },
+        inputs: { files: inputs },
+        cache: { outputs: { files: outputs } },
       },
     }) as unknown as TaskNode
   const graph = (...nodes: TaskNode[]) => new Map(nodes.map((n) => [n.id, n]))

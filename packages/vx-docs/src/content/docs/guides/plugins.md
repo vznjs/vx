@@ -30,7 +30,7 @@ export function typecheck(): VxPlugin {
       config.tasks ??= {}
       config.tasks['typecheck'] ??= {
         exec: { command: 'tsc --noEmit' },
-        cache: { inputs: { files: ['src/**', 'tsconfig.json'] }, outputs: { files: [] } },
+        inputs: { files: ['src/**', 'tsconfig.json'] }, cache: { outputs: { files: [] } },
       }
     },
   })

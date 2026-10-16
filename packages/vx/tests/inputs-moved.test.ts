@@ -93,7 +93,7 @@ describe('a task that rewrites its own input', () => {
             tasks: {
               format: {
                 exec: { command: "sed -i.bak 's/unformatted/formatted/' a.ts && rm a.ts.bak" },
-                cache: { inputs: { files: ['a.ts'] }, outputs: { files: [] } },
+                inputs: { files: ['a.ts'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -131,7 +131,7 @@ describe('a task that rewrites its own input', () => {
             tasks: {
               format: {
                 exec: { command: "sed -i.bak 's/unformatted/formatted/' a.ts && rm a.ts.bak" },
-                cache: { inputs: { files: ['a.ts'] }, outputs: { files: [] } },
+                inputs: { files: ['a.ts'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -160,8 +160,8 @@ describe('cache.inputStability: what a write during the command means', () => {
         tasks: {
           format: {
             exec: { command: "sed -i.bak 's/unformatted/formatted/' a.ts && rm a.ts.bak" },
+            inputs: { files: ['a.ts'] },
             cache: {
-              inputs: { files: ['a.ts'] },
               outputs: { files: [] },
               ${stability === undefined ? '' : `inputStability: ${JSON.stringify(stability)},`}
             },
@@ -224,14 +224,15 @@ describe('cache.inputStability: what a write during the command means', () => {
               read: {
                 exec: { command: 'sleep 0.8' },
                 ${ordered ? "dependsOn: ['meddle']," : ''}
+                inputs: { files: ['a.ts'] },
                 cache: {
-                  inputs: { files: ['a.ts'] },
                   outputs: { files: [] },
                   inputStability: { strategy: 'mutable' },
                 },
               },
               meddle: {
                 exec: { command: 'sleep 0.2 && cp a.ts a.keep && printf bad > a.ts && sleep 0.2 && cat a.keep > a.ts && rm a.keep' },
+                inputs: { files: [] },
               },
             },
           }
@@ -268,8 +269,8 @@ describe('cache.inputStability: what a write during the command means', () => {
             tasks: {
               read: {
                 exec: { command: 'touch go && sleep 0.8' },
+                inputs: { files: ['a.ts'] },
                 cache: {
-                  inputs: { files: ['a.ts'] },
                   outputs: { files: [] },
                   inputStability: { strategy: 'mutable' },
                 },
@@ -425,7 +426,7 @@ describe('the other moves', () => {
             tasks: {
               build: {
                 exec: { command: 'mkdir -p dist; cat in/* > dist/out.txt; rm in/b.txt' },
-                cache: { inputs: { files: ['in/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['in/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -454,7 +455,7 @@ describe('the other moves', () => {
             tasks: {
               bump: {
                 exec: { command: 'cp next.json package.json' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
               },
             },
           }
@@ -492,12 +493,12 @@ describe('what the run knew about the project goes with a move', () => {
           tasks: {
             format: {
               exec: { command: ${JSON.stringify(cmd)} },
-              cache: { inputs: { files: ['a.ts'] }, outputs: { files: ['fmt.log'] } },
+              inputs: { files: ['a.ts'] }, cache: { outputs: { files: ['fmt.log'] } },
             },
             build: {
               dependsOn: ['format'],
               exec: { command: 'mkdir -p dist; cat a.ts > dist/out.txt' },
-              cache: { inputs: { files: ['a.ts'], tasks: [] }, outputs: { files: ['dist/**'] } },
+              inputs: { files: ['a.ts'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
             },
           },
         }
@@ -537,8 +538,8 @@ describe('what a moved task wrote elsewhere is seen too', () => {
             tasks: {
               gen: {
                 exec: { command: "sed -i.bak 's/U/F/' a.ts && rm a.ts.bak && printf G > ../app/gen.txt" },
+                inputs: { files: ['a.ts'] },
                 cache: {
-                  inputs: { files: ['a.ts'] },
                   outputs: { files: [], workspaceFiles: ['packages/app/gen.txt'] },
                 },
               },
@@ -554,7 +555,7 @@ describe('what a moved task wrote elsewhere is seen too', () => {
               build: {
                 dependsOn: ['^gen'],
                 exec: { command: 'mkdir -p dist; cat gen.txt > dist/out.txt' },
-                cache: { inputs: { files: ['gen.txt'], tasks: [] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['gen.txt'], tasks: [] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -575,7 +576,7 @@ describe('an input the user edits during the run', () => {
       tasks: {
         build: {
           exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist; cat src/a.ts > dist/out.js' },
-          cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
         },
       },
     }
@@ -619,7 +620,7 @@ describe('an input the user edits during the run', () => {
             tasks: {
               build: {
                 exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; mkdir -p dist; cat src/a.ts > dist/out.js; touch built; while [ ! -f done ]; do sleep 0.01; done' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -659,7 +660,12 @@ describe('an input the user edits during the run', () => {
     const lib = await addProject(root, 'lib', {
       config: `
         export default {
-          tasks: { gate: { exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done' } } },
+          tasks: {
+            gate: {
+              exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done' },
+              inputs: { files: [] },
+            },
+          },
         }
       `,
     })
@@ -670,7 +676,7 @@ describe('an input the user edits during the run', () => {
             build: {
               dependsOn: ['^gate'],
               exec: { command: 'mkdir -p dist; cat src/a.ts > dist/out.js' },
-              cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+              inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
             },
           },
         }
@@ -751,7 +757,7 @@ describe('an input file added during the run', () => {
       tasks: {
         build: {
           exec: { command: 'touch started; while [ ! -f go ]; do sleep 0.01; done; ${cmd}' },
-          cache: { inputs: { files: ${files} }, outputs: { files: ['dist/**'] } },
+          inputs: { files: ${files} }, cache: { outputs: { files: ['dist/**'] } },
         },
       },
     }
@@ -841,12 +847,12 @@ describe('control: inputs an upstream wrote just before are not a move', () => {
             tasks: {
               gen: {
                 exec: { command: 'printf generated > gen.txt' },
-                cache: { inputs: { files: ['src/**'] }, outputs: { files: ['gen.txt'] } },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['gen.txt'] } },
               },
               build: {
                 dependsOn: ['gen'],
                 exec: { command: 'mkdir -p dist; cat gen.txt > dist/out.txt' },
-                cache: { inputs: { files: ['src/**', 'gen.txt'] }, outputs: { files: ['dist/**'] } },
+                inputs: { files: ['src/**', 'gen.txt'] }, cache: { outputs: { files: ['dist/**'] } },
               },
             },
           }
@@ -957,7 +963,8 @@ describe('describeTaskInputs dates each fact from where it was learned', () => {
             taskName: 't',
             config: {
               exec: { command: 'true' },
-              cache: { inputs: { files: ['*.txt'] }, outputs: { files: [] } },
+              inputs: { files: ['*.txt'] },
+              cache: { outputs: { files: [] } },
             },
             deps: [],
             requested: true,

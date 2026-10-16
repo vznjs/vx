@@ -18,11 +18,11 @@ const CONFIG = `
     tasks: {
       build: {
         exec: { command: 'echo built' },
+        inputs: {
+          files: ['src/**'],
+          ...(process.env.SHARED ? { workspaceFiles: [process.env.SHARED] } : {}),
+        },
         cache: {
-          inputs: {
-            files: ['src/**'],
-            ...(process.env.SHARED ? { workspaceFiles: [process.env.SHARED] } : {}),
-          },
           outputs: { files: [] },
         },
       },

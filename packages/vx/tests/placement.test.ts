@@ -58,7 +58,8 @@ describe('pinnedLocalSet', () => {
         ...n,
         config: {
           ...n.config,
-          cache: { inputs: { files: ['src/**'], ...inputs }, outputs: { files: [] } },
+          inputs: { files: ['src/**'], ...inputs },
+          cache: { outputs: { files: [] } },
         },
       } as TaskNode
     }

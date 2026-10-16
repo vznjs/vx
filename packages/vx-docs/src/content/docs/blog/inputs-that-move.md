@@ -63,8 +63,8 @@ the write by its bytes:
 ```ts
 build: {
   exec: { command: 'tsdown' },
+  inputs: { files: ['src/**', 'package.json'] },
   cache: {
-    inputs: { files: ['src/**', 'package.json'] },
     outputs: { files: ['dist/**'] },
     inputStability: { strategy: 'mutable' },
   },

@@ -108,7 +108,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       { tasks: { build: { inputs: ['src/**'], env: ['X'] }, 'a#build': { outputs: ['dist/**'] } } },
       { a: { scripts: { build: 'b' } }, b: { scripts: { build: 'b' } } },
     )
-    const inputs = m.projects.map((p) => (p.tasks[0]!.task!['cache'] as { inputs: unknown }).inputs)
+    const inputs = m.projects.map((p) => p.tasks[0]!.task!['inputs'] as unknown)
     expect(inputs).toEqual([{ files: ['**/*'] }, { files: ['src/**'], env: ['X'] }])
   })
 
@@ -125,7 +125,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     ],
   ])('inputs %j key on %j', async (inputs, files) => {
     const t = await taskOf({ tasks: { build: { inputs } } }, { a: { scripts: { build: 'b' } } })
-    expect((t.task!['cache'] as { inputs: unknown }).inputs).toEqual({ files })
+    expect(t.task!['inputs'] as unknown).toEqual({ files })
   })
 
   // Item 937: a wildcard in a global env list reached core, whose refusal
@@ -141,7 +141,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     )
     const task = m.projects[0]!.tasks[0]!.task!
     expect({
-      env: (task['cache'] as { inputs: { env?: unknown } }).inputs.env,
+      env: (task['inputs'] as { env?: unknown }).env,
       pass: (task['exec'] as { env?: { passThrough?: unknown } }).env?.passThrough,
       notes: m.notes,
     }).toEqual({
@@ -181,7 +181,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     )
     const t = m.projects[0]!.tasks[0]!
     expect({
-      env: (t.task!['cache'] as { inputs: { env?: unknown } }).inputs.env,
+      env: (t.task!['inputs'] as { env?: unknown }).env,
       pass: (t.task!['exec'] as { env?: { passThrough?: unknown } }).env?.passThrough,
       todos: t.todos,
       notes: m.notes,
@@ -210,7 +210,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       const m = await map(turbo, pkgs, live)
       const t = m.projects[0]!.tasks[0]!
       return {
-        env: (t.task!['cache'] as { inputs: { env?: unknown } }).inputs.env,
+        env: (t.task!['inputs'] as { env?: unknown }).env,
         todos: [...t.todos, ...m.notes],
       }
     }
@@ -228,7 +228,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     expect(await read()).toEqual({
       env: ['API'],
       todos: [
-        'env "B_*": wildcards are not supported in vx env names — list explicit names in cache.inputs.env + exec.env.passThrough',
+        'env "B_*": wildcards are not supported in vx env names — list explicit names in inputs.env + exec.env.passThrough',
         literal('NEXT_PUBLIC_\\*', 'NEXT_PUBLIC_*'),
         literal('\\!NEXT_PUBLIC_VERCEL_\\*', '!NEXT_PUBLIC_VERCEL_*'),
       ],
@@ -252,7 +252,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     )
     const t = m.projects[0]!.tasks[0]!
     expect({
-      env: (t.task!['cache'] as { inputs: { env?: unknown } }).inputs.env,
+      env: (t.task!['inputs'] as { env?: unknown }).env,
       pass: (t.task!['exec'] as { env?: { passThrough?: unknown } }).env?.passThrough,
       todos: t.todos,
     }).toEqual({ env: ['API', 'URLS'], pass: ['API', 'URLS', 'HOME_DIR'], todos: [] })
@@ -271,7 +271,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       },
       { a: { scripts: { build: 'b' } } },
     )
-    const inputs = (t.task!['cache'] as { inputs: Record<string, unknown> }).inputs
+    const inputs = t.task!['inputs'] as Record<string, unknown>
     const probe = (v: unknown) =>
       Array.isArray(v) && v.length === 1
         ? v[0] === DOTENV_PROBE
@@ -322,7 +322,7 @@ describe('turbo-map: what the sweep found unheld', () => {
       opts,
     )
     const t = m.projects[0]!.tasks[0]!
-    expect((t.task!['cache'] as { inputs: unknown }).inputs).toEqual({
+    expect(t.task!['inputs'] as unknown).toEqual({
       files: ['src/**', 'config.json'],
     })
   })
@@ -370,8 +370,8 @@ describe('turbo-map: what the sweep found unheld', () => {
     }
     const m = await mapTurboWorkspace(root, metas, opts)
     expect(m.notes).toEqual([
-      'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; list the ones they read in cache.inputs.env and exec.env.passThrough',
-      'vite in site: Turbo passes VITE_* implicitly; list the ones they read in cache.inputs.env and exec.env.passThrough',
+      'nextjs in web: Turbo passes NEXT_PUBLIC_*, NEXT_DEPLOYMENT_ID implicitly; list the ones they read in inputs.env and exec.env.passThrough',
+      'vite in site: Turbo passes VITE_* implicitly; list the ones they read in inputs.env and exec.env.passThrough',
       // Twelve names: three and a count keep the note one line.
       expect.stringMatching(/^nitro in api: Turbo passes \S+, \S+, \S+ and \d+ more implicitly;/),
     ])
@@ -398,8 +398,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     }
     const live = ['NEXT_PUBLIC_A', 'VITE_X', 'PUBLIC_Y', 'REACT_APP_Z', 'EXPO_PUBLIC_W']
     const m = await mapTurboWorkspace(root, metas, { ...opts, envNames: live })
-    const env = (p: number) =>
-      (m.projects[p]!.tasks[0]!.task!['cache'] as { inputs: { env?: unknown } }).inputs.env
+    const env = (p: number) => (m.projects[p]!.tasks[0]!.task!['inputs'] as { env?: unknown }).env
     expect([0, 1, 2, 3, 4].map(env)).toEqual([
       ['NEXT_PUBLIC_A', 'NEXT_DEPLOYMENT_ID'],
       ['VITE_X', 'PUBLIC_Y'],
@@ -483,7 +482,7 @@ describe('turbo-map: what the sweep found unheld', () => {
         [{ name: 'web', dir, packageJson: packageJson as never, configPath: null }],
         { ...opts, envNames: live, ...(vendorEnvPrefix ? { vendorEnvPrefix } : {}) },
       )
-      return (m.projects[0]!.tasks[0]!.task!['cache'] as { inputs: { env?: unknown } }).inputs.env
+      return (m.projects[0]!.tasks[0]!.task!['inputs'] as { env?: unknown }).env
     }
     expect([await env('NEXT_PUBLIC_VERCEL_'), await env()]).toEqual([
       ['NEXT_PUBLIC_A', 'NEXT_DEPLOYMENT_ID', 'NEXT_PUBLIC_VERCEL_ENV'],
@@ -513,8 +512,7 @@ describe('turbo-map: what the sweep found unheld', () => {
     }
     const live = ['NEXT_PUBLIC_VERCEL_URL', 'NEXT_PUBLIC_A', 'VITE_X']
     const m = await mapTurboWorkspace(root, metas, { ...opts, envNames: live })
-    const env = (p: number) =>
-      (m.projects[p]!.tasks[0]!.task!['cache'] as { inputs: { env?: unknown } }).inputs.env
+    const env = (p: number) => (m.projects[p]!.tasks[0]!.task!['inputs'] as { env?: unknown }).env
     expect({ web: env(0), lib: env(1), notes: m.notes }).toEqual({
       web: ['NEXT_PUBLIC_A', 'NEXT_DEPLOYMENT_ID', 'API'],
       lib: ['API'],
@@ -586,12 +584,11 @@ describe('turbo-map: what the sweep found unheld', () => {
       },
       { a: { scripts: { build: 'b' } } },
     )
-    const inputs = (t.task!['cache'] as { inputs: { files: string[]; workspaceFiles?: string[] } })
-      .inputs
+    const inputs = t.task!['inputs'] as { files: string[]; workspaceFiles?: string[] }
     expect(inputs).toEqual({ files: ['src/**'], workspaceFiles: ['!secret.json'] })
     expect(t.todos).toEqual([
       'input "../../../out.txt": leaves the workspace — map manually',
-      'input "a/$TURBO_ROOT$/x": $TURBO_ROOT$ only maps as a \'$TURBO_ROOT$/<path>\' prefix (→ cache.inputs.workspaceFiles) — map manually',
+      'input "a/$TURBO_ROOT$/x": $TURBO_ROOT$ only maps as a \'$TURBO_ROOT$/<path>\' prefix (→ inputs.workspaceFiles) — map manually',
     ])
   })
 })
@@ -631,12 +628,12 @@ describe('turbo-map: a package overlay that extends an inherited list', () => {
     )
     const task = t.task as {
       dependsOn?: string[]
-      cache?: { inputs?: { files?: string[]; env?: string[] } }
+      inputs?: { files?: string[]; env?: string[] }
     }
     expect({
       dependsOn: task.dependsOn,
-      files: task.cache?.inputs?.files,
-      env: task.cache?.inputs?.env,
+      files: task.inputs?.files,
+      env: task.inputs?.env,
     }).toEqual({ dependsOn: ['^build'], files: ['src/**', 'config.json'], env: ['MODE', 'EXTRA'] })
   })
 
@@ -650,8 +647,8 @@ describe('turbo-map: a package overlay that extends an inherited list', () => {
         },
       },
     )
-    const task = t.task as { cache?: { inputs?: { files?: string[] } } }
-    expect(task.cache?.inputs?.files).toEqual(['lib/**'])
+    const task = t.task as { inputs?: { files?: string[] } }
+    expect(task.inputs?.files).toEqual(['lib/**'])
   })
 })
 
@@ -671,11 +668,11 @@ describe('turbo-map: turbo 1 `$NAME` env dependencies', () => {
     const task = t.task as {
       dependsOn: string[]
       exec: { env: { passThrough: string[] } }
-      cache: { inputs: { env: string[]; workspaceFiles: string[] } }
+      inputs: { env: string[]; workspaceFiles: string[] }
     }
     expect(task.dependsOn).toEqual(['^build'])
-    expect(task.cache.inputs.env).toEqual(['GLOBAL_TOKEN', 'API_URL'])
-    expect(task.cache.inputs.workspaceFiles).toEqual(['tsconfig.json'])
+    expect(task.inputs.env).toEqual(['GLOBAL_TOKEN', 'API_URL'])
+    expect(task.inputs.workspaceFiles).toEqual(['tsconfig.json'])
     expect(task.exec.env.passThrough).toEqual(['GLOBAL_TOKEN', 'API_URL'])
     expect(t.todos).toEqual([])
   })
@@ -685,7 +682,7 @@ describe('turbo-map: turbo 1 `$NAME` env dependencies', () => {
       { globalDependencies: ['$TURBO_ROOT$/x.json', 'a$B'], tasks: { build: {} } },
       { a: { scripts: { build: 'b' } } },
     )
-    const inputs = (t.task!['cache'] as { inputs: { env?: string[] } } | undefined)?.inputs
+    const inputs = t.task!['inputs'] as { env?: string[] } | undefined
     expect(inputs?.env).toBeUndefined()
   })
 })
@@ -697,7 +694,7 @@ describe('turbo-map: turbo 1 `$NAME` env dependencies', () => {
 // deleted a hand-written `src/env.d.ts`.
 describe('turbo-map: Turbo’s glob grammar', () => {
   const cacheOf = (t: TurboMappedTask) =>
-    t.task!['cache'] as { inputs: { files: string[] }; outputs?: { files: string[] } } | undefined
+    t.task!['cache'] as { outputs?: { files: string[] } } | undefined
 
   it('inputs translate classes and extglobs; one with no safe form widens to every file', async () => {
     const t = await taskOf(
@@ -708,7 +705,7 @@ describe('turbo-map: Turbo’s glob grammar', () => {
       },
       { a: { scripts: { build: 'b' } } },
     )
-    expect({ files: cacheOf(t)!.inputs.files, todos: t.todos }).toEqual({
+    expect({ files: (t.task!['inputs'] as { files: string[] }).files, todos: t.todos }).toEqual({
       files: ['src/**/*.{[jt],j,t}s', '!**/*.{j,t}s.map', '**/*'],
       todos: ['input "lib/[a-Z]/**": glob syntax vx cannot take — map manually'],
     })
@@ -817,8 +814,7 @@ describe('turbo-map: a wildcard-first output of an untracked kind', () => {
 // Item 1032: `.env` inputs are gitignored as a rule; as file globs they
 // keyed nothing (and a literal one failed the task), so they are probed.
 describe('turbo-map: `.env` inputs', () => {
-  const inputsOf = (t: TurboMappedTask) =>
-    (t.task!['cache'] as { inputs: Record<string, unknown> }).inputs
+  const inputsOf = (t: TurboMappedTask) => t.task!['inputs'] as Record<string, unknown>
 
   it.each([
     // A package's root-level globs take the one-shell probe; one below the
@@ -858,8 +854,7 @@ describe('turbo-map: `.env` inputs', () => {
       { globalDependencies: ['**/.env.*local', 'tsconfig.json'], tasks: { build: {} } },
       { a: { scripts: { build: 'b' } } },
     )
-    const inputs = (m.projects[0]!.tasks[0]!.task!['cache'] as { inputs: Record<string, unknown> })
-      .inputs
+    const inputs = m.projects[0]!.tasks[0]!.task!['inputs'] as Record<string, unknown>
     expect({
       globals: m.globals.inputs,
       ws: inputs['workspaceFiles'],
@@ -991,13 +986,14 @@ describe('turbo-map: a package config that extends another package', () => {
   const summary = (t: TurboMappedTask) => {
     const task = t.task as {
       dependsOn?: string[]
-      cache?: { inputs?: { files?: string[]; env?: string[] }; outputs?: { files?: string[] } }
+      inputs?: { files?: string[]; env?: string[] }
+      cache?: { outputs?: { files?: string[] } }
     }
     return [
       t.name,
-      task.cache?.inputs?.files ?? [],
+      task.inputs?.files ?? [],
       task.cache?.outputs?.files ?? [],
-      task.cache?.inputs?.env ?? [],
+      task.inputs?.env ?? [],
       task.dependsOn ?? [],
     ]
   }
@@ -1081,7 +1077,7 @@ describe('turbo-map: structured inputs', () => {
   it('maps startup and jit globs, withDefaults as every file; dependencyOutputs adds none', async () => {
     const files = async (inputs: unknown[]) => {
       const t = await taskOf({ tasks: { build: { inputs } } }, { a: { scripts: { build: 'b' } } })
-      return (t.task as { cache?: { inputs?: { files?: string[] } } }).cache?.inputs?.files
+      return (t.task as { inputs?: { files?: string[] } }).inputs?.files
     }
     expect([
       await files([
@@ -1145,7 +1141,7 @@ describe('turbo-map: an extends diamond', () => {
       m.projects.flatMap((p) =>
         p.tasks.map((t) => [
           `${p.name}#${t.name}`,
-          (t.task as { cache?: { inputs?: { files?: string[] } } }).cache?.inputs?.files,
+          (t.task as { inputs?: { files?: string[] } }).inputs?.files,
         ]),
       ),
     )
@@ -1212,7 +1208,7 @@ describe("turbo-map: Turbo 1's inferred loose mode", () => {
     expect(await notes({ pipeline })).toEqual([
       'Turbo 1 runs build, lint in loose env mode (no passThroughEnv, so its "infer" mode ' +
         'passes every environment variable); vx passes only the declared ones — list what each ' +
-        'reads in exec.env.passThrough (or cache.inputs.env)',
+        'reads in exec.env.passThrough (or inputs.env)',
     ])
     expect([
       await notes({ pipeline, globalPassThroughEnv: [] }),
@@ -1419,7 +1415,7 @@ describe('turbo-map: `with`', () => {
     // No package has a `build` script and `build:test` reaches it as
     // `^build`: Turbo's transit node, key-only over billing's files.
     expect(task(m, 'billing', 'build').task).toEqual({
-      cache: { inputs: { files: ['**/*'] }, outputs: { files: [] } },
+      inputs: { files: ['**/*'] },
       dependsOn: ['^build', '^db:generate'],
     })
   })
@@ -1607,7 +1603,7 @@ describe('turbo-map: a transit node', () => {
       names('cfg'),
       transit.task?.['exec'],
       transit.task?.['dependsOn'],
-      transit.task?.['cache'] !== undefined,
+      transit.task?.['inputs'] !== undefined,
       // cfg's `build` is core's default, not a written one. Nothing depends
       // on lib, so its script-less `test` is the group that builds it.
       m.projects.find((p) => p.name === 'cfg')!.tasks.find((t) => t.name === 'lone')!.task,
@@ -1642,6 +1638,27 @@ describe('turbo-map: a workspace output two projects declare', () => {
       [
         'declares the workspace output "shared/**" that a#gen also declares — vx cleans a task\'s outputs before it runs and before a restore, so two cached tasks on one path would delete each other\'s work; this one runs uncached. Give it its own output path to cache it.',
       ],
+    ])
+  })
+})
+
+// Turbo hashes a `cache: false` task over its `env` and `inputs`, and a
+// dependant's hash takes that one in: Growth's parity repros
+// (uncached-env-upstream.sh, uncached-input-upstream.sh) replayed a stale
+// hit while the mapper dropped both with the cache block.
+describe('turbo-map: an uncached task keeps its key', () => {
+  it('`env` and `inputs` become the task’s inputs, with no cache block', async () => {
+    const t = await taskOf(
+      {
+        tasks: {
+          gen: { cache: false, env: ['API_URL'], inputs: ['$TURBO_ROOT$/shared/schema.txt'] },
+        },
+      },
+      { a: { scripts: { gen: 'g' } } },
+    )
+    expect([t.task!['inputs'], t.task!['cache']]).toEqual([
+      { files: [], workspaceFiles: ['shared/schema.txt'], env: ['API_URL'] },
+      undefined,
     ])
   })
 })

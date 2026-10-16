@@ -37,13 +37,13 @@ export default defineProject({
         command: 'vite build',
         env: { passThrough: ['NODE_ENV'] },
       },
+      inputs: {
+        files: ['src/**'], // required: this project's files
+        env: ['NODE_ENV'], // values folded into the key
+        runtime: ['bun --version'], // a command's output, folded in
+        workspaceFiles: ['tsconfig.base.json'], // root files, by name
+      },
       cache: {
-        inputs: {
-          files: ['src/**'], // required: this project's files
-          env: ['NODE_ENV'], // values folded into the key
-          runtime: ['bun --version'], // a command's output, folded in
-          workspaceFiles: ['tsconfig.base.json'], // root files, by name
-        },
         outputs: { files: ['dist/**'] },
       },
     },
@@ -54,7 +54,7 @@ export default defineProject({
 `files` globs stay inside the project: a glob never reaches into a
 neighbour's folder, so one project's edit cannot hide in another's key.
 A shared root file is named in `workspaceFiles`, on purpose.
-`cache.inputs.tasks` narrows which upstream tasks' keys fold in.
+`inputs.tasks` narrows which upstream tasks' keys fold in.
 
 An env var in the key is not the same as an env var the task sees. List
 it in both places, as above, or the key varies on a value the command

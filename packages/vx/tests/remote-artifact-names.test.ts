@@ -16,7 +16,7 @@ import { run } from './helpers/orchestrator.js'
 
 const CFG = `export default { tasks: { build: {
   exec: { command: 'echo built > out.txt' },
-  cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } } } } }`
+  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } } } } }`
 
 /** Source files for an artifact's entries, written once under `dir`. */
 async function sources(dir: string, entries: Record<string, string>): Promise<Map<string, string>> {

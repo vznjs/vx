@@ -24,7 +24,7 @@ function vx(cwd: string, ...args: string[]): { code: number | null; out: string;
 }
 
 const config = (cmd: string): string =>
-  `export default { tasks: { build: { exec: { command: '${cmd}' }, cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } } } } }\n`
+  `export default { tasks: { build: { exec: { command: '${cmd}' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`
 
 describe('vx why — a config change', () => {
   it('names the vx show that prints the task config', async () => {

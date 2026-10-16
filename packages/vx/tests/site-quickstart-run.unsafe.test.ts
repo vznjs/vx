@@ -71,12 +71,12 @@ describe('the quickstart Run block', () => {
     build: {
       dependsOn: ['^build'],
       exec: { command: 'mkdir -p dist && cp src/a.ts dist/' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
     },
     test: {
       dependsOn: ['build'],
       exec: { command: 'true' },
-      cache: { inputs: { files: ['src/**'] }, outputs: { files: [] } },
+      inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
     },
   },
 }

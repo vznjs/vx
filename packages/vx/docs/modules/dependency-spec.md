@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Parse one entry from `dependsOn` or `cache.inputs.tasks` into a small
+Parse one entry from `dependsOn` or `inputs.tasks` into a small
 discriminated union. Pure — no FS, no project lookups. Caller-side
 modules (`graph/task-graph.ts`, `orchestrator/upstream.ts`) decide
 which kinds make semantic sense in their context.
@@ -68,4 +68,4 @@ filter context. Last-write-wins ordering is applied there, not here.
 partial patterns and the three refusals) and `tests/orchestrator.test.ts`
 cover the behaviors in their respective consumer contexts. The parser
 itself is tested via the consumer tests (every grammar form is
-exercised through `dependsOn` or `cache.inputs.tasks` use cases).
+exercised through `dependsOn` or `inputs.tasks` use cases).

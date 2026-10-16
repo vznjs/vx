@@ -90,9 +90,10 @@ vx info --format json   # vx and Bun versions, projects, config errors, plugins,
 - Never delete or edit the cache by hand; vx repairs it itself.
 - A sandboxed task that fails on a denied path: grant that one path in
   `exec.sandbox.allow`. Never remove `sandbox` or widen it further.
-- A cached task declares its inputs (`cache.inputs.files`); if a change
-  does not re-run a task, the file is not one of its inputs. Fix the
-  config, do not force.
+- A task declares its inputs (`inputs.files`), cached or not; if a
+  change does not re-run a task, the file is not one of its inputs. Fix
+  the config, do not force. A task with no `inputs` has no key, so every
+  cached task behind it misses: give it `inputs`.
 - Every JSON shape is a JSON Schema in `node_modules/@vzn/vx/schemas/`.
 - Offline reference: `vx docs <words> --format json` searches the CLI, config
   and cache pages that ship with vx; the sections holding every word print

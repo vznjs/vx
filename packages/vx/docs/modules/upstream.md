@@ -6,13 +6,13 @@ Answer two related questions about a task's dependencies, which are
 NOT the same question:
 
 1. **Which upstream hashes the cache key folds** — per the task's
-   `cache.inputs.tasks` declaration. The patterns share
+   `inputs.tasks` declaration. The patterns share
    `graph/dependency-spec.ts`'s parser; this module owns the filter
    semantics (`*` / `^*` / negation).
 2. **Which real tasks are in the input closure** — what an
    input-shipping executor must place in the input root. That is the
    `dependsOn` closure with GROUP tasks expanded into what they stand
-   for, and it is deliberately NOT filtered by `cache.inputs.tasks`.
+   for, and it is deliberately NOT filtered by `inputs.tasks`.
 
 ## Public surface
 
@@ -95,7 +95,7 @@ still folds only the group's roll-up hash, so no existing entry moves.
 
 ## The key filter does not filter the input closure
 
-`cache.inputs.tasks` is an INVALIDATION statement — the schema defines
+`inputs.tasks` is an INVALIDATION statement — the schema defines
 it as "which upstream tasks' cache keys participate in this task's
 key". What a task may READ is `dependsOn`, and locally every
 dependency's outputs are on disk before the command runs however the
@@ -140,7 +140,7 @@ previously included one. So `['*', '^*', '!^noisy']` reads
 ## Error surface
 
 Invalid spec strings (caught by the shared `parseDependencySpec`)
-throw `UserError` prefixed with the task id and `cache.inputs.tasks:`.
+throw `UserError` prefixed with the task id and `inputs.tasks:`.
 The CLI prints this cleanly.
 
 ## Tests

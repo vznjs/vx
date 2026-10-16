@@ -28,7 +28,7 @@ describe('vx watch with a workspace-wide watcher (e2e)', () => {
       `export default { tasks: {
         build: {
           exec: { command: 'echo run >> ${f.log}' },
-          cache: { inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, outputs: { files: [] } },
+          inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] }, cache: { outputs: { files: [] } },
         },
       } }\n`,
     )

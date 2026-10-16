@@ -47,7 +47,7 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   its own `outputs.files` meet another same-project task's (M-5: restored
   early, it raced the producer's restore), when ANY upstream declares
   `outputs.workspaceFiles` (it may land in this project), or the task
-  reads `cache.inputs.workspaceFiles` whose literal prefixes reach an
+  reads `inputs.workspaceFiles` whose literal prefixes reach an
   upstream `outputs.files` producer's directory.
   Transitive because a producer reached through a no-output intermediate
   still poisons the key. A task with no `cache` block is a producer too,
@@ -78,12 +78,12 @@ check-ignore` over their directories (`util/git-ignored.ts`) that
   unstable, folding or not: every key folds the fingerprint, and the
   run re-checks it before a lazy probe (`fingerprint-watch.md`).
   Only a key that leaves some dependency's key out can be preliminary
-  for a cached rewriter, so a graph with no `cache.inputs.tasks` filter
+  for a cached rewriter, so a graph with no `inputs.tasks` filter
   builds none of the sets: building them cost about 2 ms (median) of a 27 ms memoised walk
   over the 3,000-task bench.
 
 - `probesAfterWrites(nodes, workspaceRoot): ReadonlySet<string>` — the
-  cached tasks with `cache.inputs.runtime` / `workspaceRuntime` probes
+  cached tasks with `inputs.runtime` / `workspaceRuntime` probes
   behind a writer their key does not fold (X-34). A probe is a shell
   command and may read anywhere, so its answer taken up front is the
   previous run's bytes. A writer is an upstream whose command may write

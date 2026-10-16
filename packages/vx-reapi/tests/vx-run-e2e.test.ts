@@ -51,12 +51,12 @@ describe.if(armed)('vx run with reapi({ execute: true }) — the install-as-acti
         `export default { tasks: {
            install: {
              exec: { command: 'mkdir -p node_modules/liba && echo from-worker > node_modules/liba/index.js', remote: 'only' },
-             cache: { inputs: { files: ['package.json'] }, outputs: { files: ['node_modules/**'] } },
+             inputs: { files: ['package.json'] }, cache: { outputs: { files: ['node_modules/**'] } },
            },
            build: {
              exec: { command: 'cat node_modules/liba/index.js > out.txt' },
              dependsOn: ['install'],
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
            },
          } }`,
       )
@@ -131,7 +131,7 @@ describe.if(armed)('vx run with reapi({ execute: true }) — the install-as-acti
         `export default { tasks: {
            build: {
              exec: { command: 'cat src/app.js > out.txt && echo built' },
-             cache: { inputs: { files: ['src/**'] }, outputs: { files: ['out.txt'] } },
+             inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
            },
          } }`,
       )

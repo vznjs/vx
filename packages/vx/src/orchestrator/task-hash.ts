@@ -1,6 +1,6 @@
 import { lstatSync } from 'node:fs'
 import path from 'node:path'
-import type { TaskConfig, CacheConfig } from '../config.js'
+import type { TaskConfig } from '../config.js'
 import type { ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
   ABSENT_INPUT,
@@ -85,17 +85,39 @@ export interface ComputeHashArgs {
  * previews.
  *
  * Caller is responsible for handling the group-task case before
- * calling this — groups have no `exec` and no `cache.inputs`, so the
+ * calling this — an unkeyed group has no `exec` and no `inputs`, so the
  * key-derivation steps below would all fall back to defaults.
  * `computeGroupKey` is exported for that purpose.
  */
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
+  if (isKeyless(args.node.config)) return keylessHash(args.node.id)
   const end = span('task hash')
   try {
     return await args.cache.key((await resolveKeyInput(args)).input)
   } finally {
     end()
   }
+}
+
+/**
+ * A task that runs a command and declares no `inputs`: nothing says what
+ * it read, so no key can stand for its outputs, and a key that folds it
+ * would replay a stale entry (owner, 2026-10-16).
+ */
+export function isKeyless(task: TaskConfig): boolean {
+  return task.exec !== undefined && task.inputs === undefined
+}
+
+/**
+ * Drawn once per process, so no run derives another run's keyless keys;
+ * on first use, as the browser playground loads this module with no `crypto`.
+ */
+let keylessSalt: string | undefined
+
+/** A keyless task's key: this run's alone, so every key folding it misses. */
+function keylessHash(taskId: string): string {
+  keylessSalt ??= crypto.randomUUID()
+  return xxh3hex(`keyless\0${keylessSalt}\0${taskId}`)
 }
 
 /**
@@ -250,14 +272,14 @@ async function resolveKeyInput(
   args: ComputeHashArgs,
 ): Promise<{ input: CacheKeyInput; listings: InputListing[] }> {
   const cfg = args.node.config
-  const cacheCfg: CacheConfig | undefined = cfg.cache
+  const cacheCfg = cfg.cache
   const outputs = cacheCfg?.outputs.files ?? []
 
   const resolved = await resolveInputs({
     projectDir: args.node.projectDir,
     workspaceRoot: args.workspaceRoot,
     envSource: process.env,
-    inputs: cacheCfg?.inputs,
+    inputs: cfg.inputs,
     ownOutputs: outputs,
     ownWorkspaceOutputs: cacheCfg?.outputs.workspaceFiles ?? [],
     nestedProjectDirs: args.nestedProjectDirs,
@@ -282,7 +304,7 @@ async function resolveKeyInput(
 
   const upstreamPairs = filterUpstreamHashes(
     args.upstream,
-    cacheCfg?.inputs?.tasks,
+    cfg.inputs?.tasks,
     args.node.projectName,
     args.node.id,
   )
@@ -290,7 +312,7 @@ async function resolveKeyInput(
   // hash → upstream task id, for capture-row naming only (not folded).
   const upstreamIds = new Map(upstreamPairs.map(([id, hash]) => [hash, id]))
   // The DEPENDENCY closure, groups expanded — for the executor's input root.
-  // Deliberately NOT the filtered set above: `cache.inputs.tasks` says which
+  // Deliberately NOT the filtered set above: `inputs.tasks` says which
   // upstream KEYS this task's key folds, and what a task may READ is
   // `dependsOn`. Locally every dependency's outputs are on disk before the
   // command runs however the filter is written, so an executor that ships the
@@ -306,7 +328,7 @@ async function resolveKeyInput(
   // also merge the workspace-wide partition's OIDs (keyed by abs
   // path, so the two maps agree wherever they overlap).
   let fileHashes = args.gitFilesCache?.oidsFor(args.node.projectDir)
-  if ((cacheCfg?.inputs.workspaceFiles?.length ?? 0) > 0) {
+  if ((cfg.inputs?.workspaceFiles?.length ?? 0) > 0) {
     const wsOids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
     if (wsOids !== undefined && wsOids !== fileHashes) {
       fileHashes = fileHashes === undefined ? wsOids : new Map([...wsOids, ...fileHashes])
@@ -326,7 +348,7 @@ async function resolveKeyInput(
     runtimeValues: resolved.runtimeValues,
     workspaceRuntimeValues: resolved.workspaceRuntimeValues,
     inputFiles: resolved.files,
-    ...(cacheCfg !== undefined ? { linkTargetsKeyed: true } : {}),
+    ...(cfg.inputs !== undefined ? { linkTargetsKeyed: true } : {}),
     workspaceRoot: args.workspaceRoot,
     upstreamHashes,
     upstreamIds,
@@ -391,12 +413,12 @@ function hashableConfig(cfg: TaskConfig): unknown {
 }
 
 /**
- * A group's key: its upstream, and for a keyed group — one with `cache`,
+ * A group's key: its upstream, and for a keyed group — one with `inputs`,
  * the default `build` (projects.ts) or a config's — its own inputs too,
  * the way a task's key folds them.
  */
 export async function computeGroupKey(args: ComputeHashArgs): Promise<string> {
-  if (args.node.config.cache === undefined) return computeGroupHash(args.upstream)
+  if (args.node.config.inputs === undefined) return computeGroupHash(args.upstream)
   return computeTaskHash(args)
 }
 

@@ -203,7 +203,13 @@ describe('excludedTaint — which scheduled tasks build on a skipped key', () =>
       id,
       deps,
       projectName: 'app',
-      config: cached ? { cache: { inputs: { files: ['src/**'] } } } : {},
+      config: cached
+        ? {
+            exec: { command: 'x' },
+            inputs: { files: ['src/**'] },
+            cache: { outputs: { files: [] } },
+          }
+        : {},
     }) as unknown as TaskNode
   const skipped = (node: TaskNode): TaskNode => ({
     ...node,

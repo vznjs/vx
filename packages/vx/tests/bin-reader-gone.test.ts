@@ -23,7 +23,7 @@ const CONFIG = `
       first: { exec: { command: 'true' } },
       second: {
         exec: { command: 'sleep 1.5 && mkdir -p dist && echo hi > dist/out.txt' },
-        cache: { inputs: { files: ['src/**'] }, outputs: { files: ['dist/**'] } },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
       },
     },
   }

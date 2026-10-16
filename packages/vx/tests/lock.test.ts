@@ -133,7 +133,7 @@ describe('vx lock (e2e)', () => {
           { file: string; config: { tasks: { build: { exec: { command: string } } } } }
         >
       }
-      expect(lockJson.version).toBe(3)
+      expect(lockJson.version).toBe(4)
       const app = lockJson.projects['packages/app']!
       expect([app.file, app.config.tasks.build.exec.command]).toEqual([
         'vx.config.mjs',
@@ -299,12 +299,12 @@ describe('vx lock (e2e)', () => {
       const invalid = '.vx/projects.lock.json is invalid, run `vx lock`'
       for (const app of [
         { tasks: { build: { exec: 'x' } } },
-        { tasks: { build: { exec: { command: 'x' }, cache: { inputs: { files: 'src' } } } } },
+        { tasks: { build: { exec: { command: 'x' }, inputs: { files: ['src'] }, cache: {} } } },
       ]) {
         await writeFile(
           file,
           JSON.stringify({
-            version: 3,
+            version: 4,
             projects: { 'packages/app': { file: 'vx.config.mjs', config: app } },
           }),
         )

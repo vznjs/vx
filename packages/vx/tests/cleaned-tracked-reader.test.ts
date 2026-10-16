@@ -18,11 +18,11 @@ import { run } from './helpers/orchestrator.js'
 
 const METADATA = `export default { tasks: { build: {
   exec: { command: 'sleep 1 && echo v2 > index.json' },
-  cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['index.json'] } },
+  inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['index.json'] } },
 } } }`
 const CORE = `export default { tasks: { build: {
   exec: { command: 'sleep 0.3 && cat ../metadata/index.json > out.txt' },
-  cache: { inputs: { files: ['src.txt'] }, outputs: { files: ['out.txt'] } },
+  inputs: { files: ['src.txt'] }, cache: { outputs: { files: ['out.txt'] } },
 } } }`
 
 let fx: Fixture
