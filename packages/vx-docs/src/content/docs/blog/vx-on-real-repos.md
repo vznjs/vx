@@ -53,7 +53,7 @@ Seconds, min of 3. Shorter bars are less time; each chart keeps its table one cl
 | cold | 13.63 s | 10.97 s |
 | restore | 0.28 s | 0.09 s |
 | edit | 4.69 s | 4.89 s |
-| edit, outputs kept | 4.61 s | 3.83 s |
+| edit, clean: false | 4.61 s | 3.83 s |
 | clone | 0.28 s | 0.11 s |
 
 Both edit rows are a rerun on vx 5b2b0a1 (same machine shape, min of
