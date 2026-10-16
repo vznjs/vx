@@ -44,7 +44,10 @@ async function write(p: string, content: string): Promise<void> {
 }
 
 interface RunResult {
+  /** stdout and stderr together. */
   stdout: string
+  /** stdout alone: `--dry=json`'s document. */
+  json: string
   exitCode: number
 }
 
@@ -58,8 +61,10 @@ function vx(cwd: string, ...args: string[]): RunResult {
     // makes an assertion on stdout behave differently on a runner.
     env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
   })
+  const json = new TextDecoder().decode(p.stdout)
   return {
-    stdout: new TextDecoder().decode(p.stdout) + new TextDecoder().decode(p.stderr),
+    stdout: json + new TextDecoder().decode(p.stderr),
+    json,
     exitCode: p.exitCode ?? 1,
   }
 }
@@ -236,8 +241,7 @@ describe('--affected sees a workspaceFiles change', () => {
       const planned = (): string[] | string => {
         const r = vx(root, 'run', 'build', 'lint', '--affected=HEAD~1', '--dry=json')
         if (r.exitCode !== 0) return r.stdout
-        const out = r.stdout.slice(r.stdout.indexOf('{'))
-        return (JSON.parse(out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+        return (JSON.parse(r.json) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
       }
 
       await write(path.join(root, 'shared/schema.txt'), 'v2')
@@ -284,9 +288,10 @@ describe('--affected sees a workspaceFiles change', () => {
       git(root, 'commit', '-qm', 'readers of vendor')
       const planned = (): string[] | string => {
         const r = vx(root, 'run', 'build', '--affected=HEAD', '--dry=json')
-        if (r.exitCode !== 0 || !r.stdout.includes('{')) return r.stdout
-        const out = r.stdout.slice(r.stdout.indexOf('{'))
-        return (JSON.parse(out) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort()
+        if (r.exitCode !== 0) return r.stdout
+        const ids = (JSON.parse(r.json) as { tasks: { id: string }[] }).tasks.map((t) => t.id)
+        // Nothing to run: the note on stderr says why.
+        return ids.length === 0 ? r.stdout : ids.sort()
       }
       expect(planned()).toContain('nothing affected')
       await write(path.join(sub, 'f.txt'), '2')
