@@ -110,10 +110,18 @@ function node(id: string): TaskNode {
   }
 }
 
+const triedFile = (): string => path.join(root, '.vx', 'cache', 'schedule-history-base')
+
 /** One run of the plugin's hooks, as core calls them: setup, schedule, teardown. */
 async function runPlugin(
   shared: PluginCache,
-  opts: { ci: boolean; branch: string; ids: string[]; during?: () => void },
+  opts: {
+    ci: boolean
+    branch: string
+    ids: string[]
+    during?: () => void
+    refined?: ReadonlyMap<string, number>[]
+  },
 ): Promise<ReadonlyMap<string, number> | undefined> {
   const plugin = scheduleHistoryPlugin({ resources: false })
   const base = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn: () => {} }
@@ -124,6 +132,7 @@ async function runPlugin(
     localCache: cache,
     branch: opts.branch,
     cache: shared,
+    refine: (w) => opts.refined?.push(w),
   })
   opts.during?.()
   await plugin.teardown!()
@@ -159,19 +168,44 @@ describe('shared timings', () => {
     expect(shared.calls.filter((c) => c === 'put')).toEqual([])
   })
 
-  it("a branch with no history orders by its merge-base's blob in the same run", async () => {
+  it("a branch with no history orders from local history at once, then re-ranks by its merge-base's blob", async () => {
     const a = commit()
     git('checkout', '-q', '-b', 'feature')
     commit()
+    let answer: () => void = () => {}
+    const answered = new Promise<void>((r) => (answer = r))
     const shared = spyCache()
+    const get = shared.get.bind(shared)
+    // The blob arrives only after the schedule answer: the run never waits on it.
+    shared.get = async (k) => (await answered, get(k))
     shared.store.set(key(a), blob({ 'p#slow': 9_000, 'p#fast': 10 }))
+    const refined: ReadonlyMap<string, number>[] = []
     const weights = await runPlugin(shared, {
       ci: false,
       branch: 'feature',
       ids: ['p#slow', 'p#fast'],
+      during: answer,
+      refined,
     })
-    expect(weights?.get('p#slow')).toBe(9_000)
-    expect(weights?.get('p#fast')).toBe(10)
+    expect(weights?.get('p#slow')).not.toBe(9_000)
+    expect(refined.map((w) => [w.get('p#slow'), w.get('p#fast')])).toEqual([[9_000, 10]])
+  })
+
+  it('a merge-base with no blob is asked once', async () => {
+    commit()
+    const shared = spyCache()
+    for (let i = 0; i < 2; i++) {
+      const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+      await importTimings({
+        root,
+        defaultBranch: 'main',
+        cache: shared,
+        provider,
+        ids: ['p#x'],
+        triedFile: triedFile(),
+      })
+    }
+    expect(shared.calls).toEqual(['hasMany'])
   })
 
   it('walks back up to five commits from the merge-base for a blob', async () => {
@@ -180,7 +214,14 @@ describe('shared timings', () => {
     const shared = spyCache()
     shared.store.set(key(a), blob({ 'p#x': 42 }))
     const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'main')
-    await importTimings({ root, defaultBranch: 'main', cache: shared, provider, ids: ['p#x'] })
+    await importTimings({
+      root,
+      defaultBranch: 'main',
+      cache: shared,
+      provider,
+      ids: ['p#x'],
+      triedFile: triedFile(),
+    })
     expect((await provider.p50sFor(['p#x'])).get('p#x')).toBe(42)
     expect(shared.calls).toEqual(['hasMany', 'get'])
   })
@@ -195,6 +236,7 @@ describe('shared timings', () => {
       cache: spyCache({ hang: true }),
       provider,
       ids: ['p#x'],
+      triedFile: triedFile(),
     })
     expect(performance.now() - started).toBeLessThan(2_000)
     expect((await provider.p50sFor(['p#x'])).size).toBe(0)
@@ -220,7 +262,14 @@ describe('shared timings', () => {
     shared.store.set(key(a), blob({ 'p#x': 42 }))
     for (let i = 0; i < 2; i++) {
       const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
-      await importTimings({ root, defaultBranch: 'main', cache: shared, provider, ids: ['p#x'] })
+      await importTimings({
+        root,
+        defaultBranch: 'main',
+        cache: shared,
+        provider,
+        ids: ['p#x'],
+        triedFile: triedFile(),
+      })
     }
     expect(shared.calls.filter((c) => c === 'get')).toHaveLength(1)
     const rows = cache

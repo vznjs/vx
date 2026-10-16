@@ -381,41 +381,81 @@ export async function claimedAffected(
   return names
 }
 
+/** What a run hands the `schedule` stage: a step per plugin, and where refined weights go. */
+export interface ScheduleRun {
+  readonly step?: <T>(id: string, work: () => Promise<T>) => Promise<T>
+  readonly refined?: (merged: ReadonlyMap<string, number>) => void
+}
+
 /**
  * `schedule` stage: the merged priorities map (a later plugin's weight for
- * a task overrides an earlier one's). Empty when no plugin answered.
+ * a task overrides an earlier one's). Empty when no plugin answered. Each
+ * plugin's call is the step `<plugin>:schedule`. A plugin's `ctx.refine`
+ * replaces its own weights and hands `refined` the merge again; with no
+ * `refined` (a plan), it is ignored.
  */
 export async function applyScheduleHooks(
   plugins: readonly VxPlugin[],
   nodes: ReadonlyMap<string, TaskNode>,
-  ctx: Omit<ScheduleHookContext, 'cache'>,
+  ctx: Omit<ScheduleHookContext, 'cache' | 'refine'>,
   cacheFor: (plugin: string) => PluginCache = () => absentPluginCache,
+  run: ScheduleRun = {},
 ): Promise<ReadonlyMap<string, number>> {
-  const merged = new Map<string, number>()
-  for (const plugin of plugins) {
+  const sets: (ReadonlyMap<string, number> | undefined)[] = []
+  const merged = (): ReadonlyMap<string, number> => {
+    const out = new Map<string, number>()
+    for (const set of sets) if (set !== undefined) for (const [id, w] of set) out.set(id, w)
+    return out
+  }
+  for (const [i, plugin] of plugins.entries()) {
     if (plugin.schedule === undefined) continue
-    const own = { ...ctx, cache: cacheFor(plugin.name) }
-    const weights = await safe(plugin, 'schedule', () => plugin.schedule!(nodes, own))
-    if (weights === undefined) continue
-    // Iterating a string destructures its characters into `[id, w]` pairs
-    // that match no task — a plugin returning `'fast'` used to be a no-op
-    // with no word said.
-    if (!(weights instanceof Map)) {
+    const refine = (weights: ReadonlyMap<string, number>): void => {
+      if (run.refined === undefined) return
+      try {
+        sets[i] = scheduleWeights(plugin, weights, nodes)
+      } catch (err) {
+        ctx.warn(`[vx] ${err instanceof Error ? err.message : String(err)}; refine ignored`)
+        return
+      }
+      run.refined(merged())
+    }
+    const own = { ...ctx, cache: cacheFor(plugin.name), refine }
+    const call = (): Promise<ReadonlyMap<string, number> | undefined> =>
+      safe(plugin, 'schedule', () => plugin.schedule!(nodes, own))
+    const weights = await (run.step === undefined
+      ? call()
+      : run.step(`${plugin.name}:schedule`, call))
+    // A refine that landed while the call ran is the newer set.
+    if (weights !== undefined) sets[i] ??= scheduleWeights(plugin, weights, nodes)
+  }
+  return merged()
+}
+
+/** A `schedule` answer's weights for tasks in the graph, refused by name when it is not a Map of finite numbers. */
+function scheduleWeights(
+  plugin: VxPlugin,
+  weights: unknown,
+  nodes: ReadonlyMap<string, TaskNode>,
+): ReadonlyMap<string, number> {
+  // Iterating a string destructures its characters into `[id, w]` pairs
+  // that match no task — a plugin returning `'fast'` used to be a no-op
+  // with no word said.
+  if (!(weights instanceof Map)) {
+    throw new UserError(
+      `plugin '${plugin.name}' failed in schedule: returned ${describeValue(weights)}, not a Map of task id → weight`,
+    )
+  }
+  const out = new Map<string, number>()
+  for (const [id, w] of weights as Map<unknown, unknown>) {
+    if (typeof id !== 'string' || !nodes.has(id)) continue
+    if (typeof w !== 'number' || !Number.isFinite(w)) {
       throw new UserError(
-        `plugin '${plugin.name}' failed in schedule: returned ${describeValue(weights)}, not a Map of task id → weight`,
+        `plugin '${plugin.name}' failed in schedule: weight for ${id} is not a finite number`,
       )
     }
-    for (const [id, w] of weights) {
-      if (!nodes.has(id)) continue
-      if (typeof w !== 'number' || !Number.isFinite(w)) {
-        throw new UserError(
-          `plugin '${plugin.name}' failed in schedule: weight for ${id} is not a finite number`,
-        )
-      }
-      merged.set(id, w)
-    }
+    out.set(id, w)
   }
-  return merged
+  return out
 }
 
 /**

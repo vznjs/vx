@@ -270,31 +270,14 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
       const ids = [...nodes.keys()]
       shared = { cache: ctx.localCache, ids, branch: ctx.branch }
       let table: ReadonlyMap<string, TaskResources>
+      let provider: LocalHistoryProvider
       try {
-        const provider = new LocalHistoryProvider(
+        provider = new LocalHistoryProvider(
           ctx.localCache.dbHandle(),
           windowOf(options),
           ctx.branch,
         )
         table = await provider.resourcesFor(ids)
-        // Only a run missing some timing on its branch asks: the rest pay nothing.
-        if (provider.lackedBranchHistory) {
-          let imported = false
-          try {
-            imported = await (
-              await import('./shared-timings.js')
-            ).importTimings({
-              root: ctx.workspaceRoot,
-              defaultBranch: options.defaultBranch ?? DEFAULT_BRANCH,
-              cache: ctx.cache,
-              provider,
-              ids,
-            })
-          } catch {
-            // A hint: a failed import orders the run without it.
-          }
-          if (imported) table = await provider.resourcesFor(ids)
-        }
       } catch (err) {
         // Failing open: a broken history read costs the ordering and the
         // learned reservations, never the run.
@@ -304,12 +287,35 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         return undefined
       }
       reservations = reservationsFor(nodes.keys(), table, options)
-      return criticalPath([...nodes.values()], table, {
-        ...assumptions(options, ctx.warn),
-        ...carried,
-      })
+      const order = (t: ReadonlyMap<string, TaskResources>): ReadonlyMap<string, number> =>
+        criticalPath([...nodes.values()], t, { ...assumptions(options, ctx.warn), ...carried })
+      // Only a run missing some timing on its branch fetches its merge-base's,
+      // and the run never waits on it: the order from local history stands
+      // until the fetched timings re-rank what has not started.
+      if (provider.lackedBranchHistory) {
+        importing = (async () => {
+          const imported = await (
+            await import('./shared-timings.js')
+          ).importTimings({
+            root: ctx.workspaceRoot,
+            defaultBranch: options.defaultBranch ?? DEFAULT_BRANCH,
+            cache: ctx.cache,
+            provider,
+            ids,
+            triedFile: path.join(ctx.cacheDir, 'schedule-history-base'),
+          })
+          if (imported) ctx.refine(order(await provider.resourcesFor(ids)))
+        })().catch(() => {
+          // A hint: a failed import orders the run without it.
+        })
+      }
+      return order(table)
     },
   }
+  // The run's merge-base import, still going; teardown lets it land
+  // before the cache closes (it is deadline-bound), so the next run need
+  // not fetch it again.
+  let importing: Promise<void> | undefined
   // The timings file is written for a run only: `schedule` also orders a
   // `--dry` plan, which has no `setup` and records nothing.
   let scheduled:
@@ -348,6 +354,8 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   }
   // After the run's history is recorded and before its cache closes.
   hooks.teardown = async () => {
+    await importing
+    importing = undefined
     const run = shared
     const out = exporting
     shared = undefined

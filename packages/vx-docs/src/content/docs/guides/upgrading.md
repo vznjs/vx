@@ -9,6 +9,14 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## orchestrator: never hold a run on fetched schedule weights
+
+PreparedRun.priorities takes an optional ScheduleRun (step, refined).
+
+## cache: key what a symlinked input points to
+
+No migration note.
+
 ## config: move inputs onto the task
 
 `tasks.<name>.cache.inputs` is now `tasks.<name>.inputs`; `cache` without `exec` is refused; a task depending on an uncached task with no `inputs` never hits; `.vx/projects.lock.json` is version 4.

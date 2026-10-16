@@ -391,8 +391,11 @@ export interface TelemetrySource {
   readonly subscriber: RunEventSubscriber
   /** Fan the per-run summary to every sink's `onRunSummary` (crash-isolated). */
   emitSummary(summary: RunSummaryRecord): void
-  /** Await every sink's `flush()` (each crash-isolated, all time-bounded). */
-  flush(): Promise<void>
+  /**
+   * Await every sink's `flush()` (each crash-isolated, all time-bounded),
+   * each as the step `<plugin>:telemetry` through `step`.
+   */
+  flush(step?: <T>(id: string, work: () => Promise<T>) => Promise<T>): Promise<void>
   /**
    * Sample this task's process tree every `SAMPLE_MS` until the returned
    * function is called, the root exits, or the run ends. Present only when
@@ -625,7 +628,7 @@ export function createTelemetrySource(args: {
         }
       }
     },
-    async flush(): Promise<void> {
+    async flush(step = <T>(_id: string, work: () => Promise<T>): Promise<T> => work()) {
       const ms = teardownTimeoutMs()
       // Bounded, for the same reason plugin teardown is bounded in
       // plugin-host.ts: run() awaits this BEFORE closeCache() and before it
@@ -641,7 +644,9 @@ export function createTelemetrySource(args: {
           sinks.map(async (sink) => {
             if (disabled.has(sink) || sink.flush === undefined) return
             try {
-              await sink.flush(deadline.signal)
+              await step(`${args.owners?.get(sink) ?? label(sink)}:telemetry`, () =>
+                sink.flush!(deadline.signal),
+              )
             } catch (err) {
               // A flush failure can never break the run — but it still costs
               // this sink its export, so say so rather than dropping it.

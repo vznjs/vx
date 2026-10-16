@@ -396,7 +396,8 @@ never branches on layering.
       map (probe reuse) + `restoreTier` set (confirmed hits the
       scheduler may restore ahead of their deps). The plugins'
       `schedule` stage runs here, once, unless every task is in the
-      restore tier: restores take no weight.
+      restore tier: restores take no weight. A plugin's later weights
+      (`ctx.refine`) re-rank the ready queues while the graph runs.
    6. `runGraph({ nodes, concurrency, execute, priorities,
 restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       `executeTask({ node, upstream, preProbed?, … })`.

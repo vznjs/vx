@@ -1007,11 +1007,22 @@ async function runOnBus(
     mark('classify + probe')
     // A run whose every task is a confirmed local hit dispatches only
     // restores, which no weight orders: the `schedule` stage is not asked.
+    // A plugin's later weights (`ctx.refine`) re-rank the ready queues
+    // while the graph runs; any that land before it starts, at its start.
+    let reprioritize: ((weights: ReadonlyMap<string, number>) => void) | undefined
+    let refinedEarly: ReadonlyMap<string, number> | undefined
+    let graphOver = false
     const priorities = [...nodes.values()].every(
       (n) => n.config.exec?.command === undefined || shortCircuit.restoreTier.has(n.id),
     )
       ? new Map<string, number>()
-      : await step('vx:schedule', () => prepared.priorities())
+      : await prepared.priorities({
+          step,
+          refined: (merged) => {
+            if (reprioritize !== undefined) reprioritize(merged)
+            else if (!graphOver) refinedEarly = merged
+          },
+        })
     mark('schedule')
     // Judged as each task finishes, against the history BEFORE this run's
     // rows land, so the row that prints next carries the verdict: nothing
@@ -1105,6 +1116,10 @@ async function runOnBus(
       // A `schedule` plugin's weights; the scheduler keeps its structural
       // baseline as the tie-break. Empty map → baseline only.
       ...(priorities.size > 0 ? { priorities } : {}),
+      reprioritize: (apply) => {
+        if (refinedEarly !== undefined) apply(refinedEarly)
+        reprioritize = apply
+      },
       // The baseline under them; `most-work` when the workspace names none.
       ...(options.schedule !== undefined ? { strategy: options.schedule } : {}),
       // Local short-circuit: confirmed stable local hits the scheduler
@@ -1113,6 +1128,8 @@ async function runOnBus(
       restoreTier: shortCircuit.restoreTier,
     })
     stop.graphDone()
+    reprioritize = undefined
+    graphOver = true
 
     // Which persistent children outlive the graph, and the bounded SIGTERM
     // of the rest, before the summary prints. Scoped to the real CLI
@@ -1298,7 +1315,7 @@ async function runOnBus(
       })
       telemetry.emitSummary(summary)
       const sinks = telemetry
-      await step('vx:telemetry', () => sinks.flush())
+      await sinks.flush(step)
     }
     // End-of-run plugin lifecycle: each plugin's teardown(). Crash-isolated
     // + time-bounded inside teardownPlugins, so a faulty plugin can neither

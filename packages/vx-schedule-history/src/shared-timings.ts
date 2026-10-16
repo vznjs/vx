@@ -8,7 +8,11 @@
 
 import type { LocalHistoryProvider, PluginCache } from '@vzn/vx'
 
-/** How long a run waits for the import before it orders without it (M: "wait for download"). */
+/**
+ * How long an import may take. The run never waits on it (M, 2026-10-16:
+ * it orders from local history and re-ranks when the import lands); only
+ * the plugin's teardown does, so the rows land before the cache closes.
+ */
 const IMPORT_DEADLINE_MS = 500
 /** Commits walked back from the merge-base (and from HEAD on write) for a blob. */
 const WALK = 5
@@ -91,24 +95,34 @@ export interface ImportArgs {
   readonly cache: PluginCache
   readonly provider: LocalHistoryProvider
   readonly ids: readonly string[]
+  /** Holds the last merge-base asked, so one with no blob is asked once. */
+  readonly triedFile: string
 }
 
 /**
- * Import the merge-base's timings unless a row already carries that commit;
- * waits at most `IMPORT_DEADLINE_MS`. Resolves true when rows were added.
- * The caller asks only when its forecast read lacked some branch timing.
+ * Import the merge-base's timings once per merge-base: unless a row
+ * already carries that commit or `triedFile` names it. Gives up after
+ * `IMPORT_DEADLINE_MS`. Resolves true when rows were added. The caller
+ * asks only when its forecast read lacked some branch timing.
  */
 export async function importTimings(args: ImportArgs): Promise<boolean> {
   let late = false
   const work = (async (): Promise<boolean> => {
     const base = await mergeBase(args.root, args.defaultBranch)
     if (base === null || args.provider.hasImported(base)) return false
+    if (
+      (await Bun.file(args.triedFile)
+        .text()
+        .catch(() => '')) === base
+    )
+      return false
     const shas = await lineage(args.root, base)
     if (shas === null) return false
     const blob = await newestBlob(args.cache, shas)
-    if (blob === null) return false
-    const timings = parseTimings(blob, new Set(args.ids))
-    if (timings === null || late) return false
+    if (late) return false
+    await Bun.write(args.triedFile, base).catch(() => {})
+    const timings = blob === null ? null : parseTimings(blob, new Set(args.ids))
+    if (timings === null) return false
     args.provider.importTimings(base, timings)
     return timings.size > 0
   })()

@@ -308,6 +308,12 @@ export interface ScheduleOptions {
    */
   priorities?: ReadonlyMap<string, number>
   /**
+   * Called once as the run starts with a function that replaces
+   * `priorities`: the ready queues re-rank at once, over the same baseline.
+   * A `schedule` plugin's later, better weights land through it.
+   */
+  reprioritize?: (apply: (priorities: ReadonlyMap<string, number>) => void) => void
+  /**
    * The baseline ranking under `priorities` (`schedule` in .vx/workspace.ts).
    * Undefined or `most-work` is the reverse-deps count above.
    */
@@ -377,9 +383,27 @@ class ReadyHeap {
   // was two per heap level on every push and pop.
   private readonly prio: number[] = []
   private next = 0
-  constructor(private readonly priority: ReadonlyMap<string, number>) {}
+  constructor(private priority: ReadonlyMap<string, number>) {}
   get size(): number {
     return this.ids.length
+  }
+  /** Re-rank every queued id under `priority`, and every later push. */
+  reprioritize(priority: ReadonlyMap<string, number>): void {
+    this.priority = priority
+    for (let i = 0; i < this.ids.length; i++) this.prio[i] = priority.get(this.ids[i]!) ?? 0
+    for (let i = (this.ids.length >> 1) - 1; i >= 0; i--) this.down(i)
+  }
+  private down(i: number): void {
+    for (;;) {
+      const l = 2 * i + 1
+      const r = 2 * i + 2
+      let best = i
+      if (l < this.ids.length && this.higher(l, best)) best = l
+      if (r < this.ids.length && this.higher(r, best)) best = r
+      if (best === i) return
+      this.swap(i, best)
+      i = best
+    }
   }
   /** True if slot i outranks slot j (higher priority, or equal priority + earlier seq). */
   private higher(i: number, j: number): boolean {
@@ -440,17 +464,7 @@ class ReadyHeap {
       this.ids[0] = lastId
       this.seq[0] = lastSeq
       this.prio[0] = lastPrio
-      let i = 0
-      for (;;) {
-        const l = 2 * i + 1
-        const r = 2 * i + 2
-        let best = i
-        if (l < this.ids.length && this.higher(l, best)) best = l
-        if (r < this.ids.length && this.higher(r, best)) best = r
-        if (best === i) break
-        this.swap(i, best)
-        i = best
-      }
+      this.down(0)
     }
     return top
   }
@@ -559,6 +573,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   let settledIdle = 0
   const execReady = new ReadyHeap(priority)
   const restoreReady = new ReadyHeap(priority)
+  options.reprioritize?.((weights) => {
+    const merged = mergePriorities(baseline, weights)
+    execReady.reprioritize(merged)
+    restoreReady.reprioritize(merged)
+  })
   // A restore-tier task is dep-independent (a stable hit's restore needs
   // none of its deps' output), so it's ready immediately; its `pending`
   // decrements still happen (in finishOne) but never re-enqueue it.

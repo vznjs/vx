@@ -44,10 +44,11 @@ configure:
 - **Read.** When some task has no timing on this branch, the plugin
   takes the merge-base of HEAD with `defaultBranch` (or
   `origin/<defaultBranch>`) and imports the newest timings at it or its
-  4 first-parent ancestors, once per repo for all its worktrees. It
-  waits at most 500 ms; a slow or missing remote orders the run without
-  them. A run whose tasks all have timings on its branch spawns no git
-  and asks no cache.
+  4 first-parent ancestors, once per merge-base for all its worktrees.
+  The run never waits for them: it starts in the order local history
+  gives, and when the timings land (within 500 ms) the tasks not yet
+  started re-rank. A run whose tasks all have timings on its branch
+  spawns no git and asks no cache.
 - **Order.** A forecast reads this branch's last five timings first,
   then the default branch's imported one, then any branch's, then
   `assume`.
