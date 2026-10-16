@@ -872,6 +872,8 @@ export class Cache implements CacheLayer {
   private readonly inspecting: boolean
   /** Why this process cannot write into `cacheDir`, or `null`; decided at open. */
   private readonly writeBlocked: string | null
+  /** The index is in memory: nothing on disk to read. */
+  private readonly empty: boolean
   private readonly dbFile: string
   /** Where the artifacts live: the shared store, or `cacheDir` itself. */
   private readonly artifactDir: string
@@ -964,6 +966,7 @@ export class Cache implements CacheLayer {
     // read-only mount, Growth's parity run 2026-10-16). Nothing there to
     // read, so an empty index in memory, as a reader's typo gets.
     const memory = absent || (this.writeBlocked !== null && !existsSync(dbFile))
+    this.empty = memory
     try {
       this.db = new Database(memory ? ':memory:' : dbFile, { create: true })
     } catch (err) {
@@ -2103,6 +2106,20 @@ export class Cache implements CacheLayer {
     )
   }
 
+  /**
+   * A run over a cache directory it cannot write: one holding entries
+   * serves its hits and saves nothing (M, 2026-10-16), and the line this
+   * returns says so; an empty one has nothing to serve and refuses.
+   */
+  readOnlyNotice(): string | null {
+    if (this.writeBlocked === null) return null
+    if (this.empty) this.assertWritable()
+    return (
+      `cache directory ${this.cacheDir} is not writable (${this.writeBlocked}) — serving hits ` +
+      `from it; this run saves nothing and records no history`
+    )
+  }
+
   async save(args: {
     hash: string
     /** See `CacheLayer.save` — `exitCode` is not a caller's to supply. */
@@ -2677,13 +2694,18 @@ export class Cache implements CacheLayer {
   }
 
   // --- run history: delegated to `RunHistory` (see run-history.ts) ---
+  // A run over a directory it cannot write records no history:
+  // `readOnlyNotice` said so once.
   recordRun(run: RunRecord): void {
+    if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRun(run))
   }
   recordRuns(runs: readonly RunRecord[]): void {
+    if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRuns(runs))
   }
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
+    if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRunBundle(bundle))
   }
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void {

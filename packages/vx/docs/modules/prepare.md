@@ -82,8 +82,9 @@ export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRu
    `unresolvedRequests`, the same predicate run in reverse to name the
    specs that resolved to nothing).
 4. **Cache + fingerprint** — `new Cache(dir)` on `--cache-dir` or
-   `resolveCacheDir(root, workspaceConfig)`, refused up front with the
-   directory named when this user cannot write it (`assertWritable`).
+   `resolveCacheDir(root, workspaceConfig)`. One this user cannot write
+   serves hits and saves nothing, with one line saying so; an empty one
+   is refused up front with the directory named (`readOnlyNotice`).
    Then the layer resolution: an injected `RunOptions.remoteCache`
    composed into a `LayeredCache` wins; else `resolveCache` layers
    every plugin's `cache` remote over the local store, in declared

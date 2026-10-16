@@ -75,22 +75,55 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
     }
 
     it(
-      'fails the run once, before any task, naming the directory',
+      'serves hits from it, saves nothing and records no run, saying so once',
       async () => {
-        // A first run creates the cache as this user; then the directory and
-        // its files stop being writable, the way another user's `.vx` is.
+        // A first run fills the cache as this user; then the directory and
+        // its files stop being writable, the way a CI image's baked cache
+        // or another user's `.vx` is (M, 2026-10-16: serve hits). The task
+        // writes an output, so the hit restores a file.
+        const app = path.join(root, 'packages', 'app')
+        await Bun.write(
+          path.join(app, 'vx.config.mjs'),
+          `export default { tasks: { build: {
+            exec: { command: 'echo built && mkdir -p dist && cp src/index.js dist/' },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+          } } }`,
+        )
+        await Bun.write(path.join(app, '.gitignore'), 'dist/\n')
         const first = await vx(['run', 'build', '--all'])
         expect(`${first.code}\n${first.err}`).toStartWith('0\n')
-        const { chmod, readdir } = await import('node:fs/promises')
+        const { chmod, readdir, stat } = await import('node:fs/promises')
         for (const f of await readdir(ro)) await chmod(path.join(ro, f), 0o444)
         await chmod(ro, 0o555)
-        const second = await vx(['run', 'build', '--all'])
-        expect(second.code).toBe(1)
-        expect(second.err).toMatch(/cache directory .* is not writable \(/)
-        expect(second.err).toMatch(/pass --cache-dir <path>/)
-        // Not the per-task shape it had: no internal error, no task ran or failed.
-        expect(second.out + second.err).not.toContain('internal error')
-        expect(second.out + second.err).not.toContain('app#build')
+        const snapshot = async () =>
+          Promise.all(
+            (await readdir(ro)).sort().map(async (f) => {
+              const s = await stat(path.join(ro, f))
+              return `${f} ${s.size} ${s.mtimeMs}`
+            }),
+          )
+        const before = await snapshot()
+        await rm(path.join(app, 'dist'), { recursive: true })
+        const hit = await vx(['run', 'build', '--all'])
+        expect(`${hit.code}\n${hit.err}`).toStartWith('0\n')
+        expect(hit.out + hit.err).toContain('local 1↓')
+        const notice =
+          /cache directory .* is not writable \(EACCES: [^\n]*\) — serving hits from it; this run saves nothing and records no history\n/
+        expect(hit.out + hit.err).toMatch(notice)
+        // That one line is all it says: no per-write warning follows.
+        expect((hit.out + hit.err).match(/\[vx\]/g)?.length).toBe(1)
+        expect(hit.out + hit.err).not.toContain('internal error')
+        expect(await Bun.file(path.join(app, 'dist', 'index.js')).text()).toBe('export {}\n')
+        // A miss runs and is not saved.
+        await Bun.write(path.join(app, 'src', 'index.js'), 'export {} // b\n')
+        const miss = await vx(['run', 'build', '--all'])
+        expect(`${miss.code}\n${miss.err}`).toStartWith('0\n')
+        expect(miss.out).toContain('miss     app#build')
+        expect(miss.out + miss.err).not.toContain('1↑')
+        expect(miss.out + miss.err).toMatch(notice)
+        expect((miss.out + miss.err).match(/\[vx\]/g)?.length).toBe(1)
+        expect(miss.out + miss.err).not.toContain('internal error')
+        expect(await snapshot()).toEqual(before)
       },
       TIMEOUT,
     )
