@@ -75,8 +75,9 @@ let serving = false
 const HELD_QUERY = /\?vx-(?:held|literal)=([0-9a-f]+)$/
 
 // Bun's resolver reads `\` as a separator, even in a file: URL, so a
-// config under `a\b` was looked for under `a/b`. Resolving it here keeps
-// the path as written; only the served load can take it.
+// config under `a\b` was looked for under `a/b`, and `?` as a query, so
+// one under `a?b` was looked for under `a`. Resolving it here keeps the
+// path as written; only the served load can take it.
 const LITERAL_QUERY = /\?vx-literal=[0-9a-f]+$/
 
 function serveHeldSources(): void {
@@ -148,14 +149,14 @@ async function loadDefaultExport(
   // URL yet, and a repeat load (the one that could replay an evaluation
   // made under earlier env values) re-evaluates in a worker instead
   // (`loadedConfigs`, item 678).
-  const literal = configPath.includes('\\')
+  const literal = /[\\?]/.test(configPath)
   const source =
     kind === 'Project' || literal
       ? servableSource(bytes, /\.[cm]?ts$/.test(configPath) ? 'ts' : 'js')
       : null
   if (literal && source === null) {
     throw new UserError(
-      `${kind} config ${configPath} sits under a path that holds a backslash, which Bun loads only as an ES module in UTF-8`,
+      `${kind} config ${configPath} sits under a path that holds ${configPath.includes('\\') ? 'a backslash' : 'a question mark'}, which Bun loads only as an ES module in UTF-8`,
     )
   }
   const hash = xxh3hex(bytes)

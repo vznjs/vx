@@ -56,8 +56,9 @@ readers that reach it here.
   Content changes produce a different query string → different ESM
   module identity → fresh evaluation. Same content → cached module (the
   no-op fast path).
-- Bun's resolver reads `\` as a separator, even in a `file:` URL, so a
-  config whose path holds one (a project under `a\b`) is imported under
+- Bun's resolver reads `\` as a separator, even in a `file:` URL, and
+  cuts a path at its first `?` as a query, so a config whose path holds
+  either (a project under `a\b` or `a?b`) is imported under
   `?vx-literal=`: an `onResolve` keeps the path as written and the held
   bytes are served, the workspace config's too. Such a config must be
   UTF-8 ESM (else refused), and its relative imports still fail in Bun.

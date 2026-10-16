@@ -103,7 +103,7 @@ const nonJsonPaths = ${nonJsonPaths.toString()}
     throw new Error('process.exit(' + (code ?? '') + ') in a config: ' + ${JSON.stringify(CONFIG_EXIT)})
   }
 }
-// Bun's resolver reads \\ as a separator, so a config under a\\b is served
+// Bun's resolver reads \\ as a separator and ? as a query, so a config under a\\b or a?b is served
 // from the path as written (project-loader.ts's LITERAL_QUERY), read now.
 let literal = false
 const serveLiteral = () => {
@@ -172,7 +172,7 @@ self.onmessage = async (e) => {
     if (umaskIn !== null && globalThis.process.umask() !== umaskIn) globalThis.process.umask(umaskIn)
   }
   try {
-    const literalPath = path.includes('\\\\')
+    const literalPath = /[\\\\?]/.test(path)
     if (literalPath) serveLiteral()
     const ns = await import(literalPath ? path + '?vx-literal' : path)
     // Awaited as the in-process load's async return flattens it: a Promise
