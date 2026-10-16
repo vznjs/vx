@@ -21,6 +21,7 @@ export interface ShortCircuitArgs {
   gitFilesCache: GitFilesCache
   hashCache: HashCache // the run's memo — no double hashing
   concurrency: number // the probe pump's width
+  localOnly?: boolean | undefined // `cache` is the local store before a remote: only hits are recorded
 }
 export interface ProbedEntry {
   hash: string
