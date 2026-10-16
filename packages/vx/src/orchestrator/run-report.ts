@@ -1,10 +1,11 @@
 // The report every plugin's teardown reads, and the run's own bytes kept
-// in a remote that takes its writes, on the runs `cache.upload.failures`
-// names (owner 2026-10-15): a failed task's log and the files its outputs
-// left, and the log of a task that saved no entry. Each task's bytes leave
-// when it ends, off its path, like its entry's upload (owner 2026-10-16);
-// the run only waits for them where it waits for every upload, and the
-// footer counts them as the task's remote traffic.
+// in a remote that takes its writes (owner 2026-10-15): a failed task's
+// log and the files its outputs left (`cache.upload.failures`), and the
+// log of a task that saved no entry, on every run (M, 2026-10-16: "Always
+// keep"). Each task's bytes leave when it ends, off its path, like its
+// entry's upload (owner 2026-10-16); the run only waits for them where it
+// waits for every upload, and the footer counts them as the task's remote
+// traffic.
 
 import {
   type RemoteTraffic,
@@ -27,12 +28,14 @@ export interface RunKeeperArgs {
   readonly workspaceRoot: string
   readonly nestedDirsByProject: ReadonlyMap<string, string[]>
   readonly keep: KeepRunEntry
+  /** Whether a failed task's log and outputs are kept (`cache.upload.failures`). */
+  readonly failures: boolean
   /** The footer's remote traffic: each kept task counts under its id. */
   readonly traffic: RemoteTraffic
 }
 
-/** Whether a run on CI or off it keeps its bytes, by `cache.upload.failures` (default `'ci'`). */
-export function keepsRunBytes(where: unknown, ci: boolean): boolean {
+/** Whether a run on CI or off it keeps failures, by `cache.upload.failures` (default `'ci'`). */
+export function keepsFailures(where: unknown, ci: boolean): boolean {
   const at = where ?? 'ci'
   return at === 'always' || (at === 'ci') === ci
 }
@@ -90,7 +93,7 @@ export class RunKeeper {
         })
       }
     }
-    if (o.status === 'failed' && o.where === undefined) {
+    if (this.args.failures && o.status === 'failed' && o.where === undefined) {
       // Read now: a later task may write where this one's outputs lie.
       const packed = outputsLeft(
         o.node,

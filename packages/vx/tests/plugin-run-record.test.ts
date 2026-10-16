@@ -162,19 +162,28 @@ it("core keeps a CI run's logs and failed outputs, a plugin its manifest, and a 
   expect(file.stdout.toString()).toBe('boom\n')
 }, 30_000)
 
-it("`cache.upload.failures: 'local'` keeps no byte of a CI run", async () => {
+it("`cache.upload.failures: 'local'` keeps no CI failure, and an uncached log still", async () => {
   await fixture("cache: { upload: { failures: 'local' } },")
-  expect((await runAs(true, ['test', 'build'])).ok).toBe(false)
-  // gen#build's entry is the only write: no log, no outputs, no manifest.
-  expect(box.__vxWire.size).toBe(1)
+  expect((await runAs(true, ['test'])).ok).toBe(false)
+  const run = await shown()
+  const task = (id: string) => run.tasks.find((t) => t.id === id)
+  expect(task('docs#test')).toMatchObject({ status: 'success', log: 'links ok\n' })
+  expect(task('lib#test')).toMatchObject({ status: 'failed' })
+  expect(task('lib#test')).not.toHaveProperty('log')
+  expect(task('lib#test')).not.toHaveProperty('outputs')
 }, 30_000)
 
-it('a local run that writes the remote keeps no run bytes by default', async () => {
-  // M's laptop names the remote in its policy; an uncached task's log went
-  // up anyway, and the run waited 1.77 s on it (vx:uploads, 2026-10-16).
+it("a local run that writes the remote keeps an uncached task's log, and no failure by default", async () => {
+  // M, 2026-10-16: "Always keep". The uncached log goes up whenever the
+  // remote takes the run's writes; `cache.upload.failures` gates failures only.
   await fixture()
-  expect((await runAs(false, ['test', 'build'], { remoteReadOnlyByDefault: false })).ok).toBe(false)
-  expect(box.__vxWire.size).toBe(1)
+  expect((await runAs(false, ['test'], { remoteReadOnlyByDefault: false })).ok).toBe(false)
+  const run = await shown()
+  const task = (id: string) => run.tasks.find((t) => t.id === id)
+  expect(task('docs#test')).toMatchObject({ status: 'success', log: 'links ok\n' })
+  expect(task('lib#test')).toMatchObject({ status: 'failed' })
+  expect(task('lib#test')).not.toHaveProperty('log')
+  expect(task('lib#test')).not.toHaveProperty('outputs')
 }, 30_000)
 
 it('the footer counts each task whose run bytes reached the remote', async () => {

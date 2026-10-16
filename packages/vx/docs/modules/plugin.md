@@ -80,14 +80,13 @@ remote has no batch probe. With no remote, `get` is a local lookup.
 
 ## Run report and run bytes
 
-A run that writes a remote and that `cache.upload.failures` (`'ci'`,
-the default; `'local'`; `'always'`) covers keeps its own bytes there
+A run that writes a remote (CI by default) keeps its own bytes there
 (`cache/run-store.ts`): the log of a task that saved no entry, and a
-failed task's log and a tar of the files its declared outputs left. A
-laptop whose policy writes the remote kept an uncached task's log by
-default and waited 1.77 s on it (2026-10-16). Each task's bytes leave
-when it ends, off its path; the run waits for them where it waits for
-its uploads, and the footer counts the task under `remote ↑`. A task that saved an
+failed task's log and a tar of the files its declared outputs left when
+`cache.upload.failures` (`'ci'`, the default; `'local'`; `'always'`)
+covers the run. Each task's bytes leave when it ends, off its path; the
+run waits for them where it waits for its uploads (shown as `vx:uploads`
+when it does), and the footer counts the task under `remote ↑`. A task that saved an
 entry keeps its log in the entry; nothing goes to the local cache, where
 `vx last --log` and the tree already hold it. Names are
 `run/<runId>/<taskId>/log|outputs`, each key derived in its own
