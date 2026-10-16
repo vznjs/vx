@@ -70,8 +70,10 @@ it('a task names the tasks with a command it waited on, through a group, and the
   expect(summary!.stages!.map((s) => s.name)).toEqual(names)
   expect(summary!.stages![0]!.startedAt).toBeGreaterThanOrEqual(first.endedAt)
   const runGraph = first.stages!.find((s) => s.name === 'run graph')!
-  expect(runGraph.startedAt).toBeGreaterThanOrEqual(first.startedAt)
-  // `endedAt` is Date.now(), whole ms truncated: the stage's fraction may pass it.
+  // The run's stamps are Date.now(), whole ms truncated; a stage's are a
+  // monotonic clock with a fraction, so each may sit up to 1 ms either side
+  // (774.87 against a run started at 775 on a macOS runner).
+  expect(runGraph.startedAt).toBeGreaterThan(first.startedAt - 1)
   expect(runGraph.endedAt).toBeLessThan(first.endedAt + 1)
 }, 20_000)
 
