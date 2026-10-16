@@ -106,9 +106,11 @@ The consequences:
   the gate is one `git var -l`, which also names the attributes files
   git reads outside the tree, and a stat of each.
 
-Ignored files are not inputs; if your task reads a
-generated file, declare the task that generates it as a dependency and
-let the cascade carry it.
+A broad glob like `src/**` skips ignored files. Name one outright
+(`.env.local`, or a glob whose fixed part git ignores, like `dist/**`)
+and vx reads it from disk and hashes it, without caching it. If your
+task reads a generated file, declare the task that generates it as a
+dependency and let the cascade carry it.
 
 ## Boundaries are hard
 
