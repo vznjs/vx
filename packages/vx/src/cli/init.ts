@@ -6,14 +6,14 @@
 // `vx init --plugin <seam>` writes a runnable plugin for one seam and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { gitTop, workspaceFileWritten } from '../handoff.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import { lockAfterMigration } from './lock.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
-import { isCompiledBinary } from './upgrade.js'
+import { isCompiledBinary, targetVersion } from './upgrade.js'
 import { VERSION } from '../version.js'
 import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from '../util/index.js'
 import {
@@ -217,8 +217,11 @@ async function starter(root: string, noGit: boolean, args: InitArgs): Promise<nu
 }
 
 /**
- * A repo with a package.json is `@vzn/vx-migrate`'s: the installed one,
- * else this version's through `bun x`. It finds the root itself, asks a
+ * A repo with a package.json is `@vzn/vx-migrate`'s, at the latest
+ * release: it installs @vzn/vx and every @vzn/vx-* plugin the root lists
+ * at its own version, so init always lands on latest with all of them
+ * together, as `vx upgrade` moves them (M, 2026-10-16: an installed 0.0.637
+ * pinned core back from 0.0.639). It finds the root itself, asks a
  * terminal native or keep in a Turbo or Nx repo, and installs what it writes.
  */
 async function migrate(dirs: readonly string[], args: InitArgs): Promise<number> {
@@ -229,35 +232,30 @@ async function migrate(dirs: readonly string[], args: InitArgs): Promise<number>
     args.mode !== undefined && `--${args.mode}`,
     args.json === true && '--format=json',
   ].filter((f): f is string => typeof f === 'string')
-  return Bun.spawn(migrateCommand(dirs, flags), {
+  // An exact version: `bun x` may answer `@latest` from its cache.
+  const latest = VERSION === '0.0.0' ? 'latest' : await targetVersion(undefined, 'vx init')
+  return Bun.spawn(migrateCommand(dirs, flags, latest), {
     stdio: ['inherit', 'inherit', 'inherit'],
     // A compiled vx is a Bun runtime only when told so.
     env: isCompiledBinary() ? { ...process.env, BUN_BE_BUN: '1' } : process.env,
   }).exited
 }
 
-export function migrateCommand(dirs: readonly string[], flags: readonly string[]): string[] {
-  for (const d of dirs) {
-    const pkg = path.join(d, 'node_modules', '@vzn', 'vx-migrate')
-    if (!existsSync(path.join(pkg, 'src', 'bin.ts'))) continue
-    // Another version speaks another seam and installs its own core: a
-    // 0.0.637 left from an earlier init pinned @vzn/vx back from 0.0.639.
-    if (installedVersion(pkg) !== VERSION) break
-    return [process.execPath, '--no-install', path.join(pkg, 'src', 'bin.ts'), ...flags]
+export function migrateCommand(
+  dirs: readonly string[],
+  flags: readonly string[],
+  latest: string,
+  running = VERSION,
+): string[] {
+  // A source checkout (0.0.0, which npm never had) runs the vx-migrate
+  // beside it; a release never runs an installed one.
+  if (running === '0.0.0') {
+    for (const d of dirs) {
+      const installed = path.join(d, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
+      if (existsSync(installed)) return [process.execPath, '--no-install', installed, ...flags]
+    }
   }
-  // A source checkout is 0.0.0, which npm never had.
-  const version = VERSION === '0.0.0' ? 'latest' : VERSION
   // Bun's own install output ("Slow filesystem detected…") in a pnpm or npm
   // repo reads as a stranger speaking (Growth's first-run funnel F2).
-  return [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${version}`, ...flags]
-}
-
-function installedVersion(pkg: string): unknown {
-  try {
-    return (
-      JSON.parse(readFileSync(path.join(pkg, 'package.json'), 'utf8')) as { version?: unknown }
-    ).version
-  } catch {
-    return undefined
-  }
+  return [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${latest}`, ...flags]
 }

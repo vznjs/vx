@@ -48,6 +48,7 @@ import {
   install,
   installArgv,
   listedPackages,
+  listedPlugins,
   missingPackages,
   MODE_QUESTION,
   ownVersion,
@@ -496,7 +497,8 @@ async function prepareRepo(
   if (args.noInstall === true) return []
   const steps: Step[] = []
   const version = ownVersion()
-  const missing = missingPackages(root, wanted, version)
+  const all = [...new Set([...wanted, ...listedPlugins(root).filter((p) => !unwanted.includes(p))])]
+  const missing = missingPackages(root, all, version)
   if (missing.length > 0) {
     steps.push(
       args.dry ? ['install', missing.join(' ')] : ['ran', await install(root, missing, version)],
