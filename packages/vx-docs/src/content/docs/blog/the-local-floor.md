@@ -28,20 +28,15 @@ executors: [ reapi, …, local ]
 cache:     [ local cache, turboCache, … ]
 ```
 
-You never write the local element and you cannot remove it. A workspace
-with no `.vx/workspace.ts` is the empty list plus the floor, which is why
-`vx run build` works in a fresh repository with one `vx.config.ts` and
-nothing else. (Since vx 0.0.637, the workspace file is required:
+You never write the local element and you cannot remove it. A
 `.vx/workspace.ts` with `export default {}` in it is the empty list plus
-the floor.)
+the floor, which is why `vx run build` works in a fresh repository with
+that file, one `vx.config.ts` and nothing else.
 
-(Since vx 0.0.593, the floor's artifacts live in a shared store,
-`~/.vx/<id>/cache`, that every checkout of the repository hits; each
-workspace keeps its own index in `.vx/cache`. A named `cache.dir` holds
-both. See [the shared store](../../caching/#storage-layout).)
-
-(Since vx 0.0.637, a lookup asks the local cache before any remote; it
-used to be the last layer asked.)
+The floor's artifacts live in a shared store, `~/.vx/<id>/cache`, that
+every checkout of the repository hits; each workspace keeps its own
+index in `.vx/cache`. A named `cache.dir` holds both. See
+[the shared store](../../caching/#storage-layout).
 
 ## Declining is a first-class outcome
 

@@ -71,7 +71,7 @@ means for a directory it only ever adds to.
 - Another project's directory. Boundaries are hard.
 - `.git`, the `.vx` directory and each `vx.lock.json`, whatever the glob
   says.
-- (Since vx 0.0.637.) A file git tracks. A committed file under an
+- A file git tracks. A committed file under an
   output glob is still saved and restored, but the wipe never deletes it.
 - `node_modules`, unless a glob names it. `**/*.js` leaves installed
   files alone; `node_modules/**` is a legitimate output of an install

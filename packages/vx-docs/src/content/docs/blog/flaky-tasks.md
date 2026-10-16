@@ -46,15 +46,10 @@ note after its name:
 ```
 
 A task that was not flaky carries no note. `vx info` keeps the
-standing list across runs, `--summarize` carries it as typed data
-(`flaky: { passes, failures, attempts }` on the task, so a consumer can
-tell a break from a flake without parsing text; since vx 0.0.639,
-`--summarize` is gone), and
-the MCP server reports the same signal to an agent (`getRunHistory` as
-each task's failure mode, `getWorkspaceInfo` as the standing list), so
-an agent does not learn to shrug at a repeated failure on changing
-inputs. (Since vx 0.0.637, `@vzn/vx-mcp` is retired; `vx last --stats
---format json` gives an agent each task's failure mode.)
+standing list across runs, and `vx last --stats --format json` gives an
+agent each task's failure mode, so it can tell a break from a flake
+without parsing text and does not learn to shrug at a repeated failure
+on changing inputs.
 
 ## Why it is free
 
@@ -67,9 +62,9 @@ to upload to; the history is the local `cache.db` that `vx why` and
 
 That is also why it works on the first day. A service-side detector
 needs a fleet of runs before it can say anything. vx's needs the second
-run of the same key on your machine. (Since vx 0.0.638, the record lives
-in the repo's store under `~/.vx`, so every worktree of the repo reads
-what the others saw.)
+run of the same key on your machine. The record lives in the repo's
+store under `~/.vx`, so every worktree of the repo reads what the
+others saw.
 
 ## What it is not
 

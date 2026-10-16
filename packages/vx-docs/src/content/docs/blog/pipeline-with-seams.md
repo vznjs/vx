@@ -35,9 +35,9 @@ setup and teardown wrap the run; commands adds a verb
 | `schedule`    | Return a priority per ready task.                                                          |
 | `admit`       | Vet each local dispatch against what is running right now; `false` holds the task.         |
 | `executor`    | Decide where one task's command runs.                                                      |
-| `cache`       | Provide a layer where artifacts live.                                                      |
+| `cache`       | Provide a remote where artifacts live.                                                     |
 | `telemetry`   | Receive plain-data run records. Cannot change behaviour, by construction.                  |
-| `output`      | (Since vx 0.0.637.) Return a Logger that draws the run's terminal output in place of vx's. |
+| `output`      | Return a Logger that draws the run's terminal output in place of vx's.                     |
 | `setup`       | Once per run, after the planning stages and before the first task.                         |
 | `commands`    | Add a CLI verb. A verb named like a core verb is refused, so nothing shadows `vx run`.     |
 | `teardown`    | Flush and close at the end of the run.                                                     |
@@ -45,36 +45,33 @@ setup and teardown wrap the run; commands adds a verb
 A plugin is `definePlugin(import.meta, hooks)`. Its name is its package
 name, read from `import.meta`, never a field you set. Declaration order
 in `.vx/workspace.ts` is the order everywhere: executors are consulted in
-order, cache layers are chained in order, telemetry sinks receive in
-order.
+order, remote caches are asked in order after the local cache,
+telemetry sinks receive in order.
 
 ## What fits in one hook
 
 The proof that the seams are the right width is what has been built on
 them without a special case in core:
 
-- **`turbo()` from `@vzn/vx-migrate`** fills the `project` stage from a `turbo.json` and
-  each package's scripts: a two-line workspace file, the temporary
-  start of a migration to native config.
+- **`turbo()` from `@vzn/vx-migrate`** turns a `turbo.json` and each package's scripts
+  into vx tasks through the `project` stage, a start toward native config.
 - **`@vzn/vx-lockfile`** uses `fingerprint` to claim `pnpm-lock.yaml`
   (or `bun.lock`, `package-lock.json`, `yarn.lock`) and key each task on
   its own project's dependency closure. `--affected` follows the same
   claim.
 - **`@vzn/vx-schedule-history`** fills `schedule` with the critical path
-  learned from run history, and `admit` with a memory reservation packed
-  from what each task used before.
+  learned from run history, `admit` with a memory reservation packed
+  from what each task used before, and `commands` with `vx history`,
+  which prints what it learned per task.
 - **`@vzn/vx-reapi`** provides both `executor` and `cache` against any
   Bazel Remote Execution API server: remote cache and remote execution
   from one plugin.
 - **`turboCache()` and `nxCache()`**, from the same package, are `cache`
-  layers speaking Turbo's `/v8/artifacts` and Nx's `/v1/cache` wire
+  remotes speaking Turbo's `/v8/artifacts` and Nx's `/v1/cache` wire
   formats, so an existing self-hosted cache server keeps working.
 - **`@vzn/vx-otel`** and **`@vzn/vx-ci`** are `telemetry` sinks: an
   OTLP exporter with no OpenTelemetry SDK dependency, and a GitHub
   Actions job summary plus a check run on the built commit.
-- **`@vzn/vx-mcp`** is `commands`: a Model Context Protocol server for
-  coding agents, a verb core does not know. (Retired since vx 0.0.637
-  for the agent skill.)
 
 Every one of these lives in its own package and imports core only
 through `@vzn/vx`'s public façade. A test pins the façade so it cannot

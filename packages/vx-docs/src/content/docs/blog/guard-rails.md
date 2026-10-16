@@ -6,7 +6,7 @@ authors:
 tags:
   - correctness
   - config
-excerpt: 'A sandbox refusal names the path and the grant to add. Two tasks writing the same folder are stopped before they delete each other. A config that hangs times out with its name. And a pure config is read back as data, not run again.'
+excerpt: 'A sandbox refusal names the path and the grant to add. Two tasks writing the same folder are stopped before they delete each other. A config that hangs times out with its name. And a run never evaluates a config at all.'
 ---
 
 A refusal is only useful if it says what to do next. Each guard in this
@@ -40,17 +40,20 @@ and the line to add to `exec.sandbox`.
 ## Two tasks, one output folder
 
 vx cleans a task's outputs before it runs and before a cache restore. Two
-tasks that declare the same output would delete each other's work, so the
-run is refused before anything starts:
+tasks that declare the same output would delete each other's work, so
+`vx lock` refuses the graph and writes no lock:
 
 ```sh frame="terminal"
-$ vx run @demo/api#bundle
-vx: @demo/api#bundle and @demo/api#build both declare the output "dist/**" in cache.outputs.files — vx cleans a task's declared outputs before it runs and before a cache-hit restore, so whichever of these runs second DELETES the other's output. Give each task its own output path, or set run.rules.exclusiveOutputs: false in .vx/workspace.ts to let a dependant add to its upstream's outputs.
+$ vx lock
+✗ vx lock  lock not written
+
+  @demo/api#build and @demo/api#bundle both write dist/**
+  vx clears a task's outputs before it runs, so one deletes the other's
+
+  fix  give each task its own output path
 ```
 
-(Since vx 0.0.637, `vx lock` checks the rules and refuses the graph,
-writing no lock, and a run never checks them: it runs what the lock
-froze.)
+A run never checks the rules again: it runs what the lock froze.
 
 This is a workspace rule. Rules are checks that keep vx fast and
 correct, on by default. Turning one off allows a shape vx still runs
@@ -72,19 +75,16 @@ finishes. The message names the glob to exclude.
 ## A config that hangs
 
 A `vx.config.ts` is code, and code can hang: an `await` on a server that
-is down, or a loop. Each config gets 30 seconds, and then the load fails
-and names the config. A real evaluation takes about 10 ms.
+is down, or a loop. Each config gets 30 seconds, and then `vx lock`
+fails and names the config. A real evaluation takes about 10 ms.
 `VX_CONFIG_WORKER_TIMEOUT` changes the limit.
 
-## A pure config is read once
+## A run never evaluates a config
 
-Most configs only call `defineProject` with plain data. vx proves that
-from the imports, then stores the evaluated result. The next run reads it
-back as data instead of running the file again. A config that imports
-anything else, reads the environment or calls `Math.random` is evaluated
-every run, as it should be.
-
-(Since vx 0.0.637, no run evaluates a config: `vx lock` evaluates every
-one and every run reads the lock, so this cache is gone.)
+`vx lock` evaluates every config and writes the resolved objects to
+`.vx/projects.lock.json`. Every run reads them back as data instead of
+running a file. A config that reads the environment or calls
+`Math.random` is read once, at lock time, and `vx lock --check` reports
+when evaluating it again would give a different answer.
 
 The [schema](../../schema/) lists every rule and sandbox grant.

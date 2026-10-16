@@ -6,7 +6,7 @@ authors:
 tags:
   - caching
   - correctness
-excerpt: 'A cache key describes the inputs at the moment it was taken. If one changes while the command runs, the output was built from something the key does not name. vx keeps your result, saves no entry, and names the file. Now on CI too.'
+excerpt: 'A cache key describes the inputs at the moment it was taken. If one changes while the command runs, the output was built from something the key does not name. vx keeps your result, saves no entry, and names the file, on CI too.'
 ---
 
 A cache key is a promise: these outputs were built from exactly these
@@ -49,10 +49,10 @@ re-run each time.
 
 ## On CI too
 
-Until today, CI was the exception, on the theory that nobody edits files
-on a CI runner. But a task of the same project running alongside can
-change an input and put it back, and that is exactly the case a byte
-check misses. As of #3420 the check is the same everywhere.
+Nobody edits files on a CI runner, but a task of the same project
+running alongside can change an input and put it back, and that is
+exactly the case a byte check misses. So the check is the same on CI
+as on your machine.
 
 ## The opt-out, per task
 
@@ -71,25 +71,24 @@ build: {
 },
 ```
 
-Different bytes still withhold the entry. (Since vx 0.0.637, so does a
-write made while another task that may write the file was running,
-since it may have changed the file and put it back; the line names that
-task.)
+Different bytes still withhold the entry, and so does a write made
+while another task that may write the file was running, since it may
+have changed the file and put it back; the line names that task.
 `VX_CACHE_INPUT_STABILITY_STRATEGY=mutable`
 makes `mutable` the default for every task that does not say. And when
 the file named is not `package.json`, it is usually generated and should
 be declared as an output instead, and the status line says so.
 
-(Since vx 0.0.636.) `strategy: 'unchecked'` turns the check off. And
-`severity: 'error'` (or `VX_CACHE_INPUT_STABILITY_SEVERITY=error`) fails
-the task instead of warning, for a pipeline that would rather stop than
-build twice. (Since vx 0.0.637, the task's line then names the file,
+`strategy: 'unchecked'` turns the check off. And `severity: 'error'`
+(or `VX_CACHE_INPUT_STABILITY_SEVERITY=error`) fails the task instead
+of warning, for a pipeline that would rather stop than build twice. The
+task's line then names the file,
 `failed (src/a.ts changed during the run, exit 1)`, and agents read the
-same as `inputMoved` in `vx last --format json`.)
+same as `inputMoved` in `vx last --failed --format json`.
 
 ## What runs downstream
 
-(Since vx 0.0.636.) A withheld save does not stop at the task. Every
+A withheld save does not stop at the task. Every
 task that ran over its outputs, down the graph, saves nothing either,
 and a task of any project that declares the moved file as an input
 withholds its own. Nothing is filed on top of a state that was never

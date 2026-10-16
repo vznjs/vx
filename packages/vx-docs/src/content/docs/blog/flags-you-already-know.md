@@ -62,11 +62,8 @@ $ vx affected -t test
 `nx affected` is `vx run <task> --affected` here; -t, --base and --exclude work as they are
 
 $ vx graph
-`nx graph` is `vx run <task> --graph[=<file>.dot]` here: the task graph as Graphviz DOT
+`nx graph` is `vx run <task> --dry=json` here: the planned task graph as JSON
 ```
-
-(Since vx 0.0.639, `--graph` is gone: `vx graph` points to
-`vx run <task> --dry=json`, the planned graph as JSON.)
 
 ## One table, held by a test
 

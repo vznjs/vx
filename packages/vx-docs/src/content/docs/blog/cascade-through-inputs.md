@@ -44,9 +44,9 @@ almost everything else in vx is built on:
   downstream key does not exist until its upstream has run.
 - **Remote prefetch** issues the lookups for the whole graph at once
   and lets network latency overlap with real work instead of sitting on
-  the critical path. It needs the keys first. (Since vx 0.0.638, it
-  asks the remote only for the keys the local cache lacks, so a run the
-  local cache answers makes no remote call.)
+  the critical path. It needs the keys first, and it asks the remote
+  only for the keys the local cache lacks, so a run the local cache
+  answers makes no remote call.
 - **The restore tier** of the scheduler classifies every stable task as
   a hit or a miss up front, makes the hits ready immediately at low
   priority, and lets misses own the worker pool while restores backfill

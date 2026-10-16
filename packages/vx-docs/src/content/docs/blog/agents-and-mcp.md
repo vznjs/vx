@@ -6,89 +6,74 @@ authors:
 tags:
   - plugins
   - agents
-excerpt: "An AI agent working in a monorepo asks the same questions you do: what can I run here, why did that re-run, which tasks flake. @vzn/vx-mcp answers them over the Model Context Protocol, read-only, from the cache database vx already keeps."
+excerpt: "An AI agent working in a monorepo asks the same questions you do: what can I run here, why did that re-run, which tasks flake. vx answers them as JSON from the CLI, read from the cache database it already keeps, and a skill teaches the agent which command to ask."
 ---
 
 A coding agent dropped into a large monorepo spends a surprising share
 of its tokens working out how the build works: reading `turbo.json` or
 a hundred `project.json` files, guessing which task to run, re-running
 things to see whether they are cached. The runner already knows all of
-that. `@vzn/vx-mcp` hands it over.
+that. vx hands it over as JSON, and the vx skill tells the agent which
+command answers which question.
 
-(Since vx 0.0.637, `@vzn/vx-mcp` is retired. An agent now gets the same
-answers from the [vx skill](../../guides/agents/) and `--format json`:
-`vx last --stats`, `vx why`, `vx info`, `vx lock --check`.)
-
-```ts
-// .vx/workspace.ts
-import { defineWorkspace } from '@vzn/vx/config'
-import { mcp } from '@vzn/vx-mcp'
-
-export default defineWorkspace({ plugins: [mcp()] })
+```sh frame="terminal"
+$ npx skills add vznjs/vx
 ```
 
-```jsonc
-// Claude Code: .mcp.json at the workspace root — or: claude mcp add vx -- vx mcp
-{ "mcpServers": { "vx": { "command": "vx", "args": ["mcp"] } } }
+The skill is one `SKILL.md`. To match the vx a workspace has installed,
+copy it from the package instead:
+
+```sh frame="terminal"
+$ mkdir -p .claude/skills/vx
+$ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 ```
 
-Cursor, Continue.dev and VS Code Copilot take the same command-and-args
-shape. Run the agent from inside the workspace and `vx mcp` finds the
-workspace and its cache from the current directory, exactly as `vx run`
-does.
+Run the agent from inside the workspace and every verb finds the
+workspace and its cache from the current directory, exactly as
+`vx run` does.
 
 ## What it answers
 
-| Tool              | The question                                                                                              |
-| ----------------- | --------------------------------------------------------------------------------------------------------- |
-| `listTasks`       | What can I run here? Every project and task as a run would see them, plugin stages included.              |
-| `getCacheStats`   | What is the cache's state right now? Entries, size, runs and hit rate, per workspace or per project.      |
-| `getRunHistory`   | What have I been running and how fast? Recent runs with per-task p50, p99, success rate, hit rate.       |
-| `explainCacheKey` | What is the cache identity of `pkg#build`? The latest entry's hash, command, exit code, duration, size.   |
-| `whyDidThisRerun` | Why did `pkg#test` re-execute instead of hitting? The run's key against the previous run's.               |
-| `getTaskLog`      | What did this task print? A failure's output or the cached log, as `vx last --log` reads it.              |
-| `pruneCache`      | Free cache space by age or size; a dry run unless the call says `dryRun: false`.                          |
-| `planInit`        | What would adopting vx write here? Each file and its TODOs, as `vx init --dry --format json` plans them.   |
-| `searchDocs`      | Where is this documented? The reference sections that match, offline, as `vx docs` finds them.  |
-| `checkLock`       | Is the config lock current? Each drift `vx lock --check` finds, before a run.                     |
-| `getConfig`       | What does this task declare? Its resolved inputs, outputs, env and sandbox, as `vx show` prints them.     |
-| `getFailures`     | Why did the last run fail? Each failed task's output and the files it names.                              |
-| `getWorkspaceInfo` | What is this workspace? Versions and state, the plugins declared, the flaky tasks, whether `.vx/projects.lock.json` exists — the facts a bug report needs. |
-| `runTasks` | Run these tasks. The exit code and the run summary, from `vx run --format json`. |
-| `planTasks` | What would run, and why. The plan from `vx run --dry=json`; nothing runs. |
+| The question                                          | The command                                     |
+| ----------------------------------------------------- | ----------------------------------------------- |
+| What can I run here?                                  | `vx show --format json`                         |
+| What does this task declare?                          | `vx show app#build --format json`               |
+| What would run, and why?                              | `vx run test --affected=origin/main --dry=json` |
+| What did the last run do?                             | `vx last --format json`                         |
+| Why did the last run fail?                            | `vx last --failed --format json`                |
+| What did this task print?                             | `vx last --log app#build`                       |
+| Why did `app#build` re-execute instead of hitting?    | `vx why app#build --format json`                |
+| How fast is each task, and which ones flake?          | `vx last --stats --format json`                 |
+| What is this workspace, and what is in its cache?     | `vx info --format json`                         |
+| Is the config lock current?                           | `vx lock --check --format json`                 |
+| What would adopting vx write here?                    | `vx init --dry --format json`                   |
+| Where is this documented?                             | `vx docs <words> --format json`                 |
 
-The history tools read the same local `cache.db` tables that `vx why`,
-`vx last` and `vx info` read. `getRunHistory` calls a task flaky only
-on a real nondeterminism signal, a within-run retry or one key that
-both failed and succeeded, so an agent does not learn to shrug at
-repeated failures on changing inputs.
+Each prints one JSON document to stdout, and every notice goes to
+stderr, so stdout always parses. Each shape is a JSON Schema shipped in
+the package, under `node_modules/@vzn/vx/schemas/`.
 
-Only `runTasks` runs anything, through `vx run --format json` itself
-(`planTasks` asks the same CLI for `--dry=json`),
-so the CLI's selection, refusals and sandbox apply. `mcp({ run: ['test'] })`
-limits it to the tasks you name, and `run: false` turns it off. The transport is
-stdio, which is process-private, so there is no port, no auth and no
-attack surface beyond the process the agent already spawned.
+The history answers read the same local `cache.db` tables that a person
+reads with `vx why`, `vx last` and `vx info`. `vx last --stats` calls a
+task flaky only on a real nondeterminism signal, a within-run retry or
+one key that both failed and succeeded, so an agent does not learn to
+shrug at repeated failures on changing inputs.
 
-## Why it is about 300 lines
+A refusal is data too. Under `--format json` it is one line on stdout
+with a stable code and a link to what to do, so the agent can read it
+and correct its call instead of guessing:
+[A refusal an agent can read](../error-codes/).
 
-MCP over stdio is newline-delimited JSON-RPC 2.0 and the three methods
-an agent needs: `initialize`, `tools/list`, `tools/call`, plus `ping`.
-The plugin speaks it natively in about 300 lines with no dependencies; the reference SDK pulls
-in an HTTP stack this transport never uses. A tool's own refusal ("a
-task id must be `project#task`") comes back as an `isError` result the
-agent can read and correct, not as a protocol error that ends the
-conversation.
+## Why the CLI and not a server
 
-It is also the clearest example of the `commands` seam doing what it is
-for: one plugin contributes one verb, `vx help` lists it under "Plugin
-commands" from any directory inside the workspace that declares it,
-and outside such a workspace the verb does not exist. Core knows
-nothing about agents.
+There is nothing to install beside vx, no process to keep alive and no
+port to open. The agent already runs shell commands, and the CLI it
+calls is the one a person calls, so the selection, the refusals and the
+sandbox are the same for both. Core knows nothing about agents.
 
 ## The other half
 
-The MCP server is how an agent *reads* the build. The other half of
+The JSON is how an agent *reads* the build. The other half of
 working with agents is letting one *run* the build safely, and that is
 what the rest of vx already is: explicit inputs, [strict
 outputs](../strict-output-ownership/), a [sandbox](../the-sandbox/) that
@@ -98,4 +83,4 @@ session is cancelled. An agent that can only run declared commands
 against declared paths is an agent you can leave alone with the
 repository.
 
-The guide is [Plugins › vx mcp](../../guides/plugins/#vx-mcp).
+The guide is [AI agents](../../guides/agents/).

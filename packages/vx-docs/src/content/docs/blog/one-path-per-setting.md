@@ -21,8 +21,8 @@ from it.
 | `cache.dir`      | `VX_CACHE_DIR`       | `--cache-dir`   |
 | `cache.scope`    | `VX_CACHE_SCOPE`     | `--cache-scope` |
 
-The settings live in three groups in `.vx/workspace.ts`: `run`, `cache`
-and `watch`.
+The settings live in four groups in `.vx/workspace.ts`: `run`, `cache`,
+`lock` and `watch`.
 
 ```ts
 // .vx/workspace.ts
@@ -58,13 +58,10 @@ $ VX_CACHE_RETENTION_OLDER_THAN=2000 vx run build
 ✗ vx run  VX_CACHE_RETENTION_OLDER_THAN takes a duration with its unit, like '2000ms' or '2s' (got 2000)
 ```
 
-(Since vx 0.0.639, the examples use other settings: the kill grace and
-the teardown bound are no longer settings, fixed at 2 s and 3 s.)
+## Unknown names are refused
 
-## Old names stop working
-
-The names from before vx 0.0.637 are gone, with no alias. An old key in
-`.vx/workspace.ts` is an unknown field, and an old flag an unknown flag:
+A key a setting does not have is an unknown field, and a flag vx does
+not have is an unknown flag, never silently ignored:
 
 ```sh frame="terminal"
 $ vx run build
@@ -79,9 +76,6 @@ $ vx run build
   > 4 |   concurrency: 4,
       |   ^
 ```
-
-An old variable such as `VX_TIMING` is no longer read; set
-`VX_DEBUG_TIMING` instead.
 
 A few settings are read before the workspace file loads, such as
 `run.outputLogs` and `debug.timing`. Those are set only by a variable

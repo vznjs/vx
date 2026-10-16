@@ -17,10 +17,6 @@ changes is where the config lives and what it can say.
 
 ## One command
 
-(Since vx 0.0.637. Before, `vx init` wrote a two-line `turbo()`
-workspace file as a temporary start, and `bunx @vzn/vx-migrate` wrote
-the native configs.)
-
 `npx @vzn/vx init` beside `turbo.json` is the whole adoption. It reads
 the root pipeline and any per-package `extends`, inlines the matching
 `package.json` script as the task's command, and writes one
