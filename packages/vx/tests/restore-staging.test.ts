@@ -157,18 +157,23 @@ it.skipIf(!otherFs)(
 )
 
 // A group this process may give a file other than its own: a supplementary
-// one, or for root any gid a chown accepts (root in a user namespace may
-// give only mapped ones: EINVAL).
+// one, or for root any gid. A user namespace maps only some (the sandbox's:
+// chown gives EINVAL for the rest), so each candidate is tried.
 function chownable(): number | undefined {
-  const supplementary = process.getgroups!().find((g) => g !== process.getegid!())
-  if (supplementary !== undefined || process.getuid!() !== 0) return supplementary
+  const egid = process.getegid!()
+  const candidates = process.getgroups!().filter((g) => g !== egid)
+  if (process.getuid!() === 0) candidates.push(4242)
   const probe = path.join(mkdtempSync(path.join(os.tmpdir(), 'vx-chown-')), 'f')
   writeFileSync(probe, '')
   try {
-    chownSync(probe, 0, 4242)
-    return 4242
-  } catch {
-    return undefined
+    return candidates.find((g) => {
+      try {
+        chownSync(probe, process.getuid!(), g)
+        return true
+      } catch {
+        return false
+      }
+    })
   } finally {
     rmSync(path.dirname(probe), { recursive: true })
   }
