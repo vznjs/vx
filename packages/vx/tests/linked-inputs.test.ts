@@ -155,6 +155,20 @@ describe('a symlinked input', () => {
   )
 
   it(
+    'a task with no cache block declares nothing to key a link with, and runs',
+    async () => {
+      const app = await addProject(root, 'a', {
+        config: `export default { tasks: { build: { exec: { command: 'cat src/x.txt > out.txt' } } } }`,
+      })
+      await mkdir(path.join(app, 'src'), { recursive: true })
+      await symlink('../../../shared/x.txt', path.join(app, 'src', 'x.txt'))
+      commit('fixture')
+      expect(statusOf(await build())).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a link to a file git does not list is refused with the probe that keys it',
     async () => {
       await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\nsecret.txt\n')

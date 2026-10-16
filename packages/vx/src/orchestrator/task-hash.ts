@@ -326,6 +326,7 @@ async function resolveKeyInput(
     runtimeValues: resolved.runtimeValues,
     workspaceRuntimeValues: resolved.workspaceRuntimeValues,
     inputFiles: resolved.files,
+    ...(cacheCfg !== undefined ? { linkTargetsKeyed: true } : {}),
     workspaceRoot: args.workspaceRoot,
     upstreamHashes,
     upstreamIds,

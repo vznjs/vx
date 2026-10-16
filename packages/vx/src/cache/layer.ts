@@ -32,6 +32,12 @@ export interface CacheKeyInput {
   workspaceRuntimeValues?: Array<[command: string, output: string]>
   /** Absolute paths to input files. */
   inputFiles: string[]
+  /**
+   * Refuse a symlinked input whose target is not an input itself
+   * (linked-inputs.ts). Never folded. A task with no cache block keys only
+   * for its dependents, declares nothing, and is not refused.
+   */
+  linkTargetsKeyed?: boolean
   workspaceRoot: string
   /** Cache keys of upstream tasks this one depends on, sorted. */
   upstreamHashes: string[]
