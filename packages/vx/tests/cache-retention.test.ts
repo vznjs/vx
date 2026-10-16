@@ -349,6 +349,58 @@ describe('Cache.evictIfDue', () => {
     })
   }
 
+  // turborepo test_evict_removes_stale_entries: a killed save leaves its
+  // temp, and eviction reaps it like a row-less artifact.
+  it("reaps a killed save's temp past the age limit", async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      const temp = path.join(cacheDir, '00000000000000b1.tar.zst.tmp-4242-1-ab12cd34')
+      await writeFile(temp, new Uint8Array(1024))
+      const when = new Date(Date.now() - 2 * DAY)
+      await utimes(temp, when, when)
+      expect((await cache.evictIfDue({ maxAgeMs: DAY }))?.orphans).toBe(1)
+      expect(existsSync(temp)).toBe(false)
+    } finally {
+      cache.close()
+    }
+  })
+
+  // turborepo test_evict_empty_cache.
+  it('an empty cache prunes to nothing, without error', async () => {
+    const cache = new Cache(cacheDir)
+    try {
+      expect(await cache.prune({ olderThanMs: Date.now(), maxBytes: 1 })).toEqual({
+        evicted: 0,
+        bytesFreed: 0,
+        orphans: 0,
+        orphanBytes: 0,
+      })
+    } finally {
+      cache.close()
+    }
+  })
+
+  // nx cleanup_keeps_a_result_stored_meanwhile_{in a shared,through a
+  // separate}_database: a save landing while a prune runs survives it.
+  for (const handles of ['one handle', 'two handles'] as const) {
+    it(`an entry saved while a prune runs survives it, through ${handles}`, async () => {
+      const cache = new Cache(cacheDir)
+      const writer = handles === 'one handle' ? cache : new Cache(cacheDir)
+      try {
+        await seed(cache, ['aa', 'bb', 'cc'], true)
+        for (const h of ['aa', 'bb', 'cc']) age(h, Date.now() - 3 * DAY)
+        const pruning = cache.prune({ olderThanMs: Date.now() - DAY })
+        await seed(writer, ['dd'], true)
+        expect((await pruning).evicted).toBe(3)
+        expect(hashes(cache)).toEqual(['dd'])
+        expect(await cache.has('dd')).toBeTruthy()
+      } finally {
+        if (writer !== cache) writer.close()
+        cache.close()
+      }
+    })
+  }
+
   it("a reading verb's handle evicts nothing, with an entry due", async () => {
     const writer = new Cache(cacheDir)
     await seed(writer, ['aa'])
