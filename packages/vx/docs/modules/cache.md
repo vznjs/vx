@@ -207,6 +207,7 @@ export interface CacheKeyInput {
   // the digest — used (on a cache MISS only) to persist entry_inputs
   // for the input diff. The warm/hit path passes no captureInto.
   captureInto?: Array<{ kind: string; name: string; hash: string }>
+  linkTargetsKeyed?: boolean // refuse a symlinked input whose target is no input (linked-inputs.ts); not folded
 }
 
 // (Tier 3) One header row per `vx run` invocation — see the
