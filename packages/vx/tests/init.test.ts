@@ -158,7 +158,7 @@ describe('vx init hands a repo with a package.json to @vzn/vx-migrate', () => {
     }
   })
 
-  it('without --keep it runs vx-migrate: the installed one, else this version through bun x', async () => {
+  it('without --keep it runs vx-migrate: the installed one of this version, else this version through bun x', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'vx-init-migrate-'))
     try {
       const pinned = VERSION === '0.0.0' ? 'latest' : VERSION
@@ -167,10 +167,17 @@ describe('vx init hands a repo with a package.json to @vzn/vx-migrate', () => {
       const bin = path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
       await mkdir(path.dirname(bin), { recursive: true })
       await writeFile(bin, '')
+      const pkg = path.join(root, 'node_modules', '@vzn', 'vx-migrate', 'package.json')
+      await writeFile(pkg, JSON.stringify({ version: VERSION }))
       // Found from a directory below the one that has it.
-      expect([before, migrateCommand([sub, root], [])]).toEqual([
+      const found = migrateCommand([sub, root], [])
+      // Another version (a 0.0.637 an earlier init left) installs its own
+      // core: it pinned @vzn/vx@0.0.637 over 0.0.639. This version runs instead.
+      await writeFile(pkg, JSON.stringify({ version: '0.0.1' }))
+      expect([before, found, migrateCommand([sub, root], [])]).toEqual([
         [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${pinned}`, '--dry'],
         [process.execPath, '--no-install', bin],
+        [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${pinned}`],
       ])
     } finally {
       await rm(root, { recursive: true, force: true })

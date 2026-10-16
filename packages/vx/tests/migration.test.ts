@@ -92,6 +92,21 @@ describe('quoteTsLiteral', () => {
 })
 
 describe('applyMigration', () => {
+  it('a lock step of another vx-migrate version is reported, not a crash', async () => {
+    // vx-migrate 0.0.637's lock step returned its exit code; core 0.0.639
+    // wrote `undefined` to stderr and died with ERR_STREAM_NULL_VALUES.
+    let stderr = ''
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      stderr += String(chunk)
+      return true
+    })
+    mkdirSync(path.join(root, 'app'))
+    const lock = (async () => 1) as unknown as NonNullable<ApplyMigrationArgs['lock']>
+    expect(await apply(plan([['app', [task('build', exec('tsc'))]]]), { lock })).toBe(0)
+    expect(stderr).toBe('vx lock: the migration tool answered no result: run `vx lock`\n')
+    expect(stdout).toContain('not written')
+  })
+
   it('a plan with nothing in it names its source', async () => {
     expect(await refusal(() => apply(plan([])))).toBe('nothing to migrate: no tasks in turbo.json')
     expect(await refusal(() => apply(plan([]), { source: 'package.json scripts' }))).toBe(

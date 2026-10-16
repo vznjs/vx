@@ -14,8 +14,8 @@ same way, at the [quickstart](../../quickstart/).
 ## One command
 
 `npx @vzn/vx init` is the whole adoption in a Turbo or Nx repo: beside
-`turbo.json` or `nx.json` it runs `@vzn/vx-migrate` (the installed one, else
-vx's own version). It asks whether to migrate natively (a `vx.config.ts` per
+`turbo.json` or `nx.json` it runs `@vzn/vx-migrate` (the installed one when it
+matches vx's version, else vx's own version). It asks whether to migrate natively (a `vx.config.ts` per
 package, the default) or keep `turbo.json` / `nx.json` as the source
 (`turbo()` / `nx()`, see [Check the mapping first](#check-the-mapping-first)); `--native` or `--keep` answer it, and
 without a terminal, or from Vite Task, it is native. It installs vx with the repo's own package

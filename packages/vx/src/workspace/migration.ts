@@ -426,7 +426,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   }
 
   // The lock's own words become a row; a refusal prints above the report.
-  const lock = dry || args.lock === undefined ? undefined : await args.lock(root)
+  const lock = dry || args.lock === undefined ? undefined : lockAnswer(await args.lock(root))
   if (lock !== undefined && lock.code !== 0) process.stderr.write(lock.said)
 
   const rows: ui.FieldRow[] = [['from', source]]
@@ -488,6 +488,22 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   return 0
 }
 
+/**
+ * The lock step's answer, checked: the tool calling this seam is another
+ * package and may be another version (vx-migrate 0.0.637's answered its
+ * exit code, which crashed the report).
+ */
+function lockAnswer(answer: unknown): { code: number; said: string } {
+  const a = answer as { code?: unknown; said?: unknown } | null
+  if (
+    typeof a === 'object' &&
+    a !== null &&
+    typeof a.code === 'number' &&
+    typeof a.said === 'string'
+  )
+    return { code: a.code, said: a.said }
+  return { code: 1, said: 'vx lock: the migration tool answered no result: run `vx lock`\n' }
+}
 /**
  * What to do about written files .gitignore drops. A `!file` line cures a
  * file, but git re-includes nothing inside an ignored directory: an

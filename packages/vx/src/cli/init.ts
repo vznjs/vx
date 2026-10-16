@@ -6,7 +6,7 @@
 // `vx init --plugin <seam>` writes a runnable plugin for one seam and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { gitTop, workspaceFileWritten } from '../handoff.js'
@@ -238,12 +238,26 @@ async function migrate(dirs: readonly string[], args: InitArgs): Promise<number>
 
 export function migrateCommand(dirs: readonly string[], flags: readonly string[]): string[] {
   for (const d of dirs) {
-    const installed = path.join(d, 'node_modules', '@vzn', 'vx-migrate', 'src', 'bin.ts')
-    if (existsSync(installed)) return [process.execPath, '--no-install', installed, ...flags]
+    const pkg = path.join(d, 'node_modules', '@vzn', 'vx-migrate')
+    if (!existsSync(path.join(pkg, 'src', 'bin.ts'))) continue
+    // Another version speaks another seam and installs its own core: a
+    // 0.0.637 left from an earlier init pinned @vzn/vx back from 0.0.639.
+    if (installedVersion(pkg) !== VERSION) break
+    return [process.execPath, '--no-install', path.join(pkg, 'src', 'bin.ts'), ...flags]
   }
   // A source checkout is 0.0.0, which npm never had.
   const version = VERSION === '0.0.0' ? 'latest' : VERSION
   // Bun's own install output ("Slow filesystem detected…") in a pnpm or npm
   // repo reads as a stranger speaking (Growth's first-run funnel F2).
   return [process.execPath, 'x', '--silent', `@vzn/vx-migrate@${version}`, ...flags]
+}
+
+function installedVersion(pkg: string): unknown {
+  try {
+    return (
+      JSON.parse(readFileSync(path.join(pkg, 'package.json'), 'utf8')) as { version?: unknown }
+    ).version
+  } catch {
+    return undefined
+  }
 }
