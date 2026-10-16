@@ -738,26 +738,29 @@ describe('resolveInputs — git ls-files path (v14)', () => {
     expect(rels).not.toContain(path.join('node_modules', 'dep', 'index.js'))
   })
 
-  it('a bun --compile temp file (.<hash>.bun-build) is always excluded', async () => {
-    // `bun build --compile` writes a transient `.<hash>-<n>.bun-build` in cwd.
-    // A broad `**/*` compile task must never try to hash it — a CONCURRENT
-    // compile is mid-write, so reading it races to EACCES/ENOENT. Force git to
-    // track one (leading dot included) and assert ALWAYS_IGNORE still drops it.
+  it("Bun's compile temp files are userland: a broad glob reads them unless the task excludes them", async () => {
+    // Core names no tool's temp files (M, 2026-10-16): a compile task's own
+    // `inputs` excludes what `bun build --compile` writes beside it.
     await write(path.join(projectDir, '.18bf7d9ff3ffeffe-00000001.bun-build'))
+    await write(path.join(projectDir, '.cd5e87e3246b0795-00000000.tmp', 'bun'))
     await write(path.join(projectDir, 'src', 'index.ts'))
-    await git(root, 'add', '-f', 'pkg/.18bf7d9ff3ffeffe-00000001.bun-build')
-
-    const got = await resolveInputs({
-      projectDir,
-      workspaceRoot: root,
-      envSource: {},
-      inputs: { files: ['**/*'] },
-      ownOutputs: [],
-      nestedProjectDirs: [],
-    })
-    const rels = got.files.map((p) => relPosix(projectDir, p))
-    expect(rels).toContain(path.join('src', 'index.ts'))
-    expect(rels).not.toContain('.18bf7d9ff3ffeffe-00000001.bun-build')
+    const temps = ['.18bf7d9ff3ffeffe-00000001.bun-build', '.cd5e87e3246b0795-00000000.tmp/bun']
+    const rels = async (files: string[]) =>
+      (
+        await resolveInputs({
+          projectDir,
+          workspaceRoot: root,
+          envSource: {},
+          inputs: { files },
+          ownOutputs: [],
+          nestedProjectDirs: [],
+        })
+      ).files.map((p) => relPosix(projectDir, p))
+    const broad = await rels(['**/*'])
+    expect(temps.map((t) => broad.includes(t))).toEqual([true, true])
+    const excluded = await rels(['**/*', '!**/*.bun-build', '!.*.tmp/**'])
+    expect(excluded).toContain(path.join('src', 'index.ts'))
+    expect(temps.map((t) => excluded.includes(t))).toEqual([false, false])
   })
 })
 

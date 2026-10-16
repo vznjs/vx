@@ -829,9 +829,12 @@ Always applied to every glob pass (regardless of what you wrote):
   under `--affected` on its own, as in Nx (only what git sees does); `vx
 watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
-  `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction
-  directory `.<16 hex>-<8 hex>.tmp/**`, and `.vx/tmp/**`, where vx's
-  restores stage, at any depth.
+  `.vx/projects.lock.json`, `vx.lock.json`, and `.vx/tmp/**`, where vx's
+  restores stage, at any depth. Nothing else: a tool's temp files are the
+  task's to exclude. A broad glob on a `bun build --compile` task, or on
+  one that runs beside it, excludes Bun's intermediate and its
+  cross-compile extraction directory itself:
+  `['**/*', '!**/*.bun-build', '!**/.????????????????-????????.tmp/**']`.
 - **Installs** — an untracked file under any `node_modules/` that git
   does not ignore. An ignored one follows the gitignore filter above
   like any other ignored path: named outright, it is an input
@@ -890,7 +893,7 @@ backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
-`.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx/tmp/**`),
+`.vx/projects.lock.json`, `vx.lock.json`, `.vx/tmp/**`),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
 in its own project (a task never invalidates itself).

@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: stop ignoring Bun's compile temp files in core
+
+broad input globs (`**/*`) on a `bun build --compile` task, or on a task in the same directory, must exclude Bun's temp files themselves: add '!**/*.bun-build' and '!**/.????????????????-????????.tmp/**' to `inputs.files`.
+
 ## cache: restore only the task's declared outputs
 
 Cache.restoreOutputs and CacheLayer.restoreOutputs take the task's declared outputs as a fourth argument; a restore writes only the names they select.
