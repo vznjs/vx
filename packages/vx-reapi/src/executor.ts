@@ -17,6 +17,7 @@ import {
   isLiteralPattern,
   isUserError,
   normalizeGlob,
+  restorableOutput,
   UserError,
   withForwardArgs,
 } from '@vzn/vx'
@@ -1407,9 +1408,19 @@ export async function materialiseOutputs(
     ...(req.outputs?.workspaceFiles ?? []),
   ].map((g) => normalizeGlob(g))
   const matchers = declared.map((g) => new Bun.Glob(g))
+  // Core's restore gate: a `!` take-back, vx's own files and a
+  // `node_modules` no glob names are no output either.
+  const isOwn = restorableOutput(req.outputs?.files ?? [])
+  const isWs = restorableOutput(req.outputs?.workspaceFiles ?? [])
   const isDeclared = (abs: string): boolean => {
     const rel = toPosix(path.relative(req.workspaceRoot, abs))
-    return declared.includes(rel) || matchers.some((m) => m.match(rel))
+    const own =
+      projectRel === ''
+        ? rel
+        : rel.startsWith(`${projectRel}/`)
+          ? rel.slice(projectRel.length + 1)
+          : undefined
+    return (own !== undefined && isOwn(own)) || isWs(rel)
   }
   // A declared output, or a path under one a literal glob names whole.
   const underDeclared = (rel: string): boolean => {

@@ -60,7 +60,7 @@ import {
   isFsRefusal,
   isOutOfFds,
   OUT_OF_FDS_HINT,
-  outputMatcher,
+  restorableOutput,
   relPosix,
   span,
   splitTaskId,
@@ -1842,9 +1842,14 @@ export class Cache implements CacheLayer {
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean> {
     return this.outputs.outputDirsCurrent(projectDir, rows)
   }
-  async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void> {
+  async restoreOutputs(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+    outputs?: DeclaredOutputs,
+  ): Promise<void> {
     try {
-      await this.restoreOutputsOnce(hash, projectDir, workspaceRoot)
+      await this.restoreOutputsOnce(hash, projectDir, workspaceRoot, outputs)
     } catch (err) {
       if (!(err instanceof CorruptArtifactError)) throw err
       // Bad bytes under a good key failed the task on every run until
@@ -1879,7 +1884,8 @@ export class Cache implements CacheLayer {
   private async restoreOutputsOnce(
     hash: string,
     projectDir: string,
-    workspaceRoot?: string,
+    workspaceRoot: string | undefined,
+    outputs: DeclaredOutputs | undefined,
   ): Promise<void> {
     // In-process extraction — no fork+exec on the hot path
     // (~5-10ms reclaimed per hit vs the prior subprocess `tar -xf`).
@@ -1967,7 +1973,13 @@ export class Cache implements CacheLayer {
       // four workers overlap their round trips and a blocking one stalls
       // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
       const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
-      await extractArtifactStream(tar, projectDir, workspaceRoot, verify)
+      await extractArtifactStream(
+        tar,
+        projectDir,
+        workspaceRoot,
+        verify,
+        outputs === undefined ? undefined : declaredName(outputs),
+      )
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
       // output directory that links out of the project).
@@ -3083,22 +3095,33 @@ function assertArtifactNames(
     }
   }
   if (declared === undefined) return
-  // A path a `!` entry takes back is no declared output either (A-44).
-  const isFile = outputMatcher(declared.files)
-  const isWsFile = outputMatcher(declared.workspaceFiles)
+  const ok = declaredName(declared)
   for (const name of names) {
-    const ok = name.startsWith('outputs/')
-      ? isFile(name.slice('outputs/'.length))
-      : name.startsWith(WORKSPACE_OUTPUT_PREFIX)
-        ? isWsFile(name.slice(WORKSPACE_OUTPUT_PREFIX.length))
-        : true
-    if (!ok) {
+    if (!ok(name)) {
       throw new CorruptArtifactError(
         hash,
         `artifact carries ${name}, which is not one of the task's declared outputs`,
       )
     }
   }
+}
+
+/**
+ * Whether an artifact entry names one of the task's declared outputs, as
+ * the save could have packed it (`restorableOutput`: a `!` take-back, vx's
+ * own files and an unnamed `node_modules` are none). Asked at ingest and
+ * again at every restore, so an entry that reached the local store by any
+ * route still writes nothing it should not (2026-10-16).
+ */
+function declaredName(declared: DeclaredOutputs): (name: string) => boolean {
+  const isFile = restorableOutput(declared.files)
+  const isWsFile = restorableOutput(declared.workspaceFiles)
+  return (name) =>
+    name.startsWith('outputs/')
+      ? isFile(name.slice('outputs/'.length))
+      : name.startsWith(WORKSPACE_OUTPUT_PREFIX)
+        ? isWsFile(name.slice(WORKSPACE_OUTPUT_PREFIX.length))
+        : true
 }
 
 /** What `ingest` reads a remote body through. */

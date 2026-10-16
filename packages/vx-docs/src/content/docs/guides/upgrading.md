@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: restore only the task's declared outputs
+
+Cache.restoreOutputs and CacheLayer.restoreOutputs take the task's declared outputs as a fourth argument; a restore writes only the names they select.
+
 ## cache: read gitignored inputs named outright
 
 run.rules.upfrontKeys and VX_RUN_RULES_UPFRONT_KEYS are removed; a task reading another task's outputs must depend on it and leave it out of inputs.tasks.

@@ -595,6 +595,7 @@ export async function extractArtifactStream(
   destDir: string,
   workspaceDest: string | undefined,
   verify?: (provided: ReadonlySet<string>) => void,
+  accept?: (name: string) => boolean,
 ): Promise<Set<string>> {
   // No `mkdir -p` of the destination here: `stage` creates each entry's
   // directory chain, the destination included, and the cache restores
@@ -615,6 +616,13 @@ export async function extractArtifactStream(
         continue
       }
       assertSafeName(e.name)
+      // Before anything is staged: an entry the task never declared is not
+      // this task's save, and none of the archive lands.
+      if (accept !== undefined && !accept(e.name)) {
+        throw new ArchiveSecurityError(
+          `archive entry is not one of the task's declared outputs: ${e.name}`,
+        )
+      }
       const dest = x.destFor(e.name)
       if (dest === null || dest.rel.length === 0) {
         await drain(body)
