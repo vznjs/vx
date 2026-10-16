@@ -45,16 +45,17 @@ preset sets `outputs` or a plugin rewrites a command, it shows here.
 
 ```mermaid
 flowchart LR
-  SRC["vx.config.ts"] --> EVAL["evaluate"]
+  SRC["vx.config.ts"] --> EVAL["vx lock evaluates"]
   PRE["presets"] --> EVAL
   PLUG["plugins"] --> EVAL
-  EVAL --> SHOW["vx show"]
-  EVAL --> KEY["cache key"]
+  EVAL --> LOCK[".vx/projects.lock.json"]
+  LOCK --> SHOW["vx show"]
+  LOCK --> KEY["cache key"]
   style SHOW stroke:#c6f84e,stroke-width:2px
 ```
 
-(Since vx 0.0.637, `vx show` reads the config from the lock, as a run
-does, so an edit shows after `vx lock`.)
+`vx show` reads the config from the lock, as a run does, so an edit
+shows after `vx lock`.
 
 ## The same answer, for agents
 

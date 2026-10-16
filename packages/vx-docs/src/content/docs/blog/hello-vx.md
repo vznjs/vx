@@ -46,8 +46,7 @@ runner.
 - **In core:** the graph, the keys, the scheduler, the local cache and
   running on this machine. A workspace with no plugins runs and caches.
 - **Plugins:** remote caches, remote execution, telemetry, CI summaries,
-  lockfile-aware keys, AI agents over MCP (retired since vx 0.0.637 for
-  the agent skill). Each one sits on a
+  lockfile-aware keys. Each one sits on a
   documented seam, and you declare it in `.vx/workspace.ts`.
 - **Never:** a hosted dashboard, a daemon, or a cloud you have to buy
   into.

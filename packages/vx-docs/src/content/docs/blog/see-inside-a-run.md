@@ -6,18 +6,18 @@ authors:
 tags:
   - dx
   - agents
-excerpt: 'Why does this task run? What did the run save? Where did the time go? vx answers each in one flag: affected reasons, run JSON, a Graphviz graph, run tags and its own stage table.'
+excerpt: 'Why does this task run? What did the run save? Where did the time go? vx answers each in one command: affected reasons, the run as JSON, the plan as a graph and its own stage table.'
 ---
 
 The default run output stays short. When you want the facts behind it,
-each one is a flag away, and each prints something a script or an agent
+each one is a command away, and each prints something a script or an agent
 can read.
 
 ```mermaid
 flowchart LR
   Q1[why does it run?] --> A[--affected --dry]
-  Q2[what did it save?] --> B[--summarize]
-  Q3[what depends on what?] --> C[--graph]
+  Q2[what did it do?] --> B[vx last --format json]
+  Q3[what depends on what?] --> C[--dry=json]
   Q4[where did vx spend time?] --> D[VX_DEBUG_TIMING=1]
   style A stroke:#c6f84e,stroke-width:2px
 ```
@@ -46,43 +46,36 @@ same as JSON.
 
 ## What the run did, as JSON
 
-(Since vx 0.0.639, `--summarize` and `--tag` are gone: `vx last --format
-json` reads the run back from run history, a row per task.)
-
-`--summarize` writes one JSON file per run, under the cache directory or
-at the path you give:
+`vx last --format json` reads the run back from run history: the
+invocation, then a row per task.
 
 ```sh frame="terminal"
-$ vx run build --all --summarize=run.json --tag env=nightly
-$ jq -c 'del(.tasks)' run.json
-{"ok":true,"exitCode":0,"totalMs":15.86,"savedMs":1235,"summary":{"successful":4,"failed":0,"skipped":0,"cachedLocal":4,"upToDate":4,"total":4},…}
-$ jq -c '.tasks[0]' run.json
-{"id":"@demo/api#build","status":"cache-hit","durationMs":2,"hash":"32b3a0bfa973a7a8","storedDurationMs":310,"storedCpuMs":8.075,…}
+$ vx run build --all
+$ vx last --format json | jq -c '.invocation | {command, taskCount, failedCount, hitCount, totalDurationMs, branch}'
+{"command":"vx run build --all","taskCount":2,"failedCount":0,"hitCount":2,"totalDurationMs":16,"branch":"master"}
+$ vx last --format json | jq -c '.tasks[0] | {project, task, status, durationMs, hash}'
+{"project":"@demo/web","task":"build","status":"cache-hit","durationMs":3,"hash":"07179a1f06544b65"}
 ```
 
-`savedMs` is the time the cache saved: here, a 16 ms run stood in for
-1.2 s of work. Every task keeps how long it took when it really ran.
-`--tag k=v` labels the run, and the label is kept in run history, so a
-nightly run is easy to tell from a pull request.
+`vx last --list --format json` lists the recent runs, newest first, and
+each run keeps its commit and branch, so a nightly run is easy to tell
+from a pull request.
 
 ## The graph, for Graphviz
 
-(Since vx 0.0.639, `--graph` is gone: `--dry=json` lists each task with
-its deps.)
+Each task in `--dry=json` carries its `deps`, so the graph is one `jq`
+away from Graphviz DOT:
 
 ```sh frame="terminal"
-$ vx run build --filter @demo/web --graph
-digraph TaskGraph {
-  rankdir=LR;
-  node [shape=box];
-  "@demo/web#build" [label="@demo/web#build\nb25e5bf4", style="filled", fillcolor="#bbf7d0"];
-  "@demo/ui#build" [label="@demo/ui#build\n46046abb", style="filled", fillcolor="#bbf7d0"];
-  "@demo/ui#build" -> "@demo/web#build";
+$ vx run build --all --dry=json \
+    | jq -r '"digraph G {", (.tasks[] | .id as $t | .deps[] | "  \"\(.)\" -> \"\($t)\""), "}"'
+digraph G {
+  "@demo/api#build" -> "@demo/web#build"
 }
 ```
 
-Pipe it into `dot -Tsvg`, or write it to a file with
-`--graph=tasks.dot`. Green nodes are predicted hits.
+Pipe it into `dot -Tsvg`. Each task's `cacheStatus` in the same JSON
+says whether it would hit.
 
 ## Where vx itself spends time
 

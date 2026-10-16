@@ -28,9 +28,8 @@ or restored changes.
 
 ## The numbers
 
-Time from `vx run` to the first task starting, cold, with `--frozen`,
-on the synthetic 1,090-package benchmark (since vx 0.0.637 every run
-reads the lock, so the flag is gone):
+Time from `vx run` to the first task starting, cold, reading the lock,
+on the synthetic 1,090-package benchmark:
 
 - Earlier the same day: about 380 ms.
 - After a lock that `vx lock` wrote stopped being re-checked on every

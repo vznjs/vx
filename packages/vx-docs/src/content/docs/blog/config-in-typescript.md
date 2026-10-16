@@ -68,7 +68,8 @@ export default { tasks: { ...lib('src/index.ts') } } satisfies ProjectConfig
 ```
 
 Because the key hashes the [resolved config](../resolved-config-hashing/),
-an edit to `vx-preset.ts` re-keys every task that spread it. There is
+an edit to `vx-preset.ts` re-keys every task that spread it once
+`vx lock` records it. There is
 no list of global dependencies to maintain, because the dependency is
 the import, and the runtime already tracks imports.
 
@@ -80,32 +81,22 @@ by the compiler, refactorable by the editor.
 
 ## What a config may not do
 
-A program can do too much, and two things are refused rather than
-allowed:
+A program can do too much. Reading another project is refused: globs
+are resolved inside the project directory, `../shared/**` is an error,
+and `cache.inputs.workspaceFiles` is the one named exception for files
+at the workspace root.
 
-- **Reading another project.** Globs are resolved inside the project
-  directory. `../shared/**` is an error, and `cache.inputs.workspaceFiles`
-  is the one named exception for files at the workspace root.
-- **Being impure without saying so.** A config that names `process`,
-  `Date`, `fetch`, `import.meta`, a dynamic `import()` or any of the
-  other globals on the
-  [purity gate's list](../resolved-config-hashing/) is evaluated live
-  every run and never served from the evaluation cache. That is the
-  correct behaviour, not a penalty; it just means a config that reads
-  `process.env` should be one that has to. (Since vx 0.0.637, a run
-  evaluates no config: a config that reads `process.env`, the clock or
-  the network freezes that answer into `.vx/projects.lock.json` when
-  `vx lock` evaluates it, and `vx lock --check` re-evaluates it and
-  reports the drift.)
+A config may read `process.env`, the clock or the network, but it reads
+them once, when `vx lock` evaluates it. That answer is frozen into the
+lock, and no run evaluates the config again.
 
 ## Freezing it
 
-When "evaluated live" is exactly what a CI pipeline must not do,
-[`vx lock`](../lock-and-frozen/) evaluates every config once and writes
-the resolved objects to `.vx/projects.lock.json`; `vx run --frozen`
-consumes the lock with no evaluation at all, and `--check` catches drift
-a byte hash cannot see. (Since vx 0.0.637, `--frozen` is gone: every
-`vx run` reads the lock.)
+[`vx lock`](../lock-and-frozen/) evaluates every config and writes the
+resolved objects to `.vx/projects.lock.json`. Every `vx run` reads the
+lock with no evaluation at all, and `vx lock --check` re-evaluates the
+configs and reports drift a byte hash cannot see, such as an env value
+read at lock time.
 
 ## The migration path
 

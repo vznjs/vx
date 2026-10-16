@@ -88,12 +88,9 @@ vx has no daemon, so there is no process to keep warm and no staleness
 window between what the daemon believes and what the disk holds. What
 replaces the daemon is a set of zero-cost gates: no telemetry plugin
 means no event-bus subscriber, no summary, no git spawn for provenance;
-a plugin that declines a task costs nothing; a config that passes the
-purity gate is served from an evaluation cache keyed on the git blob
-ids of its whole import closure, and a config that reads the
-environment or the clock is simply evaluated live. (Since vx 0.0.637, a
-run evaluates no config at all: it reads them from
-`.vx/projects.lock.json`, which `vx lock` writes.)
+a plugin that declines a task costs nothing; and a run evaluates no
+config at all: it reads them from `.vx/projects.lock.json`, which
+`vx lock` writes.
 
 ## The method behind the numbers
 

@@ -6,31 +6,27 @@ authors:
 tags:
   - caching
   - plugins
-excerpt: "Out of the box vx folds the lockfile into every key, so `pnpm update` invalidates the world. @vzn/vx-lockfile parses the lockfile and keys each task on its own project's dependency closure. In vx's own repo an astro bump re-keys 6 of 57 tasks, not all 57."
+excerpt: "Core keys no lockfile, and folding the whole file into every key would make `pnpm update` invalidate the world. @vzn/vx-lockfile parses the lockfile and keys each task on its own project's dependency closure. In vx's own repo an astro bump re-keys 6 of 57 tasks, not all 57."
 ---
 
-Out of the box, vx folds the whole lockfile into the workspace
-fingerprint (Turborepo keys each package on the lockfile changes that
-reach it), and the workspace fingerprint is in
-every task's key. That is coarse but correct. Any `pnpm install` that
-changes `pnpm-lock.yaml` invalidates every cached task, and `--affected`
-selects every project.
+Core keys no lockfile, no install setting and no `package.json`.
+Without a lockfile plugin an install re-keys nothing, and a build made
+against the old `node_modules` replays. A plugin is the only way they
+reach a key.
 
-(Since vx 0.0.637, core no longer folds the lockfile, the install
-settings or any `package.json` at all. Without a lockfile plugin an
-install re-keys nothing; with one, the plugin is the only way they reach
-a key.)
-
-It is also the single largest source of "why did everything rebuild"
-in a large workspace. A patch bump to a test utility used by one
-package re-runs the builds of all of them.
+The simple plugin would fold the whole lockfile into every task's key.
+That is coarse but correct: any `pnpm install` that changes
+`pnpm-lock.yaml` invalidates every cached task, and `--affected`
+selects every project. It is also the single largest source of "why
+did everything rebuild" in a large workspace. A patch bump to a test
+utility used by one package re-runs the builds of all of them.
+(Turborepo keys each package on the lockfile changes that reach it.)
 
 ## Key each project on what it can reach
 
 `@vzn/vx-lockfile` ships one plugin per package manager: `pnpm()`,
-`bun()`, `npm()`, `yarn()`. Each claims its lockfile out of the
-workspace fingerprint through the `fingerprint` seam and instead
-contributes, per task, a digest of **its project's resolved dependency
+`bun()`, `npm()`, `yarn()`. Each claims its lockfile through the
+`fingerprint` seam and contributes, per task, a digest of **its project's resolved dependency
 closure**:
 
 ```ts
@@ -42,8 +38,8 @@ export default defineWorkspace({ plugins: [pnpm()] })
 ```
 
 Nothing else changes. `vx why` names the material as
-`plugin @vzn/vx-lockfile/pnpm`, and the workspace fingerprint line
-stops moving when the lockfile is edited.
+`plugin @vzn/vx-lockfile/pnpm`, for exactly the projects a lockfile
+edit reaches.
 
 The closure is exactly what the project's `node_modules` can resolve:
 

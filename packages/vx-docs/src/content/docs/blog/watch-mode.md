@@ -46,12 +46,12 @@ it is not an edit. A task that rewrites its own files costs one extra
 cycle, which the cache serves, and then settles.
 
 Always ignored regardless: `node_modules`, `.git`, `.vx/cache`, the run's
-resolved cache directory wherever `--cache-dir` put it, `.tsbuildinfo`
-files, editor backup files (a trailing `~`), and any untracked path git
-ignores (one `git check-ignore` per debounce window): such a path is in
-no key, so a task writing a pid file or a log there would re-run the
-loop forever. (Since vx 0.0.638, a `.tsbuildinfo` file is an ordinary
-file: ignored only when git ignores it.)
+resolved cache directory wherever `--cache-dir` put it, editor backup
+files (a trailing `~`), and any untracked path git ignores (one
+`git check-ignore` per debounce window): such a path is in no key, so a
+task writing a pid file or a log there would re-run the loop forever. A
+`.tsbuildinfo` file is an ordinary file, ignored only when git ignores
+it.
 
 ## Watchers that are actually watching
 
@@ -63,13 +63,12 @@ is a promise, not a hope. A directory whose watcher stays silent for
 two seconds is polled instead, with a warning naming the interval.
 
 The workspace root is watched non-recursively so a lockfile or
-`pnpm-workspace.yaml` edit is heard; those move the workspace
-fingerprint, or, with `@vzn/vx-lockfile`, the keys of the projects they
-reach.
+`pnpm-workspace.yaml` edit is heard; with `@vzn/vx-lockfile`, those
+move the keys of the projects they reach.
 
 ## The rest of the contract
 
-- (Since vx 0.0.637.) The output is the work: one opening line,
+- The output is the work: one opening line,
   `watching N projects · M tasks`, then each cycle as a blank line,
   `changed <project> <file>` (with `+N more` when more changed) and its
   task rows, with no footer.

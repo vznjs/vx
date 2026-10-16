@@ -22,8 +22,7 @@ vx has one teardown, and every way a run can end goes through it.
 1. Every live child's process group receives the signal vx got:
    `SIGINT` stays `SIGINT`, so a Ctrl-C cleanup runs, and `SIGTERM` or
    `SIGHUP` arrives as `SIGTERM`.
-2. vx waits a grace period of two seconds. (Since vx 0.0.639, the
-   grace is fixed; the variable that changed it is gone.)
+2. vx waits a fixed grace period of two seconds.
 3. It re-reads its registries, because a child may have spawned during
    the grace, and sends `SIGKILL` to anything still alive.
 4. It reaps, so nothing is left as a zombie. Then the run finishes the

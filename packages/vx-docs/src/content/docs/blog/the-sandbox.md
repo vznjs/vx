@@ -89,14 +89,13 @@ fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }
 A write grants the directory it landed in, unless the task reads that
 directory as an input: then it grants the file alone, so a fix never
 lets a task write its own inputs. Agents get the same grants as
-`sandboxFix` in `vx last --format json` and from `vx mcp`'s
-`getFailures` (since vx 0.0.637, `vx last` alone: `@vzn/vx-mcp` is
-retired). Because an agent may apply them as given, a credential
-path (`~/.ssh`, `~/.aws`, `~/.npmrc`, a `.env` file and the like) never
-goes in the line. It is listed apart, to grant only on purpose. (Since
-vx 0.0.637, a cached task's read that no input glob matches is named
-again as a `cache.inputs.files` entry: the grant lets the task read the
-file, and only an input makes a change to it miss the cache.)
+`sandboxFix` in `vx last --format json`. Because an agent may apply
+them as given, a credential path (`~/.ssh`, `~/.aws`, `~/.npmrc`, a
+`.env` file and the like) never goes in the line. It is listed apart,
+to grant only on purpose. A cached task's read that no input glob
+matches is named again as a `cache.inputs.files` entry: the grant lets
+the task read the file, and only an input makes a change to it miss the
+cache.
 
 A failed task is never cached, so a violation cannot poison the cache.
 When a tool is legitimately noisy (a probe for a file that may not

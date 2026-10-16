@@ -19,10 +19,6 @@ below is a simplification.
 
 ## One command
 
-(Since vx 0.0.637. Before, `vx init` wrote a `.vx/workspace.ts` running
-the graph through `nx()` as a temporary start, and
-`bunx @vzn/vx-migrate` wrote the native configs.)
-
 `npx @vzn/vx init` beside `nx.json` is the whole adoption. It writes
 one `vx.config.ts` per project, a `.vx/workspace.ts` declaring your
 lockfile's plugin, and `.vx/projects.lock.json`, and installs vx with
@@ -141,9 +137,9 @@ so a shared input list is an import.
 - **Nx Cloud's flaky-test detection.** vx [detects flaky
   tasks](../flaky-tasks/) from the local run history: a key that has
   both passed and failed on record, no service involved.
-- **The graph visualiser.** `vx run build --all --graph` renders DOT; `vx show`
-  prints what a run would see. (Since vx 0.0.639, `--graph` is gone:
-  `--dry=json` lists each task with its deps.)
+- **The graph visualiser.** `vx run build --all --dry=json` lists each
+  task with its deps, ready for any tool that draws a graph; `vx show`
+  prints what a run would see.
 
 The full guide, with the trade-offs spelled out one by one, is
 [Migrate from Nx](../../guides/migrate/#nx).

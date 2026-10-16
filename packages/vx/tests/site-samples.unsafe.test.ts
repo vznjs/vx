@@ -26,7 +26,6 @@ import { IGNORED_SEGMENTS } from '../src/cli/watch-fs.js'
 import { WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
 import { createTelemetrySource } from '../src/orchestrator/telemetry.js'
 import type { RunSummaryRecord, TelemetrySink } from '../src/orchestrator/telemetry.js'
-import { RETIRED_POSTS } from './helpers/retired-posts.js'
 
 const GUIDES = path.resolve(
   import.meta.dir,
@@ -656,13 +655,9 @@ describe('the keys-from-git post counts the parts the key folds', () => {
   const key = src.slice(src.indexOf('export async function foldKey('))
   const labels = [...new Set([...key.matchAll(/h = xxh3\(`([a-z-]+):/g)].map((m) => m[1]!))]
   const page = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8')
-  // The post keeps the twelve parts it shipped with and marks the two that
-  // left in 0.0.637 with a "(Since vx …)" note, so twelve minus two must be
-  // what the source folds.
-  it('"twelve parts", less the two its note drops, is CACHE_VERSION plus every labelled fold', () => {
+  it('"ten parts" is CACHE_VERSION plus every labelled fold', () => {
     expect(labels.length + 1).toBe(10)
-    expect(page).toContain('seed-chained across twelve parts')
-    expect(page.replace(/\s+/g, ' ')).toContain('(Since vx 0.0.637, two parts left the chain')
+    expect(page).toContain('seed-chained across ten parts')
     // Anchored on the paragraph, not on the number it cites: the old
     // anchor was the literal `Part 11`, which is the cross-reference item
     // 397 had to move when it fixed the 11/12 inversion — a pin that
@@ -671,13 +666,12 @@ describe('the keys-from-git post counts the parts the key folds', () => {
       /\n1\. The key-derivation sentinel([\s\S]*?)\n\nPart \d+ is where the money is/.exec(page)
     expect(list).not.toBeNull()
     const items = [...list![1]!.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]))
-    expect([1, ...items]).toEqual([...Array(12)].map((_, i) => i + 1))
+    expect([1, ...items]).toEqual([...Array(10)].map((_, i) => i + 1))
   })
   it('every label it quotes is one the key folds under', () => {
     const quoted = [...page.matchAll(/`([a-z-]+):`/g)].map((m) => m[1]!)
     expect(quoted.length).toBeGreaterThan(3)
-    // `workspace:` is the part the 0.0.637 note says left the chain.
-    for (const label of quoted) expect([...labels, 'workspace']).toContain(label)
+    for (const label of quoted) expect(labels).toContain(label)
   })
   it('it says the plugin part folds where the source folds it — before the input files', () => {
     expect(labels.indexOf('plugin')).toBeLessThan(labels.indexOf('inputs'))
@@ -1790,11 +1784,7 @@ describe("a post's link into a guide section names the section", () => {
     let checked = 0
     // A post's pointer to its guide; the glossary's and compare page's
     // inline links are prose ("remote caching"), not section names.
-    const posts = handAuthoredSitePages().filter(
-      (p) =>
-        p.includes(`${path.sep}blog${path.sep}`) &&
-        !RETIRED_POSTS.has(path.relative(DOCS, p).split(path.sep).join('/')),
-    )
+    const posts = handAuthoredSitePages().filter((p) => p.includes(`${path.sep}blog${path.sep}`))
     for (const page of posts) {
       const text = readFileSync(page, 'utf8')
       for (const m of text.matchAll(
@@ -2066,8 +2056,8 @@ describe('the one-binary post says what the npm command starts', () => {
     )
     expect(readFileSync(path.join(core, 'npm-launcher.sh'), 'utf8')).toStartWith('#!/bin/sh\n')
     const post = readFileSync(path.join(DOCS, 'blog', 'one-binary.md'), 'utf8').replace(/\s+/g, ' ')
-    expect(post).toContain('(Since vx 0.0.635, the launcher is sh and execs the binary.)')
-    expect(post).toContain('(Since vx 0.0.635, it is one shell start, a few milliseconds;')
+    expect(post).toContain('a small sh launcher that execs that binary')
+    expect(post).toContain('the launcher costs one shell start first, a few milliseconds;')
   })
 })
 
@@ -2309,8 +2299,10 @@ describe('the lockfile pages say what Turborepo keys', () => {
       /\s+/g,
       ' ',
     )
-    expect(post).toContain('excerpt: "Out of the box vx folds the lockfile into every key')
-    expect(post).toContain('(Turborepo keys each package on the lockfile changes that reach it)')
+    expect(post).toContain(
+      'excerpt: "Core keys no lockfile, and folding the whole file into every key',
+    )
+    expect(post).toContain('(Turborepo keys each package on the lockfile changes that reach it.)')
     const parity = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'parity.md'), 'utf8')
     expect(parity).toContain('| a lockfile change re-keys the packages whose dependencies moved')
   })
