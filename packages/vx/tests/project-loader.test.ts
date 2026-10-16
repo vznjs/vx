@@ -1612,48 +1612,53 @@ describe('a config that changes the built-ins (D-74)', () => {
 })
 
 // Bun reads `\` in a module path as a separator, so a config under a
-// directory named `a\b` was looked for under `a/b` and never loaded.
-describe('a config under a directory whose name holds a backslash', () => {
-  let dir: string
+// directory named `a\b` was looked for under `a/b` and never loaded; and
+// `?` as the start of a query, so one under `a?b` was looked for under `a`.
+for (const [name, said] of [
+  ['a\\b', 'a backslash'],
+  ['a?b', 'a question mark'],
+] as const)
+  describe(`a config under a directory whose name holds ${said}`, () => {
+    let dir: string
 
-  beforeEach(async () => {
-    dir = path.join(await mkdtemp(path.join(os.tmpdir(), 'vx-loader-')), 'a\\b')
-    await mkdir(dir)
-  })
+    beforeEach(async () => {
+      dir = path.join(await mkdtemp(path.join(os.tmpdir(), 'vx-loader-')), name)
+      await mkdir(dir)
+    })
 
-  afterEach(async () => {
-    await rm(path.dirname(dir), { recursive: true, force: true })
-  })
+    afterEach(async () => {
+      await rm(path.dirname(dir), { recursive: true, force: true })
+    })
 
-  it('loads a project config, and its repeat load in a worker', async () => {
-    const file = path.join(dir, 'vx.config.ts')
-    await writeFile(
-      file,
-      `
+    it('loads a project config, and its repeat load in a worker', async () => {
+      const file = path.join(dir, 'vx.config.ts')
+      await writeFile(
+        file,
+        `
         const command: string = 'tsc'
         export default { tasks: { build: { exec: { command } } } }
       `,
-    )
-    expect((await loadProjectConfig(file)).tasks?.build?.exec?.command).toBe('tsc')
-    await writeFile(file, "export default { tasks: { build: { exec: { command: 'tsc -b' } } } }")
-    expect((await loadProjectConfig(file)).tasks?.build?.exec?.command).toBe('tsc -b')
-  })
+      )
+      expect((await loadProjectConfig(file)).tasks?.build?.exec?.command).toBe('tsc')
+      await writeFile(file, "export default { tasks: { build: { exec: { command: 'tsc -b' } } } }")
+      expect((await loadProjectConfig(file)).tasks?.build?.exec?.command).toBe('tsc -b')
+    })
 
-  it('loads a workspace config', async () => {
-    await Bun.write(path.join(dir, '.vx/workspace.ts'), 'export default { plugins: [] }')
-    expect(await loadWorkspaceConfig(dir)).toEqual({ plugins: [] })
-  })
+    it('loads a workspace config', async () => {
+      await Bun.write(path.join(dir, '.vx/workspace.ts'), 'export default { plugins: [] }')
+      expect(await loadWorkspaceConfig(dir)).toEqual({ plugins: [] })
+    })
 
-  it('refuses a CommonJS config, saying why', async () => {
-    const file = path.join(dir, 'vx.config.cjs')
-    await writeFile(file, 'module.exports = { tasks: {} }')
-    const err = await loadProjectConfig(file).then(
-      () => null,
-      (e: unknown) => e as Error,
-    )
-    expect(err?.name).toBe('UserError')
-    expect(err?.message).toBe(
-      `Project config ${file} sits under a path that holds a backslash, which Bun loads only as an ES module in UTF-8`,
-    )
+    it('refuses a CommonJS config, saying why', async () => {
+      const file = path.join(dir, 'vx.config.cjs')
+      await writeFile(file, 'module.exports = { tasks: {} }')
+      const err = await loadProjectConfig(file).then(
+        () => null,
+        (e: unknown) => e as Error,
+      )
+      expect(err?.name).toBe('UserError')
+      expect(err?.message).toBe(
+        `Project config ${file} sits under a path that holds ${said}, which Bun loads only as an ES module in UTF-8`,
+      )
+    })
   })
-})
