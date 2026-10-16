@@ -248,6 +248,7 @@ export class RemoteLane {
     tally: { count: number; bytes: number; ms: number; failed: number },
   ): void {
     const key = this.trafficOf(hash)
+    const counted = this.traffic.aliases.get(hash) ?? hash
     key.uploading++
     this.traffic.inFlight++
     this.uploadQueue.push(async () => {
@@ -274,7 +275,7 @@ export class RemoteLane {
         // Nothing sent and nothing failed (the remote held it, or the run
         // stopped first): no traffic, so the footer counts no upload.
         if (key.uploading === 0 && !key.landed && key.failures.length === 0)
-          this.traffic.keys.delete(hash)
+          this.traffic.keys.delete(counted)
       }
     })
     this.pump()
@@ -343,10 +344,11 @@ export class RemoteLane {
   }
 
   private trafficOf(hash: string): RemoteKeyTraffic {
-    let key = this.traffic.keys.get(hash)
+    const counted = this.traffic.aliases.get(hash) ?? hash
+    let key = this.traffic.keys.get(counted)
     if (key === undefined) {
       key = { uploading: 0, landed: false, failures: [] }
-      this.traffic.keys.set(hash, key)
+      this.traffic.keys.set(counted, key)
     }
     return key
   }

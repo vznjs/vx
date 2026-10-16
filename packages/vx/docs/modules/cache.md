@@ -135,9 +135,11 @@ export class ArtifactVanishedError extends Error {
 
 // The run's remote traffic, filled by each remote lane and the run keeper
 // (a kept task counts under its id): what the footer's remote part counts.
+// A scope's key counts under the task key it answers for (`aliases`).
 export interface RemoteTraffic {
   inFlight: number
   readonly keys: Map<string, RemoteKeyTraffic>
+  readonly aliases: Map<string, string>
 }
 
 // The output-directory short-circuit's bounds: a hit with more than

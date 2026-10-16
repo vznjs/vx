@@ -807,6 +807,12 @@ export interface RemoteTraffic {
   /** Uploads queued or running across every remote. */
   inFlight: number
   readonly keys: Map<string, RemoteKeyTraffic>
+  /**
+   * A key a remote is asked under that is not the task's own (a scope's)
+   * → the task key it answers for: its traffic counts under the task key,
+   * which the footer and the run's rows look up.
+   */
+  readonly aliases: Map<string, string>
 }
 
 export class Cache implements CacheLayer {
@@ -819,7 +825,7 @@ export class Cache implements CacheLayer {
    */
   readonly uploads: UploadTally = { count: 0, bytes: 0, ms: 0, failed: 0 }
   /** The same remotes' traffic per key, filled by the same `LayeredCache`. */
-  readonly traffic: RemoteTraffic = { inFlight: 0, keys: new Map() }
+  readonly traffic: RemoteTraffic = { inFlight: 0, keys: new Map(), aliases: new Map() }
 
   private readonly db: Database
   private readonly insertEntry: ReturnType<Database['prepare']>

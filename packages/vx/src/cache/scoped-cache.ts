@@ -61,7 +61,9 @@ export class ScopedCache implements CacheLayer {
   }
 
   private own(hash: string): string {
-    return scopedKey(this.scope, hash)
+    const key = scopedKey(this.scope, hash)
+    this.local?.traffic.aliases.set(key, hash)
+    return key
   }
 
   private keyOf(hash: string): string {

@@ -1197,6 +1197,7 @@ export interface RemoteKeyTraffic {
 export interface RemoteTraffic {
   inFlight: number
   readonly keys: Map<string, RemoteKeyTraffic>
+  readonly aliases: Map<string, string>
 }
 == type ResolvedSandboxConfig (src/exec/sandbox-runtime.ts)
 export interface ResolvedSandboxConfig {
