@@ -361,14 +361,14 @@ export function formatFailureLine(
   )
 }
 
+/** A step's cache column, dim as `no-cache` is. */
+const INTERNAL = 'internal'
+
 /**
  * The list row of one of vx's own steps (`vx:uploads`), on the task grid
  * with `internal` in the cache column: a step is no task and caches
  * nothing (M, 2026-10-16: `4.60s success internal vx:keep-run`).
  */
-/** A step's cache column, dim as `no-cache` is. */
-const INTERNAL = 'internal'
-
 export function formatStepLine(
   id: string,
   durationMs: number,

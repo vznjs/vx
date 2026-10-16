@@ -331,14 +331,6 @@ function reasonParts(t: RunSummaryRow): string {
 const HITS_SHOWN = 16
 
 /**
- * The per-task rows: failures first, then what executed or was skipped,
- * then cache hits. Hits are the noise of a warm run — 996 of a thousand
- * rows on a red run put the failure a screen's height above the prompt
- * (item 280) — so past `HITS_SHOWN` they fold into one line with their
- * count; the ones shown are the slowest restores, the one thing a hit's
- * row tells. `--format json` lists every row.
- */
-/**
  * The steps the run did not wait on (`vx:prefetch`), which its own output
  * never showed (M, 2026-10-16): here for debugging, marked `internal`.
  */
@@ -353,6 +345,15 @@ function formatStepRows(steps: readonly RunStep[]): string[] {
     ),
   ]
 }
+
+/**
+ * The per-task rows: failures first, then what executed or was skipped,
+ * then cache hits. Hits are the noise of a warm run — 996 of a thousand
+ * rows on a red run put the failure a screen's height above the prompt
+ * (item 280) — so past `HITS_SHOWN` they fold into one line with their
+ * count; the ones shown are the slowest restores, the one thing a hit's
+ * row tells. `--format json` lists every row.
+ */
 
 export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
   if (tasks.length === 0) return []
