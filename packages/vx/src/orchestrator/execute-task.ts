@@ -233,7 +233,7 @@ export interface ExecuteArgs {
    */
   outputDirSnapshots?: OutputDirSnapshot[]
   /** The run's save lane: a miss's cache save runs off the execution slot (save-lane.ts). */
-  deferSave?: (save: () => Promise<void>) => Promise<void>
+  deferSave?: (save: () => Promise<void>) => Promise<boolean>
   /**
    * Where a deferred save's `landed` promise is parked by task id, for the
    * in-flight join (admission.ts): a duplicate of this task in another run
@@ -1314,8 +1314,10 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           }
         : {}),
     })
-    args.deferredSaves?.set(node.id, landed)
-    saved = true
+    // A run that settles the outcome on `landed` learns there whether the
+    // entry is in; without one, the save is taken as done.
+    if (args.deferredSaves !== undefined) args.deferredSaves.set(node.id, landed)
+    else saved = true
   } else if (cfgCacheable && !remoteOnly && !deferralRequested && args.noDependants !== true) {
     // Ran here and saves nothing — failed, a read-only policy, a tainted
     // upstream, a key that no longer held — yet it wrote what a save would

@@ -21,7 +21,7 @@ describe('createSaveLane', () => {
     let peak = 0
     const done: number[] = []
     const lane = createSaveLane(2, () => undefined)
-    const settled: Promise<void>[] = []
+    const settled: Promise<boolean>[] = []
     for (let i = 0; i < 5; i++) {
       settled.push(
         lane.defer(async () => {
@@ -40,7 +40,7 @@ describe('createSaveLane', () => {
   it('a save queued behind a running one settles in order, and one deferred meanwhile after it', async () => {
     const lane = createSaveLane(1, () => undefined)
     const order: string[] = []
-    let nested: Promise<void> | undefined
+    let nested: Promise<boolean> | undefined
     const a = lane.defer(async () => {
       await sleep(5)
       order.push('a')
@@ -81,7 +81,7 @@ describe('createSaveLane', () => {
     const next = lane.defer(async () => {
       second = true
     })
-    await Promise.all([first, next])
+    expect(await Promise.all([first, next])).toEqual([false, true])
     expect(errors).toEqual(['Error: disk full'])
     expect(second).toBe(true)
   })
@@ -155,6 +155,40 @@ describe('the save lane in a run', () => {
       ])
     } finally {
       afterSave()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 30_000)
+
+  it('a save that fails leaves the task not saved, so the footer counts no ↑', async () => {
+    // The footer read `local 1↑` beside "[vx] cache save failed" with no
+    // artifact stored (Growth's footer-failed-save.sh, 2026-10-16).
+    const root = await makeWorkspace({ prefix: 'vx-save-fail-' })
+    const failing = spyOn(Cache.prototype, 'save').mockImplementation(() =>
+      Promise.reject(new Error('disk said no')),
+    )
+    try {
+      await addProject(root, 'a', {
+        files: { 'src/in.txt': 'a' },
+        config: `export default { tasks: { build: {
+            exec: { command: 'cat src/in.txt > out.txt' },
+            inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+          } } }`,
+      })
+      const lines: string[] = []
+      const r = await run({
+        cwd: root,
+        tasks: ['build'],
+        log: {
+          status: (l) => void lines.push(l),
+          taskStdout() {},
+          taskStderr() {},
+          taskComplete() {},
+        },
+      })
+      expect(r.outcomes.map((o) => [o.status, o.saved])).toEqual([['success', undefined]])
+      expect(lines.join('\n')).toContain('[vx] cache save failed: disk said no')
+    } finally {
+      failing.mockRestore()
       await rm(root, { recursive: true, force: true })
     }
   }, 30_000)

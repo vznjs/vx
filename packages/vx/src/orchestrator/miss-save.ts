@@ -132,7 +132,7 @@ export interface SaveMissArgs {
    * (a same-project downstream task reads both), and the pack + write +
    * index go to the run's save lane (save-lane.ts).
    */
-  deferSave?: ((save: () => Promise<void>) => Promise<void>) | undefined
+  deferSave?: ((save: () => Promise<void>) => Promise<boolean>) | undefined
   /** Time the save and size its artifact, for a telemetry sink: one stat. */
   measure?: boolean | undefined
 }
@@ -141,6 +141,8 @@ export interface SaveMissArgs {
 export interface SaveFacts {
   saveMs?: number
   artifactBytes?: number
+  /** The entry landed: the outcome's `saved`, set only once it has. */
+  saved?: true
 }
 
 /**
@@ -265,9 +267,13 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
   // Off the slot when the run keeps a lane (the save lane bounds and
   // drains it); in the slot otherwise — an embedder without a lane gets
   // the entry before the outcome.
-  if (a.deferSave !== undefined) return { landed: a.deferSave(save).then(() => facts) }
+  if (a.deferSave !== undefined) {
+    return {
+      landed: a.deferSave(save).then((stored) => (stored ? { ...facts, saved: true } : facts)),
+    }
+  }
   await save()
-  return { landed: Promise.resolve(facts) }
+  return { landed: Promise.resolve({ ...facts, saved: true }) }
 }
 
 /** What `markUnsaved` reads of a miss: where its declared outputs are. */

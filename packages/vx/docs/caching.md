@@ -1228,7 +1228,7 @@ the readers and `vx cache clean` find no cache and go on.
 A full disk is the same kind of failure and is reported the same way,
 never as a corrupt artifact and never as a stack: a save that runs out
 of room is `[vx] cache save failed: ENOSPC …` (the task's work ran, the
-next run misses), a restore that does is the task's failure line
+footer counts it not saved rather than `↑`, and the next run misses), a restore that does is the task's failure line
 `could not write its outputs (ENOSPC: …). Free space on that disk and
 re-run.`, and a run record that does is `[vx] run history not recorded:
 … — the verdict above stands` (the run exits by its tasks; `vx last`
