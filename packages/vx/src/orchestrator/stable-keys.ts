@@ -319,28 +319,31 @@ export function gatedOutputs(
   workspaceRoot: string,
 ): Map<string, { projectDir: string; glob: string }> {
   const out = new Map<string, { projectDir: string; glob: string }>()
-  const outputsOf = new Map<string, string[]>()
+  // Each project's positive outputs with their literal heads, read once:
+  // 1,000 projects' tasks spent 5-8 ms here re-splitting the same globs.
+  const outputsOf = new Map<string, { glob: string; head: string }[]>()
   for (const n of nodes.values()) {
-    const files = n.config.cache?.outputs.files ?? []
-    if (files.length === 0) continue
-    const list = outputsOf.get(n.projectName)
-    if (list === undefined) outputsOf.set(n.projectName, [...files])
-    else list.push(...files)
+    const files = n.config.cache?.outputs.files
+    if (files === undefined || files.length === 0) continue
+    let list = outputsOf.get(n.projectName)
+    if (list === undefined) outputsOf.set(n.projectName, (list = []))
+    for (const glob of files)
+      if (!glob.startsWith('!')) list.push({ glob, head: literalPrefix(glob) })
   }
   if (outputsOf.size === 0) return out
   for (const n of nodes.values()) {
     const inputs = n.config.cache?.inputs?.files
     const outputs = outputsOf.get(n.projectName)
     if (inputs === undefined || outputs === undefined || isGroupTask(n)) continue
-    const back = inputs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
-    const rel = relPosix(workspaceRoot, n.projectDir)
-    for (const o of outputs) {
-      if (o.startsWith('!')) continue
+    let back: string[] | undefined
+    let rel: string | undefined
+    for (const { glob: o, head } of outputs) {
+      if (!workspaceInputsReach(inputs, [head])) continue
+      rel ??= relPosix(workspaceRoot, n.projectDir)
+      back ??= inputs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
       const rooted = rel === '' ? o : `${rel}/${o}`
       if (out.has(rooted) || (back.length > 0 && outputTakenBack(o, back))) continue
-      if (workspaceInputsReach(inputs, [literalPrefix(o)])) {
-        out.set(rooted, { projectDir: n.projectDir, glob: o })
-      }
+      out.set(rooted, { projectDir: n.projectDir, glob: o })
     }
   }
   return out
@@ -641,13 +644,19 @@ export function workspaceInputsReach(
 
 /** A glob's leading literal segments, `''` when its first holds a wildcard. */
 function literalPrefix(glob: string): string {
+  let prefix = literalPrefixes.get(glob)
+  if (prefix !== undefined) return prefix
   const literal: string[] = []
   for (const seg of normalizeGlob(glob).split('/')) {
     if (!isLiteralPattern(seg)) break
     literal.push(seg)
   }
-  return literal.join('/')
+  literalPrefixes.set(glob, (prefix = literal.join('/')))
+  return prefix
 }
+
+/** Per glob string, which the configs bound: every task repeats a few. */
+const literalPrefixes = new Map<string, string>()
 
 /** What the stability gate reads of a set of project names. */
 interface ProjectNames extends Iterable<string> {
