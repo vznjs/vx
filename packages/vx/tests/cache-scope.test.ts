@@ -143,9 +143,12 @@ describe('cache.scope', () => {
     )
   }
 
-  it(
-    'the footer says what each layer restored and saved (M, 2026-10-15)',
-    async () => {
+  // A scoped upload went to the remote under the scope's key, and the
+  // footer looked its traffic up by the task key: `local 1↑`, no remote
+  // part, and a failed one never showed as ✗ (Growth, footer-scoped-upload.sh).
+  it.each([undefined, 'pr-1'])(
+    'the footer says what each layer restored and saved (scope %p; M, 2026-10-15)',
+    async (scope) => {
       const fixture = await makeWorkspace('vx-cache-footer-uploads-')
       try {
         await addProject(fixture.root, 'app', {
@@ -153,14 +156,23 @@ describe('cache.scope', () => {
           config: BUILD_CONFIG,
         })
         const { layer } = memoryRemote()
-        await runScoped(fixture, layer, undefined, 'v1')
+        await runScoped(fixture, layer, scope, 'v1')
         const legend = (): string =>
           fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
         // Each task counts once, under its strongest state: saved here and uploaded is `remote ↑`.
         expect(legend()).toBe('remote 1↑')
         fixture.log.length = 0
-        await runScoped(fixture, layer, undefined, 'v1')
+        await runScoped(fixture, layer, scope, 'v1')
         expect(legend()).toBe('remote 1↓')
+        fixture.log.length = 0
+        const failing: RemoteCacheLayer = {
+          ...layer,
+          async put() {
+            throw new Error('503')
+          },
+        }
+        await runScoped(fixture, failing, scope, 'v2')
+        expect(legend()).toBe('remote 1✗')
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }
