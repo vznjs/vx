@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## config: move inputs onto the task
+
+`tasks.<name>.cache.inputs` is now `tasks.<name>.inputs`; `cache` without `exec` is refused; a task depending on an uncached task with no `inputs` never hits; `.vx/projects.lock.json` is version 4.
+
 ## report: count remote failures and live uploads in the footer
 
 `RunContext.cache.uploads` is replaced by `RunContext.cache.traffic`: uploads in flight and each key's remote failures. The runs table adds `remote_error` (SCHEMA_VERSION v40).
