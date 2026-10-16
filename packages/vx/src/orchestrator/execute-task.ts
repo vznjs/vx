@@ -253,10 +253,10 @@ export interface ExecuteArgs {
   /**
    * The run keeps its bytes in a remote (run-store.ts): an attempt captures
    * its output at the entry's bounds, and an outcome that saves no entry
-   * carries it as `runLog`. Set only where `cache.upload.failures` covers
-   * the run.
+   * carries it as `runLog`; a failure's only when `failures`
+   * (`cache.upload.failures`).
    */
-  keepRun?: true
+  keepRun?: { failures: boolean }
   /**
    * Whether a task has rewritten a root file a plugin claims (whose bytes
    * the claimant folded) since the run read it (fingerprint-watch.ts): past that, no key taken
@@ -1462,7 +1462,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(effectiveExitCode !== 0 && output !== undefined
       ? { failedOutput: failedOutputLog(output, willSave || args.keepRun !== undefined) }
       : {}),
-    ...(args.keepRun !== undefined && (effectiveExitCode !== 0 || !willSave) && output !== undefined
+    ...(args.keepRun !== undefined &&
+    (effectiveExitCode !== 0 ? args.keepRun.failures : !willSave) &&
+    output !== undefined
       ? { runLog: storedOutput() }
       : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
