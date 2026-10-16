@@ -6,7 +6,7 @@
 // any user, so no user switch is needed. The gate is an env var CI sets,
 // never a probe: absent, the suite skips on a laptop; on the machine whose
 // result gates a merge it runs.
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
@@ -92,6 +92,27 @@ describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
       )
       expect(second.out + second.err).not.toContain('internal error')
       expect(second.out + second.err).not.toContain('corrupt artifact')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a restore the full disk refuses leaves the outputs it found as they were',
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-full-keep-', dir: small })
+      const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'vx-full-cache-'))
+      made.push(cacheDir)
+      await project(root)
+      const first = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      expect(`${first.code}\n${first.err}`).toStartWith('0\n')
+      // Small, so removing it first would not make the entry's room.
+      const out = path.join(root, 'packages', 'app', 'dist', 'out.bin')
+      await writeFile(out, 'old\n')
+      await fill(root)
+      const second = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+      expect(second.out + second.err).toContain('ENOSPC')
+      expect(second.code).toBe(1)
+      expect(await readFile(out, 'utf8')).toBe('old\n')
     },
     TIMEOUT,
   )

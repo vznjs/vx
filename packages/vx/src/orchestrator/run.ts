@@ -13,6 +13,7 @@ import {
   cachesNothing,
   formatCachePolicy,
   stopRuntimeProbes,
+  sweepStaging,
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
@@ -450,6 +451,8 @@ async function runOnBus(
   // carries it so analytics queries can group by invocation; plugins get it
   // in their teardown's `RunReport`.
   const runId = ulid()
+  // A killed run's restore staging (`.vx/tmp/<pid>-0`), once per run.
+  sweepStaging(prepared.workspaceRoot)
   const head = captureGitContext(prepared.workspaceRoot)
   const ciContext = detectCi(process.env)
   // A run keeps its own bytes only where the policy says (default: CI): a

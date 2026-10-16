@@ -495,7 +495,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     // Item 1094: `dist/**` covers this path, and the message said the globs
     // did not; what the clean leaves is a directory where a file goes.
     await expect(cache.restoreOutputs('stray', projectDir)).rejects.toThrow(
-      /: a directory stands where the entry holds a file\. The clean before a restore removes the files the output globs select and the directories that empties, not this — remove it and re-run\.$/,
+      /: a directory stands where the entry holds a file\. A restore replaces what the output globs select, not this — remove it and re-run\.$/,
     )
 
     // And a FILE standing where the entry needs a DIRECTORY — the same

@@ -47,7 +47,7 @@ describe('the ignore filter', () => {
     ['vx’s own cache', '.vx/cache/abcdef.tar.zst'],
     ['a nested .vx dir', 'packages/a/.vx/cache/x'],
     ['an editor swap file', 'packages/a/src/index.ts~'],
-    ['a restore temp file', 'packages/a/dist/.vx-tmp-l8q-0'],
+    ['a restore staging file', '.vx/tmp/l8q-0/1'],
   ])('ignores %s', (_label, rel) => {
     expect(isIgnoredWatchPath(rel.split('/').join(path.sep))).toBe(true)
   })

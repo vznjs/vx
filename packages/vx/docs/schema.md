@@ -830,8 +830,8 @@ Always applied to every glob pass (regardless of what you wrote):
 watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
   `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction
-  directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
-  `.vx-tmp-*`, at any depth.
+  directory `.<16 hex>-<8 hex>.tmp/**`, and `.vx/tmp/**`, where vx's
+  restores stage, at any depth.
 - **Installs** — an untracked file under any `node_modules/` that git
   does not ignore. An ignored one follows the gitignore filter above
   like any other ignored path: named outright, it is an input
@@ -890,7 +890,7 @@ backslash separator (`src\**`, `src\*.ts`) or a drive (`C:\src\**`,
 backslash stays an escape.
 
 Still applied: the always-ignored set (`.git/**`, `.vx/cache/**`,
-`.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx-tmp-*`),
+`.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, `.<16 hex>-<8 hex>.tmp/**`, `.vx/tmp/**`),
 untracked files under `node_modules/`, and the task's own declared
 outputs, `outputs.workspaceFiles` and the `outputs.files` its globs reach
 in its own project (a task never invalidates itself).

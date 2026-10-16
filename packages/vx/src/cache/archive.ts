@@ -20,11 +20,13 @@
 // holding more than a chunk. `Bun.Archive` used to do all three and
 // needed the whole tar in memory on every side — restoring a 150 MiB
 // artifact peaked at 3.2× its size, saving one at 4.7× (measured
-// 2026-09-03). Every regular entry is written beside its target under a
-// `.vx-tmp-*` name and renamed into place only once the WHOLE archive has
-// been read and every name proven safe, so a poisoned entry anywhere —
-// even the last one — leaves nothing behind but the empty directories it
-// needed, which are pruned too.
+// 2026-09-03). Every regular entry is written to the workspace's staging
+// directory (`.vx/tmp/<pid>-0/`, vx's own, never an output folder) and
+// renamed over its target only once the WHOLE archive has been read and
+// every name proven safe, so a poisoned entry anywhere — even the last
+// one — leaves nothing behind but the empty directories it needed, which
+// are pruned too, and a killed restore leaves its temps where the next
+// run sweeps them (`sweepStaging`).
 //
 // What stays here is the part no tar reader can decide for us: WHERE an
 // entry may land on disk. Every name is validated and every destination
@@ -39,14 +41,27 @@
 
 import {
   chmodSync,
+  chownSync,
+  existsSync,
   lstatSync,
   readFileSync,
   realpathSync,
-  renameSync,
   statSync,
   utimesSync,
+  writeFileSync,
 } from 'node:fs'
-import { lstat, mkdir, readlink, realpath, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  readlink,
+  realpath,
+  rename,
+  rmdir,
+  stat,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
 import path from 'node:path'
 import { UserError } from '../util/index.js'
 import { WORKSPACE_OUTPUT_PREFIX } from './layer.js'
@@ -596,12 +611,14 @@ export async function extractArtifactStream(
   workspaceDest: string | undefined,
   verify?: (provided: ReadonlySet<string>) => void,
   accept?: (name: string) => boolean,
+  /** The workspace root whose `.vx/tmp/` stages the entries; absent, each stages beside its target. */
+  stageRoot?: string,
 ): Promise<Set<string>> {
   // No `mkdir -p` of the destination here: `stage` creates each entry's
   // directory chain, the destination included, and the cache restores
   // into a project directory that exists. The eager one cost every
   // restore a thread-pool round trip for an EEXIST and a stat (item 627).
-  const x = new Extractor(destDir, workspaceDest)
+  const x = new Extractor(destDir, workspaceDest, stageRoot)
   const provided = new Set<string>()
   const headerMtime = new Map<string, number>()
   let meta: MetaFile['files'] = {}
@@ -684,6 +701,8 @@ const textOf = async (body: AsyncIterable<Uint8Array>): Promise<string> =>
 
 /** One staged entry: written at `tmp`, renamed to `target` on commit. */
 interface Staged {
+  /** `tmp` is in the staging directory, not beside `target`. */
+  staged: boolean
   name: string
   tmp: string
   target: string
@@ -691,6 +710,8 @@ interface Staged {
   created: string | undefined
   /** Written by Bun's file writer, which creates with 0664 where `writeFile` uses 0666 (before the umask). */
   streamed: boolean
+  /** The destination it is contained in. */
+  base: string
 }
 
 /**
@@ -717,6 +738,7 @@ class Extractor {
   constructor(
     private readonly destDir: string,
     private readonly workspaceDest: string | undefined,
+    private readonly stageRoot: string | undefined,
   ) {}
 
   /** Each namespace anchors at its own destination dir. */
@@ -873,7 +895,7 @@ class Extractor {
       }
       this.ensuredDirs.add(dir)
     }
-    // Write beside the target and RENAME into place. rename(2) replaces
+    // Write apart from the target and RENAME into place. rename(2) replaces
     // the destination's directory ENTRY without following it, which is
     // what makes this both link-safe and concurrency-safe:
     //
@@ -890,15 +912,15 @@ class Extractor {
     //
     // A directory at the target makes the rename fail — the same
     // fail-closed outcome the plain write had.
-    // The temp is a sibling with its own short name, never `<target>.suffix`:
-    // a suffix pushed a legal name of 242–255 bytes past NAME_MAX, and the
-    // restore of a valid artifact failed with ENAMETOOLONG (item 666).
-    const tmp = path.join(
-      path.dirname(target),
-      `.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`,
-    )
+    // Staged under `.vx/tmp/`, so no output folder ever holds a temp: a
+    // reader or a key taken meanwhile saw `.vx-tmp-*` files beside the
+    // outputs, and a killed restore left them there (M, 2026-10-16).
+    const staged = this.stageRoot !== undefined
+    const tmp = staged
+      ? path.join(await stagingDir(this.stageRoot!), (tmpSeq++).toString(36))
+      : siblingTemp(target)
     const streamed = !(body instanceof Uint8Array)
-    this.staged.push({ name, tmp, target, created, streamed })
+    this.staged.push({ staged, name, tmp, target, created, streamed, base })
     if (body instanceof Uint8Array) {
       this.inflightBytes += body.byteLength
       // `writeFile`, not `Bun.write`: for a buffer this size `Bun.write`
@@ -934,12 +956,11 @@ class Extractor {
 
   /**
    * Apply each entry's mode and mtime, then rename everything into place.
-   * Synchronous calls in batches: the three metadata calls per file are a
-   * few microseconds each on the calling thread and ~40 µs each as
-   * thread-pool round trips, and a large artifact has thousands of them
-   * (measured 2026-09-11 on payload's ui, 4,069 files: 892 ms → see the
-   * archive bench). A yield every `COMMIT_BATCH` files keeps the other
-   * restores' round trips flowing. The chmod is skipped when the mode is
+   * The metadata calls are synchronous: a few microseconds each on the
+   * calling thread and ~40 µs each as thread-pool round trips, and a large
+   * artifact has thousands of them (measured 2026-09-11 on payload's ui,
+   * 4,069 files: 892 ms → see the archive bench). The renames go to the
+   * pool, `RENAME_BATCH` at a time: each replaces a live file. The chmod is skipped when the mode is
    * the one the temp file was created with — the common case. The two
    * writers create with different modes (under umask 000: 0666 and 0664),
    * so each is stat'ed once.
@@ -948,31 +969,91 @@ class Extractor {
     metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
   ): Promise<void> {
     await this.drain()
-    const createdModes = new Map<boolean, number>()
+    const created = new Map<boolean, { mode: number; uid: number; gid: number }>()
+    // A setgid directory's group, by directory: a file staged elsewhere
+    // took the staging directory's, where one written in place inherits it.
+    const setgid = new Map<string, number | null>()
     let n = 0
+    let renames: Promise<void>[] = []
+    const checked = new Set<string>()
     for (const s of this.staged) {
+      await this.assertStillContained(s, checked)
       const [mode, mtimeMs] = metaFor(s.name)
-      let createdMode = createdModes.get(s.streamed)
-      if (createdMode === undefined) {
-        createdMode = statSync(s.tmp).mode & 0o777
-        createdModes.set(s.streamed, createdMode)
+      let made = created.get(s.streamed)
+      if (made === undefined) {
+        const st = statSync(s.tmp)
+        made = { mode: st.mode & 0o777, uid: st.uid, gid: st.gid }
+        created.set(s.streamed, made)
       }
-      if ((mode & 0o777) !== createdMode) chmodSync(s.tmp, mode & 0o777)
-      if (mtimeMs !== undefined) {
-        // A Date, not seconds: Bun reads a negative number of seconds as
-        // "now", and a Date before 1970 as itself (Bun 1.4.2).
-        const t = new Date(mtimeMs)
-        utimesSync(s.tmp, t, t)
+      if ((mode & 0o777) !== made.mode) chmodSync(s.tmp, mode & 0o777)
+      // A Date, not seconds: Bun reads a negative number of seconds as
+      // "now", and a Date before 1970 as itself (Bun 1.4.2).
+      const t = mtimeMs === undefined ? undefined : new Date(mtimeMs)
+      if (t !== undefined) utimesSync(s.tmp, t, t)
+      if (s.staged) {
+        const dir = path.dirname(s.target)
+        let gid = setgid.get(dir)
+        if (gid === undefined) {
+          const st = statSync(dir)
+          gid = (st.mode & 0o2000) !== 0 ? st.gid : null
+          setgid.set(dir, gid)
+        }
+        if (gid !== null && gid !== made.gid) chownSync(s.tmp, made.uid, gid)
       }
-      renameSync(s.tmp, s.target)
-      if (++n % COMMIT_BATCH === 0) await new Promise<void>((r) => setImmediate(r))
+      renames.push(this.place(s, mode, t))
+      if (++n % RENAME_BATCH === 0) {
+        await settle(renames)
+        renames = []
+      }
     }
+    await settle(renames)
     this.staged.length = 0
   }
 
   /**
-   * Never leave a stray `.vx-tmp-*` behind: the declared output globs would
-   * sweep it into the next artifact. Directories this extraction created
+   * Rename `s` over its target. A target on another filesystem than
+   * `.vx/tmp/` (EXDEV) is reached through a temp beside it, for that file
+   * only: the rename that replaces the live file stays atomic.
+   */
+  private async place(s: Staged, mode: number, t: Date | undefined): Promise<void> {
+    try {
+      await rename(s.tmp, s.target)
+    } catch (err) {
+      if (!s.staged || (err as NodeJS.ErrnoException).code !== 'EXDEV') throw err
+      const side = siblingTemp(s.target)
+      try {
+        await copyFile(s.tmp, side)
+        chmodSync(side, mode & 0o777)
+        if (t !== undefined) utimesSync(side, t, t)
+        await rename(side, s.target)
+      } catch (e) {
+        await unlink(side).catch(() => undefined)
+        throw e
+      }
+      await unlink(s.tmp).catch(() => undefined)
+    }
+  }
+
+  /**
+   * The staging check, again at the rename: a directory on the way swapped
+   * for a link out of the base since then would carry the rename with it.
+   * Bun has no `renameat` against a held directory fd, so this is by path,
+   * once per directory per commit.
+   */
+  private async assertStillContained(s: Staged, checked: Set<string>): Promise<void> {
+    const dir = path.dirname(s.target)
+    if (checked.has(dir)) return
+    checked.add(dir)
+    const realBase = await this.realBaseOf(s.base)
+    const real = await realOf(dir, true)
+    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+      throw await linkOutError(path.resolve(s.base), dir, realBase)
+    }
+  }
+
+  /**
+   * Never leave a temp behind: beside a target, the declared output globs
+   * would sweep it into the next artifact. Directories this extraction created
    * are removed bottom-up while empty; one a concurrent writer has since
    * filled is left alone.
    */
@@ -1005,11 +1086,61 @@ class Extractor {
   }
 }
 
-/** Files renamed into place between two yields of a commit. */
-const COMMIT_BATCH = 256
+/**
+ * Renames in flight at once. A rename over a live file is not the few
+ * microseconds of one into an empty directory: on ext4 replacing a file
+ * starts writeback of the new one's data (`auto_da_alloc`), ~250 µs each,
+ * and synchronous ones stalled the main thread. 300 one-file restores
+ * took 25% longer than delete-then-restore (2026-10-16); on the thread
+ * pool they tie it, and 2,000 files in one restore are faster.
+ */
+const RENAME_BATCH = 64
+
+/** Wait for every rename, then throw the first failure: none is left in flight for `abort`. */
+async function settle(renames: readonly Promise<void>[]): Promise<void> {
+  for (const r of await Promise.allSettled(renames)) if (r.status === 'rejected') throw r.reason
+}
 
 /** Per-process counter for extract temp names; uniqueness only. */
 let tmpSeq = 0
+
+/** `.vx/<STAGING>/`: where restores stage, each process in its own `<pid>-0` directory. */
+export const STAGING = 'tmp'
+
+const stagingMade = new Set<string>()
+
+/**
+ * This process's staging directory under `root`'s `.vx/tmp/`, made on its
+ * first restore and again only if something removed it: one per restore
+ * cost 300 restores 12% (2026-10-16). Every restore's renames empty it;
+ * the next run's `sweepStaging` removes it once this process is gone.
+ */
+async function stagingDir(root: string): Promise<string> {
+  const top = path.join(root, '.vx', STAGING)
+  const own = path.join(top, `${process.pid.toString(36)}-0`)
+  if (stagingMade.has(own) && existsSync(own)) return own
+  await mkdir(own, { recursive: true })
+  // Ignored by git whatever `.vx/.gitignore` an older init committed.
+  try {
+    writeFileSync(path.join(top, '.gitignore'), '*\n', { flag: 'wx' })
+  } catch {
+    // there already, or the restore fails on its first write anyway
+  }
+  stagingMade.add(own)
+  return own
+}
+
+/**
+ * A temp beside `target`, with its own short name, never `<target>.suffix`:
+ * a suffix pushed a legal name of 242–255 bytes past NAME_MAX, and the
+ * restore of a valid artifact failed with ENAMETOOLONG (item 666).
+ */
+function siblingTemp(target: string): string {
+  return path.join(
+    path.dirname(target),
+    `.vx-tmp-${process.pid.toString(36)}-${(tmpSeq++).toString(36)}`,
+  )
+}
 
 const WORKSPACE_PREFIX = 'workspace-outputs/'
 

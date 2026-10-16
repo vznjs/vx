@@ -101,11 +101,8 @@ const ALWAYS_IGNORE = [
   // extracts the downloaded runtime into, `<cwd>/.<16 hex>-<8 hex>.tmp/`,
   // 60 MB mid-write under the same race (2026-09-29).
   '**/.????????????????-????????.tmp/**',
-  // vx's own restore temp (archive.ts), live only while an artifact lands
-  // beside its target. A key taken meanwhile listed it, the rename removed
-  // it, and every task reading that directory was withheld its save
-  // (withastro/astro: 25 of 33 builds re-ran on a restore, X-209).
-  '**/.vx-tmp-*',
+  // Where restores stage (archive.ts): vx's own, never an input.
+  '**/.vx/tmp/**',
 ]
 
 const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
@@ -869,6 +866,7 @@ export async function cleanOutputs(args: {
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
   const committed = args.committed ?? committedFiles(undefined, args.projectDir)
+  sweepRestoreTemps(args.projectDir, args.outputs)
   const matched = args.resolved ?? (await resolveOutputs(args))
   // `force: true` makes rm tolerate ENOENT (e.g. when two output
   // globs overlap and a sibling already deleted a path mid-iteration).
@@ -882,6 +880,70 @@ export async function cleanOutputs(args: {
   // GitFilesCache.markOutputsChanged: a committed one kept here is the
   // task's to rewrite or remove, so its index OID no longer vouches for it.
   return matched.map((f) => relPosix(args.projectDir, f))
+}
+
+/**
+ * Remove the restore temps (`.vx-tmp-<pid>-<n>`, archive.ts) a killed run
+ * left beside an exact-file output. A restore stages in `.vx/tmp/` and
+ * writes one beside its target only where the target is on another
+ * filesystem (EXDEV); a glob over the directory takes it with the outputs,
+ * but `out/a.txt` reaches no sibling, and a partial temp stayed in `out/`
+ * through every later run (Growth's SIGKILL probe, 2026-10-16). A temp
+ * whose writer is alive, this process included, is left: it may be
+ * mid-restore.
+ */
+export function sweepRestoreTemps(base: string, outputs: readonly string[]): void {
+  const dirs = new Set<string>()
+  for (const g of outputs) {
+    if (g.startsWith('!') || !isLiteralPattern(g)) continue
+    dirs.add(path.dirname(path.resolve(base, stripTrailingSlash(normalizeGlob(g)))))
+  }
+  for (const dir of dirs) {
+    let names: string[]
+    try {
+      names = readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const name of names) {
+      const m = /^\.vx-tmp-([0-9a-z]+)-[0-9a-z]+$/.exec(name)
+      if (m === null) continue
+      const pid = Number.parseInt(m[1]!, 36)
+      if (pid === process.pid || writerAlive(pid)) continue
+      rmSync(path.join(dir, name), { force: true })
+    }
+  }
+}
+
+/**
+ * Empty `.vx/tmp/` (archive.ts `STAGING`) of the staging directories
+ * (`<pid>-<n>`) a killed run left, once per run. One whose writer is alive,
+ * another run's or this one's, is left: it may be mid-restore.
+ */
+export function sweepStaging(workspaceRoot: string): void {
+  const top = path.join(workspaceRoot, '.vx', 'tmp')
+  let names: string[]
+  try {
+    names = readdirSync(top)
+  } catch {
+    return
+  }
+  for (const name of names) {
+    const m = /^([0-9a-z]+)-[0-9a-z]+$/.exec(name)
+    if (m === null) continue
+    const pid = Number.parseInt(m[1]!, 36)
+    if (pid === process.pid || writerAlive(pid)) continue
+    rmSync(path.join(top, name), { recursive: true, force: true })
+  }
+}
+
+function writerAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
+  }
 }
 
 /**
@@ -1213,6 +1275,7 @@ export async function cleanWorkspaceOutputs(args: {
   resolved?: readonly string[] | undefined
 }): Promise<string[]> {
   const committed = args.committed ?? committedFiles(undefined, args.workspaceRoot)
+  sweepRestoreTemps(args.workspaceRoot, args.outputs)
   const matched = args.resolved ?? (await resolveWorkspaceOutputs(args))
   await pruneEmptiedDirs(
     args.workspaceRoot,

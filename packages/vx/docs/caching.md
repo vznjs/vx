@@ -399,12 +399,23 @@ On a hit:
    clock (4 ms at HZ=250), so a same-size rewrite inside the tick of
    vx's own write, in place or as a new file that took the same inode,
    with its mtime forged back, still matches.
-3. Otherwise the task's declared outputs are wiped from the project
-   dir (`cleanOutputs`) — see
-   [§ Strict output ownership](#strict-output-ownership) — and the
-   `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries are extracted
-   from the artifact into place: its bytes inline in the index, read in
-   one read transaction with the entry's rows, or `<cacheDir>/<hash>.tar.zst`.
+3. Otherwise the `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries
+   are extracted from the artifact (its bytes inline in the index, read
+   in one read transaction with the entry's rows, or
+   `<cacheDir>/<hash>.tar.zst`) **in place**: every entry is staged in
+   the workspace's `.vx/tmp/` (never an output folder), and only once the
+   whole archive has staged is each renamed over the file it replaces. A
+   target on another filesystem goes through a temp beside it; a setgid
+   directory's group is kept, ACLs are not copied. The next run removes
+   the staging a killed run left. A process reading the output tree during the
+   restore never finds a declared output missing or half-written, and a
+   restore that fails first (a full disk, a damaged entry) leaves the
+   outputs as they were. Then the declared outputs the entry does not
+   hold are removed — see
+   [§ Strict output ownership](#strict-output-ownership). Only a found
+   output that blocks a rename (a file where the entry needs a directory,
+   or the reverse) goes before. Turbo also restores in place; Nx deletes
+   and copies each file, and a reader meets a missing or short file.
 4. Captured stdout is replayed to the live terminal via the logger —
    the framed block looks like a fresh run. (stderr is not cached —
    only successful runs are cached and their stderr is near-always
@@ -822,7 +833,7 @@ the run (`tests/runner.test.ts`) — and the save resolves the output
 globs at once. A descendant the command detached (`setsid … &`, a
 daemon) that writes after that is not in the artifact: the entry saves
 what was there, often nothing (with the `cache.outputs matched no
-files` line), and the next hit's clean-before-restore removes what the
+files` line), and the next hit's restore removes what the
 descendant wrote and restores the saved entry in its place (upstream
 survey, turborepo#12786). vx does not wait for it and cannot see it: a
 process that left the task's session is outside the process group vx
@@ -849,14 +860,15 @@ Declared `cache.outputs.files` are wiped in two distinct places:
 - **Before exec on a cache miss.** A leftover `dist/old.js` from a
   prior build can't survive into a fresh build that doesn't rewrite
   it.
-- **Before restore on a cache hit.** The post-restore tree is the
-  cached snapshot byte-for-byte. Hand-edits to output files don't
-  persist through a cache replay. When the hit's own check walked the
-  output globs to find the tree stale, the clean deletes from that walk's
-  list instead of walking again: nothing is awaited between them (X-161).
+- **After restore on a cache hit.** The post-restore tree is the
+  cached snapshot byte-for-byte: the restore renames the entry's files
+  over the ones it finds, then removes what the entry does not hold.
+  Hand-edits to output files don't persist through a cache replay. When
+  the hit's own check walked the output globs to find the tree stale,
+  the removal uses that walk's list instead of walking again (X-161).
 
-Both branches use the same `cleanOutputs` helper (`src/cache/inputs.ts`)
-with the same boundary rules, and vx's own paths stay off the wipe
+Both use the same helpers (`cleanOutputs`, `cleanOutputPaths` in
+`src/cache/inputs.ts`) with the same boundary rules, and vx's own paths stay off the wipe
 whatever the glob: `.git`, `.vx` and each `vx.lock.json` (`OUTPUT_NEVER`;
 `.vx` holds the workspace config and the lock, which a clean deleted and a
 hit restored stale while `.vx/cache` alone was listed). `node_modules` is
@@ -889,7 +901,7 @@ Skipped when:
   `.tsbuildinfo`). You opt out of the clean-tree guarantee: the save
   stores every file the outputs match after the run, so a leftover from
   an older build is cached and restored everywhere. A retry cleans as
-  usual; a hit still cleans before its restore.
+  usual; a hit's restore still removes what its entry does not hold.
 
 A declared output the process cannot remove (a `dist/` another user
 wrote, a read-only checkout) fails the task with `cannot remove declared
@@ -1333,8 +1345,9 @@ pax `path`/`size`, GNU long names, header checksums, truncation; an
 extended header (read whole) past 1 MiB or a pax `size` that is not a
 whole number is refused as corrupt, since a 1 GiB pax header costs 2 GiB
 of memory from a ~32 KB artifact — and
-every regular entry is written beside its target as a short `.vx-tmp-*` sibling (never a suffix on the target's name, which pushed a legal 242–255-byte name past NAME_MAX) and
-renamed into place only after the whole archive has ended cleanly and
+every regular entry is written to the workspace's `.vx/tmp/<pid>-0/`
+(vx's own, ignored by git, never an output folder) and renamed over its
+target only after the whole archive has ended cleanly and
 the index's recorded outputs are all present. vx itself holds one
 chunk of the tar at a time (measured 2026-09-03, incompressible
 artifacts, fresh process: 150 MiB peaked at +644 MiB through

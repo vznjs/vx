@@ -49,6 +49,8 @@ export {
   resolveInputs,
   resolveOutputs,
   resolveWorkspaceOutputs,
+  sweepRestoreTemps,
+  sweepStaging,
   asTrees,
   type ProjectFilesCache,
   type WorkspaceFilesCache,

@@ -12,11 +12,12 @@ export function toPosix(p: string): string {
 }
 
 /**
- * `.vx/.gitignore`: git ignores the machine-local `.vx/cache` and nothing
- * else in `.vx`, so the workspace config and the lock beside it are
- * committed. `vx init` and the cache write it when missing.
+ * `.vx/.gitignore`: git ignores the machine-local `.vx/cache`, `.vx/tmp`
+ * (where restores stage) and nothing else in `.vx`, so the workspace
+ * config and the lock beside it are committed. `vx init` and the cache
+ * write it when missing.
  */
-export const DOT_VX_GITIGNORE = '/cache\n'
+export const DOT_VX_GITIGNORE = '/cache\n/tmp\n'
 
 /** `.vx/.gitattributes`' text: GitHub collapses the machine lock in a diff. */
 export const DOT_VX_GITATTRIBUTES = 'projects.lock.json linguist-generated=true\n'

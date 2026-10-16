@@ -14,7 +14,7 @@ paths, output file paths, etc.).
 export function toPosix(p: string): string
 export function relPosix(from: string, to: string): string
 // `.vx/.gitignore`'s text: vx's machine-local state stays out of git
-export const DOT_VX_GITIGNORE = '/cache\n'
+export const DOT_VX_GITIGNORE = '/cache\n/tmp\n'
 // `.vx/.gitattributes`'s text: GitHub collapses the machine lock in a diff
 export const DOT_VX_GITATTRIBUTES = 'projects.lock.json linguist-generated=true\n'
 export function normalizeGlob(glob: string): string

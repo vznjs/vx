@@ -173,6 +173,12 @@ export async function cleanOutputPaths(args: {
   rels: readonly string[]
   outputs: readonly string[]
 }): Promise<void>
+// Remove the `.vx-tmp-*` restore temps a killed run left beside the
+// exact-file outputs; a temp whose writer is alive stays.
+export function sweepRestoreTemps(base: string, outputs: readonly string[]): void
+// Remove the `.vx/tmp/<pid>-0` staging a killed run left; a live run's
+// stays. Once per run.
+export function sweepStaging(workspaceRoot: string): void
 
 // Kill every runtime probe still running that these memos (one run's
 // runtimeCache and workspaceRuntimeCache) started, with its tree: a run's
@@ -221,14 +227,13 @@ other walker: a project outside a git work tree is a `UserError`
    (`**/.git/**`, `**/.vx/cache/**`,
    `**/.vx/projects.lock.json`, `**/vx.lock.json`, `**/.vx/.gitattributes`,
    `**/.vx/.gitignore`, `**/*.bun-build`,
-   `**/.????????????????-????????.tmp/**`, `**/.vx-tmp-*`)
+   `**/.????????????????-????????.tmp/**`, `**/.vx/tmp/**`)
    — applied as a defense-in-depth even if git happens to track
    something there. The lock file is vx's own frozen-config metadata,
    never a task input; the `.bun-build` intermediate and the directory
    `bun build --compile` extracts a downloaded cross-compile runtime into
-   are transients a concurrent compile is mid-write, and `.vx-tmp-*` is
-   vx's own restore temp, which a key taken mid-restore listed and the
-   rename then removed. `node_modules` is
+   are transients a concurrent compile is mid-write, and `.vx/tmp/` is
+   where vx's restores stage. `node_modules` is
    not here: the enumeration drops an UNTRACKED file under one that git
    does not ignore (`isInstalledPath`, an install); an ignored one is any
    ignored path, an input when named outright (a generated client); and
@@ -302,8 +307,9 @@ pass for `outputs.workspaceFiles`, anchored at the workspace root and
 deliberately without the project-dir exclusion.
 
 `cleanOutputs` removes every match, then the directories it emptied,
-bottom-up, but only inside the trees the task declared (before a miss
-and before a restore alike; `cleanWorkspaceOutputs` too): below each
+bottom-up, but only inside the trees the task declared (before a miss;
+`cleanWorkspaceOutputs` too, and `cleanOutputPaths`, which a hit uses
+after its in-place restore to remove the outputs its entry does not hold): below each
 wildcard glob's root, and at or below each literal output (a directory
 left standing where the entry or the task needs a file of the same name
 blocks it). The glob's root stays, since the task writes under it and

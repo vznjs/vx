@@ -33,13 +33,8 @@ export function isIgnoredWatchPath(rel: string): boolean {
   const segments = rel.split(path.sep)
   for (let i = 1; i <= segments.length; i++) if (isIgnoredDir(segments.slice(0, i))) return true
   if (IGNORED_SUFFIXES.some((suf) => rel.endsWith(suf))) return true
-  const name = segments[segments.length - 1]!
-  // A restore's own temporary file, never an input (`ALWAYS_IGNORE`):
-  // renamed away before the judgement, it read as a deletion and ran one
-  // more cycle where an uncached task makes ignored paths count.
-  if (name.startsWith('.vx-tmp-')) return true
   // `vx lock`'s review copy: no input, so a re-lock is no cycle.
-  return name === 'vx.lock.json'
+  return segments[segments.length - 1] === 'vx.lock.json'
 }
 
 /**
