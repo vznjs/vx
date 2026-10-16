@@ -24,7 +24,7 @@ import {
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
 import { OutageBreaker } from '../remote-breaker.js'
-import { withRetry } from '../remote-retry.js'
+import { Cooldown, withRetry } from '../remote-retry.js'
 import { headerValueFault } from '../remote-token.js'
 
 export interface TurboCacheOptions {
@@ -393,6 +393,8 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   private readonly absent = new Set<string>()
   private readonly key: Uint8Array | undefined
   readonly endpoint: string
+  /** The remote's rate limit, which every request of this client waits out. */
+  private readonly cooldown = new Cooldown()
   constructor(
     private readonly config: TurboCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
@@ -496,6 +498,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
           },
           this.config.retries,
           this.wait,
+          this.cooldown,
         ),
       method === 'GET',
     )
