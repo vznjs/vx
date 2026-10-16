@@ -1493,17 +1493,18 @@ export class Cache implements CacheLayer {
     return rel
   }
 
-  async key(input: CacheKeyInput): Promise<string> {
+  key(input: CacheKeyInput): Promise<string> {
     let links: string[] | undefined
-    const key = await foldKey(
+    return foldKey(
       input,
       (f) => this.hashFile(f),
       (f) => this.relFor(input.workspaceRoot, f),
       (v) => this.digestValue(v),
       (f) => (links ??= []).push(f),
-    )
-    if (links !== undefined) refuseUnkeyedLinks(links, input.inputFiles, input.workspaceRoot)
-    return key
+    ).then((key) => {
+      if (links !== undefined) refuseUnkeyedLinks(links, input.inputFiles, input.workspaceRoot)
+      return key
+    })
   }
 
   private valueSalt: string | undefined
