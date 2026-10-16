@@ -239,7 +239,7 @@ other walker: a project outside a git work tree is a `UserError`
    deleted-but-tracked path; we drop entries that are not on disk so
    the hasher doesn't throw ENOENT. "On disk" is an `lstat`: a regular
    file or a symlink (to anything, or to nothing — its target string
-   is what folds, as in git); a directory is not an input (git lists a
+   folds, as in git, then what it points to: cache/linked-inputs.ts); a directory is not an input (git lists a
    gitlink at its path and `**/*` matches it). Paths carrying a
    trusted index OID skip the probe (a clean tracked file necessarily
    exists), which is why `skip-worktree` / `assume-unchanged` entries
@@ -321,7 +321,7 @@ error.
   [`../schema.md`](../schema.md). A workspace-level `globalInputs` field is
   an owner-rejected non-goal.
 - Doesn't follow symlinks. Inputs come from git, which reports a link as
-  a link; the OUTPUT scan yields symlinks as outputs (captured as the
+  a link, and the key reads what it points to (`linked-inputs.ts`); the OUTPUT scan yields symlinks as outputs (captured as the
   target's bytes, unlinked on clean) and never descends through one below
   a glob's literal head. A link IN that head (`dist -> real-out` for
   `dist/**`) is followed by the scan and the clean alike; one resolving

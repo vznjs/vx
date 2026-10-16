@@ -49,9 +49,11 @@ Three stale hits in its first afternoon, each a fix with a row:
   files (`walkFiles`).
 
 Two more once it read through links and gained an uncached producer
-(2026-10-16): a link whose target was no input
-(`refuseUnkeyedLinks`), and an uncached producer's passed-through env
-value missing from its dependents' keys.
+(2026-10-16): a link whose target was no input (now keyed behind the
+link, `linked-inputs.ts`), and an uncached producer's passed-through env
+value missing from its dependents' keys. Its link targets reach a file
+or directory in the project, elsewhere in the workspace and outside it,
+with edits behind each.
 
 The one probe of the script itself: with the file-hash memo's ctime and
 inode checks deleted, seeds 1 to 3 each report a stale hit by step 23.

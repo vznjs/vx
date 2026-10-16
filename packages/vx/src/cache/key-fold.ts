@@ -144,8 +144,12 @@ export async function foldKey(
    * prints nothing.
    */
   digestValue: (value: string) => string = xxh3hex,
-  /** Told each input that is a symlink: its fold is the target string, not the bytes behind it. */
-  onLink?: (file: string) => void,
+  /**
+   * The content behind an input that is a symlink (linked-inputs.ts), folded
+   * after the link's own target string. Absent, a link folds its target
+   * string alone: a caller that keys no worktree.
+   */
+  behind?: (link: string) => Promise<string>,
 ): Promise<string> {
   // Seed-chained xxHash3: each step folds one field into the
   // running digest via `xxh3(part, prevDigest)`. Equivalent to the
@@ -270,14 +274,28 @@ export async function foldKey(
   fileHashes ??= await Promise.all(
     sortedInputs.map((f) => provided?.get(f) ?? hashFile(f).catch(absentOr)),
   )
+  // Links are rare, so a list without one awaits nothing more.
+  let behindLinks: Map<number, string> | undefined
+  if (behind !== undefined) {
+    const links: number[] = []
+    for (let i = 0; i < fileHashes.length; i++)
+      if (fileHashes[i]!.startsWith('120000:')) links.push(i)
+    if (links.length > 0) {
+      const digests = await Promise.all(links.map((i) => behind(sortedInputs[i]!)))
+      behindLinks = new Map(links.map((i, n) => [i, digests[n]!]))
+    }
+  }
   for (let i = 0; i < sortedInputs.length; i++) {
     const file = sortedInputs[i]!
     const rel = relOf(file)
     const oid = fileHashes[i]!
     h = xxh3(`${rel}\0${oid}`, h)
-    if (onLink !== undefined && oid.startsWith('120000:')) onLink(file)
     // The OID is already awaited — file capture is zero extra I/O.
     if (cap) cap.push({ kind: 'file', name: rel, hash: oid })
+    const linked = behindLinks?.get(i)
+    if (linked === undefined) continue
+    h = xxh3(`linked:${linked}`, h)
+    if (cap) cap.push({ kind: 'linked', name: rel, hash: xxh3hex(linked) })
   }
 
   return h.toString(16).padStart(16, '0')

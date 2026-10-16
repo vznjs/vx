@@ -4,6 +4,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { filesBehind } from '../cache/index.js'
 import { xxh3 } from '../util/index.js'
 import { gitIgnored, gitSpeller } from './watch-filter.js'
 import { modifiedBefore } from './watch-fs.js'
@@ -13,9 +14,10 @@ const ABSENT = -1n
 function settledState(abs: string): bigint {
   let st: fs.Stats
   try {
-    // A link is its target string, as the key folds it: following it saw
-    // a retarget to equal bytes as "the same" and ran nothing.
-    if (fs.lstatSync(abs).isSymbolicLink()) return xxh3(`link:${fs.readlinkSync(abs)}`)
+    // A link is its target string and what it points to, as the key folds
+    // it: following it alone saw a retarget to equal bytes as "the same".
+    if (fs.lstatSync(abs).isSymbolicLink())
+      return xxh3(`link:${fs.readlinkSync(abs)}\0${behindState(abs)}`)
     st = fs.statSync(abs)
   } catch {
     return ABSENT
@@ -48,6 +50,34 @@ function settledState(abs: string): bigint {
   }
   entries.sort()
   return xxh3(Buffer.from(entries.join('\n')))
+}
+
+/**
+ * What a link points to, as change detection reads it: a file's bytes and
+ * mode, a directory's files by size and times (cache/linked-inputs.ts keys
+ * their bytes), nothing for a dangling link.
+ */
+function behindState(link: string): string {
+  let real: string
+  let st: fs.Stats
+  try {
+    real = fs.realpathSync(link)
+    st = fs.statSync(real)
+  } catch {
+    return ''
+  }
+  if (st.isFile()) return `${xxh3(fs.readFileSync(real))}:${st.mode & 0o7777}`
+  if (!st.isDirectory()) return ''
+  return filesBehind(real)
+    .map((rel) => {
+      try {
+        const f = fs.statSync(path.join(real, rel))
+        return `${rel}\0${f.size}\0${f.mtimeMs}\0${f.ctimeMs}`
+      } catch {
+        return rel
+      }
+    })
+    .join('\n')
 }
 
 /** What the judgement reads from the loop, which owns it and may replace it. */
@@ -112,6 +142,15 @@ export class ChangeJudge {
   private readonly noticed = new Set<string>()
 
   constructor(private readonly ctx: JudgeContext) {}
+
+  /**
+   * Record a path's state as it is, if this loop has not: a link armed for
+   * what it points to, whose own times say "before the arm" whatever
+   * changed behind it, so its first sighting compares against this.
+   */
+  seed(abs: string): void {
+    if (!this.lastState.has(abs)) this.lastState.set(abs, settledState(abs))
+  }
 
   // A path this loop has never judged is a change only if it moved since
   // the watchers went live (its mtime or ctime, `modifiedBefore`). macOS delivers the initial run's own writes

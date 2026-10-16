@@ -52,7 +52,8 @@ as [Caching](../../caching/) numbers them:
    each project's dependency closure here.
 10. The content hashes of every file `inputs.files` resolves to:
     each file's git blob id, with its mode when it is an executable or
-    a symlink. A lockfile plugin also lists the project's
+    a symlink, and for a symlink what it points to: the file's content,
+    or every file under a linked directory. A lockfile plugin also lists the project's
     `package.json` among them.
 
 Core keys no package file of its own: a lockfile, an install setting or

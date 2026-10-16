@@ -6,7 +6,7 @@
 // index + unstaged — so it captures everything you touched and nothing
 // the base branch moved on with. Matches Turbo's `[<since>]` semantics.
 
-import { realpath } from 'node:fs/promises'
+import { realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   executablePath,
@@ -107,6 +107,12 @@ export interface AffectedArgs {
    * run then paid again (I-26).
    */
   untracked?: () => Promise<readonly string[] | null>
+  /**
+   * The tracked symlinks, workspace-relative, from the run's enumeration
+   * (its index OIDs spell one `120000:`); null or absent spawns `git ls-files
+   * -s` here. A changed or untracked link is a changed path already.
+   */
+  links?: () => Promise<readonly string[] | null>
 }
 
 export interface FingerprintClaims {
@@ -252,6 +258,16 @@ export async function affectedChanges(
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
   const changed = [...diffed.paths, ...untracked.filter((s) => !isInstalledPath(s))].filter(
     (s) => s !== LOCKFILE_NAME,
+  )
+  // A symlinked input keys the content behind it (cache/linked-inputs.ts),
+  // and the diff names that content's path, never the link's: a link whose
+  // target changed is a changed path itself.
+  changed.push(
+    ...(await linkedChanges(
+      args.workspaceRoot,
+      (await args.links?.().catch(() => null)) ?? (await trackedLinks(args.workspaceRoot)),
+      changed,
+    )),
   )
   // The nested repositories git reports as one path: a gitlink, or an
   // untracked embedded repository (`dir/`, the only path git prints so).
@@ -504,6 +520,69 @@ async function bytesOrNull(file: string): Promise<Uint8Array | null> {
 }
 
 /** Run a NUL-separated path-listing git command from the workspace root. */
+/** The symlinks the index lists, workspace-relative. */
+async function trackedLinks(workspaceRoot: string): Promise<string[]> {
+  const out: string[] = []
+  for (const record of await gitPaths(workspaceRoot, ['ls-files', '-s', '-z'])) {
+    if (record.startsWith('120000 ')) out.push(record.slice(record.indexOf('\t') + 1))
+  }
+  return out
+}
+
+/**
+ * The links in `links` whose target changed: a file `changed` names, or a
+ * directory holding one. A target git cannot diff is changed on every run:
+ * one outside the workspace, or git-ignored (or ignored files under a linked
+ * directory), since the key reads it whatever git says. A dangling link
+ * reads nothing; retargeting it is a change to the link itself.
+ */
+async function linkedChanges(
+  workspaceRoot: string,
+  links: readonly string[],
+  changed: readonly string[],
+): Promise<string[]> {
+  if (links.length === 0) return []
+  const realRoot = await realpath(workspaceRoot).catch(() => workspaceRoot)
+  const out: string[] = []
+  const inside: Array<{ link: string; target: string; dir: boolean }> = []
+  for (const link of links) {
+    let real: string
+    let dir: boolean
+    try {
+      real = await realpath(path.join(workspaceRoot, link))
+      dir = (await stat(real)).isDirectory()
+    } catch {
+      continue
+    }
+    const rel = path.relative(realRoot, real)
+    if (rel.startsWith('..') || path.isAbsolute(rel)) out.push(link)
+    else inside.push({ link, target: rel.split(path.sep).join('/'), dir })
+  }
+  if (inside.length === 0) return out
+  const named = inside.map((l) => l.target).filter((t) => t !== '')
+  const ignored = await gitPaths(workspaceRoot, [
+    'ls-files',
+    '--others',
+    '--ignored',
+    '--exclude-standard',
+    '--directory',
+    '-z',
+    '--',
+    ...(named.length === inside.length ? named : ['.']),
+  ])
+  const changedSet = new Set(changed)
+  const under = (p: string, dir: string): boolean => dir === '' || p.startsWith(`${dir}/`)
+  for (const { link, target, dir } of inside) {
+    const unseen = ignored.some((i) => {
+      const at = i.replace(/\/$/, '')
+      return at === target || under(target, at) || (dir && under(at, target))
+    })
+    const hit = dir ? changed.some((c) => under(c, target)) : changedSet.has(target)
+    if (unseen || hit) out.push(link)
+  }
+  return out
+}
+
 async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]> {
   const proc = spawnGit([...cmd], workspaceRoot)
   // `Response.text()` strips a leading U+FEFF, the first path's own.

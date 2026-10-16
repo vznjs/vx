@@ -25,8 +25,9 @@ and key derivation logic live here.
 - `file-hashes.ts` — `FileHashStore`: the per-file blob-OID memo over
   `file_hashes` (a symlink hashes as its target string) and the repo's
   object format.
-- `linked-inputs.ts` — refuses a symlinked input whose target is not an
-  input itself: the link folds its target string, not the bytes behind it.
+- `linked-inputs.ts` — the content behind a symlinked input, folded after
+  its target string: a file's identity, or every file under a linked
+  directory (caching.md § key).
 - `fs-clock.ts` — how far the workspace's file system clock runs behind
   this process's, measured once a run; `racyWindowMs` adds it.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows
@@ -207,7 +208,6 @@ export interface CacheKeyInput {
   // the digest — used (on a cache MISS only) to persist entry_inputs
   // for the input diff. The warm/hit path passes no captureInto.
   captureInto?: Array<{ kind: string; name: string; hash: string }>
-  linkTargetsKeyed?: boolean // refuse a symlinked input whose target is no input (linked-inputs.ts); not folded
 }
 
 // (Tier 3) One header row per `vx run` invocation — see the

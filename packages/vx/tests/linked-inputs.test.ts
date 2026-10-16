@@ -1,12 +1,13 @@
-// An input that is a symlink folds as git folds it: the blob of its target
-// STRING. The task reads the bytes behind it, so a link whose target was no
-// input of its own let an edit to that target replay the old output under a
-// green run — a file link (`src/x.txt -> ../../shared/x.txt`) and a directory
-// link (`src/sh -> ../../shared`) alike. A link's target must now be an input
-// itself (then the key, `--affected` and `vx watch` all see it), else the
-// task is refused naming the declaration that keys it.
+// An input that is a symlink keys the content behind it, as Nx reads a
+// linked file where it points (owner, 2026-10-16: "Do like nx"). Its target
+// string alone (git's mode-120000 blob) let an edit behind it replay the old
+// output under a green run (Growth's symlink-input.sh): a file link and a
+// directory link alike, inside or outside the project or the workspace.
+// The target string stays in the key, so a retarget to equal bytes moves
+// it; a dangling link keys its target string.
 
-import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { RunSummary } from '../src/orchestrator/index.js'
@@ -17,6 +18,8 @@ import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 const TIMEOUT = 30_000
 
 let root: string
+let outside: string
+let app: string
 let said: string[]
 const logger: Logger = {
   status: (line) => said.push(line),
@@ -27,6 +30,7 @@ const logger: Logger = {
 
 beforeEach(async () => {
   root = await makeWorkspace({ prefix: 'vx-linked-' })
+  outside = await mkdtemp(path.join(os.tmpdir(), 'vx-linked-outside-'))
   await mkdir(path.join(root, 'shared'), { recursive: true })
   await writeFile(path.join(root, 'shared', 'x.txt'), 'V1\n')
   await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\n')
@@ -34,171 +38,174 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(root, { recursive: true, force: true })
+  await rm(outside, { recursive: true, force: true })
 })
 
-const config = (read: string, inputs: string) => `
-  export default {
-    tasks: {
-      build: {
-        exec: { command: 'cat ${read} > out.txt' },
-        inputs: ${inputs}, cache: { outputs: { files: ['out.txt'] } },
-      },
-    },
-  }
-`
+/** `a#build` copies `read` to out.txt, keyed on `src/**`; `src` holds the links. */
+async function project(
+  read: string,
+  task = `inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },`,
+): Promise<void> {
+  app = await addProject(root, 'a', {
+    config: `export default { tasks: { build: { exec: { command: 'cat ${read} > out.txt' }, ${task} } } }`,
+  })
+  await mkdir(path.join(app, 'src'), { recursive: true })
+}
 
 function commit(message: string): void {
   gitIn(root)('add', '-A')
   gitIn(root)('commit', '-q', '-m', message)
 }
 
-function build(): Promise<RunSummary> {
+async function build(): Promise<RunSummary> {
   said = []
+  await rm(path.join(app, 'out.txt'), { force: true })
   return run({ cwd: root, tasks: ['build'], log: logger })
-}
-
-/** The task failed, and what it said holds `refusal`. */
-async function refused(refusal: string): Promise<void> {
-  const r = await build()
-  expect(statusOf(r)).toBe('failed')
-  expect(said.join('')).toContain(refusal)
 }
 
 const statusOf = (r: RunSummary): string | undefined =>
   r.outcomes.find((o) => o.node.id === 'a#build')?.status
 
-/** The run refuses, or rebuilds V2 after the target moved: never a hit replaying V1. */
-async function editTarget(app: string): Promise<RunSummary> {
-  await writeFile(path.join(root, 'shared', 'x.txt'), 'V2\n')
-  commit('v2')
-  await rm(path.join(app, 'out.txt'), { force: true })
-  return build()
+const out = (): Promise<string> => readFile(path.join(app, 'out.txt'), 'utf8')
+
+/** Built once, hit unchanged, then rebuilt with `after` once `edit` ran: never a hit replaying the old bytes. */
+async function rebuildsAfter(edit: () => Promise<void>, after: string): Promise<void> {
+  const first = await build()
+  expect(statusOf(first), said.join('')).toBe('success')
+  expect(statusOf(await build())).toBe('cache-hit')
+  await edit()
+  expect(statusOf(await build()), said.join('')).toBe('success')
+  expect(await out()).toBe(after)
 }
 
-describe('a symlinked input', () => {
+describe('a symlinked input keys what it points to', () => {
   it(
-    'a file link whose target is no input is refused, naming the declaration that keys it',
+    'a file link to a tracked file outside the project',
     async () => {
-      const app = await addProject(root, 'a', {
-        config: config('src/x.txt', `{ files: ['src/**'] }`),
-      })
-      await mkdir(path.join(app, 'src'), { recursive: true })
+      await project('src/x.txt')
       await symlink('../../../shared/x.txt', path.join(app, 'src', 'x.txt'))
       commit('fixture')
-      // Before the fix: `success`, then a `cache-hit` restoring V1 over V2.
-      await refused(
-        'inputs: "packages/a/src/x.txt" is a symlink to "shared/x.txt", whose content the key does not see — an edit to it would replay the old output. Add "shared/x.txt" to inputs.workspaceFiles.',
-      )
+      // Before the fix: refused, naming a workspaceFiles entry.
+      await rebuildsAfter(async () => {
+        await writeFile(path.join(root, 'shared', 'x.txt'), 'V2\n')
+        commit('v2')
+      }, 'V2\n')
     },
     TIMEOUT,
   )
 
   it(
-    'declared, an edit to the target rebuilds',
+    'a file link to a file outside the workspace',
     async () => {
-      const app = await addProject(root, 'a', {
-        config: config('src/x.txt', `{ files: ['src/**'], workspaceFiles: ['shared/x.txt'] }`),
-      })
-      await mkdir(path.join(app, 'src'), { recursive: true })
-      await symlink('../../../shared/x.txt', path.join(app, 'src', 'x.txt'))
+      await writeFile(path.join(outside, 'x.txt'), 'O1\n')
+      await project('src/x.txt')
+      await symlink(path.join(outside, 'x.txt'), path.join(app, 'src', 'x.txt'))
       commit('fixture')
-      expect(statusOf(await build())).toBe('success')
-      expect(statusOf(await editTarget(app))).toBe('success')
-      expect(await readFile(path.join(app, 'out.txt'), 'utf8')).toBe('V2\n')
+      await rebuildsAfter(() => writeFile(path.join(outside, 'x.txt'), 'O2\n'), 'O2\n')
     },
     TIMEOUT,
   )
 
   it(
-    'a directory link is refused until every file behind it is an input',
-    async () => {
-      await writeFile(path.join(root, 'shared', 'y.txt'), 'Y\n')
-      const app = await addProject(root, 'a', {
-        config: config('src/sh/x.txt', `{ files: ['src/**'], workspaceFiles: ['shared/y.txt'] }`),
-      })
-      await mkdir(path.join(app, 'src'), { recursive: true })
-      await symlink('../../../shared', path.join(app, 'src', 'sh'))
-      commit('fixture')
-      await refused(
-        'inputs: "packages/a/src/sh" is a symlink to "shared", and "shared/x.txt" behind it is not an input — an edit to it would replay the old output. Add "shared/**" to inputs.workspaceFiles.',
-      )
-      await writeFile(
-        path.join(app, 'vx.config.mjs'),
-        config('src/sh/x.txt', `{ files: ['src/**'], workspaceFiles: ['shared/**'] }`),
-      )
-      commit('declare')
-      expect(statusOf(await build())).toBe('success')
-      expect(statusOf(await editTarget(app))).toBe('success')
-      expect(await readFile(path.join(app, 'out.txt'), 'utf8')).toBe('V2\n')
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'a link to a file the globs already hold keys it as before, and so does a dangling link',
-    async () => {
-      const app = await addProject(root, 'a', {
-        config: config('src/x.txt', `{ files: ['src/**', 'data/**'] }`),
-        files: { 'data/x.txt': 'D1\n' },
-      })
-      await mkdir(path.join(app, 'src'), { recursive: true })
-      await symlink('../data/x.txt', path.join(app, 'src', 'x.txt'))
-      await symlink('../nowhere.txt', path.join(app, 'src', 'gone.txt'))
-      commit('fixture')
-      expect(statusOf(await build())).toBe('success')
-      await writeFile(path.join(app, 'data', 'x.txt'), 'D2\n')
-      await rm(path.join(app, 'out.txt'))
-      expect(statusOf(await build())).toBe('success')
-      expect(await readFile(path.join(app, 'out.txt'), 'utf8')).toBe('D2\n')
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'a file deleted from behind a linked directory reads nothing, and runs',
-    async () => {
-      await writeFile(path.join(root, 'shared', 'y.txt'), 'Y\n')
-      const app = await addProject(root, 'a', {
-        config: config('src/sh/x.txt', `{ files: ['src/**'], workspaceFiles: ['shared/x.txt'] }`),
-      })
-      await mkdir(path.join(app, 'src'), { recursive: true })
-      await symlink('../../../shared', path.join(app, 'src', 'sh'))
-      commit('fixture')
-      await rm(path.join(root, 'shared', 'y.txt'))
-      // Before the fix: refused for "shared/y.txt", which git still lists.
-      expect(statusOf(await build())).toBe('success')
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'a task with no cache block declares nothing to key a link with, and runs',
-    async () => {
-      const app = await addProject(root, 'a', {
-        config: `export default { tasks: { build: { exec: { command: 'cat src/x.txt > out.txt' } } } }`,
-      })
-      await mkdir(path.join(app, 'src'), { recursive: true })
-      await symlink('../../../shared/x.txt', path.join(app, 'src', 'x.txt'))
-      commit('fixture')
-      expect(statusOf(await build())).toBe('success')
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'a link to a file git does not list is refused with the probe that keys it',
+    'a file link to a git-ignored file',
     async () => {
       await writeFile(path.join(root, '.gitignore'), '.vx/cache/\nout.txt\nsecret.txt\n')
-      await writeFile(path.join(root, 'secret.txt'), 'S\n')
-      const app = await addProject(root, 'a', {
-        config: config('src/x.txt', `{ files: ['src/**'] }`),
-      })
-      await mkdir(path.join(app, 'src'), { recursive: true })
+      await writeFile(path.join(root, 'secret.txt'), 'S1\n')
+      await project('src/x.txt')
       await symlink('../../../secret.txt', path.join(app, 'src', 'x.txt'))
       commit('fixture')
-      await refused(
-        'inputs: "packages/a/src/x.txt" is a symlink to "secret.txt", which git does not list (gitignored, or outside the workspace), so no glob can key it — an edit to it would replay the old output. Point the link at a tracked file, or exclude it from the inputs and key its content with inputs.runtime.',
+      await rebuildsAfter(() => writeFile(path.join(root, 'secret.txt'), 'S2\n'), 'S2\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a directory link inside the workspace: an edit, and a file added behind it',
+    async () => {
+      await project('src/sh/*.txt')
+      await symlink('../../../shared', path.join(app, 'src', 'sh'))
+      commit('fixture')
+      await rebuildsAfter(async () => {
+        await writeFile(path.join(root, 'shared', 'x.txt'), 'V2\n')
+        commit('v2')
+      }, 'V2\n')
+      await writeFile(path.join(root, 'shared', 'y.txt'), 'Y\n')
+      expect(statusOf(await build())).toBe('success')
+      expect(await out()).toBe('V2\nY\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a directory link outside the workspace, through a nested link too',
+    async () => {
+      await mkdir(path.join(outside, 'd', 'deep'), { recursive: true })
+      await writeFile(path.join(outside, 'd', 'deep', 'x.txt'), 'O1\n')
+      await writeFile(path.join(outside, 'z.txt'), 'Z1\n')
+      await symlink('../z.txt', path.join(outside, 'd', 'z.txt'))
+      await project('src/d/deep/x.txt src/d/z.txt')
+      await symlink(path.join(outside, 'd'), path.join(app, 'src', 'd'))
+      commit('fixture')
+      await rebuildsAfter(
+        () => writeFile(path.join(outside, 'd', 'deep', 'x.txt'), 'O2\n'),
+        'O2\nZ1\n',
       )
+      await writeFile(path.join(outside, 'z.txt'), 'Z2\n')
+      expect(statusOf(await build())).toBe('success')
+      expect(await out()).toBe('O2\nZ2\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a link retargeted to a file of equal bytes moves the key',
+    async () => {
+      await writeFile(path.join(root, 'shared', 'twin.txt'), 'V1\n')
+      await project('src/x.txt')
+      await symlink('../../../shared/x.txt', path.join(app, 'src', 'x.txt'))
+      commit('fixture')
+      await rebuildsAfter(async () => {
+        await rm(path.join(app, 'src', 'x.txt'))
+        await symlink('../../../shared/twin.txt', path.join(app, 'src', 'x.txt'))
+      }, 'V1\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a dangling link keys its target string, and the target appearing moves the key',
+    async () => {
+      await project('src/x.txt 2>/dev/null > out.txt || echo none')
+      await symlink('../nowhere.txt', path.join(app, 'src', 'x.txt'))
+      commit('fixture')
+      await rebuildsAfter(() => writeFile(path.join(app, 'nowhere.txt'), 'N\n'), 'N\n')
+      await rm(path.join(app, 'src', 'x.txt'))
+      await symlink('../elsewhere.txt', path.join(app, 'src', 'x.txt'))
+      expect(statusOf(await build())).toBe('success')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a link loop reads nothing, and runs',
+    async () => {
+      await project('src/a.txt 2>/dev/null > out.txt || echo none')
+      await symlink('b.txt', path.join(app, 'src', 'a.txt'))
+      await symlink('a.txt', path.join(app, 'src', 'b.txt'))
+      commit('fixture')
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      expect(statusOf(await build())).toBe('cache-hit')
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a task with no cache block keys its dependants on the content behind its link',
+    async () => {
+      await project('src/x.txt', `inputs: { files: ['src/**'] },`)
+      await symlink('../../../shared/x.txt', path.join(app, 'src', 'x.txt'))
+      commit('fixture')
+      expect(statusOf(await build()), said.join('')).toBe('success')
     },
     TIMEOUT,
   )

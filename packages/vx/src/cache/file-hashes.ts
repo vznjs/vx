@@ -163,14 +163,10 @@ export class FileHashStore {
       // a more useful error.
       return await this.hashFileFromDisk(filePath)
     }
-    // A symlink folds as git folds it: the blob of its TARGET STRING, which
-    // is its mode-120000 index OID. Not the bytes behind it — a link to a
-    // directory has none, a dangling one has none, and a link to a file
-    // outside the project would fold bytes `git diff` and `--affected`
-    // cannot see. A link to a file inside the project tracks that file's
-    // content only when the file matches the task's globs too. No
-    // memo: readlink is one syscall, and the row would be keyed on the
-    // link's own stat, not its target's.
+    // A symlink's identity is git's: the blob of its TARGET STRING, its
+    // mode-120000 index OID, so a retarget moves it. What it points to
+    // folds after it (linked-inputs.ts). No memo: readlink is one syscall,
+    // and the row would be keyed on the link's own stat, not its target's.
     if (st.isSymbolicLink()) {
       return fileIdentity(
         '120000',
@@ -257,12 +253,11 @@ export class FileHashStore {
     for (const p of paths) {
       if (stats.has(p) || out.has(p)) continue
       try {
-        // lstat, not stat: `hashFile` folds a symlink as git folds it —
+        // lstat, not stat: `hashFile` identifies a symlink as git does —
         // the blob of its TARGET STRING — and this form promises the same
         // digest. Following the link here instead hashed the target's
         // BYTES, so the same path identified differently depending on
-        // which entry point the caller used, and the batch folded bytes
-        // `git diff` and `--affected` cannot see.
+        // which entry point the caller used.
         const st = lstatSync(p)
         if (st.isSymbolicLink()) {
           // No memo, for `hashFile`'s reason: the row would be keyed on

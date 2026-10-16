@@ -67,16 +67,8 @@ describe('execution.md follows the source it traces', () => {
     // Not key material: `workspaceRoot` only relativizes the input paths,
     // `fileHashes` is where a file's OID comes FROM, `upstreamIds` and
     // `upstreamGraft` name and place upstream work without being folded,
-    // `captureInto` is the `vx why` capture sink, and `linkTargetsKeyed`
-    // only gates the refusal of an unkeyed symlink target.
-    const PLUMBING = [
-      'workspaceRoot',
-      'fileHashes',
-      'upstreamIds',
-      'upstreamGraft',
-      'captureInto',
-      'linkTargetsKeyed',
-    ]
+    // and `captureInto` is the `vx why` capture sink.
+    const PLUMBING = ['workspaceRoot', 'fileHashes', 'upstreamIds', 'upstreamGraft', 'captureInto']
     const folded = fields.filter((f) => !PLUMBING.includes(f))
     expect(folded.length).toBeGreaterThan(8)
 

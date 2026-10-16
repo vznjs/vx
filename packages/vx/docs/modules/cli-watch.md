@@ -55,6 +55,7 @@ export class ChangeJudge {
   readonly pending: Map<string, string> // path → label, what fired since the last judgement
   lastCycle: { start: number; end: number } | undefined // start on the mtime clock (fsClockNow), as armedAt
   constructor(ctx: JudgeContext)
+  seed(abs: string): void // record a path's state now, if unjudged: a link armed for its target
   judge(): string | undefined // the first changed path's label, or none
 }
 
@@ -79,7 +80,7 @@ export function makeWatchIgnore(
 export function gitIgnored(workspaceRoot: string, paths: readonly string[]): Set<string> // one `git check-ignore --stdin`
 export function gitFiles(
   workspaceRoot: string,
-): { listed: Set<string>; tracked: Set<string> } | undefined // one `git ls-files -t` at the arm
+): { listed: Set<string>; tracked: Set<string>; links: Set<string> } | undefined // one `git ls-files -t -s` at the arm; links: the symlinks, whose targets watch arms
 export function gitSpeller(root: string): (p: string) => string // a path as git spells it: a symlinked dir below the root resolved
 export function makeRootEventFilter(
   workspaceRoot: string,

@@ -354,6 +354,10 @@ change to it, and every project under it is selected, the project that
 holds it included. A repository's own request to hide submodules from a diff
 (`diff.ignoreSubmodules`, `submodule.<name>.ignore`) does not apply:
 the key sees the change whatever git is told to show.
+A symlinked input keys what it points to, so a link whose target
+changed (a file the diff names, or one under a linked directory) is a
+changed path of its project, and a link to a target git cannot diff
+(outside the workspace, or git-ignored) is one on every run.
 `.vx/projects.lock.json` is filtered out of the changed set — a `vx lock`
 re-write never marks every project affected.
 
@@ -1210,8 +1214,10 @@ run...` precedes it.
    not change since the loop last saw it is not an edit (a `chmod` is one,
    as the key reads the executable bit), nor is a directory
    whose entries (names and sizes) did not, nor a path that stayed
-   gone; a symlink is its target string, as the key folds it, so a
-   retarget is an edit; a path the loop has never judged is an edit only if it was
+   gone; a symlink is its target string and what it points to, as the
+   key folds them, so a retarget is an edit, and so is an edit behind
+   it: watch arms each link's target, wherever it lies, and names the
+   link; a path the loop has never judged is an edit only if it was
    modified after the watchers went live (macOS delivers the initial
    run's own writes after the arm; the later of the path's mtime and
    ctime says which side of it a path belongs to, so a file moved in
