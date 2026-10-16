@@ -170,10 +170,10 @@ export interface RunSummary {
     construction. Written in one transaction.
 14. **Telemetry summary.** When a sink is active: build + emit the
     `RunSummaryRecord`, await `flush()` (crash-isolated).
-15. **Drain + close.** Await background prefetches/uploads, then
-    `keepRunBytes` (`run-report.ts`) builds the `RunReport` plugin
-    teardowns read and keeps the run's bytes in a remote that takes
-    its writes; `cache.close()`, sandbox teardown.
+15. **Drain + close.** Await background prefetches, uploads and the
+    run bytes `RunKeeper` (`run-report.ts`) sent as each task ended,
+    then `reportOf` builds the `RunReport` plugin teardowns read;
+    `cache.close()`, sandbox teardown.
 16. **Keep-alive block.** If the user requested a persistent task,
     block on its exit AFTER everything above (`sessionEnd` picks the
     exit that ends the session) — Ctrl-C reaps the process group; the

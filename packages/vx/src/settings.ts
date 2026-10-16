@@ -177,6 +177,13 @@ export const SETTINGS: readonly Setting[] = [
     env: false,
   },
   {
+    path: 'cache.upload.failures',
+    kind: { type: 'enum', values: ['ci', 'local', 'always'] },
+    default: 'ci',
+    doc: "Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.",
+    env: false,
+  },
+  {
     path: 'lock.reviewFiles',
     kind: { type: 'bool' },
     default: 'true',

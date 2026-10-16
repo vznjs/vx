@@ -1681,6 +1681,7 @@ export default defineWorkspace({
     scope: 'main',
     inputStability: { strategy: 'immutable', severity: 'warn' },
     outputs: { clean: true },
+    upload: { failures: 'ci' },
   },
   lock: { reviewFiles: true },
   watch: { poll: false },
@@ -1728,6 +1729,7 @@ default and where it came from.
 | `cache.inputStability.strategy`                | `VX_CACHE_INPUT_STABILITY_STRATEGY` | —                  | one of 'immutable', 'mutable', 'unchecked'                              | immutable                                  | What a write to an input during the command means for the save, for tasks without their own. A task's own `cache.inputStability.strategy` beats it. |
 | `cache.inputStability.severity`                | `VX_CACHE_INPUT_STABILITY_SEVERITY` | —                  | one of 'warn', 'error'                                                  | warn                                       | Whether a skipped save warns or fails the task, for tasks without their own. A task's own `cache.inputStability.severity` beats it.                 |
 | `cache.outputs.clean`                          | —                                   | —                  | true or false                                                           | true                                       | Remove a task's declared outputs before it runs on a miss, for tasks without their own. A task's own `cache.outputs.clean` beats it.                |
+| `cache.upload.failures`                        | —                                   | —                  | one of 'ci', 'local', 'always'                                          | ci                                         | Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.                                                         |
 | `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`              | —                  | true or false                                                           | true                                       | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                   |
 | `watch.poll`                                   | `VX_WATCH_POLL`                     | `vx watch --poll`  | true or false                                                           | false                                      | Poll for changes from the start instead of the OS watcher.                                                                                          |
 | `config.workerTimeout` (variable or flag only) | `VX_CONFIG_WORKER_TIMEOUT`          | —                  | a duration like '500ms', '30s' or '5m', at most 24 days                 | 30s                                        | How long one config evaluation may take.                                                                                                            |
@@ -1774,6 +1776,7 @@ interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   inputStability?: InputStability
   outputs?: { clean?: boolean }
+  upload?: { failures?: 'ci' | 'local' | 'always' }
 }
 ```
 
@@ -1856,6 +1859,13 @@ interface CacheSettings {
 - **`cache.download`** — which remote hits land on this machine:
   `all` (the default), only the requested tasks' (`toplevel`), or
   `none` (`docs/cli.md` § `--cache-download`).
+- **`cache.upload.failures`** — which runs keep a failed task's log and
+  the files its outputs left in the remote: CI runs (`'ci'`, the
+  default), runs off CI (`'local'`), or both (`'always'`). Only a run
+  whose policy writes a remote keeps any, and it always keeps the log of
+  a task that saved no entry. `ctx.cache.getRun` reads them
+  (`docs/modules/plugin.md` § Run report and run bytes).
+
 - **`cache.scope`** — where this run's cache writes land (2026-10-14).
   Omitted, a run reads and writes the default keys. A name (`'pr-123'`;
   letters, digits, `. _ - / @`, at most 128) reads the default key first,

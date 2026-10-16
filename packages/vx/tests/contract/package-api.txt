@@ -514,6 +514,7 @@ export interface CacheSettings {
   download?: 'all' | 'toplevel' | 'none'
   inputStability?: InputStability
   outputs?: { clean?: boolean }
+  upload?: { failures?: 'ci' | 'local' | 'always' }
 }
 == type CacheSource (src/graph/task-status.ts)
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'

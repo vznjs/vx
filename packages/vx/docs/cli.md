@@ -771,13 +771,13 @@ other persistent task`), and a non-zero exit makes the run exit 1
    their own below the worker rows: `vx:load` (configs and graph from
    the lock), `vx:run-lock`, `<plugin>:setup`, `vx:keys` (keys and local
    probes), `vx:schedule`, then after the graph `vx:uploads`,
-   `vx:history`, `vx:keep-run`, `vx:telemetry`, `<plugin>:teardown`,
+   `vx:history`, `vx:telemetry`, `<plugin>:teardown`,
    `vx:snapshots`, `vx:retention`, `vx:close` and `vx:sandbox`. A step
    shows once it has run 150 ms, ticking like a task
    (`     1.2s running internal vx:uploads`); no worker slot or
    `--concurrency` holds it back. When it ends it leaves a list row
    like a task's, `internal` in the cache column
-   (`⏺︎ 4.60s success internal vx:keep-run`); a quicker one shows
+   (`⏺︎ 4.60s success internal vx:uploads`); a quicker one shows
    nowhere. A step that runs beside the tasks, `vx:prefetch` (a
    remote's downloads), never shows: `vx last` lists it. `:` is no task
    id's separator, so a step never reads as a task: a project named

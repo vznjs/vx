@@ -4,10 +4,20 @@
       "": ["cache", "lock", "plugins", "run", "watch"],
       "run": ["affectedBase", "concurrency", "continue", "retries", "rules", "schedule", "timeout"],
       "run.rules": ["dependencies", "exclusiveOutputs", "upfrontKeys"],
-      "cache": ["dir", "download", "inputStability", "outputs", "policy", "retention", "scope"],
+      "cache": [
+        "dir",
+        "download",
+        "inputStability",
+        "outputs",
+        "policy",
+        "retention",
+        "scope",
+        "upload"
+      ],
       "cache.retention": ["maxSize", "olderThan"],
       "cache.inputStability": ["severity", "strategy"],
       "cache.outputs": ["clean"],
+      "cache.upload": ["failures"],
       "lock": ["reviewFiles"],
       "watch": ["poll"]
     },
@@ -661,7 +671,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache` has unknown field \"x\" (allowed: dir, download, inputStability, outputs, policy, retention, scope)": [
+        "$CONFIG: `cache` has unknown field \"x\" (allowed: dir, download, inputStability, outputs, policy, retention, scope, upload)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1338,6 +1348,127 @@
         "$CONFIG: `cache.outputs.clean` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
         "$CONFIG: `cache.outputs.clean` must be true or false (got {})": ["{}"],
         "$CONFIG: `cache.outputs.clean` must be true or false (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.upload": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `cache.upload` must be an object (fields: failures)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.upload` has unknown field \"x\" (allowed: failures)": ["{\"x\":\"y\"}"]
+      },
+      "cache.upload.failures": {
+        "ok": ["<absent>", "\"always\""],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got null)": [
+          "null"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got true)": [
+          "true"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got false)": [
+          "false"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 0)": ["0"],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 1)": ["1"],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 1.5)": [
+          "1.5"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got -1)": ["-1"],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 65536)": [
+          "65536"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 2147483648)": [
+          "2147483648"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got \"\")": [
+          "\"\""
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got \"x\")": [
+          "\"x\""
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got \"(\")": [
+          "\"(\""
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got \"30d\")": [
+          "\"30d\""
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got \"10G\")": [
+          "\"10G\""
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got \"10\")": [
+          "\"10\""
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [])": ["[]"],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"x\"])": [
+          "[\"x\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"\"])": [
+          "[\"\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [1])": [
+          "[1]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [3000])": [
+          "[3000]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"/x\"])": [
+          "[\"/x\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"!x\"])": [
+          "[\"!x\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\".\"])": [
+          "[\".\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"**\"])": [
+          "[\"**\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"A*\"])": [
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got {})": ["{}"],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },

@@ -253,9 +253,10 @@ export interface ExecuteArgs {
   /**
    * The run keeps its bytes in a remote (run-store.ts): an attempt captures
    * its output at the entry's bounds, and an outcome that saves no entry
-   * (a failure, an uncached run) carries it as `runLog`.
+   * carries it as `runLog`; a failure's only when `failures`
+   * (`cache.upload.failures`).
    */
-  keepRunLog?: boolean
+  keepRun?: { failures: boolean }
   /**
    * Whether a task has rewritten a root file a plugin claims (whose bytes
    * the claimant folded) since the run read it (fingerprint-watch.ts): past that, no key taken
@@ -1177,7 +1178,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
 
   async function buildRequest(local: boolean): Promise<ExecuteRequest> {
     const kept =
-      willSave || args.keepRunLog === true
+      willSave || args.keepRun !== undefined
         ? new BoundedCapture()
         : new BoundedCapture(FAILED_OUTPUT_HEAD_CHARS, FAILED_OUTPUT_TAIL_CHARS)
     output = kept
@@ -1459,9 +1460,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(keyless ? { keyless: true as const } : {}),
     ...(saved ? { saved: true as const } : {}),
     ...(effectiveExitCode !== 0 && output !== undefined
-      ? { failedOutput: failedOutputLog(output, willSave || args.keepRunLog === true) }
+      ? { failedOutput: failedOutputLog(output, willSave || args.keepRun !== undefined) }
       : {}),
-    ...(args.keepRunLog === true && (effectiveExitCode !== 0 || !willSave) && output !== undefined
+    ...(args.keepRun !== undefined &&
+    (effectiveExitCode !== 0 ? args.keepRun.failures : !willSave) &&
+    output !== undefined
       ? { runLog: storedOutput() }
       : {}),
     ...(result.timedOut === true && effectiveExitCode !== 0 ? { timedOut: true as const } : {}),
