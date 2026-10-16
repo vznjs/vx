@@ -297,21 +297,59 @@ describe('discover', () => {
     ])
   })
 
-  for (const c of CASES.filter((c) => c.name !== 'pnpm' && c.name !== 'yarn')) {
-    it(`${c.name}(): a workspace the lockfile does not list yet names the install that adds it`, async () => {
-      // lerna: \`vx init\` asked for 31 Nx projects in \`workspaces\`; added,
-      // \`vx lock\` refused a dependsOn on "no such project" until the lockfile
-      // was refreshed, and nothing said so (Growth round 2).
+  for (const c of CASES) {
+    const workspaces = async (): Promise<void> => {
+      if (c.name === 'pnpm') {
+        await writeFile(
+          path.join(root, 'pnpm-workspace.yaml'),
+          "packages:\n  - packages/*\n  - '!**/fixtures/**'\n",
+        )
+      }
+    }
+    const rootPkg = { name: 'root', workspaces: ['packages/*'], devDependencies: { b: '*' } }
+
+    it(`${c.name}(): a workspace the lockfile does not list yet refuses until the install`, async () => {
+      // A renamed folder, or lerna's 31 added Nx projects: named by its path,
+      // the workspace lost every edge, ran beside what it builds on and hit
+      // with old content (Growth, stale-lockfile-drops-edges.sh).
       await writeFile(path.join(root, c.file), c.text)
-      const metas = await projects({ root: { name: 'root', workspaces: ['packages/*'] } })
+      await workspaces()
+      const metas = await projects({ root: rootPkg })
       expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      // CONTROL: a directory a negated glob or node_modules excludes is no workspace.
+      for (const dir of ['packages/a/fixtures/x', 'packages/a/node_modules/y']) {
+        await mkdir(path.join(root, dir), { recursive: true })
+        await writeFile(path.join(root, dir, 'package.json'), JSON.stringify({ name: 'x' }))
+      }
+      if (c.name === 'pnpm') expect(await discover(c.make(), metas)).toEqual(EXPECTED)
       await mkdir(path.join(root, 'packages/f'), { recursive: true })
       await writeFile(path.join(root, 'packages/f/package.json'), JSON.stringify({ name: 'f' }))
       const warnings: string[] = []
-      await discover(c.make(), metas, warnings)
-      expect(warnings).toEqual([
-        `${c.file} does not list the workspace packages/f that package.json names — run \`${c.name} install\` to add it; until then it is named by its path, and a dependsOn naming it finds no project`,
-      ])
+      await expect(discover(c.make(), metas, warnings)).rejects.toThrow(
+        `${c.file} is out of date: it does not list the workspace packages/f — run \`${c.name} install\``,
+      )
+      expect(warnings).toEqual([])
+    })
+
+    it(`${c.name}(): a manifest dependency on a workspace the lockfile lacks refuses until the install`, async () => {
+      // c gained "a" in package.json before the install: no edge, so c built
+      // beside a and hit with a's old output.
+      await writeFile(path.join(root, c.file), c.text)
+      await workspaces()
+      const metas = await projects({
+        root: rootPkg,
+        c: { name: 'c', dependencies: { a: '*' }, devDependencies: { d: '*' } },
+      })
+      await expect(discover(c.make(), metas)).rejects.toThrow(
+        `${c.file} is out of date: it does not list packages/c's dependency on a — run \`${c.name} install\``,
+      )
+      // CONTROL: one it records, under any field, and a name no workspace carries.
+      const ok = await projects({
+        root: rootPkg,
+        a: { name: 'a', dependencies: { b: '*', left: '1' }, peerDependencies: { c: '*' } },
+        c: { name: 'c', devDependencies: { d: '*' } },
+      })
+      expect(await discover(c.make(), ok)).toEqual(EXPECTED)
     })
   }
 
@@ -350,9 +388,9 @@ describe('vx run with bun() declared', () => {
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*'] }),
     )
-    // f is a member the lockfile does not list (installed before it was added).
+    // f is a project outside the workspaces, so no importer.
     for (const name of ['a', 'b', 'c', 'd', 'e', 'f']) {
-      const dir = path.join(root, 'packages', name)
+      const dir = path.join(root, name === 'f' ? 'tools' : 'packages', name)
       await mkdir(path.join(dir, 'src'), { recursive: true })
       await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
       await writeFile(path.join(dir, 'src', 'index.js'), `// ${name}\n`)
@@ -384,9 +422,9 @@ describe('vx run with bun() declared', () => {
     const tasks = new Map((await plan()).tasks.map((t) => [t.node.id, t.node]))
     expect(tasks.get('a#build')!.config.inputs?.files).toEqual(['src/**', 'package.json'])
     expect(tasks.get('e#build')!.config.inputs?.files).toEqual(['package.json', 'src/**'])
-    // A project the lockfile does not list is no importer: nothing added,
+    // A project outside the workspaces is no importer: nothing added,
     // and no name given, so its path names it.
-    expect(tasks.get('packages/f#build')!.config.inputs?.files).toEqual(['src/**'])
+    expect(tasks.get('tools/f#build')!.config.inputs?.files).toEqual(['src/**'])
     // An uncached task is keyed all the same, and gains no cache block:
     // caching stays opt-in.
     expect(tasks.get('a#lint')!.config.inputs?.files).toEqual(['src/**', 'package.json'])
@@ -396,10 +434,10 @@ describe('vx run with bun() declared', () => {
   // Probed: the `project` stage the plugin fills does not make a package
   // with no vx.config a planned project.
   it('a package with no vx.config still plans no task', async () => {
-    await mkdir(path.join(root, 'packages', 'g'), { recursive: true })
-    await writeFile(path.join(root, 'packages', 'g', 'package.json'), JSON.stringify({ name: 'g' }))
+    await mkdir(path.join(root, 'tools', 'g'), { recursive: true })
+    await writeFile(path.join(root, 'tools', 'g', 'package.json'), JSON.stringify({ name: 'g' }))
     const ids = (await plan()).tasks.map((t) => t.node.id)
-    expect(ids).toContain('packages/f#build')
+    expect(ids).toContain('tools/f#build')
     expect(ids.filter((id) => id.startsWith('g#'))).toEqual([])
   })
 
