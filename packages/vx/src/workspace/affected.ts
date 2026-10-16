@@ -519,7 +519,6 @@ async function bytesOrNull(file: string): Promise<Uint8Array | null> {
   return (await f.exists()) ? await f.bytes() : null
 }
 
-/** Run a NUL-separated path-listing git command from the workspace root. */
 /** The symlinks the index lists, workspace-relative. */
 async function trackedLinks(workspaceRoot: string): Promise<string[]> {
   const out: string[] = []
@@ -583,6 +582,7 @@ async function linkedChanges(
   return out
 }
 
+/** Run a NUL-separated path-listing git command from the workspace root. */
 async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]> {
   const proc = spawnGit([...cmd], workspaceRoot)
   // `Response.text()` strips a leading U+FEFF, the first path's own.

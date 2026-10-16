@@ -27,7 +27,8 @@ and key derivation logic live here.
   object format.
 - `linked-inputs.ts` — the content behind a symlinked input, folded after
   its target string: a file's identity, or every file under a linked
-  directory (caching.md § key).
+  directory (caching.md § key). `filesBehind(dir)` lists what a linked
+  directory keys; `vx watch` judges a change to one by the same list.
 - `fs-clock.ts` — how far the workspace's file system clock runs behind
   this process's, measured once a run; `racyWindowMs` adds it.
 - `output-index.ts` — `OutputIndex`: `output_files` / `output_dirs` rows

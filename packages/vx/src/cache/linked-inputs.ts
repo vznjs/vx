@@ -15,7 +15,7 @@ import { xxh3hex } from '../util/index.js'
 import { absentOr } from './key-fold.js'
 
 /** What a dangling link, or a loop of links, holds behind it: nothing to read. */
-export const NOTHING_BEHIND = ''
+const NOTHING_BEHIND = ''
 
 /** Directories a linked directory's walk never enters, as Nx's walker never does. */
 const SKIPPED = new Set(['.git', 'node_modules'])
