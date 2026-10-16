@@ -42,8 +42,14 @@
 import {
   chmodSync,
   chownSync,
+  closeSync,
+  constants,
   existsSync,
+  fchmodSync,
+  fstatSync,
+  futimesSync,
   lstatSync,
+  openSync,
   readFileSync,
   realpathSync,
   statSync,
@@ -702,6 +708,28 @@ async function bytesOf(body: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
 const textOf = async (body: AsyncIterable<Uint8Array>): Promise<string> =>
   utf8.decode(await bytesOf(body))
 
+/**
+ * Bring a target that already held the entry's bytes to its mode and
+ * mtime, through a descriptor opened without following a link: one
+ * planted since the compare is refused, never written through.
+ */
+function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined): void {
+  const fd = openSync(s.target, constants.O_RDONLY | constants.O_NOFOLLOW)
+  try {
+    const st = fstatSync(fd)
+    if (st.ino !== ino || st.nlink !== 1) {
+      throw new Error(`${s.target} changed while it was restored`)
+    }
+    if ((st.mode & 0o7777) !== (mode & 0o777)) fchmodSync(fd, mode & 0o777)
+    if (mtimeMs !== undefined && Math.floor(st.mtimeMs) !== mtimeMs) {
+      const t = new Date(mtimeMs)
+      futimesSync(fd, t, t)
+    }
+  } finally {
+    closeSync(fd)
+  }
+}
+
 /** One staged entry: written at `tmp`, renamed to `target` on commit. */
 interface Staged {
   /** `tmp` is in the staging directory, not beside `target`. */
@@ -715,6 +743,8 @@ interface Staged {
   streamed: boolean
   /** The destination it is contained in. */
   base: string
+  /** The target already holds the entry's bytes: nothing was written, and only its mode and mtime may change. */
+  same?: number
 }
 
 /**
@@ -898,6 +928,32 @@ class Extractor {
       }
       this.ensuredDirs.add(dir)
     }
+    // A target that already holds these bytes stays: renaming over a live
+    // file costs ~0.4 ms on ext4 (auto_da_alloc), and a hit that changed
+    // one of 2,000 outputs paid it 2,000 times. Bytes, not a stat stamp: a
+    // reproducible build gives every output one mtime (item 886).
+    if (body instanceof Uint8Array && created === undefined) {
+      const st = lstatSync(target, { throwIfNoEntry: false })
+      if (
+        st !== undefined &&
+        st.isFile() &&
+        st.nlink === 1 &&
+        st.size === body.byteLength &&
+        readFileSync(target).equals(body)
+      ) {
+        this.staged.push({
+          staged: false,
+          name,
+          tmp: '',
+          target,
+          created,
+          streamed: false,
+          base,
+          same: st.ino,
+        })
+        return
+      }
+    }
     // Write apart from the target and RENAME into place. rename(2) replaces
     // the destination's directory ENTRY without following it, which is
     // what makes this both link-safe and concurrency-safe:
@@ -983,6 +1039,10 @@ class Extractor {
     for (const s of this.staged) {
       await this.assertStillContained(s, checked)
       const [mode, mtimeMs] = metaFor(s.name)
+      if (s.same !== undefined) {
+        keep(s, s.same, mode, mtimeMs)
+        continue
+      }
       let made = created.get(s.streamed)
       if (made === undefined) {
         const st = statSync(s.tmp)
@@ -1064,7 +1124,11 @@ class Extractor {
   async abort(): Promise<void> {
     await Promise.allSettled(this.inflight)
     this.inflight = []
-    await Promise.all(this.staged.map((s) => unlink(s.tmp).catch(() => undefined)))
+    await Promise.all(
+      this.staged.map((s) =>
+        s.same === undefined ? unlink(s.tmp).catch(() => undefined) : undefined,
+      ),
+    )
     // Newest first: a later entry's chain can sit inside an earlier one's
     // (`dist/` then `dist/sub/`), never the reverse.
     for (const s of this.staged.toReversed()) {

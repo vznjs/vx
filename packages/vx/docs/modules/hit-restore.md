@@ -40,7 +40,10 @@ where it was.
 
 ## In place, never clean-then-restore
 
-Each file is renamed over the one it replaces (archive.ts stages every
+Each file is renamed over the one it replaces, unless it already holds
+the entry's bytes (compared byte for byte for entries up to 4 MiB; then
+only its mode and mtime are set, through a descriptor that refuses a
+link) (archive.ts stages every
 entry in the workspace's `.vx/tmp/<pid>-0/` first, never in an output
 folder; a target on another filesystem goes through a temp beside it,
 and a file takes the group its directory gives new files (setgid on

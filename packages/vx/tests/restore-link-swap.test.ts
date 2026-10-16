@@ -4,7 +4,17 @@
 // against a held directory fd, so the check is by path, as close to the
 // rename as the extractor gets.
 
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
@@ -37,4 +47,23 @@ it('a target directory swapped for a link out between stage and rename writes no
   )
   expect(err).toBeInstanceOf(Error)
   expect(existsSync(path.join(outside, 'sub', 'x.js'))).toBe(false)
+})
+
+it('a target holding the bytes swapped for a link out before the commit is not touched through it', async () => {
+  root = mkdtempSync(path.join(os.tmpdir(), 'vx-link-swap-same-'))
+  const dest = path.join(root, 'proj')
+  const victim = path.join(root, 'victim.js')
+  mkdirSync(path.join(dest, 'dist'), { recursive: true })
+  writeFileSync(path.join(dest, 'dist', 'x.js'), 'x\n')
+  writeFileSync(victim, 'x\n')
+  chmodSync(victim, 0o600)
+  const parts: Uint8Array[] = []
+  for await (const c of tarPack([{ name: 'outputs/dist/x.js', size: 2, body: 'x\n' }]))
+    parts.push(c)
+  const tar = await withSum(new Uint8Array(await new Blob(parts).arrayBuffer()))
+  await extractArtifactStream(streamOf(tar), dest, undefined, () => {
+    rmSync(path.join(dest, 'dist', 'x.js'))
+    symlinkSync(victim, path.join(dest, 'dist', 'x.js'))
+  }).catch(() => undefined)
+  expect(statSync(victim).mode & 0o777).toBe(0o600)
 })

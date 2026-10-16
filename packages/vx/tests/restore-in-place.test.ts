@@ -111,6 +111,31 @@ it(
   TIMEOUT,
 )
 
+// turborepo test_slow_path_skips_unchanged_files: a hit rewrites only the
+// outputs that changed. Renaming over every file cost a 2,000-file restore
+// ~0.4 ms a file on ext4 (auto_da_alloc), changed or not.
+it(
+  'a hit leaves the outputs it would write unchanged as they are',
+  async () => {
+    const { root, dir } = await workspace(
+      'mkdir -p dist && echo a > dist/a.txt && echo b > dist/b.txt',
+    )
+    const cacheDir = path.join(root, '.cache')
+    const first = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+    expect(`${first.code}\n${first.err}`).toStartWith('0\n')
+    const a = path.join(dir, 'dist', 'a.txt')
+    const before = statSync(a)
+    await writeFile(path.join(dir, 'dist', 'b.txt'), 'changed\n')
+    const second = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+    expect(`${second.code}\n${second.err}`).toStartWith('0\n')
+    expect(second.out).toContain('1\u2193')
+    expect(readFileSync(path.join(dir, 'dist', 'b.txt'), 'utf8')).toBe('b\n')
+    const after = statSync(a)
+    expect([after.ino, after.mtimeMs]).toEqual([before.ino, before.mtimeMs])
+  },
+  TIMEOUT,
+)
+
 it(
   'a restore temp a killed run left beside an exact-file output goes on the next run that writes it',
   async () => {
