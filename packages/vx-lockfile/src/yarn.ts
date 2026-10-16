@@ -6,19 +6,15 @@
 // dependency `bar: "npm:^2"` resolves to the entry keyed `bar@npm:^2`.
 // Classic (yarn 1) is its own text format: `"foo@^1.0.0", "foo@^1.2.0":`
 // then indented `version`, `resolved`, `integrity` and `dependencies:`
-// with `bar "^2"` lines; classic has no workspace entries, so workspaces
-// resolve from their own `package.json` — which the digest reads from the
-// lockfile's root descriptors only, so a workspace's digest is the root's
-// reach through the descriptors the file resolves.
+// with `bar "^2"` lines; classic has no workspace entries: Yarn 1 links a
+// dependency on a workspace's name and keys no entry for it, so its links
+// come from the workspaces' own `package.json` (`classicLinks`), and its
+// one digest is the root's reach through every entry the file resolves.
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
 import { stable } from './pnpm.js'
 import { depsOf, record } from './json.js'
 import { joinPosix } from './posix.js'
-
-/** What yarn() warns of a classic lockfile, after its name: the static part a test holds. */
-export const CLASSIC_EDGES =
-  ': yarn classic (v1) records no workspaces, so yarn() gives vx no project edges — upgrade to Yarn 2+ (`yarn set version stable`)'
 
 export interface Lockfile {
   readonly generation: 'berry' | 'classic'
@@ -198,6 +194,50 @@ function unquote(s: string): string {
 }
 
 /**
+ * Classic's links: Yarn 1 records no workspace, so they come from each
+ * workspace's manifest (`manifests`: importer dir → `package.json`, `.`
+ * the root). A dependency on a workspace's name is linked unless the file
+ * keys its descriptor, which Yarn writes only for the registry copy it
+ * fetched when the workspace's version misses the range. A peer on a
+ * workspace with no installed entry of that name is a peer link.
+ */
+export function classicLinks(
+  lock: Lockfile,
+  manifests: ReadonlyMap<string, Record<string, unknown>>,
+): ReadonlyMap<string, LockfileImporter> {
+  const count = new Map<string, number>()
+  const dirOf = new Map<string, string>()
+  for (const [dir, pkg] of manifests) {
+    const n = pkg['name']
+    if (typeof n !== 'string' || n === '') continue
+    count.set(n, (count.get(n) ?? 0) + 1)
+    dirOf.set(n, dir)
+  }
+  const workspace = (name: string): string | undefined =>
+    count.get(name) === 1 ? dirOf.get(name) : undefined
+  const out = new Map<string, LockfileImporter>()
+  for (const [dir, pkg] of manifests) {
+    const links = { deps: {} as Record<string, string>, peers: {} as Record<string, string> }
+    const installed = new Set<string>()
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+      for (const [name, range] of depsOf(pkg, [field])) {
+        installed.add(name)
+        const target = workspace(name)
+        if (target !== undefined && target !== dir && !lock.descriptors.has(`${name}@${range}`)) {
+          links.deps[name] = target
+        }
+      }
+    }
+    for (const name of depsOf(pkg, ['peerDependencies']).keys()) {
+      const target = workspace(name)
+      if (target !== undefined && target !== dir && !installed.has(name)) links.peers[name] = target
+    }
+    out.set(dir, links)
+  }
+  return out
+}
+
+/**
  * `bar` + `npm:^2` → the entry keyed `bar@npm:^2`; classic: `bar@^2`. A
  * bare range gets berry's `npm:` prefix. A `workspace:` range resolves to
  * the workspace entry of that name whatever the range says (`*`, `^`, a
@@ -256,7 +296,7 @@ function resolveDescriptor(
  * workspace of that name, which Yarn hoists whatever the range. Only a
  * descriptor the file keys counts: the name fallbacks the digest takes
  * (a catalog, an override) name no link. Classic records no workspaces,
- * so it has none.
+ * so it has none here (`classicLinks`).
  */
 export function importerLinks(lock: Lockfile): ReadonlyMap<string, LockfileImporter> {
   const out = new Map<string, LockfileImporter>()
