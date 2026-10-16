@@ -26,10 +26,19 @@ export interface NxInputs {
   readonly runtimeCmds: string[]
   /** `^name` / `{ input, dependencies | projects }`: whose `name` to fold. */
   readonly upstream: Array<{ readonly name: string; readonly of: 'deps' | readonly string[] }>
+  /** `{ dependentTasksOutputFiles }` globs: keyed only through a `dependsOn` edge. */
+  readonly dependentOutputs: string[]
 }
 
 export function emptyNxInputs(): NxInputs {
-  return { files: [], wsFiles: [], envNames: [], runtimeCmds: [], upstream: [] }
+  return {
+    files: [],
+    wsFiles: [],
+    envNames: [],
+    runtimeCmds: [],
+    upstream: [],
+    dependentOutputs: [],
+  }
 }
 
 /**
@@ -169,7 +178,12 @@ export function expandNxInputs(
       // those tasks' keys (their inputs, transitively) through `dependsOn`,
       // and an output follows from its inputs. Nothing to map, and the todo
       // it was sat on 881 tasks of three real Nx repos (G-49).
-      if (o.dependentTasksOutputFiles !== undefined) return
+      // The mapper checks an edge is left to carry them.
+      if (o.dependentTasksOutputFiles !== undefined) {
+        const g = o.dependentTasksOutputFiles
+        into.dependentOutputs.push(typeof g === 'string' ? g : JSON.stringify(g))
+        return
+      }
       // `{ workingDirectory }` hashes where Nx was started (`cwd:relative`
       // in its plan). A vx task runs in its project dir from wherever vx
       // is started, so the fact is the same for every run: nothing to key.
