@@ -1413,7 +1413,14 @@ them, `CacheGetContext.outputs`), and never when it holds one path as a
 file and a directory at once. Either used to reach the tree, an input
 overwritten or a `.git/hooks` file planted under a green
 `cache-hit-remote`, or a restore that failed every later run from the
-local copy (item 942); now the read is a miss and the task runs. On the save side a
+local copy (item 942); now the read is a miss and the task runs. Every
+restore asks the same of the local copy, whatever route it reached the
+store by: an entry outside the declared outputs, one a `!` entry takes
+back, one under `.git`, `.vx` or a `vx.lock.json`, or one under a
+`node_modules` no output glob names fails the whole restore before
+anything is written; the entry is dropped and the task runs. Remote
+execution (`@vzn/vx-reapi`) writes a remote action's outputs through the
+same gate (`restorableOutput`). On the save side a
 **symlinked output** is captured as its target's bytes and comes back
 as a regular file (a hit that finds the task's own link still current
 leaves it); a link to a directory, or a dangling one, has no bytes to

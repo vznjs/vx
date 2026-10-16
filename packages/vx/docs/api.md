@@ -128,7 +128,12 @@ export class Cache implements CacheLayer {
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
-  async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  async restoreOutputs(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+    outputs?: DeclaredOutputs,
+  ): Promise<void>
   assertWritable(): void
   async save(args: {
     hash: string
@@ -234,7 +239,12 @@ export interface CacheLayer {
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
-  restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  restoreOutputs(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+    outputs?: DeclaredOutputs,
+  ): Promise<void>
   save(args: {
     hash: string
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>
@@ -1759,6 +1769,20 @@ export interface ResolvedSandboxConfig {
     network?: readonly string[]
   }
 }
+```
+
+## `restorableOutput`
+
+function · `src/util/paths.ts`
+
+Whether a restore may write `rel`: one of the outputs `globs` declare,
+never under `OUTPUT_NEVER`, and under `node_modules` only where a glob
+names it — what the save side could have packed (`resolveOutputs`). An
+artifact naming anything else was not written by this task's save, and
+none of it is restored (2026-10-16).
+
+```ts
+export function restorableOutput(globs: readonly string[]): (rel: string) => boolean
 ```
 
 ## `run`

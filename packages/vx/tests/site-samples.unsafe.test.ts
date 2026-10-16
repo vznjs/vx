@@ -474,10 +474,7 @@ describe('the strict-output-ownership post names what the wipe never touches', (
     const page = readFileSync(path.join(DOCS, 'blog', 'strict-output-ownership.md'), 'utf8')
     const section = /## What the wipe never touches\n([\s\S]*?)\n## /.exec(page)
     expect(section).not.toBeNull()
-    const src = readFileSync(
-      path.resolve(import.meta.dir, '..', 'src', 'cache', 'inputs.ts'),
-      'utf8',
-    )
+    const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'util', 'paths.ts'), 'utf8')
     const arr = /const OUTPUT_NEVER = \[([^\]]*)\]/.exec(src)
     expect(arr).not.toBeNull()
     const names = [...arr![1]!.matchAll(/'\*\*\/([^'/]+)(?:\/\*\*)?'/g)].map((m) => m[1]!)

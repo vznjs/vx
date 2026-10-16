@@ -21,6 +21,7 @@ import type { Cache } from './cache.js'
 import type {
   CacheEntry,
   CacheGetContext,
+  DeclaredOutputs,
   CacheKeyInput,
   CacheLayer,
   CacheStats,
@@ -330,8 +331,13 @@ export class LayeredCache implements CacheLayer {
     return this.local.hashFile(filePath)
   }
 
-  async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void> {
-    await this.local.restoreOutputs(hash, projectDir, workspaceRoot)
+  async restoreOutputs(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+    outputs?: DeclaredOutputs,
+  ): Promise<void> {
+    await this.local.restoreOutputs(hash, projectDir, workspaceRoot, outputs)
   }
 
   async save(args: SaveArgs): Promise<void> {

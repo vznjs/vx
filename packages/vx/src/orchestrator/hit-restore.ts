@@ -259,7 +259,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         cleanedWsRels = await cleanWorkspaceOutputs({ ...wsCleanArgs, resolved: walked?.ws })
       }
     }
-    await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot)
+    await args.cache.restoreOutputs(hash, node.projectDir, args.workspaceRoot, {
+      files: outputs,
+      workspaceFiles: wsOutputs,
+    })
     // The tree now holds this entry's bytes: stamp them for the next hit
     // (item 886).
     args.cache.recordOutputStamps?.(hash, node.projectDir, args.workspaceRoot)

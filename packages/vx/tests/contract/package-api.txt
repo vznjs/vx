@@ -47,7 +47,12 @@ export class Cache implements CacheLayer {
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
-  async restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  async restoreOutputs(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+    outputs?: DeclaredOutputs,
+  ): Promise<void>
   assertWritable(): void
   async save(args: {
     hash: string
@@ -315,6 +320,8 @@ export function refuseUnknownOptions<T>(
 export function render(blocks: readonly Block[], colors: ColorSupport): string
 == function report (src/util/ui.ts)
 export function report(mark: string, rows: readonly FieldRow[]): Block
+== function restorableOutput (src/util/paths.ts)
+export function restorableOutput(globs: readonly string[]): (rel: string) => boolean
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
 == function splitTaskId (src/util/task-id.ts)
@@ -471,7 +478,12 @@ export interface CacheLayer {
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
-  restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  restoreOutputs(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+    outputs?: DeclaredOutputs,
+  ): Promise<void>
   save(args: {
     hash: string
     entry: Omit<CacheEntry, 'hash' | 'storedAt' | 'outputFiles' | 'exitCode'>

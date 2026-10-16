@@ -386,6 +386,39 @@ export function outputMatcher(globs: readonly string[]): (rel: string) => boolea
 }
 
 /**
+ * What no output glob reaches. An output is otherwise taken as written —
+ * `node_modules/**` IS an install task's output — but no task produces
+ * these, and a root project declaring `**` would otherwise wipe its
+ * repository and the cache it is restoring from (2026-09-16). `.vx` whole
+ * and each `vx.lock.json` are vx's own: as outputs, the clean deleted an
+ * uncommitted workspace config and a hit restored a lock or ignore file the
+ * key does not see over the current one.
+ */
+export const OUTPUT_NEVER = ['**/.git/**', '**/.vx/**', '**/vx.lock.json']
+
+/** Whether a positive glob in `globs` names a `node_modules` directory. */
+export function namesNodeModules(globs: readonly string[]): boolean {
+  return globs.some(
+    (g) => !g.startsWith('!') && normalizeGlob(g).split('/').includes('node_modules'),
+  )
+}
+
+/**
+ * Whether a restore may write `rel`: one of the outputs `globs` declare,
+ * never under `OUTPUT_NEVER`, and under `node_modules` only where a glob
+ * names it — what the save side could have packed (`resolveOutputs`). An
+ * artifact naming anything else was not written by this task's save, and
+ * none of it is restored (2026-10-16).
+ */
+export function restorableOutput(globs: readonly string[]): (rel: string) => boolean {
+  const isOutput = outputMatcher(globs)
+  const never = anyTaskGlob(
+    namesNodeModules(globs) ? OUTPUT_NEVER : [...OUTPUT_NEVER, '**/node_modules/**'],
+  )
+  return (rel) => isOutput(rel) && !never(rel)
+}
+
+/**
  * `pattern` with its first brace group expanded, recursively, while that
  * group holds a `/`; any other pattern as itself, since `Bun.Glob`
  * expands a slash-free brace on its own. An unbalanced or escaped brace

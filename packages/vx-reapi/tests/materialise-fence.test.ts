@@ -331,6 +331,31 @@ describe('materialiseOutputs writes only what a declared glob names', () => {
   })
 })
 
+describe("materialiseOutputs applies core's restore gate", () => {
+  it('no git hook, no ! take-back and no node_modules a glob does not name', async () => {
+    await mkdir(path.join(ws, '.git', 'hooks'), { recursive: true })
+    const r = await run(
+      {
+        output_files: [
+          { path: '../.git/hooks/pre-commit', digest: blob('x'), is_executable: true },
+          { path: 'secret.txt', digest: blob('x') },
+          { path: 'node_modules/m/index.js', digest: blob('x') },
+          { path: 'dist/a.js', digest: blob('built') },
+        ],
+      },
+      req(['**', '!secret.txt'], ['.git/**']),
+    )
+    expect(r).toBe('written')
+    expect({
+      hook: existsSync(path.join(ws, '.git', 'hooks', 'pre-commit')),
+      secret: existsSync(path.join(cwd, 'secret.txt')),
+      installed: existsSync(path.join(cwd, 'node_modules')),
+      // CONTROL: the declared output is written.
+      dist: await readFile(path.join(cwd, 'dist', 'a.js'), 'utf8'),
+    }).toEqual({ hook: false, secret: false, installed: false, dist: 'built' })
+  })
+})
+
 describe('materialiseOutputs writes nothing through a link into an undeclared place', () => {
   it('a declared link into .git/hooks, then a declared directory written through it', async () => {
     await mkdir(path.join(ws, '.git', 'hooks'), { recursive: true })

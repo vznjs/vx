@@ -8,6 +8,7 @@ import type {
   CacheEntry,
   CacheGetContext,
   CacheLayer,
+  DeclaredOutputs,
   IngestMeta,
   InvocationRecord,
   OutputDirRow,
@@ -194,8 +195,13 @@ export class ScopedCache implements CacheLayer {
     return (await this.inner.outputDirsCurrent?.(projectDir, rows)) ?? false
   }
 
-  restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void> {
-    return this.inner.restoreOutputs(this.keyOf(hash), projectDir, workspaceRoot)
+  restoreOutputs(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+    outputs?: DeclaredOutputs,
+  ): Promise<void> {
+    return this.inner.restoreOutputs(this.keyOf(hash), projectDir, workspaceRoot, outputs)
   }
 
   save(args: SaveArgs): Promise<void> {

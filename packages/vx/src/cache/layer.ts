@@ -677,7 +677,13 @@ export interface CacheLayer {
    * into the workspace root. Callers restoring entries that may carry
    * workspace outputs must pass `workspaceRoot`.
    */
-  restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  restoreOutputs(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+    /** The task's declared outputs: an entry outside them fails the restore, nothing written. */
+    outputs?: DeclaredOutputs,
+  ): Promise<void>
   save(args: {
     hash: string
     /**

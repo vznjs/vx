@@ -27,6 +27,8 @@ import {
   isInstalledPath,
   isLiteralPattern,
   normalizeGlob,
+  namesNodeModules,
+  OUTPUT_NEVER,
   outputMatcher,
   realpathOf,
   relPosix,
@@ -678,17 +680,6 @@ async function resolveRuntimeValues(
 }
 
 /**
- * What no output glob reaches. An output is otherwise taken as written —
- * `node_modules/**` IS an install task's output, so `ALWAYS_IGNORE` does not
- * apply here — but no task produces these, and a root project declaring
- * `**` would otherwise wipe its repository and the cache it is restoring
- * from (2026-09-16). `.vx` whole and each `vx.lock.json` are vx's own: as
- * outputs, the clean deleted an uncommitted workspace config and a hit
- * restored a lock or ignore file the key does not see over the current one.
- */
-const OUTPUT_NEVER = ['**/.git/**', '**/.vx/**', '**/vx.lock.json']
-
-/**
  * What a set of output globs may not reach: `OUTPUT_NEVER`, and every
  * `node_modules` unless a glob names one. `**\/*.js` meant the build's
  * files, and the clean before each run deleted every installed `.js`
@@ -697,8 +688,9 @@ const OUTPUT_NEVER = ['**/.git/**', '**/.vx/**', '**/vx.lock.json']
  * even `.git`.
  */
 function outputExcludes(outputs: readonly string[]): Bun.Glob[] {
-  const namesNodeModules = outputs.some((o) => normalizeGlob(o).split('/').includes('node_modules'))
-  return (namesNodeModules ? OUTPUT_NEVER : [...OUTPUT_NEVER, '**/node_modules/**']).map(globFor)
+  return (namesNodeModules(outputs) ? OUTPUT_NEVER : [...OUTPUT_NEVER, '**/node_modules/**']).map(
+    globFor,
+  )
 }
 
 /**

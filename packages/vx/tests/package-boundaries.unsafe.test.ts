@@ -165,6 +165,9 @@ describe('package boundaries', () => {
       // Stream F: a plugin factory refuses a misspelt option, as core
       // refuses an unknown config field.
       'refuseUnknownOptions',
+      // Widened 2026-10-16: `@vzn/vx-reapi` writes a remote action's outputs
+      // through core's restore gate, so both refuse the same names.
+      'restorableOutput',
       'run',
       'splitTaskId',
       // Widened 2026-10-14: the scripts mapper left core and leaves out a

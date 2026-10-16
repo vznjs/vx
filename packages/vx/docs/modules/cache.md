@@ -86,7 +86,14 @@ export interface CacheLayer {
   outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
   // workspaceRoot anchors the artifact's `workspace-outputs/` entries
   // (cache.outputs.workspaceFiles); omitted → only `outputs/` restores.
-  restoreOutputs(hash: string, projectDir: string, workspaceRoot?: string): Promise<void>
+  // outputs: the task's declared globs; an entry outside them fails the
+  // whole restore (restorableOutput).
+  restoreOutputs(
+    hash: string,
+    projectDir: string,
+    workspaceRoot?: string,
+    outputs?: DeclaredOutputs,
+  ): Promise<void>
   save(args: SaveArgs): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> // adopt an artifact a remote served
   // The ONE run-history write: a whole `vx run` atomically, the per-task
@@ -554,7 +561,7 @@ Reads via `get()` are non-blocking thanks to WAL.
 
 ## Restore semantics
 
-`restoreOutputs(hash, projectDir, workspaceRoot?)`:
+`restoreOutputs(hash, projectDir, workspaceRoot?, outputs?)`:
 
 - If the artifact has no `outputs/` or `workspace-outputs/` entries,
   no-op.
