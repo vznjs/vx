@@ -38,8 +38,11 @@ const BUN_RUNTIME_NETWORK = ['registry.npmjs.org']
 const BUN_VERSION = ['bun --version']
 // A key reads no other task's outputs (`vx lock`, X-54): the
 // compiled binaries land in `dist/`, so every `**/*` here takes it back.
-// `dist/` is gitignored, so no key read it before either.
-const SOURCES = ['**/*', '!dist/**']
+// `dist/` is gitignored, so no key read it before either. A compile writes
+// `.<hash>-<n>.bun-build` and, cross-compiling, `.<16 hex>-<8 hex>.tmp/`
+// in this directory mid-run; a key taken meanwhile by any task here would
+// hash a file being written, so every `**/*` leaves Bun's temps out too.
+const SOURCES = ['**/*', '!dist/**', '!**/*.bun-build', '!**/.????????????????-????????.tmp/**']
 // The same for the other packages `test.bun.unsafe` reads: what
 // @vzn/vx-docs' `build`, `build.playground` and `import` write
 // (packages/vx-docs/vx.config.ts), all gitignored.

@@ -337,7 +337,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
 // ─────────────────────────────────────────────────────────────────────────
 // ALWAYS_IGNORE
 //
-// Six patterns, applied to project inputs AND workspace inputs. Each is
+// Seven patterns, applied to project inputs AND workspace inputs. Each is
 // `**/`-prefixed, and the whole guarantee rests on `**/` matching ZERO
 // directories as well as many — otherwise a top-level `node_modules` would sail
 // straight into the key. Both directions are asserted: the patterns must match
@@ -356,8 +356,6 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     'vx.lock.json',
     '.vx/.gitattributes',
     '.vx/.gitignore',
-    '.18bf7d9ff3ffeffe-00000001.bun-build',
-    '.cd5e87e3246b0795-00000000.tmp/bun',
     '.vx/tmp/1z2-a/0',
   ]
   const IGNORED_NESTED = [
@@ -367,8 +365,6 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     'a/b/vx.lock.json',
     'a/b/.vx/.gitattributes',
     'a/b/.vx/.gitignore',
-    'a/b/.18bf7d9ff3ffeffe-00000001.bun-build',
-    'a/b/.cd5e87e3246b0795-00000000.tmp/bun',
     'a/b/.vx/tmp/1z2-a/0',
   ]
   // Names one character away from an ignored one. If any of these is excluded
@@ -382,13 +378,16 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     // gitignored it is out by the gitignore filter; tracked, it is an input.
     'tsconfig.tsbuildinfo',
     'a/b/tsconfig.tsbuildinfo',
+    // Nor are a tool's temp files (M, 2026-10-16): Bun's compile
+    // intermediate and its cross-compile extraction directory.
+    '.18bf7d9ff3ffeffe-00000001.bun-build',
+    '.cd5e87e3246b0795-00000000.tmp/bun',
+    'a/b/.18bf7d9ff3ffeffe-00000001.bun-build',
+    'a/b/.cd5e87e3246b0795-00000000.tmp/bun',
     '.vx/projects.lock.json.bak',
     'vx.lock.json.bak',
     '.gitattributes',
     '.vx/.gitignore.bak',
-    'x.bun-build.txt',
-    '.cd5e87e3246b0795-00000000.tmp.txt',
-    '.cd5e87e3246b079-00000000.tmp/bun',
     '.vx/tmpl/x',
   ]
 

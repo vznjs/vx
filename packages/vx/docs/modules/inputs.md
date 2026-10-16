@@ -226,20 +226,20 @@ other walker: a project outside a git work tree is a `UserError`
 4. **Always-ignored** — hard-coded
    (`**/.git/**`, `**/.vx/cache/**`,
    `**/.vx/projects.lock.json`, `**/vx.lock.json`, `**/.vx/.gitattributes`,
-   `**/.vx/.gitignore`, `**/*.bun-build`,
-   `**/.????????????????-????????.tmp/**`, `**/.vx/tmp/**`)
+   `**/.vx/.gitignore`, `**/.vx/tmp/**`)
    — applied as a defense-in-depth even if git happens to track
    something there. The lock file is vx's own frozen-config metadata,
-   never a task input; the `.bun-build` intermediate and the directory
-   `bun build --compile` extracts a downloaded cross-compile runtime into
-   are transients a concurrent compile is mid-write, and `.vx/tmp/` is
-   where vx's restores stage. `node_modules` is
+   never a task input, and `.vx/tmp/` is where vx's restores stage.
+   `node_modules` is
    not here: the enumeration drops an UNTRACKED file under one that git
    does not ignore (`isInstalledPath`, an install); an ignored one is any
    ignored path, an input when named outright (a generated client); and
    a tracked one is a source. By
    path, a committed fixture under `tests/fixtures/node_modules/` left
-   the key and an edit to it replayed the old output (X-4).
+   the key and an edit to it replayed the old output (X-4). Nor is a
+   tool's temp file (owner, 2026-10-16): Bun's `.bun-build` intermediate
+   and cross-compile extraction directory are the compile task's to
+   exclude in its own `inputs`.
 5. **Boundary ignores** — a path under a nested project's directory
    (relative to this project), by ancestor lookup, not a glob (A-11).
    Cross-project isolation contract.
