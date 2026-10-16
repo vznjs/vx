@@ -405,6 +405,8 @@ On a hit:
    `<cacheDir>/<hash>.tar.zst`) **in place**: every entry is staged in
    the workspace's `.vx/tmp/` (never an output folder), and only once the
    whole archive has staged is each renamed over the file it replaces. A
+   file that already holds the entry's bytes (compared byte for byte, up
+   to 4 MiB) is left in place, only its mode and mtime set. A
    target on another filesystem goes through a temp beside it; a file
    takes the group its directory gives new files (setgid on Linux, any
    directory on macOS), ACLs are not copied. The next run removes

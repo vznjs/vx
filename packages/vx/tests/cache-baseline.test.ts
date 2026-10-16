@@ -618,10 +618,10 @@ describePerf('cache baseline: save + restore', () => {
     // The sidecar records whole milliseconds (docs/caching.md § Storage layout).
     expect(cold.mtimeMs).toBe(Math.floor(source.mtimeMs))
 
-    // A second restore over a current tree rewrites: new inode, same mtime.
+    // A second restore over a current tree leaves it: same inode, same mtime.
     await cache.restoreOutputs('e2e-mf', dest)
     const again = await stat(oneFile)
-    expect(again.ino).not.toBe(cold.ino)
+    expect(again.ino).toBe(cold.ino)
     expect(again.mtimeMs).toBe(cold.mtimeMs)
 
     // A deleted file comes back; a wrong-sized file is replaced by the

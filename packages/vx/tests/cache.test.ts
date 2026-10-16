@@ -900,6 +900,8 @@ describe('Cache storage (v10)', () => {
       outputFiles: files,
       entry: { taskId: 'pkg#build', command: 'build', durationMs: 1, stdout: '' },
     })
+    // Other bytes on disk: a file already as the entry has it is not restaged.
+    for (const f of files) await writeFile(f, 'ho'.repeat(100))
     let stop = false
     let removed = 0
     // The other run strikes SYNCHRONOUSLY on each turn of the loop — one

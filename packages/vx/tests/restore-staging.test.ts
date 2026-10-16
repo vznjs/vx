@@ -225,3 +225,23 @@ it("the next run sweeps a killed run's staging and leaves a live run's", async (
   expect(`${r.code}\n${r.err}`).toStartWith('0\n')
   expect([existsSync(dead), existsSync(live)]).toEqual([false, true])
 }, 60_000)
+
+it('a target already holding the bytes stays, with the entry mode', async () => {
+  const ws = dir('vx-staging-same-')
+  const dest = path.join(ws, 'app')
+  const file = path.join(dest, 'dist', 'a.js')
+  mkdirSync(path.dirname(file), { recursive: true })
+  writeFileSync(file, 'same\n')
+  chmodSync(file, 0o755)
+  const before = statSync(file).ino
+  await extractArtifactStream(
+    streamOf(await artifact({ 'dist/a.js': 'same\n' })),
+    dest,
+    undefined,
+    undefined,
+    undefined,
+    ws,
+  )
+  const after = statSync(file)
+  expect([after.ino, after.mode & 0o777]).toEqual([before, 0o644])
+})
