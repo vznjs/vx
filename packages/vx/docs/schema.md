@@ -832,10 +832,11 @@ watch` re-runs it on an edit there.
   `.vx/projects.lock.json`, `vx.lock.json`, `*.bun-build`, and Bun's cross-compile extraction
   directory `.<16 hex>-<8 hex>.tmp/**`, and vx's own restore temp
   `.vx-tmp-*`, at any depth.
-- **Installs** — an untracked file under any `node_modules/` (ignored or
-  not), unless an entry names a path under it outright: a generated
-  client (`node_modules/.prisma/client/**`) is an input, read from disk.
-  A file git TRACKS there, such as a committed test fixture, is an input
+- **Installs** — an untracked file under any `node_modules/` that git
+  does not ignore. An ignored one follows the gitignore filter above
+  like any other ignored path: named outright, it is an input
+  (`node_modules/.prisma/client/**`, a generated client); a broad glob
+  skips it because it is ignored. A file git TRACKS there, such as a committed test fixture, is an input
   like any other.
 - **Declared `outputs.files`** are excluded — a task never invalidates
   itself via its own output. A path an output `!` entry takes back is

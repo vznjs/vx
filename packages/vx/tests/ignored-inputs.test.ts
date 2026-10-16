@@ -112,12 +112,12 @@ it(
   TIMEOUT,
 )
 
-// A generated client in node_modules (`prisma generate` writes
-// node_modules/.prisma/client) is no install the lockfile keys: naming it
-// is asking for it. It folded nothing, silently, and a build replayed its
-// output after the client changed.
+// `node_modules` is no special case (owner, 2026-10-16): an ignored path
+// named outright is an input. A generated client (`prisma generate` writes
+// node_modules/.prisma/client) folded nothing, silently, and a build
+// replayed its output after the client changed.
 it(
-  'a path under node_modules named outright is an input; one an entry only walks past stays out',
+  'an ignored path under node_modules is an input like any other: named outright, or under a named ignored prefix',
   async () => {
     root = await workspace(
       {
@@ -137,7 +137,7 @@ it(
     const after = new Map((await dry(root, ['lib#t', 'lib#gen'])).map((t) => [t.id, t.hash]))
     expect([
       after.get('lib#t') !== before.get('lib#t'),
-      after.get('lib#gen') === before.get('lib#gen'),
+      after.get('lib#gen') !== before.get('lib#gen'),
     ]).toEqual([true, true])
   },
   TIMEOUT,

@@ -1324,12 +1324,12 @@ function outright(reach: { prefixes: readonly string[]; literals: readonly strin
 /**
  * The files on disk under the {@link ignoredReach} entries that `accept`
  * keeps, sorted and absolute. A file is hashed from disk like any untracked
- * one; nothing here is stored or restored. An install (`node_modules`) an
- * entry only walks past stays out, as in the enumeration: lockfile plugins
- * key it. One the entry names (`node_modules/.prisma/client/**`, a
- * generated client) is asked for: it folded nothing, silently. lstat, not
- * `exists()`: that answers false for a directory. Never memoized: a dependency writes these
- * mid-run.
+ * one; nothing here is stored or restored. `node_modules` is no special
+ * case (owner, 2026-10-16): an ignored path named outright is an input,
+ * a generated client (`node_modules/.prisma/client/**`) too; skipping
+ * installs here folded such an entry to nothing, silently. lstat, not
+ * `exists()`: that answers false for a directory. Never memoized: a
+ * dependency writes these mid-run.
  */
 function ignoredInputs(
   root: string,
@@ -1341,7 +1341,6 @@ function ignoredInputs(
     const abs = path.resolve(root, entry)
     const st = lstatSync(abs, { throwIfNoEntry: false })
     if (st === undefined) continue
-    const named = isInstalledPath(`${entry}/`)
     if (!st.isDirectory()) {
       if ((st.isFile() || st.isSymbolicLink()) && accept(entry)) found.add(abs)
       continue
@@ -1353,7 +1352,7 @@ function ignoredInputs(
       dot: true,
     })) {
       const full = `${entry}/${rel.split(path.sep).join('/')}`
-      if ((!named && isInstalledPath(full)) || !accept(full)) continue
+      if (!accept(full)) continue
       const file = path.join(abs, rel)
       if (isInputOnDisk(file)) found.add(file)
     }
