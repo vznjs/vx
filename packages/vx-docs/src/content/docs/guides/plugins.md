@@ -226,10 +226,11 @@ replaced, and at most 1 MiB. A failure is an empty answer, never an
 error. `schedule` gets it too. `ctx.ci` and `ctx.branch` say where the
 run is.
 
-A run that writes a remote cache (CI by default) keeps there the log of
-each task that saved no entry, and, when `cache.upload.failures` covers
-the run (`'ci'`, the default), a failed task's log and the files its
-outputs left. Each leaves when its task ends.
+A run that writes a remote cache and that `cache.upload.failures`
+covers (`'ci'`, the default) keeps there the log of each task that
+saved no entry, and a failed task's log and the files its outputs left.
+Each leaves when its task ends, and the footer counts it under
+`remote ↑`.
 `teardown(run)` then gets the run's report: `runId`, `commit`, `ciRun`
 (provider, run URL, pipeline, job), `ok`, and every task with its
 `status`, `durationMs`, `key` and the `log` / `outputs` names vx kept.

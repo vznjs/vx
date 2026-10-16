@@ -76,7 +76,7 @@ import {
   warnOf,
 } from '../report/index.js'
 import { installPlugins, PluginSetupError, type RunReport } from './plugin.js'
-import { keepsFailures, reportOf, RunKeeper } from './run-report.js'
+import { keepsRunBytes, reportOf, RunKeeper } from './run-report.js'
 import { buildAdmission, executorDemand, resolveExecutors, teardownPlugins } from './plugin-host.js'
 import { createSteps } from './steps.js'
 import { writeRunSteps } from './run-steps.js'
@@ -452,15 +452,17 @@ async function runOnBus(
   const runId = ulid()
   const head = captureGitContext(prepared.workspaceRoot)
   const ciContext = detectCi(process.env)
+  // A run keeps its own bytes only where the policy says (default: CI): a
+  // laptop that writes the remote waited on an uncached task's log
+  // (vx:uploads 1.77 s, 2026-10-16).
   const keepRun =
-    prepared.keepRunEntry === undefined
-      ? undefined
-      : {
-          failures: keepsFailures(
-            resolveSetting('cache.upload.failures', prepared.workspaceConfig).value,
-            ciContext.ci,
-          ),
-        }
+    prepared.keepRunEntry !== undefined &&
+    keepsRunBytes(
+      resolveSetting('cache.upload.failures', prepared.workspaceConfig).value,
+      ciContext.ci,
+    )
+      ? (true as const)
+      : undefined
   const keeper =
     prepared.keepRunEntry === undefined || keepRun === undefined
       ? undefined
@@ -469,7 +471,7 @@ async function runOnBus(
           workspaceRoot: prepared.workspaceRoot,
           nestedDirsByProject: prepared.nestedDirsByProject,
           keep: prepared.keepRunEntry,
-          failures: keepRun.failures,
+          traffic: prepared.localCache.traffic,
         })
   try {
     disposePlugins = await installPlugins({

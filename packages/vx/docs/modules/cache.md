@@ -133,6 +133,13 @@ export class ArtifactVanishedError extends Error {
   readonly hash: string
 }
 
+// The run's remote traffic, filled by each remote lane and the run keeper
+// (a kept task counts under its id): what the footer's remote part counts.
+export interface RemoteTraffic {
+  inFlight: number
+  readonly keys: Map<string, RemoteKeyTraffic>
+}
+
 // The output-directory short-circuit's bounds: a hit with more than
 // OUTPUT_DIRS_CAP directories under its outputs records none and keeps the
 // walk, and a snapshot holding one whose mtime is within

@@ -1,11 +1,13 @@
 // The report every plugin's teardown reads, and the run's own bytes kept
-// in a remote that takes its writes (owner 2026-10-15): a failed task's
-// log and the files its outputs left (`cache.upload.failures`), and the
-// log of a task that saved no entry. Each task's bytes leave when it ends,
-// off its path, like its entry's upload (owner 2026-10-16); the run only
-// waits for them where it waits for every upload.
+// in a remote that takes its writes, on the runs `cache.upload.failures`
+// names (owner 2026-10-15): a failed task's log and the files its outputs
+// left, and the log of a task that saved no entry. Each task's bytes leave
+// when it ends, off its path, like its entry's upload (owner 2026-10-16);
+// the run only waits for them where it waits for every upload, and the
+// footer counts them as the task's remote traffic.
 
 import {
+  type RemoteTraffic,
   packRunOutputs,
   resolveOutputs,
   resolveWorkspaceOutputs,
@@ -25,12 +27,12 @@ export interface RunKeeperArgs {
   readonly workspaceRoot: string
   readonly nestedDirsByProject: ReadonlyMap<string, string[]>
   readonly keep: KeepRunEntry
-  /** Whether a failed task's log and outputs are kept (`cache.upload.failures`). */
-  readonly failures: boolean
+  /** The footer's remote traffic: each kept task counts under its id. */
+  readonly traffic: RemoteTraffic
 }
 
-/** Whether a run on CI or off it keeps failures, by `cache.upload.failures` (default `'ci'`). */
-export function keepsFailures(where: unknown, ci: boolean): boolean {
+/** Whether a run on CI or off it keeps its bytes, by `cache.upload.failures` (default `'ci'`). */
+export function keepsRunBytes(where: unknown, ci: boolean): boolean {
   const at = where ?? 'ci'
   return at === 'always' || (at === 'ci') === ci
 }
@@ -81,12 +83,14 @@ export class RunKeeper {
       if (text.length > 0) {
         const name = runEntryName(runId, id, 'log')
         const bytes = new TextEncoder().encode(text)
-        this.enqueue(async () => {
-          if (await this.args.keep(name, bytes)) slot().log = name
+        this.enqueue(id, async () => {
+          if (!(await this.args.keep(name, bytes))) return false
+          slot().log = name
+          return true
         })
       }
     }
-    if (this.args.failures && o.status === 'failed' && o.where === undefined) {
+    if (o.status === 'failed' && o.where === undefined) {
       // Read now: a later task may write where this one's outputs lie.
       const packed = outputsLeft(
         o.node,
@@ -94,9 +98,11 @@ export class RunKeeper {
         this.args.nestedDirsByProject.get(o.node.projectName) ?? [],
       ).then((paths) => packRunOutputs(workspaceRoot, paths))
       const name = runEntryName(runId, id, 'outputs')
-      this.enqueue(async () => {
+      this.enqueue(id, async () => {
         const bytes = await packed
-        if (bytes !== null && (await this.args.keep(name, bytes))) slot().outputs = name
+        if (bytes === null || !(await this.args.keep(name, bytes))) return false
+        slot().outputs = name
+        return true
       })
     }
   }
@@ -117,16 +123,28 @@ export class RunKeeper {
     return this.kept.get(id)
   }
 
-  private enqueue(job: () => Promise<void>): void {
+  /** Queue `job`, which writes `id`'s bytes; a write that lands counts as `id`'s upload. */
+  private enqueue(id: string, job: () => Promise<boolean>): void {
     let done!: () => void
     const p = new Promise<void>((resolve) => (done = resolve))
     this.pending.add(p)
+    const { traffic } = this.args
+    let key = traffic.keys.get(id)
+    if (key === undefined)
+      traffic.keys.set(id, (key = { uploading: 0, landed: false, failures: [] }))
+    const counted = key
+    counted.uploading++
+    traffic.inFlight++
     this.queue.push(async () => {
       try {
-        if (!this.stopped) await job()
+        if (!this.stopped && (await job())) counted.landed = true
       } catch {
         // a record, never the run's verdict
       } finally {
+        counted.uploading--
+        traffic.inFlight--
+        if (counted.uploading === 0 && !counted.landed && counted.failures.length === 0)
+          traffic.keys.delete(id)
         this.pending.delete(p)
         done()
       }

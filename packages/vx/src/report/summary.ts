@@ -110,7 +110,7 @@ export interface SummaryStats {
   savedMs?: number
   /** A run of groups only: their names, so `0 tasks` says why. */
   emptyGroups?: readonly string[]
-  /** Each finished task's cache bucket by its key, so its remote traffic can move it. */
+  /** Each finished task's cache bucket by its key and its id (its run bytes), so its remote traffic can move it. */
   buckets?: ReadonlyMap<string, CacheBucket>
 }
 
@@ -536,12 +536,14 @@ export function formatRunSummary(
   )
 }
 
-/** Each finished task's cache bucket by its key. */
+/** Each finished task's cache bucket by its key and by its id. */
 function bucketsOf(outcomes: readonly TaskOutcome[]): Map<string, CacheBucket> {
   const out = new Map<string, CacheBucket>()
   for (const o of outcomes) {
-    const bucket = o.hash === undefined ? undefined : cacheBucketOf(o)
-    if (bucket !== undefined) out.set(o.hash!, bucket)
+    const bucket = cacheBucketOf(o)
+    if (bucket === undefined) continue
+    if (o.hash !== undefined) out.set(o.hash, bucket)
+    out.set(o.node.id, bucket)
   }
   return out
 }

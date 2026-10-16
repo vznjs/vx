@@ -973,8 +973,11 @@ export function defaultLogger(
           const qi = slotQueue.findIndex((s) => s.id === node.id)
           if (qi >= 0) slotQueue.splice(qi, 1)
         }
-        const bucket = outcome.hash === undefined ? undefined : cacheBucketOf(outcome)
-        if (bucket !== undefined) buckets.set(outcome.hash!, bucket)
+        const bucket = cacheBucketOf(outcome)
+        if (bucket !== undefined) {
+          if (outcome.hash !== undefined) buckets.set(outcome.hash, bucket)
+          buckets.set(node.id, bucket)
+        }
         switch (outcome.status) {
           case 'success':
             succeeded++
