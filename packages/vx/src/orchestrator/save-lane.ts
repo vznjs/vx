@@ -12,22 +12,29 @@
 export interface SaveLane {
   /**
    * Start `save` now if the lane has room, else when one finishes. Resolves
-   * once the save has settled — a failure is reported and resolves too —
-   * for the one reader that must wait for the entry: a duplicate of the
-   * same task in another run (admission's in-flight join).
+   * once the save has settled, true when the entry landed — a failure is
+   * reported and resolves false — for the readers that must know: the
+   * task's outcome, and a duplicate of the same task in another run
+   * (admission's in-flight join).
    */
-  defer(save: () => Promise<void>): Promise<void>
+  defer(save: () => Promise<void>): Promise<boolean>
 }
 
 export function createSaveLane(cap: number, onError: (err: unknown) => void): SaveLane {
-  const queue: Array<{ save: () => Promise<void>; settle: () => void }> = []
+  const queue: Array<{ save: () => Promise<void>; settle: (stored: boolean) => void }> = []
   let running = 0
-  const start = (save: () => Promise<void>, settle: () => void): void => {
+  const start = (save: () => Promise<void>, settle: (stored: boolean) => void): void => {
     void save()
-      .catch(onError)
-      .then(() => {
+      .then(
+        () => true,
+        (err: unknown) => {
+          onError(err)
+          return false
+        },
+      )
+      .then((stored) => {
         running--
-        settle()
+        settle(stored)
         const next = queue.shift()
         if (next !== undefined) start(next.save, next.settle)
       })
@@ -35,7 +42,7 @@ export function createSaveLane(cap: number, onError: (err: unknown) => void): Sa
   }
   return {
     defer(save) {
-      return new Promise<void>((settle) => {
+      return new Promise<boolean>((settle) => {
         if (running < cap) start(save, settle)
         else queue.push({ save, settle })
       })
