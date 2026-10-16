@@ -333,7 +333,19 @@ export async function resolveFilters(
         workspaceGlobOwners: (changed: readonly string[], nested: readonly string[]) =>
           workspaceGlobOwners(root, projects, changed, load, stagedOnce, nested),
         fingerprintClaims: () => workspaceFingerprintClaims(root, projects, load),
-        ...(git !== undefined ? { untracked: async () => (await git.start()).untracked } : {}),
+        ...(git !== undefined
+          ? {
+              untracked: async () => (await git.start()).untracked,
+              // A scoped enumeration lists only its projects: null asks git.
+              links: async () => {
+                const g = await git.start()
+                if (!g.scopes.includes('.')) return null
+                const out: string[] = []
+                for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
+                return out
+              },
+            }
+          : {}),
       }
       let names: Set<string>
       if (f.raw === affected) {

@@ -2,6 +2,7 @@
 // rules, git-ignored paths, the root arm's filter) and which files reshape
 // the watched set. Pure decisions over paths; the loop acts on them.
 
+import fs from 'node:fs'
 import path from 'node:path'
 import {
   executablePath,
@@ -369,12 +370,14 @@ export function gitSpeller(root: string): (p: string) => string {
  * a project moved away whole is one event on its directory): what existed
  * when watch armed, so a path born and gone since is told from a deletion
  * (watch-judge.ts). `tracked` is the files git tracks: a user edits those,
- * so a server cannot be blamed for one. Undefined when git cannot answer:
+ * so a server cannot be blamed for one. `links` is the symlinks among the
+ * files: a key reads what each points to (cache/linked-inputs.ts), so watch
+ * arms that too. Undefined when git cannot answer:
  * no inventory, every gone path is a deletion as before.
  */
 export function gitFiles(
   workspaceRoot: string,
-): { listed: Set<string>; tracked: Set<string> } | undefined {
+): { listed: Set<string>; tracked: Set<string>; links: Set<string> } | undefined {
   let proc: ReturnType<typeof Bun.spawnSync>
   try {
     proc = Bun.spawnSync({
@@ -383,6 +386,7 @@ export function gitFiles(
         'ls-files',
         '-z',
         '-t',
+        '-s',
         '--cached',
         '--others',
         '--exclude-standard',
@@ -398,18 +402,30 @@ export function gitFiles(
   if (proc.exitCode !== 0) return undefined
   const files = new Set<string>()
   const tracked = new Set<string>()
+  const links = new Set<string>()
   for (const entry of new TextDecoder('utf-8', { ignoreBOM: true })
     .decode(proc.stdout)
     .split('\0')) {
     if (entry.length === 0) continue
-    // `-t` prefixes a tag and a space; `?` is untracked.
-    const p = entry.slice(2)
+    // `-t` prefixes a tag and a space; `?` is untracked, a bare path. A
+    // tracked entry is `-s`'s `<mode> <oid> <stage>\t<path>` after the tag.
+    const untracked = entry[0] === '?'
+    const p = untracked ? entry.slice(2) : entry.slice(entry.indexOf('\t') + 1)
     // An untracked nested repository is listed as `dir/`.
     let abs = path.join(workspaceRoot, p.endsWith('/') ? p.slice(0, -1) : p)
     files.add(abs)
-    if (entry[0] !== '?') tracked.add(abs)
+    if (!untracked) tracked.add(abs)
+    if (untracked ? isLink(abs) : entry.startsWith('120000 ', 2)) links.add(abs)
     for (abs = path.dirname(abs); abs !== workspaceRoot && !files.has(abs); abs = path.dirname(abs))
       files.add(abs)
   }
-  return { listed: files, tracked }
+  return { listed: files, tracked, links }
+}
+
+function isLink(abs: string): boolean {
+  try {
+    return fs.lstatSync(abs).isSymbolicLink()
+  } catch {
+    return false
+  }
 }

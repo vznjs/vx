@@ -2,16 +2,15 @@
 // whose tasks print what they read (each input file's name, mode bit, link
 // target or bytes; a config import; a cached producer's output; a
 // `workspaceFiles` input; the upstream's output; the bytes behind a
-// symlink, to a file or a directory, inside the project or out; an uncached
+// symlink, to a file or a directory, inside the project, the workspace or
+// outside it; an uncached
 // upstream's write, from a passed-through env var and a file outside its
 // project), then applies random edits (content, same-size rewrites with the
 // mtime put back, chmod, symlinks, renames, env values, `git add`/commit/stash/pop/checkout/reset/`add -N`,
 // index flags, `.gitignore`, `.gitattributes`, `core.autocrlf`, output
 // tampering) and runs `vx run build --all` after each. Every output must
 // then be what the current inputs produce: a mismatch is a hit that
-// replayed bytes its key no longer describes. A refusal of a symlink whose
-// target is no input is right only when such a link exists. It found A-59,
-// A-60 and A-61.
+// replayed bytes its key no longer describes. It found A-59, A-60 and A-61.
 //
 //   bun scripts/fuzz-keys.ts <dir> [steps=300] [seed=1] [--policies]
 //
@@ -62,10 +61,15 @@ const byBytes = (x: string, y: string): number => Buffer.compare(Buffer.from(x),
 // Each `src` file git lists (tracked or untracked, not ignored) that is on
 // disk: `F <name> <x|-> <bytes>`, or `L <name> <target>` and what the task
 // reads through it: the file's bytes, or each file git lists in the directory.
-const LIST = `mkdir -p dist src; : > dist/out.txt; (git ls-files -co --exclude-standard -- src | while IFS= read -r g; do [ -e "$g" ] || [ -L "$g" ] && echo "./\${g#src/}"; done | LC_ALL=C sort -u) | while IFS= read -r f; do p="src/$f"; if [ -L "$p" ]; then echo "L $f $(readlink "$p")" >> dist/out.txt; if [ -f "$p" ]; then echo "  $(cat "$p")" >> dist/out.txt; elif [ -d "$p" ]; then (cd "$p" && git ls-files -co --exclude-standard | LC_ALL=C sort | while IFS= read -r q; do [ -f "$q" ] && [ ! -L "$q" ] && echo "  ./$q $(cat "$q")"; done; true) >> dist/out.txt; fi; else if [ -x "$p" ]; then x=x; else x=-; fi; echo "F $f $x $(cat "$p")" >> dist/out.txt; fi; done`
+const LIST = `mkdir -p dist src; : > dist/out.txt; (git ls-files -co --exclude-standard -- src | while IFS= read -r g; do [ -e "$g" ] || [ -L "$g" ] && echo "./\${g#src/}"; done | LC_ALL=C sort -u) | while IFS= read -r f; do p="src/$f"; if [ -L "$p" ]; then echo "L $f $(readlink "$p")" >> dist/out.txt; if [ -f "$p" ]; then echo "  $(cat "$p")" >> dist/out.txt; elif [ -d "$p" ]; then (cd "$p" && find . -type f -not -path '*/.git/*' -not -path '*/node_modules/*' | LC_ALL=C sort | while IFS= read -r q; do echo "  $q $(cat "$q")"; done; true) >> dist/out.txt; fi; else if [ -x "$p" ]; then x=x; else x=-; fi; echo "F $f $x $(cat "$p")" >> dist/out.txt; fi; done`
 const SHARED = `(cd ../.. && git ls-files -co --exclude-standard -- shared | LC_ALL=C sort -u | while IFS= read -r g; do [ -f "$g" ] && echo "S $g $(cat "$g")"; done; true) >> dist/out.txt`
 
+// A link's target outside the workspace: vx keys it as it does one inside.
+const outside = `${root}-outside`
 rmSync(root, { recursive: true, force: true })
+rmSync(outside, { recursive: true, force: true })
+mkdirSync(outside)
+writeFileSync(path.join(outside, 'o1'), 'o')
 for (const p of ['a', 'b']) mkdirSync(at('packages', p, 'src'), { recursive: true })
 mkdirSync(at('shared'))
 writeFileSync(at('package.json'), '{"name":"root","private":true,"workspaces":["packages/*"]}')
@@ -179,10 +183,8 @@ function srcListing(p: string): string {
   return out
 }
 
-/** What a link reaches: a file, or a directory and the regular files git lists in it. */
-function behind(
-  link: string,
-): { dir: false } | { dir: true; files: string[]; real: string } | null {
+/** What a link reaches: a file, or a directory and every regular file under it, ignored or not. */
+function behind(link: string): { dir: false } | { dir: true; files: string[] } | null {
   let real: string
   try {
     real = realpathSync(link)
@@ -190,38 +192,16 @@ function behind(
     return null
   }
   if (!statSync(real).isDirectory()) return { dir: false }
-  const out = execSync('git ls-files -co --exclude-standard -z', { cwd: real, env })
-  const files = out
-    .toString()
-    .split('\0')
-    .filter((q) => q !== '' && existsSync(path.join(real, q)))
-    .filter((q) => !lstatSync(path.join(real, q)).isSymbolicLink())
-  return { dir: true, files, real }
-}
-
-/**
- * A link in `p`'s src whose target is no input of `p#build` (its src, and
- * the shared files it declares), which vx must refuse rather than key on the link.
- */
-function unkeyedLink(p: string): string | undefined {
-  const realRoot = realpathSync(root)
-  const inputs = new Set(
-    [
-      ...listed(`packages/${p}/src`),
-      ...[...listed('shared')].filter((g) => p === 'b' || g === 'shared/s1'),
-    ].map((g) => at(g)),
-  )
-  for (const g of listed(`packages/${p}/src`)) {
-    const abs = at(g)
-    if (!existsSync(abs) || !lstatSync(abs).isSymbolicLink()) continue
-    const to = behind(abs)
-    if (to === null) continue
-    const real = realpathSync(abs)
-    const mapped = at(path.relative(realRoot, real))
-    const reached = to.dir ? to.files.map((q) => path.join(mapped, q)) : [mapped]
-    if (reached.some((r) => !inputs.has(r))) return g
+  const files: string[] = []
+  const walk = (rel: string): void => {
+    for (const e of readdirSync(path.join(real, rel), { withFileTypes: true })) {
+      const r = rel === '' ? e.name : `${rel}/${e.name}`
+      if (e.isDirectory() && e.name !== '.git' && e.name !== 'node_modules') walk(r)
+      else if (e.isFile()) files.push(r)
+    }
   }
-  return undefined
+  walk('')
+  return { dir: true, files }
 }
 
 function expected(): { a: string; b: string } {
@@ -271,7 +251,17 @@ const ops: Array<[string, (p: string) => void]> = [
       const f = src(p, pick(['f2', 'f3']))
       rmSync(f, { force: true })
       symlinkSync(
-        pick(['f1', 'nope', 'sub/f4', 'sub', '../seed', '../../../shared/s1', '../../../shared']),
+        pick([
+          'f1',
+          'nope',
+          'sub/f4',
+          'sub',
+          '../seed',
+          '../../../shared/s1',
+          '../../../shared',
+          path.join(outside, 'o1'),
+          outside,
+        ]),
         f,
       )
     },
@@ -327,6 +317,18 @@ const ops: Array<[string, (p: string) => void]> = [
     () => forge(at('shared', pick(['s1', 's2'])), (c) => (c === 'x' ? 'y' : 'x'.repeat(c.length))),
   ],
   ['shared-rm', () => rmSync(at('shared', pick(['s1', 's2'])), { force: true })],
+  [
+    'outside-write',
+    () => writeFileSync(path.join(outside, pick(['o1', 'o2'])), pick(['o', 'p', 'qq'])),
+  ],
+  [
+    'outside-forge',
+    () =>
+      forge(path.join(outside, pick(['o1', 'o2'])), (c) =>
+        c === 'o' ? 'p' : 'o'.repeat(c.length),
+      ),
+  ],
+  ['outside-rm', () => rmSync(path.join(outside, pick(['o1', 'o2'])), { force: true })],
   ['seed', () => writeFileSync(at('packages/a/seed'), pick(['s1', 's2', 's33']))],
   [
     'api',
@@ -412,23 +414,8 @@ for (let i = 0; i < steps; i++) {
   const flags = policies ? pick(POLICIES) : []
   const run = () =>
     spawnSync(process.execPath, [VX, 'run', 'build', '--all', ...flags], { cwd: root, env })
-  let r = run()
-  let out = `${r.stdout.toString()}${r.stderr.toString()}`
-  let unkeyed = unkeyedLink('a') ?? unkeyedLink('b')
-  if (r.status !== 0 && unkeyed !== undefined && out.includes('is a symlink to')) {
-    // Refused as it must be; take the links out, as the fix line asks, and check that run.
-    for (let link: string | undefined = unkeyed; link !== undefined;) {
-      rmSync(at(link))
-      link = unkeyedLink('a') ?? unkeyedLink('b')
-    }
-    r = run()
-    out = `${r.stdout.toString()}${r.stderr.toString()}`
-    unkeyed = undefined
-  }
-  if (r.status === 0 && unkeyed !== undefined) {
-    console.log(`UNREFUSED at step ${i} after ${name}@${p}: ${unkeyed} reads past its key\n${out}`)
-    process.exit(2)
-  }
+  const r = run()
+  const out = `${r.stdout.toString()}${r.stderr.toString()}`
   if (r.status !== 0) {
     console.log(`step ${i} ${name}@${p} ${flags.join(' ')}: vx exited ${r.status}\n${out}`)
     process.exit(1)

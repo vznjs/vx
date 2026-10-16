@@ -25,6 +25,9 @@ export interface AffectedArgs {
   /** The untracked files, from a walk shared with the run; null or absent
    *  spawns `git ls-files --others` here (I-26). */
   untracked?: () => Promise<readonly string[] | null>
+  /** The tracked symlinks, from the run's enumeration; null or absent
+   *  spawns `git ls-files -s` here. */
+  links?: () => Promise<readonly string[] | null>
 }
 
 export function affectedProjects(args: AffectedArgs): Promise<Set<string>>

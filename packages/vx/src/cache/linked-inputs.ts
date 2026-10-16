@@ -1,66 +1,87 @@
-// A symlinked input folds as git folds it: the blob of its target STRING
-// (file-hashes.ts). The task reads the bytes behind it, so a link whose
-// target is no input of its own let an edit there replay the old output
-// (Growth, 2026-10-16). Keying the target from here would leave `--affected`
-// and `vx watch` blind to the same edit, so the target must be an input
-// itself, and a link whose target is not is refused naming the declaration
-// that keys it. A dangling link, or a listed file deleted from behind a
-// linked directory, reads nothing.
+// A symlinked input keys the content behind it, as Nx reads a linked file
+// where it points (owner, 2026-10-16: "Do like nx"). Its own fold stays the
+// blob of its target STRING (file-hashes.ts), so a retarget to equal bytes
+// moves the key; this is what follows it. The target string alone let an
+// edit behind the link replay the old output (Growth, 2026-10-16), wherever
+// the target lies: in the project, elsewhere in the workspace, outside it.
+// A directory link keys every file beneath it, tracked or not, where Nx
+// does not enter one: an edit there is an edit to what the task reads.
+// `--affected` (workspace/affected.ts) and `vx watch` (cli/watch.ts) read
+// the same targets.
 
-import { existsSync, realpathSync, statSync } from 'node:fs'
+import { readdirSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { relPosix, UserError } from '../util/index.js'
-import { runGitLsFiles } from './git-inputs.js'
+import { xxh3hex } from '../util/index.js'
+import { absentOr } from './key-fold.js'
 
-const realRoots = new Map<string, string>()
+/** What a dangling link, or a loop of links, holds behind it: nothing to read. */
+const NOTHING_BEHIND = ''
 
-/** Refuse the first link in `links` whose target's content `inputFiles` does not hold. */
-export function refuseUnkeyedLinks(
-  links: readonly string[],
-  inputFiles: readonly string[],
-  workspaceRoot: string,
-): void {
-  const inputs = new Set(inputFiles)
-  let realRoot = realRoots.get(workspaceRoot)
-  if (realRoot === undefined) {
-    realRoot = realpathSync(workspaceRoot)
-    realRoots.set(workspaceRoot, realRoot)
-  }
-  for (const link of links) {
-    let real: string
+/**
+ * Directories a linked directory's walk never enters, as Nx's walker never
+ * does (its HARDCODED_IGNORE_PATTERNS): a link to a workspace would
+ * otherwise key the cache each run writes.
+ */
+const SKIPPED = ['.git', 'node_modules', '.vx/cache', '.yarn/cache']
+const skipped = (rel: string): boolean => SKIPPED.some((s) => rel === s || rel.endsWith(`/${s}`))
+
+/**
+ * The files under `dir` a linked directory keys, relative and `/`-separated,
+ * sorted: every regular file and link at any depth. A link is listed, never
+ * entered (`behindLink` follows it), so a loop of directories ends.
+ */
+export function filesBehind(dir: string): string[] {
+  const out: string[] = []
+  const walk = (abs: string, rel: string): void => {
+    let entries
     try {
-      real = realpathSync(link)
+      entries = readdirSync(abs, { withFileTypes: true })
     } catch {
-      continue
+      return
     }
-    const rel = path.relative(realRoot, real)
-    const outside = rel.startsWith('..') || path.isAbsolute(rel)
-    const targetRel = rel.split(path.sep).join('/')
-    const head = `inputs: "${relPosix(workspaceRoot, link)}" is a symlink to "${outside ? real : targetRel}"`
-    const target = path.join(workspaceRoot, rel)
-    if (!outside && statSync(real).isDirectory()) {
-      const behind = runGitLsFiles(target).files
-      const missing = behind.find(
-        (f) => !inputs.has(path.join(target, f)) && existsSync(path.join(target, f)),
-      )
-      if (missing === undefined) continue
-      throw new UserError(
-        `${head}, and "${targetRel}/${missing}" behind it is not an input — an edit to it would replay the old output. Add "${targetRel}/**" to inputs.workspaceFiles.`,
-      )
+    for (const e of entries) {
+      const childRel = rel === '' ? e.name : `${rel}/${e.name}`
+      if (e.isDirectory()) {
+        if (!skipped(childRel)) walk(path.join(abs, e.name), childRel)
+      } else if (e.isFile() || e.isSymbolicLink()) out.push(childRel)
     }
-    if (inputs.has(target)) continue
-    if (outside || !listed(target)) {
-      throw new UserError(
-        `${head}, which git does not list (gitignored, or outside the workspace), so no glob can key it — an edit to it would replay the old output. Point the link at a tracked file, or exclude it from the inputs and key its content with inputs.runtime.`,
-      )
-    }
-    throw new UserError(
-      `${head}, whose content the key does not see — an edit to it would replay the old output. Add "${targetRel}" to inputs.workspaceFiles.`,
-    )
   }
+  walk(dir, '')
+  return out.sort()
 }
 
-function listed(abs: string): boolean {
-  const dir = path.dirname(abs)
-  return runGitLsFiles(dir).files.includes(path.basename(abs))
+/**
+ * The content behind the symlink at `link`, as one string: a file's identity
+ * (`hashFile` of its real path), a directory's files and theirs, or
+ * `NOTHING_BEHIND` for a dangling link or a loop. A special file (a FIFO, a
+ * device) is named, never read: a read can block. Never memoized: an upstream
+ * task may write behind the link between two keys.
+ */
+export async function behindLink(
+  link: string,
+  hashFile: (file: string) => Promise<string>,
+  seen: ReadonlySet<string> = new Set(),
+): Promise<string> {
+  let real: string
+  let st
+  try {
+    real = realpathSync(link)
+    st = statSync(real)
+  } catch {
+    return NOTHING_BEHIND
+  }
+  if (seen.has(real)) return NOTHING_BEHIND
+  if (st.isFile()) return `file\0${await hashFile(real).catch(absentOr)}`
+  if (!st.isDirectory()) return 'special'
+  const inner = new Set(seen).add(real)
+  const parts = await Promise.all(
+    filesBehind(real).map(async (rel) => {
+      const abs = path.join(real, rel)
+      const id = await hashFile(abs).catch(absentOr)
+      return id.startsWith('120000:')
+        ? `${rel}\0${id}\0${await behindLink(abs, hashFile, inner)}`
+        : `${rel}\0${id}`
+    }),
+  )
+  return `dir\0${xxh3hex(parts.join('\n'))}`
 }

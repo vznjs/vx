@@ -1,12 +1,12 @@
 // Nx parity, cache invalidation: the cases Nx's own suites pin (the native
 // hashers in packages/nx/src/native/tasks, and hasher/*.spec.ts), each
 // ported to vx's CLI. A case names the Nx test it stands in for; a
-// deliberate divergence says so in its name. Not ported: symlinks (pinned
-// in linked-inputs.test.ts), `json` field filters, tsconfig path pruning,
+// deliberate divergence says so in its name. Not ported: `json` field filters, tsconfig path pruning,
 // `{cwd}`, external-node hashing (the lockfile plugin's suite), Ultracache,
 // and the planner's memo and inspector internals.
 
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -380,6 +380,108 @@ describe('Nx parity — project roots, ignored files and refused spellings', () 
       } finally {
         await rm(root, { recursive: true, force: true })
       }
+    },
+    TIMEOUT,
+  )
+})
+
+// Nx's symlink cases: tasks/hashers/disk_expansion (a fileset reads a link
+// where it points) and walker.rs (a linked file is read, a linked directory
+// is not entered). vx keys what a link points to wherever it lies, and
+// enters a linked directory too (owner, 2026-10-16: "Do like nx", directory
+// links included); linked-inputs.test.ts pins the runs and hits.
+describe('Nx parity — symlinked inputs', () => {
+  let root: string
+  let elsewhere: string
+  const app = () => path.join(root, 'packages', 'app')
+  beforeAll(async () => {
+    elsewhere = await mkdtemp(path.join(os.tmpdir(), 'vx-parity-nx-elsewhere-'))
+    await writeFile(path.join(elsewhere, 'linked.js'), 'out\n')
+    await mkdir(path.join(elsewhere, 'tree'), { recursive: true })
+    await writeFile(path.join(elsewhere, 'tree', 'deep.js'), 'deep\n')
+    root = await workspace('vx-parity-nx-links-', {
+      app: { tasks: { build: task("{ files: ['src/**'] }") }, files: { 'src/a.js': 'a\n' } },
+    })
+    await symlink(path.join(elsewhere, 'linked.js'), path.join(app(), 'src', 'escape.js'))
+    await symlink(path.join(elsewhere, 'tree'), path.join(app(), 'src', 'tree'))
+    gitIn(root)('add', '-A')
+    gitIn(root)('commit', '-q', '-m', 'links')
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+    await rm(elsewhere, { recursive: true, force: true })
+  })
+
+  it(
+    '`a_link_is_read_where_it_points` — an edit behind a file link out of the workspace moves the key',
+    async () => {
+      const before = await key(root, 'app#build')
+      await writeFile(path.join(elsewhere, 'linked.js'), 'out 2\n')
+      expect(await key(root, 'app#build')).not.toBe(before)
+      await writeFile(path.join(elsewhere, 'linked.js'), 'out\n')
+      expect(await key(root, 'app#build')).toBe(before)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`a_link_is_read_where_it_points` — vx diverges: a walk enters a linked directory, so an edit beneath it moves the key',
+    async () => {
+      const before = await key(root, 'app#build')
+      await writeFile(path.join(elsewhere, 'tree', 'deep.js'), 'deep 2\n')
+      expect(await key(root, 'app#build')).not.toBe(before)
+      await writeFile(path.join(elsewhere, 'tree', 'deep.js'), 'deep\n')
+      expect(await key(root, 'app#build')).toBe(before)
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`a_walk_follows_its_root_link_but_no_link_it_finds` — vx diverges: a link inside a linked directory is followed too',
+    async () => {
+      const further = await mkdtemp(path.join(os.tmpdir(), 'vx-parity-nx-further-'))
+      try {
+        await writeFile(path.join(further, 'further.js'), 'further\n')
+        await symlink(further, path.join(elsewhere, 'tree', 'onward'))
+        const before = await key(root, 'app#build')
+        await writeFile(path.join(further, 'further.js'), 'further 2\n')
+        expect(await key(root, 'app#build')).not.toBe(before)
+      } finally {
+        await rm(path.join(elsewhere, 'tree', 'onward'), { force: true })
+        await rm(further, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    '`a_link_pointing_at_its_own_workspace_does_not_recurse` — a link to the workspace root keys, and keys the same twice',
+    async () => {
+      await symlink(root, path.join(app(), 'src', 'loop'))
+      try {
+        const first = await key(root, 'app#build')
+        expect(await key(root, 'app#build')).toBe(first)
+      } finally {
+        await rm(path.join(app(), 'src', 'loop'), { force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "`walker.rs`: a link's own target is part of what it is — retargeting a link to equal bytes moves the key",
+    async () => {
+      const before = await key(root, 'app#build')
+      await writeFile(path.join(elsewhere, 'twin.js'), 'out\n')
+      await rm(path.join(app(), 'src', 'escape.js'))
+      await symlink(path.join(elsewhere, 'twin.js'), path.join(app(), 'src', 'escape.js'))
+      try {
+        expect(await key(root, 'app#build')).not.toBe(before)
+      } finally {
+        await rm(path.join(app(), 'src', 'escape.js'))
+        await symlink(path.join(elsewhere, 'linked.js'), path.join(app(), 'src', 'escape.js'))
+      }
+      expect(await key(root, 'app#build')).toBe(before)
     },
     TIMEOUT,
   )

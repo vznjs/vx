@@ -37,6 +37,8 @@ interface WhyArgs {
  */
 export const WHAT_TO_DO: Readonly<Record<string, string>> = {
   file: 'an edit re-runs by design; a file the task does not read belongs out of inputs.files',
+  linked:
+    'what the symlink points to changed (the file, or a file under the directory); an edit there re-runs by design',
   env: "the variable's value moved; one the task does not read belongs out of inputs.env",
   runtime: 'the command printed something else; drop timestamps and paths from its output',
   'ws-runtime':

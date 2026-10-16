@@ -35,6 +35,7 @@ export {
 } from './cache.js'
 export { ABSENT_INPUT, absentOr, CACHE_VERSION } from './key-fold.js'
 export { measureFsClockLag, setFsClockLag } from './fs-clock.js'
+export { filesBehind } from './linked-inputs.js'
 export {
   addedInput,
   type InputListing,

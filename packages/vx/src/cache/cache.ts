@@ -112,7 +112,7 @@ import { FileHashStore } from './file-hashes.js'
 import { OutputIndex } from './output-index.js'
 import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
-import { refuseUnkeyedLinks } from './linked-inputs.js'
+import { behindLink } from './linked-inputs.js'
 
 /**
  * An artifact or temp file without an `entries` row is never reaped
@@ -1494,17 +1494,14 @@ export class Cache implements CacheLayer {
   }
 
   key(input: CacheKeyInput): Promise<string> {
-    const links: string[] = []
+    const hashFile = (f: string): Promise<string> => this.hashFile(f)
     return foldKey(
       input,
-      (f) => this.hashFile(f),
+      hashFile,
       (f) => this.relFor(input.workspaceRoot, f),
       (v) => this.digestValue(v),
-      input.linkTargetsKeyed === true ? (f) => links.push(f) : undefined,
-    ).then((key) => {
-      if (links.length > 0) refuseUnkeyedLinks(links, input.inputFiles, input.workspaceRoot)
-      return key
-    })
+      (link) => behindLink(link, hashFile),
+    )
   }
 
   private valueSalt: string | undefined

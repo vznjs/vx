@@ -348,7 +348,6 @@ async function resolveKeyInput(
     runtimeValues: resolved.runtimeValues,
     workspaceRuntimeValues: resolved.workspaceRuntimeValues,
     inputFiles: resolved.files,
-    ...(cfg.inputs !== undefined ? { linkTargetsKeyed: true } : {}),
     workspaceRoot: args.workspaceRoot,
     upstreamHashes,
     upstreamIds,

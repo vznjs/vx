@@ -346,23 +346,21 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     there a clean file's mode comes from an lstat too, and its OID
     from the index (item 1076).
 
-    A **symlink** folds as git folds it: the blob of its target
-    _string_ (its mode-120000 index OID), whether it points at a file,
-    a directory, or nothing. Retargeting a link changes the key; the
-    bytes behind it do not, and `git diff` and `--affected` cannot see
-    them either. So a link's target must be an input of its own: a
-    file the globs hold, or, for a directory, every file git lists
-    under it. A task whose link points anywhere else is refused, naming
-    the target and the `workspaceFiles` entry that keys it (a target
-    git does not list, gitignored or outside the workspace, cannot be
-    a glob's: exclude the link and key it with `runtime`). Declared,
-    the key, `--affected` and `vx watch` all see an edit behind the
-    link. A dangling link reads nothing and is not refused. (Until
-    2026-10-16 such a link folded only its target string, and an edit
-    behind it replayed the old output.)
-    (Before 2026-09-09 a file link folded the
-    bytes behind it and a directory or dangling link fell out of the
-    input set entirely, so retargeting one was a stale hit.)
+    A **symlink** folds as git folds it, the blob of its target
+    _string_ (its mode-120000 index OID), and then the content behind
+    it, as Nx reads a linked file where it points: a file's identity, or
+    for a directory every file beneath it at any depth, tracked or not
+    (`.git`, `node_modules`, `.vx/cache` and `.yarn/cache` aside, as Nx's walker skips them), a link
+    among them followed in turn. The target may be anywhere: in the
+    project, elsewhere in the workspace, outside it. Retargeting a link
+    changes the key, to equal bytes too; an edit behind it changes the
+    key. A dangling link, or a loop of links, keys its target string
+    alone. `--affected` selects a link whose target changed (a file
+    the diff names, or one under a linked directory) as a changed path of
+    its project, and a target git cannot diff (outside the workspace,
+    git-ignored) on every run; `vx watch` arms each link's target and
+    names the link when it changes (`linked-inputs.ts`). Nx does not
+    enter a linked directory; vx does, since the task reads it.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.

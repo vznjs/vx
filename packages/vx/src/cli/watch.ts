@@ -642,7 +642,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     if (isIgnoredPath(proj.dir, filename) || fenced(proj.dir, abs)) return
     // A module the config imports from inside the project is the config
     // too: its edit can add an output or a `workspaceFiles` input.
-    if (shapesWatchedSet(filename) || configImportFiles.includes(abs)) reread = true
+    if (shapesWatchedSet(filename) || configImportFiles.includes(abs) || linkChanged(abs))
+      reread = true
     trigger(`${proj.name} ${filename}`, abs)
   }
   const armProject = (proj: ProjectMeta): void => {
@@ -816,6 +817,65 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
     armAncestors()
   }
 
+  /**
+   * What each symlink under a watched project points to: the key reads it,
+   * wherever it lies (cache/linked-inputs.ts), and the project's arm hears
+   * only the link. A file target's directory, non-recursive, or a directory
+   * target, recursive; each event names the link. Links are read again when
+   * one comes or goes (`projectEvent`).
+   */
+  const linkArms = new Map<string, { target: string; handle: WatchHandle }>()
+  let links = atArm?.links ?? new Set<string>()
+  let watched = projects
+  /** A link came, went or moved: the set `armLinks` reads is stale. */
+  const linkChanged = (abs: string): boolean => {
+    if (links.has(abs)) return true
+    try {
+      return fs.lstatSync(abs).isSymbolicLink()
+    } catch {
+      return false
+    }
+  }
+  const armLinks = (): void => {
+    const want = new Map<string, { proj: ProjectMeta; real: string; dir: boolean }>()
+    for (const link of links) {
+      let proj: ProjectMeta | undefined
+      for (const p of watched)
+        if (
+          link.startsWith(p.dir + path.sep) &&
+          (proj === undefined || p.dir.length > proj.dir.length)
+        )
+          proj = p
+      if (proj === undefined) continue
+      try {
+        const real = fs.realpathSync(link)
+        want.set(link, { proj, real, dir: fs.statSync(real).isDirectory() })
+      } catch {
+        // Dangling: its target string is all the key reads, and the link's own arm hears that.
+      }
+    }
+    for (const [link, armed] of linkArms) {
+      if (want.get(link)?.real === armed.target) continue
+      armed.handle.close()
+      linkArms.delete(link)
+    }
+    for (const [link, { proj, real, dir }] of want) {
+      if (linkArms.has(link)) continue
+      const name = path.basename(real)
+      const label = `${proj.name} ${path.relative(proj.dir, link)}`
+      try {
+        const handle = arm(dir ? real : path.dirname(real), dir, (filename) => {
+          if (!dir && filename !== name) return
+          trigger(label, link)
+        })
+        linkArms.set(link, { target: real, handle })
+        changes.seed(link)
+      } catch (err) {
+        sayCannot(`cannot watch ${real}`, err)
+      }
+    }
+  }
+
   // Said once, when the loop first arms: a re-arm repeated it after every
   // cycle that re-read the watched set, between task rows. `debug.watch`
   // says each arm on stderr, for whoever needs to see the set change.
@@ -876,6 +936,9 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       for (const proj of own) if (!perProject.has(proj.dir)) armProject(proj)
     }
     armImports()
+    watched = next.projects
+    links = gitFiles(workspaceRoot)?.links ?? links
+    armLinks()
     // A new arm proves delivery like the first ones: an edit in the new
     // project right after this cycle is seen, not lost in the gap.
     await pool.proved()
@@ -958,6 +1021,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   }
   armAncestors()
   armImports()
+  armLinks()
 
   // The orchestrator's own writes never kick the loop: `makeWatchIgnore`
   // closes over the RESOLVED cache dir (relocated or not) and the tasks'
