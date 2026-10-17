@@ -332,6 +332,66 @@ describe('a builtin compat patch', () => {
   })
 })
 
+// A root `resolutions` entry pointing at a `patch:` (what `yarn
+// patch-commit -s` writes): the workspace still asks for, and the file
+// still keys, the plain `npm:7.0.0` entry the patch is applied over, and
+// the patched entry Yarn installs is keyed by its own descriptor nothing
+// points at. Adding or editing the patch moved no digest, so `lib`
+// replayed unpatched output (Growth, yarn-resolutions-patch-stale.sh).
+describe('a root `resolutions` patch', () => {
+  const lock = (hash?: string) => `__metadata:
+  version: 10
+  cacheKey: 10c0
+
+"is-number@npm:7.0.0":
+  version: 7.0.0
+  resolution: "is-number@npm:7.0.0"
+  checksum: 10c0/plain
+  languageName: node
+  linkType: hard
+${
+  hash === undefined
+    ? ''
+    : `
+"is-number@patch:is-number@npm%3A7.0.0#./patches/is-number.patch::locator=r%40workspace%3A.":
+  version: 7.0.0
+  resolution: "is-number@patch:is-number@npm%3A7.0.0#./patches/is-number.patch::version=7.0.0&hash=${hash}&locator=r%40workspace%3A."
+  checksum: 10c0/${hash}
+  languageName: node
+  linkType: hard
+`
+}
+"lib@workspace:packages/lib":
+  version: 0.0.0-use.local
+  resolution: "lib@workspace:packages/lib"
+  dependencies:
+    is-number: "npm:7.0.0"
+  languageName: unknown
+  linkType: soft
+
+"other@workspace:packages/other":
+  version: 0.0.0-use.local
+  resolution: "other@workspace:packages/other"
+  languageName: unknown
+  linkType: soft
+
+"r@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "r@workspace:."
+  languageName: unknown
+  linkType: soft
+`
+  it('adding the patch moves the workspace that asks for the plain descriptor', () => {
+    expect(movedDirs(lock(), lock('6e8bd9'))).toEqual(['packages/lib'])
+  })
+
+  it('editing the patch moves it', () => {
+    expect(movedDirs(lock('6e8bd9'), lock('9a01c2'))).toEqual(['packages/lib'])
+    // Control: the same lockfile moves nothing.
+    expect(movedDirs(lock('6e8bd9'), lock('6e8bd9'))).toEqual([])
+  })
+})
+
 describe('Yarn 4 catalogs (turborepo#12635)', () => {
   it('a catalog bump `^6 → ^7` moves the workspace that names `catalog:` and what links it', () => {
     // The file records `is-number: "catalog:"`, never the range: folded
