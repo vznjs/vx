@@ -28,12 +28,16 @@ export function asTrees(patterns: readonly string[]): string[]
 // negation, true of every other path (A-44).
 export function splitNegations(globs: readonly string[]): { positive: string[]; negative: string[] }
 export function outputMatcher(globs: readonly string[]): (rel: string) => boolean
-// What no output glob selects: `.git`, `.vx` and each `vx.lock.json`
-export const OUTPUT_NEVER: string[]
-export function namesNodeModules(globs: readonly string[]): boolean
-// What a restore may write: a declared output, never under OUTPUT_NEVER,
-// under `node_modules` only where a glob names it (the save side's set)
-export function restorableOutput(globs: readonly string[]): (rel: string) => boolean
+// What no output glob selects in `scope`: the project root's `.git`, `.vx`
+// and `vx.lock.json` (the workspace's: every project's `vx.lock.json`), and
+// `node_modules` unless a glob names it
+export function outputNever(globs: readonly string[], scope: 'project' | 'workspace'): string[]
+// What a restore may write: a declared output, never under `outputNever`
+// (the save side's set)
+export function restorableOutput(
+  globs: readonly string[],
+  scope?: 'project' | 'workspace',
+): (rel: string) => boolean
 export function isLiteralPattern(glob: string): boolean
 export function stripTrailingSlash(p: string): string
 export function taskGlob(pattern: string): Bun.Glob

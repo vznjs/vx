@@ -1782,7 +1782,10 @@ artifact naming anything else was not written by this task's save, and
 none of it is restored (2026-10-16).
 
 ```ts
-export function restorableOutput(globs: readonly string[]): (rel: string) => boolean
+export function restorableOutput(
+  globs: readonly string[],
+  scope: 'project' | 'workspace' = 'project',
+): (rel: string) => boolean
 ```
 
 ## `run`

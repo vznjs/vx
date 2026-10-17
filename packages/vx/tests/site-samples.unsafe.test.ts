@@ -477,7 +477,7 @@ describe('the strict-output-ownership post names what the wipe never touches', (
     const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'util', 'paths.ts'), 'utf8')
     const arr = /const OUTPUT_NEVER = \[([^\]]*)\]/.exec(src)
     expect(arr).not.toBeNull()
-    const names = [...arr![1]!.matchAll(/'\*\*\/([^'/]+)(?:\/\*\*)?'/g)].map((m) => m[1]!)
+    const names = [...arr![1]!.matchAll(/'([^'/]+)(?:\/\*\*)?'/g)].map((m) => m[1]!)
     expect(names).toEqual(['.git', '.vx', 'vx.lock.json'])
     for (const name of names) expect(section![1]!).toContain('`' + name + '`')
     expect(section![1]!).toContain('`node_modules/**` is a legitimate output')
@@ -1172,12 +1172,12 @@ describe('the caching guide lists what the cache never reads', () => {
     const arr = /const ALWAYS_IGNORE = \[([\s\S]*?)\n\]/.exec(src)
     expect(arr).not.toBeNull()
     // Comment lines inside the array quote globs of their own, so drop them
-    // before reading the entries. `**/.git/**` → .git.
+    // before reading the entries. `.git/**` → .git.
     const entries = arr![1]!
       .split('\n')
       .filter((l) => !l.trim().startsWith('//'))
       .join('\n')
-    const names = [...entries.matchAll(/'\*\*\/([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
+    const names = [...entries.matchAll(/'([^']+?)(?:\/\*\*)?'/g)].map((m) => m[1]!)
     expect(names.length).toBe(7)
     const excluded = /^\| Always excluded +\|.*$/m.exec(page)
     expect(excluded).not.toBeNull()

@@ -3183,7 +3183,7 @@ function assertArtifactNames(
  */
 function declaredName(declared: DeclaredOutputs): (name: string) => boolean {
   const isFile = restorableOutput(declared.files)
-  const isWsFile = restorableOutput(declared.workspaceFiles)
+  const isWsFile = restorableOutput(declared.workspaceFiles, 'workspace')
   return (name) =>
     name.startsWith('outputs/')
       ? isFile(name.slice('outputs/'.length))

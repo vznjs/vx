@@ -833,7 +833,9 @@ Always applied to every glob pass (regardless of what you wrote):
 watch` re-runs it on an edit there.
 - **Always-ignored** — `.git/**`, `.vx/cache/**`,
   `.vx/projects.lock.json`, `vx.lock.json`, and `.vx/tmp/**`, where vx's
-  restores stage, at any depth. Nothing else: a tool's temp files are the
+  restores stage, only where vx writes them: at the project's root (a
+  project's own `src/.vx/tmp/x` or `src/sub/vx.lock.json` is an input),
+  and for `workspaceFiles` every project's `vx.lock.json`. Nothing else: a tool's temp files are the
   task's to exclude. A broad glob on a `bun build --compile` task, or on
   one that runs beside it, excludes Bun's intermediate and its
   cross-compile extraction directory itself:

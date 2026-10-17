@@ -322,7 +322,10 @@ export function render(blocks: readonly Block[], colors: ColorSupport): string
 == function report (src/util/ui.ts)
 export function report(mark: string, rows: readonly FieldRow[]): Block
 == function restorableOutput (src/util/paths.ts)
-export function restorableOutput(globs: readonly string[]): (rel: string) => boolean
+export function restorableOutput(
+  globs: readonly string[],
+  scope: 'project' | 'workspace' = 'project',
+): (rel: string) => boolean
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
 == function splitTaskId (src/util/task-id.ts)

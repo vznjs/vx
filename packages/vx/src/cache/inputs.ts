@@ -27,9 +27,8 @@ import {
   isInstalledPath,
   isLiteralPattern,
   normalizeGlob,
-  namesNodeModules,
-  OUTPUT_NEVER,
   outputMatcher,
+  outputNever,
   realpathOf,
   relPosix,
   shellArgv,
@@ -67,6 +66,11 @@ export {
 // would. (Literal pattern, not the workspace `LOCKFILE_NAME` constant:
 // cache is a leaf module and must not import from workspace.)
 //
+// Relative to the project, so only where vx writes them: its root's `.vx`
+// and the `vx.lock.json` beside its config. Matched at any depth, a
+// project's own `src/.vx/tmp/*` or `src/sub/vx.lock.json` keyed nothing,
+// and an edit to one was a hit (2026-10-17).
+//
 // `node_modules` is not here: the enumeration drops an untracked file
 // under one (`isInstalledPath`), and a tracked one is a source.
 const ALWAYS_IGNORE = [
@@ -81,20 +85,26 @@ const ALWAYS_IGNORE = [
   // member of this list is load-bearing and has a row that fails without
   // it. Kept: the day an enumeration stops going through git, this is
   // what keeps a repository's object store out of a cache key.
-  '**/.git/**',
+  '.git/**',
   // vx's machine-local state; the workspace config beside it is a source.
-  '**/.vx/cache/**',
-  '**/.vx/projects.lock.json',
+  '.vx/cache/**',
+  '.vx/projects.lock.json',
   // `vx lock`'s review copy of a project's resolved config: the config is
   // keyed already, and a re-lock must not move every `**` reader's key.
-  '**/vx.lock.json',
+  'vx.lock.json',
   // What `vx lock` and `vx init` write beside the lock: a re-lock or init
   // must not select every `**` reader under --affected.
-  '**/.vx/.gitattributes',
-  '**/.vx/.gitignore',
+  '.vx/.gitattributes',
+  '.vx/.gitignore',
   // Where restores stage (archive.ts): vx's own, never an input.
-  '**/.vx/tmp/**',
+  '.vx/tmp/**',
 ]
+
+/**
+ * `ALWAYS_IGNORE` relative to the workspace root, for `inputs.workspaceFiles`:
+ * those globs cross into other projects, and each one's `vx.lock.json` is vx's.
+ */
+const WORKSPACE_ALWAYS_IGNORE = [...ALWAYS_IGNORE, '**/vx.lock.json']
 
 const DEFAULT_FILE_GLOBS: readonly string[] = ['**/*']
 
@@ -308,7 +318,7 @@ function resolveWorkspaceFiles(args: {
   let isExcluded: ((rel: string) => boolean) | undefined
   let isPositive: ((rel: string) => boolean) | undefined
   const excludedByDeclaration = (rel: string): boolean =>
-    (isExcluded ??= anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)]))(rel)
+    (isExcluded ??= anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)]))(rel)
   // A committed file stays an input whatever output reaches it (`committedFiles`).
   let committed: ((abs: string) => boolean) | undefined
   const own = (rel: string): boolean =>
@@ -667,17 +677,13 @@ async function resolveRuntimeValues(
 }
 
 /**
- * What a set of output globs may not reach: `OUTPUT_NEVER`, and every
- * `node_modules` unless a glob names one. `**\/*.js` meant the build's
- * files, and the clean before each run deleted every installed `.js`
- * under `node_modules` with them (A-13); an install task declares
- * `node_modules/**` and keeps it. Workspace outputs took none of this, not
- * even `.git`.
+ * What a set of output globs may not reach (`outputNever`). `**\/*.js`
+ * meant the build's files, and the clean before each run deleted every
+ * installed `.js` under `node_modules` with them (A-13); an install task
+ * declares `node_modules/**` and keeps it.
  */
-function outputExcludes(outputs: readonly string[]): Bun.Glob[] {
-  return (namesNodeModules(outputs) ? OUTPUT_NEVER : [...OUTPUT_NEVER, '**/node_modules/**']).map(
-    globFor,
-  )
+function outputExcludes(outputs: readonly string[], scope: 'project' | 'workspace'): Bun.Glob[] {
+  return outputNever(outputs, scope).map(globFor)
 }
 
 /**
@@ -714,7 +720,7 @@ async function scanOutputs(
 ): Promise<{ files: string[] }> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return { files: [] }
-  const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
+  const excludeGlobs = [...outputExcludes(positive, 'project'), ...asTrees(negative).map(globFor)]
   const trees = asTrees(positive)
   refuseDirLinkedOut(args.projectDir, trees)
   const scanned = [
@@ -1268,7 +1274,7 @@ export async function resolveWorkspaceOutputs(args: {
 }): Promise<string[]> {
   const { positive, negative } = splitNegations(args.outputs)
   if (positive.length === 0) return []
-  const excludeGlobs = [...outputExcludes(positive), ...asTrees(negative).map(globFor)]
+  const excludeGlobs = [...outputExcludes(positive, 'workspace'), ...asTrees(negative).map(globFor)]
   const scanned = [...(await scanUnion(asTrees(positive), excludeGlobs, args.workspaceRoot))]
   // Same containment as the project twin, anchored one level out. These globs
   // deliberately ignore PROJECT boundaries — that is the escape hatch — but
@@ -1640,7 +1646,7 @@ function workspaceMatcher(decl: readonly string[]): (rel: string) => boolean {
   if (m !== undefined) return m
   const { positive, negative } = splitNegations(decl)
   const isPositive = anyTaskGlob(asTrees(positive))
-  const isExcluded = anyTaskGlob([...ALWAYS_IGNORE, ...asTrees(negative)])
+  const isExcluded = anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)])
   m = (rel) => isPositive(rel) && !isExcluded(rel)
   workspaceMatchers.set(key, m)
   return m

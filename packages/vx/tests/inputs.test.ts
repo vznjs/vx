@@ -332,7 +332,7 @@ describe('resolveInputs', () => {
     expect(got.files).toEqual([path.join(projectDir, 'src', 'index.ts')])
   })
 
-  it('.vx/projects.lock.json never enters the input set (project + workspace globs)', async () => {
+  it("the workspace's .vx/projects.lock.json never enters the input set; a project's own does", async () => {
     await write(path.join(projectDir, 'src', 'index.ts'), 'src')
     await write(path.join(projectDir, '.vx/projects.lock.json'), '{}')
     await write(path.join(root, '.vx/projects.lock.json'), '{}')
@@ -345,7 +345,7 @@ describe('resolveInputs', () => {
       ownOutputs: [],
       nestedProjectDirs: [],
     })
-    expect(got.files).not.toContain(path.join(projectDir, '.vx/projects.lock.json'))
+    expect(got.files).toContain(path.join(projectDir, '.vx/projects.lock.json'))
     expect(got.files).not.toContain(path.join(root, '.vx/projects.lock.json'))
     expect(got.files).toContain(path.join(projectDir, 'src', 'index.ts'))
   })
