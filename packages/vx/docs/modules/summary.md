@@ -45,6 +45,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 export interface RunContext {
   version: string
   packageCount: number // projects with a task to run → the bar's "affected" half
+  runId?: string | undefined // shortest unique prefix `vx last` takes (info row)
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
   cache?: {
