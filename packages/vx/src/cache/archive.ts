@@ -867,6 +867,10 @@ class Extractor {
   private readonly containedDirs = new Set<string>()
   private readonly ensuredDirs = new Set<string>()
   private readonly trees = new Map<string, Tree>()
+  // Directories the containment walk found missing, which `treeFor` would
+  // otherwise probe again. A directory made since fails the tree's rename,
+  // and the entries then go in one by one.
+  private readonly seenAbsent = new Set<string>()
 
   constructor(
     private readonly destDir: string,
@@ -960,6 +964,7 @@ class Extractor {
       // trip and error (X-163). A dangling link is there and falls through,
       // as does an lstat that fails otherwise: the realpath decides.
       if (absent(probe)) {
+        this.seenAbsent.add(probe)
         probe = path.dirname(probe)
         continue
       }
@@ -1027,7 +1032,10 @@ class Extractor {
     const baseResolved = path.resolve(base)
     let top: string | undefined
     let probe = abs
-    while (probe.startsWith(baseResolved + path.sep) && absent(probe)) {
+    while (
+      probe.startsWith(baseResolved + path.sep) &&
+      (this.seenAbsent.has(probe) || absent(probe))
+    ) {
       top = probe
       probe = path.dirname(probe)
     }
