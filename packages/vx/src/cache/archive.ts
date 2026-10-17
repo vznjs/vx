@@ -65,6 +65,7 @@ import {
   readlink,
   realpath,
   rename,
+  rm,
   rmdir,
   stat,
   symlink,
@@ -831,6 +832,16 @@ interface Staged {
   beside?: true
   /** A symlink to this target, made at `tmp`: no mode, no mtime. */
   link?: string
+  /** `tmp` is inside the staged copy of this missing directory, which commit renames whole. */
+  tree?: string
+}
+
+/** A directory missing in the tree, built in the staging directory and renamed in whole. */
+interface Tree {
+  at: string
+  base: string
+  /** The empty directories under it the entry holds. */
+  dirs: string[]
 }
 
 /**
@@ -855,6 +866,7 @@ class Extractor {
   // entry's own check and its write.
   private readonly containedDirs = new Set<string>()
   private readonly ensuredDirs = new Set<string>()
+  private readonly trees = new Map<string, Tree>()
 
   constructor(
     private readonly destDir: string,
@@ -995,8 +1007,69 @@ class Extractor {
     return mkdir(real, { recursive: true })
   }
 
+  /**
+   * Where an entry in `dir` is written when a directory on the way to it is
+   * missing: inside a copy of the topmost missing one, built in the staging
+   * directory and renamed into place whole on commit. One rename per
+   * missing directory, not one per file: every file of a restore into a
+   * cleaned tree renamed across directories, all out of one staging
+   * directory, and the kernel time of a 5,000-artifact restore doubled
+   * (2026-10-17). A reader sees the directory complete or not at all.
+   * Undefined where the group or filesystem would differ from a write in
+   * place: the entry is then staged and renamed alone.
+   */
+  private async treeFor(base: string, dir: string): Promise<string | undefined> {
+    if (this.stageRoot === undefined) return undefined
+    const abs = path.resolve(dir)
+    for (const [top, t] of this.trees) {
+      if (abs === top || abs.startsWith(top + path.sep)) return t.at + abs.slice(top.length)
+    }
+    const baseResolved = path.resolve(base)
+    let top: string | undefined
+    let probe = abs
+    while (probe.startsWith(baseResolved + path.sep) && absent(probe)) {
+      top = probe
+      probe = path.dirname(probe)
+    }
+    if (top === undefined) return undefined
+    const staging = await stagingDir(this.stageRoot)
+    const st = statSync(staging)
+    const parent = statSync(probe, { throwIfNoEntry: false })
+    if (
+      parent === undefined ||
+      !parent.isDirectory() ||
+      parent.dev !== st.dev ||
+      ((parent.mode | st.mode) & 0o2000) !== 0 ||
+      (INHERITS_GROUP && parent.gid !== st.gid)
+    ) {
+      return undefined
+    }
+    const at = path.join(staging, (tmpSeq++).toString(36))
+    this.trees.set(top, { at, base, dirs: [] })
+    return at + abs.slice(top.length)
+  }
+
+  /** `dir` made, once per extraction. */
+  private async ensure(dir: string): Promise<void> {
+    if (this.ensuredDirs.has(dir)) return
+    await mkdir(dir, { recursive: true })
+    this.ensuredDirs.add(dir)
+  }
+
+  /** The tree `target` is staged in. */
+  private treeOf(target: string): string | undefined {
+    for (const top of this.trees.keys()) if (target.startsWith(top + path.sep)) return top
+    return undefined
+  }
+
   /** An empty output directory: made now, pruned by `abort` if it was not there. */
   async makeDir(base: string, dir: string): Promise<void> {
+    const staged = await this.treeFor(base, dir)
+    if (staged !== undefined) {
+      await this.ensure(staged)
+      this.trees.get(this.treeOf(dir + path.sep)!)!.dirs.push(dir)
+      return
+    }
     let created: string | undefined
     try {
       created = await mkdir(dir, { recursive: true })
@@ -1019,6 +1092,25 @@ class Extractor {
     body: Uint8Array | AsyncIterable<Uint8Array>,
   ): Promise<void> {
     const dir = path.dirname(target)
+    const inTree = await this.treeFor(base, dir)
+    if (inTree !== undefined) {
+      await this.ensure(inTree)
+      const tmp = path.join(inTree, path.basename(target))
+      const streamed = !(body instanceof Uint8Array)
+      const tree = this.treeOf(target)!
+      this.staged.push({
+        staged: true,
+        name,
+        tmp,
+        target,
+        created: undefined,
+        streamed,
+        base,
+        tree,
+      })
+      await this.write(tmp, body)
+      return
+    }
     let created: string | undefined
     if (!this.ensuredDirs.has(dir)) {
       try {
@@ -1080,6 +1172,10 @@ class Extractor {
       : siblingTemp(target)
     const streamed = !(body instanceof Uint8Array)
     this.staged.push({ staged, name, tmp, target, created, streamed, base })
+    await this.write(tmp, body)
+  }
+
+  private async write(tmp: string, body: Uint8Array | AsyncIterable<Uint8Array>): Promise<void> {
     if (body instanceof Uint8Array) {
       this.inflightBytes += body.byteLength
       // `writeFile`, not `Bun.write`: for a buffer this size `Bun.write`
@@ -1109,6 +1205,25 @@ class Extractor {
   /** A symlink: made apart from the target like a file, renamed over it on commit. */
   async stageLink(name: string, base: string, target: string, to: string): Promise<void> {
     const dir = path.dirname(target)
+    const inTree = await this.treeFor(base, dir)
+    if (inTree !== undefined) {
+      await this.ensure(inTree)
+      const tmp = path.join(inTree, path.basename(target))
+      const tree = this.treeOf(target)!
+      this.staged.push({
+        staged: true,
+        name,
+        tmp,
+        target,
+        created: undefined,
+        streamed: false,
+        base,
+        link: to,
+        tree,
+      })
+      await symlink(to, tmp)
+      return
+    }
     let created: string | undefined
     if (!this.ensuredDirs.has(dir)) {
       try {
@@ -1173,13 +1288,15 @@ class Extractor {
     const checked = new Set<string>()
     try {
       for (const s of this.staged) {
-        await this.assertStillContained(s, checked)
+        if (s.tree === undefined)
+          await this.assertStillContained(s.base, path.dirname(s.target), checked)
         const [mode, mtimeMs] = metaFor(s.name)
         if (s.same !== undefined) {
           keep(s, s.same, mode, mtimeMs)
           continue
         }
         if (s.link !== undefined) {
+          if (s.tree !== undefined) continue
           renames.push(handled(this.place(s, mode, undefined)))
           if (++n % RENAME_BATCH === 0) {
             await settle(renames)
@@ -1208,6 +1325,7 @@ class Extractor {
         // "now", and a Date before 1970 as itself (Bun 1.4.2).
         const t = mtimeMs === undefined ? undefined : new Date(mtimeMs)
         if (t !== undefined) utimesSync(s.tmp, t, t)
+        if (s.tree !== undefined) continue
         if (s.staged) {
           const dir = path.dirname(s.target)
           let gid = setgid.get(dir)
@@ -1231,7 +1349,44 @@ class Extractor {
       throw err
     }
     await settle(renames)
+    for (const [top, t] of this.trees) await this.placeTree(top, t, checked)
+    this.trees.clear()
     this.staged.length = 0
+  }
+
+  /**
+   * Rename a staged tree to the directory it stands for. Something made
+   * there since staging (another restore of the same outputs) takes the
+   * tree's entries one by one instead, each renamed over its target.
+   */
+  private async placeTree(top: string, t: Tree, checked: Set<string>): Promise<void> {
+    await this.assertStillContained(t.base, path.dirname(top), checked)
+    try {
+      await rename(t.at, top)
+      return
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'EEXIST' && code !== 'ENOTEMPTY' && code !== 'ENOTDIR' && code !== 'EISDIR') {
+        throw err
+      }
+    }
+    for (const dir of t.dirs) await this.makeDirIn(t.base, dir)
+    for (const s of this.staged) {
+      if (s.tree !== top) continue
+      const dir = path.dirname(s.target)
+      await this.makeDirIn(t.base, dir)
+      await this.assertStillContained(t.base, dir, checked)
+      await rename(s.tmp, s.target)
+    }
+    await rm(t.at, { recursive: true, force: true })
+  }
+
+  private async makeDirIn(base: string, dir: string): Promise<void> {
+    try {
+      await mkdir(dir, { recursive: true })
+    } catch (err) {
+      await this.mkdirThroughLink(base, dir, err as NodeJS.ErrnoException)
+    }
   }
 
   /**
@@ -1248,6 +1403,7 @@ class Extractor {
       (s) =>
         s.staged &&
         s.same === undefined &&
+        s.tree === undefined &&
         dev(path.dirname(s.tmp)) !== dev(path.dirname(s.target)),
     )
     for (let i = 0; i < cross.length; i += RENAME_BATCH) {
@@ -1303,14 +1459,17 @@ class Extractor {
    * Bun has no `renameat` against a held directory fd, so this is by path,
    * once per directory per commit.
    */
-  private async assertStillContained(s: Staged, checked: Set<string>): Promise<void> {
-    const dir = path.dirname(s.target)
+  private async assertStillContained(
+    base: string,
+    dir: string,
+    checked: Set<string>,
+  ): Promise<void> {
     if (checked.has(dir)) return
     checked.add(dir)
-    const realBase = await this.realBaseOf(s.base)
+    const realBase = await this.realBaseOf(base)
     const real = await realOf(dir, true)
     if (real !== realBase && !real.startsWith(realBase + path.sep)) {
-      throw await linkOutError(path.resolve(s.base), dir, realBase)
+      throw await linkOutError(path.resolve(base), dir, realBase)
     }
   }
 
@@ -1328,6 +1487,8 @@ class Extractor {
         s.same === undefined ? unlink(s.tmp).catch(() => undefined) : undefined,
       ),
     )
+    for (const t of this.trees.values()) await rm(t.at, { recursive: true, force: true })
+    this.trees.clear()
     // Newest first: a later entry's chain can sit inside an earlier one's
     // (`dist/` then `dist/sub/`), never the reverse.
     for (const s of this.staged.toReversed()) {

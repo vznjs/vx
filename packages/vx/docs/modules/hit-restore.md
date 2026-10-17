@@ -45,7 +45,8 @@ the entry's bytes (compared byte for byte for entries up to 4 MiB; then
 only its mode and mtime are set, through a descriptor that refuses a
 link) (archive.ts stages every
 entry in the workspace's `.vx/tmp/<pid>-0/` first, never in an output
-folder; a target on another filesystem goes through a temp beside it,
+folder, a missing folder built whole there and renamed in once; a
+target on another filesystem goes through a temp beside it,
 and a file takes the group its directory gives new files (setgid on
 Linux, any directory on macOS); ACLs are not copied, a restored
 file gets the default ACL of `.vx/tmp/`), so a reader of the output tree never
