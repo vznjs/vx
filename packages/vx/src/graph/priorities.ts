@@ -23,7 +23,20 @@ export function tieredReverseDepCount(
   restoreTier: ReadonlySet<string>,
 ): Map<string, number> {
   const exec = new Map<string, TaskNode>()
-  for (const [id, node] of nodes) if (!restoreTier.has(id)) exec.set(id, node)
+  let runsAny = false
+  for (const [id, node] of nodes) {
+    if (restoreTier.has(id)) continue
+    exec.set(id, node)
+    if (node.config.exec !== undefined) runsAny = true
+  }
+  // Nothing outside the restore tier runs a command (a warm run: restores
+  // and groups), so no order finishes any work sooner: everything ranks 0.
+  // The weights below were 10 ms of a 1,000-project warm run.
+  if (!runsAny) {
+    const zeros = new Map<string, number>()
+    for (const id of nodes.keys()) zeros.set(id, 0)
+    return zeros
+  }
   // An exec tier with no edge inside it (a warm run's groups) counts 0
   // everywhere: no closure to build.
   let linked = false
