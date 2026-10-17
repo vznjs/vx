@@ -116,11 +116,13 @@ export interface DefaultLogger extends Logger {
    */
   readonly showsSteps: boolean
   /**
-   * Hand the live region a way to predict the run's end. Called once at
-   * run start; `load` runs only if the region is still live a second in,
-   * so a run that ends sooner never reads history for it.
+   * Hand the live region the run's forecast. Called once at run start:
+   * `graph` (the graph alone: what is blocked, and by what) is built the
+   * first time a worker row is free; `load` adds history's timings, and
+   * runs only if the region is still live a second in, so a run that ends
+   * sooner never reads history for it.
    */
-  forecast(load: () => Promise<Forecast>): void
+  forecast(graph: () => Forecast, load: () => Promise<Forecast>): void
 }
 
 /**
@@ -336,6 +338,7 @@ export function defaultLogger(
   // set is kept only where a region can show the answer.
   const finished = new Set<string>()
   let forecastFn: Forecast | undefined
+  let graphForecast: (() => Forecast) | undefined
   let forecastTimer: ReturnType<typeof setTimeout> | null = null
   let etaMs: number | undefined
   let critical: string | undefined
@@ -456,9 +459,20 @@ export function defaultLogger(
   const printsKept = (tail: { outcome?: TaskOutcome }): boolean =>
     flushedPersistent && tail.outcome !== undefined && view.mode !== 'errors-only'
 
-  const refresh = (force: boolean): void => {
+  const refresh = (forced: boolean): void => {
     if (statusDead) return
+    let force = forced
     const now = Date.now()
+    // A free row shows what it holds from the first frame: the graph
+    // knows, without history (M, 2026-10-17).
+    if (forecastFn === undefined && graphForecast !== undefined && !tail)
+      for (let i = 0; i < shownSlots; i++)
+        if (slots[i] === null) {
+          forecastFn = graphForecast()
+          graphForecast = undefined
+          force = true
+          break
+        }
     // Twice a second at most: one pass over the unfinished graph.
     if (forecastFn !== undefined && !tail && (force || now - etaAtMs >= 500)) {
       etaAtMs = now
@@ -755,8 +769,9 @@ export function defaultLogger(
       } else slotQueue.push(slot)
       refresh(true)
     },
-    forecast(load) {
+    forecast(graph, load) {
       if (statusDead || forecastTimer !== null) return
+      graphForecast = graph
       forecastTimer = setTimeout(() => {
         forecastTimer = null
         if (statusDead) return

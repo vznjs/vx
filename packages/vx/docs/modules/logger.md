@@ -51,7 +51,7 @@ export function resolveOutputView(
 export interface DefaultLogger extends Logger {
   settle(): void // hand over coalesced output; write straight through from now on
   readonly showsSteps: boolean // only where the live region draws; else run() times no step
-  forecast(load: () => Promise<Forecast | undefined>): void // `load` runs only if the live region is still up 1 s in
+  forecast(graph: () => Forecast, load: () => Promise<Forecast | undefined>): void // `graph` (no history) at the first free row; `load` only if the live region is still up 1 s in
 }
 
 export function defaultLogger(
@@ -87,7 +87,8 @@ export function fileLocations(
 ): OutputLocation[]
 export function fileMemo(): (abs: string) => boolean
 
-// forecast.ts: the live ETA from history p50s; the later of the longest
+// forecast.ts: the live ETA from history p50s (none: the graph alone,
+// what is blocked and by what, no ETA); the later of the longest
 // unfinished chain and the unfinished work spread over the workers. The
 // same pass lists `blocked`: up to one task per worker that an unfinished
 // dependency holds back, ranked as the scheduler ranks

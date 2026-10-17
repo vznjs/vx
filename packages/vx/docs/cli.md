@@ -759,7 +759,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
    its row for its whole life, so nothing jumps; overflow shows as
-   `+k more`. A second in, an idle worker row holds a task an
+   `+k more`. From the first frame, an idle worker row holds a task an
    unfinished dependency blocks, one per row, in the order the
    scheduler starts them (most dependents first):
    `blocked  solid-js#build  by solid-js#types` (dim `blocked`, the id,

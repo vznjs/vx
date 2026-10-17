@@ -212,10 +212,13 @@ describe('the logger asks for a forecast only a second in', () => {
     const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, { env })
     let asked = 0
     log.runStart?.({ total: 1, concurrency: 1 })
-    log.forecast(async () => {
-      asked++
-      return () => ({ etaMs: 4000, blocks: new Map() })
-    })
+    log.forecast(
+      () => () => ({ blocks: new Map() }),
+      async () => {
+        asked++
+        return () => ({ etaMs: 4000, blocks: new Map() })
+      },
+    )
     const a = node('p#a')
     log.taskStart?.(a)
     await Bun.sleep(lastsMs)
@@ -353,7 +356,7 @@ describe('idle worker rows hold blocked tasks', () => {
     )
     expect(lines[2]).toBe('           blocked          p#c  by p#a')
     expect(lines[2]!.indexOf('blocked')).toBe(lines[1]!.indexOf('running'))
-    // Before the forecast knows, a free row still reads idle.
+    // A row the list leaves empty reads idle; the live logger never draws one.
     expect(lines[3]).toContain('idle')
   })
 
@@ -364,7 +367,10 @@ describe('idle worker rows hold blocked tasks', () => {
       forceFloorMs: 0,
     })
     log.runStart?.({ total: 6, concurrency: 3 })
-    log.forecast(async () => () => ({ blocks: new Map(), blocked: list }))
+    log.forecast(
+      () => () => ({ blocks: new Map(), blocked: list }),
+      async () => () => ({ blocks: new Map(), blocked: list }),
+    )
     // Three rows shown; x and y finish, so two workers sit idle beside a.
     const [a, x, y] = [node('p#a'), node('p#x'), node('p#y')]
     for (const n of [a, x, y]) log.taskStart?.(n)
@@ -402,5 +408,60 @@ describe('idle worker rows hold blocked tasks', () => {
     expect(third).not.toContain('idle')
     expect(third).not.toContain('blocked')
     log.runEnd?.()
+  })
+})
+
+// What a free worker row shows is the graph's to say, not history's (M,
+// 2026-10-17: "core should already know that"): from the first frame, an
+// idle row holds a blocked task, and one with nothing to hold never draws.
+// History only times the run.
+describe('the live view knows blocked tasks from the graph, from the first frame', () => {
+  const nodes = graph(
+    node('p#a'),
+    node('p#x'),
+    node('p#y'),
+    node('p#b', ['p#a']),
+    node('p#c', ['p#a']),
+  )
+  const live = (only: string[]) => {
+    const out = tty()
+    const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, {
+      env: {},
+      forceFloorMs: 0,
+    })
+    log.runStart?.({ total: nodes.size, concurrency: 3 })
+    let asked = 0
+    const sub = new Map([...nodes].filter(([id]) => only.includes(id)))
+    log.forecast(
+      () => createForecast(sub, new Map(), 3),
+      async () => {
+        asked++
+        return createForecast(sub, new Map(), 3)
+      },
+    )
+    const [a, x, y] = [node('p#a'), node('p#x'), node('p#y')]
+    for (const n of [a, x, y]) log.taskStart?.(n)
+    for (const n of [x, y])
+      log.taskComplete(n, { node: n, status: 'success', exitCode: 0, durationMs: 1 } as TaskOutcome)
+    const lines = out.text().split('\n')
+    const i = lines.findLastIndex((l) => /running {10}p#a\b/.test(l))
+    const rows = lines.slice(i + 1, i + 3).map((l) => l.trimEnd())
+    log.runEnd?.()
+    return { rows, asked }
+  }
+
+  it('an idle row holds a blocked task before history is read', () => {
+    const r = live(['p#a', 'p#x', 'p#y', 'p#b', 'p#c'])
+    expect(r.asked).toBe(0)
+    expect(r.rows).toEqual([
+      '           blocked          p#b  by p#a',
+      '           blocked          p#c  by p#a',
+    ])
+  })
+
+  it('a free row with nothing to hold never draws idle', () => {
+    const r = live(['p#a', 'p#x', 'p#y'])
+    expect(r.rows.join('\n')).not.toContain('idle')
+    expect(r.rows.join('\n')).not.toContain('blocked')
   })
 })
