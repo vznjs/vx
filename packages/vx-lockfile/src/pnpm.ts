@@ -261,12 +261,24 @@ function importerNode(dir: string): string {
 }
 
 /**
- * The directories `file:` dependencies install from. pnpm copies one at
- * install and records only its path, so an edit in it moved no key
+ * The directories `file:` dependencies install from, and those a `link:`
+ * names that is no importer. pnpm copies the first at install and links
+ * the second, and records only their path, so an edit in one moved no key
  * (Growth, file-dir-dep-stale.sh): the claim hashes its content.
  */
 export function fileDeps(lock: Lockfile): string[] {
-  return [...new Set(lock.directories.values())].sort()
+  const out = new Set(lock.directories.values())
+  for (const [dir, deps] of lock.importers) {
+    for (const version of deps.values()) {
+      const target = linkTarget(lock, dir, version)
+      if (target !== undefined && !lock.importers.has(target)) out.add(target)
+    }
+  }
+  return [...out].sort()
+}
+
+function linkTarget(lock: Lockfile, dir: string, version: string): string | undefined {
+  return version.startsWith('link:') ? joinPosix(dir, version.slice('link:'.length)) : undefined
 }
 
 function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
@@ -298,10 +310,13 @@ function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   for (const dir of lock.importers.keys()) node(importerNode(dir), importerNode(dir))
   const link = (from: number, dir: string, name: string, version: string): void => {
     if (version.startsWith('link:')) {
-      const target = joinPosix(dir, version.slice('link:'.length))
+      const target = linkTarget(lock, dir, version)
       if (target !== undefined && lock.importers.has(target))
         edges[from]!.push(index.get(importerNode(target))!)
-      else material[from] += `\nlink\0${name}\0${version}`
+      else {
+        const content = target === undefined ? '' : `\0file\0${files.get(target) ?? ''}`
+        material[from] += `\nlink\0${name}\0${version}${content}`
+      }
       return
     }
     const key = snapshotKey(lock, name, version)
