@@ -19,8 +19,10 @@ const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' 
 // VX_CACHE_DIR: every fixture keeps its whole cache in its own .vx/cache; the
 // default shares entries through the user's store, and one fixture would hit
 // what another saved.
+// Bun's transpiler cache writes under HOME, outside the sandbox's grants.
 const SUITE_ENV = {
   ...GIT_HERMETIC,
+  BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
   FORCE_COLOR: '0',
   VX_CACHE_DIR: '.vx/cache',
 }

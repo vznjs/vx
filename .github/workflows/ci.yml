@@ -470,12 +470,8 @@ jobs:
   # formats, filesystem/symlink semantics and SQLite behaviour — all covered
   # by the core suite with no extra services.
   #
-  # Deliberately NO VX_REQUIRE_SANDBOX here: the macOS sandbox suites are a
-  # recorded load-flaky class (sandbox-exec under concurrent load — see the
-  # decision log, 2026-08-23), and the sandbox SECURITY boundary is already
-  # ENFORCED by the linux job above. Here an unavailable sandbox skips, so
-  # this job cannot import that flake into main; if the sandbox tests prove
-  # stable on these runners over time, the flag can be promoted.
+  # VX_REQUIRE_SANDBOX, as on Linux: the sandbox suites run here whenever
+  # seatbelt answers, so an unavailable one must fail, not skip quietly.
   core-darwin:
     name: core tests (macOS, unsafe)
     needs: changes
@@ -507,10 +503,9 @@ jobs:
       # scheduler's cap. Several processes, not one, is the point on macOS:
       # `bun test` pins descriptors per imported module and the process
       # cap is 10 240, which the whole suite in one process does not clear.
-      # No VX_REQUIRE_SANDBOX here (see the job comment), so the sandbox
-      # suites skip; the canary below is what watches enforcement.
       - name: vx run test (core, darwin)
         env:
+          VX_REQUIRE_SANDBOX: '1'
           # FSEvents delivers the watch probe here; the rows must not vanish
           # quietly if that changes (see the linux job for the reasoning).
           VX_REQUIRE_WATCH_EVENTS: '1'
@@ -589,6 +584,7 @@ jobs:
 
       - name: vx run core shards (darwin)
         env:
+          VX_REQUIRE_SANDBOX: '1'
           VX_REQUIRE_WATCH_EVENTS: '1'
         run: bun packages/vx/src/bin.ts run ${{ matrix.tasks }} --filter @vzn/vx
 

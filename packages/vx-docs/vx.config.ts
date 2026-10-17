@@ -176,7 +176,8 @@ export default defineProject({
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test --only-failures',
-        env: { define: { VX_CACHE_DIR: '.vx/cache' } },
+        // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
+        env: { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0', VX_CACHE_DIR: '.vx/cache' } },
         sandbox: {
           allow: {
             read: [

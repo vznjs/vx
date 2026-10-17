@@ -2,7 +2,9 @@ import { defineProject } from '@vzn/vx'
 
 // Fixture repos assume git's defaults; a global config may sign commits.
 // FORCE_COLOR=0: the suite reads vx's and its tasks' output as text.
+// Bun's transpiler cache writes under HOME, outside the sandbox's grants.
 const SUITE_ENV = {
+  BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
   GIT_CONFIG_GLOBAL: '/dev/null',
   GIT_CONFIG_NOSYSTEM: '1',
   FORCE_COLOR: '0',

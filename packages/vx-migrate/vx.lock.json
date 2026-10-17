@@ -121,6 +121,7 @@
             "VX_REQUIRE_NONROOT"
           ],
           "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
             "FORCE_COLOR": "0",
@@ -177,6 +178,7 @@
             "VX_REQUIRE_NX"
           ],
           "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
             "FORCE_COLOR": "0",
