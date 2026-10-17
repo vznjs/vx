@@ -813,10 +813,11 @@ function refuseDirLinkedOut(projectDir: string, trees: readonly string[]): void 
       if (!isInside(projectDir, at)) break
       let st
       try {
-        st = lstatSync(at)
+        st = lstatSync(at, { throwIfNoEntry: false })
       } catch {
         break
       }
+      if (st === undefined) break
       if (!st.isSymbolicLink()) continue
       let real: string
       try {
