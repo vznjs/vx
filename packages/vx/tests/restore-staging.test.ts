@@ -126,6 +126,76 @@ it('a failed restore leaves no staging and the outputs as they were', async () =
   expect(filesUnder(path.join(ws, '.vx', 'tmp'))).toEqual(['.gitignore'])
 })
 
+// A missing output folder is built whole in the staging and renamed in
+// once: a rename per file, each across directories out of one staging
+// directory, doubled the kernel time of a 5,000-artifact restore
+// (2026-10-17), and a reader saw the folder half filled.
+it('a missing output folder appears whole, never part filled', async () => {
+  const ws = dir('vx-staging-tree-')
+  const dest = path.join(ws, 'app')
+  mkdirSync(dest)
+  const files: Record<string, string> = {}
+  for (let i = 0; i < 200; i++) files[`dist/f${i}.js`] = `${i}\n`
+  const bytes = await artifact(files)
+  const seen = new Set<number>()
+  let polling = true
+  const poll = (): void => {
+    const d = path.join(dest, 'dist')
+    seen.add(existsSync(d) ? readdirSync(d).length : -1)
+    if (polling) setImmediate(poll)
+  }
+  poll()
+  await extractArtifactStream(streamOf(bytes), dest, undefined, undefined, undefined, ws)
+  polling = false
+  poll()
+  expect([...seen].filter((n) => n !== -1 && n !== 200)).toEqual([])
+  expect(filesUnder(path.join(dest, 'dist')).length).toBe(200)
+  expect(filesUnder(path.join(ws, '.vx', 'tmp'))).toEqual(['.gitignore'])
+})
+
+it('an output folder made while the restore staged takes its entries one by one', async () => {
+  const ws = dir('vx-staging-tree-race-')
+  const dest = path.join(ws, 'app')
+  mkdirSync(dest)
+  await extractArtifactStream(
+    streamOf(await artifact({ 'dist/a.js': 'a\n', 'dist/sub/b.js': 'b\n' })),
+    dest,
+    undefined,
+    () => {
+      mkdirSync(path.join(dest, 'dist', 'sub'), { recursive: true })
+      writeFileSync(path.join(dest, 'dist', 'other.js'), 'other\n')
+    },
+    undefined,
+    ws,
+  )
+  expect(filesUnder(path.join(dest, 'dist'))).toEqual(['a.js', 'other.js', 'sub/b.js'])
+  expect(filesUnder(path.join(ws, '.vx', 'tmp'))).toEqual(['.gitignore'])
+})
+
+it('a failed restore into a missing folder leaves neither the folder nor its staging', async () => {
+  const ws = dir('vx-staging-tree-fail-')
+  const dest = path.join(ws, 'app')
+  mkdirSync(dest)
+  const err = await extractArtifactStream(
+    streamOf(await artifact({ 'dist/a.js': 'a\n', 'dist/sub/b.js': 'b\n' })),
+    dest,
+    undefined,
+    () => {
+      throw new Error('verify refused')
+    },
+    undefined,
+    ws,
+  ).then(
+    () => null,
+    (e: unknown) => e,
+  )
+  expect(err).toBeInstanceOf(Error)
+  expect(existsSync(path.join(dest, 'dist'))).toBe(false)
+  expect(
+    readdirSync(path.join(ws, '.vx', 'tmp'), { recursive: true }).sort((a, b) => (a < b ? -1 : 1)),
+  ).toEqual(['.gitignore', `${process.pid.toString(36)}-0`])
+})
+
 // A tmpfs beside the disk: the only second filesystem a test reaches
 // without a mount.
 const otherFs =

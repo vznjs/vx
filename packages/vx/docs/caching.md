@@ -404,7 +404,11 @@ On a hit:
    in one read transaction with the entry's rows, or
    `<cacheDir>/<hash>.tar.zst`) **in place**: every entry is staged in
    the workspace's `.vx/tmp/` (never an output folder), and only once the
-   whole archive has staged is each renamed over the file it replaces. A
+   whole archive has staged is each renamed over the file it replaces.
+   A folder missing on the way (a cleaned `dist/`) is built whole there
+   and renamed in once, so a reader sees it complete or not at all; one
+   rename per file, each across directories out of one staging
+   directory, doubled a 5,000-artifact restore's kernel time. A
    file that already holds the entry's bytes (compared byte for byte, up
    to 4 MiB) is left in place, only its mode and mtime set. A
    target on another filesystem is first copied to a temp beside it,
@@ -1359,8 +1363,9 @@ extended header (read whole) past 1 MiB or a pax `size` that is not a
 whole number is refused as corrupt, since a 1 GiB pax header costs 2 GiB
 of memory from a ~32 KB artifact — and
 every regular entry is written to the workspace's `.vx/tmp/<pid>-0/`
-(vx's own, ignored by git, never an output folder) and renamed over its
-target only after the whole archive has ended cleanly and
+(vx's own, ignored by git, never an output folder), inside a copy of
+the topmost missing folder on its way when one is missing, and renamed
+over its target (that copy renamed in whole) only after the whole archive has ended cleanly and
 the index's recorded outputs are all present. vx itself holds one
 chunk of the tar at a time (measured 2026-09-03, incompressible
 artifacts, fresh process: 150 MiB peaked at +644 MiB through

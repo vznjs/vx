@@ -28,7 +28,8 @@ those globs as territory the task owns:
   the new build's globs and cached as if it were produced now.
 - **When a hit restores**, each cached file is renamed over the one it
   replaces, a file that already holds the cached bytes is left alone,
-  and then every match the entry does not hold is removed. The
+  a missing folder (a cleaned `dist/`) is moved in whole, and then
+  every match the entry does not hold is removed. The
   post-restore tree is the snapshot, not the snapshot merged with the
   present, and a reader never finds a file missing while it lands.
   The restore writes only what the globs declare: an entry holding
