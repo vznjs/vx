@@ -126,9 +126,11 @@ export function forwardSignals(args: {
   const everyChild = (): Child[] => [...args.liveChildren, ...args.persistentRegistry.values()]
   const exit = (signal: StopSignal): never => {
     // The run's own end already flushed the log; a second signal cut it
-    // short, so the failure frames it holds print now (idempotent).
+    // short, so the failure frames it holds print now (idempotent), and
+    // the live region goes so a terminal keeps no frozen one.
     try {
       args.log.runEnd?.()
+      args.log.runDone?.()
     } catch {
       // teardown must not throw on the way out
     }
@@ -158,15 +160,10 @@ export function forwardSignals(args: {
     if (stopping !== undefined) exit(stopping)
     stopping = signal
     claimExitForSignal()
-    // Clear the live worker/status region BEFORE exiting so a TTY isn't
-    // left with a frozen region in the scrollback. Only the region: the
-    // tasks this stop aborts still list as rows, above the failure frames
-    // the run's own end prints.
-    try {
-      args.log.runDone?.()
-    } catch {
-      // teardown must not throw on the way out
-    }
+    // The live region stays: the stop marks its rows `stopping` (run.ts's
+    // onStop), and the run's own end replaces it with the footer. Cleared
+    // at once, it left a blank screen for as long as the stop took (M,
+    // 2026-10-17).
     args.stop(signal)
     void settleWithin(args.done, args.boundMs)
       // The run's output may still be in the pipe: `process.exit` drops

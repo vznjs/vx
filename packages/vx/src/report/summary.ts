@@ -81,9 +81,9 @@ export interface SummaryStats {
   /** Ended OK — executed successes AND cache hits. */
   successful: number
   skipped: number
-  /** Killed by a shutdown signal (final summary only). Not in `total`. */
+  /** Killed by a shutdown signal, shown as `aborted`. Not in `total`. */
   aborted?: number
-  /** Reached by the stop before they ran (final summary only). Not in `total`. */
+  /** Reached by the stop before they ran. Not in `total`. */
   notRun?: number
   total: number
   upToDate: number

@@ -30,6 +30,11 @@ vx has one teardown, and every way a run can end goes through it.
    and every plugin tears down, each within its bound. Only then does
    the process exit.
 
+While it waits, the screen keeps the run: each running task reads
+`aborting` with its timer, each one that exits lists as `aborted`, and
+the summary replaces the view. A remote cache lookup or download in
+flight is dropped, not waited on.
+
 The exit code says what happened: 130 after `SIGINT`, 143 after
 `SIGTERM`, 129 after `SIGHUP`, 1 when a foreground persistent task
 ended the run with a non-zero code. A second Ctrl-C during the grace skips the rest of it and
@@ -48,7 +53,7 @@ same function called from every exit path:
   and unless `vx` passes it on the tree outlives the window.
 - **An abort.** `run()` is also a library call, and it takes an
   `AbortSignal`. Abort it and the same teardown runs; tasks that never
-  started are reported as `aborted`, not `skipped`, so a summary can
+  started are reported as `not run`, not `skipped`, so a summary can
   tell the two apart.
 - **A readiness timeout.** A persistent task whose `readyWhen` never
   matched is `SIGTERM`ed, then `SIGKILL`ed after the grace if it

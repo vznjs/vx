@@ -290,6 +290,11 @@ export class RemoteLane {
     this.pump()
   }
 
+  /** Settles when the run is stopped. */
+  get whenStopped(): Promise<void> {
+    return this.stopping
+  }
+
   /** Resolves once every queued and in-flight upload has settled, or the run was stopped. */
   async drain(): Promise<void> {
     // A probe no upload waited on still runs: settled before the run tears
@@ -302,7 +307,8 @@ export class RemoteLane {
   /**
    * The run was stopped (Ctrl-C, SIGTERM, an embedder's abort): queued
    * uploads never start and the drain stops waiting on the ones in flight,
-   * which a plugin cannot be asked to cancel. A slow remote held a stopped
+   * which a plugin cannot be asked to cancel. Reads in flight are given up
+   * the same way (`LayeredCache.pullFrom`). A slow remote held a stopped
    * run past the signal's exit bound, which then exited with no footer.
    */
   stop(): void {

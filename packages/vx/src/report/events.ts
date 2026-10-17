@@ -55,6 +55,7 @@ export type RunEvent =
   | { kind: 'step:start'; id: string }
   | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
+  | { kind: 'run:stop' }
   | { kind: 'run:done' }
 
 export type RunEventSubscriber = (event: RunEvent) => void
@@ -117,6 +118,7 @@ export function busLogger(bus: EventBus): Logger {
   // run() reaches runEnd on its success path, in its finally and from a
   // signal; a plugin's onRunEnd hears the first only.
   let ended = false
+  let stopped = false
   let done = false
   // A status line carries plugin warnings, and a remote layer's warning
   // quotes the server's reply, which may echo what it was sent (L-40).
@@ -136,6 +138,11 @@ export function busLogger(bus: EventBus): Logger {
     },
     stepStart: (id) => bus.emit({ kind: 'step:start', id }),
     stepEnd: (id, info) => bus.emit({ kind: 'step:end', id, ...info }),
+    runStop: () => {
+      if (stopped) return
+      stopped = true
+      bus.emit({ kind: 'run:stop' })
+    },
     runDone: () => {
       if (done) return
       done = true
@@ -181,6 +188,9 @@ export function terminalSubscriber(sink: Logger): RunEventSubscriber {
         return
       case 'run:end':
         sink.runEnd?.()
+        return
+      case 'run:stop':
+        sink.runStop?.()
         return
       case 'run:done':
         sink.runDone?.()
@@ -467,6 +477,7 @@ export type WireEvent =
   | { kind: 'step:start'; id: string }
   | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
+  | { kind: 'run:stop' }
   | { kind: 'run:done' }
 
 /** Map an in-process event to its serializable wire form. */
@@ -489,6 +500,7 @@ export function toWireEvent(event: RunEvent): WireEvent {
     case 'step:start':
     case 'step:end':
     case 'run:end':
+    case 'run:stop':
     case 'run:done':
       return event
   }

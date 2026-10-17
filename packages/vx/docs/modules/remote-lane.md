@@ -29,6 +29,8 @@ export class RemoteLane {
   get(hash: string): Promise<{ body: Blob | Response; durationMs?: number } | null>
   upload(hash, durationMs, body: () => { body: Blob; release? }, tally): void
   drain(): Promise<void>
+  stop(): void // no upload starts; drain and reads stop waiting
+  get whenStopped(): Promise<void> // settles at stop()
   close(): void // says the held-back repeats
   report(op: RemoteOp, subject: string | { batch: string }, err: unknown): void
 }

@@ -1359,16 +1359,16 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
   )
 })
 
-describe('orchestrator: a prefetch still in flight at the end of the run', () => {
+describe('orchestrator: a prefetch still in flight when the run stops', () => {
   it(
-    'is awaited before the cache closes, so its artifact is local for the next run',
+    'is given up before the cache closes, and the next run pulls it whole',
     async () => {
       // `startRemotePrefetch` promises that the caller awaits its handle
-      // before closing the cache; nothing held that until item 634. A
-      // run aborted before it dispatches anything leaves every prefetch
-      // in flight with no task to join it: with the await, the slow GETs
-      // land in the local cache and the next run pulls nothing; without
-      // it the cache closes under the ingest and the next run GETs again.
+      // before closing the cache (item 634). A stopped run waits on no
+      // read: a Ctrl-C during a slow download waited for its last byte
+      // (M, 2026-10-17). Each prefetch ends at the stop, so the cache
+      // closes under no ingest, nothing half-read lands, and the next run
+      // GETs both again and hits.
       const fixture = await makeFixture('vx-remote-e2e-')
       const warm = startArtifactEndpoint()
       try {
@@ -1401,7 +1401,7 @@ describe('orchestrator: a prefetch still in flight at the end of the run', () =>
         })
         expect(aborted.outcomes.map((o) => o.status)).toEqual(['aborted', 'aborted'])
         const pulled = [...slow.getCounts.values()].reduce((x, y) => x + y, 0)
-        expect(pulled).toBe(2)
+        expect(pulled).toBeLessThanOrEqual(2)
 
         const third = await run({
           cwd: fixture.root,
@@ -1410,7 +1410,11 @@ describe('orchestrator: a prefetch still in flight at the end of the run', () =>
           remoteCache: slow.layer,
         })
         expect(third.ok).toBe(true)
-        expect([...slow.getCounts.values()].reduce((x, y) => x + y, 0)).toBe(pulled)
+        expect(third.outcomes.map((o) => o.status)).toEqual([
+          'cache-hit-remote',
+          'cache-hit-remote',
+        ])
+        expect([...slow.getCounts.values()].reduce((x, y) => x + y, 0)).toBe(pulled + 2)
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

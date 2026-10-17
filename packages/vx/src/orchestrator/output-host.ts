@@ -7,7 +7,15 @@ import type { Logger } from '../report/index.js'
 import type { OutputContext, VxPlugin } from './plugin.js'
 
 const REQUIRED = ['status', 'taskStdout', 'taskStderr', 'taskComplete'] as const
-const OPTIONAL = ['runStart', 'taskStart', 'runEnd', 'stepStart', 'stepEnd', 'runDone'] as const
+const OPTIONAL = [
+  'runStart',
+  'taskStart',
+  'runEnd',
+  'stepStart',
+  'stepEnd',
+  'runStop',
+  'runDone',
+] as const
 
 /** Reject anything that is not Logger-shaped, naming what is missing. */
 function checkLogger(value: unknown): Logger {

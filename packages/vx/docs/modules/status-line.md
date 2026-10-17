@@ -87,6 +87,9 @@ Slot rules (the point of the design — the display derives from the
   only timings. The logger keeps each row's
   task until it starts, in that row, or leaves the list, and drops a row
   with nothing left to hold, the rows below closing up.
+- `stopping: true` (a stop): running rows read `aborting` in the warn
+  tone with their timers and no expected time; empty and blocked rows
+  are left out.
 - More running tasks than rows queue for a freed row and surface as
   a `… +k more running` line under the rows.
 - A worker row leads with the ticking elapsed time (no glyph), then
