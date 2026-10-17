@@ -127,11 +127,16 @@ export async function discoverProjects(
       (e) => e.changed,
       () => null,
     )
+  const byDir = new Map(projects.map((p) => [p.dir, p]))
   const edges = await applyDiscoverHooks(
     plugins,
     projects,
     { workspaceRoot, cacheDir, warn, worktreeChanges },
-    (entry, plugin) => discoveredProject(workspaceRoot, projects, entry, plugin.name),
+    async (entry, plugin) => {
+      const found = await discoveredProject(workspaceRoot, byDir, entry, plugin.name)
+      if (found.added) byDir.set(found.meta.dir, found.meta)
+      return found
+    },
   )
   checkProjectNames(workspaceRoot, projects)
   linkDiscoveredEdges(workspaceRoot, projects, edges)

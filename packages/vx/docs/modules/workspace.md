@@ -61,7 +61,7 @@ export function lockedProjects(
 // checked to be string arrays here and resolved by linkDiscoveredEdges
 export function discoveredProject(
   root: string,
-  known: readonly ProjectMeta[],
+  known: ReadonlyMap<string, ProjectMeta>, // by dir
   entry: { dir: string; name?: string; deps?: readonly string[]; reach?: readonly string[] },
   by: string,
 ): Promise<{ meta: ProjectMeta; added: boolean }>
