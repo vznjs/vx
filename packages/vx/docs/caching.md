@@ -1496,7 +1496,11 @@ the user's, and replacing it is the bug nx#37061 reports — so the
 restore refuses, naming it: `<dir>/dist is a symbolic link to
 <target>, outside <dir> — a cache restore never writes through a link
 that leaves its directory. Remove the link and re-run (the restore
-puts a real directory there), or stop declaring outputs under it.` A
+puts a real directory there), or stop declaring outputs under it.`
+The check runs before each rename and again once all have landed: a
+directory swapped for such a link while the renames ran (another
+process, a concurrent restore) fails the restore the same way, and the
+entries that landed through it are removed from where they went. A
 link that stays inside the project is written through, and so is one
 whose target is gone: the restore creates the directory it names —
 following a chain of links to its end — and writes through it, the

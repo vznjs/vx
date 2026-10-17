@@ -1358,6 +1358,7 @@ class Extractor {
     }
     await settle(renames)
     for (const [top, t] of this.trees) await this.placeTree(top, t, checked)
+    await this.assertLandedInside()
     this.trees.clear()
     this.staged.length = 0
   }
@@ -1477,6 +1478,33 @@ class Extractor {
     const realBase = await this.realBaseOf(base)
     const real = await realOf(dir, true)
     if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+      throw await linkOutError(path.resolve(base), dir, realBase)
+    }
+  }
+
+  /**
+   * The check before each rename, once more after all landed: the rename
+   * runs on the thread pool, and a directory swapped for a link out in that
+   * gap carried the entry with it (restore-link-swap-rename.test.ts). An
+   * entry that landed outside is removed from there and the restore fails.
+   */
+  private async assertLandedInside(): Promise<void> {
+    const landed = new Map<string, { base: string; placed: string[] }>()
+    const add = (base: string, dir: string, placed: string): void => {
+      const at = landed.get(dir)
+      if (at === undefined) landed.set(dir, { base, placed: [placed] })
+      else at.placed.push(placed)
+    }
+    for (const s of this.staged) {
+      if (s.same === undefined && s.tree === undefined)
+        add(s.base, path.dirname(s.target), s.target)
+    }
+    for (const [top, t] of this.trees) add(t.base, path.dirname(top), top)
+    for (const [dir, { base, placed }] of landed) {
+      const realBase = await this.realBaseOf(base)
+      const real = await realOf(dir, true).catch(() => null)
+      if (real === null || real === realBase || real.startsWith(realBase + path.sep)) continue
+      await Promise.allSettled(placed.map((p) => rm(p, { recursive: true, force: true })))
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
   }
