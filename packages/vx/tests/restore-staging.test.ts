@@ -191,10 +191,9 @@ it('a failed restore into a missing folder leaves neither the folder nor its sta
   )
   expect(err).toBeInstanceOf(Error)
   expect(existsSync(path.join(dest, 'dist'))).toBe(false)
-  expect(readdirSync(path.join(ws, '.vx', 'tmp'), { recursive: true }).sort()).toEqual([
-    '.gitignore',
-    `${process.pid.toString(36)}-0`,
-  ])
+  expect(
+    readdirSync(path.join(ws, '.vx', 'tmp'), { recursive: true }).sort((a, b) => (a < b ? -1 : 1)),
+  ).toEqual(['.gitignore', `${process.pid.toString(36)}-0`])
 })
 
 // A tmpfs beside the disk: the only second filesystem a test reaches
