@@ -7,8 +7,8 @@
 // Nothing is on by default: declare `turboCache()` in `.vx/workspace.ts`
 // (the local store is the floor beneath it) and give it a URL and a token (options, or
 // Turbo's own environment variables and turbo.json's `remoteCache` so a
-// self-hosted setup carries over).
-// With neither the plugin DECLINES and the run stays local.
+// self-hosted setup carries over; the OS keychain last). With no URL, team
+// or token the plugin DECLINES and the run stays local.
 //
 // Imports core only through the public `@vzn/vx` specifier.
 import { readFileSync, unlinkSync } from 'node:fs'
@@ -25,12 +25,17 @@ import {
 import { deadline } from '../remote-deadline.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
-import { headerValueFault } from '../remote-token.js'
+import {
+  headerValueFault,
+  type KeychainRemote,
+  KeychainTokens,
+  remoteLabel,
+} from '../remote-token.js'
 
 export interface TurboCacheOptions {
   /** Base URL of the cache server (`https://cache.example.com`), or `TURBO_API`; with a token and neither, Vercel's hosted cache, as for `turbo`. */
   apiUrl?: string
-  /** Bearer token every request carries, or `TURBO_TOKEN`. */
+  /** Bearer token every request carries, or `TURBO_TOKEN`, `.turbo/config.json`, then the OS keychain. */
   token?: string
   /** `teamId` query parameter, or `TURBO_TEAMID`. Required with `signatureKey`. */
   teamId?: string
@@ -84,7 +89,8 @@ export interface TurboLocalConfig {
 
 export interface TurboCacheConfig {
   apiUrl: string
-  token: string
+  /** Undefined: the layer's `open` asks the OS keychain. */
+  token?: string
   teamId?: string
   teamSlug?: string
   signatureKey?: string
@@ -223,18 +229,29 @@ export function resolveTurboCacheConfig(
     !turboPair && env['VERCEL_ARTIFACTS_TOKEN'] && env['VERCEL_ARTIFACTS_OWNER']
       ? { token: env['VERCEL_ARTIFACTS_TOKEN'], teamId: env['VERCEL_ARTIFACTS_OWNER'] }
       : { token: undefined, teamId: turboPair ? undefined : env['VERCEL_ARTIFACTS_OWNER'] }
-  const token = options.token ?? env['TURBO_TOKEN'] ?? vercel.token ?? fromFile(local.token)
-  // Turbo's own default when a token is set and no `apiUrl` is: Vercel's
-  // hosted Remote Cache. A token alone is a configured cache, as it is for
-  // `turbo`; no token at all is the declined, local run.
+  // Empty is unset, as Turbo reads it: a fork's pull request gets `''` for a secret.
+  const token =
+    (options.token ?? env['TURBO_TOKEN'] ?? vercel.token ?? fromFile(local.token)) || undefined
+  const teamId =
+    options.teamId ??
+    env['TURBO_TEAMID'] ??
+    vercel.teamId ??
+    fromFile(local.teamId) ??
+    fromFile(file.teamId)
+  const teamSlug =
+    options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
+  // Turbo's own default when a token or a team is set and no `apiUrl` is:
+  // Vercel's hosted Remote Cache. A token alone is a configured cache, as it
+  // is for `turbo`; a URL or a team without one asks the OS keychain at
+  // `open`; none of them is the declined, local run.
   const apiUrl = (
     options.apiUrl ??
     env['TURBO_API'] ??
     fromFile(local.apiUrl) ??
     fromFile(file.apiUrl) ??
-    (token ? VERCEL_API : undefined)
+    (token || teamId || teamSlug ? VERCEL_API : undefined)
   )?.replace(/\/+$/, '')
-  if (!apiUrl || !token) return undefined
+  if (!apiUrl) return undefined
   // The URL is printed in every refusal line, so a `user:pass@` in it would
   // leak to the log. Credentials go in the token.
   if (URL.canParse(apiUrl)) {
@@ -244,19 +261,11 @@ export function resolveTurboCacheConfig(
         'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead',
       )
   }
-  const fault = headerValueFault(token)
+  const fault = token === undefined ? null : headerValueFault(token)
   if (fault !== null)
     throw new Error(
       `vx/turbo-cache: the token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
     )
-  const teamId =
-    options.teamId ??
-    env['TURBO_TEAMID'] ??
-    vercel.teamId ??
-    fromFile(local.teamId) ??
-    fromFile(file.teamId)
-  const teamSlug =
-    options.teamSlug ?? env['TURBO_TEAM'] ?? fromFile(local.teamSlug) ?? fromFile(file.teamSlug)
   const preflight =
     options.preflight ??
     truthy(env['TURBO_PREFLIGHT'], 'TURBO_PREFLIGHT') ??
@@ -291,7 +300,7 @@ export function resolveTurboCacheConfig(
   }
   return {
     apiUrl,
-    token,
+    ...(token !== undefined ? { token } : {}),
     ...(teamId ? { teamId } : {}),
     ...(teamSlug ? { teamSlug } : {}),
     ...(signatureKey !== undefined ? { signatureKey } : {}),
@@ -393,6 +402,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   private readonly absent = new Set<string>()
   private readonly key: Uint8Array | undefined
   readonly endpoint: string
+  /** Undefined until `open` reads the keychain; a layer never opened (a plan) asks the server nothing. */
+  private token: string | undefined
+  private fromKeychain = false
+  private readonly keychainRemote: KeychainRemote
   /** The remote's rate limit, which every request of this client waits out. */
   private readonly cooldown = new Cooldown()
   constructor(
@@ -402,9 +415,24 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
     /** The most a signed body may hold before its tag is checked (a test lowers it). */
     private readonly maxSignedBody: number = MAX_SIGNED_BODY,
+    /** Where a token none of the config's sources gave comes from. */
+    private readonly keychain: KeychainTokens = new KeychainTokens(),
   ) {
     this.key = config.signatureKey === undefined ? undefined : Buffer.from(config.signatureKey)
     this.endpoint = `${config.apiUrl}/v8/artifacts`
+    this.token = config.token
+    const team = config.teamId ?? config.teamSlug
+    this.keychainRemote = {
+      name: team === undefined ? this.endpoint : `${this.endpoint}#${team}`,
+      label: remoteLabel(config.apiUrl, team),
+      env: 'TURBO_TOKEN',
+    }
+  }
+
+  async open(ctx: { readonly ci: boolean }): Promise<void> {
+    if (this.token !== undefined) return
+    this.token = await this.keychain.token(this.keychainRemote, ctx.ci)
+    this.fromKeychain = true
   }
 
   private url(pathname: string): string {
@@ -419,7 +447,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
   private headers(extra: Record<string, string> = {}, auth = true): Record<string, string> {
     return {
-      ...(auth ? { Authorization: `Bearer ${this.config.token}` } : {}),
+      ...(auth ? { Authorization: `Bearer ${this.token}` } : {}),
       'x-artifact-client-interactive': process.stdout.isTTY ? '1' : '0',
       ...extra,
     }
@@ -446,7 +474,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const res = await this.fetchImpl(url, {
       method: 'OPTIONS',
       headers: {
-        Authorization: `Bearer ${this.config.token}`,
+        Authorization: `Bearer ${this.token}`,
         'Access-Control-Request-Method': method === 'HEAD' ? 'GET' : method,
         'Access-Control-Request-Headers': ['Authorization', ...Object.keys(headers)].join(', '),
       },
@@ -475,6 +503,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     pathname: string,
     init: { body?: Blob | string; headers?: Record<string, string>; timeoutMs?: number } = {},
   ): Promise<Response | undefined> {
+    if (this.token === undefined) return undefined
     const timeoutMs = init.timeoutMs ?? this.config.timeoutMs
     // 0 is Turbo's "no deadline".
     const signal = () => (timeoutMs === 0 ? undefined : deadline(timeoutMs))
@@ -514,7 +543,12 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
-      throw new Error(`HTTP ${res.status}: the token was refused; remote cache off for this run`)
+      if (!this.fromKeychain)
+        throw new Error(`HTTP ${res.status}: the token was refused; remote cache off for this run`)
+      await this.keychain.forget(this.keychainRemote)
+      throw new Error(
+        `HTTP ${res.status}: the token was refused; removed it from the OS keychain, so the next run asks again; remote cache off for this run`,
+      )
     }
     return res
   }
@@ -714,10 +748,12 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
  * plugins: [turboCache({ apiUrl: 'https://cache.example.com', token: process.env.CACHE_TOKEN })]
  * ```
  *
- * Declines without a URL and a token, so it is safe to leave declared.
+ * Declines with no URL, team or token, so it is safe to leave declared.
  */
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
+  // One per declaration: a watch cycle's new layer reuses its answers.
+  const keychain = new KeychainTokens()
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveTurboCacheConfig(
@@ -730,7 +766,7 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
       // A signed download waits in a temp until its tag checks: in vx's
       // cache directory, which the sandbox walls, not the shared temp dir a
       // sandboxed task may read (L-45).
-      return new TurboRemoteCache(config, fetch, ctx.cacheDir)
+      return new TurboRemoteCache(config, fetch, ctx.cacheDir, Bun.sleep, MAX_SIGNED_BODY, keychain)
     },
   })
 }

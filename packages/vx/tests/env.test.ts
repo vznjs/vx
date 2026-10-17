@@ -25,6 +25,18 @@ describe('buildIsolatedEnv', () => {
     expect(env.SECRET).toBeUndefined()
   })
 
+  // A remote cache's credential is the run's, never a task's: a task could
+  // print it to a log a cache hit replays to anyone.
+  it('keeps the remote cache tokens out of a task', () => {
+    const tokens = {
+      TURBO_TOKEN: 't',
+      VERCEL_ARTIFACTS_TOKEN: 'v',
+      NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: 'n',
+    }
+    const env = buildIsolatedEnv({ passThrough: [], define: {}, source: tokens })
+    expect(Object.keys(env).filter((k) => k in tokens)).toEqual([])
+  })
+
   // YF-1: a corepack shim finds its cached manager through COREPACK_HOME,
   // and pnpm its global dir through PNPM_HOME; stripped, the shim fetched
   // the manager again (no network in a sandbox: the task failed).

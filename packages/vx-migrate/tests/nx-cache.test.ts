@@ -160,7 +160,7 @@ describe('NxRemoteCache against the spec server', () => {
       )
     }) as unknown as typeof fetch
     const c = new NxRemoteCache(
-      { server: 'http://nx.invalid', timeoutMs: 1_000, retries: 0 },
+      { server: 'http://nx.invalid', accessToken: '', timeoutMs: 1_000, retries: 0 },
       streamed,
     )
     expect(await c.has('aa11')).toBe(true)

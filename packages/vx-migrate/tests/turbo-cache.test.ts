@@ -93,9 +93,14 @@ function turboServer(opts: { token?: string; verifyTag?: boolean } = {}) {
 }
 
 describe('resolveTurboCacheConfig', () => {
-  it('reads options over Turbo’s environment, strips a trailing slash, declines without url+token', () => {
+  it('reads options over Turbo’s environment, strips a trailing slash, declines without url, team or token', () => {
     expect(resolveTurboCacheConfig({}, {})).toBeUndefined()
-    expect(resolveTurboCacheConfig({ apiUrl: 'https://c.example' }, {})).toBeUndefined()
+    // A URL with no token is kept: the layer's `open` asks the OS keychain.
+    expect(resolveTurboCacheConfig({ apiUrl: 'https://c.example' }, {})?.token).toBeUndefined()
+    expect(resolveTurboCacheConfig({}, { TURBO_TOKEN: '', TURBO_TEAM: 'acme' })).toMatchObject({
+      apiUrl: 'https://vercel.com/api',
+      teamSlug: 'acme',
+    })
     // A token alone is Vercel's hosted cache, as it is for `turbo`.
     expect(resolveTurboCacheConfig({ token: 't' }, {})?.apiUrl).toBe('https://vercel.com/api')
     expect(resolveTurboCacheConfig({}, { TURBO_TOKEN: 't', TURBO_TEAM: 'acme' })?.apiUrl).toBe(
@@ -150,7 +155,7 @@ describe('resolveTurboCacheConfig', () => {
       ['https://file.example', 'team_file', 'file'],
       ['https://env.example', 'team_env', 'env'],
       ['https://opt.example', 'team_file', 'file'],
-      undefined,
+      ['https://file.example', 'team_file', 'file'],
       undefined,
       ['https://file.example', 'team_file', 'file'],
       ['https://vercel.com/api', undefined, undefined],
@@ -228,7 +233,7 @@ describe('resolveTurboCacheConfig', () => {
       ['https://vercel.com/api', 'vt', 'team_v'],
       ['https://vercel.com/api', 'tt', 'team_t'],
       ['https://vercel.com/api', 'tt', 'team_v'],
-      undefined,
+      ['https://vercel.com/api', undefined, 'team_json'],
       ['https://link.example', 'lt', 'team_link'],
       ['https://link.example', 'tt', 'team_link'],
     ])
