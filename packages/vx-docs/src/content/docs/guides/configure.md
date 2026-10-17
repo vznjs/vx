@@ -276,7 +276,6 @@ the variable, which beats this file. Durations carry a unit (`'500ms'`,
 | `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
 | `cache.retention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 | `cache.policy` | which layers read and write (`'local:rw,remote:r'`) |
-| `cache.scope` | where cache writes land: none reads and writes the default keys, a name like `'pr-123'` reads the default keys then its own and writes only its own; `cache.policy` alone decides whether a run writes; `github()` sets it on Actions ([Security](../../security/#cache-poisoning)) |
 | `cache.inputStability` | every task's `cache.inputStability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_CACHE_INPUT_STABILITY_*` variables win over both ([Schema](../../schema/#cache-optional)) |
 | `lock.reviewFiles` | `false` stops `vx lock` writing a pretty `vx.lock.json` (the project's resolved config, for review) beside each `vx.config` |
 | `watch.poll` | `vx watch` polls instead of using the OS watcher |
