@@ -236,6 +236,12 @@ class OidSlot {
   }
 }
 
+interface IgnoredListing {
+  root: string
+  paths: readonly string[]
+  asked: Map<string, boolean>
+}
+
 export class GitFilesCache extends Map<string, readonly string[]> {
   private changed = new Map<string, string[]>()
   /**
@@ -356,8 +362,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   ignoredOutputs: ReadonlySet<string> = new Set()
 
   /** What `git status --ignored=matching` named, root-relative and sorted, and the root. */
-  private ignored: { root: string; paths: readonly string[]; asked: Map<string, boolean> } | null =
-    null
+  private ignored: IgnoredListing | null = null
 
   setIgnored(root: string, paths: readonly string[]): void {
     this.ignored = { root, paths, asked: new Map() }

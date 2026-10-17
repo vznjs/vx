@@ -249,6 +249,7 @@ async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> 
       changed: [],
       untracked: [],
       undecodable: [],
+      ignored: [],
       startedAtMs: Date.now(),
       blobCheck: {
         key: undefined,
