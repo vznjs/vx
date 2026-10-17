@@ -69,6 +69,11 @@ interface Manager {
   readonly extraFiles?: (text: string) => readonly string[]
   /** Root files no lockfile records that lay the install out: folded whole into every task. */
   readonly settings: readonly string[]
+  /**
+   * A settings file's bytes as the key folds them, where the lockfile
+   * records part of what it says per project; undefined folds them whole.
+   */
+  readonly settingsText?: (file: string, text: string) => string | undefined
   /** The lockfile files a peer under `dependencies`: the manifest says which entries are peers. */
   readonly peersInManifest?: true
   /**
@@ -108,6 +113,8 @@ const MANAGERS = {
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
     recorded: (t) => pnpmParse(t).importers,
     settings: ['pnpm-workspace.yaml', '.npmrc'],
+    settingsText: (file, text) =>
+      file === 'pnpm-workspace.yaml' ? pnpmLock().workspaceSettings(text) : undefined,
     peersInManifest: true,
   },
   bun: {
@@ -265,14 +272,24 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
   return definePlugin(import.meta, {
     fingerprint: {
       files: [...manager.files, ...manager.settings],
-      // A settings file lays out every project's install: every project.
-      affected: (change, ctx) =>
-        claims.find((c) => c.file === change.file)?.claim.fingerprint.affected(change, ctx),
+      // A settings file lays out every project's install: every project,
+      // unless all that moved is what the lockfile records per project.
+      affected: (change, ctx) => {
+        const claim = claims.find((c) => c.file === change.file)?.claim
+        if (claim !== undefined) return claim.fingerprint.affected(change, ctx)
+        // An added or removed file moves every install.
+        const folded = (bytes: Uint8Array | null): string | undefined =>
+          bytes === null
+            ? undefined
+            : manager.settingsText?.(change.file, new TextDecoder().decode(bytes))
+        const before = folded(change.before)
+        return before !== undefined && before === folded(change.after) ? [] : undefined
+      },
     },
     async key(task, ctx) {
       let settings = settingsPerRun.get(ctx)
       if (settings === undefined) {
-        settings = readSettings(ctx.workspaceRoot, manager.settings)
+        settings = readSettings(ctx.workspaceRoot, manager.settings, manager.settingsText)
         settingsPerRun.set(ctx, settings)
       }
       let deps: Readonly<Record<string, string>> | undefined
@@ -364,6 +381,7 @@ function listed(names: readonly string[]): string {
 async function readSettings(
   workspaceRoot: string,
   files: readonly string[],
+  settingsText?: (file: string, text: string) => string | undefined,
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   for (const file of files) {
@@ -373,7 +391,11 @@ async function readSettings(
     } catch {
       continue
     }
-    out[file] = Bun.hash.xxHash3(bytes).toString(16).padStart(16, '0')
+    const text = settingsText?.(file, new TextDecoder().decode(bytes))
+    out[file] = Bun.hash
+      .xxHash3(text ?? bytes)
+      .toString(16)
+      .padStart(16, '0')
   }
   return out
 }

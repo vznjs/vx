@@ -317,7 +317,9 @@ their bins run from the root `node_modules/.bin`, which is on every
 task's PATH. So bumping a root devDependency re-runs every package.
 
 Each plugin also folds its manager's install settings into every task
-(`pnpm()`: `pnpm-workspace.yaml`, `.npmrc`; `bun()`: `bunfig.toml`,
+(`pnpm()`: `pnpm-workspace.yaml` but its `patchedDependencies` and
+`overrides`, whose effect the lockfile records per package, and
+`.npmrc`; `bun()`: `bunfig.toml`,
 `.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`), adds a package's
 `package.json` to its tasks' inputs, and gives vx the project
 edges the lockfile records: what `^build` waits on, and what `--filter`
