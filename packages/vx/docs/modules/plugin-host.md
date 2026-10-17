@@ -46,7 +46,10 @@ nothing runs and caches here.
   schema refused a second, so this only indexes);
   `claimedAffected(plugin, change, ctx)` asks the claimant which
   projects a change to its file reaches — `undefined` is every project,
-  and a non-iterable answer is refused by name.
+  and a non-iterable answer is refused by name;
+  `claimedExtraFiles(plugin, file, bytes)` → the files the claimant
+  names from that file's bytes (`undefined` when it names none), a
+  non-list answer refused by name.
 - `resolveExecutors(plugins, ctx)` → `TaskExecutor[]` (ordered, the
   local executor last; the first to accept a task runs it; a throwing
   factory aborts).
