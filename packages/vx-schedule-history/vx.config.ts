@@ -64,8 +64,10 @@ export default defineProject({
       exec: {
         command: 'bun test --only-failures',
         // Fixture repos assume git's defaults; a global config may sign commits.
+        // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
         env: {
           define: {
+            BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
             GIT_CONFIG_GLOBAL: '/dev/null',
             GIT_CONFIG_NOSYSTEM: '1',
             VX_CACHE_DIR: '.vx/cache',

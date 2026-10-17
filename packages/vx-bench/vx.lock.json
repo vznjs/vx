@@ -243,6 +243,7 @@
         "command": "bun test --only-failures",
         "env": {
           "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
             "VX_CACHE_DIR": ".vx/cache"
           }
         },
