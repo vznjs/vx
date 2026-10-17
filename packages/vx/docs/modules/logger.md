@@ -52,6 +52,7 @@ export interface DefaultLogger extends Logger {
   settle(): void // hand over coalesced output; write straight through from now on
   readonly showsSteps: boolean // only where the live region draws; else run() times no step
   forecast(graph: () => Forecast, load: () => Promise<Forecast | undefined>): void // `graph` (no history) at the first free row; `load` only if the live region is still up 1 s in
+  holdStatus(): () => void // no live region until the release: a secret prompt waits on the terminal
 }
 
 export function defaultLogger(

@@ -56,6 +56,11 @@ export interface OutputWriter {
   settle(): void
   /** Permanently remove the status display; later set* is a no-op. */
   clearStatus(): void
+  /**
+   * Erase the status display and draw none until the returned release:
+   * a prompt on the terminal (a secret's) waits for its answer there.
+   */
+  hold(): () => void
 }
 
 export interface OutputWriterOptions {
@@ -108,6 +113,7 @@ export function createOutputWriter(
   // `regionRows`.
   let shownRows = 0
   let dead = false
+  let holds = 0
   let lastDraw = -Infinity
   // Trailing draw scheduled when a forced set lands inside the floor.
   let trailing: ReturnType<typeof setTimeout> | null = null
@@ -196,7 +202,7 @@ export function createOutputWriter(
   const set = (lines: readonly string[], o: { force?: boolean }): void => {
     if (!enabled || dead) return
     current = lines
-    if (!atLineStart) return
+    if (!atLineStart || holds > 0) return
     const since = now() - lastDraw
     if (o.force) {
       if (since >= forceFloorMs) {
@@ -209,7 +215,7 @@ export function createOutputWriter(
       if (trailing === null) {
         trailing = setTimeout(() => {
           trailing = null
-          if (dead || current === null || !atLineStart) return
+          if (dead || current === null || !atLineStart || holds > 0) return
           draw()
         }, forceFloorMs - since)
         trailing.unref?.()
@@ -241,7 +247,7 @@ export function createOutputWriter(
       }
       stream.write(chunk)
       if (chunk.length > 0) atLineStart = chunk.endsWith('\n')
-      if (!dead && current !== null && atLineStart) draw()
+      if (!dead && current !== null && atLineStart && holds === 0) draw()
     },
     writeTo(target, chunk) {
       if (target === stream) return this.write(chunk)
@@ -257,7 +263,7 @@ export function createOutputWriter(
         shownRows = 0
       }
       target.write(chunk)
-      if (!dead && current !== null && atLineStart) draw()
+      if (!dead && current !== null && atLineStart && holds === 0) draw()
     },
     setStatus(line, o = {}) {
       set([line], o)
@@ -278,6 +284,23 @@ export function createOutputWriter(
         stream.write(eraseSeq())
         shown = false
         shownRows = 0
+      }
+    },
+    hold() {
+      if (!enabled || dead) return () => undefined
+      holds++
+      cancelTrailing()
+      if (shown) {
+        stream.write(eraseSeq())
+        shown = false
+        shownRows = 0
+      }
+      let released = false
+      return () => {
+        if (released) return
+        released = true
+        holds--
+        if (holds === 0 && !dead && current !== null && atLineStart) draw()
       }
     },
   }
