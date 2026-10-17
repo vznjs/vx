@@ -538,6 +538,7 @@ describe('GitFilesCache workspace-wide partition', () => {
             oidsFor: (dir: string) => (dir === root ? new Map([[shared, oid]]) : gfc.oidsFor(dir)),
             snapshotFor: (dir: string, globs: readonly Bun.Glob[]) => gfc.snapshotFor(dir, globs),
             set: (dir: string, files: readonly string[]) => gfc.set(dir, files),
+            newFilesIgnored: (dir: string) => gfc.newFilesIgnored(dir),
             markOutputsChanged: () => {},
           } as never,
         })

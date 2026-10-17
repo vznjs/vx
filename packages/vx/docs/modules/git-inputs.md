@@ -73,6 +73,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   configValue(key: string): string | null | undefined // undefined: not read, ask git
   enumeratedAtMs: number | undefined // the enumeration's start: what `oidsFor` says is true as of then
   ignoredOutputs: ReadonlySet<string> // declared outputs (root-relative) git ignores whole, asked once per run (`stable-keys.md`)
+  setIgnored(root: string, paths: readonly string[]): void // what `status --ignored=matching` named
+  newFilesIgnored(dir: string): boolean // an ignored path lies under dir and git ignores a new file there (asked once per dir)
 }
 
 export interface GitEnumeration {
@@ -85,6 +87,7 @@ export interface GitEnumeration {
   changed: readonly string[] | null // what `status` listed (dirty, both sides of a rename, untracked)
   untracked: readonly string[] | null // status's untracked set, before nested repos expand (ls-files --others)
   undecodable: readonly string[] // listed paths whose names are not UTF-8, root-relative
+  ignored: readonly string[] // what status named as ignored (`--ignored=matching`), root-relative, sorted
   startedAtMs: number // Date.now() before the spawns
   blobCheck: IndexBlobCheck // the blob-size check's input (A-60)
   catFile(stdin: string): Promise<{ exitCode: number; stdout: string } | null> // blob sizes (A-60)

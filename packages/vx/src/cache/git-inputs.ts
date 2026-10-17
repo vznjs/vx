@@ -21,6 +21,7 @@ import {
   type Stats,
 } from 'node:fs'
 import {
+  checkIgnoreSync,
   executablePath,
   gitEnv,
   gitSpawnRefusal,
@@ -31,6 +32,9 @@ import {
   xxh3hex,
 } from '../util/index.js'
 import { FILE_HASH_RACY_MS, racyWindowMs } from './layer.js'
+
+/** A name no ignore rule names, standing for a file a task may create. */
+const FRESH_NAME = '__vx_probe__'
 
 /** Three facts of the repository a directory is in: read off the disk, or one `git rev-parse`. */
 export interface RepoFacts {
@@ -232,6 +236,12 @@ class OidSlot {
   }
 }
 
+interface IgnoredListing {
+  root: string
+  paths: readonly string[]
+  asked: Map<string, boolean>
+}
+
 export class GitFilesCache extends Map<string, readonly string[]> {
   private changed = new Map<string, string[]>()
   /**
@@ -350,6 +360,46 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * beside their producer keys up front (`dependsOnSiblingOutputs`).
    */
   ignoredOutputs: ReadonlySet<string> = new Set()
+
+  /** What `git status --ignored=matching` named, root-relative and sorted, and the root. */
+  private ignored: IgnoredListing | null = null
+
+  setIgnored(root: string, paths: readonly string[]): void {
+    this.ignored = { root, paths, asked: new Map() }
+  }
+
+  /**
+   * Whether git ignores a new file directly in `dir` (absolute) while it
+   * reports an ignored path under it: `gen/*` beside a kept `gen/.gitkeep`,
+   * or `gen/` with a force-added file. Such a directory is ignored in all
+   * but the files git lists, so naming it is asking for its ignored files
+   * too. A pattern that ignores only some names (`*.generated.js` in a
+   * listed `src`) answers false. Asked once per directory per enumeration,
+   * and only where status named an ignored path under it.
+   */
+  newFilesIgnored(dir: string): boolean {
+    const ig = this.ignored
+    if (ig === null || ig.paths.length === 0) return false
+    const rel = relPosix(ig.root, dir)
+    if (rel === '' || rel.startsWith('../')) return false
+    let known = ig.asked.get(rel)
+    if (known !== undefined) return known
+    const under = `${rel}/`
+    let lo = 0
+    let hi = ig.paths.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (ig.paths[mid]! < under) lo = mid + 1
+      else hi = mid
+    }
+    known = false
+    if (ig.paths[lo]?.startsWith(under) === true) {
+      const probe = `${under}${FRESH_NAME}`
+      known = checkIgnoreSync(ig.root, [probe])?.has(probe) === true
+    }
+    ig.asked.set(rel, known)
+    return known
+  }
 
   get undecodableNames(): ReadonlySet<string> {
     return this.undecodable
@@ -1279,17 +1329,20 @@ function parseStatusOutput(
   untracked: string[]
   undecodable: Set<string>
   ignoredAttributes: boolean
+  ignored: string[]
 } {
   const tokens = out.split('\0')
   const dirty = new Set<string>()
   const untracked: string[] = []
   const undecodable = new Set<string>()
+  const ignored: string[] = []
   let ignoredAttributes = false
   for (const token of tokens) {
     if (token.length < 4) continue
     if (token[0] === '!') {
       if (token === '!! .gitattributes' || token.endsWith('/.gitattributes'))
         ignoredAttributes = true
+      ignored.push(token.slice(3))
       continue
     }
     if (undecodableRecords.size > 0 && undecodableRecords.has(token))
@@ -1302,7 +1355,7 @@ function parseStatusOutput(
     // rename's source is a record of its own (items 976, A-59).
     dirty.add(token.slice(3))
   }
-  return { dirty, untracked, undecodable, ignoredAttributes }
+  return { dirty, untracked, undecodable, ignoredAttributes, ignored }
 }
 
 /**
@@ -1387,6 +1440,8 @@ export interface GitEnumeration {
   untracked: readonly string[] | null
   /** Workspace-relative paths whose names are not UTF-8 (`decodeGitZ`). */
   undecodable: readonly string[]
+  /** What `git status` named ignored, workspace-relative and sorted (a directory with its `/`). */
+  ignored: readonly string[]
   /** `Date.now()` before the spawns: what `trusted` says is true as of no earlier. */
   startedAtMs: number
   /** The blob-size check's input (`dropResizedOids`). */
@@ -1796,6 +1851,10 @@ export async function startGitEnumeration(
     changed: dirty === null ? null : [...dirty, ...untracked],
     untracked: dirty === null ? null : untracked,
     undecodable,
+    ignored:
+      parsedStatus === null
+        ? []
+        : [...stripPrefixFromSet(new Set(parsedStatus.ignored), gitPrefix)].sort(),
     startedAtMs,
     blobCheck: {
       key: indexKey,
@@ -1862,6 +1921,7 @@ export async function applyGitEnumeration(
   const { all, trusted } = enumeration
   cache.setWorktreeDirty(enumeration.dirty)
   cache.setGitVars(enumeration.vars)
+  cache.setIgnored(workspaceRoot, enumeration.ignored)
   cache.enumeratedAtMs = enumeration.startedAtMs
   cache.markUndecodable(enumeration.undecodable.map((rel) => path.join(workspaceRoot, rel)))
   cache.noteTrackedLater(

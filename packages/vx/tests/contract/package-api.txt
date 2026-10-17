@@ -113,6 +113,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   committedIn(dir: string): (abs: string) => boolean
   enumeratedAtMs: number | undefined
   ignoredOutputs: ReadonlySet<string>
+  setIgnored(root: string, paths: readonly string[]): void
+  newFilesIgnored(dir: string): boolean
   get undecodableNames(): ReadonlySet<string>
   markUndecodable(absPaths: readonly string[]): void
   setWorkspaceRoot(root: string): void

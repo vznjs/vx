@@ -284,3 +284,42 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'a prefix whose new files git ignores is walked on disk though a file under it is tracked',
+  async () => {
+    // `gen/*` + `!gen/.gitkeep` keeps the directory in git; `gen/` with a
+    // force-added file does the same. Either way git lists a file under
+    // `gen`, so the prefix read as listed and the untracked files beside it
+    // never entered the key: an edit to one replayed the old output.
+    root = await workspace(
+      { t: task("{ files: ['gen/**'] }"), u: task("{ files: ['out/**'] }") },
+      { 'gen/.gitkeep': '', 'gen/client.ts': 'v1\n', 'out/a.txt': 'a\n', 'out/b.txt': 'b1\n' },
+      'gen/*\n!gen/.gitkeep\nout/\n',
+    )
+    gitIn(root)('add', '-f', 'packages/lib/out/a.txt')
+    gitIn(root)('commit', '-q', '-m', 'force-add')
+    const t = await key('lib#t')
+    const u = await key('lib#u')
+    await writeFile(pkg('gen/client.ts'), 'v2\n')
+    await writeFile(pkg('out/b.txt'), 'b2\n')
+    expect(await key('lib#t')).not.toBe(t)
+    expect(await key('lib#u')).not.toBe(u)
+  },
+  TIMEOUT,
+)
+
+it(
+  'CONTROL: a broad glob over a listed directory still skips a file a pattern ignores',
+  async () => {
+    root = await workspace(
+      { t: task("{ files: ['src/**'] }") },
+      { 'src/x.generated.js': 'v1\n' },
+      '*.generated.js\n',
+    )
+    const t = await key('lib#t')
+    await writeFile(pkg('src/x.generated.js'), 'v2\n')
+    expect(await key('lib#t')).toBe(t)
+  },
+  TIMEOUT,
+)

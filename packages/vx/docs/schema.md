@@ -822,6 +822,9 @@ Always applied to every glob pass (regardless of what you wrote):
   an entry names the ignored path outright: a literal (`.env.local`), or
   a glob whose fixed prefix git ignores (`dist/**`, `dist/*.js`,
   `.cache/gen/**`), which is then walked on disk under that prefix only.
+  A directory git ignores but for a file it lists (`gen/*` with
+  `!gen/.gitkeep`, or `gen/` with a force-added file) counts as ignored:
+  `gen/**` reads the untracked files beside the kept one.
   Each alternative of a brace counts on its own: `{gen/a.txt,gen/b.txt}`
   names both files and `{gen,out}/**` both trees, as `gen/{a,b}.txt` does.
   Such a file is hashed from disk and never stored or restored; a
