@@ -44,7 +44,7 @@ config key or an environment variable is missing here.
 
 - **Framed output** — each task's log in its own frame, never interleaved. [page](https://vznjs.github.io/vx/features/framed-output/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Output modes** (`--output-logs`, `VX_RUN_OUTPUT_LOGS`) — full, errors-only, hash-only or none; the default follows the flow. [page](https://vznjs.github.io/vx/features/output-modes/) · post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
-- **Run summary** — one block: projects, tasks, cache, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
+- **Run summary** — one block: projects, tasks, cache, the run id `vx last` opens, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Per-task table** (`--verbosity`) — a per-task summary after the run. [page](https://vznjs.github.io/vx/features/per-task-table/) · post: [One failure, and exactly what it takes down](https://vznjs.github.io/vx/blog/when-a-build-fails/)
 - **Failed output kept for agents** — a failure's full log is saved and pointed to. [page](https://vznjs.github.io/vx/features/failed-output-kept/) · post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 - **Trace profile** (`--profile`) — Chrome-trace JSON of the run. [page](https://vznjs.github.io/vx/features/profile/) · post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
