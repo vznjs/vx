@@ -3040,7 +3040,7 @@ A broad run looks like:
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             local 1↓ 1↑
 
-  info      8 workers · local cache
+  info      8 workers · local cache · run 01a14941-c8cf
   time      5.34s · 900ms saved
 ```
 
@@ -3065,7 +3065,9 @@ local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
 `--cache-policy` uses it. `N not saved` (ran, succeeded, saved
 nothing), `N not downloaded` (outputs left in the remote store) and
 every count show only when non-zero. `vx last` names each remote
-failure on its task's row. The
+failure on its task's row. The `info` row ends with `run <id>`: the
+run's id, cut to the shortest prefix no other recorded run shares, as
+`vx last <id>` takes it. The
 `time` row is the wall time, then what the cache saved (the hits' stored
 exec times, never the restore), then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a

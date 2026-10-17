@@ -2,8 +2,8 @@
 // The terminal demo on the README and the landing: examples/basic run under
 // this checkout's vx, cold then warm, its real colored output drawn as an
 // SVG that prints line by line. Nothing in the picture is typed by hand;
-// `--check` re-runs it and fails when anything but a timing or the worker
-// count differs from the committed file (core's tests/examples.unsafe.test.ts
+// `--check` re-runs it and fails when anything but a timing, the worker
+// count or the run id differs from the committed file (core's tests/examples.unsafe.test.ts
 // runs the check, the suite that may read examples/ and spawn git).
 //
 //   bun packages/vx-docs/scripts/terminal-demo.ts          # rewrite public/demo.svg
@@ -110,13 +110,14 @@ ${body}
 `
 }
 
-/** What `--check` compares: the text and its styling, never a duration or the core count. */
+/** What `--check` compares: the text and its styling, never a duration, the core count or the run id. */
 export function normalize(svg: string): string {
   return (
     svg
       .replace(/height="\d+"|viewBox="[^"]*"|y="\d+"|style="animation-delay:[^"]*"/g, '')
       .replace(/\d+(\.\d+)?(ms|s)\b/g, 'N')
       .replace(/\d+ workers/g, 'N workers')
+      .replace(/run [0-9a-f]{8}-[0-9a-f-]+/g, 'run ID')
       // The footer drops a spread value equal to one already on the row, so
       // which of max/avg/min print is a timing too.
       .replace(

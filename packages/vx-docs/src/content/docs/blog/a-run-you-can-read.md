@@ -58,7 +58,7 @@ own frame, in the order tasks finish.
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             local 8✓
 
-  info      4 workers · local cache
+  info      4 workers · local cache · run 01a14941-c8cf
   time      23ms · 2.12s saved
 ```
 

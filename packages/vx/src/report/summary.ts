@@ -183,6 +183,8 @@ export interface RunContext {
   version: string
   /** Projects with a real task in the graph — the "affected" half of the bar. */
   packageCount: number
+  /** The run's id as `vx last` takes it (its shortest unique prefix); shown on the `info` row. */
+  runId?: string | undefined
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
   remoteCacheEnabled: boolean
@@ -415,6 +417,7 @@ export function formatSummarySection(
         `admit held ${stats.held.count} task${stats.held.count === 1 ? '' : 's'}, ${formatElapsed(stats.held.sumMs)} in all`,
       )
     }
+    if (context.runId !== undefined) info.push(`run ${context.runId}`)
     lines.push('', row('info', join(info)), timeRow)
   } else {
     lines.push('', timeRow)
