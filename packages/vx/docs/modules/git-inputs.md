@@ -57,6 +57,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   get worktreeDirty(): boolean | null
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void // a save or restore wrote these
   noteTracked(scopes: readonly string[], absPaths: readonly string[]): void // what the index lists under these dirs
+  noteTrackedLater(scopes: readonly string[], absPaths: () => Iterable<string>): void // the same, listed on the first committedIn question
   committedIn(dir: string): (abs: string) => boolean // git tracks it: never cleaned (lists an uncovered dir once)
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
