@@ -349,6 +349,11 @@ export interface MapTurboOptions {
    * path among them is keyed by a probe. Absent, none is.
    */
   ignored?: (rels: readonly string[]) => Promise<ReadonlySet<string>>
+  /**
+   * The `.tsbuildinfo` files a root-relative package's command writes,
+   * relative to the package (`tscBuildInfo`). Absent, none.
+   */
+  buildInfo?: (rel: string, command: string) => readonly string[]
 }
 
 /**
@@ -382,6 +387,15 @@ function withZeroSegments(glob: string): string[] {
   const neg = glob.startsWith('!') ? '!' : ''
   const head = zeroSegments(glob.slice(neg.length))
   return head === null ? [glob] : [glob, neg + head]
+}
+
+/** Does a positive glob of `globs` take `rel`, and no `!` give it back? */
+function covers(globs: readonly string[], rel: string): boolean {
+  const hit = (g: string) => new Bun.Glob(g).match(rel)
+  return (
+    globs.some((g) => !g.startsWith('!') && hit(g)) &&
+    !globs.some((g) => g.startsWith('!') && hit(g.slice(1)))
+  )
 }
 
 /** No glob syntax: one path, which git may ignore. */
@@ -2141,6 +2155,12 @@ function buildTask(
     return { name, todos, task, uses }
   }
   if (wild !== undefined) todos.push(wildcardCleanTodo(wild))
+  // tsc re-emits only what its buildinfo calls changed: outside the
+  // outputs it survives the clean before a miss, and the miss caches a
+  // partial `dist/` (`tsc-buildinfo.ts`).
+  if (outFiles.some((g) => !g.startsWith('!')))
+    for (const rel of opts.buildInfo?.(pkgDir, command) ?? [])
+      if (!covers(outFiles, rel)) outFiles.push(literalGlob(rel))
   // An output over the project's own package.json (trpc's builds list
   // it: tsdown rewrites `exports`) is taken back and keeps the cache, as
   // nx() does (owner, 2026-10-03). The build rewrites an input the key
