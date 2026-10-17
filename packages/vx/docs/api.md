@@ -1775,6 +1775,7 @@ What a remote's `open` is handed: the run's CI verdict and its plugin's keychain
 ```ts
 export interface RemoteOpenContext extends PluginSecrets {
   readonly ci: boolean
+  warn(message: string): void
 }
 ```
 

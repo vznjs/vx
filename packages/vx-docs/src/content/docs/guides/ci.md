@@ -257,6 +257,10 @@ A laptop needs no variable: with the URL or team known and no token, the
 first run in a terminal asks for one and keeps it in the OS keychain. On CI
 a missing token is one warning and a local-only run, never a failure;
 `--cache-policy=remote:` skips the remote and the question.
+On GitHub Actions, `turboCache({ oidc: true })` needs no stored token: with
+`permissions: id-token: write` it exchanges the job's OIDC token for a
+short-lived one and revokes it when the run ends. A fork's or Dependabot's
+pull request gets no OIDC token, so its runs stay local.
 Off CI a run reads the remote and does not write it (`local:rw,remote:r`);
 the [scopes](#cache-scopes-and-tokens) keep a pull request's writes apart.
 vx's policy alone decides: the plugins do not read Turbo's

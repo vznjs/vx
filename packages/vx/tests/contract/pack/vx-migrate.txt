@@ -47,6 +47,7 @@ src/spelled-env.ts
 src/tracked-outputs.ts
 src/tsc-buildinfo.ts
 src/turbo-cache/index.ts
+src/turbo-cache/oidc.ts
 src/turbo/index.ts
 src/turbo/turbo-map.ts
 src/vite-task/vite-task-map.ts

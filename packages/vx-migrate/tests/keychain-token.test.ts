@@ -15,6 +15,7 @@ function keychain(
   const calls: string[] = []
   const ctx: RemoteOpenContext = {
     ci: false,
+    warn: (m) => calls.push(`warn ${m}`),
     async secret({ key, prompt }) {
       calls.push(`secret ${key} | ${prompt}`)
       const v = entries.get(key)

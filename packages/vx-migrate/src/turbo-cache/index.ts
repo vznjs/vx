@@ -32,12 +32,26 @@ import {
   keychainToken,
   remoteLabel,
 } from '../remote-token.js'
+import {
+  exchangeOidc,
+  type OidcConfig,
+  oidcSettings,
+  revokeOidc,
+  type TurboOidcOptions,
+} from './oidc.js'
 
 export interface TurboCacheOptions {
   /** Base URL of the cache server (`https://cache.example.com`), or `TURBO_API`; with a token and neither, Vercel's hosted cache, as for `turbo`. */
   apiUrl?: string
-  /** Bearer token every request carries, or `TURBO_TOKEN`, `.turbo/config.json`, then the OS keychain. */
+  /** Bearer token every request carries, or `TURBO_TOKEN`, OIDC, `.turbo/config.json`, then the OS keychain. */
   token?: string
+  /**
+   * On GitHub Actions with no token or `TURBO_TOKEN`, exchange the job's
+   * OIDC token for a short-lived one, revoked when the run ends. `true`:
+   * Vercel's hosted cache with Vercel's endpoints; any other server names
+   * its `tokenUrl`. The job needs `permissions: id-token: write`.
+   */
+  oidc?: true | TurboOidcOptions
   /** `teamId` query parameter, or `TURBO_TEAMID`. Required with `signatureKey`. */
   teamId?: string
   /** `slug` query parameter (a team slug), or `TURBO_TEAM`. */
@@ -90,8 +104,12 @@ export interface TurboLocalConfig {
 
 export interface TurboCacheConfig {
   apiUrl: string
-  /** Undefined: the layer's `open` asks the OS keychain. */
+  /** Undefined: the layer's `open` exchanges OIDC or asks the OS keychain. */
   token?: string
+  /** The job's OIDC exchange, when `oidc` is set and GitHub hands the job a token. */
+  oidc?: OidcConfig
+  /** `oidc` is set on GitHub Actions, but the job has no ID-token permission. */
+  oidcMissing?: true
   teamId?: string
   teamSlug?: string
   signatureKey?: string
@@ -231,8 +249,16 @@ export function resolveTurboCacheConfig(
       ? { token: env['VERCEL_ARTIFACTS_TOKEN'], teamId: env['VERCEL_ARTIFACTS_OWNER'] }
       : { token: undefined, teamId: turboPair ? undefined : env['VERCEL_ARTIFACTS_OWNER'] }
   // Empty is unset, as Turbo reads it: a fork's pull request gets `''` for a secret.
-  const token =
-    (options.token ?? env['TURBO_TOKEN'] ?? vercel.token ?? fromFile(local.token)) || undefined
+  const given = (options.token ?? env['TURBO_TOKEN'] ?? vercel.token) || undefined
+  // OIDC sits under the variables and over the config files.
+  const idTokenUrl = env['ACTIONS_ID_TOKEN_REQUEST_URL'] || undefined
+  const idTokenBearer = env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] || undefined
+  const exchanges =
+    options.oidc !== undefined &&
+    given === undefined &&
+    idTokenUrl !== undefined &&
+    idTokenBearer !== undefined
+  const token = given ?? (exchanges ? undefined : fromFile(local.token) || undefined)
   const teamId =
     options.teamId ??
     env['TURBO_TEAMID'] ??
@@ -253,6 +279,10 @@ export function resolveTurboCacheConfig(
     (token || teamId || teamSlug ? VERCEL_API : undefined)
   )?.replace(/\/+$/, '')
   if (!apiUrl) return undefined
+  const oidc =
+    options.oidc === undefined
+      ? undefined
+      : oidcSettings(options.oidc, apiUrl === VERCEL_API, teamId ?? teamSlug)
   // The URL is printed in every refusal line, so a `user:pass@` in it would
   // leak to the log. Credentials go in the token.
   if (URL.canParse(apiUrl)) {
@@ -302,6 +332,12 @@ export function resolveTurboCacheConfig(
   return {
     apiUrl,
     ...(token !== undefined ? { token } : {}),
+    ...(oidc !== undefined && exchanges
+      ? { oidc: { ...oidc, idTokenUrl: idTokenUrl!, idTokenBearer: idTokenBearer! } }
+      : {}),
+    ...(oidc !== undefined && !exchanges && given === undefined && env['GITHUB_ACTIONS'] === 'true'
+      ? { oidcMissing: true as const }
+      : {}),
     ...(teamId ? { teamId } : {}),
     ...(teamSlug ? { teamSlug } : {}),
     ...(signatureKey !== undefined ? { signatureKey } : {}),
@@ -407,6 +443,8 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   private token: string | undefined
   /** Set by `open` when the token came from the keychain: a refusal deletes it. */
   private forget: (() => Promise<void>) | undefined
+  /** The token an OIDC exchange gave, revoked when the run ends. */
+  private exchanged: string | undefined
   private readonly keychainRemote: KeychainRemote
   /** The remote's rate limit, which every request of this client waits out. */
   private readonly cooldown = new Cooldown()
@@ -430,7 +468,22 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   }
 
   async open(ctx: RemoteOpenContext): Promise<void> {
+    if (this.config.oidcMissing)
+      ctx.warn(
+        'oidc: GitHub gave this job no OIDC token: it needs `permissions: id-token: write` (a fork or Dependabot pull request never gets one)',
+      )
     if (this.token !== undefined) return
+    if (this.config.oidc !== undefined) {
+      try {
+        this.token = await exchangeOidc(this.config.oidc, this.fetchImpl, this.wait)
+      } catch (err) {
+        throw new Error(
+          `oidc: ${err instanceof Error ? err.message : String(err)}; local cache only this run`,
+        )
+      }
+      this.exchanged = this.token
+      return
+    }
     this.token = await keychainToken(ctx, this.keychainRemote)
     this.forget = () => ctx.forgetSecret({ key: this.keychainRemote.key })
   }
@@ -551,6 +604,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       )
     }
     return res
+  }
+
+  /** Revoke the token `open` exchanged, once; a throw is the caller's warning. */
+  async revoke(): Promise<void> {
+    const token = this.exchanged
+    if (token === undefined) return
+    this.exchanged = undefined
+    await revokeOidc(this.config.oidc!, token, this.fetchImpl, this.wait)
   }
 
   async has(hash: string): Promise<boolean> {
@@ -739,6 +800,7 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
   uploadTimeoutMs: 'number',
   retries: 'number',
   preflight: 'boolean',
+  oidc: 'any',
 }
 
 /**
@@ -752,6 +814,8 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
  */
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
+  // The run's layer and warn, for `teardown` to revoke an exchanged token.
+  let opened: { layer: TurboRemoteCache; warn: (m: string) => void } | undefined
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveTurboCacheConfig(
@@ -764,7 +828,20 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
       // A signed download waits in a temp until its tag checks: in vx's
       // cache directory, which the sandbox walls, not the shared temp dir a
       // sandboxed task may read (L-45).
-      return new TurboRemoteCache(config, fetch, ctx.cacheDir)
+      const layer = new TurboRemoteCache(config, fetch, ctx.cacheDir)
+      if (config.oidc !== undefined) opened = { layer, warn: ctx.warn }
+      return layer
+    },
+    async teardown() {
+      const run = opened
+      opened = undefined
+      await run?.layer
+        .revoke()
+        .catch((err: unknown) =>
+          run.warn(
+            `[vx] plugin '@vzn/vx-migrate': oidc: ${err instanceof Error ? err.message : String(err)}; the token expires on its own`,
+          ),
+        )
     },
   })
 }

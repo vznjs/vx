@@ -42,6 +42,7 @@ embedder via `RunOptions.remoteCache`. Core builds every
 ```ts
 export interface RemoteOpenContext extends PluginSecrets {
   readonly ci: boolean
+  warn(message: string): void // one line naming the plugin; the remote stays on
 }
 
 export interface RemoteCacheLayer {
