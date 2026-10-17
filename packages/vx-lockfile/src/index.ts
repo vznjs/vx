@@ -294,7 +294,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         : { ...deps, ...folded }
     },
     async discover(ctx) {
-      const manifest = manifestReader()
+      const manifest = manifestReader(ctx.workspaceRoot)
       const read = await readImporters(ctx, manifest)
       if (read === undefined) return []
       const { importers, file } = read
@@ -335,7 +335,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     async project(config, ctx) {
       let importers = perRun.get(ctx.projects)
       if (importers === undefined) {
-        importers = importersOf(ctx, manifestReader())
+        importers = importersOf(ctx, manifestReader(ctx.workspaceRoot))
         perRun.set(ctx.projects, importers)
       }
       if ((await importers)?.has(importerOf(ctx.workspaceRoot, ctx.dir)) !== true) return
@@ -383,25 +383,41 @@ function importerOf(workspaceRoot: string, dir: string): string {
   return path.relative(workspaceRoot, dir).split(path.sep).join('/') || '.'
 }
 
-/** An importer's `package.json`, or null where it has none or it does not parse. */
-async function manifestOf(dir: string): Promise<Record<string, unknown> | null> {
+/**
+ * An importer's `package.json`, or null where it has none. One that does
+ * not parse refuses, named: read as none, a conflicted manifest lost its
+ * dependencies and its dependents hit with old bytes (Turbo and Nx refuse).
+ */
+async function manifestOf(root: string, dir: string): Promise<Record<string, unknown> | null> {
+  const file = path.join(dir, 'package.json')
+  let text: string
   try {
-    const pkg: unknown = await Bun.file(path.join(dir, 'package.json')).json()
-    return pkg !== null && typeof pkg === 'object' && !Array.isArray(pkg)
-      ? (pkg as Record<string, unknown>)
-      : null
+    text = await Bun.file(file).text()
   } catch {
     return null
   }
+  const name = path.relative(root, file).split(path.sep).join('/')
+  if (CONFLICT.test(text))
+    throw new UserError(`${name}: holds git merge conflict markers — resolve them`)
+  let pkg: unknown
+  try {
+    pkg = JSON.parse(text)
+  } catch (err) {
+    throw new UserError(`${name}: not JSON (${err instanceof Error ? err.message : String(err)})`)
+  }
+  if (pkg === null || typeof pkg !== 'object' || Array.isArray(pkg)) {
+    throw new UserError(`${name}: not a JSON object`)
+  }
+  return pkg as Record<string, unknown>
 }
 
 /** `manifestOf`, each directory read once. */
-function manifestReader(): (dir: string) => Promise<Record<string, unknown> | null> {
+function manifestReader(root: string): (dir: string) => Promise<Record<string, unknown> | null> {
   const read = new Map<string, Promise<Record<string, unknown> | null>>()
   return (dir) => {
     let pkg = read.get(dir)
     if (pkg === undefined) {
-      pkg = manifestOf(dir)
+      pkg = manifestOf(root, dir)
       read.set(dir, pkg)
     }
     return pkg
