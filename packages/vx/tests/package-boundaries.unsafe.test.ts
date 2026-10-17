@@ -144,6 +144,8 @@ describe('package boundaries', () => {
       // route directory `app/[id]` as a class — requesting all of `app`.
       'isLiteralPattern',
       'isPassStatus',
+      // Widened 2026-10-17: a plugin tells a missing `ctx.secret` from a fault.
+      'isSecretUnavailable',
       'isUserError',
       'loadProjectConfig',
       'loadResolvedProjects',

@@ -109,7 +109,7 @@ export function remoteCacheNote(
   const cache = REMOTE_CACHE[runner]
   if (signal !== undefined) {
     return declared
-      ? `${cache}(): ${signal}, so vx shares that remote cache (inert where the variable is unset).`
+      ? `${cache}(): ${signal}, so vx shares that remote cache (token: the variable, else the OS keychain).`
       : `${signal}: add ${cache}() from @vzn/vx-migrate to its plugins and vx shares that remote cache.`
   }
   return runner === 'nx' && usesNxCloud(root)

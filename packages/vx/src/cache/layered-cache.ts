@@ -36,6 +36,13 @@ import type {
 } from './cache.js'
 import type { OutputDirRow } from './cache.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
+import type { PluginSecrets } from '../util/index.js'
+
+/** What a remote's `open` is handed: the run's CI verdict and its plugin's keychain. */
+export interface RemoteOpenContext extends PluginSecrets {
+  /** The run is on CI: nobody may be asked. */
+  readonly ci: boolean
+}
 
 /**
  * What a remote cache layer must provide — THE plugin seam for remote
@@ -69,9 +76,10 @@ export interface RemoteCacheLayer {
    * write: a `--cache-policy=remote:` run, `--no-cache` and a plan
    * (`--dry`, `vx show`) never call it, so the other methods may be asked
    * without it. A throw is a warning naming the plugin and turns the
-   * remote off for the run; the run goes on.
+   * remote off for the run; the run goes on. `ctx.secret` reads the
+   * plugin's keychain and may ask on the terminal.
    */
-  open?(ctx: { readonly ci: boolean }): Promise<void>
+  open?(ctx: RemoteOpenContext): Promise<void>
   /** Existence probe: `--dry` and `--force` ask it per key when the remote cannot batch. */
   has(hash: string): Promise<boolean>
   /**

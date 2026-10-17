@@ -79,7 +79,7 @@ export {
   type GitEnumeration,
   type BlobSizeMemo,
 } from './git-inputs.js'
-export { LayeredCache, type RemoteCacheLayer } from './layered-cache.js'
+export { LayeredCache, type RemoteCacheLayer, type RemoteOpenContext } from './layered-cache.js'
 export type { ResolvedRemote } from './remote-lane.js'
 export { ScopedCache } from './scoped-cache.js'
 export {

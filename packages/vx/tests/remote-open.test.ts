@@ -34,7 +34,7 @@ function opening(fail?: string): { layer: RemoteCacheLayer; calls: string[] } {
     layer: {
       endpoint: 'mem://remote',
       async open(ctx) {
-        calls.push(`open ci=${ctx.ci}`)
+        calls.push(`open ci=${ctx.ci} secret=${typeof ctx.secret}`)
         if (fail !== undefined) throw new Error(fail)
       },
       async has(hash) {
@@ -75,7 +75,7 @@ describe('RemoteCacheLayer.open', () => {
           remoteCache: remote.layer,
         })
         expect(res.ok).toBe(true)
-        expect(remote.calls[0]).toMatch(/^open ci=(true|false)$/)
+        expect(remote.calls[0]).toMatch(/^open ci=(true|false) secret=function$/)
         expect(remote.calls.filter((c) => c.startsWith('open'))).toHaveLength(1)
         expect(remote.calls).toContain('put')
       } finally {

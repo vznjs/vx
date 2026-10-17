@@ -550,12 +550,12 @@ export default defineWorkspace({
 
 Off CI a run reads the remote and does not write it unless its policy names the remote. Give the write token only to the default branch's CI and a read-only one to laptops and pull request jobs: the server's token is the boundary (`docs/security.md` § Cache poisoning). The same holds for `nxCache()`.
 
-Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `npx turbo login && npx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, in Turbo's order: a Vercel build's `VERCEL_ARTIFACTS_TOKEN` and `VERCEL_ARTIFACTS_OWNER` (the team id, where `TURBO_TOKEN` with a team is not set), then the repo's `.turbo/config.json` (what `turbo link` writes: `apiUrl`, `teamId`, `teamSlug`, `token`), then the root `turbo.json`'s `remoteCache` (`apiUrl`, `teamId`, `teamSlug`), whose `enabled: false` declines unless the options name a cache. With no token the plugin **declines** and the run stays local.
+Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `npx turbo login && npx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, in Turbo's order: a Vercel build's `VERCEL_ARTIFACTS_TOKEN` and `VERCEL_ARTIFACTS_OWNER` (the team id, where `TURBO_TOKEN` with a team is not set), then the repo's `.turbo/config.json` (what `turbo link` writes: `apiUrl`, `teamId`, `teamSlug`, `token`), then the root `turbo.json`'s `remoteCache` (`apiUrl`, `teamId`, `teamSlug`), whose `enabled: false` declines unless the options name a cache. A team with no `apiUrl` also means Vercel's. With a URL or a team but no token, the token comes from the OS keychain ([Tokens](#tokens-and-the-os-keychain)); with none of the three the plugin **declines** and the run stays local.
 
 | Option            | Environment variable                                                                                                                     | Meaning                                                                                                                                                                                                                                                                       |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `apiUrl`          | `TURBO_API`                                                                                                                              | base URL of the cache server; default with a token: `https://vercel.com/api`; a `user:pass@` in it is refused                                                                                                                                                                 |
-| `token`           | `TURBO_TOKEN`                                                                                                                            | Bearer token on every request                                                                                                                                                                                                                                                 |
+| `token`           | `TURBO_TOKEN`                                                                                                                            | Bearer token on every request; then `.turbo/config.json`, then the OS keychain                                                                                                                                                                                                |
 | `teamId`          | `TURBO_TEAMID`                                                                                                                           | `teamId` query parameter; required with `signatureKey`                                                                                                                                                                                                                        |
 | `teamSlug`        | `TURBO_TEAM`                                                                                                                             | `slug` query parameter                                                                                                                                                                                                                                                        |
 | `signatureKey`    | `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, read only under turbo.json's `remoteCache.signature: true` (or `TURBO_SIGNATURE`), as Turbo reads it | HMAC-SHA256 key (≥ 32 bytes, used raw); a download whose tag does not verify is a miss                                                                                                                                                                                        |
@@ -581,16 +581,27 @@ export default defineWorkspace({
 })
 ```
 
-Every option falls back to the tool's own environment variable; with nothing configured the plugin **declines** and the run stays local.
+Every option falls back to the tool's own environment variable, and a missing token to the OS keychain ([Tokens](#tokens-and-the-os-keychain)); with no server the plugin **declines** and the run stays local.
 
-| Option        | Environment variable                       | Meaning                                                       |
-| ------------- | ------------------------------------------ | ------------------------------------------------------------- |
-| `server`      | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server; a `user:pass@` in it is refused |
-| `accessToken` | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token; omit for a server that runs open                |
-| `timeoutMs`   | —                                          | per-request deadline (default 30 s; a positive number of ms)  |
-| `retries`     | —                                          | resends, as `turboCache()`'s (default 1)                      |
+| Option        | Environment variable                       | Meaning                                                                       |
+| ------------- | ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `server`      | `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`       | base URL of the cache server; a `user:pass@` in it is refused                 |
+| `accessToken` | `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` | Bearer token, else the OS keychain; `''` (option or variable): an open server |
+| `timeoutMs`   | —                                          | per-request deadline (default 30 s; a positive number of ms)                  |
+| `retries`     | —                                          | resends, as `turboCache()`'s (default 1)                                      |
 
 The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefetch pass calls `get`) is a `GET` whose body is cancelled before it answers. The wire carries no producing-task duration, so a remote hit reports none.
+
+## Tokens and the OS keychain
+
+With no token from an option, a variable or a config file, both plugins read the OS keychain through core's `ctx.secret` (`Bun.secrets`: macOS Keychain, libsecret, Windows Credential Manager), service `@vzn/vx-migrate`, entry named by the endpoint and team: `https://remote.cachely.dev/v8/artifacts#cachely` (`turboCache()`, team id else slug; no `#…` without a team) or `https://cache.example.com/v1/cache` (`nxCache()`). So separate caches never share a token.
+
+- Read once per run, only by a run that uses the remote: before its first task, when its policy reads or writes the remote. `--no-cache`, `--cache-policy=remote:`, `--dry`, `vx show` and `vx info` never touch the keychain. Off CI, remote writes are already off by default ([`cli.md` § Cache control](../vx/docs/cli.md#cache-control---cache-policy---no-cache---force)).
+- Missing, on a terminal (stdin and stderr TTYs, `CI` unset): asked once, input hidden — `Token for remote.cachely.dev (cachely), saved to the OS keychain: ` — and saved. Later runs read it without asking.
+- Missing anywhere else (CI, piped), or an empty answer (Ctrl-C stops the run): one warning naming the remote and the fixes (set `TURBO_TOKEN` / `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN`, run in a terminal, or `--cache-policy=remote:` to skip the remote), and the run goes on with the local cache.
+- A keychain token the server refuses (`401` / `403`) is deleted, with the warning, so the next run asks again. A token from an option or a variable is never deleted.
+- No keychain (headless Linux without libsecret) reads as empty; it never breaks a run.
+- The token never reaches a task: the task environment does not pass `TURBO_TOKEN`, `VERCEL_ARTIFACTS_TOKEN` or Nx's variable.
 
 ## Remote-cache behaviour (both)
 

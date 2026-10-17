@@ -10,6 +10,8 @@ import type { RemoteCacheLayer } from './layered-cache.js'
 /** One remote, resolved: its wire and what the run's policy and its `access` let it do. */
 export interface ResolvedRemote {
   readonly remote: RemoteCacheLayer
+  /** The plugin that supplied it, whose keychain its `open` reads; none for an injected layer. */
+  readonly plugin?: string
   /** Cleared, with `write`, when the remote's `open` fails: off for the rest of the run. */
   read: boolean
   write: boolean

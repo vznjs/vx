@@ -20,7 +20,7 @@ import {
 import { PLUGIN_PACKAGE, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import type { TaskExecutor } from '../exec/index.js'
 import type { TaskNode, TaskOutcome, TaskStatus } from '../graph/index.js'
-import { maskedLine, nearest, UserError } from '../util/index.js'
+import { maskedLine, nearest, type PluginSecrets, SecretBroker, UserError } from '../util/index.js'
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
 import type { CiContext } from './run-context.js'
@@ -285,8 +285,12 @@ interface BaseContext {
   warn(message: string): void
 }
 
-/** What `setup` receives: the run's lifecycle, observe-only. */
-export interface PluginSetupContext extends BaseContext {
+/**
+ * What `setup` receives: the run's lifecycle, observe-only, and the
+ * plugin's keychain (`secret`, `forgetSecret`): setup runs before the
+ * status line, so a prompt there is seen.
+ */
+export interface PluginSetupContext extends BaseContext, PluginSecrets {
   /** This plugin's entries in the workspace's cache (`PluginCache`). */
   readonly cache: PluginCache
   /** The run is on CI (`CI` set, or a provider core detects). */
@@ -695,6 +699,8 @@ export interface InstallPluginsArgs {
   ci?: boolean
   /** Default null. */
   branch?: string | null
+  /** The run's secrets; default: the OS keychain and this terminal. */
+  secrets?: SecretBroker
   /** Each setup as the step `<plugin>:setup`; default: untimed. */
   step?: <T>(id: string, work: () => Promise<T>) => Promise<T>
 }
@@ -726,6 +732,7 @@ export class PluginSetupError extends UserError {
 export async function installPlugins(args: InstallPluginsArgs): Promise<() => void> {
   const { plugins, bus, workspaceRoot, cacheDir } = args
   const warn = args.warn ?? ((m) => console.error(m))
+  const secrets = args.secrets ?? new SecretBroker(args.ci ?? false, warn)
   const disposers: Array<() => void> = []
   // By object, not name: one package can export two plugins.
   const disabled = new Set<Plugin>()
@@ -754,6 +761,7 @@ export async function installPlugins(args: InstallPluginsArgs): Promise<() => vo
       cacheDir,
       warn,
       cache: args.cache?.(plugin.name) ?? absentPluginCache,
+      ...secrets.for(plugin.name),
       ci: args.ci ?? false,
       branch: args.branch ?? null,
       // A subscription made past the hooks leaves with the run like a

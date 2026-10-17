@@ -40,9 +40,15 @@ embedder via `RunOptions.remoteCache`. Core builds every
 ## Public surface
 
 ```ts
+export interface RemoteOpenContext extends PluginSecrets {
+  readonly ci: boolean
+}
+
 export interface RemoteCacheLayer {
   /** Where the artifacts live, named in every degrade warning; never a credential. */
   readonly endpoint?: string
+  /** Optional: get ready (a credential). Once per run, before the first task, only when the policy reads or writes it. */
+  open?(ctx: RemoteOpenContext): Promise<void>
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
   has(hash: string): Promise<boolean>
   /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */
@@ -82,6 +88,21 @@ them mid-upload. A plugin that must digest first reads `body.stream()`
 twice. The one
 exception is `--cache-policy=local:,remote:rw`: with no local artifact the bytes
 are packed in memory during `save` and sent as `new Blob([bytes])`.
+
+## Opening a remote
+
+`open` is asked by `run()` alone, once, in declared order, after the
+project load and before plugin `setup`, the status line and the first
+task (`openRemotes`, `orchestrator/prepare.ts`), and only for a remote the
+run's policy lets read or write. `--no-cache`, `--cache-policy=remote:`
+and a plan (`--dry`, `vx show`) never call it, so every other method may
+arrive unopened. One at a time: two remotes that ask on the terminal do
+not interleave. A throw is a warning through the remote's `onError` and
+clears its `read` and `write` (`ResolvedRemote`'s, which the lanes read
+live), so the run goes on without it; every remote off this way is no
+remote layer for the run's policy. `ctx.secret` is the supplying plugin's
+keychain (`util-secrets.md`); `@vzn/vx-migrate`'s `turboCache()` and
+`nxCache()` read a missing token from it here (owner, 2026-10-17).
 
 ## The never-fail contract
 

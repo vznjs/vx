@@ -18,6 +18,7 @@ import path from 'node:path'
 import {
   definePlugin,
   type RemoteCacheLayer,
+  type RemoteOpenContext,
   type VxPlugin,
   refuseUnknownOptions,
   type PluginOptionKinds,
@@ -28,7 +29,7 @@ import { Cooldown, withRetry } from '../remote-retry.js'
 import {
   headerValueFault,
   type KeychainRemote,
-  KeychainTokens,
+  keychainToken,
   remoteLabel,
 } from '../remote-token.js'
 
@@ -404,7 +405,8 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   readonly endpoint: string
   /** Undefined until `open` reads the keychain; a layer never opened (a plan) asks the server nothing. */
   private token: string | undefined
-  private fromKeychain = false
+  /** Set by `open` when the token came from the keychain: a refusal deletes it. */
+  private forget: (() => Promise<void>) | undefined
   private readonly keychainRemote: KeychainRemote
   /** The remote's rate limit, which every request of this client waits out. */
   private readonly cooldown = new Cooldown()
@@ -415,24 +417,22 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
     /** The most a signed body may hold before its tag is checked (a test lowers it). */
     private readonly maxSignedBody: number = MAX_SIGNED_BODY,
-    /** Where a token none of the config's sources gave comes from. */
-    private readonly keychain: KeychainTokens = new KeychainTokens(),
   ) {
     this.key = config.signatureKey === undefined ? undefined : Buffer.from(config.signatureKey)
     this.endpoint = `${config.apiUrl}/v8/artifacts`
     this.token = config.token
     const team = config.teamId ?? config.teamSlug
     this.keychainRemote = {
-      name: team === undefined ? this.endpoint : `${this.endpoint}#${team}`,
+      key: team === undefined ? this.endpoint : `${this.endpoint}#${team}`,
       label: remoteLabel(config.apiUrl, team),
       env: 'TURBO_TOKEN',
     }
   }
 
-  async open(ctx: { readonly ci: boolean }): Promise<void> {
+  async open(ctx: RemoteOpenContext): Promise<void> {
     if (this.token !== undefined) return
-    this.token = await this.keychain.token(this.keychainRemote, ctx.ci)
-    this.fromKeychain = true
+    this.token = await keychainToken(ctx, this.keychainRemote)
+    this.forget = () => ctx.forgetSecret({ key: this.keychainRemote.key })
   }
 
   private url(pathname: string): string {
@@ -543,9 +543,9 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
-      if (!this.fromKeychain)
+      if (this.forget === undefined)
         throw new Error(`HTTP ${res.status}: the token was refused; remote cache off for this run`)
-      await this.keychain.forget(this.keychainRemote)
+      await this.forget()
       throw new Error(
         `HTTP ${res.status}: the token was refused; removed it from the OS keychain, so the next run asks again; remote cache off for this run`,
       )
@@ -752,8 +752,6 @@ const TURBO_CACHE_KEYS: PluginOptionKinds<TurboCacheOptions> = {
  */
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('turboCache()', options, TURBO_CACHE_KEYS)
-  // One per declaration: a watch cycle's new layer reuses its answers.
-  const keychain = new KeychainTokens()
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveTurboCacheConfig(
@@ -766,7 +764,7 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
       // A signed download waits in a temp until its tag checks: in vx's
       // cache directory, which the sandbox walls, not the shared temp dir a
       // sandboxed task may read (L-45).
-      return new TurboRemoteCache(config, fetch, ctx.cacheDir, Bun.sleep, MAX_SIGNED_BODY, keychain)
+      return new TurboRemoteCache(config, fetch, ctx.cacheDir)
     },
   })
 }

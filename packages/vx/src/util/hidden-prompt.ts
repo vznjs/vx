@@ -1,7 +1,7 @@
-// A token asked for on the terminal: hidden, one line, only where someone can answer.
+// A secret asked for on the terminal: hidden, one line, only where someone can answer.
 
-/** Where a missing token is asked for. */
-export interface TokenTerminal {
+/** Where a missing secret is asked for. */
+export interface SecretTerminal {
   /** stdin and stderr are both terminals: someone can answer. */
   interactive(): boolean
   /** Ask `question` on stderr with the answer hidden; resolves the line typed. */
@@ -18,19 +18,21 @@ interface HiddenInput {
 }
 
 /**
- * Read one line from a raw-mode terminal, echoing nothing. Ctrl-C and
- * Ctrl-D give up (raw mode delivers no SIGINT); backspace edits.
+ * Read one line from a raw-mode terminal, echoing nothing; backspace edits.
+ * Ctrl-D answers nothing. Raw mode delivers no SIGINT, so Ctrl-C answers
+ * nothing and raises it: the run stops as it would at any other moment.
  */
 function askHidden(
   question: string,
   input: HiddenInput,
   output: { write(s: string): unknown },
+  interrupt: () => void,
 ): Promise<string> {
   output.write(question)
   const wasRaw = input.isRaw === true
   input.setRawMode(true)
   input.resume()
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     let line = ''
     const done = () => {
       input.off('data', onData)
@@ -47,7 +49,8 @@ function askHidden(
         }
         if (ch === '\u0003' || ch === '\u0004') {
           done()
-          reject(new Error('no token given'))
+          resolve('')
+          if (ch === '\u0003') interrupt()
           return
         }
         if (ch === '\u007f' || ch === '\b') line = line.replace(/.$/u, '')
@@ -62,9 +65,10 @@ function askHidden(
 export function terminalOf(
   stdin: HiddenInput & { isTTY?: boolean },
   stderr: { isTTY?: boolean; write(s: string): unknown },
-): TokenTerminal {
+  interrupt: () => void = () => process.kill(process.pid, 'SIGINT'),
+): SecretTerminal {
   return {
     interactive: () => stdin.isTTY === true && stderr.isTTY === true,
-    ask: (question) => askHidden(question, stdin, stderr),
+    ask: (question) => askHidden(question, stdin, stderr, interrupt),
   }
 }

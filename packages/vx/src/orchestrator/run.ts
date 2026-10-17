@@ -49,6 +49,7 @@ import {
   isUserError,
   detectColors,
   type ColorSupport,
+  SecretBroker,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
@@ -468,7 +469,8 @@ async function runOnBus(
           traffic: prepared.localCache.traffic,
         })
   // Before setup and the status line: a remote's `open` may ask on the terminal.
-  const remotesClosed = await openRemotes(prepared.remotes, ciContext.ci)
+  const secrets = new SecretBroker(ciContext.ci, warnOf(log))
+  const remotesClosed = await openRemotes(prepared.remotes, ciContext.ci, secrets)
   try {
     disposePlugins = await installPlugins({
       plugins: prepared.plugins,
@@ -479,6 +481,7 @@ async function runOnBus(
       cache: prepared.cacheFor,
       ci: ciContext.ci,
       branch: prepared.branch(),
+      secrets,
       step,
     })
   } catch (err) {
@@ -816,6 +819,8 @@ async function runOnBus(
 
     // Lifecycle hooks drive the default logger's dynamic status line
     // (TTY-only); custom loggers may ignore them.
+    // The status line starts here: a prompt now would be drawn over.
+    secrets.closePrompts()
     log.runStart?.({
       total: taskCount,
       concurrency,

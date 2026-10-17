@@ -548,6 +548,7 @@ export async function resolveCache(
     assertShape(plugin, 'cache', remote, REMOTE_CACHE_METHODS, 'a remote cache layer')
     const entry: ResolvedRemote = {
       remote,
+      plugin: plugin.name,
       read: policy.remoteRead,
       write: policy.remoteWrite,
       onError: (err) => ctx.warn(`[vx] plugin '${plugin.name}': ${err.message}`),

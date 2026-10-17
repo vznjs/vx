@@ -10,7 +10,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { beginRun, mark, nearest, relPosix, UserError } from '../util/index.js'
+import { beginRun, mark, nearest, relPosix, type SecretBroker, UserError } from '../util/index.js'
 import {
   Cache,
   type CacheLayer,
@@ -954,12 +954,13 @@ function refuseUnlockedConfig(
 export async function openRemotes(
   remotes: readonly ResolvedRemote[],
   ci: boolean,
+  secrets: SecretBroker,
 ): Promise<boolean> {
   let closed = false
   for (const entry of remotes) {
     if (entry.remote.open === undefined || !(entry.read || entry.write)) continue
     try {
-      await entry.remote.open({ ci })
+      await entry.remote.open({ ci, ...secrets.for(entry.plugin ?? 'vx') })
     } catch (err) {
       entry.read = false
       entry.write = false

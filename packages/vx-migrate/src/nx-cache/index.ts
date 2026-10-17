@@ -14,6 +14,7 @@
 import {
   definePlugin,
   type RemoteCacheLayer,
+  type RemoteOpenContext,
   type VxPlugin,
   refuseUnknownOptions,
   type PluginOptionKinds,
@@ -24,7 +25,7 @@ import { Cooldown, withRetry } from '../remote-retry.js'
 import {
   headerValueFault,
   type KeychainRemote,
-  KeychainTokens,
+  keychainToken,
   remoteLabel,
 } from '../remote-token.js'
 
@@ -120,28 +121,27 @@ export class NxRemoteCache implements RemoteCacheLayer {
   private readonly cooldown = new Cooldown()
   /** Undefined until `open` reads the keychain; a layer never opened (a plan) asks the server nothing. */
   private token: string | undefined
-  private fromKeychain = false
+  /** Set by `open` when the token came from the keychain: a refusal deletes it. */
+  private forget: (() => Promise<void>) | undefined
   private readonly keychainRemote: KeychainRemote
   constructor(
     private readonly config: NxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
-    /** Where a token none of the config's sources gave comes from. */
-    private readonly keychain: KeychainTokens = new KeychainTokens(),
   ) {
     this.endpoint = `${config.server}/v1/cache`
     this.token = config.accessToken
     this.keychainRemote = {
-      name: this.endpoint,
+      key: this.endpoint,
       label: remoteLabel(config.server, undefined),
       env: 'NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN',
     }
   }
 
-  async open(ctx: { readonly ci: boolean }): Promise<void> {
+  async open(ctx: RemoteOpenContext): Promise<void> {
     if (this.token !== undefined) return
-    this.token = await this.keychain.token(this.keychainRemote, ctx.ci)
-    this.fromKeychain = true
+    this.token = await keychainToken(ctx, this.keychainRemote)
+    this.forget = () => ctx.forgetSecret({ key: this.keychainRemote.key })
   }
 
   /**
@@ -199,9 +199,9 @@ export class NxRemoteCache implements RemoteCacheLayer {
         res.status === 401
           ? 'missing or invalid token'
           : 'access forbidden (the token may not read)'
-      if (!this.fromKeychain)
+      if (this.forget === undefined)
         throw new Error(`HTTP ${res.status}: ${why}; remote cache off for this run`)
-      await this.keychain.forget(this.keychainRemote)
+      await this.forget()
       throw new Error(
         `HTTP ${res.status}: ${why}; removed it from the OS keychain, so the next run asks again; remote cache off for this run`,
       )
@@ -263,14 +263,10 @@ const NX_CACHE_KEYS: PluginOptionKinds<NxCacheOptions> = {
  */
 export function nxCache(options: NxCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('nxCache()', options, NX_CACHE_KEYS)
-  // One per declaration: a watch cycle's new layer reuses its answers.
-  const keychain = new KeychainTokens()
   return definePlugin(import.meta, {
     cache(): RemoteCacheLayer | undefined {
       const config = resolveNxCacheConfig(options)
-      return config === undefined
-        ? undefined
-        : new NxRemoteCache(config, fetch, Bun.sleep, keychain)
+      return config === undefined ? undefined : new NxRemoteCache(config)
     },
   })
 }
