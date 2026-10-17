@@ -56,6 +56,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import type { Stats } from 'node:fs'
 import {
   copyFile,
   lstat,
@@ -799,6 +800,8 @@ interface Staged {
   base: string
   /** The target already holds the entry's bytes: nothing was written, and only its mode and mtime may change. */
   same?: number
+  /** `tmp` was copied beside `target`, which is on another filesystem than the staging (`crossOver`). */
+  beside?: true
 }
 
 /**
@@ -1096,6 +1099,17 @@ class Extractor {
     metaFor: (name: string) => [mode: number, mtimeMs: number | undefined],
   ): Promise<void> {
     await this.drain()
+    // One stat per directory, shared by the filesystem check and the group.
+    const dirStats = new Map<string, Stats>()
+    const statDir = (dir: string): Stats => {
+      let st = dirStats.get(dir)
+      if (st === undefined) {
+        st = statSync(dir)
+        dirStats.set(dir, st)
+      }
+      return st
+    }
+    await this.crossOver(statDir)
     const created = new Map<boolean, { mode: number; uid: number; gid: number }>()
     // The group a file written in place would take, by directory: a setgid
     // directory's on Linux, every directory's on BSD/macOS. A file staged
@@ -1104,42 +1118,94 @@ class Extractor {
     let n = 0
     let renames: Promise<void>[] = []
     const checked = new Set<string>()
-    for (const s of this.staged) {
-      await this.assertStillContained(s, checked)
-      const [mode, mtimeMs] = metaFor(s.name)
-      if (s.same !== undefined) {
-        keep(s, s.same, mode, mtimeMs)
-        continue
-      }
-      let made = created.get(s.streamed)
-      if (made === undefined) {
-        const st = statSync(s.tmp)
-        made = { mode: st.mode & 0o777, uid: st.uid, gid: st.gid }
-        created.set(s.streamed, made)
-      }
-      if (restoredMode(mode) !== made.mode) chmodSync(s.tmp, restoredMode(mode))
-      // A Date, not seconds: Bun reads a negative number of seconds as
-      // "now", and a Date before 1970 as itself (Bun 1.4.2).
-      const t = mtimeMs === undefined ? undefined : new Date(mtimeMs)
-      if (t !== undefined) utimesSync(s.tmp, t, t)
-      if (s.staged) {
-        const dir = path.dirname(s.target)
-        let gid = setgid.get(dir)
-        if (gid === undefined) {
-          const st = statSync(dir)
-          gid = INHERITS_GROUP || (st.mode & 0o2000) !== 0 ? st.gid : null
-          setgid.set(dir, gid)
+    try {
+      for (const s of this.staged) {
+        await this.assertStillContained(s, checked)
+        const [mode, mtimeMs] = metaFor(s.name)
+        if (s.same !== undefined) {
+          keep(s, s.same, mode, mtimeMs)
+          continue
         }
-        if (gid !== null && gid !== made.gid) chownSync(s.tmp, made.uid, gid)
+        if (s.beside === true) {
+          chmodSync(s.tmp, restoredMode(mode))
+          if (mtimeMs !== undefined) utimesSync(s.tmp, new Date(mtimeMs), new Date(mtimeMs))
+          renames.push(handled(this.place(s, mode, undefined)))
+          if (++n % RENAME_BATCH === 0) {
+            await settle(renames)
+            renames = []
+          }
+          continue
+        }
+        let made = created.get(s.streamed)
+        if (made === undefined) {
+          const st = statSync(s.tmp)
+          made = { mode: st.mode & 0o777, uid: st.uid, gid: st.gid }
+          created.set(s.streamed, made)
+        }
+        if (restoredMode(mode) !== made.mode) chmodSync(s.tmp, restoredMode(mode))
+        // A Date, not seconds: Bun reads a negative number of seconds as
+        // "now", and a Date before 1970 as itself (Bun 1.4.2).
+        const t = mtimeMs === undefined ? undefined : new Date(mtimeMs)
+        if (t !== undefined) utimesSync(s.tmp, t, t)
+        if (s.staged) {
+          const dir = path.dirname(s.target)
+          let gid = setgid.get(dir)
+          if (gid === undefined) {
+            const st = statDir(dir)
+            gid = INHERITS_GROUP || (st.mode & 0o2000) !== 0 ? st.gid : null
+            setgid.set(dir, gid)
+          }
+          if (gid !== null && gid !== made.gid) chownSync(s.tmp, made.uid, gid)
+        }
+        renames.push(handled(this.place(s, mode, t)))
+        if (++n % RENAME_BATCH === 0) {
+          await settle(renames)
+          renames = []
+        }
       }
-      renames.push(this.place(s, mode, t))
-      if (++n % RENAME_BATCH === 0) {
-        await settle(renames)
-        renames = []
-      }
+    } catch (err) {
+      // Every rename in flight lands or fails before `abort` cleans up
+      // (a fuzz run on macOS, 2026-10-17).
+      await Promise.allSettled(renames)
+      throw err
     }
     await settle(renames)
     this.staged.length = 0
+  }
+
+  /**
+   * Copy every staged entry whose target is on another filesystem than
+   * `.vx/tmp/` to a temp beside its target, before any rename: a rename
+   * there would fail EXDEV, and copying at the rename, one file at a time,
+   * left the files renamed before a failed copy (ENOSPC) new and the rest
+   * old (Growth's parity run, 2026-10-16). A failed copy throws with
+   * nothing renamed, and `abort` removes the temps made so far.
+   */
+  private async crossOver(statDir: (dir: string) => Stats): Promise<void> {
+    const dev = (dir: string): number => statDir(dir).dev
+    const cross = this.staged.filter(
+      (s) =>
+        s.staged &&
+        s.same === undefined &&
+        dev(path.dirname(s.tmp)) !== dev(path.dirname(s.target)),
+    )
+    for (let i = 0; i < cross.length; i += RENAME_BATCH) {
+      await settle(
+        cross.slice(i, i + RENAME_BATCH).map(async (s) => {
+          const side = siblingTemp(s.target)
+          try {
+            await copyFile(s.tmp, side)
+          } catch (err) {
+            await unlink(side).catch(() => undefined)
+            throw err
+          }
+          const staged = s.tmp
+          s.tmp = side
+          s.beside = true
+          await unlink(staged).catch(() => undefined)
+        }),
+      )
+    }
   }
 
   /**
@@ -1246,6 +1312,16 @@ class Extractor {
  * pool they tie it, and 2,000 files in one restore are faster.
  */
 const RENAME_BATCH = 64
+
+/**
+ * `p`, its failure marked handled at once: `settle` reads it later, and a
+ * rename that fails while the commit awaits something else is not an
+ * unhandled rejection that fails the process.
+ */
+function handled(p: Promise<void>): Promise<void> {
+  p.catch(() => undefined)
+  return p
+}
 
 /** Wait for every rename, then throw the first failure: none is left in flight for `abort`. */
 async function settle(renames: readonly Promise<void>[]): Promise<void> {

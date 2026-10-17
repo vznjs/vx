@@ -407,7 +407,9 @@ On a hit:
    whole archive has staged is each renamed over the file it replaces. A
    file that already holds the entry's bytes (compared byte for byte, up
    to 4 MiB) is left in place, only its mode and mtime set. A
-   target on another filesystem goes through a temp beside it; a file
+   target on another filesystem is first copied to a temp beside it,
+   every such copy before any rename, so a copy that fails (a full disk
+   there) changes nothing; a file
    takes the group its directory gives new files (setgid on Linux, any
    directory on macOS), ACLs are not copied. The next run removes
    the staging a killed run left. A process reading the output tree during the

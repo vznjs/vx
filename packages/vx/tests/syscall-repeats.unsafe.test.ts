@@ -317,17 +317,17 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       // The link check and the walk's absent-prefix probe, once each (the
       // clean takes the walk's answer), then the extractor's containment
       // probe, which an lstat answers; the directory made for the entry;
-      // at the rename, its realpath (a directory swapped for a link out
-      // since staging carries no rename out) and its stat (a setgid
-      // directory's group, the entry having staged in `.vx/tmp/`); the
-      // run-end snapshot of the restored directory.
+      // its stat before any rename (its filesystem against `.vx/tmp/`'s,
+      // and a setgid directory's group); at the rename, its realpath (a
+      // directory swapped for a link out since staging carries no rename
+      // out); the run-end snapshot of the restored directory.
       expect(on(calls, path.join(proj, 'dist'))).toEqual([
         'lstat',
         'lstat',
         'lstat',
         'mkdir',
-        'openat',
         'stat',
+        'openat',
         'lstat',
         'openat',
       ])
