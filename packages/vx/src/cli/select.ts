@@ -36,6 +36,7 @@ import {
 } from '../util/index.js'
 import {
   claimedAffected,
+  claimedExtraFiles,
   fingerprintClaims,
   gitOfDiscovery,
   hasHook,
@@ -123,6 +124,7 @@ async function workspaceFingerprintClaims(
   return {
     files: new Set(claims.keys()),
     affected: (change) => claimedAffected(claims.get(change.file)!, change, ctx),
+    extraFiles: (file, bytes) => claimedExtraFiles(claims.get(file)!, file, bytes),
   }
 }
 

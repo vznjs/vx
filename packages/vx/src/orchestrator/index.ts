@@ -77,6 +77,7 @@ export {
   applyProjectHooks,
   applyScheduleHooks,
   claimedAffected,
+  claimedExtraFiles,
   fingerprintClaims,
   hasHook,
   REMOTE_CACHE_METHODS,

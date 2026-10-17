@@ -641,6 +641,10 @@ export interface FingerprintChange {
   readonly file: string
   readonly before: Uint8Array | null
   readonly after: Uint8Array | null
+  readonly extras?: ReadonlyMap<
+    string,
+    { readonly before: Uint8Array | null; readonly after: Uint8Array | null }
+  >
 }
 ```
 
@@ -657,6 +661,7 @@ export interface FingerprintClaim {
     change: FingerprintChange,
     ctx: FingerprintContext,
   ): Iterable<string> | undefined | Promise<Iterable<string> | undefined>
+  extraFiles?(file: string, bytes: Uint8Array): readonly string[]
 }
 ```
 

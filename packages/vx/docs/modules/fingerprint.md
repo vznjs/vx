@@ -29,15 +29,28 @@ claimed, nothing is read.
 
 `bun.lock` names a patch by path (`patchedDependencies`), never by its
 content, so an edited patch leaves it byte-identical while `bun install`
-applies the new one. `bun()` folds each named patch itself (item 1014);
-`--affected` widens on a named patch's edit as on the lockfile's when a
-plugin claims `bun.lock` (`affected.ts`). A lockfile without the key is
-not parsed.
+applies the new one. `bun()` folds each named patch itself (item 1014).
+On a named patch's edit, `--affected` asks the plugin that claims
+`bun.lock` about `bun.lock`, with the patch's bytes at the base ref and
+in the working tree in `change.extras`, when the claim names the patch
+through `extraFiles`. `bun()` selects only the projects that reach the
+patched package. A claimant without `extraFiles` widens to every
+project (`affected.ts`). A lockfile without the key is not parsed.
+
+The same holds for any file a claim's `extraFiles` names, and for a
+directory it names (a `file:` dependency pnpm or bun copies at install):
+a changed path outside every project below the root loads the claims,
+and one equal to or under a named path asks the claimant about its
+lockfile. A directory's two sides are not its bytes; they differ, so only
+the projects reaching it move. A diff inside the projects loads no claim.
 
 ## Claiming a file (`VxPlugin.fingerprint`)
 
 A plugin that reads a root file declares `fingerprint: { files:
-['pnpm-lock.yaml'], affected(change, ctx) }`. The schema refuses a
+['pnpm-lock.yaml'], affected(change, ctx), extraFiles?(file, bytes) }`
+(`extraFiles`: the files a claimed file names that the plugin's key
+reads too, such as `bun.lock`'s patches and a `file:` dependency's
+directory). The schema refuses a
 second claimant for one file. `fingerprintClaims(plugins)` in
 `plugin-host.ts` indexes the claims. `--affected`
 (`workspace/affected.ts`) asks the claimant's `affected` with the file's

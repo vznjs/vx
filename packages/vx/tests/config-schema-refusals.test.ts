@@ -182,7 +182,7 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
     const claim = { files: [], affected: () => new Set<string>() }
     const p = testPlugin('sweep-653-fp', { fingerprint: claim as never })
     expect(refusal({ plugins: [p] })).toBe(
-      `${WS}: \`plugins[0].fingerprint\` of plugin '${p.name}' must be { files: [name, …], affected: function }`,
+      `${WS}: \`plugins[0].fingerprint\` of plugin '${p.name}' must be { files: [name, …], affected: function, extraFiles?: function }`,
     )
     // Control: the same claim over a file core folds validates.
     const ok = testPlugin('sweep-653-fp-ok', {

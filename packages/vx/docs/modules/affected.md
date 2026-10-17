@@ -55,7 +55,11 @@ export interface FingerprintClaims {
     file: string
     before: Uint8Array | null
     after: Uint8Array | null
+    /** Changed files the claimant names (a patch, a `file:` directory), each side. */
+    extras?: ReadonlyMap<string, { before: Uint8Array | null; after: Uint8Array | null }>
   }): Promise<ReadonlySet<string> | undefined>
+  /** The files a claimed file names that its claimant keys too; absent = it reads none. */
+  extraFiles?(file: string, bytes: Uint8Array): readonly string[] | undefined
 }
 
 /** Is `ref` the current HEAD? A base that is already HEAD selects nothing,

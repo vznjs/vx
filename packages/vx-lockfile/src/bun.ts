@@ -232,6 +232,27 @@ export function patchFiles(text: string): string[] {
 }
 
 /**
+ * The root-relative paths of `file:` dependencies (`dep@file:vendor/dep`).
+ * Bun copies the directory at install and records only its path, so an
+ * edit in it moved no key (Growth, file-dir-dep-stale.sh): the claim hashes
+ * its content like a patch's.
+ */
+export function fileDeps(lock: Lockfile): string[] {
+  const out = new Set<string>()
+  for (const e of lock.packages.values()) {
+    const dir = fileDir(e.id)
+    if (dir !== undefined) out.add(dir)
+  }
+  return [...out].sort()
+}
+
+/** `dep@file:vendor/dep` → `vendor/dep`. */
+function fileDir(id: string): string | undefined {
+  const at = id.indexOf('@file:', 1)
+  return at === -1 ? undefined : id.slice(at + '@file:'.length)
+}
+
+/**
  * Every workspace package's digest (by dir): the lockfile as one graph —
  * a node per node_modules path, its material the id + resolution, an edge
  * per resolved dependency — folded by core's `reachDigests`. A workspace
@@ -260,6 +281,10 @@ export function importerDigests(
   // every project reaching it with the same bytes installed (D-140). Where
   // it sits still decides what it resolves; that is the edges.
   for (const [p, e] of lock.packages) node(p, `${installName(p)}\0${e.id}\0${e.resolution}`)
+  for (const [p, e] of lock.packages) {
+    const dir = fileDir(e.id)
+    if (dir !== undefined) material[index.get(p)!] += `\nfile\0${files.get(dir) ?? ''}`
+  }
   // A patch is part of the package it patches: an edit to one only `b`
   // reaches re-keyed every workspace while it was install-wide (D-143).
   // One that names no entry stays install-wide, so it still moves a key.

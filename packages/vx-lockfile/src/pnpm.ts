@@ -25,6 +25,8 @@ export interface Lockfile {
   readonly resolutions: ReadonlyMap<string, string>
   /** `name` or `name@version` → patch hash */
   readonly patches: ReadonlyMap<string, string>
+  /** package key → the root-relative directory a `file:` dependency installs from */
+  readonly directories: ReadonlyMap<string, string>
   /** Material every importer folds: the lockfile version and the install-wide knobs. */
   readonly global: string
 }
@@ -79,10 +81,15 @@ export function parseLockfile(text: string): Lockfile {
 
   const snapshots = new Map<string, ReadonlyMap<string, string>>()
   const resolutions = new Map<string, string>()
+  const directories = new Map<string, string>()
   const packages = record(doc['packages']) ?? {}
   for (const [key, entry] of Object.entries(packages)) {
     const e = record(entry) ?? {}
     resolutions.set(key, resolutionOf(e))
+    const r = record(e['resolution'])
+    if (r?.['type'] === 'directory' && typeof r['directory'] === 'string') {
+      directories.set(key, r['directory'])
+    }
     if (major < 9) snapshots.set(key, depsOf(e))
   }
   if (major >= 9) {
@@ -112,7 +119,7 @@ export function parseLockfile(text: string): Lockfile {
       ? { lockfileVersion: version, rest }
       : { lockfileVersion: version, rest, leading },
   )
-  return { version, importers, snapshots, resolutions, patches, global }
+  return { version, importers, snapshots, resolutions, patches, directories, global }
 }
 
 /** `dependencies` + `devDependencies` + `optionalDependencies` of an entry, as name → version. */
@@ -223,8 +230,11 @@ function packageName(lock: Lockfile, snapshot: string): string {
  * importer's node, so what project A can import through workspace
  * package B is B's whole reach.
  */
-export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
-  const g = buildGraph(lock)
+export function importerDigests(
+  lock: Lockfile,
+  files: ReadonlyMap<string, string> = new Map(),
+): ReadonlyMap<string, string> {
+  const g = buildGraph(lock, files)
   const hashes = reachDigests(g)
   const out = new Map<string, string>()
   // The global digest rides as DATA: Bun's xxHash3 reads only the low 32
@@ -250,7 +260,16 @@ function importerNode(dir: string): string {
   return `importer\0${dir}`
 }
 
-function buildGraph(lock: Lockfile): Graph {
+/**
+ * The directories `file:` dependencies install from. pnpm copies one at
+ * install and records only its path, so an edit in it moved no key
+ * (Growth, file-dir-dep-stale.sh): the claim hashes its content.
+ */
+export function fileDeps(lock: Lockfile): string[] {
+  return [...new Set(lock.directories.values())].sort()
+}
+
+function buildGraph(lock: Lockfile, files: ReadonlyMap<string, string>): Graph {
   const index = new Map<string, number>()
   const material: string[] = []
   const edges: number[][] = []
@@ -268,7 +287,9 @@ function buildGraph(lock: Lockfile): Graph {
     const resolution = lock.resolutions.get(key) ?? lock.resolutions.get(packageKey(key)) ?? ''
     const patch =
       lock.patches.get(packageKey(key)) ?? lock.patches.get(packageName(lock, key)) ?? ''
-    node(key, `${key}\0${resolution}\0${patch}`)
+    const dir = lock.directories.get(key) ?? lock.directories.get(packageKey(key))
+    const content = dir === undefined ? '' : `\0file\0${files.get(dir) ?? ''}`
+    node(key, `${key}\0${resolution}\0${patch}${content}`)
   }
   // Each importer folds its own dir: with one material for all, two
   // importers that link each other were told apart by their edges alone,
