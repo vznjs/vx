@@ -674,18 +674,23 @@ export function adoptionNext(
   return `${installArgv(root, pm, pinned).join(' ')} && ${vx} lock && ${run}`
 }
 
-/** `build` when the runner's config names it, else the first task it names. */
+/**
+ * `build` when the runner's config names it, else the first task name it
+ * names. A key with `:` is an Nx executor (`@angular/build:application`)
+ * and one with `#` a Turbo package task: neither is a task to run `--all`.
+ */
 function firstTask(file: string, runner: 'turbo' | 'nx'): string {
-  let text: string
+  let json: Record<string, unknown> | null
   try {
-    text = readFileSync(file, 'utf8')
+    json = Bun.JSONC.parse(readFileSync(file, 'utf8')) as Record<string, unknown> | null
   } catch {
     return 'build'
   }
-  if (/"build"\s*:/.test(text)) return 'build'
-  const field = runner === 'turbo' ? '(?:tasks|pipeline)' : 'targetDefaults'
-  const first = new RegExp(`"${field}"\\s*:\\s*\\{\\s*"([^"]+)"`).exec(text)?.[1]
-  return first ?? 'build'
+  const field =
+    runner === 'turbo' ? (json?.['tasks'] ?? json?.['pipeline']) : json?.['targetDefaults']
+  const names = Object.keys(typeof field === 'object' && field !== null ? field : {})
+  if (names.includes('build')) return 'build'
+  return names.find((n) => !n.includes(':') && !n.includes('#')) ?? 'build'
 }
 
 /**

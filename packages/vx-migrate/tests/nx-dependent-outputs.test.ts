@@ -62,3 +62,51 @@ it('control: with the producer migrated, the edge folds its key and the reader s
   expect(t.task!['cache']).toBeDefined()
   expect(t.todos.join('\n')).not.toContain('dependsOn')
 })
+
+it('a reader whose `^build` reaches no migrated project runs uncached too', async () => {
+  // nx-examples: the codegen's `^build` producer is an implicit dependency
+  // on the .NET ProductsApi, which is no node once @nx/dotnet fails to load.
+  // Another project's `build` kept the edge through the mapping, and the
+  // graph left it reaching nothing (Growth, nx-codegen-dropped-producer.sh).
+  const metas = [await meta('types'), await meta('ui')]
+  const nodes: Record<string, unknown> = {
+    types: {
+      data: { root: 'libs/types', targets: { codegen: { ...codegen, dependsOn: ['^build'] } } },
+    },
+    ui: { data: { root: 'libs/ui', targets: { build: { command: 'b', cache: true } } } },
+  }
+  const m = await mapNxWorkspace(
+    root,
+    metas,
+    { nodes, dependencies: { types: [], ui: [] } } as NxGraph,
+    {
+      cacheable: new Set(),
+    },
+  )
+  const t = m.projects.find((p) => p.name === 'types')!.tasks.find((t) => t.name === 'codegen')!
+  expect(t.task!['cache']).toBeUndefined()
+  expect(t.todos).toContain(
+    'reads `**/obj/ProductsApi.json` from the outputs of the tasks it depends on, and no task it depends on is migrated (dependsOn ["^build"]) — uncached here, so it never replays output generated from an older input; migrate the producer and depend on it to cache this task',
+  )
+})
+
+it('control: a `^build` that reaches a migrated dependency keeps the reader cached', async () => {
+  const types = await meta('types')
+  const pkg = { name: 'types', dependencies: { ui: '*' } }
+  await writeFile(path.join(types.dir, 'package.json'), JSON.stringify(pkg))
+  const metas = [{ ...types, packageJson: pkg as never }, await meta('ui')]
+  const nodes: Record<string, unknown> = {
+    types: {
+      data: { root: 'libs/types', targets: { codegen: { ...codegen, dependsOn: ['^build'] } } },
+    },
+    ui: { data: { root: 'libs/ui', targets: { build: { command: 'b', cache: true } } } },
+  }
+  const graph = {
+    nodes,
+    dependencies: { types: [{ source: 'types', target: 'ui', type: 'static' }], ui: [] },
+  }
+  const m = await mapNxWorkspace(root, metas, graph as NxGraph, { cacheable: new Set() })
+  const t = m.projects.find((p) => p.name === 'types')!.tasks.find((t) => t.name === 'codegen')!
+  expect(t.task!['cache']).toBeDefined()
+  expect(t.todos.join('\n')).not.toContain('dependsOn')
+})
