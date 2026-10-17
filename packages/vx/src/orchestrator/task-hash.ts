@@ -1,17 +1,20 @@
 import { lstatSync } from 'node:fs'
 import path from 'node:path'
 import type { TaskConfig } from '../config.js'
-import type { ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
+import type { FoldMemo, ProjectFilesCache, WorkspaceFilesCache } from '../cache/index.js'
 import {
   ABSENT_INPUT,
   absentOr,
   addedInput,
+  filesToken,
+  foldHead,
   type InputListing,
   type CacheKeyInput,
   type CacheLayer,
   FILE_HASH_RACY_MS,
   racyWindowMs,
   resolveInputs,
+  type ResolveInputsArgs,
   type GitFilesCache,
   type TaskInputComponent,
   WORKSPACE_OUTPUT_PREFIX,
@@ -41,15 +44,18 @@ export interface HashCache {
   workspaceRuntime: Map<string, Promise<string>>
   workspaceFiles: WorkspaceFilesCache
   projectFiles: ProjectFilesCache
+  /** Each task's last key by its probe, across runs (the local cache's `FoldMemo`). */
+  folds?: FoldMemo | undefined
 }
 
-export function createHashCache(): HashCache {
+export function createHashCache(folds?: FoldMemo): HashCache {
   return {
     taskConfig: new WeakMap(),
     runtime: new Map(),
     workspaceRuntime: new Map(),
     workspaceFiles: new Map(),
     projectFiles: new Map(),
+    folds,
   }
 }
 
@@ -93,11 +99,30 @@ export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
   if (isKeyless(args.node.config)) return keylessHash(args.node.id)
   const end = span('task hash')
   try {
-    return await args.cache.key((await resolveKeyInput(args)).input)
+    const folds = args.captureInto === undefined ? args.hashCache?.folds : undefined
+    const token = folds === undefined ? undefined : filesToken(inputsArgs(args))
+    if (folds === undefined || token === undefined) {
+      return await args.cache.key((await resolveKeyInput(args)).input)
+    }
+    // The files fold last, so a fold up to them seeded into their token
+    // names the key the whole fold would: the files go unresolved.
+    const head = foldHead((await resolveKeyInput(args, true)).input)
+    const probe = xxh3hex(`${FOLD_MEMO_VERSION}\0${token}`, head)
+    const known = folds.get(args.node.id, probe)
+    if (known !== undefined) return known
+    const key = await args.cache.key((await resolveKeyInput(args)).input)
+    folds.set(args.node.id, probe, key)
+    return key
   } finally {
     end()
   }
 }
+
+/**
+ * Moves every remembered fold: bump it when what a token stands for
+ * changes, as when `resolveFiles` picks other files from the same records.
+ */
+const FOLD_MEMO_VERSION = 'fold-memo-v1'
 
 /**
  * A task that runs a command and declares no `inputs`: nothing says what
@@ -268,19 +293,16 @@ export async function movedInput(
   return undefined
 }
 
-async function resolveKeyInput(
-  args: ComputeHashArgs,
-): Promise<{ input: CacheKeyInput; listings: InputListing[] }> {
+/** What `resolveInputs` is asked for a task's key. */
+function inputsArgs(args: ComputeHashArgs): ResolveInputsArgs {
   const cfg = args.node.config
   const cacheCfg = cfg.cache
-  const outputs = cacheCfg?.outputs.files ?? []
-
-  const resolved = await resolveInputs({
+  return {
     projectDir: args.node.projectDir,
     workspaceRoot: args.workspaceRoot,
     envSource: process.env,
     inputs: cfg.inputs,
-    ownOutputs: outputs,
+    ownOutputs: cacheCfg?.outputs.files ?? [],
     ownWorkspaceOutputs: cacheCfg?.outputs.workspaceFiles ?? [],
     nestedProjectDirs: args.nestedProjectDirs,
     ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
@@ -293,6 +315,17 @@ async function resolveKeyInput(
           projectFilesCache: args.hashCache.projectFiles,
         }
       : {}),
+  }
+}
+
+async function resolveKeyInput(
+  args: ComputeHashArgs,
+  skipFiles = false,
+): Promise<{ input: CacheKeyInput; listings: InputListing[] }> {
+  const cfg = args.node.config
+  const resolved = await resolveInputs({
+    ...inputsArgs(args),
+    ...(skipFiles ? { skipFiles } : {}),
   }).catch((err: unknown) => {
     // A failed probe's message quotes its command and output, and the probe
     // runs in vx's own environment: `echo $NPM_TOKEN` printed the token in

@@ -34,7 +34,8 @@ export {
   SCHEMA_VERSION,
   vxCacheEntries,
 } from './cache.js'
-export { ABSENT_INPUT, absentOr, CACHE_VERSION } from './key-fold.js'
+export { ABSENT_INPUT, absentOr, CACHE_VERSION, foldHead } from './key-fold.js'
+export type { FoldMemo } from './fold-memo.js'
 export { measureFsClockLag, setFsClockLag } from './fs-clock.js'
 export { filesBehind } from './linked-inputs.js'
 export {
@@ -46,7 +47,9 @@ export {
   declaresInput,
   namedOutright,
   workspaceFilesReachInto,
+  filesToken,
   resolveInputs,
+  type ResolveInputsArgs,
   resolveOutputTree,
   resolveOutputs,
   resolveWorkspaceOutputs,

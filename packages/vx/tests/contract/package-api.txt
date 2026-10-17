@@ -23,6 +23,7 @@ export class Cache implements CacheLayer {
   rememberBlobSizes(sizes: ReadonlyMap<string, number>): void
   blobVerdict(digest: string): string[] | undefined
   rememberBlobVerdict(digest: string, paths: readonly string[]): void
+  foldMemo(): FoldMemo
   key(input: CacheKeyInput): Promise<string>
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
@@ -95,6 +96,16 @@ export class FingerprintWatch {
   moved(): readonly string[] | undefined
   say(log: Logger): void
 }
+== class FoldMemo (src/cache/fold-memo.ts)
+export class FoldMemo {
+  constructor(
+    private readonly db: Database,
+    private readonly write: boolean,
+  ) {}
+  get(taskId: string, probe: string): string | undefined
+  set(taskId: string, probe: string, key: string): void
+  flush(cutoff: number, now: number = Date.now()): void
+}
 == class GitFilesCache (src/cache/git-inputs.ts)
 export class GitFilesCache extends Map<string, readonly string[]> {
   noteTracked(scopes: readonly string[], absPaths: readonly string[]): void
@@ -112,6 +123,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
+  filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined
+  noteFilesDigest(projectDir: string, snapshot: readonly string[], digest: string): void
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined
   setOids(projectDir: string, oids: Map<string, string>): void
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
@@ -747,6 +760,7 @@ export interface HashCache {
   workspaceRuntime: Map<string, Promise<string>>
   workspaceFiles: WorkspaceFilesCache
   projectFiles: ProjectFilesCache
+  folds?: FoldMemo | undefined
 }
 == type HeldPersistent (src/orchestrator/options.ts)
 export interface HeldPersistent {

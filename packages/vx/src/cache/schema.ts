@@ -140,6 +140,14 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       content_hash TEXT NOT NULL,
       seen_at      INTEGER NOT NULL
     );
+    -- v42: each task's last key by its fold up to the files and a token of
+    -- the files' git records (fold-memo.ts). A memo: the KEY is unchanged.
+    CREATE TABLE IF NOT EXISTS main.fold_memo (
+      task_id TEXT PRIMARY KEY,
+      probe   TEXT NOT NULL,
+      key     TEXT NOT NULL,
+      seen_at INTEGER NOT NULL
+    );
     -- The size of each index blob the enumeration checked against the
     -- worktree size git recorded (A-60). Fixed for its OID, so a warm
     -- run asks git for none; swept with file_hashes by seen_at, the

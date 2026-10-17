@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v41",
+    "version": "v42",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -77,6 +77,13 @@
       "ino          INTEGER NOT NULL,",
       "content_hash TEXT NOT NULL,",
       "seen_at      INTEGER NOT NULL",
+      ")",
+      "",
+      "CREATE TABLE fold_memo (",
+      "task_id TEXT PRIMARY KEY,",
+      "probe   TEXT NOT NULL,",
+      "key     TEXT NOT NULL,",
+      "seen_at INTEGER NOT NULL",
       ")",
       "",
       "CREATE TABLE invocations (",

@@ -65,6 +65,7 @@ export interface ResolveInputsArgs {
   runtimeScope?: string // a task id: both memos above answer this task's probes apart from every other's (X-34)
   workspaceFilesCache?: WorkspaceFilesCache // per-run memo of `inputs.workspaceFiles` per declaration
   projectFilesCache?: ProjectFilesCache // per-run memo of `inputs.files` per project + declaration
+  skipFiles?: boolean // resolve no files: the caller folds them from a `filesToken` memo
 }
 
 export type WorkspaceFilesCache = Map<
@@ -95,6 +96,9 @@ export function addedInput(
 ): string | undefined
 
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs>
+
+// What a task's files fold to is a function of this token, or undefined (only resolving says).
+export function filesToken(args: ResolveInputsArgs): string | undefined
 
 export async function resolveOutputs(args: {
   projectDir: string
@@ -193,6 +197,16 @@ export function sweepStaging(workspaceRoot: string): void
 // the process keeps its own (C-65).
 export function stopRuntimeProbes(...memos: readonly Map<string, Promise<string>>[]): void
 ```
+
+`filesToken` names what `resolveFiles` would resolve and the key would
+fold for a task's files without resolving them: the project's
+`filesDigest` (git-inputs.md), the workspace root and the declaration
+`resolveFiles` keys its own memo on. It is undefined for a task with
+`workspaceFiles`, a declaration that names a gitignored path outright,
+and a partition holding anything the enumeration did not vouch for (a
+dirty, untracked, linked or undecodable file, or a path a run already
+marked changed). `computeTaskHash` keys the fold memo on it
+(task-hash.md).
 
 ## File resolution rules
 

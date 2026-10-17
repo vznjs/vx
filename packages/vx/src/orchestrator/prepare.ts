@@ -513,7 +513,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // cycle under `vx watch` (item 1029). run() owns both only once this
   // returns.
   try {
-    const hashCache = createHashCache()
+    const hashCache = createHashCache(localCache.foldMemo())
     const fingerprintWatch = new FingerprintWatch(
       workspaceRoot,
       claimed,

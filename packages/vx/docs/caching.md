@@ -1573,7 +1573,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v41', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v42', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes and plugin_blobs live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1671,6 +1671,17 @@ CREATE TABLE file_hashes (
   ino          INTEGER NOT NULL,
   content_hash TEXT NOT NULL,
   seen_at      INTEGER NOT NULL
+);
+
+-- v42: each task's last key by a probe of the fold up to its files and
+-- its files' git records, so a warm task's key is read back, not folded
+-- again (src/cache/fold-memo.ts). A pure memo: rows unwritten for 30 days
+-- go at a writing close.
+CREATE TABLE fold_memo (
+  task_id TEXT PRIMARY KEY,
+  probe   TEXT NOT NULL,
+  key     TEXT NOT NULL,
+  seen_at INTEGER NOT NULL
 );
 
 -- The size of each index blob the enumeration checked against the

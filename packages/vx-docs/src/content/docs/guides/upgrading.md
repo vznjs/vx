@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: read a warm task's key back from a files-fold memo
+
+The cache index moves to schema v42: the first run after upgrading drops the index once, so every cached task misses one time.
+
 ## cache: make the artifacts table a rowid table
 
 The cache index moves to schema v41: the first run after upgrading drops the small artifacts kept inside the index once, so those tasks miss one time.
