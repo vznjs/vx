@@ -315,7 +315,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        unchanged.
 //   v40: runs.remote_error — each remote read or write of a task's key that
 //        failed, for `vx last`. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v40'
+//   v41: the artifacts table is a rowid table (layout a2). The cache KEY
+//        is unchanged.
+export const SCHEMA_VERSION = 'v41'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -363,7 +365,7 @@ const ARTIFACT_TABLES = ['artifacts', 'artifacts_meta']
  * reset, a new index or store, a store moved), so a change to it bumps
  * `SCHEMA_VERSION` too: a warm open reads no statement for it.
  */
-const ARTIFACT_LAYOUT = 'a1'
+const ARTIFACT_LAYOUT = 'a2'
 
 /**
  * The largest compressed artifact kept in the index rather than in a file
