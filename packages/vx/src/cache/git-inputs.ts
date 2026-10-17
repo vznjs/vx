@@ -5,10 +5,12 @@
 // 2026-09-10: this file talks to git; `inputs.ts` decides which files a
 // task declared. Nothing here reads a config or applies a boundary.
 
+import os from 'node:os'
 import path from 'node:path'
 import {
   existsSync,
   lstatSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -236,8 +238,11 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * What git tracks, by absolute path, within `trackedScopes`: a file there
    * no clean deletes (`committedIn`). Filled by the
    * enumeration, and per directory on demand for one it did not cover.
+   * Built on the first question: a run that cleans nothing asks none, and
+   * 125,000 paths joined and hashed were ~90 ms of a warm 5,000-project run.
    */
   private tracked = new Set<string>()
+  private trackedPending: (() => Iterable<string>)[] = []
   private trackedScopes: string[] = []
   /**
    * Under `core.ignorecase` (macOS's default volume) git's `Foo.txt` is the
@@ -256,8 +261,21 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   noteTracked(scopes: readonly string[], absPaths: readonly string[]): void {
-    for (const p of absPaths) this.tracked.add(this.trackedKey(p))
+    this.noteTrackedLater(scopes, () => absPaths)
+  }
+
+  /** `noteTracked`, the paths asked for only when a clean asks about one. */
+  noteTrackedLater(scopes: readonly string[], absPaths: () => Iterable<string>): void {
+    this.trackedPending.push(absPaths)
     this.trackedScopes.push(...scopes)
+  }
+
+  private isTracked(abs: string): boolean {
+    if (this.trackedPending.length > 0) {
+      for (const paths of this.trackedPending.splice(0))
+        for (const p of paths()) this.tracked.add(this.trackedKey(p))
+    }
+    return this.tracked.has(this.trackedKey(abs))
   }
 
   /**
@@ -277,7 +295,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
         if (!covered) this.noteTracked([dir], listTracked(dir))
       }
       for (let p = abs; p.length > dir.length; p = path.dirname(p))
-        if (this.tracked.has(this.trackedKey(p))) return true
+        if (this.isTracked(p)) return true
       return false
     }
   }
@@ -1446,8 +1464,8 @@ export async function startGitEnumeration(
     stdin?: string,
     env?: Record<string, string>,
   ): Promise<GitRun | null> => {
-    try {
-      const proc = Bun.spawn({
+    const spawn = <Out extends 'pipe' | Bun.BunFile>(stdout: Out) =>
+      Bun.spawn({
         // `status` refreshes the index when it can take `index.lock`, so
         // the user's own `git add` or `commit` failed on the lock while a
         // vx run held it (12 in 1,165 across 80 runs, item 880). Read-only, as
@@ -1455,19 +1473,45 @@ export async function startGitEnumeration(
         cmd: [executablePath('git'), '--no-optional-locks', ...args],
         cwd: workspaceRoot,
         stdin: stdin === undefined ? 'ignore' : new TextEncoder().encode(stdin),
-        stdout: 'pipe',
+        stdout,
         stderr: 'pipe',
         env: env !== undefined ? { ...gitEnv(), ...env } : gitEnv(),
       })
-      const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(proc.stdout).bytes(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ])
+    // To a file, not a pipe: the run's thread is busy discovering and
+    // loading configs while git lists, and a pipe held a 10 MB listing
+    // until the thread came back to drain it 64 KiB at a time (~90 ms of
+    // a warm 5,000-project run). In a directory of its own, so no link
+    // another user planted in a shared temp directory takes the bytes. A
+    // temp directory that takes none falls back to the pipe.
+    let dir: string | undefined
+    try {
+      dir = mkdtempSync(path.join(os.tmpdir(), 'vx-git-'))
+    } catch {
+      dir = undefined
+    }
+    try {
+      let stdout: Uint8Array
+      let stderr: string
+      let exitCode: number
+      if (dir !== undefined) {
+        const out = path.join(dir, 'out')
+        const proc = spawn(Bun.file(out))
+        ;[stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+        stdout = await Bun.file(out).bytes()
+      } else {
+        const piped = spawn('pipe')
+        ;[stdout, stderr, exitCode] = await Promise.all([
+          new Response(piped.stdout).bytes(),
+          new Response(piped.stderr).text(),
+          piped.exited,
+        ])
+      }
       const { text, undecodable } = decodeGitZ(stdout)
       return { exitCode, stdout: text, stderr, undecodable }
     } catch {
       return null
+    } finally {
+      if (dir !== undefined) rmSync(dir, { recursive: true, force: true })
     }
   }
   const startedAtMs = Date.now()
@@ -1760,9 +1804,9 @@ export async function applyGitEnumeration(
   cache.setGitVars(enumeration.vars)
   cache.enumeratedAtMs = enumeration.startedAtMs
   cache.markUndecodable(enumeration.undecodable.map((rel) => path.join(workspaceRoot, rel)))
-  cache.noteTracked(
+  cache.noteTrackedLater(
     enumeration.scopes.map((rel) => path.join(workspaceRoot, rel)),
-    enumeration.tracked.map((rel) => path.join(workspaceRoot, rel)),
+    () => enumeration.tracked.map((rel) => path.join(workspaceRoot, rel)),
   )
   // Sort once, then each project's files are a contiguous range found
   // by binary search on its `dir/` prefix — O((F+P) log F) instead of
