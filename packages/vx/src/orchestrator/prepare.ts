@@ -763,9 +763,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log) })
     }
     // The final inputs decide which tasks the branch changed: they read
-    // the scope, every other task the default key.
+    // the scope, every other task the default key. Only a remote call
+    // awaits the diff, so a run the local cache answers never waits on git
+    // nor maps it.
     if (branchScope !== undefined && scopeChanges !== undefined) {
-      branchScope.routeTasks(keyedByChange(nodes, await scopeChanges, projects, packageGraph))
+      branchScope.routeTasks(async () =>
+        keyedByChange(nodes, await scopeChanges, projects, packageGraph),
+      )
     }
     refuseFiltersThroughGroups(nodes)
     const exclude = options.excludeDependencies

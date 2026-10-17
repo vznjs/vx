@@ -411,7 +411,10 @@ per run (and once for `--dry` and `--force`); without it core GETs each
 key directly and asks `has` per key only for `--dry` and `--force`. An
 entry is immutable: core never asks `has` before a `put`, so a `put` of
 a key the remote holds must keep the stored bytes (check inside when
-your server would overwrite). Core owns the rest: the local cache is
+your server would overwrite). Each call also names the branch scope its
+key belongs to (the last argument's `scope`, absent for a task's own
+key), for a backend that keeps one store per branch; the key alone is
+enough, so most remotes ignore it. Core owns the rest: the local cache is
 asked first, then each plugin's remote in the order `plugins` lists them;
 `--cache-policy`, `VX_CACHE_POLICY` and `cache.policy` gate every remote, and
 `--cache-scope` keeps writes apart. The hook's `ctx.scope` is that scope

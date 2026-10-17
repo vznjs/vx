@@ -77,6 +77,16 @@ export interface RemoteOpenContext extends PluginSecrets {
 }
 
 /**
+ * Where a remote call's key lives: `scope` names the branch scope a scoped
+ * key was derived in (`scopedKey`), absent for a task's own key. The key
+ * alone is enough; a backend that keeps one store per scope may use it to
+ * go straight to that store. turboCache(), nxCache() and vx-reapi ignore it.
+ */
+export interface RemoteKey {
+  readonly scope?: string
+}
+
+/**
  * What a remote cache layer must provide — THE plugin seam for remote
  * caching. Core ships no wire client; a plugin's `cache` hook returns one
  * (or an embedder passes one as `RunOptions.remoteCache`), speaking
@@ -113,16 +123,16 @@ export interface RemoteCacheLayer {
    */
   open?(ctx: RemoteOpenContext): Promise<void>
   /** Existence probe: `--dry` and `--force` ask it per key when the remote cannot batch. */
-  has(hash: string): Promise<boolean>
+  has(hash: string, at?: RemoteKey): Promise<boolean>
   /**
    * Optional batch existence probe: given N hashes, return the subset stored
    * remotely in ONE round-trip. Its presence says the wire can batch: a run
    * asks it once for its keys, `--dry` before its per-key answers, and
    * `--force` in the background to skip uploads of held keys. Without it a
    * run GETs each key directly (no `has`). Never throws for control flow:
-   * `null` means "no batch info; use per-hash".
+   * `null` means "no batch info; use per-hash". `at[i]` is `hashes[i]`'s.
    */
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  hasMany?(hashes: readonly string[], at?: readonly RemoteKey[]): Promise<Set<string> | null>
   /**
    * Fetch an artifact; `null` = miss. `body` is read once, by core,
    * straight into the local cache — an HTTP wire returns its `fetch`
@@ -132,7 +142,10 @@ export interface RemoteCacheLayer {
    * nothing and the read is a miss, so a layer can check bytes as they pass
    * (a digest, a signature) and refuse at the end.
    */
-  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  get(
+    hash: string,
+    at?: RemoteKey,
+  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   /**
    * Store an artifact (fire-and-forget from LayeredCache's perspective).
    * `body` is file-backed (`Bun.file`) when the local store holds the
@@ -141,7 +154,7 @@ export interface RemoteCacheLayer {
    * key the remote holds keeps the stored bytes. Core never asks `has`
    * first; a wire that would overwrite checks inside.
    */
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  put(hash: string, body: Blob, meta: { durationMs: number } & RemoteKey): Promise<void>
 }
 
 export class LayeredCache implements CacheLayer {

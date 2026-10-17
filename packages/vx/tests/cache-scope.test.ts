@@ -582,7 +582,7 @@ describe('cache.scope', () => {
           onRemoteError: (err) => errors.push(err.message),
           branch,
         })
-        branch.routeTasks(new Set(routed ? ['app#build'] : []))
+        branch.routeTasks(async () => new Set(routed ? ['app#build'] : []))
         layered.noteKey('app#build', key)
         const want = routed ? scopedKey('pr-1', key) : key
         expect(await layered.remoteHasMany!([key])).toEqual(new Set())
@@ -591,6 +591,45 @@ describe('cache.scope', () => {
         expect(asked).toEqual([`hasMany ${want}`])
       }
       expect(errors).toEqual([])
+    } finally {
+      local.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  // Owner, 2026-10-17: a backend that keeps a store per scope can tell
+  // which one a call is for. The key alone still names the entry.
+  it('each remote call names its scope: none for a default key', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-scope-at-'))
+    const key = '0123456789abcdef'
+    const seen: string[] = []
+    const name = (call: string, h: string, at?: { scope?: string }) =>
+      seen.push(`${call} ${h === key ? 'key' : 'scoped'} ${at?.scope ?? '-'}`)
+    const remote: RemoteCacheLayer = {
+      has: async (h, at) => (name('has', h, at), false),
+      hasMany: async (hs, at) => (hs.forEach((h, i) => name('hasMany', h, at?.[i])), new Set()),
+      get: async (h, at) => (name('get', h, at), null),
+      put: async (h, _body, meta) => void name('put', h, meta),
+    }
+    const local = new Cache(path.join(dir, 'cache'))
+    try {
+      for (const routed of [true, false]) {
+        const branch = new BranchScope('acme/app:feat')
+        const layered = layeredOver(local, remote, { policy: FULL_CACHE_POLICY, branch })
+        branch.routeTasks(async () => new Set(routed ? ['app#build'] : []))
+        layered.noteKey('app#build', key)
+        await layered.remoteHasMany!([key])
+        await branch.remote(remote).get(key)
+        await branch.remote(remote).put(key, new Blob(['x']), { durationMs: 1 })
+      }
+      expect(seen).toEqual([
+        'hasMany scoped acme/app:feat',
+        'get scoped acme/app:feat',
+        'put scoped acme/app:feat',
+        'hasMany key -',
+        'get key -',
+        'put scoped acme/app:feat',
+      ])
     } finally {
       local.close()
       await rm(dir, { recursive: true, force: true })

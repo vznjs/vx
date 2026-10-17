@@ -48,19 +48,27 @@ export interface RemoteOpenContext extends PluginSecrets {
   warn(message: string): void // one line naming the plugin; the remote stays on
 }
 
+/** The branch scope a scoped key was derived in; absent for a task's own key. */
+export interface RemoteKey {
+  readonly scope?: string
+}
+
 export interface RemoteCacheLayer {
   /** Where the artifacts live, named in every degrade warning; never a credential. */
   readonly endpoint?: string
   /** Optional: get ready (a credential). Once per run, before the first task, only when the policy reads or writes it. */
   open?(ctx: RemoteOpenContext): Promise<void>
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
-  has(hash: string): Promise<boolean>
+  has(hash: string, at?: RemoteKey): Promise<boolean>
   /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  hasMany?(hashes: readonly string[], at?: readonly RemoteKey[]): Promise<Set<string> | null>
   /** Fetch an artifact; `null` = miss. Errors THROW. `body` is read once, by core. */
-  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  get(
+    hash: string,
+    at?: RemoteKey,
+  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. */
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  put(hash: string, body: Blob, meta: { durationMs: number } & RemoteKey): Promise<void>
 }
 
 export class LayeredCache implements CacheLayer {
@@ -71,6 +79,15 @@ export class LayeredCache implements CacheLayer {
   // CacheLayer methods — see docs/modules/cache.md.
 }
 ```
+
+## Each call names its scope
+
+Every `has`, `hasMany`, `get` and `put` also says which branch scope its
+key was derived in (`RemoteKey.scope`, absent for a task's own key;
+owner, 2026-10-17). The key alone names the entry: a remote may ignore
+it. A backend that keeps one store per scope can use it to go straight
+to the default or the branch store. No wire vx ships sends it:
+`turboCache()`, `nxCache()` and `vx-reapi` put nothing new on the wire.
 
 ## Bodies stream, both ways
 
