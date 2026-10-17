@@ -12,6 +12,9 @@ on:
 # a default token may hold write access (L-29).
 permissions:
   contents: read
+  # The remote cache's token: turboCache({ oidc }) exchanges the job's OIDC
+  # token with Vercel, no long-lived secret (.vx/workspace.ts).
+  id-token: write
 
 # A newer push to the same PR supersedes an older run, which is cancelled:
 # its old head is never merged. Any other run (main, a dispatch) finishes
@@ -22,10 +25,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The shared remote cache (turboCache() in .vx/workspace.ts). A fork PR
-# gets no secrets: its runs fall back to the local cache with a warning.
+# The shared remote cache (turboCache() in .vx/workspace.ts): Vercel's,
+# reached by OIDC. A fork PR gets no OIDC token: its runs fall back to the
+# local cache with a warning.
 env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   # Which of the jobs below a pull request's diff can reach. The `ci` job

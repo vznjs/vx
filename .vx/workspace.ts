@@ -8,10 +8,9 @@ export default defineWorkspace({
   plugins: [
     bun(),
     github(),
-    turboCache({
-      apiUrl: 'https://remote.cachely.dev',
-      teamSlug: 'cachely',
-    }),
+    // Vercel's Remote Cache, team from TURBO_TEAM; on GitHub Actions the
+    // job's OIDC token buys a short-lived one. With no team, local only.
+    turboCache({ oidc: true }),
     scheduleHistoryPlugin(),
   ],
 })

@@ -30,7 +30,7 @@ concurrency:
 
 # The shared remote cache (turboCache() in .vx/workspace.ts).
 env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   build:

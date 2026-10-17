@@ -30,7 +30,7 @@ concurrency:
 
 # The shared remote cache (turboCache() in .vx/workspace.ts).
 env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   release:
@@ -39,6 +39,7 @@ jobs:
     permissions:
       contents: write # the tag and the GitHub release
       actions: write # dispatching npm.yml and release.yml
+      id-token: write # the remote cache's OIDC exchange (.vx/workspace.ts)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
