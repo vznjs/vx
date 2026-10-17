@@ -1231,6 +1231,7 @@ export interface ResolvedSandboxConfig {
 export interface RunContext {
   version: string
   packageCount: number
+  runId?: string | undefined
   concurrency?: number
   remoteCacheEnabled: boolean
   cache?: {
