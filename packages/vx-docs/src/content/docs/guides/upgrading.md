@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: make the artifacts table a rowid table
+
+The cache index moves to schema v41: the first run after upgrading drops the small artifacts kept inside the index once, so those tasks miss one time.
+
 ## cache: reserve vx's names only where vx writes them
 
 Every cached task misses once after upgrading (cache version v46). `.git`, `.vx` and `vx.lock.json` are reserved only at a project's root (and each project's `vx.lock.json` for `workspaceFiles`); deeper, they are inputs and outputs like any other file. `restorableOutput` takes a scope, 'project' or 'workspace'.

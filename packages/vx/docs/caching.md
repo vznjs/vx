@@ -1568,7 +1568,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v40', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v41', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes and plugin_blobs live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1840,9 +1840,9 @@ CREATE TABLE artifacts (
   hash  TEXT PRIMARY KEY,
   at    INTEGER NOT NULL,              -- last use (ms): a row-less sweep's file time
   bytes BLOB NOT NULL
-) WITHOUT ROWID;
+);                                     -- rowid: a hash probe never reads a blob
 
--- 'layout' = 'a1': the artifacts table's own version; another value
+-- 'layout' = 'a2': the artifacts table's own version; another value
 -- drops the table, silently. Nothing else drops it. Read only where
 -- the schema was not this vx's, so a layout change bumps the schema.
 CREATE TABLE artifacts_meta (

@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v40",
+    "version": "v41",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -24,7 +24,7 @@
       "hash  TEXT PRIMARY KEY,",
       "at    INTEGER NOT NULL,",
       "bytes BLOB NOT NULL",
-      ") WITHOUT ROWID",
+      ")",
       "",
       "CREATE TABLE artifacts_meta (",
       "key   TEXT PRIMARY KEY,",

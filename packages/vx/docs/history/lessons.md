@@ -180,6 +180,13 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
 - A summed span is not a cost: `save: scan` summed 700 ms per 1,000
   saves and removing it bought 60 (item 616) — the span waited on I/O
   the other workers overlapped. A/B the wall, then decide.
+- A copied workspace is not the one it was copied from: `cp -a` keeps
+  mtimes but not inodes or ctimes, so git's index no longer vouches for
+  any file and `git status` re-reads all of them (5k projects: 1.2 s
+  against 0.3, 2026-10-17). Run `git update-index -q --refresh` in each
+  arm's copy before its first timed rep. And give each arm its own
+  `HOME`: the shared store lives in `~/.vx/<repo id>/`, so two copies of
+  one repo share it, and arms on different schemas reset it.
 - A sandboxed shard has no git: a pin that asks `git ls-files` there
   reads an empty set and its floor fails on darwin CI (item 615). A
   law that reads the tree walks it; git is for the unsafe suite.

@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { isAlive } from './helpers/alive.js'
+import { isAlive, killIfAlive } from './helpers/alive.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { startWatch, until, type Watch } from './helpers/watch-loop.js'
 
@@ -19,8 +19,7 @@ afterEach(async () => {
     await watch.proc.exited
     watch = undefined
   }
-  for (const pid of (await lines('pids')).map(Number))
-    if (isAlive(pid)) process.kill(pid, 'SIGKILL')
+  for (const pid of (await lines('pids')).map(Number)) killIfAlive(pid)
   await rm(root, { recursive: true, force: true })
   await rm(outside, { recursive: true, force: true })
 })

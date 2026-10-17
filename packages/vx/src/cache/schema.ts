@@ -317,8 +317,10 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
  * the artifact is the record and the entries only its inventory, so a reset
  * drops the rows and keeps these, as it keeps the files. `artifacts_meta`
  * holds the table's own layout version (`'layout'`), the one thing that may
- * drop it. `at` is the last use a row-less sweep judges, as a file's mtime;
- * it sits before `bytes` so reading it never walks a blob's overflow pages.
+ * drop it. `at` is the last use a row-less sweep judges, as a file's mtime.
+ * A rowid table, not WITHOUT ROWID: there the blob sits in the key's b-tree,
+ * so every probe of a hash reads overflow pages; 10 000 lookups took 312 ms
+ * against 8.5 (a2, 2026-10-17).
  */
 export function createArtifactTables(db: Database, store: 'main' | 'store'): void {
   db.exec(artifactTables(store))
@@ -331,7 +333,7 @@ function artifactTables(store: 'main' | 'store'): string {
       hash  TEXT PRIMARY KEY,
       at    INTEGER NOT NULL,
       bytes BLOB NOT NULL
-    ) WITHOUT ROWID;
+    );
     CREATE TABLE IF NOT EXISTS ${store}.artifacts_meta (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL

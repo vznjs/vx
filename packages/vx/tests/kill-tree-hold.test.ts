@@ -11,7 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { guardLine, spawnGuarded } from '../src/exec/kill-tree.js'
-import { isAlive, waitForDead } from './helpers/alive.js'
+import { isAlive, killIfAlive, waitForDead } from './helpers/alive.js'
 
 const KILL_TREE = path.resolve(import.meta.dir, '..', 'src', 'exec', 'kill-tree.ts')
 
@@ -192,7 +192,7 @@ async function afterSessionLister(strike: boolean): Promise<Record<string, boole
       listedFile: existsSync(listedFile),
       kept: existsSync(kept),
     }
-    for (const pid of [listed!, sibling!]) if (isAlive(pid)) process.kill(pid, 'SIGKILL')
+    for (const pid of [listed!, sibling!]) killIfAlive(pid)
     return state
   } finally {
     rmSync(dir, { recursive: true, force: true })

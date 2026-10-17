@@ -13,7 +13,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
-import { isAlive, waitForDead } from './helpers/alive.js'
+import { killIfAlive, waitForDead } from './helpers/alive.js'
 import { rng } from './helpers/rng.js'
 import { gitInitCommit } from './helpers/workspace.js'
 
@@ -109,7 +109,7 @@ async function scenario(seed: number, iter: number, stopAt?: number): Promise<st
     const pid = Number((await readFile(path.join(pids, f), 'utf8')).trim())
     if (await waitForDead(pid, 1_000)) continue
     broken.push(`${label}: ${f} (${kinds[Number(f.slice(1))]}) outlived the run`)
-    if (isAlive(pid)) process.kill(pid, 'SIGKILL')
+    killIfAlive(pid)
   }
   return broken
 }

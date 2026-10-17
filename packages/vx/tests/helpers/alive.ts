@@ -36,6 +36,16 @@ export function isAlive(pid: number): boolean {
   return true
 }
 
+/** SIGKILL `pid` if it still runs: it may exit between the check and the kill (ESRCH on macOS CI). */
+export function killIfAlive(pid: number): void {
+  if (!isAlive(pid)) return
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err
+  }
+}
+
 export async function waitForDead(pid: number, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {

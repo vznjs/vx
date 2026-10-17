@@ -470,7 +470,7 @@ describe('12: the inline table’s own layout sentinel', () => {
         db.query('SELECT count(*) AS n FROM artifacts').get(),
         db.query("SELECT value FROM artifacts_meta WHERE key = 'layout'").get(),
         await cache.get('h1'),
-      ]).toEqual([{ n: 0 }, { value: 'a1' }, null])
+      ]).toEqual([{ n: 0 }, { value: 'a2' }, null])
     } finally {
       err.mockRestore()
       out.mockRestore()
@@ -504,7 +504,7 @@ describe('12: the inline table’s own layout sentinel', () => {
       expect([
         cache.dbHandle().query('SELECT count(*) AS n FROM store.artifacts').get(),
         cache.dbHandle().query("SELECT value FROM store.artifacts_meta WHERE key = 'layout'").get(),
-      ]).toEqual([{ n: 0 }, { value: 'a1' }])
+      ]).toEqual([{ n: 0 }, { value: 'a2' }])
     } finally {
       cache.close()
     }
@@ -517,7 +517,7 @@ describe('12: the inline table’s own layout sentinel', () => {
     try {
       expect(
         own.dbHandle().query("SELECT value FROM main.artifacts_meta WHERE key = 'layout'").get(),
-      ).toEqual({ value: 'a1' })
+      ).toEqual({ value: 'a2' })
     } finally {
       own.close()
     }

@@ -347,7 +347,7 @@ export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v40'
+export const SCHEMA_VERSION = 'v41'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -491,7 +491,7 @@ keeps files, and each is indexed again from them on its next hit
 (`adopt`): the lookup that finds no row is driven by the asked keys, so
 it reports a row-less inline artifact in the same statement, and a miss
 asks `artifacts` only then. Its own version is `artifacts_meta.layout`
-(`'a1'`); another value drops the table, silently. It is read only
+(`'a2'`); another value drops the table, silently. It is read only
 where the schema was not this vx's (a reset, a new index or store, a
 store moved), so a warm open spends no statement on it and a layout
 change bumps `SCHEMA_VERSION` too. A reading open over an index or store
@@ -673,7 +673,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v46'`; `SCHEMA_VERSION` is
-`'v40'`. Bump `CACHE_VERSION` when:
+`'v41'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
