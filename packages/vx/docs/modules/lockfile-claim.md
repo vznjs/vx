@@ -119,8 +119,14 @@ so a warm run re-hashes the files it names and parses only when one
 moved; within a process the same identity gates the read beside the
 lockfile's, taken before each file is hashed. The claim's `extraFiles`
 names them to core, and `--affected` hands a changed one in
-`change.extras`, so `affected` digests both sides with its bytes. Today
-core asks only about the patches `bun.lock` names.
+`change.extras`, so `affected` digests both sides with its bytes.
+
+A named path may be a directory: a `file:` dependency pnpm and bun copy
+into `node_modules` at install, recording only its path (Growth,
+file-dir-dep-stale.sh). Its hash covers every file under it but
+`node_modules` and `.git`, and the in-process gate uses that hash as the
+directory's identity, since a directory's stat does not move when a file
+in it is edited. A path outside the root is never read.
 
 ## What it does NOT do
 

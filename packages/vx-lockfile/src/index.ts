@@ -109,8 +109,9 @@ const MANAGERS = {
   pnpm: {
     name: 'pnpm',
     files: ['pnpm-lock.yaml'],
-    digest: (t) => pnpmLock().importerDigests(pnpmParse(t)),
+    digest: (t, files) => pnpmLock().importerDigests(pnpmParse(t), files),
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
+    extraFiles: (t) => pnpmLock().fileDeps(pnpmParse(t)),
     recorded: (t) => pnpmParse(t).importers,
     settings: ['pnpm-workspace.yaml', '.npmrc'],
     settingsText: (file, text) =>
@@ -129,7 +130,7 @@ const MANAGERS = {
     digest: (t, files) => bunLock().importerDigests(bunParse(t), files),
     importers: (t) => bunLock().importerLinks(bunParse(t)),
     recorded: (t) => bunParse(t).workspaces,
-    extraFiles: (t) => bunLock().patchFiles(t),
+    extraFiles: (t) => [...bunLock().patchFiles(t), ...bunLock().fileDeps(bunParse(t))],
     settings: ['bunfig.toml', '.npmrc'],
   },
   npm: {

@@ -306,55 +306,76 @@ export async function affectedChanges(
   let claims: FingerprintClaims | undefined
   const loadClaims = async (): Promise<FingerprintClaims | undefined> =>
     (claims ??= await args.fingerprintClaims?.())
-  // A patch bun.lock names folds into the key of the plugin that claims
-  // bun.lock (`bun()`; the lockfile records no hash of it), so its edit
-  // is a bun.lock change the claimant answers with the patch's bytes
-  // (`FingerprintClaim.extraFiles`); one that cannot read them widens. A
-  // patch the lockfile no longer names moved bun.lock itself.
-  let patchClaim: { lock: Uint8Array; patch: string } | undefined
-  if (changed.length > 0) {
-    const lock = await bytesOrNull(path.join(args.workspaceRoot, 'bun.lock'))
-    if (lock !== null) {
-      const patches = new Set(bunPatchFiles(lock))
-      const patch = changed.find((p) => patches.has(p))
-      if (patch !== undefined && (await loadClaims())?.files.has('bun.lock')) {
-        patchClaim = { lock, patch }
+  // A file a claimed lockfile names that its claimant keys but the
+  // lockfile does not pin (`FingerprintClaim.extraFiles`: bun.lock's
+  // patches, a `file:` directory pnpm or bun copies at install) is part of
+  // that lockfile: a change to one, or under one, is a lockfile change the
+  // claimant answers with it. Only a path no project below the root owns
+  // can be one, so a diff inside the projects never loads the claims.
+  const extrasBy = new Map<
+    string,
+    Map<string, { before: Uint8Array | null; after: Uint8Array | null }>
+  >()
+  const rootDir = path.resolve(args.workspaceRoot)
+  const loose = changed.filter((rel) => {
+    const abs = path.join(rootDir, rel)
+    return !args.projects.some((p) => p.dir !== rootDir && abs.startsWith(p.dir + path.sep))
+  })
+  const extraClaims = loose.length > 0 ? await loadClaims() : undefined
+  for (const file of extraClaims?.files ?? []) {
+    const after = await bytesOrNull(path.join(args.workspaceRoot, file))
+    const before = await gitBytesAt(args.workspaceRoot, base, file)
+    const namedAfter = after === null ? [] : extraClaims!.extraFiles?.(file, after)
+    const named = new Set([
+      ...(before === null ? [] : (extraClaims!.extraFiles?.(file, before) ?? [])),
+      ...(namedAfter ?? []),
+    ])
+    const extras = new Map<string, { before: Uint8Array | null; after: Uint8Array | null }>()
+    for (const rel of named) {
+      const at = path.posix.normalize(rel).replace(/\/+$/, '')
+      if (loose.includes(at)) {
+        extras.set(rel, {
+          before: await gitBytesAt(args.workspaceRoot, base, at),
+          after: await bytesOrNull(path.join(args.workspaceRoot, at)),
+        })
+        continue
       }
+      // A directory's sides are not its bytes: a file under it changed,
+      // so they differ, and only the projects reaching it move.
+      const under = loose.filter((p) => p.startsWith(`${at}/`))
+      if (under.length > 0) {
+        extras.set(rel, { before: null, after: new TextEncoder().encode(under.join('\0')) })
+      }
+    }
+    if (extras.size > 0) extrasBy.set(file, extras)
+    else if (file === 'bun.lock' && after !== null && namedAfter === undefined) {
+      // A bun.lock claimant that names no file still folds the patches
+      // bun.lock names (the lockfile records no hash of them): it cannot
+      // say which projects one reaches, so its edit widens.
+      const patches = new Set(bunPatchFiles(after))
+      const patch = loose.find((p) => patches.has(p))
+      if (patch !== undefined) return everything(patch)
     }
   }
   const claimedOwned = new Map<string, string>()
   const rootNamesChanged = changed.filter((p) => !p.includes('/'))
-  if (patchClaim !== undefined && !rootNamesChanged.includes('bun.lock')) {
-    rootNamesChanged.push('bun.lock')
+  for (const file of extrasBy.keys()) {
+    if (!rootNamesChanged.includes(file)) rootNamesChanged.push(file)
   }
   const claimed = rootNamesChanged.length > 0 ? await loadClaims() : undefined
   for (const file of rootNamesChanged) {
     if (claimed === undefined || !claimed.files.has(file)) continue
-    const after =
-      file === 'bun.lock' && patchClaim !== undefined
-        ? patchClaim.lock
-        : await bytesOrNull(path.join(args.workspaceRoot, file))
-    const before = await gitBytesAt(args.workspaceRoot, base, file)
-    let extras: Map<string, { before: Uint8Array | null; after: Uint8Array | null }> | undefined
-    if (file === 'bun.lock' && patchClaim !== undefined) {
-      const named = new Set([
-        ...(before === null ? [] : (claimed.extraFiles?.(file, before) ?? [])),
-        ...(after === null ? [] : (claimed.extraFiles?.(file, after) ?? [])),
-      ])
-      const changedSet = new Set(changed)
-      extras = new Map()
-      for (const rel of named) {
-        if (!changedSet.has(path.posix.normalize(rel))) continue
-        extras.set(rel, {
-          before: await gitBytesAt(args.workspaceRoot, base, path.posix.normalize(rel)),
-          after: await bytesOrNull(path.join(args.workspaceRoot, rel)),
-        })
-      }
-      // A claimant naming no patch the diff changed cannot answer for it.
-      if (extras.size === 0) return everything(patchClaim.patch)
-    }
-    const answer = await claimed.affected({ file, before, after, ...(extras ? { extras } : {}) })
-    const why = extras === undefined ? file : patchClaim!.patch
+    const extras = extrasBy.get(file)
+    const answer = await claimed.affected({
+      file,
+      before: await gitBytesAt(args.workspaceRoot, base, file),
+      after: await bytesOrNull(path.join(args.workspaceRoot, file)),
+      ...(extras !== undefined ? { extras } : {}),
+    })
+    const why =
+      extras === undefined || changed.includes(file)
+        ? file
+        : path.posix.normalize([...extras.keys()][0]!).replace(/\/+$/, '')
     if (answer === undefined) return everything(why)
     for (const name of answer) if (!claimedOwned.has(name)) claimedOwned.set(name, why)
   }
