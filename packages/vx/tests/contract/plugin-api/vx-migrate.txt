@@ -42,6 +42,7 @@ export interface NxPluginOptions {
 export interface TurboCacheOptions {
   apiUrl?: string
   token?: string
+  oidc?: true | TurboOidcOptions
   teamId?: string
   teamSlug?: string
   signatureKey?: string
@@ -49,6 +50,13 @@ export interface TurboCacheOptions {
   uploadTimeoutMs?: number
   retries?: number
   preflight?: boolean
+}
+== type TurboOidcOptions (src/turbo-cache/oidc.ts)
+export interface TurboOidcOptions {
+  tokenUrl?: string
+  revokeUrl?: string | false
+  audience?: string
+  params?: Record<string, string>
 }
 == type TurboPluginOptions (src/turbo/index.ts)
 export interface TurboPluginOptions {

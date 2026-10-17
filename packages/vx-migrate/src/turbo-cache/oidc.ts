@@ -28,7 +28,7 @@ export interface OidcConfig {
   params: Record<string, string>
 }
 
-export const VERCEL_TOKEN_URL = 'https://api.vercel.com/login/oauth/token'
+const VERCEL_TOKEN_URL = 'https://api.vercel.com/login/oauth/token'
 const VERCEL_REVOKE_URL = 'https://api.vercel.com/login/oauth/token/revoke'
 /** Vercel's public OAuth client for the Remote Cache exchange, as its action sends it. */
 const VERCEL_CLIENT_ID = 'cl_kyUx2zVvA4MGptBohkmtYHJly2XltXzD'
