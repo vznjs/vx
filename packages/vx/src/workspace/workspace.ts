@@ -417,12 +417,13 @@ export function lockedProjects(
  * The project a plugin's `discover` entry names: a new meta (`added`) for a
  * directory that is not a project yet, else the project already there,
  * renamed when its name was its path's. A config's `name` wins over the
- * plugin's; a name another plugin gave is not changed. `by` names the
- * plugin in a refusal.
+ * plugin's; a name another plugin gave is not changed. `known` is the
+ * projects by directory: a scan per entry was quadratic, 106 ms of a 5,000
+ * project warm run. `by` names the plugin in a refusal.
  */
 export async function discoveredProject(
   root: string,
-  known: readonly ProjectMeta[],
+  known: ReadonlyMap<string, ProjectMeta>,
   entry: {
     readonly dir: string
     readonly name?: string
@@ -456,7 +457,7 @@ export async function discoveredProject(
     throw new UserError(`${where}${named} at ${dir}: outside the workspace root`)
   }
   const shown = rel === '' ? '.' : rel
-  const meta = known.find((p) => p.dir === dir)
+  const meta = known.get(dir)
   if (meta !== undefined) {
     const from = namedBy.get(meta)
     if (name === undefined || name === meta.name || from === 'config') return { meta, added: false }

@@ -25,6 +25,8 @@ afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
+const byDir = (metas: readonly ProjectMeta[]) => new Map(metas.map((m) => [m.dir, m]))
+
 /** `packages/a` named by its path, `packages/c` by its config. */
 function fresh(): ProjectMeta[] {
   known = lockedProjects(root, {
@@ -35,7 +37,7 @@ function fresh(): ProjectMeta[] {
 }
 
 const refusal = (named: unknown): Promise<string> =>
-  discoveredProject(root, fresh(), named as { dir: string }, 'p').then(
+  discoveredProject(root, byDir(fresh()), named as { dir: string }, 'p').then(
     () => 'accepted',
     (err: Error) => err.message.replaceAll(root, '<root>'),
   )
@@ -93,10 +95,10 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
   })
 
   it('a different name for a project an earlier plugin named', async () => {
-    const metas = fresh()
-    await discoveredProject(root, metas, { dir: 'packages/a', name: 'a' }, 'first')
+    const index = byDir(fresh())
+    await discoveredProject(root, index, { dir: 'packages/a', name: 'a' }, 'first')
     expect(
-      await discoveredProject(root, metas, { dir: 'packages/a', name: 'other' }, 'p').then(
+      await discoveredProject(root, index, { dir: 'packages/a', name: 'other' }, 'p').then(
         () => 'accepted',
         (err: Error) => err.message,
       ),
@@ -128,10 +130,10 @@ describe('a plugin-named project discovery cannot hold is refused, whole', () =>
   })
 
   it("CONTROL: a path name takes the plugin's, a config's name stays, and a new directory is named by its path", async () => {
-    const metas = fresh()
-    const a = await discoveredProject(root, metas, { dir: 'packages/a', name: 'a' }, 'p')
-    const c = await discoveredProject(root, metas, { dir: 'packages/c', name: 'see' }, 'p')
-    const b = await discoveredProject(root, metas, { dir: 'packages/b' }, 'p')
+    const index = byDir(fresh())
+    const a = await discoveredProject(root, index, { dir: 'packages/a', name: 'a' }, 'p')
+    const c = await discoveredProject(root, index, { dir: 'packages/c', name: 'see' }, 'p')
+    const b = await discoveredProject(root, index, { dir: 'packages/b' }, 'p')
     expect([a.meta.name, a.added, c.meta.name, c.added, b.meta.name, b.added]).toEqual([
       'a',
       false,
