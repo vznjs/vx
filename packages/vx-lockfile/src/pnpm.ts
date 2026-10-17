@@ -146,7 +146,6 @@ function scalar(v: unknown): string {
       : ''
 }
 
-/** JSON with sorted keys, so YAML key order cannot move a digest. */
 /**
  * pnpm-workspace.yaml as every task folds it: without `patchedDependencies`
  * and `overrides`, whose effect the lockfile records per project (pnpm 10+
@@ -169,6 +168,7 @@ export function workspaceSettings(text: string): string | undefined {
   return `pnpm-workspace\0${stable(rest)}`
 }
 
+/** JSON with sorted keys, so YAML key order cannot move a digest. */
 export function stable(v: unknown): string {
   return JSON.stringify(v, (_k, val: unknown) =>
     val !== null && typeof val === 'object' && !Array.isArray(val)
