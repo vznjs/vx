@@ -145,6 +145,11 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     }
   }
   const wsOutputUpstreamById = new Map<string, boolean>()
+  const upstreamByDeps = new Map<
+    string,
+    { outputProjects: ProjectSet; wide: ProjectSet | undefined; wsOutputUpstream: boolean }
+  >()
+  const noProjects = projects.empty()
   const stableKeys: StableKey[] = []
   // Workspace-relative project dirs, for the reach test of a
   // `workspaceFiles` reader against its upstream producers.
@@ -160,39 +165,59 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
     const upstream = synthUpstream(node, args.nodes, keyById)
 
     // Fold every dep's accumulated producers + the dep's own declared
-    // outputs into this node's transitive-upstream producer sets.
-    const outputProjects = projects.empty()
-    let wide: ProjectSet | undefined
+    // outputs into this node's transitive-upstream producer sets. They
+    // depend on the deps alone, and at 5,000 projects a `^build` reader
+    // shares its list with its project's group: 61,600 unions of 157-word
+    // sets were 52 ms of a warm run, half of them repeats.
+    const depsKey = node.deps.length === 1 ? node.deps[0]! : node.deps.join('\0')
+    let up = upstreamByDeps.get(depsKey)
+    if (up === undefined) {
+      const outputs = new Union(projects)
+      const wideUnion = new Union(projects)
+      let wsOutputUpstream = false
+      for (const dep of node.deps) {
+        const depNode = args.nodes.get(dep)
+        if (!depNode) continue
+        const upstreamOfDep = outputProjectsById.get(dep)
+        if (upstreamOfDep !== undefined) outputs.addAll(upstreamOfDep)
+        const wideOfDep = wideById.get(dep)
+        if (wideOfDep !== undefined) wideUnion.addAll(wideOfDep)
+        if (wsOutputUpstreamById.get(dep) === true) wsOutputUpstream = true
+        const depOut = depNode.config.cache?.outputs
+        if ((depOut?.files?.length ?? 0) > 0) outputs.add(depNode.projectName)
+        if ((depOut?.workspaceFiles?.length ?? 0) > 0) wsOutputUpstream = true
+        // An uncached producer declares no outputs, yet a same-project reader
+        // after it (`tasks: []` decouples the key, not the order) read the
+        // bytes it wrote: its key taken up front was the pre-producer one, and
+        // the fourth run of seeds A,B,B,A replayed B over A (turborepo#13788).
+        const reach = undeclaredWriteReach(depNode, args.workspaceRoot)
+        if (reach === 'project') {
+          outputs.add(depNode.projectName)
+          wideUnion.add(depNode.projectName)
+        } else if (reach === 'workspace') wsOutputUpstream = true
+        if (
+          depNode.config.cache === undefined &&
+          mayWriteFingerprint(depNode, args.workspaceRoot, args.claimedFiles)
+        )
+          wsOutputUpstream = true
+      }
+      up = {
+        outputProjects: outputs.result() ?? noProjects,
+        wide: wideUnion.result(),
+        wsOutputUpstream,
+      }
+      upstreamByDeps.set(depsKey, up)
+    }
+    const { outputProjects, wide, wsOutputUpstream } = up
     let rewriters: ProjectSet | undefined
     let unfolded: ProjectSet | undefined
     let folds: ((dep: string) => boolean) | undefined
     let wsRewriter = false
     let wsUnfoldedHere = false
-    let wsOutputUpstream = false
-    for (const dep of node.deps) {
+    for (const dep of anyUnfolded ? node.deps : []) {
       const depNode = args.nodes.get(dep)
       if (!depNode) continue
-      const upstreamOfDep = outputProjectsById.get(dep)
-      if (upstreamOfDep !== undefined) outputProjects.addAll(upstreamOfDep)
-      const wideOfDep = wideById.get(dep)
-      if (wideOfDep !== undefined) (wide ??= projects.empty()).addAll(wideOfDep)
-      if (wsOutputUpstreamById.get(dep) === true) wsOutputUpstream = true
-      const depOut = depNode.config.cache?.outputs
-      if ((depOut?.files?.length ?? 0) > 0) outputProjects.add(depNode.projectName)
-      if ((depOut?.workspaceFiles?.length ?? 0) > 0) wsOutputUpstream = true
-      // An uncached producer declares no outputs, yet a same-project reader
-      // after it (`tasks: []` decouples the key, not the order) read the
-      // bytes it wrote: its key taken up front was the pre-producer one, and
-      // the fourth run of seeds A,B,B,A replayed B over A (turborepo#13788).
-      const reach = undeclaredWriteReach(depNode, args.workspaceRoot)
-      if (reach === 'project') {
-        outputProjects.add(depNode.projectName)
-        ;(wide ??= projects.empty()).add(depNode.projectName)
-      } else if (reach === 'workspace') wsOutputUpstream = true
       const cached = depNode.config.cache !== undefined
-      if (!cached && mayWriteFingerprint(depNode, args.workspaceRoot, args.claimedFiles))
-        wsOutputUpstream = true
-      if (!anyUnfolded) continue
       // The cached twin: a formatter rewriting its own input ahead of a
       // reader that folds no key of it replayed seed B's build under seed A
       // on the fourth run, the same way (item 750).
@@ -732,6 +757,10 @@ class ProjectSet implements ProjectNames {
     for (let w = 0; w < this.bits.length; w++) this.bits[w]! |= other.bits[w]!
   }
 
+  copy(): ProjectSet {
+    return new ProjectSet(this.index, this.bits.slice())
+  }
+
   or(other: ProjectSet): ProjectSet {
     const bits = this.bits.slice()
     for (let w = 0; w < bits.length; w++) bits[w]! |= other.bits[w]!
@@ -759,6 +788,35 @@ class ProjectSet implements ProjectNames {
     for (let i = 0; i < this.index.names.length; i++) {
       if ((this.bits[i >>> 5]! & (1 << (i & 31))) !== 0) yield this.index.names[i]!
     }
+  }
+}
+
+/** A union that shares its first set until another one would change it. */
+class Union {
+  private set: ProjectSet | undefined
+  private owned = false
+
+  constructor(private readonly index: ProjectIndex) {}
+
+  addAll(other: ProjectSet): void {
+    if (this.set === undefined) this.set = other
+    else if (this.set !== other) this.own().addAll(other)
+  }
+
+  add(name: string): void {
+    if (this.set?.has(name) !== true) this.own().add(name)
+  }
+
+  result(): ProjectSet | undefined {
+    return this.set
+  }
+
+  private own(): ProjectSet {
+    if (!this.owned) {
+      this.set = this.set === undefined ? this.index.empty() : this.set.copy()
+      this.owned = true
+    }
+    return this.set!
   }
 }
 
