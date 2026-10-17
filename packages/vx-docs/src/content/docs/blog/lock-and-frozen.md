@@ -33,7 +33,7 @@ Every `vx run`, every `vx watch` cycle, every `--affected` selection
 and the picker read configs only from the lock. A run never evaluates
 a config or checks the graph rules: a config's env reads keep their
 lock-time values, a config added since the lock is no project until
-`vx lock`, and with no lock a run stops:
+`vx lock` (naming its task says so), and with no lock a run stops:
 
 ```sh frame="terminal"
 $ vx run build --all

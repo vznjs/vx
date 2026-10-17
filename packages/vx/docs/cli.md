@@ -1586,7 +1586,7 @@ holding a `vx.config.*`, in any language: `vx lock` lists them with git
 nested repository's own configs too), or walks the tree outside git,
 and leaves out any under a nested `.vx/workspace.*`. Configs are
 programs; `vx lock` evaluates them in the current environment and
-stores the post-evaluation objects, by directory (version 3; a lock an
+stores the post-evaluation objects, by directory (version 4; a lock an
 earlier vx wrote is refused, "re-run `vx lock`"). A project is named by
 its config's `name`, else by a plugin's `discover` stage (vx-lockfile
 gives `package.json`'s `name`), else by its root-relative path (`//` for
@@ -1628,7 +1628,8 @@ of its entries, which `vx lock` validated when it wrote them (frozen-env
 semantics: env reads in a config keep their lock-time values; a
 locked directory whose config file is gone (X-144) or that this user
 may not search (EACCES, named as such), or a missing lock, is a hard error; a config added since the lock is no project until
-`vx lock`). An entry edited by
+`vx lock`, and naming its task, `c#build`, says so: "c#build: c/vx.config.ts
+is not in the lock yet — run `vx lock`"). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it.

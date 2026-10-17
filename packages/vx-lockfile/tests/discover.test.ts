@@ -351,6 +351,31 @@ describe('discover', () => {
       })
       expect(await discover(c.make(), ok)).toEqual(EXPECTED)
     })
+
+    it(`${c.name}(): a package.json that does not parse refuses, naming it`, async () => {
+      // Read as no manifest, a conflicted one lost its dependencies: b ran
+      // beside a and hit with a's old output while lock and --check passed
+      // (Growth, conflicted-package-json-drops-edge.sh). Turbo and Nx refuse.
+      await writeFile(path.join(root, c.file), c.text)
+      await workspaces()
+      const metas = await projects({ root: rootPkg })
+      const b = path.join(root, 'packages/b/package.json')
+      await writeFile(b, '<<<<<<< HEAD\n{"name":"b"}\n=======\n{"name":"b"}\n>>>>>>> x\n')
+      await expect(discover(c.make(), metas)).rejects.toThrow(
+        'packages/b/package.json: holds git merge conflict markers — resolve them',
+      )
+      await writeFile(b, '{"name":')
+      await expect(discover(c.make(), metas)).rejects.toThrow('packages/b/package.json: not JSON (')
+      await writeFile(b, '[]')
+      await expect(discover(c.make(), metas)).rejects.toThrow(
+        'packages/b/package.json: not a JSON object',
+      )
+      await writeFile(b, JSON.stringify({ name: 'b' }))
+      await writeFile(path.join(root, 'package.json'), '<<<<<<< HEAD\n{}\n=======\n{}\n>>>>>>> x\n')
+      await expect(discover(c.make(), metas)).rejects.toThrow(
+        /^package\.json: holds git merge conflict markers — resolve them$/,
+      )
+    })
   }
 
   it('yarn(): a classic dependency on a range the workspace misses is the registry copy', async () => {

@@ -7,9 +7,10 @@
 // closes at the bottom of execution, `planRun()` does so via
 // try/finally around its plan() call.
 
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { beginRun, mark, nearest, UserError } from '../util/index.js'
+import { beginRun, mark, nearest, relPosix, UserError } from '../util/index.js'
 import {
   Cache,
   type CacheLayer,
@@ -40,6 +41,7 @@ import {
   cacheScopeEnvError,
   isCacheScope,
   type LoadReads,
+  PROJECT_CONFIG_FILENAMES,
   readClaimedFiles,
   resolveCacheDir,
   resolveStoreRoot,
@@ -407,6 +409,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // A dependant's `^build` still reaches it, and `lib#build` names it.
   const requested = expandRequested(tasks, candidateProjects, projects, isDefaultBuild)
   let unresolvedTasks = unresolvedRequests(tasks, candidateProjects, projects, isDefaultBuild)
+  refuseUnlockedConfig(tasks, projects, projectMetas, workspaceRoot)
   if (options.selectedByDiff === true && unresolvedTasks.some((t) => !t.includes('#'))) {
     // A name a loaded project declares is no typo, whether or not the load
     // was whole: an unaffected dependency loaded for the closure declared
@@ -905,6 +908,34 @@ function workspaceCachePolicy(config: WorkspaceConfig | null | undefined): Cache
     throw new UserError(
       `.vx/workspace: \`cache.policy\`: ${err instanceof Error ? err.message : String(err)}`,
       'VX_E_CONFIG',
+    )
+  }
+}
+
+/**
+ * A `project#build` naming the default `build` of a project the lock holds
+ * no config for, while its directory holds one, asks for that config's task, not
+ * one that runs nothing: ran, `c#build` was 0 tasks, exit 0, where a
+ * renamed task gets "run `vx lock`" (Growth, lock drift).
+ */
+function refuseUnlockedConfig(
+  tasks: readonly string[],
+  projects: ReadonlyMap<string, ProjectEntry>,
+  metas: ReadonlyArray<{ name: string; configPath?: string | null }>,
+  workspaceRoot: string,
+): void {
+  for (const spec of tasks) {
+    const at = spec.indexOf('#')
+    if (at < 0) continue
+    const name = spec.slice(0, at)
+    const entry = projects.get(name)
+    if (entry === undefined || !isDefaultBuild(entry.config.tasks?.[spec.slice(at + 1)])) continue
+    const locked = metas.find((m) => m.name === name)?.configPath
+    if (typeof locked === 'string' && locked !== '') continue
+    const config = PROJECT_CONFIG_FILENAMES.find((n) => existsSync(path.join(entry.dir, n)))
+    if (config === undefined) continue
+    throw new UserError(
+      `${spec}: ${relPosix(workspaceRoot, path.join(entry.dir, config))} is not in the lock yet — run \`vx lock\``,
     )
   }
 }
