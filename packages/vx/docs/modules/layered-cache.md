@@ -20,7 +20,10 @@ embedder via `RunOptions.remoteCache`. Core builds every
   `run()` awaits `drainUploads()` before `cache.close()`, and before the
   telemetry summary, which reports them). A stopped run (Ctrl-C,
   SIGTERM, an embedder's abort) calls `stopUploads()`: queued uploads
-  never start and the drain stops waiting on the ones in flight. Each upload is tallied on the
+  never start and the drain stops waiting on the ones in flight. A read
+  in flight is given up too: the lookup is not awaited, and a download's
+  body errors, so its ingest removes its temp and lands nothing; the next
+  run fetches it again. Each upload is tallied on the
   local `Cache` it wraps (`uploads`: count, bytes, summed ms, failed),
   so every plugin's remote reports without a seam method. Remote
   errors are logged, not thrown — the task already succeeded; failed

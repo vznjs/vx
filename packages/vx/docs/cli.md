@@ -138,7 +138,8 @@ Exit codes:
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
 and each task hears it once: from vx, as SIGINT. A stop starts no more remote
-cache uploads and does not wait on one in flight.
+cache uploads and does not wait on one in flight, nor on a remote lookup or
+download: what was half-read is dropped and fetched again next run.
 
 Installed from npm, `vx` is a sh launcher that execs the platform
 binary, so every signal reaches vx directly and no Node starts first

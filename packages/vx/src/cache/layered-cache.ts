@@ -38,6 +38,35 @@ import type { OutputDirRow } from './cache.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
 import type { PluginSecrets } from '../util/index.js'
 
+const STOPPED: unique symbol = Symbol('stopped')
+
+/**
+ * A response body that errors once the run stops, so the ingest reading it
+ * fails at once, removes its temp, and releases the connection; the cache
+ * then closes under no write.
+ */
+function endsOnStop(body: Blob | Response, stopped: Promise<typeof STOPPED>): Blob | Response {
+  if (body instanceof Blob || body.body === null) return body
+  const reader = body.body.getReader()
+  let stop = false
+  // Once, not raced per chunk: a cancel ends the pending read as `done`,
+  // which the flag turns into an error rather than a short body.
+  void stopped.then(() => {
+    stop = true
+    void reader.cancel().catch(() => undefined)
+  })
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = await reader.read()
+      if (stop) controller.error(new Error('the run was stopped'))
+      else if (next.done) controller.close()
+      else controller.enqueue(next.value)
+    },
+    cancel: (reason) => reader.cancel(reason),
+  })
+  return new Response(stream, { headers: body.headers })
+}
+
 /** What a remote's `open` is handed: the run's CI verdict and its plugin's keychain. */
 export interface RemoteOpenContext extends PluginSecrets {
   /** The run is on CI: nobody may be asked. */
@@ -303,7 +332,17 @@ export class LayeredCache implements CacheLayer {
 
   private async pullFrom(lane: RemoteLane, hash: string, ctx?: CacheGetContext): Promise<boolean> {
     const fetchStart = performance.now()
-    const remoteBody = await lane.get(hash)
+    // A stopped run waits on no read, as on no upload: a lookup or download
+    // in flight held a Ctrl-C until its last byte (M, 2026-10-17). The
+    // plugin's request is left to the exit, and its body is cancelled.
+    const stopped = lane.whenStopped.then((): typeof STOPPED => STOPPED)
+    const pending = lane.get(hash)
+    const remoteBody = await Promise.race([pending, stopped])
+    if (remoteBody === STOPPED) {
+      // A late answer's body would hold its connection to the exit.
+      void pending.then((r) => (r?.body instanceof Response ? r.body.body?.cancel() : undefined))
+      return false
+    }
     if (remoteBody === null) return false
 
     // Ingest the remote body into local using the caller-supplied
@@ -324,7 +363,9 @@ export class LayeredCache implements CacheLayer {
       ...(ctx?.outputs !== undefined ? { outputs: ctx.outputs } : {}),
     }
     try {
-      await this.local.ingest(hash, remoteBody.body, meta)
+      const ingest = this.local.ingest(hash, endsOnStop(remoteBody.body, stopped), meta)
+      ingest.catch(() => undefined)
+      if ((await Promise.race([ingest, stopped])) === STOPPED) return false
     } catch (err) {
       // The bytes came off the network — a corrupt/truncated remote
       // artifact must degrade to a cache miss (task re-executes), not
