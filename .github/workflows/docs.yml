@@ -28,10 +28,6 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-# The shared remote cache (turboCache() in .vx/workspace.ts).
-env:
-  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-
 jobs:
   build:
     name: build
