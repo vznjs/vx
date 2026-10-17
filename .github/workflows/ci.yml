@@ -22,6 +22,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# The shared remote cache (turboCache() in .vx/workspace.ts). A fork PR
+# gets no secrets: its runs fall back to the local cache with a warning.
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+
 jobs:
   # Which of the jobs below a pull request's diff can reach. The `ci` job
   # runs every suite on every diff and is never gated. `plugin packages` is
