@@ -37,7 +37,7 @@ function taskRefusal(task: unknown): string | null {
 describe('run.branch in the workspace config', () => {
   it('is refused as an unknown key', () => {
     expect(refusal({ run: { branch: 'main' } })).toBe(
-      `${WS}: \`run\` has unknown field "branch" (allowed: affectedBase, concurrency, continue, retries, rules, schedule, timeout)`,
+      `${WS}: \`run\` has unknown field "branch" (allowed: concurrency, continue, retries, rules, schedule, timeout)`,
     )
   })
 })
@@ -79,16 +79,16 @@ describe('whitespace-only values', () => {
 
 // A NUL in a workspace path or ref loaded, then failed the run with
 // Node's argument error: the cache dir's message blamed the workspace's
-// permissions, and affectedBase's named `args[3]` and nothing in the config.
+// permissions, and a base ref's named `args[3]` and nothing in the config.
 describe('a NUL in a workspace string', () => {
-  it('is refused in cache.dir and run.affectedBase', () => {
+  it('is refused in cache.dir and baseBranch', () => {
     expect([
       refusal({ cache: { dir: 'a\0b' } }),
-      refusal({ run: { affectedBase: 'main\0x' } }),
-      refusal({ run: { affectedBase: 'origin/main' } }),
+      refusal({ baseBranch: 'main\0x' }),
+      refusal({ baseBranch: 'release/2' }),
     ]).toEqual([
       `${WS}: \`cache.dir\` holds a NUL, which no path can carry`,
-      `${WS}: \`run.affectedBase\` must be a git ref like 'origin/main'`,
+      `${WS}: \`baseBranch\` must be a branch name like 'main'`,
       null,
     ])
   })
@@ -763,7 +763,7 @@ describe('workspace fields another runner spells elsewhere (D-38)', () => {
       }
       return undefined
     }
-    expect(where('defaultBase')).toBe('vx spells it `run.affectedBase`')
+    expect(where('defaultBase')).toBe('vx spells it `baseBranch`')
     expect(where('tasksRunnerOptions')).toBe(
       'vx spells it a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
     )

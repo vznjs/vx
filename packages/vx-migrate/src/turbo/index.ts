@@ -78,8 +78,7 @@ export function turbo(options: TurboPluginOptions = {}): VxPlugin {
         const base =
           Bun.env['TURBO_SCM_BASE']?.trim() ||
           githubActionsBase(options.root ?? ctx.workspaceRoot, keys.remoteBaseFallback === true)
-        if (workspace.run?.affectedBase === undefined && base)
-          workspace.run = { ...workspace.run, affectedBase: base }
+        if (base) ctx.setBranch({ base })
       },
       // Turbo's packages are the package manager's members, each a project
       // with no vx.config written. `//#task` keys run on the root, as Turbo

@@ -9,6 +9,7 @@
 
 import path from 'node:path'
 import {
+  type BranchScope,
   type Cache,
   type CacheLayer,
   type CachePolicy,
@@ -34,7 +35,7 @@ import type {
   RunReport,
   ScheduleHookContext,
   VxPlugin,
-  WorkspaceHookContext,
+  ConfigContext,
 } from './plugin.js'
 import type { ProjectMeta } from '../workspace/index.js'
 
@@ -137,7 +138,7 @@ function assertEditedInPlace(
 export async function applyConfigHooks(
   plugins: readonly VxPlugin[],
   workspace: WorkspaceConfig,
-  ctx: WorkspaceHookContext,
+  ctx: ConfigContext,
   /** Runs after EACH plugin's edit, so a refusal can name the plugin that made it. */
   afterEach?: (plugin: VxPlugin) => void,
 ): Promise<void> {
@@ -555,6 +556,8 @@ export interface CacheHost extends CacheContext {
   readonly policy: CachePolicy
   /** Filled with each remote and what its policy lets it do, for the plugins' `ctx.cache`. */
   readonly remotes?: ResolvedRemote[]
+  /** The run's branch scope, which picks each remote key. */
+  readonly branch?: BranchScope
 }
 
 /**
@@ -569,7 +572,7 @@ export async function resolveCache(
   plugins: readonly VxPlugin[],
   host: CacheHost,
 ): Promise<CacheLayer> {
-  const { localCache, policy, remotes, ...ctx } = host
+  const { localCache, policy, remotes, branch, ...ctx } = host
   const resolved: ResolvedRemote[] = []
   for (const plugin of plugins) {
     if (plugin.cache === undefined) continue
@@ -586,7 +589,7 @@ export async function resolveCache(
     resolved.push(entry)
     remotes?.push(entry)
   }
-  return resolved.length === 0 ? localCache : new LayeredCache(localCache, resolved)
+  return resolved.length === 0 ? localCache : new LayeredCache(localCache, resolved, branch)
 }
 
 /** The plugin each resolved executor came from, so a hook of it that throws is named. */

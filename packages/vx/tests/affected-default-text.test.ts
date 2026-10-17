@@ -1,30 +1,26 @@
-// `vx help` and cli.md's flag table said a bare --affected falls back
-// from origin/HEAD straight to HEAD~1; #2122 put the trunk branches in
-// between. Both name each trunk now, read from the list affected.ts
-// tries.
+// `vx help` and cli.md's flag table say what a bare --affected compares
+// with: the merge base with `origin/<baseBranch>`, and nothing on that
+// branch (owner, 2026-10-17). They said `HEAD~1` after the rule was gone.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { helpText } from '../src/cli/help.js'
 
 const ROOT = path.resolve(import.meta.dir, '..')
-const trunks = (): string[] => {
-  const src = readFileSync(path.join(ROOT, 'src', 'workspace', 'affected.ts'), 'utf8')
-  const list = JSON.parse(
-    /const TRUNKS = (\[[^\]]*\])/.exec(src)![1]!.replaceAll("'", '"'),
-  ) as string[]
-  return [...new Set(list.map((t) => t.replace(/^origin\//, '')))]
-}
 
-describe('the --affected default names the trunk fallback', () => {
+describe('the --affected default names the base branch', () => {
   it('in vx help and in the cli.md flag table', () => {
     const text = helpText()
     const help = text.slice(text.indexOf('--affected[=<base>]')).split('\n').slice(0, 3).join(' ')
     const row = readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8')
       .split('\n')
       .find((l) => l.startsWith('| `--affected[=<base>]`') && l.includes('(default '))!
-    const missing = (text: string): string[] =>
-      [...trunks(), 'HEAD~1'].filter((t) => !new RegExp(`\\b${t.replace('~', '\\~')}`).test(text))
-    expect({ help: missing(help), row: missing(row) }).toEqual({ help: [], row: [] })
+    const says = (text: string) => ({
+      branch: text.includes('origin/<baseBranch>'),
+      none: /none on (that|the base) branch/.test(text),
+      guess: text.includes('HEAD~1'),
+    })
+    const want = { branch: true, none: true, guess: false }
+    expect({ help: says(help), row: says(row) }).toEqual({ help: want, row: want })
   })
 })

@@ -18,7 +18,8 @@ export interface PreparedRun {
   cache: CacheLayer // caller owns close()
   localCache: Cache // the local handle `cache` may wrap; raw SQLite readers use it
   hasRemoteLayer: boolean // `cache` is more than the local handle — the remote policy axes mean something
-  cachePolicy: CachePolicy // `--cache-policy`, `VX_CACHE_POLICY` or the workspace's `cache.policy`, with its `cache.scope` applied
+  cachePolicy: CachePolicy // `--cache-policy`, `VX_CACHE_POLICY` or the workspace's `cache.policy`
+  cacheScope: string | undefined // the run's scope, named on the summary's info row
   remotes: ResolvedRemote[] // the run's remotes in declared order; `openRemotes` turns one whose `open` threw off
   priorities: ReadonlyMap<string, number> // the `schedule` stage's weights; empty without one
   branch: () => string | null // the run's branch: history records it, a forecast reads it first; learned once on first ask

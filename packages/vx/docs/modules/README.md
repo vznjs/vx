@@ -190,7 +190,7 @@ here, itself or in a brace group.
 | File                                   | Topic                                                                                               |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | [`plugins.md`](./plugins.md)           | Core ships no plugin: the floor (run here, cache here) and where plugins live (`packages/vx-*`).    |
-| [`scoped-cache.md`](./scoped-cache.md) | `src/cache/scoped-cache.ts` — the run's `cache.scope` over every layer.                             |
+| [`scoped-cache.md`](./scoped-cache.md) | `src/cache/scoped-cache.ts` — which remote key a scoped run asks.                                   |
 | [`plugin-cache.md`](./plugin-cache.md) | `src/cache/{plugin-cache,run-store}.ts` — a plugin's own entries (`ctx.cache`); a run's kept bytes. |
 
 ## Utilities

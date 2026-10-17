@@ -75,6 +75,31 @@ export interface ApplyMigrationArgs {
 }
 ```
 
+## `branchCacheScope`
+
+function · `src/workspace/config-schema.ts`
+
+```ts
+export function branchCacheScope(repo: string, branch: string): string
+```
+
+## `BranchFacts`
+
+type · `src/orchestrator/plugin.ts`
+
+What a CI knows of the run's branch (owner, 2026-10-17): `scope`, the
+cache scope (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it
+beats the one git names), and `base`, the commit the branch is compared
+with (a pull request's base), for a bare `--affected` and for which
+tasks read the scope. A later plugin's field wins.
+
+```ts
+export interface BranchFacts {
+  scope?: string
+  base?: string
+}
+```
+
 ## `Cache`
 
 class · `src/cache/cache.ts`
@@ -220,6 +245,7 @@ export interface CacheLayer {
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
+  noteKey?(taskId: string, hash: string): void
   drainUploads?(): Promise<void>
   stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>
@@ -314,7 +340,6 @@ export interface CacheSettings {
   dir?: string
   retention?: { olderThan?: Duration; maxSize?: string }
   policy?: string
-  scope?: string
   download?: 'all' | 'toplevel' | 'none'
   inputStability?: InputStability
   outputs?: { clean?: boolean }
@@ -357,6 +382,16 @@ export interface CommandContext extends BaseContext {
   readonly concurrency: number
   readonly vx: readonly string[]
   readonly cache: PluginCache
+}
+```
+
+## `ConfigContext`
+
+type · `src/orchestrator/plugin.ts`
+
+```ts
+export interface ConfigContext extends WorkspaceHookContext {
+  setBranch(facts: BranchFacts): void
 }
 ```
 
@@ -1540,6 +1575,7 @@ export interface PreparedRun {
   localCache: Cache
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
+  cacheScope: string | undefined
   remotes: ResolvedRemote[]
   priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
@@ -1901,6 +1937,8 @@ export interface RunOptions {
   cacheFlags?: CacheFlags
   remoteRequested?: boolean
   cacheScope?: string
+  scopeChanges?: AffectedChanges
+  scopeBase?: string
   remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
@@ -2024,7 +2062,6 @@ type · `src/config.ts`
 export interface RunSettings {
   concurrency?: number | `${number}%`
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
-  affectedBase?: string
   timeout?: Duration
   retries?: number
   continue?: 'never' | 'deps-ok' | 'always'
@@ -2709,7 +2746,7 @@ under the list, taking what every plugin declines.
 ```ts
 export interface VxPlugin {
   readonly name: string
-  config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
+  config?(workspace: WorkspaceConfig, ctx: ConfigContext): void | Promise<void>
   discover?(
     ctx: DiscoverContext,
   ): readonly DiscoveredProject[] | Promise<readonly DiscoveredProject[]>
@@ -2780,6 +2817,7 @@ Nothing here is folded into a cache key.
 
 ```ts
 export interface WorkspaceConfig {
+  baseBranch?: string
   run?: RunSettings
   cache?: CacheSettings
   lock?: LockSettings

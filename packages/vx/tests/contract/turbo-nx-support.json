@@ -322,7 +322,7 @@
   {
     "key": "nx.json affected",
     "status": "mapped",
-    "reason": "Its `defaultBase` (before Nx 20) is `run.affectedBase` when the top-level key is absent; nothing else in it is read."
+    "reason": "Its `defaultBase` (before Nx 20) is `baseBranch` when the top-level key is absent; nothing else in it is read."
   },
   {
     "key": "nx.json extends",
@@ -332,7 +332,7 @@
   {
     "key": "nx.json defaultBase",
     "status": "mapped",
-    "reason": "`nx()` sets `run.affectedBase`, the base a bare `--affected` compares with; `NX_BASE` wins over it, as in Nx."
+    "reason": "`nx()` sets `baseBranch`, the branch a bare `--affected` compares with; `NX_BASE` wins over it as the base commit, as in Nx."
   },
   {
     "key": "nx.json tasksRunnerOptions",

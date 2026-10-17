@@ -284,10 +284,10 @@ describe('defineWorkspace', () => {
     defineWorkspace({ run: { timeout: 1000 } })
     // CONTROL: every declared key type-checks.
     defineWorkspace({
+      baseBranch: 'main',
       run: {
         concurrency: '50%',
         schedule: 'critical-path',
-        affectedBase: 'origin/main',
         timeout: '10m',
         retries: 1,
         continue: 'deps-ok',
@@ -297,7 +297,6 @@ describe('defineWorkspace', () => {
         dir: '.vx',
         retention: { olderThan: '7d', maxSize: '1g' },
         policy: 'local:rw',
-        scope: 'main',
         download: 'all',
         inputStability: { strategy: 'mutable', severity: 'error' },
       },

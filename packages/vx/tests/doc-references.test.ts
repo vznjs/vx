@@ -210,7 +210,7 @@ describe('no page describes a Windows branch the source dropped', () => {
 })
 
 // J2-56: execution.md's timeline listed the workspace file's fields
-// without `affectedBase`, which WorkspaceConfig then declared.
+// without a field WorkspaceConfig then declared.
 describe("execution.md's workspace-config step names every field", () => {
   it('the parenthesised list is WorkspaceConfig, field for field', () => {
     const config = readFileSync(path.join(pkg, 'src', 'config.ts'), 'utf8')

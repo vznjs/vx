@@ -36,9 +36,9 @@ embedder via `RunOptions.remoteCache`. Core builds every
 - **One remote's boundary** is its `RemoteLane` (`remote-lane.ts`): what
   the run lets it do, its shape checks, its upload pool and its
   warnings. This layer owns the order, the local store and provenance.
-- **Scopes** are not this layer's: `ScopedCache` (`scoped-cache.ts`)
-  sits above every layer and hands it the scope's key as a key like any
-  other.
+- **Scopes** reach the remotes only: a `BranchScope`
+  (`scoped-cache.ts`) picks each remote key, and the local store keeps
+  every entry under its task key.
 
 ## Public surface
 
@@ -64,7 +64,7 @@ export interface RemoteCacheLayer {
 }
 
 export class LayeredCache implements CacheLayer {
-  constructor(local: Cache, remotes: readonly ResolvedRemote[]) // declared order
+  constructor(local: Cache, remotes: readonly ResolvedRemote[], branch?: BranchScope) // declared order
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   drainUploads(): Promise<void>
   stopUploads(): void

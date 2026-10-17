@@ -12,7 +12,9 @@ the current working tree.
 export interface AffectedArgs {
   workspaceRoot: string
   since: string // required: ref / commit / branch
-  projects: readonly ProjectMeta[]
+  projects: readonly ProjectMeta[] | Promise<readonly ProjectMeta[]> // awaited after the diff starts
+  /** false skips the config-import scan: a branch scope's routing. */
+  configImports?: false
   /** Which projects declare a `workspaceFiles` glob matching these paths.
    *  Asked about every changed path, once something changed (item 954). */
   workspaceGlobOwners?: (
@@ -43,8 +45,21 @@ export interface AffectedChanges {
 }
 export function affectedChanges(args: AffectedArgs, perTask?: boolean): Promise<AffectedChanges> // perTask false: affectedProjects' set only
 
-/** Default base when `--affected` has no value. */
-export function defaultAffectedBase(workspaceRoot: string): Promise<string>
+/** Default base when `--affected` has no value: the base branch's ref; refused on that branch. */
+export function defaultAffectedBase(
+  workspaceRoot: string,
+  baseBranch: string | undefined,
+): Promise<string>
+// What a branch changed, for which tasks read its cache scope: from `base`
+// (a plugin's), else the merge base with the base branch. No base, or one
+// git cannot resolve, is no change. Its git calls start before `projects` resolves.
+export function branchChanges(
+  workspaceRoot: string,
+  base: string | undefined,
+  baseBranch: string | undefined, // configured; undefined lets git name it
+  projects: Promise<readonly ProjectMeta[]>,
+  walked?: Pick<AffectedArgs, 'untracked' | 'links'>, // the run's enumeration, walked once
+): Promise<AffectedChanges>
 
 /** Lockfiles a `fingerprint` plugin claims, so `--affected` can follow
  *  a per-project dependency closure instead of the whole fingerprint. */
@@ -149,17 +164,21 @@ a channel that reads a declaration differently from the key does
 exactly that. The config-import channel
 [documents where it stops](./config-imports.md#where-this-stops).
 
-`defaultAffectedBase`:
+`defaultAffectedBase` (owner, 2026-10-17):
 
-- Try `git symbolic-ref --short -q refs/remotes/origin/HEAD` (e.g.
-  `origin/main`).
-- Without the symbolic-ref (or with one naming a branch the remote
-  deleted), the first of `origin/main`, `origin/master`,
-  `main`, `master` that exists and is not HEAD's commit (one
-  `for-each-ref`; D-93), else `HEAD~1`.
-- If `HEAD~1` does not resolve either (a CI checkout at
-  `fetch-depth: 1`), a `UserError` asks to fetch history or name the
-  base (`--affected=origin/main`).
+- The base branch is the configured `baseBranch`, else the
+  `origin/HEAD` symref's branch (one naming a branch the remote deleted
+  is none), else `main`, else `master`; its ref is `origin/<name>`, else
+  the local branch (a clone with no remote). Three spawns at once: the
+  symref, one `for-each-ref`, HEAD's branch.
+- On the base branch itself it refuses: there is no default (`HEAD~1`
+  saw one commit of a multi-commit push); the last good commit is the
+  caller's to name.
+- With no base branch at all (a CI checkout at `fetch-depth: 1`), a
+  `UserError` asks to fetch history, set `baseBranch`, or name the base
+  (`--affected=origin/main`).
+- `affectedChanges` diffs from the merge base of that ref and HEAD, or
+  from the ref's tip when they share no history.
 
 ## Filter integration
 
@@ -191,8 +210,8 @@ spawns) — easy to test against in-memory fixtures.
 - file in nested project → nested project wins over parent.
 - file outside any project → no project selected.
 - bad git ref → UserError with the ref name.
-- `defaultAffectedBase` returns the `origin/HEAD` symref, else a trunk
-  branch that is not HEAD, else `HEAD~1`.
+- `defaultAffectedBase` returns `origin/<baseBranch>`, else the local
+  branch; on that branch it refuses (no default, owner 2026-10-17).
 
 Every git spawn goes through `spawnGitSync` / `spawnGit`: a git that is
 not on PATH is util's `gitSpawnRefusal` (one line, the install named),

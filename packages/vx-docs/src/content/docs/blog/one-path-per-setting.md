@@ -19,7 +19,7 @@ from it.
 | `run.retries`    | `VX_RUN_RETRIES`     | `--retries`     |
 | `run.concurrency` | `VX_RUN_CONCURRENCY` | `--concurrency` |
 | `cache.dir`      | `VX_CACHE_DIR`       | `--cache-dir`   |
-| `cache.scope`    | `VX_CACHE_SCOPE`     | `--cache-scope` |
+| `cache.policy`   | `VX_CACHE_POLICY`    | `--cache-policy` |
 
 The settings live in four groups in `.vx/workspace.ts`: `run`, `cache`,
 `lock` and `watch`.
@@ -69,7 +69,7 @@ $ vx run build
 
   .vx/workspace.ts:4:3
   unknown field "concurrency"
-  allowed: cache, lock, plugins, run, watch
+  allowed: baseBranch, cache, lock, plugins, run, watch
 
     2 |
     3 | export default defineWorkspace({

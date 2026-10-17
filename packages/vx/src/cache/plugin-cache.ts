@@ -85,8 +85,10 @@ async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint
 }
 
 /**
- * `plugin`'s view of the cache. A scoped run reads the default key, then
- * the scope's, and writes only the scope's, as tasks do (`ScopedCache`).
+ * `plugin`'s view of the cache. The local store never knows a scope
+ * (owner, 2026-10-17): it keeps every entry under its name's key. A scoped
+ * run reads a remote under the default key, then the scope's, and writes
+ * a remote only under the scope's.
  */
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache {
   const { db, policy, scope } = host
@@ -139,11 +141,10 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
 
   return {
     async get(name) {
+      const local = entryKey(plugin, name)
+      const hit = localGet(local)
+      if (hit !== null) return hit
       const keys = reads(name)
-      for (const key of keys) {
-        const hit = localGet(key)
-        if (hit !== null) return hit
-      }
       for (const { remote } of readers) {
         for (const key of keys) {
           try {
@@ -151,7 +152,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
             if (got === null) continue
             const bytes = await capped(got.body)
             if (bytes === null) continue
-            if (policy.localWrite) localPut(key, bytes)
+            if (policy.localWrite) localPut(local, bytes)
             return bytes
           } catch {
             // a failing remote is a miss there
@@ -164,7 +165,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
     async put(name, bytes) {
       if (bytes.byteLength === 0 || bytes.byteLength > PLUGIN_ENTRY_MAX_BYTES) return
       const key = writeKey(name)
-      if (policy.localWrite) localPut(key, bytes)
+      if (policy.localWrite) localPut(entryKey(plugin, name), bytes)
       for (const { remote } of writers) {
         try {
           await remote.put(key, new Blob([bytes]), { durationMs: 0 })
@@ -175,8 +176,8 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
     },
 
     async has(name) {
+      if (localHas([entryKey(plugin, name)]).size > 0) return true
       const keys = reads(name)
-      if (localHas(keys).size > 0) return true
       let answered = policy.localRead
       for (const { remote } of readers) {
         for (const key of keys) {
@@ -196,7 +197,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       for (const name of names) for (const key of reads(name)) byKey.set(key, name)
       const keys = [...byKey.keys()]
       const found = new Set<string>()
-      for (const key of localHas(keys)) found.add(byKey.get(key)!)
+      for (const key of localHas(names.map((n) => entryKey(plugin, n)))) found.add(byKey.get(key)!)
       for (const { remote } of readers) {
         const ask = keys.filter((k) => !found.has(byKey.get(k)!))
         if (ask.length === 0) break

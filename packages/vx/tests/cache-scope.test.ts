@@ -1,7 +1,8 @@
 // `cache.scope`, end to end over an injected remote: a run with none reads
-// and writes the default keys; a scope reads the default key, then its own,
-// and writes only its own. The policy alone decides whether anything is
-// written (owner, 2026-10-14).
+// and writes the default keys. A scoped run asks one key per task (owner,
+// 2026-10-17): the scope's for a task the branch changed (every task when
+// the run names no change), the default key for any other. The policy
+// alone decides whether anything is written (owner, 2026-10-14).
 
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -15,10 +16,11 @@ import {
 } from './helpers/orchestrator-fixture.js'
 import { mkdtemp } from 'node:fs/promises'
 import os from 'node:os'
-import { Cache, FULL_CACHE_POLICY, type RemoteCacheLayer, ScopedCache } from '../src/cache/index.js'
+import { BranchScope, Cache, FULL_CACHE_POLICY, type RemoteCacheLayer } from '../src/cache/index.js'
 import { scopedKey } from '../src/cache/scoped-cache.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run } from './helpers/orchestrator.js'
+import type { AffectedChanges } from '../src/workspace/index.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { layeredOver } from './helpers/layered.js'
 
@@ -66,14 +68,12 @@ async function runScoped(
   input: string,
   remoteReadOnlyByDefault?: boolean,
   cacheScope?: string,
+  /** What the branch changed; default the app's input, so the task is the scope's. Null: git says. */
+  scopeChanges: AffectedChanges | null = changed('app', 'src/in.txt'),
 ): Promise<{ status: string; hash: string }> {
-  await Bun.write(
-    path.join(fixture.root, '.vx/workspace.mjs'),
-    scope === undefined
-      ? `export default {}\n`
-      : `export default { cache: { scope: '${scope}' } }\n`,
-  )
+  await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), `export default {}\n`)
   await writeFile(path.join(fixture.root, 'packages/app/src/in.txt'), input)
+  const named = cacheScope ?? scope
   // Only the remote may answer: every run starts from an empty local cache.
   await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
   const result = await run({
@@ -82,12 +82,27 @@ async function runScoped(
     log: silentLogger(fixture),
     remoteCache: remote,
     ...(remoteReadOnlyByDefault === undefined ? {} : { remoteReadOnlyByDefault }),
-    ...(cacheScope === undefined ? {} : { cacheScope }),
+    ...(named === undefined ? {} : { cacheScope: named }),
+    ...(scopeChanges === null ? {} : { scopeChanges }),
   })
   expect(result.ok).toBe(true)
   const outcome = result.outcomes[0]!
   return { status: outcome.status, hash: outcome.hash! }
 }
+
+/** What a branch changed: nothing, or one file of a project (named by its folder: the runs here declare no naming plugin). */
+const NOTHING: AffectedChanges = {
+  projects: new Set(),
+  changed: [],
+  paths: new Map(),
+  whole: new Set(),
+}
+const changed = (project: string, rel: string): AffectedChanges => ({
+  projects: new Set([`packages/${project}`]),
+  changed: [`packages/${project}/${rel}`],
+  paths: new Map([[`packages/${project}`, [rel]]]),
+  whole: new Set(),
+})
 
 describe('cache.scope', () => {
   for (const batches of [true, false]) {
@@ -128,6 +143,8 @@ describe('cache.scope', () => {
             log: silentLogger(fixture),
             remoteCache: layer,
             cacheFlags: { force: true },
+            cacheScope: 'pr-1',
+            scopeChanges: changed('app', 'src/in.txt'),
           })
           expect(forced.outcomes[0]!.status).toBe('success')
           expect(puts).toEqual([])
@@ -197,12 +214,7 @@ describe('cache.scope', () => {
           files: { 'src/in.txt': 'v1' },
           config: BUILD_CONFIG,
         })
-        await Bun.write(
-          path.join(fixture.root, '.vx/workspace.mjs'),
-          scope === undefined
-            ? `export default {}\n`
-            : `export default { cache: { scope: '${scope}' } }\n`,
-        )
+        await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), `export default {}\n`)
         const once = () =>
           run({
             cwd: fixture.root,
@@ -210,6 +222,9 @@ describe('cache.scope', () => {
             log: silentLogger(fixture),
             remoteCache: counted,
             remoteReadOnlyByDefault: false,
+            ...(scope === undefined
+              ? {}
+              : { cacheScope: scope, scopeChanges: changed('app', 'src/in.txt') }),
           })
         expect((await once()).outcomes[0]!.status).toBe('success')
         calls.length = 0
@@ -223,7 +238,7 @@ describe('cache.scope', () => {
   )
 
   it(
-    'a scope reads the default keys, then its own, and writes only its own',
+    "a scoped task asks one key: the scope's when the branch changed it, else the default",
     async () => {
       const fixture = await makeWorkspace('vx-cache-scope-')
       const { layer, store, gets } = memoryRemote()
@@ -237,31 +252,148 @@ describe('cache.scope', () => {
         expect(main.status).toBe('success')
         expect([...store.keys()]).toEqual([main.hash])
 
-        // A PR reads what the default branch wrote, under the default key first.
+        // Unchanged on the branch: the default key alone, which main wrote.
         gets.length = 0
-        expect((await runScoped(fixture, layer, 'pr-1', 'v1')).status).toBe('cache-hit-remote')
+        expect(
+          (await runScoped(fixture, layer, 'ref-b', 'v1', false, undefined, NOTHING)).status,
+        ).toBe('cache-hit-remote')
         expect(gets).toEqual([main.hash])
 
-        // Its own work lands beside the default key, never under it.
-        const pr = await runScoped(fixture, layer, 'pr-1', 'v2')
+        // Changed on the branch: the scope's key alone; its work lands there.
+        const edit = changed('app', 'src/in.txt')
+        gets.length = 0
+        const pr = await runScoped(fixture, layer, 'ref-b', 'v2', false, undefined, edit)
         expect(pr.status).toBe('success')
-        expect(store.size).toBe(2)
+        // The batch probe found the scope's key absent: no GET.
+        expect(gets).toEqual([])
+        expect(store.has(scopedKey('ref-b', pr.hash))).toBe(true)
         expect(store.has(pr.hash)).toBe(false)
 
-        // The same scope reads it back; another scope and none do not.
+        // The same scope reads it back with one GET; another scope does not.
         gets.length = 0
-        expect((await runScoped(fixture, layer, 'pr-1', 'v2')).status).toBe('cache-hit-remote')
-        // The scope's key serves; the default GET comes first unless the
-        // batch probe already found the scope's key alone (the unit row below).
-        expect(gets.at(-1)).not.toBe(pr.hash)
-        expect(gets.length).toBeLessThanOrEqual(2)
-        expect((await runScoped(fixture, layer, 'pr-2', 'v2')).status).toBe('success')
-        expect(store.size).toBe(3)
-        const plain = await runScoped(fixture, layer, undefined, 'v2')
-        expect(plain.status).toBe('success')
-        expect(plain.hash).toBe(pr.hash)
-        expect(store.has(pr.hash)).toBe(true)
-        expect(store.size).toBe(4)
+        expect(
+          (await runScoped(fixture, layer, 'ref-b', 'v2', false, undefined, edit)).status,
+        ).toBe('cache-hit-remote')
+        expect(gets).toEqual([scopedKey('ref-b', pr.hash)])
+        expect(
+          (await runScoped(fixture, layer, 'ref-c', 'v2', false, undefined, edit)).status,
+        ).toBe('success')
+        // Git names no change (the branch is main's commit): main's key.
+        expect(
+          (await runScoped(fixture, layer, 'ref-b', 'v1', false, undefined, null)).status,
+        ).toBe('cache-hit-remote')
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a branch's README edit leaves build on main's key (EA, 2026-10-17)",
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-scope-readme-')
+      const { layer, gets } = memoryRemote()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1', 'README.md': 'one' },
+          config: BUILD_CONFIG,
+        })
+        const main = await runScoped(fixture, layer, undefined, 'v1')
+        await writeFile(path.join(fixture.root, 'packages/app/README.md'), 'two')
+        gets.length = 0
+        const readme = changed('app', 'README.md')
+        const pr = await runScoped(fixture, layer, 'ref-b', 'v1', false, undefined, readme)
+        expect(pr.status).toBe('cache-hit-remote')
+        expect(gets).toEqual([main.hash])
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "a task downstream of a changed one reads the scope: its key folds the change's",
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-scope-closure-')
+      const { layer, store } = memoryRemote()
+      try {
+        await addProject(fixture.root, 'lib', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'a' },
+          config: `
+            export default {
+              tasks: {
+                build: {
+                  dependsOn: ['packages/lib#build'],
+                  exec: { command: 'cat src/in.txt > out.txt' },
+                  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },
+                },
+              },
+            }
+          `,
+        })
+        await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), `export default {}\n`)
+        await writeFile(path.join(fixture.root, 'packages/lib/src/in.txt'), 'v2')
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['packages/app#build'],
+          log: silentLogger(fixture),
+          remoteCache: layer,
+          remoteReadOnlyByDefault: false,
+          cacheScope: 'ref-b',
+          scopeChanges: changed('lib', 'src/in.txt'),
+        })
+        expect(r.ok).toBe(true)
+        const hashes = r.outcomes.map((o) => o.hash!)
+        expect([...store.keys()].sort()).toEqual(hashes.map((h) => scopedKey('ref-b', h)).sort())
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'an unchanged task saves where it reads when no write leaves the machine',
+    async () => {
+      const fixture = await makeWorkspace('vx-cache-scope-laptop-')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), `export default {}\n`)
+        // A laptop: the remote is read-only, so the miss saves under the
+        // default key it reads, and the next run hits it locally.
+        const { layer, store } = memoryRemote()
+        const once = async (): Promise<string> => {
+          const r = await run({
+            cwd: fixture.root,
+            tasks: ['build'],
+            log: silentLogger(fixture),
+            remoteCache: layer,
+            remoteReadOnlyByDefault: true,
+            cacheScope: 'ref-b',
+            scopeChanges: NOTHING,
+          })
+          expect(r.ok).toBe(true)
+          return r.outcomes[0]!.status
+        }
+        expect(await once()).toBe('success')
+        expect(await once()).toBe('cache-hit')
+        expect(store.size).toBe(0)
+        // CI writes the remote: the same miss lands under the scope's key,
+        // never the default key a branch must not write.
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
+        await writeFile(path.join(fixture.root, 'packages/app/src/in.txt'), 'v2')
+        const ci = await runScoped(fixture, layer, 'ref-b', 'v2', false, undefined, NOTHING)
+        expect(ci.status).toBe('success')
+        expect([...store.keys()]).toEqual([scopedKey('ref-b', ci.hash)])
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }
@@ -284,9 +416,9 @@ describe('cache.scope', () => {
         expect(store.size).toBe(0)
         await runScoped(fixture, layer, undefined, 'v1')
         expect(store.size).toBe(1)
-        expect((await runScoped(fixture, layer, 'pr-1', 'v1', true)).status).toBe(
-          'cache-hit-remote',
-        )
+        expect(
+          (await runScoped(fixture, layer, 'pr-1', 'v1', true, undefined, NOTHING)).status,
+        ).toBe('cache-hit-remote')
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }
@@ -319,30 +451,55 @@ describe('cache.scope', () => {
   })
 
   it(
-    'VX_CACHE_SCOPE wins over the workspace, and a bad one is refused',
+    "VX_CACHE_SCOPE beats a plugin's scope, empty turns it off, and a bad one is refused",
     async () => {
       const fixture = await makeWorkspace('vx-cache-scope-env-')
       const { layer, store } = memoryRemote()
       const saved = process.env['VX_CACHE_SCOPE']
+      const once = async (): Promise<string> => {
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
+        const r = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: layer,
+          remoteReadOnlyByDefault: false,
+          scopeChanges: changed('app', 'src/in.txt'),
+        })
+        expect(r.ok).toBe(true)
+        return r.outcomes[0]!.hash!
+      }
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
           config: BUILD_CONFIG,
         })
-        process.env['VX_CACHE_SCOPE'] = 'pr-9'
-        const pr = await runScoped(fixture, layer, 'pr-1', 'v1')
-        expect(store.size).toBe(1)
-        expect(store.has(pr.hash)).toBe(false)
-        delete process.env['VX_CACHE_SCOPE']
-        // Written under pr-9's key: pr-9 reads it back.
-        expect((await runScoped(fixture, layer, 'pr-9', 'v1')).status).toBe('cache-hit-remote')
+        await Bun.write(
+          path.join(fixture.root, '.vx/workspace.mjs'),
+          `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('org/ci', "{ config(_w, ctx) { ctx.setBranch({ scope: 'org/r:b1' }) } }")}] }\n`,
+        )
+        const plugin = await once()
+        expect([...store.keys()]).toEqual([scopedKey('org/r:b1', plugin)])
+        store.clear()
+        process.env['VX_CACHE_SCOPE'] = 'org/r:b9'
+        const env = await once()
+        expect([...store.keys()]).toEqual([scopedKey('org/r:b9', env)])
+        store.clear()
+        process.env['VX_CACHE_SCOPE'] = ''
+        const off = await once()
+        expect([...store.keys()]).toEqual([off])
         process.env['VX_CACHE_SCOPE'] = 'pr 9'
-        const refused = await runScoped(fixture, layer, undefined, 'v1').then(
+        const refused = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: layer,
+        }).then(
           () => 'ran',
           (err: Error) => err.message,
         )
         expect(refused).toBe(
-          "VX_CACHE_SCOPE must be a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'",
+          "VX_CACHE_SCOPE must be a scope name of letters, digits and . _ - / @ : (at most 128), like 'vznjs/vx:feat-x'",
         )
       } finally {
         if (saved === undefined) delete process.env['VX_CACHE_SCOPE']
@@ -353,41 +510,28 @@ describe('cache.scope', () => {
     TIMEOUT,
   )
 
-  it(
-    '--cache-scope wins over VX_CACHE_SCOPE and the workspace, and a bad one is refused',
-    async () => {
-      expect(parseRunArgs(['build', '--cache-scope', 'pr-7']).cacheScope).toBe('pr-7')
-      expect(parseRunArgs(['build', '--cache-scope=pr 7']).error).toBe(
-        "--cache-scope must be a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'",
+  it('--cache-scope and cache.scope are gone', async () => {
+    expect(parseRunArgs(['build', '--cache-scope', 'pr-7']).error).toBeDefined()
+    const fixture = await makeWorkspace('vx-cache-scope-key-')
+    try {
+      await addProject(fixture.root, 'app', { files: { 'src/in.txt': 'v1' }, config: BUILD_CONFIG })
+      await Bun.write(
+        path.join(fixture.root, '.vx/workspace.mjs'),
+        `export default { cache: { scope: 'pr-1' } }\n`,
       )
-      expect(parseRunArgs(['build', '--cache-scope']).error).toContain('--cache-scope must be')
-      const fixture = await makeWorkspace('vx-cache-scope-flag-')
-      const { layer, store } = memoryRemote()
-      const saved = process.env['VX_CACHE_SCOPE']
-      try {
-        await addProject(fixture.root, 'app', {
-          files: { 'src/in.txt': 'v1' },
-          config: BUILD_CONFIG,
-        })
-        process.env['VX_CACHE_SCOPE'] = 'pr-1'
-        const opts = await resolveRunOptions(
-          parseRunArgs(['build', '--all', '--cache-scope=pr-7']),
-          fixture.root,
-          ['build'],
-        )
-        const scope = (opts as { cacheScope?: string }).cacheScope
-        expect(scope).toBe('pr-7')
-        const pr = await runScoped(fixture, layer, undefined, 'v1', undefined, scope)
-        expect(store.size).toBe(1)
-        expect(store.has(pr.hash)).toBe(false)
-      } finally {
-        if (saved === undefined) delete process.env['VX_CACHE_SCOPE']
-        else process.env['VX_CACHE_SCOPE'] = saved
-        await rm(fixture.root, { recursive: true, force: true })
-      }
-    },
-    TIMEOUT,
-  )
+      const refused = await run({
+        cwd: fixture.root,
+        tasks: ['build'],
+        log: silentLogger(fixture),
+      }).then(
+        () => 'ran',
+        (err: Error) => err.message,
+      )
+      expect(refused).toContain('scope')
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
 
   it('VX_CACHE_POLICY is the spec a run takes when no --cache-policy names one', () => {
     const saved = process.env['VX_CACHE_POLICY']
@@ -414,163 +558,77 @@ describe('cache.scope', () => {
     }
   })
 
-  it('a batch probe that found only the scope key skips the default GET', async () => {
+  it('a scoped key is asked once, in a batch probe and a GET alike', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-scope-unit-'))
     const key = '0123456789abcdef'
-    const gets: string[] = []
-    // Every key but the task key is there: only the scope's key answers.
-    // Not an artifact: the ingest refuses it, and only the GETs are counted.
+    const asked: string[] = []
+    const errors: string[] = []
     const remote: RemoteCacheLayer = {
-      has: async (hash) => hash !== key,
-      hasMany: async (hashes) => new Set(hashes.filter((h) => h !== key)),
+      has: async (hash) => (asked.push(`has ${hash}`), false),
+      hasMany: async (hashes) => (asked.push(`hasMany ${hashes.join(',')}`), new Set()),
       async get(hash) {
-        gets.push(hash)
-        return hash === key
-          ? null
-          : { body: new Blob([new Uint8Array([1])]), durationMs: undefined }
+        asked.push(`get ${hash}`)
+        throw new Error('down')
       },
       async put() {},
     }
     const local = new Cache(path.join(dir, 'cache'))
     try {
-      const layered = new ScopedCache(
-        layeredOver(local, remote, { policy: FULL_CACHE_POLICY, onRemoteError: () => {} }),
-        'pr-1',
-      )
-      expect(await layered.remoteHasMany!([key])).toEqual(new Set([key]))
-      await layered.get(key)
-      expect(gets).toHaveLength(1)
-      expect(gets[0]).not.toBe(key)
-    } finally {
-      local.close()
-      await rm(dir, { recursive: true, force: true })
-    }
-  })
-
-  it(
-    'a failed default lookup falls through to the scope key',
-    async () => {
-      const fixture = await makeWorkspace('vx-cache-scope-fallthrough-')
-      const { layer, store } = memoryRemote()
-      try {
-        await addProject(fixture.root, 'app', {
-          files: { 'src/in.txt': 'v1' },
-          config: BUILD_CONFIG,
-        })
-        const pr = await runScoped(fixture, layer, 'pr-1', 'v1')
-        // Only the default key fails: the scope's hit is there to be found.
-        const refuse = (hash: string): void => {
-          if (hash === pr.hash) throw new Error('default key unavailable')
-        }
-        const flaky: RemoteCacheLayer = {
-          has: async (hash) => (refuse(hash), layer.has(hash)),
-          get: async (hash) => (refuse(hash), layer.get(hash)),
-          put: layer.put,
-        }
-        expect((await runScoped(fixture, flaky, 'pr-1', 'v1')).status).toBe('cache-hit-remote')
-        expect(store.size).toBe(1)
-      } finally {
-        await rm(fixture.root, { recursive: true, force: true })
-      }
-    },
-    TIMEOUT,
-  )
-
-  it(
-    'a refused default artifact falls through to the scope key (Security F6)',
-    async () => {
-      const fixture = await makeWorkspace('vx-cache-scope-f6-')
-      const { layer, store } = memoryRemote()
-      try {
-        await addProject(fixture.root, 'app', {
-          files: { 'src/in.txt': 'v1' },
-          config: BUILD_CONFIG,
-        })
-        const pr = await runScoped(fixture, layer, 'pr-1', 'v1')
-        // A partial upload under the default key: the GET answers, the ingest refuses it.
-        store.set(pr.hash, new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0]))
-        expect((await runScoped(fixture, layer, 'pr-1', 'v1')).status).toBe('cache-hit-remote')
-      } finally {
-        await rm(fixture.root, { recursive: true, force: true })
-      }
-    },
-    TIMEOUT,
-  )
-
-  it('a failed lookup warns, and the scope key is still asked', async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-scope-warn-'))
-    const key = '0123456789abcdef'
-    const errors: string[] = []
-    let scopeDown = false
-    const remote: RemoteCacheLayer = {
-      async has(hash) {
-        if (hash === key) throw new Error('default down')
-        return false
-      },
-      async get(hash) {
-        if (hash === key) throw new Error('default down')
-        if (scopeDown) throw new Error('scope down')
-        return null
-      },
-      async put() {},
-    }
-    const local = new Cache(path.join(dir, 'cache'))
-    const layered = (): ScopedCache =>
-      new ScopedCache(
-        layeredOver(local, remote, {
+      for (const routed of [true, false]) {
+        asked.length = 0
+        const branch = new BranchScope('pr-1')
+        const layered = layeredOver(local, remote, {
           policy: FULL_CACHE_POLICY,
           onRemoteError: (err) => errors.push(err.message),
-        }),
-        'pr-1',
-      )
-    try {
-      expect(await layered().has(key)).toBeNull()
-      expect(await layered().get(key)).toBeNull()
-      expect(errors).toEqual([
-        expect.stringContaining('default down'),
-        expect.stringContaining('default down'),
-      ])
-      errors.length = 0
-      scopeDown = true
-      expect(await layered().get(key)).toBeNull()
-      expect(errors).toEqual([
-        expect.stringContaining('default down'),
-        expect.stringContaining('scope down'),
-      ])
+          branch,
+        })
+        branch.routeTasks(new Set(routed ? ['app#build'] : []))
+        layered.noteKey('app#build', key)
+        const want = routed ? scopedKey('pr-1', key) : key
+        expect(await layered.remoteHasMany!([key])).toEqual(new Set())
+        // A failed lookup warns and is a miss; the other key is never asked.
+        expect(await layered.get(key)).toBeNull()
+        expect(asked).toEqual([`hasMany ${want}`])
+      }
+      expect(errors).toEqual([])
     } finally {
       local.close()
       await rm(dir, { recursive: true, force: true })
     }
   })
 
+  // Owner, 2026-10-17: the local store never knows a scope. One disk is
+  // one pool, whatever branch saved an entry: its key names its inputs.
   it(
-    'a local entry another scope saved is a miss (Security F4)',
+    'the local store is one pool: an entry any scope saved hits under every scope and none',
     async () => {
-      const fixture = await makeWorkspace('vx-cache-scope-f4-')
+      const fixture = await makeWorkspace('vx-cache-scope-local-')
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
           config: BUILD_CONFIG,
         })
         await Bun.write(path.join(fixture.root, '.vx/workspace.mjs'), `export default {}\n`)
-        // One disk, no remote: a persistent runner or a laptop switching scopes.
-        const status = async (cacheScope?: string): Promise<string> => {
+        const status = async (
+          cacheScope?: string,
+          scopeChanges?: AffectedChanges,
+        ): Promise<string> => {
           const r = await run({
             cwd: fixture.root,
             tasks: ['build'],
             log: silentLogger(fixture),
             ...(cacheScope === undefined ? {} : { cacheScope }),
+            ...(scopeChanges === undefined ? {} : { scopeChanges }),
           })
           expect(r.ok).toBe(true)
           return r.outcomes[0]!.status
         }
-        expect(await status('pr-1')).toBe('success')
-        expect(await status('pr-1')).toBe('cache-hit')
-        expect(await status('pr-2')).toBe('success')
-        expect(await status()).toBe('success')
-        // An unscoped entry serves every scope, as a scope reads the default keys first.
-        expect(await status('pr-1')).toBe('cache-hit')
+        const app = changed('app', 'src/in.txt')
+        expect(await status('pr-1', app)).toBe('success')
+        expect(await status('pr-1', app)).toBe('cache-hit')
+        expect(await status('pr-2', app)).toBe('cache-hit')
         expect(await status()).toBe('cache-hit')
+        expect(await status('pr-1', NOTHING)).toBe('cache-hit')
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

@@ -44,6 +44,12 @@ const SCHEDULES = ['most-work', 'critical-path', 'direct-dependents', 'ready-ord
 
 export const SETTINGS: readonly Setting[] = [
   {
+    path: 'baseBranch',
+    kind: { type: 'string' },
+    default: "origin/HEAD's branch, then main, then master",
+    doc: 'The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`.',
+  },
+  {
     path: 'run.concurrency',
     kind: { type: 'concurrency' },
     default: 'the cores this process may use',
@@ -56,12 +62,6 @@ export const SETTINGS: readonly Setting[] = [
     default: 'most-work',
     doc: 'Which ready task starts first when there are more than workers.',
     flag: { verb: 'run', name: '--schedule' },
-  },
-  {
-    path: 'run.affectedBase',
-    kind: { type: 'string' },
-    default: 'origin/HEAD, then the trunk, else HEAD~1',
-    doc: 'The git ref a bare `--affected` compares with.',
   },
   {
     path: 'run.branch',
@@ -137,9 +137,9 @@ export const SETTINGS: readonly Setting[] = [
   {
     path: 'cache.scope',
     kind: { type: 'string' },
-    default: 'none (the default keys)',
-    doc: "Where cache writes land (`'pr-123'`): reads try the default key, then the scope's.",
-    flag: { verb: 'run', name: '--cache-scope' },
+    default: "the branch's, `<owner>/<repo>:<branch>`, with a remote cache off `baseBranch`",
+    doc: "A branch's remote entries (`'vznjs/vx:feat-x'`): tasks the branch changed read the scope's key, the rest the default key; the local cache never uses it. Empty: no scope.",
+    config: false,
   },
   {
     path: 'cache.download',
@@ -220,7 +220,7 @@ export const SETTINGS: readonly Setting[] = [
   },
 ]
 
-/** The `.vx/workspace` groups that hold settings; `plugins` is the other key. */
+/** The `.vx/workspace` groups that hold settings; `baseBranch` and `plugins` are the other keys. */
 export const SETTING_GROUPS = ['run', 'cache', 'lock', 'watch'] as const
 
 const BY_PATH = new Map(SETTINGS.map((s) => [s.path, s]))
@@ -229,7 +229,7 @@ export function setting(path: string): Setting {
   return BY_PATH.get(path)!
 }
 
-/** `run.affectedBase` → `VX_RUN_AFFECTED_BASE`. */
+/** `run.branch` → `VX_RUN_BRANCH`. */
 export function envName(path: string): string {
   return `VX_${path
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')

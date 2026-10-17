@@ -13,7 +13,7 @@ import {
   type VxPlugin,
 } from '@vzn/vx'
 import type { FetchFn } from './checks.js'
-import { githubCacheScope } from './cache-scope.js'
+import { githubBranch } from './cache-scope.js'
 
 // Every run evaluates `.vx/workspace.ts`; the sink, the summary renderer
 // and the Checks API client load only where a summary file is set. The
@@ -40,9 +40,11 @@ export interface GithubPluginOptions {
   /** Check-run name. Default: `'vx'`. */
   checkName?: string
   /**
-   * Set the workspace's `cache.scope` from the run's ref when it names none:
-   * a push to the default branch keeps the default keys, a pull request writes to
-   * `pr-<n>`, any other ref to `ref-<name>`. Default: on; `false` opts out.
+   * Name the run's cache scope and base commit from the Actions event: a
+   * push to the default branch keeps the default keys, a branch or its pull
+   * request writes to `<owner>/<repo>:<branch>` (a fork's names the fork),
+   * and a pull request is compared with its base commit. `VX_CACHE_SCOPE`
+   * beats it. Default: on; `false` opts out.
    */
   cacheScope?: boolean
   /** Test seam — inject the append. Defaults to fs appendFile. */
@@ -94,10 +96,9 @@ export function github(options: GithubPluginOptions = {}): VxPlugin | undefined 
       throw new UserError(`github() option "${key}" must be a non-empty string, got ""`)
   }
   return definePlugin(import.meta, {
-    async config(workspace) {
-      if (options.cacheScope === false || workspace.cache?.scope !== undefined) return
-      const scope = await githubCacheScope(process.env)
-      if (scope !== undefined) workspace.cache = { ...workspace.cache, scope }
+    async config(_workspace, ctx) {
+      if (options.cacheScope === false) return
+      ctx.setBranch(await githubBranch(process.env))
     },
     telemetry(ctx) {
       const file = options.summaryFile ?? process.env['GITHUB_STEP_SUMMARY']

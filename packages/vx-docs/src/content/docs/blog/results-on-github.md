@@ -64,11 +64,16 @@ flowchart LR
 
 ## A cache a pull request cannot poison
 
-On Actions the plugin sets the cache scope from the ref. The default
+On Actions the plugin names the cache scope from the branch. The default
 branch sets no scope, so it reads and writes the default keys. A pull
-request becomes `pr-<n>`: it reads main's keys first, then its own, and
-writes only its own. So a branch never writes what main reads. Set `github({ cacheScope: false })`
-to opt out, or set `cache.scope` in `.vx/workspace.ts` yourself.
+request from `feat-x` becomes `acme/app:feat-x`, compared with the
+pull request's base commit: a task the branch changed reads that scope,
+every other task reads main's key, and every task it builds is saved
+under the scope. So a branch never writes what main reads, and a laptop
+on `feat-x` reads what CI built for it into its local cache, which keeps
+no scopes. Set
+`github({ cacheScope: false })` to opt out, or `VX_CACHE_SCOPE` to name
+one yourself.
 
 ## It never breaks the build
 

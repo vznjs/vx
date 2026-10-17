@@ -83,13 +83,16 @@ describe('the settings list', () => {
     expect(stray).toEqual([])
   })
 
-  it('holds every field of the workspace groups in src/config.ts', () => {
+  it('holds every field of the workspace groups in src/config.ts, and the top-level settings', () => {
     const config = readFileSync(path.join(SRC, 'config.ts'), 'utf8')
     const fieldsOf = (name: string): string[] => {
       const body = config.slice(config.indexOf(`export interface ${name} {`))
       return [...body.slice(0, body.indexOf('\n}\n')).matchAll(/^ {2}(\w+)\?:/gm)].map((m) => m[1]!)
     }
     const declared = [
+      ...fieldsOf('WorkspaceConfig').filter(
+        (f) => !(SETTING_GROUPS as readonly string[]).includes(f) && f !== 'plugins',
+      ),
       ...fieldsOf('RunSettings').map((f) => `run.${f}`),
       ...fieldsOf('CacheSettings').map((f) => `cache.${f}`),
       ...fieldsOf('LockSettings').map((f) => `lock.${f}`),
@@ -117,8 +120,7 @@ describe('the settings list', () => {
 /** A value each kind takes, for a workspace that sets everything. */
 function sample(s: Setting): unknown {
   if (s.path === 'cache.policy') return 'local:rw,remote:r'
-  if (s.path === 'cache.scope') return 'pr-1'
-  if (s.path === 'run.affectedBase') return 'origin/main'
+  if (s.path === 'baseBranch') return 'main'
   if (s.path === 'cache.dir') return 'build/cache'
   switch (s.kind.type) {
     case 'int':

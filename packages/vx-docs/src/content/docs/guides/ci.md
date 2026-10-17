@@ -102,7 +102,7 @@ export default defineWorkspace({
     // The package edges `^build` follows, from package-lock.json.
     npm(),
     // On Actions: the job summary, the PR check, and the cache scope
-    // (a push to main writes the default keys, pull request 7 writes pr-7).
+    // (a push to main writes the default keys, a PR from feat-x writes acme/app:feat-x).
     github(),
     // The shared cache. With no VX_REAPI_ENDPOINT it declines and vx
     // caches on this machine alone.
@@ -122,18 +122,40 @@ Each step, in order:
 
 ### Cache scopes and tokens
 
-`github()` names the run's cache scope from the event:
+`github()` names the run's cache scope after the repository and branch.
+A scope picks remote keys only: the local cache never knows one.
 
-| Run | Scope | Reads | Writes |
-| --- | --- | --- | --- |
-| push to the default branch | none | the default keys | the default keys |
-| pull request 7 | `pr-7` | the default keys, then `pr-7` | `pr-7` only |
-| any other branch or tag | `ref-<name>` | the default keys, then its own | its own only |
+| Run | Scope | Remote writes |
+| --- | --- | --- |
+| push to the default branch | none | the default keys |
+| push to, or pull request from, `feat-x` | `acme/app:feat-x` | that scope only |
+| pull request from a fork's `feat-x` | `eve/app:feat-x` | that scope only |
 
-So a pull request reuses everything `main` built, and nothing it builds
-is ever read by `main` or by another pull request. `--cache-scope <name>`
-or `VX_CACHE_SCOPE` names one by hand; `github({ cacheScope: false })`
-turns it off.
+A scoped run asks each remote one key per task. A task the branch changed (its
+declared inputs match a changed file, or a task in its `dependsOn`
+closure is changed) reads the scope's key; every other task reads
+`main`'s key. A README edit leaves `build` on `main`'s entry. On a pull
+request the change is the diff from its base commit, which `github()`
+reads from the event, so the merge checkout needs only `fetch-depth: 2`.
+A run that writes the remote saves every task it builds under the
+scope, so a pull request reuses everything `main` built, and nothing it
+builds is ever read by `main` or by another branch. Keys still have to
+match, so a deleted branch pushed again with other code under the same
+name misses on every changed task.
+
+A laptop with a cache plugin derives the same scope from `.git`, with
+no network: the repository its upstream's remote names and the branch
+it tracks (`@{upstream}`), else its own on `origin`, none on the default
+branch (`baseBranch`, else `origin/HEAD`'s). The change is the diff
+from the merge base with `origin/<baseBranch>`. So `git checkout feat-x`
+reads what CI built for `feat-x`, read-only, and keeps it in the local
+cache under the task key: back on `main`, the same inputs hit it locally. The summary's `info` row names the scope. `VX_CACHE_SCOPE`
+names one by hand (a CI with a detached HEAD), and empty turns it off;
+`github({ cacheScope: false })` turns CI's off. Only a scoped run asks
+git for the diff, and it starts beside discovery.
+
+With no base to diff from (a laptop with no default branch fetched)
+every task reads `main`'s key.
 
 Which layers a run writes is the policy, not the scope:
 

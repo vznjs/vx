@@ -270,7 +270,7 @@ the variable, which beats this file. Durations carry a unit (`'500ms'`,
 | `plugins`        | asked in order; this machine runs what they decline, and its cache is asked first ([Plugins](../plugins/)) |
 | `run.concurrency` | tasks at once, a number or a share of the cores (`'50%'`) |
 | `run.timeout`, `run.retries` | a task's time limit and re-runs, for tasks without their own `exec.timeout` / `exec.retries` |
-| `run.affectedBase` | the git ref a bare `--affected` compares with; default `origin/HEAD`, then the first trunk (`origin/main`, `origin/master`, `main`, `master`) that is not HEAD, else `HEAD~1` |
+| `baseBranch` | the default branch, by name; default `origin/HEAD`'s branch, then `main`, then `master`. A bare `--affected` compares with its merge base off it, and on it has no default |
 | `run.schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest chain), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/scheduling-strategies/#pick-the-guess)) |
 | `run.rules` | graph checks: `exclusiveOutputs` (on unless `false`) refuses two tasks on one output path even when one depends on the other; `vx lock` and `vx lock --check` check it, never a run. A task whose inputs can match another task's outputs is always refused, unless it is a dependency the key leaves out of `inputs.tasks`, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
 | `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |

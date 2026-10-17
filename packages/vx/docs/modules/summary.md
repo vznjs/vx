@@ -48,6 +48,7 @@ export interface RunContext {
   runId?: string | undefined // the whole id `vx last` takes (info row)
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
+  cacheScope?: string | undefined // the run's scope (info row: `scope vznjs/vx:feat-x`)
   cache?: {
     local: boolean
     localWrite: boolean

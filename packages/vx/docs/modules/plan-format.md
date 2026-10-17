@@ -92,8 +92,8 @@ locally and what `'only'` means.
 
 ## `formatPlanJson`
 
-JSON-friendly object, each task a `PlanTaskJson`, led by `run.affectedBase`
-under `--affected`; `schemas/plan.json`
+JSON-friendly object, each task a `PlanTaskJson`, led by `affectedBase` (the ref the diff
+was taken from) under `--affected`; `schemas/plan.json`
 states it and `tests/cli-json-schemas.test.ts` holds it:
 
 ```json

@@ -36,6 +36,7 @@ import type {
 } from './cache.js'
 import type { OutputDirRow } from './cache.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
+import type { BranchScope } from './scoped-cache.js'
 import type { PluginSecrets } from '../util/index.js'
 
 const STOPPED: unique symbol = Symbol('stopped')
@@ -176,8 +177,16 @@ export class LayeredCache implements CacheLayer {
   constructor(
     readonly local: Cache,
     remotes: readonly ResolvedRemote[],
+    /** The run's branch scope: it picks each remote key; the local store never sees it. */
+    private readonly branch?: BranchScope,
   ) {
-    this.lanes = remotes.map((r) => new RemoteLane(r, local.traffic))
+    this.lanes = remotes.map(
+      (r) => new RemoteLane(r, local.traffic, branch?.remote(r.remote) ?? r.remote),
+    )
+  }
+
+  noteKey(taskId: string, hash: string): void {
+    this.branch?.noteKey(taskId, hash)
   }
 
   // Asked, not kept: a remote whose `open` failed leaves the run after this is built.

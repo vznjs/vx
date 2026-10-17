@@ -83,33 +83,33 @@ store in 22ms. To put the cache somewhere else, use `--cache-dir`,
 
 A remote cache is shared, so a write is a promise to everyone who reads
 it. Two settings decide it. The policy says whether a run writes at
-all: off CI the default reads the remote and writes nothing. The scope,
-`cache.scope`, says where a run's writes land:
+all: off CI the default reads the remote and writes nothing. The scope
+says where a branch's remote entries live:
 
 ```mermaid
 flowchart LR
   M[main CI · no scope] -->|reads + writes| T[(default keys)]
-  P[PR CI · pr-123] -->|reads first| T
-  P -->|reads + writes| S[(pr-123 keys)]
-  L[laptop · no scope] -->|reads| T
+  P[PR CI · acme/app:feat-x] -->|unchanged tasks read| T
+  P -->|changed tasks read, builds write| S[(acme/app:feat-x keys)]
+  L[laptop on feat-x] -->|reads| T
+  L -->|changed tasks read| S
   style T stroke:#c6f84e,stroke-width:2px
 ```
 
-- With no scope, a run reads and writes the default keys.
-- A scope like `pr-123` reads the default keys first, then its own, and
-  writes only its own. A pull request never writes what main reads.
+- On the default branch, a run reads and writes the default keys.
+- On another branch, the scope is `<owner>/<repo>:<branch>`. Each task
+  asks the remote one key: a task the branch changed reads the scope's,
+  every other task reads main's. A pull request never writes what main
+  reads.
+- The local cache never knows a scope. What a laptop fetches under a
+  branch's scope it keeps under the task key, so the same inputs hit
+  locally on any branch.
 
-```ts
-// .vx/workspace.ts
-import { defineWorkspace } from '@vzn/vx/config'
-
-export default defineWorkspace({ cache: { scope: 'pr-123' } })
-```
-
-`VX_CACHE_SCOPE` beats the config, and `--cache-scope` beats both for one run. On GitHub Actions, the
+On GitHub Actions the
 [@vzn/vx-ci plugin](../results-on-github/)
-sets the scope for you: `pr-<n>` on a pull request, and no scope on the
-default branch. The scope is a client-side rule, so a cache server that
+names the scope for you, and a checkout with a remote cache derives the
+same one from `.git`, so a laptop reads what CI built
+there. The scope is a client-side rule, so a cache server that
 checks tokens is still the real boundary.
 
 Every flag is in the [CLI reference](../../cli/), and `cache` is in

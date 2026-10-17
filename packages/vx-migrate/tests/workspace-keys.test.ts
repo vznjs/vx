@@ -17,9 +17,18 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-const staged = async (plugin: ReturnType<typeof turbo>, ws: WorkspaceConfig = {}) => {
-  await plugin.config!(ws, { workspaceRoot: root, warn: () => {} })
-  return ws
+/** The workspace a plugin's `config` stage leaves, with the base commit it names (`setBranch`) as `base`. */
+const staged = async (
+  plugin: ReturnType<typeof turbo>,
+  ws: WorkspaceConfig = {},
+): Promise<WorkspaceConfig & { base?: string }> => {
+  let base: string | undefined
+  await plugin.config!(ws, {
+    workspaceRoot: root,
+    warn: () => {},
+    setBranch: (facts) => void (base = facts.base ?? base),
+  })
+  return base === undefined ? ws : { ...ws, base }
 }
 
 describe('turbo(): turbo.json workspace keys', () => {
@@ -200,27 +209,26 @@ describe('the affected base', () => {
     }
   }
 
-  it('nx(): NX_BASE, then defaultBase, then affected.defaultBase', async () => {
-    const base = () =>
-      withEnv('NX_BASE', undefined, async () => (await staged(nx())).run?.affectedBase)
+  it('nx(): NX_BASE is the base commit; defaultBase, then affected.defaultBase, the base branch', async () => {
+    const branch = () => withEnv('NX_BASE', undefined, async () => (await staged(nx())).baseBranch)
     await writeFile(path.join(root, 'nx.json'), JSON.stringify({}))
-    expect(await base()).toBeUndefined()
+    expect(await branch()).toBeUndefined()
     await writeFile(
       path.join(root, 'nx.json'),
-      JSON.stringify({ affected: { defaultBase: 'dev' } }),
+      JSON.stringify({ affected: { defaultBase: 'origin/dev' } }),
     )
-    expect(await base()).toBe('dev')
+    expect(await branch()).toBe('dev')
     await writeFile(
       path.join(root, 'nx.json'),
       JSON.stringify({ defaultBase: 'develop', affected: { defaultBase: 'dev' } }),
     )
-    expect(await base()).toBe('develop')
-    expect(
-      await withEnv('NX_BASE', 'origin/next', async () => (await staged(nx())).run?.affectedBase),
-    ).toBe('origin/next')
-    expect(
-      await withEnv('NX_BASE', undefined, () => staged(nx(), { run: { affectedBase: 'main' } })),
-    ).toEqual({ run: { affectedBase: 'main' } })
+    expect(await branch()).toBe('develop')
+    expect(await withEnv('NX_BASE', 'origin/next', async () => (await staged(nx())).base)).toBe(
+      'origin/next',
+    )
+    expect(await withEnv('NX_BASE', undefined, () => staged(nx(), { baseBranch: 'main' }))).toEqual(
+      { baseBranch: 'main' },
+    )
   })
 
   it('turbo(): TURBO_SCM_BASE', async () => {
@@ -250,7 +258,7 @@ describe('the affected base', () => {
       Object.assign(process.env, { GITHUB_ACTIONS: 'true', GITHUB_EVENT_PATH: event, ...vars })
       for (const [k, v] of Object.entries(vars)) if (v === undefined) delete process.env[k]
       try {
-        return (await staged(turbo())).run?.affectedBase
+        return (await staged(turbo())).base
       } finally {
         names.forEach((n, i) => {
           if (prev[i] === undefined) delete process.env[n]
@@ -291,12 +299,7 @@ describe('the affected base', () => {
     expect(await withEnv('TURBO_SCM_BASE', undefined, () => staged(turbo()))).toEqual({})
     expect(await withEnv('TURBO_SCM_BASE', '', () => staged(turbo()))).toEqual({})
     expect(await withEnv('TURBO_SCM_BASE', 'origin/develop', () => staged(turbo()))).toEqual({
-      run: { affectedBase: 'origin/develop' },
+      base: 'origin/develop',
     })
-    expect(
-      await withEnv('TURBO_SCM_BASE', 'origin/develop', () =>
-        staged(turbo(), { run: { affectedBase: 'main' } }),
-      ),
-    ).toEqual({ run: { affectedBase: 'main' } })
   }
 })

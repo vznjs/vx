@@ -66,6 +66,7 @@ export interface CacheLayer {
   localHasMany?(hashes: readonly string[]): Promise<Set<string>> // the keys the local store holds; the prefetch probes the remote for the rest
   remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null> // one hasMany per readable remote; null = a remote cannot batch or did not answer
   markRemoteAbsent?(hashes: Iterable<string>): void
+  noteKey?(taskId: string, hash: string): void // computeTaskHash names each task's key, so a scoped cache routes it
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void // `--force`: one batch probe per remote written but not read; a key it holds is not uploaded
   drainUploads?(): Promise<void> // await the background write-through uploads
   stopUploads?(): void // a stopped run: start no more uploads, and let drainUploads resolve now
@@ -140,11 +141,9 @@ export class ArtifactVanishedError extends Error {
 
 // The run's remote traffic, filled by each remote lane and the run keeper
 // (a kept task counts under its id): what the footer's remote part counts.
-// A scope's key counts under the task key it answers for (`aliases`).
 export interface RemoteTraffic {
   inFlight: number
   readonly keys: Map<string, RemoteKeyTraffic>
-  readonly aliases: Map<string, string>
 }
 
 // The output-directory short-circuit's bounds: a hit with more than

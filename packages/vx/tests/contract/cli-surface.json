@@ -57,7 +57,6 @@
       "--cache-dir",
       "--cache-download",
       "--cache-policy",
-      "--cache-scope",
       "--concurrency",
       "--continue",
       "--dry",
@@ -93,7 +92,6 @@
       "--cache-dir",
       "--cache-download",
       "--cache-policy",
-      "--cache-scope",
       "--concurrency",
       "--continue",
       "--exclude-dependencies",
@@ -201,9 +199,6 @@
       "remote:rw",
       "remote:w"
     ],
-    "run --cache-scope": [
-      "*"
-    ],
     "run --concurrency": [
       "1",
       "10",
@@ -290,9 +285,6 @@
       "remote:rw",
       "remote:w"
     ],
-    "watch --cache-scope": [
-      "*"
-    ],
     "watch --concurrency": [
       "1",
       "10",
@@ -346,6 +338,7 @@
     ]
   },
   "env": [
+    "VX_BASE_BRANCH",
     "VX_CACHE_DIR",
     "VX_CACHE_DOWNLOAD",
     "VX_CACHE_INPUT_STABILITY_SEVERITY",
@@ -360,7 +353,6 @@
     "VX_DEBUG_WATCH",
     "VX_HANDED_OFF",
     "VX_LOCK_REVIEW_FILES",
-    "VX_RUN_AFFECTED_BASE",
     "VX_RUN_BRANCH",
     "VX_RUN_CONCURRENCY",
     "VX_RUN_CONTINUE",

@@ -61,8 +61,10 @@ export interface VxPlugin {
    * The workspace config, before anything is derived from it (concurrency,
    * cacheDir, timeout, …). `plugins` is already fixed by the time this runs.
    * Core re-validates after each plugin, as it does a user's file.
+   * `ctx.setBranch` names what the CI knows of the branch: its cache scope
+   * and the commit it is compared with.
    */
-  config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
+  config?(workspace: WorkspaceConfig, ctx: ConfigContext): void | Promise<void>
 
   /**
    * Projects beyond the directories holding a vx.config, their names, and
@@ -340,6 +342,22 @@ export interface WorkspaceHookContext {
   warn(message: string): void
 }
 
+/**
+ * What a CI knows of the run's branch (owner, 2026-10-17): `scope`, the
+ * cache scope (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it
+ * beats the one git names), and `base`, the commit the branch is compared
+ * with (a pull request's base), for a bare `--affected` and for which
+ * tasks read the scope. A later plugin's field wins.
+ */
+export interface BranchFacts {
+  scope?: string
+  base?: string
+}
+
+export interface ConfigContext extends WorkspaceHookContext {
+  setBranch(facts: BranchFacts): void
+}
+
 export interface DiscoverContext extends WorkspaceHookContext {
   /** Where vx's cache lives: a plugin may keep what it read to answer here. */
   readonly cacheDir: string
@@ -485,7 +503,7 @@ export interface ScheduleHookContext extends BaseContext {
 /** A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns. */
 export interface CacheContext extends BaseContext {
   /**
-   * The run's `cache.scope` (`'pr-123'`), `undefined` when none. Core already keys a scoped run's
+   * The run's cache scope (`'vznjs/vx:feat-x'`), `undefined` when none. Core already keys a scoped run's
    * writes apart; a remote reads it to pick a credential or check a token's
    * claims (an OIDC branch) for every call it makes.
    */

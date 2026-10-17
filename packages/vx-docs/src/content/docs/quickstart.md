@@ -68,7 +68,7 @@ Installed from npm, the command is `npx @vzn/vx` (pnpm: `pnpm vx`, Bun:
 ```bash
 vx lock                   # find each vx.config.ts, resolve it into .vx/projects.lock.json, which runs read
 vx run build --all        # every project, in dependency order
-vx run test --affected    # changed since main or the last commit, and dependents
+vx run test --affected    # changed on this branch since main, and dependents
 vx run build --all --dry  # the plan; runs nothing
 cd packages/app           # without --all, a run takes the package you are in
 vx run build              # ⇢ success local — after dist/ is deleted; else up-to-date
@@ -137,7 +137,8 @@ once the configs exist.
 
 ## Common problems
 
-- **`--affected has no base here`.** A repo with one commit has nothing to compare with. Commit again, or name a base: `--affected=<ref>`.
+- **`--affected has no base here`.** No `main` or `master` to compare with. Name a base: `--affected=<ref>`.
+- **`--affected has no default on the base branch`.** On `main` itself, name the last commit that passed: `--affected=<sha>`.
 - **Only one package ran.** `vx run build` runs the package you are in. Add `--all`.
 - **A task ran again with nothing changed.** `vx why <package>#<task>` names what moved in its key: a file, an env var, or an upstream task (often one that rewrites a file this task reads).
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency. vx itself runs a config without it.

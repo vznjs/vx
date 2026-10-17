@@ -1,4 +1,4 @@
-// The configure guide's `vx why` verdict table and its `affectedBase`
+// The configure guide's `vx why` verdict table and its `baseBranch`
 // default, held to the source that prints and decides them. The table
 // lacked the --continue verdict, and the default omitted the trunk
 // fallback #2122 added.
@@ -22,13 +22,10 @@ describe('the configure guide', () => {
     expect(verdicts.filter((v) => !PAGE.includes(v))).toEqual([])
   })
 
-  it('names the trunk fallback of a bare --affected', () => {
-    const affected = readFileSync(path.join(SRC, 'workspace', 'affected.ts'), 'utf8')
-    const trunks = JSON.parse(
-      /const TRUNKS = (\[[^\]]*\])/.exec(affected)![1]!.replaceAll("'", '"'),
-    ) as string[]
-    const row = PAGE.split('\n').find((l) => l.startsWith('| `run.affectedBase`'))!
-    expect(trunks.filter((t) => !row.includes(`\`${t}\``))).toEqual([])
-    expect(row).toContain('`HEAD~1`')
+  it("names a bare --affected's base branch and its default", () => {
+    const row = PAGE.split('\n').find((l) => l.startsWith('| `baseBranch`'))!
+    for (const name of ['origin/HEAD', 'main', 'master']) expect(row).toContain(name)
+    expect(row).toContain('no default')
+    expect(row).not.toContain('HEAD~1')
   })
 })

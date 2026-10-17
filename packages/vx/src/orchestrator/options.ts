@@ -90,8 +90,16 @@ export interface RunOptions {
    * saying it is not.
    */
   remoteRequested?: boolean
-  /** This run's `cache.scope` (the CLI's `--cache-scope`), above `VX_CACHE_SCOPE` and `.vx/workspace`. */
+  /** This run's cache scope, above `VX_CACHE_SCOPE`, a plugin's and the branch's (an embedder's). */
   cacheScope?: string
+  /**
+   * What the branch changed, for a scoped run: the tasks whose key it can
+   * move read the scope's key, every other task the default key (one
+   * lookup each). Absent, the run diffs the branch from `scopeBase`.
+   */
+  scopeChanges?: AffectedChanges
+  /** The commit a scoped run diffs the branch from (`--affected`'s base); absent, a plugin's, else the merge base with the default branch. */
+  scopeBase?: string
   /**
    * The default policy's remote write is off (`remote:r`): the CLI passes it
    * off CI (`CI` unset, `0` or `false`) unless `--cache-policy` or

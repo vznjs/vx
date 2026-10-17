@@ -1,5 +1,5 @@
 import { isatty } from 'node:tty'
-import { cacheScopeError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { translateForeign } from './foreign-flags.js'
 import { flagHint, refuse, seeHelp } from './help.js'
 import {
@@ -60,8 +60,6 @@ export interface RunArgs {
   remoteRequested?: boolean
   /** `--cache-dir <path>`: override the cache directory (cwd-relative). */
   cacheDir: string | undefined
-  /** `--cache-scope <name>`: this run's `cache.scope`, above `VX_CACHE_SCOPE` and the workspace's. */
-  cacheScope?: string
   /** `vx watch --poll` (`watch.poll`). */
   poll?: true
   forwardArgs: string[]
@@ -90,9 +88,7 @@ function flagOf(a: string | undefined, name: string): string | undefined {
 // The settings parsed by their kind alone; the cache flags, `--continue`
 // and `--cache-dir` keep their own branches above.
 const GENERIC_FLAGS = SETTINGS.filter(
-  (s) =>
-    s.flag?.verb === 'run' &&
-    !['run.continue', 'cache.dir', 'cache.policy', 'cache.scope'].includes(s.path),
+  (s) => s.flag?.verb === 'run' && !['run.continue', 'cache.dir', 'cache.policy'].includes(s.path),
 )
 
 /** The setting a flag names. */
@@ -204,11 +200,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
         }
       }
       out.cacheDir = v
-    } else if (a === '--cache-scope' || a?.startsWith('--cache-scope=')) {
-      const v = a === '--cache-scope' ? before[++i] : a.slice('--cache-scope='.length)
-      if (v === undefined || !isCacheScope(v))
-        return { ...out, error: cacheScopeError('--cache-scope') }
-      out.cacheScope = v
     } else if (flagOf(a, '--cache-policy')) {
       cacheFlag = true
       const name = flagOf(a, '--cache-policy')!
@@ -494,7 +485,6 @@ export async function resolveRunOptions(
       ? { cacheFlags: parsed.cacheFlags }
       : { cache: parsed.cache }),
     ...(parsed.remoteRequested ? { remoteRequested: true } : {}),
-    ...(parsed.cacheScope !== undefined ? { cacheScope: parsed.cacheScope } : {}),
     // A laptop reads the shared cache and never writes it (owner,
     // 2026-10-03); naming the remote in `--cache-policy` is asking to.
     ...(!parsed.remoteRequested && !onCI(process.env['CI'])
@@ -524,6 +514,8 @@ export async function resolveRunOptions(
     if (parsed.settings[path] !== undefined) Object.assign(opts, { [field]: parsed.settings[path] })
   }
   if (parsed.profile !== undefined) opts.profile = parsed.profile
+  // `--affected`'s base is the branch's for the cache scope too.
+  if (affectedFilter !== undefined) opts.scopeBase = affectedFilter.slice(4, -1)
 
   return opts
 }

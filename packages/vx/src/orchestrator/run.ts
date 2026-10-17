@@ -799,6 +799,7 @@ async function runOnBus(
       version: VERSION,
       packageCount: packagesInScope.size,
       remoteCacheEnabled,
+      cacheScope: prepared.cacheScope,
       cache: {
         local: policy.localRead || policy.localWrite,
         localWrite: policy.localWrite,

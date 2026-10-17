@@ -519,11 +519,13 @@ describe('vx info (e2e)', () => {
       try {
         delete process.env['VX_CACHE_POLICY']
         delete process.env['VX_CACHE_SCOPE']
-        await writeFile(ws, `export default { cache: { policy: 'remote:r', scope: 'pr-1' } }\n`)
+        await writeFile(ws, `export default { cache: { policy: 'remote:r' } }\n`)
+        const none = (await facts()).scope
         expect(await facts()).toEqual({
           policy: { value: 'remote:r', source: 'workspace' },
-          scope: { value: 'pr-1', source: 'workspace' },
+          scope: none,
         })
+        expect(none?.source).toBe('default')
         process.env['VX_CACHE_POLICY'] = 'remote:'
         process.env['VX_CACHE_SCOPE'] = 'pr-2'
         expect(await facts()).toEqual({

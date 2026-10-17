@@ -1,49 +1,92 @@
-// The cache scope a GitHub Actions run gets when the workspace names none:
-// the default branch writes the default keys, anything else its own scope.
+// The cache scope and base commit a GitHub Actions run names through
+// `setBranch`: the default branch writes the default keys, a branch its own
+// scope, the one a laptop on that branch reads (owner, 2026-10-17).
 import { readFile } from 'node:fs/promises'
+import { branchCacheScope } from '@vzn/vx'
 
 /**
- * `undefined` (the default keys) on a push to the
- * default branch, outside Actions, or when the ref is unknown; else
- * `pr-<n>` for a pull request and `ref-<name>` for any other branch or tag.
- * An event that runs in the default branch's context on a pull request's
- * behalf (`pull_request_target`, `issue_comment` on a PR, a `workflow_run`
- * a PR started) is the PR's, whatever `GITHUB_REF` says: a workflow that
- * checks out the PR's head there would otherwise write the default keys.
+ * What an Actions run knows of its branch (owner, 2026-10-17). `scope`:
+ * none on a push to the default branch, outside Actions, or when the ref
+ * is unknown; else `<owner>/<repo>:<branch>`, the repository and branch a
+ * pull request comes from, or the branch or tag pushed. A fork's pull
+ * request names the fork, a scope a laptop on the base repository never
+ * derives. An event that runs in the default branch's context on a pull
+ * request's behalf (`pull_request_target`, `issue_comment` on a PR, a
+ * `workflow_run` a PR started) is the PR's, whatever `GITHUB_REF` says: a
+ * workflow that checks out the PR's head there would otherwise write the
+ * default keys. `issue_comment` names no branch, so it writes `pr-<n>`.
+ * `base`: a pull request's base commit (`pull_request.base.sha`), what its
+ * merge checkout is compared with, no git call needed.
  */
-export async function githubCacheScope(
+export async function githubBranch(
   env: Readonly<Record<string, string | undefined>>,
-): Promise<string | undefined> {
-  if (env['GITHUB_ACTIONS'] !== 'true') return undefined
+): Promise<{ scope?: string; base?: string }> {
+  if (env['GITHUB_ACTIONS'] !== 'true') return {}
   const ref = env['GITHUB_REF'] ?? ''
-  const pr = /^refs\/pull\/(\d+)\//.exec(ref)
-  if (pr !== null) return `pr-${pr[1]}`
   const event = await eventOf(env['GITHUB_EVENT_PATH'])
-  const onBehalf = prOf(env['GITHUB_EVENT_NAME'], event)
-  if (onBehalf !== undefined) return onBehalf
+  const repo = stringOf(event?.repository?.full_name) ?? env['GITHUB_REPOSITORY']
+  const base = stringOf(event?.pull_request?.base?.sha)
+  const withBase = (scope: string | undefined): { scope?: string; base?: string } => ({
+    ...(scope !== undefined ? { scope } : {}),
+    ...(base !== undefined ? { base } : {}),
+  })
+  if (/^refs\/pull\/\d+\//.test(ref)) {
+    const head = event?.pull_request?.head
+    const branch = env['GITHUB_HEAD_REF'] || stringOf(head?.ref)
+    if (branch !== undefined)
+      return withBase(headScope(branch, stringOf(head?.repo?.full_name), repo))
+    return withBase('pr-target')
+  }
+  const onBehalf = prOf(env['GITHUB_EVENT_NAME'], event, repo)
+  if (onBehalf !== undefined) return withBase(onBehalf)
   const name = env['GITHUB_REF_NAME']
-  if (ref === '' || name === undefined || name === '') return undefined
+  if (ref === '' || name === undefined || name === '' || repo === undefined) return {}
   const branch = event?.repository?.default_branch
-  if (typeof branch === 'string' && branch !== '' && ref === `refs/heads/${branch}`)
-    return undefined
-  // `cache.scope` takes letters, digits and . _ - / @; a ref may hold more.
-  return `ref-${name.replace(/[^\w.@/-]/g, '_').slice(0, 124)}`
+  if (typeof branch === 'string' && branch !== '' && ref === `refs/heads/${branch}`) return {}
+  return { scope: branchCacheScope(repo, name) }
 }
 
 interface ActionsEvent {
-  repository?: { default_branch?: unknown }
-  pull_request?: { number?: unknown }
+  repository?: { default_branch?: unknown; full_name?: unknown }
+  pull_request?: {
+    number?: unknown
+    head?: { ref?: unknown; repo?: { full_name?: unknown } }
+    base?: { sha?: unknown }
+  }
   issue?: { number?: unknown; pull_request?: unknown }
-  workflow_run?: { event?: unknown; pull_requests?: { number?: unknown }[] }
+  workflow_run?: {
+    event?: unknown
+    head_branch?: unknown
+    head_repository?: { full_name?: unknown }
+    pull_requests?: { number?: unknown }[]
+  }
 }
 
-/** The PR scope of an event that runs in the base branch's context for a PR; `pr-target` when its number is unknown. */
-function prOf(name: string | undefined, event: ActionsEvent | undefined): string | undefined {
-  const scope = (n: unknown): string =>
-    typeof n === 'number' && Number.isInteger(n) && n > 0 ? `pr-${n}` : 'pr-target'
-  if (name === 'pull_request_target') return scope(event?.pull_request?.number)
+function stringOf(v: unknown): string | undefined {
+  return typeof v === 'string' && v !== '' ? v : undefined
+}
+
+/** A head branch's scope: the repository it lives in (a fork's own), then the branch. */
+function headScope(branch: string, headRepo: string | undefined, repo: string | undefined): string {
+  return branchCacheScope(headRepo ?? repo ?? 'unknown/unknown', branch)
+}
+
+/** The scope of an event that runs in the base branch's context for a PR; `pr-target` when its head is unknown. */
+function prOf(
+  name: string | undefined,
+  event: ActionsEvent | undefined,
+  repo: string | undefined,
+): string | undefined {
+  if (name === 'pull_request_target') {
+    const head = event?.pull_request?.head
+    const branch = stringOf(head?.ref)
+    return branch === undefined
+      ? 'pr-target'
+      : headScope(branch, stringOf(head?.repo?.full_name), repo)
+  }
   if (name === 'issue_comment' && event?.issue?.pull_request != null) {
-    return scope(event.issue.number)
+    const n = event.issue.number
+    return typeof n === 'number' && Number.isInteger(n) && n > 0 ? `pr-${n}` : 'pr-target'
   }
   const run = event?.workflow_run
   if (
@@ -51,7 +94,10 @@ function prOf(name: string | undefined, event: ActionsEvent | undefined): string
     typeof run?.event === 'string' &&
     run.event.startsWith('pull_request')
   ) {
-    return scope(run.pull_requests?.[0]?.number)
+    const branch = stringOf(run.head_branch)
+    return branch === undefined
+      ? 'pr-target'
+      : headScope(branch, stringOf(run.head_repository?.full_name), repo)
   }
   return undefined
 }

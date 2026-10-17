@@ -148,9 +148,11 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
     {
       async config(workspace, ctx) {
         const root = options.root ?? ctx.workspaceRoot
-        if (workspace.run?.affectedBase === undefined) {
-          const base = await nxBase(root)
-          if (base !== undefined) workspace.run = { ...workspace.run, affectedBase: base }
+        const nxBaseCommit = Bun.env['NX_BASE']?.trim()
+        if (nxBaseCommit) ctx.setBranch({ base: nxBaseCommit })
+        if (workspace.baseBranch === undefined) {
+          const branch = await nxDefaultBase(root)
+          if (branch !== undefined) workspace.baseBranch = branch
         }
         if (workspace.run?.concurrency === undefined) {
           const parallel = await nxParallel(root)
@@ -278,19 +280,18 @@ async function nxParallel(root: string): Promise<number | undefined> {
 }
 
 /**
- * What `nx affected` compares with when no `--base` is given: `NX_BASE`,
- * then nx.json's `defaultBase` (Nx 19's `affected.defaultBase` before it).
- * Read by nothing, a git-flow repo's `develop` was lost and a bare
- * `vx run … --affected` diffed against origin/HEAD.
+ * nx.json's `defaultBase` (Nx 19's `affected.defaultBase` before it), the
+ * branch `nx affected` compares with. Read by nothing, a git-flow repo's
+ * `develop` was lost and a bare `vx run … --affected` diffed against
+ * origin/HEAD.
  */
-async function nxBase(root: string): Promise<string | undefined> {
-  const env = Bun.env['NX_BASE']?.trim()
-  if (env) return env
+async function nxDefaultBase(root: string): Promise<string | undefined> {
   const json = (await readNxJson(root).catch(() => null))?.json as
     | { defaultBase?: unknown; affected?: { defaultBase?: unknown } }
     | undefined
   const b = json?.defaultBase ?? json?.affected?.defaultBase
-  return typeof b === 'string' && b.trim() !== '' ? b.trim() : undefined
+  // `baseBranch` is the branch; vx compares with it on `origin`.
+  return typeof b === 'string' && b.trim() !== '' ? b.trim().replace(/^origin\//, '') : undefined
 }
 
 /**

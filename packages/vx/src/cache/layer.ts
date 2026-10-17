@@ -576,6 +576,8 @@ export interface CacheLayer {
    * `hasRemote`.
    */
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
+  /** `taskId`'s key is `hash`: a scoped run picks each remote key by its task (`BranchScope`). */
+  noteKey?(taskId: string, hash: string): void
   /**
    * Resolve once every background write-through upload settles. The
    * orchestrator awaits it before `close()` — an upload reading layer state

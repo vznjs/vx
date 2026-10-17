@@ -15,7 +15,7 @@ import {
   lockOfDiscovery,
   lockReader,
 } from '../orchestrator/index.js'
-import type { VxPlugin } from '../orchestrator/index.js'
+import type { BranchFacts, VxPlugin } from '../orchestrator/index.js'
 import {
   buildPackageGraph,
   type ProjectEntry,
@@ -27,6 +27,8 @@ import {
 interface CliWorkspace {
   workspaceConfig: WorkspaceConfig | null
   plugins: readonly VxPlugin[]
+  /** What a plugin's `config` stage said of the branch: its cache scope and base commit. */
+  branch: BranchFacts
   cacheDir: string
   /** The shared store a run opens `cacheDir` with (`resolveStoreRoot`), asked on load. */
   storeRoot: Promise<string | null>
@@ -37,10 +39,14 @@ export const warnToStderr = (message: string): void => {
 }
 
 export async function loadCliWorkspace(workspaceRoot: string): Promise<CliWorkspace> {
-  const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warnToStderr)
+  const { workspaceConfig, plugins, branch } = await loadWorkspacePlugins(
+    workspaceRoot,
+    warnToStderr,
+  )
   return {
     workspaceConfig,
     plugins,
+    branch,
     cacheDir: resolveCacheDir(workspaceRoot, workspaceConfig),
     storeRoot: resolveStoreRoot(workspaceRoot, workspaceConfig),
   }

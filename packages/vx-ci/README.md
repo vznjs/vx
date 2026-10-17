@@ -55,16 +55,26 @@ github({
 
 ## Cache scope
 
-On Actions (`GITHUB_ACTIONS=true`), when `.vx/workspace.ts` sets no `cache.scope`, the plugin's
-`config` stage sets it from the ref (`GITHUB_REF`, `GITHUB_REF_NAME`, and
-the default branch from the `GITHUB_EVENT_PATH` payload): a push to the default branch sets
-none (reads and writes the default keys), a pull request becomes
-`pr-<n>` (so is a `pull_request_target`, `issue_comment` or `workflow_run`
-run on a PR's behalf, by `GITHUB_EVENT_NAME`, though its ref is main's) and any other branch or tag `ref-<name>`, which read the
-default keys, then their own, and write only their own. A PR never writes what main
-reads. Whether a run writes at all is `cache.policy`'s call. `VX_CACHE_SCOPE` or a `cache.scope` in `.vx/workspace.ts` overrides it. This is a client-side convention: the real boundary is a cache
-token the server limits, so give PR jobs one that cannot write the
-default keys (`docs/security.md` § Cache poisoning).
+On Actions (`GITHUB_ACTIONS=true`) the plugin's `config` stage names the
+run's branch through `ctx.setBranch`, from the ref (`GITHUB_REF`,
+`GITHUB_REF_NAME`, `GITHUB_HEAD_REF`, `GITHUB_REPOSITORY`) and the
+`GITHUB_EVENT_PATH` payload. A push to the default branch names no scope (reads and writes
+the default keys). A push to, or a pull request from, a branch names
+`<owner>/<repo>:<branch>` of the repository the branch lives in, so a
+fork's pull request names the fork; so does a `pull_request_target` or
+`workflow_run` run on a PR's behalf (by `GITHUB_EVENT_NAME`, though its
+ref is main's), and an `issue_comment` on a PR, which names no branch,
+`pr-<n>`. A pull request also names its base commit
+(`pull_request.base.sha`), so vx diffs the merge checkout from it with
+no git call. A scoped run's changed tasks read the scope's remote entry,
+the rest the default keys, and every task it builds is saved to the
+remote under the scope; the local cache never knows a scope. A
+PR never writes what main reads, and a laptop on the branch derives the
+same scope. Whether a run writes at all is `cache.policy`'s call.
+`VX_CACHE_SCOPE` overrides it. This is a client-side convention: the
+real boundary is a cache token the server limits, so give PR jobs one
+that cannot write the default keys (`docs/security.md` § Cache
+poisoning).
 
 ## How it works
 

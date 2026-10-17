@@ -12,6 +12,7 @@ import {
   refIsHead,
   applyFilters,
   buildPackageGraph,
+  configuredBaseBranch,
   defaultAffectedBase,
   findWorkspaceRoot,
   type FingerprintClaims,
@@ -49,7 +50,6 @@ import {
   loadCliProjects,
   loadCliWorkspace,
 } from './workspace-config.js'
-import { resolveSetting } from '../settings.js'
 
 /**
  * The projects whose tasks declare an `inputs.workspaceFiles` glob
@@ -244,20 +244,18 @@ function refusalOf(err: unknown): Refusal {
 
 /**
  * The filter `--affected[=<base>]` stands for: `...[<base>]`, the changed
- * projects and their dependents. An empty base is `run.affectedBase`
- * (its variable, then the workspace's, which a plugin's `config` stage may set from nx.json's
- * `defaultBase` or `TURBO_SCM_BASE`), then the guess.
+ * projects and their dependents. An empty base is a plugin's (`setBranch`:
+ * a pull request's base commit), else the merge base with `baseBranch`.
  */
 export async function affectedFilterFor(cwd: string, affected: string): Promise<string | Refusal> {
   const root = await findWorkspaceRoot(cwd)
   let base = affected
   if (base === '') {
-    const ws = (await loadCliWorkspace(root)).workspaceConfig
-    base = (resolveSetting('run.affectedBase', ws).value as string | undefined) ?? ''
-  }
-  if (base === '') {
+    const ws = await loadCliWorkspace(root)
     try {
-      base = await defaultAffectedBase(root)
+      base =
+        ws.branch.base ??
+        (await defaultAffectedBase(root, configuredBaseBranch(ws.workspaceConfig)))
     } catch (err) {
       if (!isUserError(err)) throw err
       return refusalOf(err)

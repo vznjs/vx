@@ -59,16 +59,27 @@ holds a token that writes the default keys, and a pull request's job
 holds one that cannot (read-only, or confined by the server to its own
 namespace), or none.
 
-`cache.scope` is the client half. `'pr-123'` reads the default keys,
-then its own, and writes only its own, which `github()` sets on
-Actions (`pr-<n>`, `ref-<name>`; the default branch sets none)
-and `VX_CACHE_SCOPE` or `--cache-scope` sets on any CI. Whether a run
+The branch's cache scope is the client half. Under
+`vznjs/vx:feat-x` a task the branch changed reads the scope's key,
+every other task reads the default key, and a run that writes a remote
+saves every task it builds under the scope, never a default key.
+`github()` names it on Actions (`<owner>/<repo>:<branch>` of the
+repository the branch lives in, so a fork's names the fork; the default
+branch none), a checkout with a cache plugin derives it from `.git`,
+and `VX_CACHE_SCOPE` names it on any CI. Whether a run
 writes is `cache.policy`'s call: off CI the default reads the remote and
 writes nothing, since a key holds only declared inputs and a laptop's
 undeclared tool or file would replay on CI. A laptop that should never
-write gets a read-only token too. The local cache follows the same
-key rule, so on one disk a PR's entries sit under its scope's keys and
-a persistent runner never serves them to main.
+write gets a read-only token too. The local cache never knows a scope
+(owner, 2026-10-17): one disk is one pool under the task keys, and an
+entry fetched under a scope is kept there under its task key. So a
+persistent runner that runs untrusted pull requests and main on one
+disk shares their entries; give such a runner its own `cache.dir` per
+trust level, or an ephemeral disk.
+A fork's scope names the fork, so no laptop on the base repository
+derives it: its bytes reach a laptop only when `VX_CACHE_SCOPE` asks. A branch deleted and
+pushed again with other code under the same name shares the scope, not
+the keys: a task whose inputs differ misses.
 It keeps honest runs apart and stops a non-hermetic PR build from
 landing where main reads; it is not a boundary, since the PR's own
 config decides it and any run holding a write credential can write any
@@ -113,7 +124,7 @@ A pull request's job has no `CACHE_AUTH`, so the server refuses its
 writes whatever its config says. Never give the write secret to a
 `pull_request_target`, `issue_comment` or `workflow_run` job that checks
 out a pull request's code: it runs with main's ref and secrets, and
-`github()` scopes it `pr-<n>` only on the client side.
+`github()` scopes it to the PR only on the client side.
 
 A boundary that holds whoever can write the store is a signing cache
 plugin: main's CI signs each upload, and a reader refuses, as it streams,

@@ -82,13 +82,14 @@ describe('the quickstart Run block', () => {
 }
 `,
     )
-    // --affected needs a base: a parent commit with a change after it.
+    // --affected needs a base: a branch with a change on it.
     for (const c of [
-      ['git', 'init', '-q'],
+      ['git', 'init', '-q', '-b', 'main'],
       ['git', 'add', '-A'],
       ['git', 'commit', '-qm', 'one'],
     ])
       expect(sh(root, c).code).toBe(0)
+    expect(sh(root, ['git', 'checkout', '-qb', 'feat']).code).toBe(0)
     await writeFile(path.join(app, 'src', 'a.ts'), 'b\n')
     expect(sh(root, ['git', 'commit', '-qam', 'two']).code).toBe(0)
 
