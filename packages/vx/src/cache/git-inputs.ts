@@ -464,9 +464,13 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     return this.oids.get(projectDir)?.map
   }
 
-  /** `oids`, or what builds them when a read first asks. */
-  setOids(projectDir: string, oids: Map<string, string> | (() => Map<string, string>)): void {
-    this.oids.set(projectDir, new OidSlot(typeof oids === 'function' ? oids : () => oids))
+  setOids(projectDir: string, oids: Map<string, string>): void {
+    this.oids.set(projectDir, new OidSlot(() => oids))
+  }
+
+  /** What builds the project's OIDs when a read first asks. */
+  setLazyOids(projectDir: string, build: () => Map<string, string>): void {
+    this.oids.set(projectDir, new OidSlot(build))
   }
 
   /** Snapshot if still valid for these input globs; undefined → re-spawn. */
@@ -1909,7 +1913,7 @@ export async function applyGitEnumeration(
     const relPrefix = spelled.normalize('NFC')
     if (relPrefix === '' || relPrefix === '.') {
       cache.set(projectDir, all)
-      cache.setOids(projectDir, rootOids)
+      cache.setLazyOids(projectDir, rootOids)
       continue
     }
     const prefix = `${relPrefix}/`
@@ -1953,14 +1957,14 @@ export async function applyGitEnumeration(
     // trusted from here) — one spawn per such project per run, nothing for
     // a workspace without one.
     if (matches.length === 0) continue
-    // setOids AFTER set — set() drops the project's OID slot.
+    // setLazyOids AFTER set — set() drops the project's OID slot.
     cache.set(projectDir, matches)
-    cache.setOids(projectDir, projOids)
+    cache.setLazyOids(projectDir, projOids)
     if (records !== undefined) cache.noteFilesDigest(projectDir, matches, xxh3hex(records))
   }
   if (workspaceWide) {
     cache.set(workspaceRoot, all)
-    cache.setOids(workspaceRoot, rootOids)
+    cache.setLazyOids(workspaceRoot, rootOids)
     cache.setWorkspaceRoot(workspaceRoot)
   }
 }
