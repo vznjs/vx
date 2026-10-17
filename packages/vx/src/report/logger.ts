@@ -123,6 +123,8 @@ export interface DefaultLogger extends Logger {
    * sooner never reads history for it.
    */
   forecast(graph: () => Forecast, load: () => Promise<Forecast>): void
+  /** Draw no live region until the returned release: a prompt waits on the terminal. */
+  holdStatus(): () => void
 }
 
 /**
@@ -769,6 +771,7 @@ export function defaultLogger(
       } else slotQueue.push(slot)
       refresh(true)
     },
+    holdStatus: () => writer.hold(),
     forecast(graph, load) {
       if (statusDead || forecastTimer !== null) return
       graphForecast = graph

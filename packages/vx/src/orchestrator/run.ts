@@ -468,7 +468,13 @@ async function runOnBus(
           traffic: prepared.localCache.traffic,
         })
   // Before setup and the status line: a remote's `open` may ask on the terminal.
-  const secrets = new SecretBroker(ciContext.ci, warnOf(log))
+  const secrets = new SecretBroker(
+    ciContext.ci,
+    warnOf(log),
+    undefined,
+    undefined,
+    terminal === null ? undefined : () => terminal.holdStatus(),
+  )
   const remotesClosed = await openRemotes(prepared.remotes, ciContext.ci, secrets)
   try {
     disposePlugins = await installPlugins({

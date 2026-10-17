@@ -77,6 +77,8 @@ export class SecretBroker {
     private readonly warn: (message: string) => void,
     private readonly store: SecretStore = Bun.secrets,
     private readonly terminal: SecretTerminal = processTerminal,
+    /** Quiets the terminal's live region until the release it returns. */
+    private readonly quiet: () => () => void = () => () => undefined,
   ) {}
 
   /** `plugin`'s keychain: its entries live under its package name. */
@@ -135,7 +137,13 @@ export class SecretBroker {
   private async ask(key: string, prompt: string): Promise<string> {
     if (this.ci || this.closed || !this.terminal.interactive())
       throw unavailable(key, 'no-terminal')
-    const answer = (await this.terminal.ask(prompt)).trim()
+    const release = this.quiet()
+    let answer: string
+    try {
+      answer = (await this.terminal.ask(prompt)).trim()
+    } finally {
+      release()
+    }
     if (answer === '') throw unavailable(key, 'declined')
     return answer
   }

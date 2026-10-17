@@ -38,6 +38,7 @@ export class SecretBroker {
     warn: (m: string) => void,
     store?: SecretStore,
     terminal?: SecretTerminal,
+    quiet?: () => () => void, // erases the live region until the release; run.ts: the terminal logger's holdStatus
   )
   for(plugin: string): PluginSecrets
   closePrompts(): void
@@ -53,6 +54,9 @@ export function terminalOf(stdin, stderr, interrupt?): SecretTerminal
   (`RemoteOpenContext`): the hooks that run before the status line. A
   `SecretBroker` per run (`run.ts`); `closePrompts` right before
   `runStart`, so a later ask is `no-terminal`, never drawn over the frames.
+  An earlier step (`vx:load`) has already started the region's ticker, so
+  `quiet` holds every draw from the question to its answer: the ticker's
+  erase wiped the prompt line, and vx looked frozen (M, 2026-10-17).
 - **Order.** The keychain entry (service: the plugin's package name, name:
   `key`), else, given a `prompt`, the terminal's answer, trimmed and saved.
   Else a rejection `isSecretUnavailable` names: `not-found` (no prompt),

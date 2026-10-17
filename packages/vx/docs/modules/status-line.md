@@ -37,6 +37,8 @@ when disabled (CI). When active:
 - A chunk ending mid-line (focused streaming) holds redraws until a
   newline restores column 0.
 - `clearStatus()` is permanent (run end).
+- `hold()` erases the region and draws none until its release (a
+  secret prompt on the terminal); the release draws the latest state.
 
 Off a TTY, `coalesce: true` holds writes and hands them to the stream
 once per turn of the event loop (`setImmediate`), in order; `settle()`
