@@ -183,7 +183,7 @@ npx @vzn/vx run test --all      # local 3✓
 | `tasks` / `pipeline`                                        | `tasks`                                                                  |
 | `dependsOn`                                                 | `dependsOn`, the same `'build'`, `'^build'`, `'pkg#build'` syntax        |
 | `inputs`                                                    | `inputs.files`; a glob that reaches a nested workspace package also in `inputs.workspaceFiles` |
-| `outputs`                                                   | `cache.outputs.files`                                                    |
+| `outputs`                                                   | `cache.outputs.files`, plus the `.tsbuildinfo` a `tsc -b` writes outside them |
 | `env`                                                       | `inputs.env` **and** `exec.env.passThrough`                        |
 | `passThroughEnv`                                            | `exec.env.passThrough`                                                   |
 | `cache: false`                                              | no `cache` block: the task always runs, keyed on its `inputs`            |

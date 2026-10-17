@@ -19,7 +19,8 @@ import { type AdoptionRun, adoptionPlugin } from '../adoption-plugin.js'
 import type { AdoptionMapping } from '../mapping-cache.js'
 import { collectGaps } from '../plugin-gaps.js'
 import { gitIgnored, trackedKinds } from '../tracked-outputs.js'
-import { relPosix } from '../paths.js'
+import { packageScripts, relPosix } from '../paths.js'
+import { onceReader, type ReadText, tscBuildInfo } from '../tsc-buildinfo.js'
 import {
   envNamesThatMap,
   mapTurboWorkspace,
@@ -247,6 +248,11 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
     dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
   )
   const envNames = envNamesThatMap(configs, envNamesNow())
+  // The tsconfigs a `tsc` script reads are the mapping's inputs too.
+  const tsc = onceReader()
+  for (const m of metas)
+    for (const s of Object.values(packageScripts(m)))
+      if (typeof s === 'string' && /\btsc\b/.test(s)) tscBuildInfo(tsc.read, m.dir, s)
   return {
     name: 'turbo',
     spareTracked: true,
@@ -263,8 +269,9 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       JSON.stringify(microfrontendsConfigs(root, dirs)),
       // A config file added beside mapped tasks changes what an output may cover.
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
+      JSON.stringify([...tsc.texts]),
     ],
-    map: (tracked) => mapAll(root, metas, envNames, tracked),
+    map: (tracked) => mapAll(root, metas, envNames, tracked, tsc.read),
   }
 }
 
@@ -279,6 +286,7 @@ async function mapAll(
   metas: readonly PackageMeta[],
   envNames: readonly string[],
   trackedFiles: () => Promise<readonly string[] | null>,
+  read: ReadText,
 ): Promise<AdoptionMapping> {
   const tracked = await trackedFiles()
   const configs = new Map(
@@ -296,6 +304,7 @@ async function mapAll(
     ...(tracked === null ? {} : { tracked: trackedKinds(tracked) }),
     ownConfig: (rel) => configs.get(rel === '.' ? '' : rel) ?? null,
     ignored: (rels) => gitIgnored(root, rels),
+    buildInfo: (rel, command) => tscBuildInfo(read, path.join(root, rel), command),
   })
   const byName = new Map<string, TurboMappedProject>()
   for (const project of mapped.projects) byName.set(project.name, project)
