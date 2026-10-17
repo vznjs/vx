@@ -640,6 +640,7 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'plugin',
   'randomUUIDv7',
   'resolveSync',
+  'secrets',
   'serve',
   'sleep',
   'sleepSync',

@@ -12,8 +12,9 @@ order, the local store and provenance.
 ```ts
 export interface ResolvedRemote {
   readonly remote: RemoteCacheLayer
-  readonly read: boolean // the run's remote read
-  readonly write: boolean // the same for writes
+  readonly plugin?: string // the plugin that supplied it: its keychain is what `open` reads
+  read: boolean // the run's remote read; cleared when `open` throws
+  write: boolean // the same for writes
   readonly onError?: (err: Error) => void // default: stderr
 }
 
@@ -21,8 +22,8 @@ export type RemoteOp = 'probe' | 'download' | 'upload'
 
 export class RemoteLane {
   constructor(resolved: ResolvedRemote)
-  readonly read: boolean
-  readonly write: boolean
+  get read(): boolean // `resolved.read`, read live
+  get write(): boolean
   has(hash: string): Promise<boolean> // a failure is false
   hasMany(hashes: readonly string[]): Promise<Set<string> | null> // records the rest absent
   get(hash: string): Promise<{ body: Blob | Response; durationMs?: number } | null>

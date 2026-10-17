@@ -179,6 +179,7 @@ src/util/essential-env.ts
 src/util/git-ignored.ts
 src/util/hangup.ts
 src/util/hash.ts
+src/util/hidden-prompt.ts
 src/util/hide-env.ts
 src/util/index.ts
 src/util/num.ts
@@ -188,6 +189,7 @@ src/util/real-path.ts
 src/util/refusal-notice.ts
 src/util/report.ts
 src/util/secret-mask.ts
+src/util/secrets.ts
 src/util/settle.ts
 src/util/size.ts
 src/util/tail.ts
