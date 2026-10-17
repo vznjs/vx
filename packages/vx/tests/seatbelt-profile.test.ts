@@ -12,6 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { wrapCommandWithSandboxMacOS } from '@anthropic-ai/sandbox-runtime/dist/sandbox/macos-sandbox-utils.js'
 import {
+  darwinAncestorRules,
   darwinWallRules,
   macProfileRules,
   resolveSandboxConfig,
@@ -178,6 +179,32 @@ describe('darwinWallRules', () => {
 
   it('CONTROL: no wall reached is no rule', () => {
     expect(darwinWallRules({ allowRead: ['/w/*'], allowWrite: [] }, [])).toEqual([])
+  })
+})
+
+// Linux makes every directory above a mount, so a task may list them;
+// seatbelt matches paths, so macOS grants the listing (2026-10-17).
+describe('darwinAncestorRules', () => {
+  it('lists the directories above a grant inside the anchor, and those a glob names', () => {
+    expect(
+      darwinAncestorRules(
+        {
+          allowRead: ['/w/packages/vx-*/package.json', '/w/a/**/*.ts', '/w/p/src'],
+          allowWrite: [],
+        },
+        ['/w'],
+      ),
+    ).toEqual([
+      '(allow file-read-data (literal "/w/packages"))',
+      '(allow file-read-data (literal "/w/a"))',
+      '(allow file-read-data (literal "/w/p"))',
+      '(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"^/w/packages/vx-[^/]*$")))',
+      '(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"^/w/a(/.*)?$")))',
+    ])
+  })
+
+  it('CONTROL: never the anchor itself, nor above it', () => {
+    expect(darwinAncestorRules({ allowRead: ['/w/x'], allowWrite: [] }, ['/w'])).toEqual([])
   })
 })
 

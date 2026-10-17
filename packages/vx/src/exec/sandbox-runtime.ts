@@ -1344,6 +1344,7 @@ async function wrapIn(
   if (process.platform === 'darwin') {
     const rules = [
       ...macProfileRules(args.config),
+      ...darwinAncestorRules(args.config, baselines.denyRead),
       ...darwinWallRules(args.config, baselines.allowRead),
     ]
     try {
@@ -2569,6 +2570,67 @@ export function wallsGlobsReach(grants: readonly string[], walls: readonly strin
     .filter((g) => namedPath(g) === undefined)
     .map((g) => path.dirname(g.slice(0, g.search(MOUNT_WILDCARDS))))
   return walls.filter((w) => heads.some((h) => atOrUnder(w, h)))
+}
+
+/**
+ * macOS: each directory above a grant may be listed, as on Linux. bwrap
+ * makes every directory above a mount, so a task granted
+ * `../vx-*\/package.json` could glob it from `..`; seatbelt matches paths
+ * and refused the listing (EPERM), so `@vzn/vx-docs#import` failed on
+ * every Mac (2026-10-17). Above the glob that is each literal directory
+ * strictly inside a deny anchor (outside one, all is readable already);
+ * a directory the glob itself names (`vx-a/`) is matched as a regex, and
+ * under a `**` any directory is. The rules grant directories only, never
+ * a file, and come before the wall denies, which still win.
+ *
+ * Not the anchor itself: seatbelt cannot filter a listing as Linux's
+ * scaffold does, and Bun, shown the workspace root's `package.json` it
+ * may not read, failed with "Cannot read file" (EPERM).
+ */
+export function darwinAncestorRules(
+  c: Pick<ResolvedSandboxConfig, 'allowRead' | 'allowWrite'>,
+  anchors: readonly string[],
+): string[] {
+  const literals = new Set<string>()
+  const patterns = new Set<string>()
+  for (const g of [...c.allowRead, ...c.allowWrite]) {
+    const named = namedPath(g)
+    const head = g.slice(0, g.search(MOUNT_WILDCARDS))
+    const cut = head.lastIndexOf('/')
+    let dir = named !== undefined ? path.dirname(named) : head.slice(0, cut) || '/'
+    for (;;) {
+      const real = toRealPath(dir)
+      if (anchors.some((a) => real !== a && atOrUnder(real, a))) literals.add(real)
+      const up = path.dirname(dir)
+      if (up === dir) break
+      dir = up
+    }
+    // A backslash escapes a glob character, which this regex cannot spell.
+    if (named !== undefined || g.includes('\\')) continue
+    let re = toRealPath(head.slice(0, cut) || '/').replace(/[.^$+{}()|]/g, '[$&]')
+    if (re === '/') re = ''
+    const parts = g.slice(cut + 1).split('/')
+    for (const part of parts.slice(0, -1)) {
+      if (part === '**') {
+        patterns.add(`^${re}(/.*)?$`)
+        break
+      }
+      re += `/${part
+        .replace(/[.^$+{}()|]/g, '[$&]')
+        .replaceAll('*', '[^/]*')
+        .replaceAll('?', '[^/]')}`
+      patterns.add(`^${re}$`)
+    }
+  }
+  return [
+    ...[...literals].map(
+      (d) => `(allow file-read-data (literal "${sbplResolvedPath(d, 'grant')}"))`,
+    ),
+    ...[...patterns].map(
+      (r) =>
+        `(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"${sbplResolvedPath(r, 'grant')}")))`,
+    ),
+  ]
 }
 
 /**
