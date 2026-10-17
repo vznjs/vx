@@ -1,16 +1,17 @@
 ---
-title: 'The reference, offline'
+title: 'The reference at your version'
 date: 2026-10-09T12:30:00Z
 authors:
   - vzn
 tags:
   - ai
   - dx
-excerpt: 'vx docs <query> searches the CLI, config and cache reference that ships inside vx. No network, no site: the sections that match print whole, with their URL.'
+excerpt: 'vx docs <query> searches the reference your vx version wrote, read from its release tag on GitHub: the sections that match print whole, with their URL.'
 ---
 
-An agent in a sandbox often cannot reach the docs site. Now the
-reference travels with vx: `vx docs <query>` searches it on disk.
+The site shows the newest docs. The vx you run may be older. `vx docs
+<query>` searches the reference as your version wrote it, so an agent
+gets the flags and fields your vx takes.
 
 ```sh frame="terminal"
 $ vx docs frozen lock --limit 1
@@ -18,11 +19,11 @@ $ vx docs frozen lock --limit 1
 …
 ```
 
-It reads seven pages that ship in the npm package and the compiled
-binary: `cli`, `schema`, `caching`, `execution`, `patterns`, `security`
-and `features`. A section matches when it holds every word of the
-query, and a word in its heading ranks it first. The best three print
-whole; `--limit` changes how many.
+It reads every page of `packages/vx/docs` at your release tag
+(`v<version>`) on GitHub, each time it runs: nothing ships inside vx. A
+section matches when it holds every word of the query, and a word in its
+heading ranks it first. The best three print whole; `--limit` changes how
+many.
 
 | You ask                     | You get                               |
 | --------------------------- | ------------------------------------- |
@@ -31,6 +32,7 @@ whole; `--limit` changes how many.
 | `vx docs sandbox allow`     | what a sandboxed task may touch       |
 | `vx docs ... --format json` | `{query, hits: [{page, heading, url, text}]}` |
 
-The JSON shape is `schemas/docs.json`. The guides stay on the site;
+With no network it refuses with `VX_E_NETWORK` and names the site. The
+JSON shape is `schemas/docs.json`. The guides stay on the site;
 [llms.txt](https://vznjs.github.io/vx/llms.txt) indexes them. See the
 [CLI reference](../../cli/#vx-docs).

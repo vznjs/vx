@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { errorCode, errorDocument, UserError, wantsJson } from '../src/util/index.js'
+import { docsIn } from './helpers/docs-pages.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -271,9 +272,9 @@ describe('every core code has a section that says what to do', () => {
 
   it('`vx docs <code>` prints that section alone, at the linked URL', async () => {
     // VX_E_USAGE: three more sections of cli.md name it.
-    const r = await vx(['docs', 'VX_E_USAGE', '--format', 'json'])
+    const r = await docsIn(['VX_E_USAGE', '--format', 'json'])
     expect(r.code).toBe(0)
-    const { hits } = JSON.parse(r.stdout) as { hits: { heading: string; url: string }[] }
+    const { hits } = JSON.parse(r.out) as { hits: { heading: string; url: string }[] }
     expect(hits.map((h) => [h.heading, h.url])).toEqual([
       ['VX_E_USAGE', JSON.parse(errorDocument('VX_E_USAGE', 'm')).error.docs],
     ])

@@ -1,12 +1,16 @@
 // `vx docs <query> [--limit N] [--format pretty|json]` — search vx's
-// reference offline, for an agent that cannot reach the site: each page is
+// reference as this version wrote it: packages/vx/docs at its git tag on
+// GitHub, read online (M, 2026-10-17: nothing is embedded). Each page is
 // cut at its headings, and the sections holding every query word print
 // whole, best first.
 
+import { VERSION } from '../version.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 
 const SITE = 'https://vznjs.github.io/vx/'
 const DEFAULT_LIMIT = 3
+const REPO = 'vznjs/vx'
+const DIR = 'packages/vx/docs'
 
 interface DocsArgs {
   terms: string[]
@@ -59,9 +63,55 @@ function anchor(heading: string): string {
     .replace(/ /g, '-')
 }
 
-/** A page's URL on the site; `features.md` is served as `all-features/`. */
+/** A page's URL on the site, as packages/vx-docs/scripts/import-docs.ts serves it. */
 function pageUrl(page: string): string {
-  return `${SITE}${page === 'features' ? 'all-features' : page}/`
+  const served: Record<string, string> = {
+    README: 'overview',
+    features: 'all-features',
+    'turbo-nx-support': 'compare/turbo-nx-support',
+  }
+  return `${SITE}${served[page] ?? page.toLowerCase()}/`
+}
+
+/** The git ref this vx's docs are at: its release tag; a source checkout (0.0.0) reads main. */
+export function docsRef(version: string = VERSION): string {
+  return version === '0.0.0' ? 'main' : `v${version}`
+}
+
+/**
+ * Every page of packages/vx/docs at `ref` (its own `.md` files, the
+ * maintainers' STATUS.md aside), page name → markdown. One listing, then
+ * the pages at once. Throws with what failed; a token in GITHUB_TOKEN or
+ * GH_TOKEN lifts GitHub's anonymous listing limit.
+ */
+export async function loadPages(
+  ref: string,
+  get: (url: string, init?: RequestInit) => Promise<Response> = fetch,
+  env: Record<string, string | undefined> = process.env,
+): Promise<Record<string, string>> {
+  const token = env['GITHUB_TOKEN'] ?? env['GH_TOKEN']
+  const listing = await get(
+    `https://api.github.com/repos/${REPO}/contents/${DIR}?ref=${encodeURIComponent(ref)}`,
+    {
+      headers: {
+        accept: 'application/vnd.github+json',
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+    },
+  )
+  if (!listing.ok) throw new Error(`GitHub answered ${listing.status} listing ${DIR} at ${ref}`)
+  const names = ((await listing.json()) as Array<{ name: string; type: string }>)
+    .filter((e) => e.type === 'file' && e.name.endsWith('.md') && e.name !== 'STATUS.md')
+    .map((e) => e.name)
+  const texts = await Promise.all(
+    names.map(async (name) => {
+      const url = `https://raw.githubusercontent.com/${REPO}/${ref}/${DIR}/${name}`
+      const r = await get(url)
+      if (!r.ok) throw new Error(`GitHub answered ${r.status} for ${url}`)
+      return r.text()
+    }),
+  )
+  return Object.fromEntries(names.map((n, i) => [n.slice(0, -3), texts[i]!]))
 }
 
 interface Section {
@@ -137,7 +187,10 @@ export function searchDocs(
   }))
 }
 
-export async function docsCmd(args: readonly string[]): Promise<number> {
+export async function docsCmd(
+  args: readonly string[],
+  load: (ref: string) => Promise<Record<string, string>> = loadPages,
+): Promise<number> {
   const parsed = parseDocsArgs(args)
   if (parsed.error) return refuse('docs', args, parsed.error, 'VX_E_USAGE')
   if (parsed.terms.length === 0) {
@@ -148,8 +201,19 @@ export async function docsCmd(args: readonly string[]): Promise<number> {
       'VX_E_USAGE',
     )
   }
-  const { PAGES } = await import('./docs-corpus.js')
-  const hits = searchDocs(PAGES, parsed.terms, parsed.limit)
+  const ref = docsRef()
+  let pages: Record<string, string>
+  try {
+    pages = await load(ref)
+  } catch (err) {
+    return refuse(
+      'docs',
+      args,
+      `cannot read the docs at ${ref} from GitHub (${err instanceof Error ? err.message : String(err)}); they are on the site, ${SITE}`,
+      'VX_E_NETWORK',
+    )
+  }
+  const hits = searchDocs(pages, parsed.terms, parsed.limit)
   const query = parsed.terms.join(' ')
   if (parsed.json) {
     process.stdout.write(`${JSON.stringify({ query, hits })}\n`)
@@ -157,7 +221,7 @@ export async function docsCmd(args: readonly string[]): Promise<number> {
   }
   if (hits.length === 0) {
     process.stdout.write(
-      `vx docs: no section of ${Object.keys(PAGES).join(', ')} holds every word of "${query}"; try fewer words, or ${SITE}llms.txt\n`,
+      `vx docs: no section of the docs at ${ref} holds every word of "${query}"; try fewer words, or ${SITE}llms.txt\n`,
     )
     return 0
   }

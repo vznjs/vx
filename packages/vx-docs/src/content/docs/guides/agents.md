@@ -14,10 +14,9 @@ markdown. [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) is every doc
 file. Any page is also served raw beside its HTML: add `.md` to its
 path, as in [quickstart.md](https://vznjs.github.io/vx/quickstart.md).
 
-Without network, `vx docs <query>` searches the reference that ships
-inside vx (CLI, config schema, caching, execution, patterns, security,
-features) and prints the matching sections whole; `--format json` gives
-`{query, hits}`.
+`vx docs <query>` searches the reference as your vx's version wrote it,
+read from its release tag on GitHub, and prints the matching sections
+whole; `--format json` gives `{query, hits}`.
 
 ## Install the vx skill
 
@@ -99,5 +98,5 @@ $ vx run biuld --all --dry=json
 | `VX_E_INTERNAL`     | A defect in vx: report it with the stack from stderr.  |
 
 `docs` links the code's section of the [CLI reference](../../cli/#error-codes),
-which says what to do; offline, `vx docs VX_E_UNKNOWN_TASK` prints the same
+which says what to do; `vx docs VX_E_UNKNOWN_TASK` prints the same
 section. `node_modules/@vzn/vx/schemas/error.json` describes the line.
