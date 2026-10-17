@@ -1011,9 +1011,11 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
     }
   })
 
-  it('the run stopping cancels the Execute stream; stopped before, nothing is sent', async () => {
+  it('the run stopping or its timeout cancels the operation and ends as a kill; stopped before, nothing is sent', async () => {
     // Before, the stop was unheard: vx waited on the remote as long as the
-    // action ran, here forever.
+    // action ran, here forever. Then it was a refusal (exit 1, no key, never
+    // timed out) that left the action running on its worker (Growth,
+    // reapi-remote-timeout).
     let release!: () => void
     const forever = new Promise<void>((r) => {
       release = r
@@ -1022,17 +1024,20 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
     const stop = new AbortController()
     // The stop comes once the server holds the call: on a 200 ms timer, a
     // loaded box stopped the run before its Execute was sent, so nothing
-    // was there to cancel (6 of 20 beside twelve busy loops, M-33).
+    // was there to cancel (6 of 20 beside twelve busy loops, M-33). After
+    // the first stage, so the client holds the operation's name to cancel.
     fake.onExecute = () => {
       executes++
-      setTimeout(() => stop.abort(), 0)
+      setTimeout(() => stop.abort(), 150)
       return { stages: ['EXECUTING'], hold: forever }
     }
     const cancelled = fake.executesCancelled
+    const from = fake.calls.length
+    const ended = (r: { exitCode: number; signal?: string }) => [r.exitCode, r.signal]
     try {
-      const refused = await withExecutor((run) =>
-        refusal(
-          Promise.race([
+      const stopped = await withExecutor(async (run) =>
+        ended(
+          await Promise.race([
             run(request({ signal: stop.signal })),
             Bun.sleep(5000).then(() => {
               throw new Error('the stop was not heard')
@@ -1044,11 +1049,18 @@ describe.if(CHUNKING_SUPPORTED)('the Action it builds, beyond the Action', () =>
       // rows do, not a fixed 50 ms.
       const deadline = Date.now() + 3_000
       while (fake.executesCancelled === cancelled && Date.now() < deadline) await Bun.sleep(5)
-      const before = await withExecutor((run) => refusal(run(request({ signal: stop.signal }))))
-      expect([refused, fake.executesCancelled - cancelled, before, executes]).toEqual([
-        'vx/reapi: pkg#gen: the run stopped before its remote execution finished',
+      const ops = fake.calls
+        .slice(from)
+        .filter((c) => c.method === 'CancelOperation')
+        .map((c) => c.request['name'])
+      const before = await withExecutor(async (run) =>
+        ended(await run(request({ signal: stop.signal }))),
+      )
+      expect([stopped, fake.executesCancelled - cancelled, ops.length, before, executes]).toEqual([
+        [143, 'SIGTERM'],
         1,
-        'vx/reapi: pkg#gen: the run stopped before its remote execution finished',
+        1,
+        [143, 'SIGTERM'],
         1,
       ])
     } finally {

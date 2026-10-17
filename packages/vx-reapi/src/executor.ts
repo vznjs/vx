@@ -936,9 +936,20 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         )
       } catch (err) {
         if (req.signal?.aborted === true) {
-          throw new UserError(
-            `vx/reapi: ${req.taskId}: the run stopped before its remote execution finished`,
-          )
+          // Core aborts on the run's stop and on `exec.timeout`. A refusal
+          // read as a plain failure (exit 1, no key, not timed out), and the
+          // closed stream left the action running on its worker. The action
+          // is cancelled and the task ends as a killed local one does: 143,
+          // which core reports timed out when its timer fired.
+          if (operation !== '') await client.cancelOperation(operation).catch(() => undefined)
+          return {
+            exitCode: 143,
+            durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
+            stdout: '',
+            stderr: '',
+            violations: [],
+            signal: 'SIGTERM',
+          }
         }
         if (queued.signal.aborted) {
           // Best effort: a server without the service, or one that has lost

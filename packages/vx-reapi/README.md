@@ -309,8 +309,11 @@ Once a worker reports EXECUTING, the task's `exec.timeout` (or
 `executeTimeoutMs`) bounds the wait, and the bound holds across a
 re-attach: firing during the backoff between a dropped stream and its
 `WaitExecution`, it ends the task there rather than being lost.
-The run stopping (Ctrl-C, an embedder's abort) cancels the operation
-stream the same way, and an action not yet submitted is not sent.
+The run stopping (Ctrl-C, an embedder's abort) or the task's `exec.timeout`
+closes the stream and cancels the operation with `CancelOperation`, and an
+action not yet submitted is not sent. The task then ends as a killed local
+one does (exit 143, `SIGTERM`): past `exec.timeout` it is `failed (timed
+out)` with its key in `vx last`.
 
 A ByteStream Read, like every unary call, retries UNAVAILABLE,
 RESOURCE_EXHAUSTED and INTERNAL three times (100, 400 and 1600 ms) before it
