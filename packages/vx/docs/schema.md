@@ -171,7 +171,7 @@ interface ExecConfig {
   command: string // shell command, run from the project's dir
   remote?: boolean | 'only' // placement: pin here, or remote-only (see below)
   env?: ExecEnv // optional per-task env layering
-  timeout?: number // ms before vx SIGTERMs the child (see below)
+  timeout?: Duration // '30s', '2m': before vx SIGTERMs the child (see below)
   retries?: number // max additional attempts after a failure (see below)
   persistent?: PersistentConfig // long-running task (dev server, watcher)
   interactive?: boolean // reads the terminal: a prompt, a REPL (see below)
@@ -208,8 +208,9 @@ distinct cache entries.
 
 #### `timeout` (optional)
 
-Maximum time in milliseconds before vx SIGTERMs the child. Omitted →
-no limit.
+Maximum time before vx SIGTERMs the child, as a duration string: a
+number and a unit, `ms`, `s`, `m`, `h` or `d` (`'500ms'`, `'2m'`). A bare
+number is refused by `vx lock`. Omitted → no limit.
 
 ```ts
 build: { exec: { command: 'tsc -b', timeout: '2m' } }
@@ -232,7 +233,7 @@ build: { exec: { command: 'tsc -b', timeout: '2m' } }
   included (X-125), and an executor still running after the kill grace
   is abandoned (H-12, H-14).
 
-**Upper bound.** `timeout` must be at most **2147483647 ms (~24.8 days)**,
+**Upper bound.** `timeout` must be at most **2147483647 ms (~24.8 days)** (`'2147483647ms'`),
 the largest delay a timer can hold. A larger value does _not_ mean "no
 limit" — the platform silently reduces it to **1 ms**, so the task would
 be killed the moment it spawns and reported `failed`. vx refuses it at
