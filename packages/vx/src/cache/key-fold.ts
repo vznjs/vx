@@ -114,7 +114,10 @@ import type { CacheKeyInput } from './layer.js'
 // artifact holds none and a hit left them out (Growth's parity, 2026-10-16).
 // v45: the sidecar lists the symlinks under the outputs and a hit makes
 // them; a v44 artifact holds a link as a copy of its target (M, 2026-10-16).
-export const CACHE_VERSION = 'vx-cache-v45'
+// v46: vx's names are reserved only at the project root; a v45 artifact
+// left out a build's own `dist/.git/**`, `dist/.vx/**` and nested
+// `vx.lock.json` (Growth's parity, 2026-10-17).
+export const CACHE_VERSION = 'vx-cache-v46'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

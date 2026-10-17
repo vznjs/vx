@@ -1953,7 +1953,7 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
       tasks: {
         gen: {
           exec: { command: 'true' },
-          inputs: { files: [], workspaceFiles: ['shared/**'] },
+          inputs: { files: [], workspaceFiles: ['shared/**', '.vx/**'] },
           cache: {
             outputs: { files: [], workspaceFiles: ['shared/gen/**'] },
           },
@@ -1965,8 +1965,10 @@ describe("workspaceGlobOwners: the run path's staged load", () => {
     expect([
       await owners('shared/src.txt'),
       await owners('shared/gen/out.txt'),
+      await owners('.vx/cache/x'),
+      // Nested, `.vx` is the tree's own file, not vx's.
       await owners('shared/.vx/cache/x'),
-    ]).toEqual([['p'], ['p'], []])
+    ]).toEqual([['p'], ['p'], [], ['p']])
   })
 })
 

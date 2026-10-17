@@ -73,8 +73,8 @@ means for a directory it only ever adds to.
   not declare is a bug the [sandbox](../the-sandbox/) can catch, but
   the wipe itself is bounded by the declaration.
 - Another project's directory. Boundaries are hard.
-- `.git`, the `.vx` directory and each `vx.lock.json`, whatever the glob
-  says.
+- The project root's `.git`, `.vx` and `vx.lock.json`, whatever the
+  glob says. Only there: a build's own `dist/.git` is its output.
 - A file git tracks. A committed file under an
   output glob is still saved and restored, but the wipe never deletes it.
 - `node_modules`, unless a glob names it. `**/*.js` leaves installed

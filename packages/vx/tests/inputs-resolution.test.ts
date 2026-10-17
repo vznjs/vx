@@ -344,7 +344,7 @@ describe('negation composes by subtraction only — it is not gitignore', () => 
 // every nested form, and must NOT swallow innocent neighbours (`.github`
 // dropping out of a key is a silent stale hit for every CI-config change).
 // ─────────────────────────────────────────────────────────────────────────
-describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
+describe('ALWAYS_IGNORE matches where vx writes, and nowhere deeper', () => {
   let root: string
   let projectDir: string
 
@@ -358,8 +358,10 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     '.vx/.gitignore',
     '.vx/tmp/1z2-a/0',
   ]
-  const IGNORED_NESTED = [
-    'a/b/.git/HEAD',
+  // A project's own files that only share a name with vx's (2026-10-17):
+  // matched at any depth, an edit to one was a hit. A nested `.git` is
+  // left out: git lists nothing under one.
+  const KEPT_NESTED = [
     'a/b/.vx/cache/log',
     'a/b/.vx/projects.lock.json',
     'a/b/vx.lock.json',
@@ -425,7 +427,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
   // list whose job is to keep a dependency tree out of every cache key.
   // `ALWAYS_IGNORE` is module-private (cache is a leaf module), so it is
   // read from the source and matched with the glob engine that uses it.
-  it('the fixtures below cover every ALWAYS_IGNORE pattern, top-level and nested', () => {
+  it('the fixtures below cover every ALWAYS_IGNORE pattern, and no nested name', () => {
     const src = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'cache', 'inputs.ts'),
       'utf8',
@@ -444,7 +446,7 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     expect(patterns.length).toBeGreaterThan(5)
     const uncovered = patterns.filter((pattern) => {
       const glob = new Bun.Glob(pattern)
-      return !IGNORED_TOP.some((f) => glob.match(f)) || !IGNORED_NESTED.some((f) => glob.match(f))
+      return !IGNORED_TOP.some((f) => glob.match(f)) || KEPT_NESTED.some((f) => glob.match(f))
     })
     expect(uncovered).toEqual([])
   })
@@ -455,13 +457,10 @@ describe('ALWAYS_IGNORE matches nested AND top-level forms', () => {
     expect(seen).toEqual([path.join('src', 'keep.ts')])
   })
 
-  it('excludes every ALWAYS_IGNORE pattern NESTED under a project', async () => {
-    // The `**/` prefix has to match many directories as well as zero. A pattern
-    // written as `node_modules/**` would pass the test above and fail here,
-    // letting a transitively-installed dep tree into every key.
-    for (const rel of IGNORED_NESTED) await write(path.join(projectDir, rel))
+  it("keeps a project's own file under a vx name nested in the project", async () => {
+    for (const rel of KEPT_NESTED) await write(path.join(projectDir, rel))
     const seen = await resolveAll()
-    expect(seen).toEqual([path.join('src', 'keep.ts')])
+    expect(seen).toEqual([path.join('src', 'keep.ts'), ...KEPT_NESTED].sort())
   })
 
   it('does NOT exclude names that merely resemble an ignored one', async () => {

@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v45'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v46'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -875,7 +875,9 @@ Declared `cache.outputs.files` are wiped in two distinct places:
 
 Both use the same helpers (`cleanOutputs`, `cleanOutputPaths` in
 `src/cache/inputs.ts`) with the same boundary rules, and vx's own paths stay off the wipe
-whatever the glob: `.git`, `.vx` and each `vx.lock.json` (`OUTPUT_NEVER`;
+whatever the glob: the project root's `.git`, `.vx` and `vx.lock.json`, and
+for `outputs.workspaceFiles` every project's `vx.lock.json` (`OUTPUT_NEVER`;
+a build's own `dist/.git` or `dist/sub/vx.lock.json` is an output like any other;
 `.vx` holds the workspace config and the lock, which a clean deleted and a
 hit restored stale while `.vx/cache` alone was listed). `node_modules` is
 off it too unless a glob names it (`node_modules/**`, an install task's
@@ -1459,7 +1461,7 @@ overwritten or a `.git/hooks` file planted under a green
 local copy (item 942); now the read is a miss and the task runs. Every
 restore asks the same of the local copy, whatever route it reached the
 store by: an entry outside the declared outputs, one a `!` entry takes
-back, one under `.git`, `.vx` or a `vx.lock.json`, or one under a
+back, one under the project root's `.git` or `.vx` or its `vx.lock.json`, or one under a
 `node_modules` no output glob names fails the whole restore before
 anything is written; the entry is dropped and the task runs. Remote
 execution (`@vzn/vx-reapi`) writes a remote action's outputs through the

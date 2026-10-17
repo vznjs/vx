@@ -387,18 +387,36 @@ export function outputMatcher(globs: readonly string[]): (rel: string) => boolea
 }
 
 /**
- * What no output glob reaches. An output is otherwise taken as written —
- * `node_modules/**` IS an install task's output — but no task produces
- * these, and a root project declaring `**` would otherwise wipe its
- * repository and the cache it is restoring from (2026-09-16). `.vx` whole
- * and each `vx.lock.json` are vx's own: as outputs, the clean deleted an
- * uncommitted workspace config and a hit restored a lock or ignore file the
- * key does not see over the current one.
+ * What no output glob reaches, relative to the project: its root's `.git`
+ * and `.vx`, and the `vx.lock.json` beside its config. An output is
+ * otherwise taken as written — `node_modules/**` IS an install task's
+ * output — but a root project declaring `**` would otherwise wipe its
+ * repository and the cache it is restoring from (2026-09-16), the clean
+ * deleted an uncommitted workspace config, and a hit restored a lock or
+ * ignore file the key does not see over the current one. Only where vx
+ * writes them: reserved at any depth, a hit dropped a build's own
+ * `dist/.git/**` and `dist/sub/vx.lock.json` (2026-10-17).
  */
-export const OUTPUT_NEVER = ['**/.git/**', '**/.vx/**', '**/vx.lock.json']
+const OUTPUT_NEVER = ['.git/**', '.vx/**', 'vx.lock.json']
+
+/**
+ * `OUTPUT_NEVER` relative to the workspace root, for `outputs.workspaceFiles`:
+ * those globs cross into other projects, and every project's `vx.lock.json`
+ * is vx's.
+ */
+const WORKSPACE_OUTPUT_NEVER = [...OUTPUT_NEVER, '**/vx.lock.json']
+
+/**
+ * What `globs` may not reach in `scope`: its never-list, and every
+ * `node_modules` unless a glob names one.
+ */
+export function outputNever(globs: readonly string[], scope: 'project' | 'workspace'): string[] {
+  const never = scope === 'project' ? OUTPUT_NEVER : WORKSPACE_OUTPUT_NEVER
+  return namesNodeModules(globs) ? never : [...never, '**/node_modules/**']
+}
 
 /** Whether a positive glob in `globs` names a `node_modules` directory. */
-export function namesNodeModules(globs: readonly string[]): boolean {
+function namesNodeModules(globs: readonly string[]): boolean {
   return globs.some(
     (g) => !g.startsWith('!') && normalizeGlob(g).split('/').includes('node_modules'),
   )
@@ -411,11 +429,12 @@ export function namesNodeModules(globs: readonly string[]): boolean {
  * artifact naming anything else was not written by this task's save, and
  * none of it is restored (2026-10-16).
  */
-export function restorableOutput(globs: readonly string[]): (rel: string) => boolean {
+export function restorableOutput(
+  globs: readonly string[],
+  scope: 'project' | 'workspace' = 'project',
+): (rel: string) => boolean {
   const isOutput = outputMatcher(globs)
-  const never = anyTaskGlob(
-    namesNodeModules(globs) ? OUTPUT_NEVER : [...OUTPUT_NEVER, '**/node_modules/**'],
-  )
+  const never = anyTaskGlob(outputNever(globs, scope))
   return (rel) => isOutput(rel) && !never(rel)
 }
 

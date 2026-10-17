@@ -1411,7 +1411,7 @@ export async function materialiseOutputs(
   // Core's restore gate: a `!` take-back, vx's own files and a
   // `node_modules` no glob names are no output either.
   const isOwn = restorableOutput(req.outputs?.files ?? [])
-  const isWs = restorableOutput(req.outputs?.workspaceFiles ?? [])
+  const isWs = restorableOutput(req.outputs?.workspaceFiles ?? [], 'workspace')
   const isDeclared = (abs: string): boolean => {
     const rel = toPosix(path.relative(req.workspaceRoot, abs))
     const own =

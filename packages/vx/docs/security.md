@@ -16,7 +16,7 @@ vulnerability), never in a public issue.
   cannot claim your checkout and run as you. Outside git, one another
   user owns is refused, root aside, judged by the file itself (a link,
   not what it names) and its `.vx` (`tests/workspace-root-file.test.ts`).
-  No task output reaches `.vx` or a `vx.lock.json`: a clean never deletes
+  No task output reaches the root's `.vx` or a config's `vx.lock.json`: a clean never deletes
   them and a hit never restores them (`tests/output-never-dotvx.test.ts`).
   What a config imports
   must already be installed: vx runs Bun with `--no-install`, so an

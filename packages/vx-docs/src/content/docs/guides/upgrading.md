@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: reserve vx's names only where vx writes them
+
+Every cached task misses once after upgrading (cache version v46). `.git`, `.vx` and `vx.lock.json` are reserved only at a project's root (and each project's `vx.lock.json` for `workspaceFiles`); deeper, they are inputs and outputs like any other file. `restorableOutput` takes a scope, 'project' or 'workspace'.
+
 ## cache: keep symlinks under outputs as links
 
 Every cached task misses once after upgrading (cache version v45). A symlink under a task's outputs is cached and restored as the link, not a copy of its target; an absolute link, or one leading out of the workspace, fails the save. CacheLayer.save drops `readable`.
