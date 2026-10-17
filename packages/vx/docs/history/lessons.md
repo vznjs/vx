@@ -263,3 +263,7 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   `expect(…).rejects`: under `bun test` the latter held a call that
   needed more I/O until its 30 s deadline, and the same call settled in
   2 ms through `.then` (item 827). The row reads as a client hang.
+- A `SCHEMA_VERSION` bump is a contract break (`stored-format.json`):
+  title the PR `type(scope)!:` before CI starts. CI reads the title from
+  the event that started the run, so a title fixed later needs a new push;
+  a re-run reads the old one (#3724).
