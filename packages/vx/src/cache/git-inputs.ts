@@ -210,9 +210,25 @@ interface PartitionDigest {
  */
 class OidSlot {
   private built: Map<string, string> | undefined
+  /** Paths dropped before the map was built: taken out when it is. */
+  private dropped: string[] | undefined
   constructor(private build: () => Map<string, string>) {}
   get map(): Map<string, string> {
-    return (this.built ??= this.build())
+    if (this.built === undefined) {
+      this.built = this.build()
+      for (const p of this.dropped ?? []) this.built.delete(p)
+      this.dropped = undefined
+    }
+    return this.built
+  }
+  /**
+   * Forget these paths' OIDs. An unbuilt map stays unbuilt: each restore
+   * marks its outputs changed, and building the map to drop them was ~28 ms
+   * of a 1,000-project restore whose keys no later read needed.
+   */
+  drop(paths: Iterable<string>): void {
+    if (this.built !== undefined) for (const p of paths) this.built.delete(p)
+    else (this.dropped ??= []).push(...paths)
   }
 }
 
@@ -435,10 +451,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     else this.changed.set(partitionDir, [...relPaths])
     // These paths just changed on disk; their index OIDs (if any) no
     // longer describe the working-tree content.
-    const partitionOids = this.oids.get(partitionDir)?.map
-    if (partitionOids) {
-      for (const rel of relPaths) partitionOids.delete(path.resolve(partitionDir, rel))
-    }
+    this.oids.get(partitionDir)?.drop(relPaths.map((rel) => path.resolve(partitionDir, rel)))
   }
 
   /**
