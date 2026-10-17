@@ -1344,8 +1344,7 @@ async function wrapIn(
   if (process.platform === 'darwin') {
     const rules = [
       ...macProfileRules(args.config),
-      ...darwinAncestorRules(args.config, baselines.denyRead),
-      ...darwinWallRules(args.config, baselines.allowRead),
+      ...darwinGrantRules(args.config, baselines.allowRead, baselines.denyRead),
     ]
     try {
       if (rules.length > 0) wrapped = injectProfileRules(wrapped, rules)
@@ -2573,6 +2572,18 @@ export function wallsGlobsReach(grants: readonly string[], walls: readonly strin
 }
 
 /**
+ * macOS: the grant rules vx appends. The listings come first so a wall's
+ * deny, later, wins: SBPL is last-match-wins.
+ */
+export function darwinGrantRules(
+  c: Pick<ResolvedSandboxConfig, 'wallsReached' | 'allowRead' | 'allowWrite'>,
+  baseAllowRead: readonly string[],
+  anchors: readonly string[],
+): string[] {
+  return [...darwinAncestorRules(c, anchors), ...darwinWallRules(c, baseAllowRead)]
+}
+
+/**
  * macOS: each directory above a grant may be listed, as on Linux. bwrap
  * makes every directory above a mount, so a task granted
  * `../vx-*\/package.json` could glob it from `..`; seatbelt matches paths
@@ -2583,8 +2594,9 @@ export function wallsGlobsReach(grants: readonly string[], walls: readonly strin
  * under a `**` any directory is. The rules grant directories only, never
  * a file, and come before the wall denies, which still win.
  *
- * Not the anchor itself: seatbelt cannot filter a listing as Linux's
- * scaffold does, and Bun, shown the workspace root's `package.json` it
+ * A listing shows every name in the directory, where Linux's scaffold
+ * shows only what it mounted: names, never a file's data. Not the anchor
+ * itself: Bun, shown the workspace root's `package.json` it
  * may not read, failed with "Cannot read file" (EPERM).
  */
 export function darwinAncestorRules(
@@ -2593,24 +2605,21 @@ export function darwinAncestorRules(
 ): string[] {
   const literals = new Set<string>()
   const patterns = new Set<string>()
+  // Grants are canonical already (`resolveSandboxConfig`), and so is each
+  // directory above one: no realpath here, at every spawn.
+  const inside = (d: string): boolean => anchors.some((a) => d !== a && atOrUnder(d, a))
   for (const g of [...c.allowRead, ...c.allowWrite]) {
     const named = namedPath(g)
     const head = g.slice(0, g.search(MOUNT_WILDCARDS))
     const cut = head.lastIndexOf('/')
-    let dir = named !== undefined ? path.dirname(named) : head.slice(0, cut) || '/'
-    for (;;) {
-      const real = toRealPath(dir)
-      if (anchors.some((a) => real !== a && atOrUnder(real, a))) literals.add(real)
-      const up = path.dirname(dir)
-      if (up === dir) break
-      dir = up
-    }
-    // A backslash escapes a glob character, which this regex cannot spell.
+    const top = named !== undefined ? path.dirname(named) : head.slice(0, cut) || '/'
+    for (let d = top; inside(d); d = path.dirname(d)) literals.add(d)
     if (named !== undefined || g.includes('\\')) continue
-    let re = toRealPath(head.slice(0, cut) || '/').replace(/[.^$+{}()|]/g, '[$&]')
-    if (re === '/') re = ''
-    const parts = g.slice(cut + 1).split('/')
-    for (const part of parts.slice(0, -1)) {
+    let re = top === '/' ? '' : regexLiteral(top)
+    for (const part of g
+      .slice(cut + 1)
+      .split('/')
+      .slice(0, -1)) {
       if (part === '**') {
         patterns.add(`^${re}(/.*)?$`)
         break
@@ -2622,15 +2631,23 @@ export function darwinAncestorRules(
       patterns.add(`^${re}$`)
     }
   }
+  // A name seatbelt's quoted string cannot hold keeps today's refusal
+  // rather than failing the task (`sbplResolvedPath` would throw).
+  const spellable = (p: string): boolean => !UNSPELLABLE.test(p)
   return [
-    ...[...literals].map(
-      (d) => `(allow file-read-data (literal "${sbplResolvedPath(d, 'grant')}"))`,
-    ),
-    ...[...patterns].map(
-      (r) =>
-        `(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"${sbplResolvedPath(r, 'grant')}")))`,
-    ),
+    ...[...literals].filter(spellable).map((d) => `(allow file-read-data (literal "${d}"))`),
+    ...[...patterns]
+      .filter(spellable)
+      .map((r) => `(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"${r}")))`),
   ]
+}
+
+// eslint-disable-next-line no-control-regex -- the control range is the point
+const UNSPELLABLE = /["'\\\x00-\x1f\x7f]/
+
+/** A real path as a regex matching only itself: each special in a class of one. */
+function regexLiteral(p: string): string {
+  return p.replace(/[.^$+{}()|*?[\]]/g, (ch) => `[${ch}]`)
 }
 
 /**

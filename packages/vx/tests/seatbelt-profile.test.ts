@@ -13,6 +13,7 @@ import path from 'node:path'
 import { wrapCommandWithSandboxMacOS } from '@anthropic-ai/sandbox-runtime/dist/sandbox/macos-sandbox-utils.js'
 import {
   darwinAncestorRules,
+  darwinGrantRules,
   darwinWallRules,
   macProfileRules,
   resolveSandboxConfig,
@@ -205,6 +206,34 @@ describe('darwinAncestorRules', () => {
 
   it('CONTROL: never the anchor itself, nor above it', () => {
     expect(darwinAncestorRules({ allowRead: ['/w/x'], allowWrite: [] }, ['/w'])).toEqual([])
+  })
+
+  it('matches a regex special in the head as itself', () => {
+    expect(darwinAncestorRules({ allowRead: ['/w/a.b(1)+/*/x'], allowWrite: [] }, ['/w'])).toEqual([
+      '(allow file-read-data (literal "/w/a.b(1)+"))',
+      '(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"^/w/a[.]b[(]1[)][+]/[^/]*$")))',
+    ])
+  })
+
+  it('skips a name a seatbelt string cannot hold, rather than failing the task', () => {
+    expect(darwinAncestorRules({ allowRead: ['/w/a"b/x'], allowWrite: [] }, ['/w'])).toEqual([])
+  })
+
+  it('comes before the wall denies, so a wall under a `**` stays shut', () => {
+    const rules = darwinGrantRules(
+      {
+        allowRead: ['/w/a/**/*.ts'],
+        allowWrite: [],
+        wallsReached: { read: ['/w/a/b'], write: [] },
+      },
+      [],
+      ['/w'],
+    )
+    const listing = rules.indexOf(
+      '(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"^/w/a(/.*)?$")))',
+    )
+    const wall = rules.indexOf('(deny file-read-data (subpath "/w/a/b"))')
+    expect([listing >= 0, wall > listing]).toEqual([true, true])
   })
 })
 
