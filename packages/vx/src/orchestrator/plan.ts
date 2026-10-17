@@ -146,6 +146,10 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
   const outcomes = await runGraph({
     nodes: args.nodes,
     concurrency: 1,
+    // A plan's keys and probes do not depend on the order it walks in, so
+    // it ranks nothing: the default ranking's closure over every task was
+    // ~30 ms of a 1,000-project `--dry`.
+    strategy: 'ready-order',
     execute: async (node, live) => {
       const upstream = keyUpstream(node, live)
       const hashArgs = {

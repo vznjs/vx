@@ -267,7 +267,11 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
           ids: [...nodes.keys()],
           branch: ctx.branch,
         }
-      const ids = [...nodes.keys()]
+      // Only a task that runs a command has a timing: a group asked for
+      // read as a task with no history on this branch, so every run
+      // tried a default-branch import (and paid a query per group).
+      const ids: string[] = []
+      for (const n of nodes.values()) if (n.config.exec?.command !== undefined) ids.push(n.id)
       shared = { cache: ctx.localCache, ids, branch: ctx.branch }
       let table: ReadonlyMap<string, TaskResources>
       let provider: LocalHistoryProvider

@@ -915,9 +915,15 @@ describe('LocalHistoryProvider', () => {
         ['get', 49],
         ['all', 0],
         ['get'],
-        ['all', 'pkg', 'broke'],
-        ['all', 'pkg', 'green'],
-        ['all', 'pkg', 'retried'],
+        // The forecast: one statement for every task, not one per task.
+        [
+          'all',
+          JSON.stringify([
+            ['pkg', 'broke'],
+            ['pkg', 'green'],
+            ['pkg', 'retried'],
+          ]),
+        ],
         ['keys', 0, 'pkg', 'broke'],
       ])
     } finally {

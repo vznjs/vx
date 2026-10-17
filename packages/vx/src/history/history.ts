@@ -263,56 +263,66 @@ export class LocalHistoryProvider implements HistoryProvider {
    * newest imported timing (`importTimings`), else the median on any
    * branch, else none. The timings are the shared store's `task_durations`, so every
    * worktree of the repo reads them and a new one forecasts on its first
-   * run. A point read per task on `(project, task, source, id)`: exact
-   * however old the rows, where the runs window holds only the newest
-   * invocations.
+   * run. One statement per tier, an index probe per task on `(project,
+   * task, source, id)` inside it: exact however old the rows, where the
+   * runs window holds only the newest invocations.
    */
   private forecasts(wanted: ReadonlySet<string>): Map<string, number> {
     const out = new Map<string, number>()
     this.lackedBranchHistory = false
     if (wanted.size === 0) return out
-    // Tiers, first answer wins.
-    type Tier = (project: string, task: string) => Array<{ ms: number }>
+    // Tiers, first answer wins: a WHERE over `task_durations`, its params,
+    // and how many of the newest rows it reads.
+    type Tier = { where: string; params: string[]; limit: number }
     const tiers: Tier[] = []
-    const newest = (where: string) =>
-      this.db.query(
-        `SELECT duration_ms AS ms FROM task_durations WHERE project = ? AND task = ? AND ${where}
-         ORDER BY id DESC LIMIT ${FORECAST_RUNS}`,
-      )
     if (this.branch !== undefined) {
-      const source = branchSource(this.branch)
-      const q = newest('source = ?')
-      tiers.push((p, t) => q.all(p, t, source) as Array<{ ms: number }>)
+      tiers.push({ where: 'source = ?', params: [branchSource(this.branch)], limit: FORECAST_RUNS })
     }
     // One probe on the partial index first: a store with no import costs
-    // no query per task.
+    // no tier.
     if (
       this.db.query(`SELECT 1 FROM task_durations WHERE source = 'remote' LIMIT 1`).get() !== null
     ) {
-      const remote = this.db.query(
-        `SELECT duration_ms AS ms FROM task_durations WHERE project = ? AND task = ? AND source = 'remote'
-         ORDER BY id DESC LIMIT 1`,
-      )
-      tiers.push((p, t) => remote.all(p, t) as Array<{ ms: number }>)
+      tiers.push({ where: `source = 'remote'`, params: [], limit: 1 })
     }
-    const any = newest(`source LIKE 'branch:%'`)
-    tiers.push((p, t) => any.all(p, t) as Array<{ ms: number }>)
+    tiers.push({ where: `source LIKE 'branch:%'`, params: [], limit: FORECAST_RUNS })
     const own = this.branch !== undefined ? tiers[0] : tiers.at(-1)
-    let lacked = false
-    for (const id of wanted) {
-      const [project, task] = splitTaskId(id)
-      let answered: Tier | undefined
-      for (const tier of tiers) {
-        const rows = tier(project, task)
-        if (rows.length === 0) continue
-        const durations = rows.map((r) => r.ms).sort((x, y) => x - y)
+    let pending = [...wanted]
+    let ownAnswered = 0
+    for (const tier of tiers) {
+      if (pending.length === 0) break
+      // One statement per tier over every task it is asked for: an index
+      // probe per task inside SQLite, where a query per task from here was
+      // 31-40 ms of 2,000 tasks against 5-8.
+      const rows = this.db
+        .query(
+          `SELECT j.key AS i, (SELECT group_concat(ms) FROM (
+             SELECT duration_ms AS ms FROM task_durations
+             WHERE project = j.value ->> 0 AND task = j.value ->> 1 AND ${tier.where}
+             ORDER BY id DESC LIMIT ${tier.limit})) AS ds
+           FROM json_each(?) AS j`,
+        )
+        .all(...tier.params, JSON.stringify(pending.map(splitTaskId))) as {
+        i: number
+        ds: string | null
+      }[]
+      const left: string[] = []
+      for (const r of rows) {
+        const id = pending[r.i]!
+        if (r.ds === null) {
+          left.push(id)
+          continue
+        }
+        const durations = r.ds
+          .split(',')
+          .map(Number)
+          .sort((x, y) => x - y)
         out.set(id, pickPercentile(durations, 0.5))
-        answered = tier
-        break
+        if (tier === own) ownAnswered++
       }
-      if (answered !== own) lacked = true
+      pending = left
     }
-    this.lackedBranchHistory = lacked
+    this.lackedBranchHistory = ownAnswered < wanted.size
     return out
   }
 
