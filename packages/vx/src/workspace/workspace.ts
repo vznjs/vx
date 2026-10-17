@@ -188,14 +188,19 @@ export function linkDiscoveredEdges(
       [edge.reach, reach],
     ] as const) {
       for (const target of kind) {
-        const dir = path.resolve(root, target)
-        const rel = relPosix(root, dir)
-        const where = `plugin '${edge.by}' gave project "${edge.meta.name}" an edge to ${target}`
-        if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
-          throw new UserError(`${where}: outside the workspace root`)
+        // Every project lies inside the root (`discoveredProject` refuses
+        // one that does not), so a target naming one needs no other check:
+        // a plugin hands project dirs as they are, absolute, and resolving
+        // and judging each of 5,000 edges was ~15 ms at 1,000 projects.
+        const name = byDir.get(target) ?? byDir.get(path.resolve(root, target))
+        if (name === undefined) {
+          const rel = relPosix(root, path.resolve(root, target))
+          const where = `plugin '${edge.by}' gave project "${edge.meta.name}" an edge to ${target}`
+          if (rel === '..' || rel.startsWith('../') || path.isAbsolute(rel)) {
+            throw new UserError(`${where}: outside the workspace root`)
+          }
+          throw new UserError(`${where}: not a project`)
         }
-        const name = byDir.get(dir)
-        if (name === undefined) throw new UserError(`${where}: not a project`)
         let set = into.get(edge.meta)
         if (set === undefined) into.set(edge.meta, (set = new Set()))
         set.add(name)
