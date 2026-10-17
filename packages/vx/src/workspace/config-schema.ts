@@ -770,6 +770,7 @@ export function validateProjectConfig(
         }
         assertPosixGlob(g, `${where}.inputs.files`, 'project')
         assertNoForeignToken(g, `${where}.inputs.files`)
+        assertInputGlob(g, `${where}.inputs.files`)
         if (namesDirItself(g)) {
           throw new UserError(
             `${where}.inputs.files: "${g}" names the project directory itself and selects nothing — use "**" for everything under it`,
@@ -1333,6 +1334,33 @@ function assertPosixGlob(glob: string, where: string, base: string): void {
   )
 }
 
+const ONE_ALTERNATIVE_BRACE = /(?<!\\)\{[^{},]*\}/
+
+/**
+ * What every run would refuse, or silently key nothing for, refused at
+ * `vx lock` instead. `Bun.Glob` reads `{b}` as a brace of one alternative,
+ * so `src/{b}.ts` matches `src/b.ts` and never a file named `{b}.ts`:
+ * neither reading is sure to be the one meant, so both spellings are
+ * named. A path under `.git` is never listed by git, so it keyed nothing.
+ */
+function assertInputGlob(glob: string, where: string): void {
+  const m = ONE_ALTERNATIVE_BRACE.exec(glob)
+  if (m !== null) {
+    const inner = m[0].slice(1, -1)
+    throw new UserError(
+      `${where}: "${glob}" holds a brace with one alternative, which matches ` +
+        `"${inner}" and never a name holding "${m[0]}". Write "${glob.replace(m[0], inner)}", ` +
+        `or "${glob.replace(m[0], `\\{${inner}\\}`)}" for the braces themselves.`,
+    )
+  }
+  if (glob.replace(/^!/, '').split('/').includes('.git')) {
+    throw new UserError(
+      `${where}: "${glob}" names a path under .git, which git never lists, so it keys nothing — ` +
+        `inputs are the repository's files`,
+    )
+  }
+}
+
 /**
  * `!!x` INVERTS the input set instead of double-negating it.
  *
@@ -1565,6 +1593,7 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
     }
     assertPosixGlob(g, where, 'workspace-root')
     assertNoForeignToken(g, where)
+    if (negation) assertInputGlob(g, where)
     if (namesDirItself(g)) {
       throw new UserError(
         `${where}: "${g}" names the workspace root itself and selects nothing — use "**" for everything under it`,

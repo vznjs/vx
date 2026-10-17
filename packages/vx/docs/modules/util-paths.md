@@ -44,6 +44,9 @@ export function isInstalledPath(rel: string): boolean
 // A brace whose alternatives hold `/` expanded (Bun.Glob's scan skips one):
 // workspace discovery and the output scan (A-10).
 export function slashBraceExpansions(pattern: string): string[]
+// Every brace group of two or more alternatives expanded: where a gitignored
+// input a brace names can be (`ignoredReach`)
+export function braceAlternatives(pattern: string): string[]
 export const GLOB_WILDCARDS: RegExp // /[*?{}]/ — a task glob's wildcards
 export const BUN_GLOB_WILDCARDS: RegExp // /[*?[\]{}]/ — Bun.Glob's own
 // An extglob group, which Bun.Glob cannot read: refused in member and task globs (A-62).

@@ -785,9 +785,10 @@ plus `lib/**`. A bracket is a
 **literal character**, not a character class: `app/[id]/**` is the route
 directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
 `app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
-path. An input brace of one alternative (`{b}.ts`) is refused: it
-would match `b.ts` and never a file named `{b}.ts`; write the one you
-mean, `\{b\}.ts` for the braces. An extglob (`@(a|b)`, `!(x)`,
+path. An input brace of one alternative (`{b}.ts`) is refused at `vx
+lock`: it would match `b.ts` and never a file named `{b}.ts`; write the
+one you mean, `\{b\}.ts` for the braces. So is an input under `.git`
+(`.git/config`): git never lists it, so it would key nothing. An extglob (`@(a|b)`, `!(x)`,
 `+(…)`, `*(…)`, `?(…)`) is refused too: `Bun.Glob` reads it as literal
 text or a plain wildcard, so the key would miss the files it names;
 write `{a,b}`. A leading `!` is still the negation, so `!(group)/**`
@@ -820,6 +821,8 @@ Always applied to every glob pass (regardless of what you wrote):
   an entry names the ignored path outright: a literal (`.env.local`), or
   a glob whose fixed prefix git ignores (`dist/**`, `dist/*.js`,
   `.cache/gen/**`), which is then walked on disk under that prefix only.
+  Each alternative of a brace counts on its own: `{gen/a.txt,gen/b.txt}`
+  names both files and `{gen,out}/**` both trees, as `gen/{a,b}.txt` does.
   Such a file is hashed from disk and never stored or restored; a
   missing one is not an input until it exists. A broad glob (`**`,
   `src/**` over a listed `src`) still skips ignored files, so it never

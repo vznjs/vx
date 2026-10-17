@@ -261,3 +261,26 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'a brace of whole paths names each gitignored path outright, as its expansions would',
+  async () => {
+    root = await workspace(
+      {
+        t: task("{ files: ['{gen/a.txt,gen/b.txt}'] }"),
+        u: task("{ files: ['{gen,out}/**'] }"),
+      },
+      { 'gen/a.txt': '1\n', 'out/x.txt': 'x\n' },
+      'gen/\nout/\n',
+    )
+    const t = await key('lib#t')
+    const u = await key('lib#u')
+    await writeFile(pkg('gen/a.txt'), '2\n')
+    expect(await key('lib#t')).not.toBe(t)
+    const u2 = await key('lib#u')
+    expect(u2).not.toBe(u)
+    await writeFile(pkg('out/x.txt'), 'y\n')
+    expect(await key('lib#u')).not.toBe(u2)
+  },
+  TIMEOUT,
+)

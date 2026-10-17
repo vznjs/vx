@@ -17,7 +17,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { resolveInputs, resolveOutputs } from '../src/cache/inputs.js'
-import { relPosix } from '../src/util/index.js'
+import { relPosix, UserError } from '../src/util/index.js'
+import { validateProjectConfig } from '../src/workspace/config-schema.js'
 
 // A git init plus ~40 resolutions; the default hook budget is tight under
 // a loaded shard (inputs-resolution.test.ts does the same).
@@ -146,6 +147,24 @@ async function selections(): Promise<Selections> {
   const out: Selections = { inputs: {}, outputs: {} }
   for (const files of INPUTS) {
     out.inputs[JSON.stringify(files)] = await outcome(async () => {
+      // A pattern `vx lock` refuses never reaches a run: its refusal is the
+      // selection, worded as the field it names.
+      try {
+        validateProjectConfig(
+          {
+            tasks: {
+              t: {
+                exec: { command: 'x' },
+                inputs: { files: [...files] },
+                cache: { outputs: { files: [] } },
+              },
+            },
+          },
+          'vx.config.ts',
+        )
+      } catch (err) {
+        throw new UserError((err as Error).message.replace(/^.*?inputs\./, 'inputs.'))
+      }
       const got = await resolveInputs({
         projectDir,
         workspaceRoot: root,
