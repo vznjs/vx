@@ -818,18 +818,22 @@ async function runOnBus(
       context: runContext,
       startedAtMs: endedAtMsAtStart,
     })
-    // The live region's end-of-run forecast. The logger asks only if its
-    // region is still up a second in, so a warm run never reads history.
-    terminal?.forecast(async () => {
-      const ids: string[] = []
-      for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
-      const p50s = await new LocalHistoryProvider(
-        prepared.localCache.dbHandle(),
-        undefined,
-        prepared.branch(),
-      ).p50sFor(ids)
-      return createForecast(nodes, p50s, concurrency)
-    })
+    // The live region's forecast: the graph's from the first free row, and
+    // history's only if the region is still up a second in, so a warm run
+    // never reads history.
+    terminal?.forecast(
+      () => createForecast(nodes, new Map(), concurrency),
+      async () => {
+        const ids: string[] = []
+        for (const n of nodes.values()) if (!isGroupTask(n)) ids.push(n.id)
+        const p50s = await new LocalHistoryProvider(
+          prepared.localCache.dbHandle(),
+          undefined,
+          prepared.branch(),
+        ).p50sFor(ids)
+        return createForecast(nodes, p50s, concurrency)
+      },
+    )
 
     // Remote-only: kick off background prefetches so remote-GET latency
     // overlaps execution. Fire-and-forget — execution starts on the next
