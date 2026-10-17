@@ -1,49 +1,17 @@
 import { defineWorkspace } from '@vzn/vx'
-import { otel } from '@vzn/vx-otel'
 import { github } from '@vzn/vx-ci'
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 import { bun } from '@vzn/vx-lockfile'
+import { turboCache } from '@vzn/vx-migrate'
 
-// Core applies no plugin by default; running here and caching here are
-// its floor and need no declaring. Order is precedence: a plugin listed
-// earlier is consulted first, so a remote cache layer or executor sits
-// ahead of the local floor at the tail.
-//
-//   otel()   — export each run as OpenTelemetry traces, metrics, logs. Activates
-//              when OTEL_EXPORTER_OTLP_ENDPOINT is set, declines otherwise.
-//   github() — write each run as a GitHub Actions job summary. Activates on
-//              GITHUB_STEP_SUMMARY, declines everywhere else. We dogfood our
-//              own plugins so their decline paths run on every laptop run.
-//   bun()    — keys each package's tasks on its own dependency closure
-//              from bun.lock, so a `bun add` in one package re-keys that
-//              package and its dependants, not the whole repo.
-//   scheduleHistoryPlugin() — orders ready tasks by the critical path this
-//              workspace's own history recorded. `assume` covers the run
-//              with no history, a fresh CI runner: the docs build is a
-//              30 s leaf that the structural order starts LAST (it
-//              unblocks one task), and on 2026-09-10 it was the 29 s tail
-//              of a 99 s gate whose deps were done by the second second.
-//              The unsafe suite is the core's longest task (46 s on macOS
-//              CI, the shards 31–45) and the structural order started it
-//              last: its final 33 s ran alone on a 3-core runner (I-12).
-//              On Linux CI the reapi and migrate suites (38 s, 27 s) wait
-//              on only their own install and started last, the tail of the
-//              gate by 22 s (I-13). `file` writes what it learned to
-//              .vx/cache/timings.json, which CI caches with the cache, so a
-//              runner whose vx cache missed still orders by real times.
 export default defineWorkspace({
   plugins: [
-    otel(),
-    github(),
     bun(),
-    scheduleHistoryPlugin({
-      file: '.vx/cache/timings.json',
-      assume: {
-        '@vzn/vx-docs#build': 30_000,
-        '@vzn/vx#test.bun.unsafe': 46_000,
-        '@vzn/vx-reapi#test': 38_000,
-        '@vzn/vx-migrate#test': 27_000,
-      },
+    github(),
+    turboCache({
+      apiUrl: 'https://remote.cachely.dev',
+      teamSlug: 'cachely',
     }),
+    scheduleHistoryPlugin(),
   ],
 })

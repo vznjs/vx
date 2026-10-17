@@ -9,7 +9,7 @@
         "@vzn/vx": "workspace:*",
         "@vzn/vx-ci": "workspace:*",
         "@vzn/vx-lockfile": "workspace:*",
-        "@vzn/vx-otel": "workspace:*",
+        "@vzn/vx-migrate": "workspace:*",
         "@vzn/vx-reapi": "workspace:*",
         "@vzn/vx-schedule-history": "workspace:*",
         "npm": "11.21.0",
@@ -92,7 +92,6 @@
         "vx-migrate": "./src/bin.ts",
         "nx-exec": "./src/nx-exec.cjs",
         "nx-env": "./src/nx-env.cjs",
-        "lage-worker": "./src/lage-worker.cjs",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",
