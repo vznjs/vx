@@ -798,10 +798,11 @@ describe('every page numbering the key parts folds plugin before inputs', () => 
       path.resolve(import.meta.dir, '..', 'src', 'cache', 'key-fold.ts'),
       'utf8',
     )
-    const body = src.slice(
-      src.indexOf('let h = xxh3(CACHE_VERSION)'),
-      src.indexOf('return h.toString(16)'),
-    )
+    // In fold order: foldHead's parts, then the files foldKey adds after it.
+    const head = src.slice(src.indexOf('export function foldHead('))
+    const body =
+      head.slice(0, head.indexOf('\n}\n')) +
+      src.slice(src.indexOf('let h = foldHead('), src.indexOf('return h.toString(16)'))
     const labels = [...body.matchAll(/h = xxh3\(`([a-z-]+):/g)].map((m) => m[1]!)
     expect(labels).toContain('plugin')
     expect(labels).toContain('inputs')

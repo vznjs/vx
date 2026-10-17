@@ -649,7 +649,10 @@ describe('the keys-from-git post counts the parts the key folds', () => {
     path.resolve(import.meta.dir, '..', 'src', 'cache', 'key-fold.ts'),
     'utf8',
   )
-  const key = src.slice(src.indexOf('export async function foldKey('))
+  // In fold order: foldHead's parts, then the files foldKey adds after it.
+  const key =
+    src.slice(src.indexOf('export function foldHead(')) +
+    src.slice(src.indexOf('let h = foldHead('))
   const labels = [...new Set([...key.matchAll(/h = xxh3\(`([a-z-]+):/g)].map((m) => m[1]!))]
   const page = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8')
   it('"ten parts" is CACHE_VERSION plus every labelled fold', () => {
