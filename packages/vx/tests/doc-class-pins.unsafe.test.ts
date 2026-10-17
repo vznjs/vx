@@ -47,6 +47,7 @@ const CLASS_PAGES = {
     // links plugins.md for the seam rather than naming it.
     'plugins.md',
     'remote-lane.md',
+    'scoped-cache.md',
     'upgrading.md',
   ],
   retryLine: ['execute-task.md', 'schema.md'],

@@ -50,6 +50,8 @@ export {
   type ScheduleHookContext,
   type AdmitContext,
   type WorkspaceHookContext,
+  type ConfigContext,
+  type BranchFacts,
   type DiscoverContext,
   type DiscoveredProject,
   type InstallPluginsArgs,
@@ -117,6 +119,8 @@ export {
   captureWorkspaceIdentity,
   currentBranch,
   detectCi,
+  localBranchScope,
+  resolveCacheScope,
 } from './run-context.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './run-context.js'
 export {

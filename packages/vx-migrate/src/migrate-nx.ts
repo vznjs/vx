@@ -164,8 +164,8 @@ async function unlistedProjects(
 
 /** A `.vx/workspace.ts` field nx.json's run settings call for. */
 export interface NxWorkspaceField {
-  /** The setting's path: its group, then its field. */
-  readonly field: 'run.concurrency' | 'run.affectedBase' | 'cache.retention'
+  /** The setting's path: its group, then its field, or a top-level key. */
+  readonly field: 'run.concurrency' | 'baseBranch' | 'cache.retention'
   /** The value as TypeScript source; undefined when vx cannot read it. */
   readonly source: string | undefined
   /** What to tell a user whose workspace file this run does not write. */
@@ -199,12 +199,14 @@ export function nxWorkspaceFields(json: Record<string, unknown> | undefined): Nx
       note: `nx.json \`parallel: ${parallel}\`: add \`run: { concurrency: ${parallel} }\` to .vx/workspace.ts`,
     })
   const base = nx?.defaultBase ?? nx?.affected?.defaultBase
-  if (typeof base === 'string' && base.trim() !== '')
+  if (typeof base === 'string' && base.trim() !== '') {
+    const branch = base.trim().replace(/^origin\//, '')
     out.push({
-      field: 'run.affectedBase',
-      source: quoted(base.trim()),
-      note: `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`run: { affectedBase: ${JSON.stringify(base.trim())} }\` to .vx/workspace.ts`,
+      field: 'baseBranch',
+      source: quoted(branch),
+      note: `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`baseBranch: ${JSON.stringify(branch)}\` to .vx/workspace.ts`,
     })
+  }
   const size = nxSizeText(nx?.maxCacheSize)
   if (size !== undefined)
     out.push({

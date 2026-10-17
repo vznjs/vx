@@ -203,8 +203,8 @@ describe('examples/turbo', () => {
 
 // The CI guide's workflow, step by step, as GitHub would run it: a push to
 // main and a pull request, each with the env the runner sets. No remote is
-// configured, so reapi() declines and the local cache shows the scope
-// model alone: it scopes as a remote does.
+// configured, so reapi() declines: the local cache never knows a scope
+// (owner, 2026-10-17), so one disk is one pool for every ref.
 describe('examples/ci', () => {
   const root = fixture('ci', ['vx', 'vx-ci', 'vx-reapi'])
   const workflow = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')
@@ -254,7 +254,7 @@ describe('examples/ci', () => {
     expect(guide).toContain('```ts\n// .vx/workspace.ts\n' + workspace + '```')
   })
 
-  it('main fills the default keys, a pull request reads them and writes only its scope', () => {
+  it('main fills the cache, a pull request reuses it and builds only what it changed', () => {
     const main = 'refs/heads/main'
     const pr = 'refs/pull/7/merge'
     // A laptop writes the lock and commits it.
@@ -285,10 +285,10 @@ describe('examples/ci', () => {
       'lib#build': 'cache-hit',
     })
     expect(step(pr, ['run', 'ci', '--affected=origin/main']).status['app#build']).toBe('cache-hit')
-    // What pr-7 wrote is not main's: main builds the same tree itself.
+    // One disk, one pool: main on the same tree hits what the pull request built.
     expect(step(main, ['run', 'ci', '--all']).status).toEqual({
-      'app#build': 'success',
-      'app#test': 'success',
+      'app#build': 'cache-hit',
+      'app#test': 'cache-hit',
       'lib#build': 'cache-hit',
     })
   }, 60_000)

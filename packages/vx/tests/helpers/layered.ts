@@ -1,4 +1,5 @@
 import {
+  type BranchScope,
   LayeredCache,
   type Cache,
   type CachePolicy,
@@ -9,14 +10,18 @@ import {
 export function layeredOver(
   local: Cache,
   remote: RemoteCacheLayer,
-  opts: { policy?: CachePolicy; onRemoteError?: (err: Error) => void } = {},
+  opts: { policy?: CachePolicy; onRemoteError?: (err: Error) => void; branch?: BranchScope } = {},
 ): LayeredCache {
-  return new LayeredCache(local, [
-    {
-      remote,
-      read: opts.policy?.remoteRead ?? true,
-      write: opts.policy?.remoteWrite ?? true,
-      ...(opts.onRemoteError !== undefined ? { onError: opts.onRemoteError } : {}),
-    },
-  ])
+  return new LayeredCache(
+    local,
+    [
+      {
+        remote,
+        read: opts.policy?.remoteRead ?? true,
+        write: opts.policy?.remoteWrite ?? true,
+        ...(opts.onRemoteError !== undefined ? { onError: opts.onRemoteError } : {}),
+      },
+    ],
+    opts.branch,
+  )
 }

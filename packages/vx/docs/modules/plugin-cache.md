@@ -45,9 +45,10 @@ export function packRunOutputs(
   then each remote `resolveCache` collected, in declared order. A remote
   hit is kept locally when the policy writes the local store.
 - **Policy and scope.** The local axes gate the local store; each
-  remote's policy (the run's) gates it. A
-  scoped run reads the default key, then the scope's
-  (`scopedKey`, as `ScopedCache`), and writes only the scope's.
+  remote's policy (the run's) gates it. The local store keeps every
+  entry under its name's key. A scoped run reads a remote under the
+  default key, then the scope's (`scopedKey`), and writes a remote only
+  under the scope's.
 - **Immutable.** A local write is `INSERT OR IGNORE`; a remote write
   asks `has` first and skips a present key.
 - **Bounded.** An entry is at most `PLUGIN_ENTRY_MAX_BYTES`: a bigger

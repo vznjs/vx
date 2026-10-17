@@ -14,6 +14,7 @@ import {
   gitSpawnRefusal,
   isExecutableMissing,
   isInstalledPath,
+  isUserError,
   notAWorkTree,
   relPosix,
   UserError,
@@ -73,7 +74,14 @@ export interface AffectedArgs {
   workspaceRoot: string
   /** Git ref / commit / branch to compare against. Required. */
   since: string
-  projects: readonly ProjectMeta[]
+  /** A promise when the caller is still discovering them: the git calls start first. */
+  projects: readonly ProjectMeta[] | Promise<readonly ProjectMeta[]>
+  /**
+   * False skips the scan of what each `vx.config` imports (every config
+   * read): the cache scope's split, where a wrong answer costs a miss,
+   * never a stale hit, and the scan was most of a 1,000-project diff.
+   */
+  configImports?: false
   /**
    * Which projects declare a `inputs.workspaceFiles` glob matching one of
    * these workspace-relative paths.
@@ -255,6 +263,8 @@ export async function affectedChanges(
       gitPaths(args.workspaceRoot, ['ls-files', '--others', '--exclude-standard', '-z']))(),
   ])
 
+  const projects = await args.projects
+
   // .vx/projects.lock.json (workspace-root metadata) is excluded like a gitignored
   // file: re-running `vx lock` must not mark every project affected.
   // An untracked file under `node_modules` is an install, which the input
@@ -291,7 +301,7 @@ export async function affectedChanges(
   //
   // Selection is not hashed, so widening it here changes no cache key.
   const everything = (file: string): AffectedChanges => {
-    const all = new Set(args.projects.map((p) => p.name))
+    const all = new Set(projects.map((p) => p.name))
     const wholeBy = new Map([...all].map((n) => [n, file]))
     return { projects: all, changed, paths: new Map(), whole: all, wholeBy }
   }
@@ -320,7 +330,7 @@ export async function affectedChanges(
   const rootDir = path.resolve(args.workspaceRoot)
   const loose = changed.filter((rel) => {
     const abs = path.join(rootDir, rel)
-    return !args.projects.some((p) => p.dir !== rootDir && abs.startsWith(p.dir + path.sep))
+    return !projects.some((p) => p.dir !== rootDir && abs.startsWith(p.dir + path.sep))
   })
   const extraClaims = loose.length > 0 ? await loadClaims() : undefined
   for (const file of extraClaims?.files ?? []) {
@@ -383,7 +393,7 @@ export async function affectedChanges(
 
   const realDirs = new Map(
     await Promise.all(
-      args.projects.map(async (p) => [p.dir, await realpath(p.dir).catch(() => p.dir)] as const),
+      projects.map(async (p) => [p.dir, await realpath(p.dir).catch(() => p.dir)] as const),
     ),
   )
   const paths = new Map<string, string[]>()
@@ -392,7 +402,7 @@ export async function affectedChanges(
     args.workspaceRoot,
     changed,
     nested,
-    args.projects,
+    projects,
     realDirs,
     perTask
       ? {
@@ -412,7 +422,7 @@ export async function affectedChanges(
   const configs = changed.filter((rel) => CONFIG_NAMES.has(path.posix.basename(rel)))
   if (configs.length > 0) {
     const atBase = await gitBlobsAt(args.workspaceRoot, base, configs)
-    for (const name of parentsOfNewNested(args.workspaceRoot, atBase, args.projects)) {
+    for (const name of parentsOfNewNested(args.workspaceRoot, atBase, projects)) {
       owned.add(name)
       whole.add(name)
     }
@@ -426,12 +436,14 @@ export async function affectedChanges(
   // (`../../src/index.ts`), whose target is owned.
   // Per task, a project that owns the changed file still needs to know its
   // config imported it: that re-keys every task, whatever their inputs.
-  for (const name of await configImportOwners({
-    workspaceRoot: args.workspaceRoot,
-    projects: args.projects,
-    changed,
-    skip: perTask ? new Set() : owned,
-  })) {
+  for (const name of args.configImports === false
+    ? []
+    : await configImportOwners({
+        workspaceRoot: args.workspaceRoot,
+        projects: projects,
+        changed,
+        skip: perTask ? new Set() : owned,
+      })) {
     owned.add(name)
     whole.add(name)
   }
@@ -679,43 +691,35 @@ async function gitDiffPaths(
 }
 
 /**
- * Resolve the default base for `--affected` with no explicit value.
- * Tries the remote's HEAD branch first (`origin/main`, `origin/master`,
- * etc.), then `origin/main`, `origin/master`, `main`, `master`, then
- * falls back to `HEAD~1`. A clone with no `origin/HEAD` and
- * no parent commit — a CI checkout at `fetch-depth: 1` — has no base at
- * all, and says so here rather than failing on a ref nobody typed.
+ * The base a bare `--affected` compares with: the merge base of HEAD and
+ * the base branch (`origin/<baseBranch>`, or the local branch in a clone
+ * with no remote; its tip when they share no history). On the base branch
+ * itself there is none (owner, 2026-10-17): what a push to main changed
+ * is the last good commit's to say (`--affected=<sha>`), and `HEAD~1`
+ * guessed it wrong after any multi-commit push.
  */
-export async function defaultAffectedBase(workspaceRoot: string): Promise<string> {
-  const probe = spawnGitSync(
-    ['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD'],
-    workspaceRoot,
-    'ignore',
-  )
-  const out = new TextDecoder().decode(probe.stdout).trim()
-  // An origin/HEAD naming a branch the remote deleted (a pruned fetch keeps
-  // the symref) is no base either: it failed as `git ref "origin/master" did
-  // not resolve`, a ref nobody typed, where an unset one falls back.
-  if (probe.exitCode === 0 && out.length > 0 && revParse(workspaceRoot, out) !== undefined) {
-    return out
-  }
-  // No origin/HEAD: `git remote add` + fetch, as actions/checkout does, sets
-  // none, and `HEAD~1` saw only a feature branch's last commit where Turbo
-  // and Nx compare with `main` (D-93). The usual trunk names, remote first;
-  // one that IS HEAD (a push to main) falls through to `HEAD~1` as before.
-  const trunk = trunkBase(workspaceRoot)
-  if (trunk !== undefined) return trunk
-  if (revParse(workspaceRoot, 'HEAD~1') === undefined) {
+export async function defaultAffectedBase(
+  workspaceRoot: string,
+  baseBranch: string | undefined,
+): Promise<string> {
+  const found = await baseBranchRef(workspaceRoot, baseBranch)
+  if (found === undefined) {
     const noHistory = noHistoryRefusal(workspaceRoot)
     if (noHistory !== undefined) throw noHistory
     throw new UserError(
-      '--affected has no base here: origin/HEAD is not set (or names a branch that is gone) and HEAD has no parent to compare ' +
-        'with — a shallow clone? Fetch history (actions/checkout: fetch-depth: 0) or name the ' +
-        'base: --affected=origin/main',
+      `--affected has no base here: ${baseBranch === undefined ? 'no origin/HEAD, main or master' : `no ${baseBranch} or origin/${baseBranch}`} ` +
+        'to compare with — a shallow clone? Fetch history (actions/checkout: fetch-depth: 0), ' +
+        'set `baseBranch`, or name the base: --affected=origin/main',
       'VX_E_AFFECTED_BASE',
     )
   }
-  return 'HEAD~1'
+  if (found.onIt) {
+    throw new UserError(
+      `--affected has no default on the base branch (${found.branch}): name the last good commit, --affected=<sha>`,
+      'VX_E_AFFECTED_BASE',
+    )
+  }
+  return found.ref
 }
 
 /**
@@ -737,30 +741,83 @@ function noHistoryRefusal(workspaceRoot: string): UserError | undefined {
   return undefined
 }
 
-const TRUNKS = ['origin/main', 'origin/master', 'main', 'master']
+/**
+ * What a branch changed, for which of its tasks read its cache scope
+ * (owner, 2026-10-17): from `base` (a plugin's: a pull request's base
+ * commit), else from the merge base with the base branch. No base, or
+ * one git cannot resolve (a CI checkout at `fetch-depth: 1`), is no
+ * change: every task reads the default key, which costs hits, never
+ * correctness, since a key must still match.
+ */
+export async function branchChanges(
+  workspaceRoot: string,
+  base: string | undefined,
+  baseBranch: string | undefined,
+  projects: Promise<readonly ProjectMeta[]>,
+  /** The run's own enumeration, so the diff walks nothing a second time. */
+  walked: Pick<AffectedArgs, 'untracked' | 'links'> = {},
+): Promise<AffectedChanges> {
+  const none: AffectedChanges = {
+    projects: new Set(),
+    changed: [],
+    paths: new Map(),
+    whole: new Set(),
+  }
+  const since = base ?? (await baseBranchRef(workspaceRoot, baseBranch))?.ref
+  if (since === undefined) return none
+  try {
+    return await affectedChanges({
+      workspaceRoot,
+      since,
+      projects,
+      configImports: false,
+      ...walked,
+    })
+  } catch (err) {
+    if (!isUserError(err)) throw err
+    return none
+  }
+}
 
-/** The first of `TRUNKS` that exists and is not HEAD's commit, in one spawn. */
-function trunkBase(workspaceRoot: string): string | undefined {
-  const proc = spawnGitSync(
-    [
+/**
+ * The base branch as a ref: `origin/<name>`, else the local branch (a
+ * clone with no remote), and whether HEAD is on it. The name is the
+ * configured one, else `origin/HEAD`'s, else `main`, else `master`. Its
+ * spawns run at once, off the event loop.
+ */
+async function baseBranchRef(
+  workspaceRoot: string,
+  configured: string | undefined,
+): Promise<{ ref: string; branch: string; onIt: boolean } | undefined> {
+  const text = async (args: string[]): Promise<string> => {
+    const proc = spawnGit(args, workspaceRoot)
+    const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+    return exit === 0 ? out.trim() : ''
+  }
+  const names = configured === undefined ? ['main', 'master'] : [configured]
+  const [remoteHead, refs, head] = await Promise.all([
+    configured === undefined
+      ? text(['symbolic-ref', '--short', '-q', 'refs/remotes/origin/HEAD'])
+      : Promise.resolve(''),
+    text([
       'for-each-ref',
-      '--format=%(refname:short) %(objectname)',
+      '--format=%(refname:short)',
       '--end-of-options',
-      ...TRUNKS.map((t) => (t.startsWith('origin/') ? `refs/remotes/${t}` : `refs/heads/${t}`)),
-    ],
-    workspaceRoot,
-    'ignore',
-  )
-  if (proc.exitCode !== 0) return undefined
-  const at = new Map(
-    new TextDecoder()
-      .decode(proc.stdout)
-      .split('\n')
-      .filter((l) => l !== '')
-      .map((l) => l.split(' ') as [string, string]),
-  )
-  const head = revParse(workspaceRoot, 'HEAD')
-  return TRUNKS.find((t) => at.has(t) && at.get(t) !== head)
+      ...(configured === undefined
+        ? ['refs/remotes/origin']
+        : [`refs/remotes/origin/${configured}`]),
+      ...names.map((n) => `refs/heads/${n}`),
+    ]),
+    text(['symbolic-ref', '--short', '-q', 'HEAD']),
+  ])
+  const have = new Set(refs.split('\n'))
+  const at = (branch: string, ref: string) => ({ ref, branch, onIt: head === branch })
+  if (remoteHead.startsWith('origin/') && have.has(remoteHead)) {
+    return at(remoteHead.slice('origin/'.length), remoteHead)
+  }
+  for (const n of names) if (have.has(`origin/${n}`)) return at(n, `origin/${n}`)
+  for (const n of names) if (have.has(n)) return at(n, n)
+  return undefined
 }
 
 /**

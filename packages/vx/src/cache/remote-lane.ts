@@ -133,9 +133,11 @@ export class RemoteLane {
   constructor(
     resolved: ResolvedRemote,
     private readonly traffic: RemoteTraffic,
+    /** The wire as this run asks it: a branch scope's view of `resolved.remote`. */
+    remote: RemoteCacheLayer = resolved.remote,
   ) {
     this.resolved = resolved
-    this.remote = resolved.remote
+    this.remote = remote
     this.onError = resolved.onError
     this.endpoint = printableEndpoint(resolved.remote.endpoint)
   }
@@ -257,7 +259,6 @@ export class RemoteLane {
     tally: { count: number; bytes: number; ms: number; failed: number },
   ): void {
     const key = this.trafficOf(hash)
-    const counted = this.traffic.aliases.get(hash) ?? hash
     key.uploading++
     this.traffic.inFlight++
     this.uploadQueue.push(async () => {
@@ -284,7 +285,7 @@ export class RemoteLane {
         // Nothing sent and nothing failed (the remote held it, or the run
         // stopped first): no traffic, so the footer counts no upload.
         if (key.uploading === 0 && !key.landed && key.failures.length === 0)
-          this.traffic.keys.delete(counted)
+          this.traffic.keys.delete(hash)
       }
     })
     this.pump()
@@ -359,11 +360,10 @@ export class RemoteLane {
   }
 
   private trafficOf(hash: string): RemoteKeyTraffic {
-    const counted = this.traffic.aliases.get(hash) ?? hash
-    let key = this.traffic.keys.get(counted)
+    let key = this.traffic.keys.get(hash)
     if (key === undefined) {
       key = { uploading: 0, landed: false, failures: [] }
-      this.traffic.keys.set(counted, key)
+      this.traffic.keys.set(hash, key)
     }
     return key
   }

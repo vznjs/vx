@@ -41,6 +41,7 @@ const KEYED_BY_EVERY_TASK: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAME
 function wholeProjects(
   changes: AffectedChanges,
   projects: ReadonlyMap<string, ProjectEntry>,
+  byKeys: boolean,
 ): Map<string, string | undefined> {
   // Each whole project, with the path no task claims when one did it.
   const whole = new Map<string, string | undefined>([...changes.whole].map((n) => [n, undefined]))
@@ -50,7 +51,7 @@ function wholeProjects(
       (t) => t.exec !== undefined && t.inputs !== undefined,
     )
     const unclaimed = (rel: string): boolean =>
-      KEYED_BY_EVERY_TASK.has(rel) || !keyed.some((t) => declaresInput(t, rel, null))
+      KEYED_BY_EVERY_TASK.has(rel) || (!byKeys && !keyed.some((t) => declaresInput(t, rel, null)))
     const rel = rels.find(unclaimed)
     if (rel !== undefined) whole.set(name, rel)
   }
@@ -99,8 +100,10 @@ export function affectedRoots(
   projects: ReadonlyMap<string, ProjectEntry>,
   packageGraph: PackageGraph,
   explain?: AffectedExplain,
+  /** Only what moves a key: a changed path no task declares reaches no task. */
+  byKeys = false,
 ): string[] {
-  const whole = wholeProjects(changes, projects)
+  const whole = wholeProjects(changes, projects, byKeys)
   const seeds = explain === undefined ? null : new Map<string, AffectedReason>()
   const through = explain === undefined ? null : new Map<string, string>()
   const inProject = (name: string, rel: string | undefined): AffectedReason => {
@@ -224,6 +227,24 @@ export function affectedRoots(
     }
   }
   return kept
+}
+
+/**
+ * The tasks of `nodes` whose key the change can move (a branch's cache
+ * scope, owner 2026-10-17): a changed path one of its inputs declares, a
+ * whole project, or a task its closure holds. Unlike `--affected`, a path
+ * no task declares (a README) reaches none: its key is the default
+ * branch's, so it reads the default key.
+ */
+export function keyedByChange(
+  nodes: ReadonlyMap<string, TaskNode>,
+  changes: AffectedChanges,
+  projects: ReadonlyMap<string, ProjectEntry>,
+  packageGraph: PackageGraph,
+): Set<string> {
+  return new Set(
+    affectedRoots(nodes, [...nodes.keys()], changes, projects, packageGraph, undefined, true),
+  )
 }
 
 /**

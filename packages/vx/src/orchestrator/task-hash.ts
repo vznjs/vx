@@ -97,6 +97,12 @@ export interface ComputeHashArgs {
  */
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
   if (isKeyless(args.node.config)) return keylessHash(args.node.id)
+  const key = await taskHash(args)
+  args.cache.noteKey?.(args.node.id, key)
+  return key
+}
+
+async function taskHash(args: ComputeHashArgs): Promise<string> {
   const end = span('task hash')
   try {
     const folds = args.captureInto === undefined ? args.hashCache?.folds : undefined

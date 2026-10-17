@@ -25,6 +25,8 @@ import type { WorkspaceConfig } from '../config.js'
 import { lazyGitEnumeration, type LazyGitEnumeration } from '../cache/index.js'
 import { relPosix, UserError } from '../util/index.js'
 import {
+  cacheScopeError,
+  isCacheScope,
   loadWorkspaceConfig,
   discoveredProject,
   linkDiscoveredEdges,
@@ -33,7 +35,7 @@ import {
 } from '../workspace/index.js'
 import { parseDependencySpec } from '../graph/index.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
-import type { VxPlugin } from './plugin.js'
+import type { BranchFacts, VxPlugin } from './plugin.js'
 
 /**
  * The workspace config with the plugin `config` stage applied — the first
@@ -43,10 +45,16 @@ import type { VxPlugin } from './plugin.js'
 export async function loadWorkspacePlugins(
   workspaceRoot: string,
   warn: (message: string) => void,
-): Promise<{ workspaceConfig: WorkspaceConfig | null; plugins: readonly VxPlugin[] }> {
+): Promise<{
+  workspaceConfig: WorkspaceConfig | null
+  plugins: readonly VxPlugin[]
+  branch: BranchFacts
+}> {
   const loaded = await loadWorkspaceConfig(workspaceRoot)
   const plugins = (loaded?.plugins ?? []) as readonly VxPlugin[]
-  if (loaded === null || !hasHook(plugins, 'config')) return { workspaceConfig: loaded, plugins }
+  const branch: BranchFacts = {}
+  if (loaded === null || !hasHook(plugins, 'config'))
+    return { workspaceConfig: loaded, plugins, branch }
   // Bun keeps one module per specifier, so the file's export is one object
   // per process: the CLI's selection pass, the run and each `vx watch`
   // cycle handed the hooks what the last load's hooks had edited
@@ -60,10 +68,16 @@ export async function loadWorkspacePlugins(
   // Re-validated after each plugin, as the `project` stage is: an edit
   // the loader would refuse from a user (`concurrency: -3`) hung the run,
   // and `cacheDir: 42` reached `path.resolve` as a TypeError.
-  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn }, (plugin) =>
+  const setBranch = (facts: BranchFacts): void => {
+    if (facts.scope !== undefined && !isCacheScope(facts.scope))
+      throw new UserError(`setBranch: ${cacheScopeError('scope')}`)
+    if (facts.scope !== undefined) branch.scope = facts.scope
+    if (facts.base !== undefined) branch.base = facts.base
+  }
+  await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) =>
     validateWorkspace(workspaceConfig, `.vx/workspace (after plugin '${plugin.name}')`),
   )
-  return { workspaceConfig, plugins }
+  return { workspaceConfig, plugins, branch }
 }
 
 /**

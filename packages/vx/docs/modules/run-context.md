@@ -42,6 +42,23 @@ export function captureGitContext(
   env?: NodeJS.ProcessEnv,
 ): GitContext
 export function captureDefaultBranch(env: NodeJS.ProcessEnv, workspaceRoot: string): string | null
+// A checkout's cache scope from `.git` alone: `<owner>/<repo>:<branch>`, the
+// branch it tracks on that remote's repository, else its own on origin's;
+// undefined on `baseBranch` (else the default branch), a detached HEAD or with no remote URL.
+export function localBranchScope(
+  workspaceRoot: string,
+  baseBranch: string | undefined,
+  env?: NodeJS.ProcessEnv,
+): string | undefined
+// The run's scope: VX_CACHE_SCOPE (empty: none), else the plugin's
+// (setBranch), else, with a cache plugin, localBranchScope.
+export function resolveCacheScope(
+  workspaceRoot: string,
+  pluginScope: string | undefined,
+  hasRemote: boolean,
+  baseBranch: string | undefined,
+  env?: NodeJS.ProcessEnv,
+): string | undefined
 /** The run's branch: `run.branch` if set, else HEAD's, else CI's for a detached checkout. */
 export function currentBranch(
   workspaceRoot: string,

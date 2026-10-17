@@ -57,11 +57,17 @@ const keys = <T>(k: Keys<T>): string[] => Object.keys(k).sort()
  */
 const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
   workspace: {
-    '': keys<WorkspaceConfig>({ run: true, cache: true, lock: true, watch: true, plugins: true }),
+    '': keys<WorkspaceConfig>({
+      baseBranch: true,
+      run: true,
+      cache: true,
+      lock: true,
+      watch: true,
+      plugins: true,
+    }),
     run: keys<RunSettings>({
       concurrency: true,
       schedule: true,
-      affectedBase: true,
       timeout: true,
       retries: true,
       continue: true,
@@ -75,7 +81,6 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       dir: true,
       retention: true,
       policy: true,
-      scope: true,
       download: true,
       inputStability: true,
       outputs: true,
@@ -154,10 +159,10 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
 /** A valid workspace config that sets every field once. */
 function workspaceSeed(): Record<string, unknown> {
   return {
+    baseBranch: 'main',
     run: {
       concurrency: 2,
       schedule: 'critical-path',
-      affectedBase: 'origin/main',
       timeout: '1s',
       retries: 1,
       continue: 'deps-ok',
@@ -170,7 +175,6 @@ function workspaceSeed(): Record<string, unknown> {
       dir: '.vx/cache',
       retention: { olderThan: '30d', maxSize: '10GB' },
       policy: 'local:rw,remote:r',
-      scope: 'pr-1',
       download: 'all',
       inputStability: { strategy: 'mutable', severity: 'error' },
       outputs: { clean: false },

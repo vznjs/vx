@@ -516,18 +516,14 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
   ],
   ['<group> must be an object (fields: <fields>)', workspaceConfig('{ run: true }')],
   [
-    "cache must be an object like { dir, policy, scope }; a task caches through its own cache in its project's vx.config",
+    "cache must be an object like { dir, policy }; a task caches through its own cache in its project's vx.config",
     workspaceConfig('{ cache: "remote:" }'),
   ],
   [
     'cache.dir holds a NUL, which no path can carry',
     workspaceConfig('{ cache: { dir: "a\\0b" } }'),
   ],
-  [
-    "run.affectedBase must be a git ref like 'origin/main'",
-    workspaceConfig('{ run: { affectedBase: "--output=x" } }'),
-  ],
-  ['cache.scope must be a scope name of <rule>', workspaceConfig('{ cache: { scope: "pr 123" } }')],
+  ["baseBranch must be a branch name like 'main'", workspaceConfig('{ baseBranch: "--output=x" }')],
   [
     'cache.retention names neither olderThan nor maxSize',
     workspaceConfig('{ cache: { retention: {} } }'),
@@ -660,7 +656,7 @@ describe('docs/schema.md unknown-field rejection', () => {
     const message = await workspaceConfig('{ plugin: [{ name: "p", setup() {} }] }')()
     expect(message).toContain('has unknown field "plugin"')
     expect(message).toContain('did you mean plugins?')
-    expect(message).toContain('(allowed: cache, lock, plugins, run, watch)')
+    expect(message).toContain('(allowed: baseBranch, cache, lock, plugins, run, watch)')
   })
 })
 

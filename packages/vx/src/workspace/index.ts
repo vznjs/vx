@@ -6,6 +6,7 @@ export {
   type AffectedChanges,
   affectedProjects,
   defaultAffectedBase,
+  branchChanges,
   type FingerprintClaims,
   refIsHead,
 } from './affected.js'
@@ -35,8 +36,10 @@ export {
   WORKSPACE_CONFIG_FILENAMES,
 } from './project-loader.js'
 export {
+  branchCacheScope,
   cacheScopeEnvError,
   cacheScopeError,
+  configuredBaseBranch,
   inputStabilityEnv,
   isCacheScope,
   taskNameProblem,

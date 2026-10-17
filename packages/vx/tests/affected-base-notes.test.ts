@@ -80,10 +80,22 @@ afterEach(async () => {
 })
 
 describe('--affected with no value, in the clone shapes CI produces', () => {
-  it('a base that is HEAD itself is named as such, with the two bases you probably meant', () => {
+  // Owner, 2026-10-17: on the base branch a bare --affected has no
+  // default. `HEAD~1` saw one commit of a multi-commit push; what a push
+  // changed is the last good commit's to say.
+  it('on the base branch, a bare --affected is refused, naming the commit to pass', () => {
     git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
     git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
     const r = vx(root, 'run', 'build', '--affected')
+    expect(r.exitCode).not.toBe(0)
+    expect(r.out).toContain(
+      '--affected has no default on the base branch (feat): name the last good commit, --affected=<sha>',
+    )
+  })
+
+  it('an explicit base that is HEAD itself is named as such, with the two bases you probably meant', () => {
+    git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+    const r = vx(root, 'run', 'build', '--affected=origin/feat')
     expect(r.exitCode).toBe(0)
     expect(r.out).toContain('nothing affected since origin/feat')
     expect(r.out).toContain(
@@ -93,7 +105,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
 
   // Nx's `defaultBase` (`develop` in a git-flow repo) had nowhere to go: a
   // bare --affected compared with origin/HEAD and ran the wrong set.
-  it('a bare --affected takes affectedBase, from the file or a config stage; a value still wins', async () => {
+  it('a bare --affected compares with baseBranch, from the file or a config stage; a value still wins', async () => {
     git(root, 'branch', 'develop')
     // Untracked, the file the row rewrites would itself be the change.
     await writeFile(path.join(root, '.gitignore'), 'out.txt\n.vx/cache/\n.vx/workspace.mjs\n')
@@ -113,13 +125,13 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       Bun.write(path.join(root, '.vx/workspace.mjs'), `${PLUGIN_IMPORT}export default ${body}\n`)
     await workspace(`{ plugins: [${edgesSource()}] }`)
     expect(vx(root, 'run', 'build', '--affected').out).toContain(
-      'nothing affected since origin/feat',
+      'no default on the base branch (feat)',
     )
-    await workspace(`{ run: { affectedBase: 'develop' }, plugins: [${edgesSource()}] }`)
+    await workspace(`{ baseBranch: 'develop', plugins: [${edgesSource()}] }`)
     expect(plan('--affected')).toEqual(['app#build'])
     expect(vx(root, 'run', 'build', '--affected=HEAD').out).toContain('nothing affected since HEAD')
     await workspace(
-      `{ plugins: [${edgesSource()}, ${pluginSource('base', `{ config(ws) { ws.run = { ...ws.run, affectedBase: 'develop' } } }`)}] }`,
+      `{ plugins: [${edgesSource()}, ${pluginSource('base', `{ config(ws) { ws.baseBranch = 'develop' } }`)}] }`,
     )
     expect(plan('--affected')).toEqual(['app#build'])
   })

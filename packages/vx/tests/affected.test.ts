@@ -1281,113 +1281,94 @@ describe('affectedProjects', () => {
 })
 
 describe('defaultAffectedBase', () => {
-  it('falls back to HEAD~1 when origin/HEAD is not set, and says "shallow clone" when that has no parent', async () => {
-    // A CI checkout at fetch-depth 1 has neither origin/HEAD nor HEAD~1;
-    // the old answer was `git ref "HEAD~1" did not resolve` — a ref the
-    // user never typed (CI persona, 2026-09-16).
-    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-default-'))
+  const repo = async (prefix: string, branch: string): Promise<string> => {
+    const root = await mkdtemp(path.join(os.tmpdir(), prefix))
+    await git(root, 'init', '-q', '-b', branch)
+    await writeFile(path.join(root, 'a'), 'x')
+    await git(root, 'add', '.')
+    await git(root, 'commit', '-q', '-m', 'one')
+    return root
+  }
+
+  it('with no base branch anywhere, says "shallow clone" in CI terms', async () => {
+    // A CI checkout at fetch-depth 1 has no origin/HEAD and no trunk; the
+    // old answer named a `HEAD~1` the user never typed (CI persona, 2026-09-16).
+    const root = await repo('vx-affected-default-', 'feat')
     try {
-      await git(root, 'init', '-q')
-      await writeFile(path.join(root, 'a'), 'x')
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', 'one')
-      await expect(defaultAffectedBase(root)).rejects.toThrow(
-        /--affected has no base here: origin\/HEAD is not set \(or names a branch that is gone\) and HEAD has no parent .* a shallow clone\? .*fetch-depth: 0.*--affected=origin\/main/,
+      await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
+        /--affected has no base here: no origin\/HEAD, main or master .* a shallow clone\? .*fetch-depth: 0.*--affected=origin\/main/,
       )
-      await writeFile(path.join(root, 'a'), 'y')
-      await git(root, 'commit', '-q', '-am', 'two')
-      expect(await defaultAffectedBase(root)).toBe('HEAD~1')
+      await expect(defaultAffectedBase(root, 'develop')).rejects.toThrow(
+        /no develop or origin\/develop to compare with/,
+      )
     } finally {
       await rm(root, { recursive: true, force: true })
     }
   })
 
-  it('with no origin/HEAD, a trunk branch that is not HEAD is the base (D-93)', async () => {
-    // actions/checkout fetches with no origin/HEAD, and a local repo has no
-    // remote: `HEAD~1` saw a feature branch's last commit only, where Turbo
-    // and Nx compare with `main`.
-    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-trunk-'))
+  // Owner, 2026-10-17: on the base branch there is no default. `HEAD~1`
+  // saw one commit of a multi-commit push.
+  it('on the base branch there is no default; elsewhere the base branch, remote first', async () => {
+    const root = await repo('vx-affected-trunk-', 'main')
     try {
-      await git(root, 'init', '-q', '-b', 'main')
-      const commit = async (v: string): Promise<void> => {
-        await writeFile(path.join(root, 'a'), v)
-        await git(root, 'add', '.')
-        await git(root, 'commit', '-q', '-m', v)
-      }
-      await commit('1')
-      await commit('2')
-      // CONTROL: on main itself, main is HEAD, so the previous commit.
-      expect(await defaultAffectedBase(root)).toBe('HEAD~1')
+      await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
+        '--affected has no default on the base branch (main): name the last good commit, --affected=<sha>',
+      )
       await git(root, 'checkout', '-q', '-b', 'feat')
-      await commit('3')
-      await commit('4')
-      expect(await defaultAffectedBase(root)).toBe('main')
-      // The remote's trunk before a local one, `main` before `master`.
+      expect(await defaultAffectedBase(root, undefined)).toBe('main')
+      // The remote's before a local one, `main` before `master`.
       await git(root, 'update-ref', 'refs/remotes/origin/master', 'main')
-      expect(await defaultAffectedBase(root)).toBe('origin/master')
+      expect(await defaultAffectedBase(root, undefined)).toBe('origin/master')
       await git(root, 'update-ref', 'refs/remotes/origin/main', 'main')
-      expect(await defaultAffectedBase(root)).toBe('origin/main')
+      expect(await defaultAffectedBase(root, undefined)).toBe('origin/main')
+      // A configured base branch names it, and on it there is no default either.
+      await git(root, 'update-ref', 'refs/remotes/origin/develop', 'main')
+      expect(await defaultAffectedBase(root, 'develop')).toBe('origin/develop')
+      await git(root, 'checkout', '-q', '-b', 'develop')
+      await expect(defaultAffectedBase(root, 'develop')).rejects.toThrow(
+        'no default on the base branch (develop)',
+      )
     } finally {
       await rm(root, { recursive: true, force: true })
     }
   })
 
-  it('refIsHead: the base is HEAD itself in a single-branch clone whose origin/HEAD is this branch', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-self-'))
+  it("the remote's HEAD branch names the base branch when origin/HEAD is set", async () => {
+    const root = await repo('vx-affected-symref-', 'feat')
     try {
-      await git(root, 'init', '-q', '-b', 'feat')
-      await writeFile(path.join(root, 'a'), 'x')
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', 'one')
+      await git(root, 'update-ref', 'refs/remotes/origin/trunk', 'HEAD')
+      await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+      expect(await defaultAffectedBase(root, undefined)).toBe('origin/trunk')
+      // A single-branch clone whose origin/HEAD is this branch: on it, no default.
       await git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
       await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
-      expect(await defaultAffectedBase(root)).toBe('origin/feat')
+      await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
+        'no default on the base branch (feat)',
+      )
       expect(refIsHead(root, 'origin/feat')).toBe(true)
-      expect(refIsHead(root, 'HEAD')).toBe(true)
-      // CONTROL: once HEAD moves on, the same base is a real one.
       await writeFile(path.join(root, 'a'), 'y')
       await git(root, 'commit', '-q', '-am', 'two')
       expect(refIsHead(root, 'origin/feat')).toBe(false)
-      expect(refIsHead(root, 'HEAD~1')).toBe(false)
       expect(refIsHead(root, 'no-such-ref')).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
   })
 
-  it("returns the remote's HEAD branch (origin/main) when origin/HEAD is set", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-symref-'))
-    try {
-      await git(root, 'init', '-q')
-      await writeFile(path.join(root, 'a'), 'x')
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', 'one')
-      // origin/HEAD at an existing origin/main: returned over HEAD~1.
-      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
-      await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
-      expect(await defaultAffectedBase(root)).toBe('origin/main')
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  })
-
-  it('an origin/HEAD naming a deleted branch is no base: HEAD~1, or the no-base hint (E-90)', async () => {
+  it('an origin/HEAD naming a deleted branch is no base: the trunk, or the no-base hint (E-90)', async () => {
     // A pruned fetch keeps the symref after the remote deletes the branch;
     // bare --affected failed `git ref "origin/master" did not resolve`.
-    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-affected-gone-'))
+    const root = await repo('vx-affected-gone-', 'feat')
     try {
-      await git(root, 'init', '-q')
-      await writeFile(path.join(root, 'a'), 'x')
-      await git(root, 'add', '.')
-      await git(root, 'commit', '-q', '-m', 'one')
       await git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/master')
-      await expect(defaultAffectedBase(root)).rejects.toThrow(/--affected has no base here/)
-      await writeFile(path.join(root, 'a'), 'y')
-      await git(root, 'commit', '-q', '-am', 'two')
-      expect(await defaultAffectedBase(root)).toBe('HEAD~1')
+      await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
+        /--affected has no base here/,
+      )
+      await git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      expect(await defaultAffectedBase(root, undefined)).toBe('origin/main')
       // CONTROL: the branch back, the symref is the base again.
-      await git(root, 'update-ref', 'refs/remotes/origin/master', 'HEAD~1')
-      expect(await defaultAffectedBase(root)).toBe('origin/master')
+      await git(root, 'update-ref', 'refs/remotes/origin/master', 'HEAD')
+      expect(await defaultAffectedBase(root, undefined)).toBe('origin/master')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

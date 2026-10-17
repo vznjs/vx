@@ -29,7 +29,6 @@ export interface RunArgs {
   cacheFlags?: CacheFlags // no spec named: --no-cache / --force, applied over the workspace's cache.policy
   remoteRequested?: boolean // a --cache-policy spec named a remote axis
   cacheDir: string | undefined // --cache-dir
-  cacheScope?: string // --cache-scope
   poll?: true // vx watch --poll (watch.poll)
   forwardArgs: string[] // everything after `--`
   verbosity: number
@@ -103,10 +102,9 @@ then keeps a bare request only when the diff reaches its `dependsOn`
 closure (`orchestrator/affected-tasks.ts`, owner 2026-10-04). With a
 `graph` plugin the candidates are every project once anything changed:
 the plugin's edges exist only in the run's graph. The no-value form takes
-the workspace's `run.affectedBase` (a plugin's `config` stage may set it),
-else `defaultAffectedBase(root)`: `origin/HEAD`, else the first of
-`origin/main`, `origin/master`, `main`, `master` that is not HEAD, else
-`HEAD~1` (`affected.md`); a
+a plugin's base commit (`setBranch({ base })`), else
+`defaultAffectedBase(root, baseBranch)`: the merge base with
+`origin/<baseBranch>`, refused on that branch (`affected.md`); an explicit
 base that is HEAD itself (a single-branch clone) is named, with the
 two bases that would compare something.
 

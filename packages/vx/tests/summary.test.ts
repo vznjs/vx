@@ -171,6 +171,23 @@ describe('formatRunSummary', () => {
     )
   })
 
+  it('names the cache scope after the cache mode when the run has one', () => {
+    const lines = formatRunSummary(
+      [outcome('a#x', 'success')],
+      10,
+      { enabled: false },
+      {
+        version: '1.2.3',
+        packageCount: 1,
+        concurrency: 2,
+        remoteCacheEnabled: true,
+        cacheScope: 'ref-feat/x',
+        workspaceProjectCount: 1,
+      },
+    )
+    expect(lines).toContain('  info      2 workers · local + remote cache · scope ref-feat/x')
+  })
+
   describe('the cache legend reads per layer: ✓ fresh, ↓ restored, ↑ saved, ✗ failed, ⇡ uploading (M, 2026-10-15)', () => {
     const cached = (
       id: string,

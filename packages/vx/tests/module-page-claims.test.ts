@@ -215,7 +215,9 @@ describe('a module page lists exactly the fields its interface has', () => {
       let body = ''
       for (let i = m.index! + m[0].length, d = 1; i < text.length; i++) {
         const c = text[i]!
-        if (c === '{') d++
+        // A wrapped parameter list is no member.
+        if (c === '{' || c === '(') d++
+        else if (c === ')') d--
         else if (c === '}' && --d === 0) break
         body += d === 1 || c === '\n' ? c : ' '
       }

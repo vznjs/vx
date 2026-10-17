@@ -105,7 +105,7 @@ describe('a refusal under --format json', () => {
       unknownTask: await refusal(['run', 'nope', '--all', '--dry=json']),
       usage: await refusal(['run', 'build', '--bogus', '--dry=json']),
       noWorkspace: await refusal(['run', 'build', '--dry=json'], bare),
-      affectedBase: await refusal(['run', 'build', '--affected=a..b', '--dry=json']),
+      affectedRange: await refusal(['run', 'build', '--affected=a..b', '--dry=json']),
       cachePolicy: await refusal(['run', 'build', '--all', '--dry=json'], badPolicy),
       cacheFlag: await refusal(['run', 'build', '--all', '--cache-policy=disk:r', '--dry=json']),
       cacheEnv: await refusal(['run', 'build', '--all', '--dry=json'], root, {
@@ -118,7 +118,7 @@ describe('a refusal under --format json', () => {
       unknownTask: 'VX_E_UNKNOWN_TASK',
       usage: 'VX_E_USAGE',
       noWorkspace: 'VX_E_NO_WORKSPACE',
-      affectedBase: 'VX_E_AFFECTED_BASE',
+      affectedRange: 'VX_E_AFFECTED_BASE',
       cachePolicy: 'VX_E_CONFIG',
       cacheFlag: 'VX_E_USAGE',
       cacheEnv: 'VX_E_USAGE',

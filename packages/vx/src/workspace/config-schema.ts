@@ -44,14 +44,39 @@ import { nonJsonMessage, nonJsonPaths } from './json-data.js'
 // declared no plugins and ran the workspace bare, `cacheDirectory` left the
 // cache where it was — a config that loads and quietly does nothing it says.
 const CACHE_SCOPE_RULE =
-  "must be a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'"
+  "must be a scope name of letters, digits and . _ - / @ : (at most 128), like 'vznjs/vx:feat-x'"
 
-/** `cache.scope`'s rule, shared with `VX_CACHE_SCOPE`. */
+/** A cache scope's rule, for `VX_CACHE_SCOPE` and a plugin's `setBranch`. */
 export function isCacheScope(v: unknown): v is string {
-  return typeof v === 'string' && /^[\w.@/-]{1,128}$/.test(v)
+  return typeof v === 'string' && /^[\w.@/:-]{1,128}$/.test(v)
 }
 
-/** Why a `VX_CACHE_SCOPE` or `--cache-scope` value is refused, in `cache.scope`'s words. */
+/**
+ * A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
+ * branch and a laptop on it reads (owner, 2026-10-17). The repository's
+ * identity, not a remote's local name, so a clone whose `origin` is a fork
+ * names the fork. A name may hold characters a scope may not; each
+ * becomes `_`.
+ */
+const BASE_BRANCH_RULE = "must be a branch name like 'main'"
+
+/**
+ * A branch name git takes after `origin/`: a leading '-' would reach git
+ * as an option, and whitespace, `..`, `~^:?*[\\` are no ref's.
+ */
+function isBaseBranch(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[^-\s\0~^:?*[\\][^\s\0~^:?*[\\]*$/.test(value) &&
+    !value.includes('..')
+  )
+}
+
+export function branchCacheScope(repo: string, branch: string): string {
+  return `${repo.toLowerCase()}:${branch}`.replace(/[^\w.@/:-]/g, '_').slice(0, 128)
+}
+
+/** Why a `VX_CACHE_SCOPE` value is refused. */
 export function cacheScopeError(source = 'VX_CACHE_SCOPE'): string {
   return `${source} ${CACHE_SCOPE_RULE}`
 }
@@ -59,6 +84,15 @@ export function cacheScopeError(source = 'VX_CACHE_SCOPE'): string {
 /** Why `VX_CACHE_SCOPE` is refused, as the run's error. */
 export function cacheScopeEnvError(): UserError {
   return new UserError(cacheScopeError())
+}
+
+/** `baseBranch`: `VX_BASE_BRANCH`, else the workspace's; undefined lets git name it. */
+export function configuredBaseBranch(workspace: WorkspaceConfig | null): string | undefined {
+  const env = settingEnv('baseBranch')
+  if (env !== undefined && !isBaseBranch(env)) {
+    throw new UserError(`VX_BASE_BRANCH ${BASE_BRANCH_RULE}`, 'VX_E_USAGE')
+  }
+  return (env as string | undefined) ?? workspace?.baseBranch
 }
 
 const STRATEGIES = ['immutable', 'mutable', 'unchecked'] as const
@@ -98,7 +132,7 @@ export function inputStabilityEnv(): InputStability {
   }
 }
 
-const WORKSPACE_FIELDS = new Set<string>([...SETTING_GROUPS, 'plugins'])
+const WORKSPACE_FIELDS = new Set<string>([...SETTING_GROUPS, 'baseBranch', 'plugins'])
 
 /**
  * `.vx/workspace`'s settings, as `src/settings.ts` lists them: each group's
@@ -126,7 +160,7 @@ function validateSettingsAt(value: unknown, at: string, configPath: string): voi
       if (at === 'cache')
         // Turbo's and Nx's workspace `cache: true` is a task's own `cache` in vx (D-98).
         throw new UserError(
-          `${where} must be an object like { dir, policy, scope }; a task caches through its own \`cache\` in its project's vx.config`,
+          `${where} must be an object like { dir, policy }; a task caches through its own \`cache\` in its project's vx.config`,
         )
       throw new UserError(`${where} must be an object (fields: ${[...fields].join(', ')})`)
     }
@@ -197,18 +231,12 @@ function validateSettingsExtra(config: WorkspaceConfig, configPath: string): voi
     // unwritable workspace.
     throw new UserError(`${configPath}: \`cache.dir\` holds a NUL, which no path can carry`)
   }
-  const base = config.run?.affectedBase
-  // A leading '-' would reach git as an option, not a ref; a NUL fails the
-  // spawn with an argument error naming nothing in this file.
-  if (base !== undefined && !/^[^-\s\0][^\s\0]*$/.test(base)) {
-    throw new UserError(`${configPath}: \`run.affectedBase\` must be a git ref like 'origin/main'`)
+  const base = config.baseBranch
+  if (base !== undefined && !isBaseBranch(base)) {
+    throw new UserError(`${configPath}: \`baseBranch\` ${BASE_BRANCH_RULE}`)
   }
   // `policy`'s grammar is the cache module's (`parseCachePolicy`), which
   // this module may not import: the run parses it before any task (prepare.ts).
-  const scope = config.cache?.scope
-  if (scope !== undefined && !isCacheScope(scope)) {
-    throw new UserError(`${configPath}: \`cache.scope\` ${CACHE_SCOPE_RULE}`)
-  }
   if (config.cache?.retention !== undefined) validateRetention(config.cache.retention, configPath)
 }
 
@@ -1103,7 +1131,7 @@ const FOREIGN_FIELDS: ReadonlyMap<ReadonlySet<string>, Readonly<Record<string, s
         'a cache plugin in `plugins` (`turboCache()` or `nxCache()` from `@vzn/vx-migrate`)',
       parallel: '`run.concurrency`',
       cacheDirectory: '`cache.dir`',
-      defaultBase: '`run.affectedBase`',
+      defaultBase: '`baseBranch`',
       tasksRunnerOptions: 'a cache plugin in `plugins` (`nxCache()` from `@vzn/vx-migrate`)',
       globalPassThroughEnv: '`exec.env.passThrough` on the tasks it passes to',
       // pnpm-workspace.yaml's, Lerna's and the package.json's own keys

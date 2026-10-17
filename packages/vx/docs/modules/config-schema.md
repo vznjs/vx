@@ -19,11 +19,14 @@ export function validateProjectConfig(
   ownConfig?: string | null,
 ): void
 export function validateWorkspace(config: WorkspaceConfig, configPath: string): void
-// `cache.scope`'s rule, which `VX_CACHE_SCOPE` (read in prepare) shares, and that variable's refusal
+// A cache scope's rule, for `VX_CACHE_SCOPE` and a plugin's `setBranch`, and that variable's refusal
 export function isCacheScope(v: unknown): v is string
+export function branchCacheScope(repo: string, branch: string): string // `<owner>/<repo>:<branch>`, sanitized to a valid scope
 export function cacheScopeEnvError(): UserError
-// The same refusal as text, naming its source (`--cache-scope` in the CLI)
+// The same refusal as text, naming its source
 export function cacheScopeError(source?: string): string
+// `baseBranch`: `VX_BASE_BRANCH`, else the workspace's; a bad variable throws
+export function configuredBaseBranch(workspace: WorkspaceConfig | null): string | undefined
 // `VX_CACHE_INPUT_STABILITY_STRATEGY` / `VX_CACHE_INPUT_STABILITY_SEVERITY`, read once per run in run.ts; a bad value throws
 export function inputStabilityEnv(): InputStability
 // Why `name` cannot be a task name (empty, padded, holds `#`, …), or null; `vx init` skips such a script

@@ -188,6 +188,8 @@ export interface RunContext {
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
   remoteCacheEnabled: boolean
+  /** The run's cache scope, named after the cache mode: `scope vznjs/vx:feat-x`. */
+  cacheScope?: string | undefined
   /**
    * The cache layers the run used, so the legend reads `local 1= 2↓ 4↑ ·
    * remote 3↓ 4↑`. Absent: the plain `N miss` legend.
@@ -407,6 +409,7 @@ export function formatSummarySection(
     if (context.concurrency !== undefined)
       info.push(`${context.concurrency} worker${context.concurrency === 1 ? '' : 's'}`)
     info.push(context.remoteCacheEnabled ? 'local + remote cache' : 'local cache')
+    if (context.cacheScope !== undefined) info.push(`scope ${context.cacheScope}`)
     // The plugin's hand on the run: a task a policy held with a worker
     // free would otherwise have started; without the line nothing says
     // the policy acted. The duration is the waits summed, task-seconds

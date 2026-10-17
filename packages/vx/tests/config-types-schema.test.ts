@@ -37,6 +37,7 @@ type Exhaustive<T, L extends readonly string[]> = [Exclude<Keys<T>, L[number]>] 
   : ['missing from the list:', Exclude<Keys<T>, L[number]>]
 
 const WORKSPACE = [
+  'baseBranch',
   'cache',
   'lock',
   'plugins',
@@ -44,7 +45,6 @@ const WORKSPACE = [
   'watch',
 ] as const satisfies readonly Keys<WorkspaceConfig>[]
 const RUN = [
-  'affectedBase',
   'concurrency',
   'continue',
   'retries',
@@ -101,7 +101,6 @@ const WORKSPACE_CACHE = [
   'outputs',
   'policy',
   'retention',
-  'scope',
   'upload',
 ] as const satisfies readonly Keys<CacheSettings>[]
 const UPLOAD = ['failures'] as const satisfies readonly Keys<NonNullable<CacheSettings['upload']>>[]

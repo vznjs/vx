@@ -42,16 +42,21 @@ function entries(plugins: readonly WorkspacePlugin[], indent: string): string[] 
   return plugins.map((p) => `${indent}${p.factory}(),`)
 }
 
-/** `run.concurrency` and `run.affectedBase` as one `run: { … }` line. */
+/** `baseBranch: 'main',` as its own line; `run.concurrency` and its group's other fields as one `run: { … }` line. */
 function groupLines(
   fields: readonly { readonly field: string; readonly source: string }[],
 ): string[] {
+  const top: string[] = []
   const groups = new Map<string, string[]>()
   for (const f of fields) {
-    const [group, key] = f.field.split('.') as [string, string]
-    groups.set(group, [...(groups.get(group) ?? []), `${key}: ${f.source}`])
+    const [group, key] = f.field.split('.') as [string, string | undefined]
+    if (key === undefined) top.push(`  ${group}: ${f.source},`)
+    else groups.set(group, [...(groups.get(group) ?? []), `${key}: ${f.source}`])
   }
-  return [...groups].map(([group, entries]) => `  ${group}: { ${entries.join(', ')} },`)
+  return [
+    ...top,
+    ...[...groups].map(([group, entries]) => `  ${group}: { ${entries.join(', ')} },`),
+  ]
 }
 
 /** `.vx/workspace.<format>` declaring `plugins`. */

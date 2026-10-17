@@ -9,8 +9,8 @@
 
 import type { CachePolicy, PluginCache, ResolvedRemote } from '../cache/index.js'
 import type { WorkspaceConfig } from '../config.js'
-import type { VxPlugin, PluginCommand, CommandContext } from '../orchestrator/index.js'
-import { cacheScopeEnvError, findWorkspaceRoot, isCacheScope } from '../workspace/index.js'
+import type { BranchFacts, VxPlugin, PluginCommand, CommandContext } from '../orchestrator/index.js'
+import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
 import { machineParallelism, maskedLine } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 
@@ -49,6 +49,7 @@ async function workspacePlugins(cwd: string): Promise<
       workspaceConfig: WorkspaceConfig | null
       concurrency: number
       plugins: readonly VxPlugin[]
+      branch: BranchFacts
     }
   | UnresolvedPluginCommand
   | null
@@ -76,6 +77,7 @@ async function workspacePlugins(cwd: string): Promise<
       (resolveSetting('run.concurrency', ws.workspaceConfig).value as number | undefined) ??
       machineParallelism(),
     plugins: ws.plugins,
+    branch: ws.branch,
   }
 }
 
@@ -136,13 +138,16 @@ async function verbCache(
   ws: Exclude<Awaited<ReturnType<typeof workspacePlugins>>, UnresolvedPluginCommand | null>,
   plugin: string,
 ): Promise<PluginCache> {
-  const [{ Cache, pluginCache }, { resolveCache }] = await Promise.all([
+  const [{ Cache, pluginCache }, { resolveCache, resolveCacheScope }] = await Promise.all([
     import('../cache/index.js'),
     import('../orchestrator/index.js'),
   ])
-  const envScope = process.env['VX_CACHE_SCOPE'] || undefined
-  if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
-  const scope = envScope ?? ws.workspaceConfig?.cache?.scope
+  const scope = resolveCacheScope(
+    ws.workspaceRoot,
+    ws.branch.scope,
+    ws.plugins.some((p) => p.cache !== undefined),
+    configuredBaseBranch(ws.workspaceConfig),
+  )
   const localCache = new Cache(
     ws.cacheDir,
     { read: true, write: false },

@@ -896,16 +896,16 @@ export const MORE: readonly Feature[] = [
   },
   {
     slug: 'cache-scope',
-    title: 'A pull request writes only its own cache scope',
+    title: 'A branch writes only its own cache scope',
     category: 'cache',
-    hook: 'Main writes the shared cache; a pull request reads it and writes only its own scope.',
+    hook: 'Main writes the shared cache; a branch reads it and writes only its own scope.',
     body: [
       'A shared cache is only as trustworthy as the runs that write to it. A pull request from a fork should never be able to plant an artifact that main will replay.',
-      "With no scope, a run reads and writes the default entries. `cache: { scope: 'pr-123' }` reads them first, then the scope’s, and writes only the scope’s. Whether a run writes at all is `cache.policy`: off CI, a run reads the remote and writes nothing. Set the scope in config, with `VX_CACHE_SCOPE`, or with `--cache-scope` for one run.",
+      'On the default branch a run reads and writes the default entries. On another branch its entries live under `<owner>/<repo>:<branch>`, which CI’s plugin names and a checkout derives from `.git`. Each task asks the remote one key: a task the branch changed reads the scope’s, every other task reads main’s. A README edit leaves `build` on main’s entry. The local cache never knows a scope: what a laptop fetches for a branch it keeps under the task key. Whether a run writes at all is `cache.policy`: off CI, a run reads the remote and writes nothing. `VX_CACHE_SCOPE` names a scope by hand.',
     ],
     example: {
       lang: 'sh',
-      code: 'vx run build --cache-scope pr-123',
+      code: 'VX_CACHE_SCOPE=acme/app:feat-x vx run build',
     },
     image: 'cache-scope.png',
     imageAlt: 'CI writing the remote cache, a laptop only reading.',
@@ -1571,10 +1571,10 @@ export const MORE: readonly Feature[] = [
     slug: 'ref-cache-scope',
     title: 'Cache scope from the branch',
     category: 'ci',
-    hook: 'On Actions, main writes the default cache entries and a pull request writes only its own.',
+    hook: 'On Actions, main writes the default cache entries and a branch writes only its own.',
     body: [
-      'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the ref: the default branch writes the default entries, a pull request gets a scope of its own.',
-      'No config needed; set `cache.scope` yourself to override it.',
+      'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the branch: the default branch writes the default entries, a push or pull request from `feat-x` writes `acme/app:feat-x`, the scope a laptop on `feat-x` reads.',
+      'No config needed; `VX_CACHE_SCOPE` overrides it.',
     ],
     example: {
       lang: 'ts',

@@ -46,6 +46,7 @@ export type {
 } from './config.js'
 export { defineProject, defineWorkspace } from './config.js'
 export { definePlugin, refuseUnknownOptions } from './orchestrator/index.js'
+export { branchCacheScope } from './workspace/index.js'
 
 // Programmatic engine API: run / plan / prepare (docs/cli.md § Programmatic
 // API). The graph primitives, the cache-key hashing seam and the git / host
@@ -83,6 +84,7 @@ export type {
   CacheLayer,
   PluginCache,
   RemoteCacheLayer,
+  RemoteKey,
   RemoteOpenContext,
   RunRecord,
   InvocationRecord,
@@ -171,6 +173,8 @@ export type {
   ScheduleHookContext,
   AdmitContext,
   WorkspaceHookContext,
+  ConfigContext,
+  BranchFacts,
   DiscoverContext,
   DiscoveredProject,
   PluginSetupContext,

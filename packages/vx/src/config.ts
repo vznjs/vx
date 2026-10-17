@@ -14,6 +14,13 @@ export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
  * Nothing here is folded into a cache key.
  */
 export interface WorkspaceConfig {
+  /**
+   * The repository's default branch (`'develop'`). A run on it has no
+   * cache scope and a bare `--affected` has no default; elsewhere both
+   * compare with the merge base of `origin/<baseBranch>` and HEAD.
+   * Omitted → `origin/HEAD`'s branch, then `main`, then `master`.
+   */
+  baseBranch?: string
   run?: RunSettings
   cache?: CacheSettings
   lock?: LockSettings
@@ -42,13 +49,6 @@ export interface RunSettings {
    * `schedule` plugin's weights still come first; this breaks their ties.
    */
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
-  /**
-   * The git ref a bare `--affected` compares with (`origin/develop`).
-   * `--affected=<base>` overrides it. Omitted → `origin/HEAD`, then the
-   * first of `origin/main`, `origin/master`, `main`, `master` that is not
-   * HEAD, else `HEAD~1`.
-   */
-  affectedBase?: string
   /**
    * A task's time limit, for tasks without their own `exec.timeout` (which
    * beats every run-level source). A runaway-process guard: a timed-out
@@ -95,15 +95,6 @@ export interface CacheSettings {
    * first, then each remote in declared order.
    */
   policy?: string
-  /**
-   * Where this run's cache writes land. Omitted, a run reads and writes the
-   * default keys. A name (`'pr-123'`) reads the default key first, then the
-   * scope's, and writes only the scope's, so a PR never writes what the
-   * default branch reads. Whether a run writes at all is `policy`'s call.
-   * A client-side convention, not a security boundary: the boundary is a
-   * cache token the server limits.
-   */
-  scope?: string
   /** Which remote hits land on disk: `all` (the default), only the requested tasks' (`toplevel`), or `none`. */
   download?: 'all' | 'toplevel' | 'none'
   /** The `cache.inputStability` of every task that does not set its own. */

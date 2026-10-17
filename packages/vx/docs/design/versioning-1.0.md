@@ -43,18 +43,18 @@ the values it takes and each refusal's exact words are recorded in
 
 `.vx/workspace.ts`:
 
-| Level                  | Fields                                                                                   |
-| ---------------------- | ---------------------------------------------------------------------------------------- |
-| (top)                  | `cache`, `lock`, `plugins`, `run`, `watch`                                               |
-| `run`                  | `affectedBase`, `concurrency`, `continue`, `retries`, `rules`, `schedule`, `timeout`     |
-| `lock`                 | `reviewFiles`                                                                            |
-| `run.rules`            | `dependencies`, `exclusiveOutputs`                                                       |
-| `cache`                | `dir`, `download`, `inputStability`, `outputs`, `policy`, `retention`, `scope`, `upload` |
-| `cache.retention`      | `maxSize`, `olderThan`                                                                   |
-| `cache.inputStability` | `severity`, `strategy`                                                                   |
-| `cache.outputs`        | `clean`                                                                                  |
-| `cache.upload`         | `failures`                                                                               |
-| `watch`                | `poll`                                                                                   |
+| Level                  | Fields                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| (top)                  | `baseBranch`, `cache`, `lock`, `plugins`, `run`, `watch`                        |
+| `run`                  | `concurrency`, `continue`, `retries`, `rules`, `schedule`, `timeout`            |
+| `lock`                 | `reviewFiles`                                                                   |
+| `run.rules`            | `dependencies`, `exclusiveOutputs`                                              |
+| `cache`                | `dir`, `download`, `inputStability`, `outputs`, `policy`, `retention`, `upload` |
+| `cache.retention`      | `maxSize`, `olderThan`                                                          |
+| `cache.inputStability` | `severity`, `strategy`                                                          |
+| `cache.outputs`        | `clean`                                                                         |
+| `cache.upload`         | `failures`                                                                      |
+| `watch`                | `poll`                                                                          |
 
 `vx.config.ts`:
 

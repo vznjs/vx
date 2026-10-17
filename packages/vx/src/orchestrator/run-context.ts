@@ -15,6 +15,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { executablePath, gitEnv, relPosix, ulid, xxh3hex } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
+import { branchCacheScope, cacheScopeEnvError, isCacheScope } from '../workspace/index.js'
 import { VERSION } from '../version.js'
 import type { RunContextRecord } from './telemetry.js'
 
@@ -523,6 +524,85 @@ export function currentBranch(
 ): string | null {
   const set = resolveSetting('run.branch', workspace, flag, env).value as string | undefined
   return set ?? captureGitContext(workspaceRoot, null, env).branch
+}
+
+/**
+ * The cache scope a checkout on a branch reads, from the `.git` files
+ * alone (owner, 2026-10-17): `<owner>/<repo>:<branch>`, the branch it
+ * tracks (`branch.<name>.merge` on `branch.<name>.remote`), else its own
+ * name on `origin`, the repository named by that remote's URL. None on
+ * the default branch, on a detached HEAD, or with no remote URL. CI writes
+ * that scope for the same branch (`github()`), so a laptop reads what its
+ * branch's CI saved.
+ */
+export function localBranchScope(
+  workspaceRoot: string,
+  baseBranch: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const head = readHeadDirect(workspaceRoot)
+  if (head === null || head.branch === null) return undefined
+  const config = gitConfigSections(workspaceRoot)
+  const own = config.get(`branch "${head.branch}"`)
+  const name = own?.get('merge')?.replace(/^refs\/heads\//, '') ?? head.branch
+  const url = config.get(`remote "${own?.get('remote') ?? 'origin'}"`)?.get('url')
+  const repo = url === undefined ? undefined : repoOfUrl(url)
+  if (repo === undefined) return undefined
+  const trunk = baseBranch ?? captureDefaultBranch(env, workspaceRoot)
+  if (trunk === null ? name === 'main' || name === 'master' : name === trunk) return undefined
+  return branchCacheScope(repo, name)
+}
+
+/** `owner/repo` from a remote URL (its last two path segments); undefined for a local path. */
+function repoOfUrl(url: string): string | undefined {
+  const parts = normalizeRemoteUrl(url).split('/')
+  return parts.length < 3 ? undefined : parts.slice(-2).join('/')
+}
+
+/** `.git/config`'s sections, each a key → value map (last wins); empty when it cannot be read. */
+function gitConfigSections(workspaceRoot: string): Map<string, Map<string, string>> {
+  const sections = new Map<string, Map<string, string>>()
+  try {
+    const dirs = refDirsOf(workspaceRoot)
+    if (dirs === null) return sections
+    let at: Map<string, string> | undefined
+    for (const raw of fs.readFileSync(path.join(dirs.commonDir, 'config'), 'utf8').split('\n')) {
+      const line = raw.trim()
+      const section = /^\[\s*(\w+)(?:\s+"(.*)")?\s*\]$/.exec(line)
+      if (section !== null) {
+        const key = section[2] === undefined ? section[1]! : `${section[1]} "${section[2]}"`
+        at = sections.get(key) ?? new Map()
+        sections.set(key, at)
+        continue
+      }
+      const kv = /^(\w+)\s*=\s*(.*)$/.exec(line)
+      if (kv !== null) at?.set(kv[1]!.toLowerCase(), kv[2]!.trim())
+    }
+  } catch {
+    // no config to read: no remote, so no scope.
+  }
+  return sections
+}
+
+/**
+ * The run's cache scope (owner, 2026-10-17): `VX_CACHE_SCOPE` (empty: none),
+ * else a plugin's (`setBranch`, `github()` on Actions), else, with a cache
+ * plugin to share it, the branch's from git. Undefined: the default keys.
+ */
+export function resolveCacheScope(
+  workspaceRoot: string,
+  pluginScope: string | undefined,
+  hasRemote: boolean,
+  baseBranch: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const named = env['VX_CACHE_SCOPE']
+  if (named !== undefined) {
+    if (named === '') return undefined
+    if (!isCacheScope(named)) throw cacheScopeEnvError()
+    return named
+  }
+  return pluginScope ?? (hasRemote ? localBranchScope(workspaceRoot, baseBranch, env) : undefined)
 }
 
 export interface TelemetryRunContextArgs {

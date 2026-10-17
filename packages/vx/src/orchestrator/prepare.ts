@@ -26,7 +26,7 @@ import {
   writesRunStore,
   type PluginCache,
   type ResolvedRemote,
-  ScopedCache,
+  BranchScope,
   applyGitEnumeration,
   gitPathspecs,
   MAX_SCOPED_PATHSPECS,
@@ -38,8 +38,9 @@ import {
   buildPackageGraph,
   computeNestedProjectDirs,
   findWorkspaceRoot,
-  cacheScopeEnvError,
-  isCacheScope,
+  type AffectedChanges,
+  branchChanges,
+  configuredBaseBranch,
   type LoadReads,
   PROJECT_CONFIG_FILENAMES,
   readClaimedFiles,
@@ -78,13 +79,13 @@ import {
   lockReader,
   type LoadedProjects,
 } from './projects.js'
-import { keptByAffected } from './affected-tasks.js'
+import { keptByAffected, keyedByChange } from './affected-tasks.js'
 import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
 import { askIgnoredOutputs, gatedOutputs } from './stable-keys.js'
-import { currentBranch } from './run-context.js'
+import { currentBranch, resolveCacheScope } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { RunOptions } from './options.js'
@@ -113,6 +114,8 @@ export interface PreparedRun {
   hasRemoteLayer: boolean
   /** `--cache-policy` with the workspace's `cacheScope` applied: what the layers were built under. */
   cachePolicy: CachePolicy
+  /** The scope this run's cache reads and writes, when one is set; named on the summary's `info` row. */
+  cacheScope: string | undefined
   /** The run's remotes in declared order, as the policy gates each; `openRemotes` turns one off. */
   remotes: ResolvedRemote[]
   /**
@@ -249,8 +252,21 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     (reused !== undefined ? gitOfDiscovery(reused.projects) : undefined) ??
     lazyGitEnumeration(workspaceRoot)
   if (wholeTree) void git.start()
-  const { workspaceConfig, plugins } = await loadWorkspacePlugins(workspaceRoot, warnOf(log))
+  const {
+    workspaceConfig,
+    plugins,
+    branch: branchFacts,
+  } = await loadWorkspacePlugins(workspaceRoot, warnOf(log))
   mark('workspace config')
+  const baseBranch = configuredBaseBranch(workspaceConfig)
+  const cacheScope =
+    options.cacheScope ??
+    resolveCacheScope(
+      workspaceRoot,
+      branchFacts.scope,
+      plugins.some((p) => p.cache !== undefined),
+      baseBranch,
+    )
   let learnedBranch: string | null | undefined
   const branch = (): string | null =>
     learnedBranch === undefined
@@ -269,10 +285,38 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // Asked now, read when the cache opens: a repository with no remote is
   // named by its root commit, a git spawn the discovery below overlaps.
   const storeRoot = options.cacheDir ? null : resolveStoreRoot(workspaceRoot, workspaceConfig)
-  const projectMetas =
+  const discovering =
     reused !== undefined
-      ? reused.projects
-      : await discoverProjects(workspaceRoot, readLock, plugins, cacheDir, warnOf(log), git)
+      ? Promise.resolve(reused.projects)
+      : discoverProjects(workspaceRoot, readLock, plugins, cacheDir, warnOf(log), git)
+  // What the branch changed decides which tasks read the scope (owner,
+  // 2026-10-17). Only a scoped run's first remote call asks git: a run the
+  // local cache answers makes no remote call, and diffing beside discovery
+  // cost it 20-60 ms at 1k-5k projects.
+  const scopeChanges: (() => Promise<AffectedChanges>) | undefined =
+    cacheScope === undefined
+      ? undefined
+      : options.scopeChanges !== undefined
+        ? async () => options.scopeChanges!
+        : () =>
+            branchChanges(
+              workspaceRoot,
+              options.scopeBase ?? branchFacts.base,
+              baseBranch,
+              discovering,
+              {
+                untracked: async () => (await git.start()).untracked,
+                // A scoped enumeration lists only its projects: null asks git.
+                links: async () => {
+                  const g = await git.start()
+                  if (!g.scopes.includes('.')) return null
+                  const out: string[] = []
+                  for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
+                  return out
+                },
+              },
+            )
+  const projectMetas = await discovering
   mark('discover projects')
 
   // SCOPED config loading: configs are programs, and evaluating 1090
@@ -314,12 +358,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // so a reader profiling that stage was sent to the wrong code.
   mark('package graph')
 
-  // `--cache-scope`, then `VX_CACHE_SCOPE`, win over the workspace (and `github()`'s guess):
-  // a CI job that knows its trust level says so without editing config.
-  const envScope = process.env['VX_CACHE_SCOPE'] || undefined
-  if (envScope !== undefined && !isCacheScope(envScope)) throw cacheScopeEnvError()
   const workspacePolicy = workspaceCachePolicy(workspaceConfig)
-  const cacheScope = options.cacheScope ?? envScope ?? workspaceConfig?.cache?.scope
   const asked =
     options.cache ?? applyCacheFlags(workspacePolicy ?? FULL_CACHE_POLICY, options.cacheFlags)
   // A laptop reads the shared cache and does not write it unless a policy
@@ -470,6 +509,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // cache plugin.
   let cache: CacheLayer
   const remotes: ResolvedRemote[] = []
+  // A scope only picks remote keys (owner, 2026-10-17): the local store
+  // keeps every branch's entries under the task keys.
+  const branchScope = cacheScope === undefined ? undefined : new BranchScope(cacheScope)
   if (options.remoteCache) {
     remotes.push({
       remote: options.remoteCache,
@@ -480,7 +522,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   }
   try {
     cache = options.remoteCache
-      ? new LayeredCache(localCache, remotes)
+      ? new LayeredCache(localCache, remotes, branchScope)
       : await resolveCache(plugins, {
           workspaceRoot,
           cacheDir,
@@ -489,6 +531,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
           localCache,
           policy,
           remotes,
+          ...(branchScope !== undefined ? { branch: branchScope } : {}),
         })
   } catch (err) {
     // A cache plugin that throws or returns something off-contract is
@@ -499,8 +542,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     localCache.close()
     throw err
   }
-  // One scoping rule above every layer, local and remote alike.
-  if (cacheScope !== undefined) cache = new ScopedCache(cache, cacheScope)
   // Ask the LAYER, don't infer. Identity against `localCache` answers a
   // DIFFERENT question — "did the plugin hand back something other than the
   // handle I passed in?" — which an ordinary pass-through decorator (a
@@ -534,6 +575,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       localCache,
       hasRemoteLayer,
       cachePolicy: policy,
+      cacheScope,
       remotes,
       keepRunEntry: undefined,
       priorities: () => Promise.resolve(new Map()),
@@ -721,6 +763,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     if (hasHook(plugins, 'key')) {
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log) })
     }
+    // The final inputs decide which tasks the branch changed: they read
+    // the scope, every other task the default key.
+    if (branchScope !== undefined && scopeChanges !== undefined) {
+      branchScope.routeTasks(async () =>
+        keyedByChange(nodes, await scopeChanges(), projects, packageGraph),
+      )
+    }
     refuseFiltersThroughGroups(nodes)
     const exclude = options.excludeDependencies
     let keyOnly: ReadonlyMap<string, TaskNode> = new Map()
@@ -783,6 +832,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       localCache,
       hasRemoteLayer,
       cachePolicy: policy,
+      cacheScope,
       remotes,
       priorities,
       branch,

@@ -1,19 +1,10 @@
 {
   "workspace": {
     "levels": {
-      "": ["cache", "lock", "plugins", "run", "watch"],
-      "run": ["affectedBase", "concurrency", "continue", "retries", "rules", "schedule", "timeout"],
+      "": ["baseBranch", "cache", "lock", "plugins", "run", "watch"],
+      "run": ["concurrency", "continue", "retries", "rules", "schedule", "timeout"],
       "run.rules": ["dependencies", "exclusiveOutputs"],
-      "cache": [
-        "dir",
-        "download",
-        "inputStability",
-        "outputs",
-        "policy",
-        "retention",
-        "scope",
-        "upload"
-      ],
+      "cache": ["dir", "download", "inputStability", "outputs", "policy", "retention", "upload"],
       "cache.retention": ["maxSize", "olderThan"],
       "cache.inputStability": ["severity", "strategy"],
       "cache.outputs": ["clean"],
@@ -23,9 +14,40 @@
     },
     "records": [],
     "fields": {
+      "baseBranch": {
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"main\""],
+        "$CONFIG: `baseBranch` must be a branch name like 'main'": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
       "run": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `run` must be an object (fields: concurrency, schedule, affectedBase, timeout, retries, continue, rules)": [
+        "$CONFIG: `run` must be an object (fields: concurrency, schedule, timeout, retries, continue, rules)": [
           "null",
           "true",
           "false",
@@ -56,7 +78,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `run` has unknown field \"x\" (allowed: affectedBase, concurrency, continue, retries, rules, schedule, timeout)": [
+        "$CONFIG: `run` has unknown field \"x\" (allowed: concurrency, continue, retries, rules, schedule, timeout)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -240,39 +262,6 @@
           "{}"
         ],
         "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "run.affectedBase": {
-        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"origin/main\""],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got null)": ["null"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got true)": ["true"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got false)": ["false"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got 0)": ["0"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got 1)": ["1"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got 1.5)": ["1.5"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got -1)": ["-1"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got 65536)": ["65536"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got 2147483648)": ["2147483648"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got \"\")": ["\"\""],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [])": ["[]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"\"])": ["[\"\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [1])": ["[1]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [3000])": ["[3000]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"../x\"])": ["[\"../x\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\".\"])": ["[\".\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got {})": ["{}"],
-        "$CONFIG: `run.affectedBase` must be a non-blank string (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -604,7 +593,7 @@
       },
       "cache": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `cache` must be an object like { dir, policy, scope }; a task caches through its own `cache` in its project's vx.config": [
+        "$CONFIG: `cache` must be an object like { dir, policy }; a task caches through its own `cache` in its project's vx.config": [
           "null",
           "true",
           "false",
@@ -635,7 +624,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache` has unknown field \"x\" (allowed: dir, download, inputStability, outputs, policy, retention, scope, upload)": [
+        "$CONFIG: `cache` has unknown field \"x\" (allowed: dir, download, inputStability, outputs, policy, retention, upload)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -922,40 +911,6 @@
         "$CONFIG: `cache.policy` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
         "$CONFIG: `cache.policy` must be a non-blank string (got {})": ["{}"],
         "$CONFIG: `cache.policy` must be a non-blank string (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
-      },
-      "cache.scope": {
-        "ok": ["<absent>", "\"x\"", "\"30d\"", "\"10G\"", "\"10\"", "\"pr-1\""],
-        "$CONFIG: `cache.scope` must be a non-blank string (got null)": ["null"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got true)": ["true"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got false)": ["false"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got 0)": ["0"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got 1)": ["1"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got 1.5)": ["1.5"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got -1)": ["-1"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got 65536)": ["65536"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got 2147483648)": ["2147483648"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got \"\")": ["\"\""],
-        "$CONFIG: `cache.scope` must be a scope name of letters, digits and . _ - / @ (at most 128), like 'pr-123'": [
-          "\"(\""
-        ],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [])": ["[]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"\"])": ["[\"\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [1])": ["[1]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [3000])": ["[3000]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"../x\"])": ["[\"../x\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\".\"])": ["[\".\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got {})": ["{}"],
-        "$CONFIG: `cache.scope` must be a non-blank string (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "cache.download": {
         "ok": ["<absent>", "\"all\""],

@@ -1,43 +1,53 @@
-# `src/cache/scoped-cache.ts` — the run's `cache.scope` over every layer
+# `src/cache/scoped-cache.ts` — which remote key a scoped run asks
 
 ## Purpose
 
-A scoped run (`cache.scope: 'pr-123'`) reads the default key, then the
-scope's, and writes only the scope's, in the local store and every remote
-alike (owner, 2026-10-14). `prepare.ts` wraps the resolved cache in it when
-the run names a scope; no layer below knows a scope exists.
+A scoped run (`VX_CACHE_SCOPE=vznjs/vx:feat-x`, a plugin's or the branch's) asks each remote one key per task (owner,
+2026-10-17): a task the branch changed reads the scope's key; every other
+task reads the default key. The local store never knows a scope (owner,
+2026-10-17): every branch shares one local pool under the task keys.
+`prepare.ts` builds a `BranchScope` when the run names one, hands it to
+`LayeredCache`, which asks each remote through `remote()`, and routes the
+tasks (`routeTasks`) from what the branch changed
+(`RunOptions.scopeChanges`).
 
 ## Public surface
 
 ```ts
-export class ScopedCache implements CacheLayer {
-  constructor(inner: CacheLayer, scope: string)
+export function scopedKey(scope: string, hash: string): string
+export class BranchScope {
+  constructor(scope: string)
+  routeTasks(ids: () => Promise<ReadonlySet<string>>): void
+  noteKey(taskId: string, hash: string): void
+  remote(inner: RemoteCacheLayer): RemoteCacheLayer
 }
 ```
-
-Every `CacheLayer` method is implemented by delegation under the rules
-below.
 
 ## Rules
 
 - **The scope's key** is `xxh3("vx-cache-scope", scope, task key)`, 16
-  hex like a task key, so every wire stores it unchanged. An artifact
-  records the key it was packed under and ingest refuses another, so a
-  collision is a miss.
-- **Reads** (`get`, `getMany`, `has`, `prefetch`) ask the default key,
-  then the scope's. A default artifact a remote ingest refuses is a miss
-  there, and the scope's key is asked next (Security F6). A batch probe
-  that finds only the scope's key marks the default key absent, so its
-  GET is skipped. A `get` whose scope key alone is local asks it first, so a
-  local hit costs no remote GET for the default key.
-- **Writes** (`save`, `ingest`) go to the scope's key only. Whether a run
-  writes at all is the policy's call.
-- **Callers speak task keys.** The key that served each one (a hit's, or
-  the scope's on a save) is remembered, and the restore, the output index
-  (`loadOutputFilesBatch`, `recordOutputDirs`, stamps), `outputsPath`,
-  `artifactSize` and the run's history rows use it, so `vx why` reads the
-  components of the entry that answered. An entry returned carries the
-  task key.
-- **One disk, many scopes** (Security F4): a scoped run's local entry
-  sits under its scope's key, so a later run with no scope or another
-  scope misses it; an entry with no scope serves every run.
+  hex like a task key, so every wire stores it unchanged. An artifact is
+  packed under its task key wherever it is stored, so a remote entry
+  ingests locally under that key; ingest refuses an artifact packed
+  under another, so a collision is a miss.
+- **Routes.** `computeTaskHash` tells the cache each task's key
+  (`noteKey`, through `LayeredCache`). A task `routeTasks` named is the
+  scope's: its own declared inputs match a changed path, or its
+  `dependsOn` closure holds such a task (`keyedByChange`, strict: a
+  changed path no task declares reaches none, so a README edit leaves
+  `build` on the default key). Before `routeTasks` is called every task
+  is the scope's; a run always routes (`branchChanges`, or an embedder's
+  `scopeChanges`). The routes are found at the first remote call, so a
+  run the local cache answers never diffs (20-60 ms at 1k-5k projects
+  when the diff ran beside discovery).
+- **Reads** (`has`, `hasMany`, `get`) ask one key: the scope's for a
+  scope task, the default key for any other. No fallthrough: a miss is a
+  miss.
+- **Each call names its scope** (`RemoteKey.scope`, the last argument;
+  absent for a default key), for a backend that keeps a store per
+  branch. The key alone names the entry; no wire vx ships sends it.
+- **Writes** (`put`) go to the scope's key, every task's: a CI run saves
+  every task it builds under the scope, so a branch never writes a
+  default key. Whether a run writes at all is the policy's call.
+- **One disk, one pool**: a hit fetched under a scope is kept locally
+  under the task key, so the same inputs hit locally on any branch.

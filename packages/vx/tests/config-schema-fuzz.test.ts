@@ -140,11 +140,11 @@ function genProject(r: R): Obj {
 
 function genWorkspace(r: R): Obj {
   return fields({
+    baseBranch: maybe(r, () => pick(r, ['main', 'release/2'])),
     run: maybe(r, () =>
       fields({
         concurrency: maybe(r, () => pick(r, [1, 8])),
         schedule: maybe(r, () => pick(r, ['most-work', 'critical-path'])),
-        affectedBase: maybe(r, () => pick(r, ['origin/main', 'HEAD~1'])),
         timeout: maybe(r, () => pick(r, ['1s', `${MAX_TIMEOUT_MS}ms`])),
         retries: maybe(r, () => pick(r, [0, 2])),
         continue: maybe(r, () => pick(r, ['never', 'always'])),
@@ -168,7 +168,6 @@ function genWorkspace(r: R): Obj {
           return fields({ olderThan, maxSize })
         }),
         policy: maybe(r, () => pick(r, ['local:rw,remote:r', 'remote:', 'local:r'])),
-        scope: maybe(r, () => pick(r, ['main', 'pr-123', '@team/ci'])),
         download: maybe(r, () => pick(r, ['all', 'none'])),
         inputStability: maybe(r, () =>
           fields({
@@ -255,8 +254,7 @@ const BAD_VALUES: Record<string, readonly unknown[]> = {
   severity: ['fail'],
   olderThan: ['soon', '0d'],
   maxSize: ['big', '0G', '100'],
-  affectedBase: ['-x', 'a b'],
-  scope: ['has space', '', 'x'.repeat(129)],
+  baseBranch: ['-x', 'a b', 'a..b'],
   policy: ['', '   ', 3],
   localBinding: [0, 70_000],
   tags: [''],
@@ -343,9 +341,8 @@ const SCHEMAS: Schema[] = [
       'severity',
       'olderThan',
       'maxSize',
-      'affectedBase',
+      'baseBranch',
       'policy',
-      'scope',
     ],
   },
 ]

@@ -688,8 +688,9 @@ replay on CI. See `docs/cli.md` § Cache control.
 
 The setup we recommend for a shared remote: the write token only in the
 default branch's CI (a protected environment), a read-only token on
-laptops and in pull request jobs, and `cache.scope` (`github()` sets it)
-so a PR's own writes, when its token allows them, land apart. The token
+laptops and in pull request jobs, and the branch's cache scope
+(`github()` names it, a laptop derives it) so a PR's own writes, when its
+token allows them, land apart. The token
 is the boundary; the policy and the scope are the client's half
 (`docs/security.md` § Cache poisoning).
 

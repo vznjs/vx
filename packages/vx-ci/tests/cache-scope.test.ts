@@ -1,10 +1,12 @@
-// `github()` sets the workspace's `cache.scope` from the Actions ref: the
-// default branch keeps the default keys, a PR and any other ref get their own scope.
+// `github()` names the run's branch through `setBranch`: the default
+// branch keeps the default keys, a branch (a PR's head included) gets
+// `<owner>/<repo>:<branch>`, the scope a laptop on that branch reads, and
+// a pull request its base commit.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
-import type { WorkspaceConfig } from '@vzn/vx'
+import type { BranchFacts } from '@vzn/vx'
 import { github } from '../src/index.js'
 
 let dir: string
@@ -13,30 +15,38 @@ let eventPath: string
 beforeAll(async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-gh-scope-'))
   eventPath = path.join(dir, 'event.json')
-  await writeFile(eventPath, JSON.stringify({ repository: { default_branch: 'main' } }))
+  await writeFile(
+    eventPath,
+    JSON.stringify({ repository: { default_branch: 'main', full_name: 'vznjs/vx' } }),
+  )
 })
 afterAll(() => rm(dir, { recursive: true, force: true }))
 
 const ACTIONS_KEYS = [
   'GITHUB_ACTIONS',
+  'GITHUB_HEAD_REF',
   'GITHUB_REF',
   'GITHUB_REF_NAME',
+  'GITHUB_REPOSITORY',
   'GITHUB_EVENT_PATH',
   'GITHUB_EVENT_NAME',
 ]
 
-async function scopeOf(
+async function branchOf(
   env: Record<string, string>,
-  workspace: WorkspaceConfig = {},
   options: Parameters<typeof github>[0] = {},
-): Promise<string | undefined> {
+): Promise<BranchFacts> {
   const saved = ACTIONS_KEYS.map((k) => [k, process.env[k]] as const)
   for (const k of ACTIONS_KEYS) delete process.env[k]
   Object.assign(process.env, env)
+  const facts: BranchFacts = {}
   try {
-    // Off Actions the factory is undefined: nothing to set the scope.
-    await github(options)?.config!(workspace, { workspaceRoot: dir, warn: () => {} })
-    return workspace.cache?.scope
+    // Off Actions the factory is undefined: nothing to name.
+    await github(options)?.config!(
+      {},
+      { workspaceRoot: dir, warn: () => {}, setBranch: (f) => Object.assign(facts, f) },
+    )
+    return facts
   } finally {
     for (const [k, v] of saved) {
       if (v === undefined) delete process.env[k]
@@ -44,56 +54,100 @@ async function scopeOf(
     }
   }
 }
+const scopeOf = async (
+  env: Record<string, string>,
+  options: Parameters<typeof github>[0] = {},
+): Promise<string | undefined> => (await branchOf(env, options)).scope
 
 const actions = (ref: string, name: string): Record<string, string> => ({
   GITHUB_ACTIONS: 'true',
   GITHUB_REF: ref,
   GITHUB_REF_NAME: name,
+  GITHUB_REPOSITORY: 'vznjs/vx',
   GITHUB_EVENT_PATH: eventPath,
 })
 
+async function event(payload: object): Promise<string> {
+  const file = path.join(dir, `event-${Math.random()}.json`)
+  await writeFile(
+    file,
+    JSON.stringify({ repository: { default_branch: 'main', full_name: 'vznjs/vx' }, ...payload }),
+  )
+  return file
+}
+
 it('a push to the default branch keeps the default keys', async () => {
-  expect(await scopeOf(actions('refs/heads/main', 'main'))).toBeUndefined()
+  expect(await branchOf(actions('refs/heads/main', 'main'))).toEqual({})
 })
 
-it('a pull request writes to its own scope', async () => {
-  expect(await scopeOf(actions('refs/pull/42/merge', '42/merge'))).toBe('pr-42')
+it("a pull request writes to its head branch's scope, as a push to it does, and names its base", async () => {
+  const file = await event({
+    pull_request: {
+      number: 42,
+      head: { ref: 'feat/x', repo: { full_name: 'vznjs/vx' } },
+      base: { sha: 'abc123' },
+    },
+  })
+  const pr = {
+    ...actions('refs/pull/42/merge', '42/merge'),
+    GITHUB_HEAD_REF: 'feat/x',
+    GITHUB_EVENT_PATH: file,
+  }
+  expect(await branchOf(pr)).toEqual({ scope: 'vznjs/vx:feat/x', base: 'abc123' })
+  expect(await branchOf(actions('refs/heads/feat/x', 'feat/x'))).toEqual({
+    scope: 'vznjs/vx:feat/x',
+  })
+})
+
+it("a fork's pull request writes the fork's scope", async () => {
+  const file = await event({
+    pull_request: { number: 3, head: { ref: 'main', repo: { full_name: 'Eve/vx' } } },
+  })
+  const pr = {
+    ...actions('refs/pull/3/merge', '3/merge'),
+    GITHUB_HEAD_REF: 'main',
+    GITHUB_EVENT_PATH: file,
+  }
+  expect(await scopeOf(pr)).toBe('eve/vx:main')
 })
 
 it('another branch or tag writes to its own scope', async () => {
-  expect(await scopeOf(actions('refs/heads/feat/x', 'feat/x'))).toBe('ref-feat/x')
-  expect(await scopeOf(actions('refs/tags/v1.0', 'v1.0'))).toBe('ref-v1.0')
-  expect(await scopeOf(actions('refs/heads/a+b', 'a+b'))).toBe('ref-a_b')
+  expect(await scopeOf(actions('refs/heads/feat/x', 'feat/x'))).toBe('vznjs/vx:feat/x')
+  expect(await scopeOf(actions('refs/tags/v1.0', 'v1.0'))).toBe('vznjs/vx:v1.0')
+  expect(await scopeOf(actions('refs/heads/a+b', 'a+b'))).toBe('vznjs/vx:a_b')
 })
 
 // These events run with the default branch's ref on a PR's behalf; a
 // workflow that checks out the PR's head there wrote the default keys.
 it("an event that runs in main's context for a pull request is the PR's", async () => {
-  const on = async (name: string, payload: unknown): Promise<string | undefined> => {
-    const file = path.join(dir, `${name}-${Math.random()}.json`)
-    await writeFile(
-      file,
-      JSON.stringify({ repository: { default_branch: 'main' }, ...(payload as object) }),
-    )
-    return scopeOf({
+  const on = async (name: string, payload: object): Promise<string | undefined> =>
+    scopeOf({
       ...actions('refs/heads/main', 'main'),
-      GITHUB_EVENT_PATH: file,
+      GITHUB_EVENT_PATH: await event(payload),
       GITHUB_EVENT_NAME: name,
     })
-  }
   expect([
-    await on('pull_request_target', { pull_request: { number: 7 } }),
+    await on('pull_request_target', { pull_request: { number: 7, head: { ref: 'b7' } } }),
     await on('pull_request_target', {}),
     await on('issue_comment', { issue: { number: 9, pull_request: { url: 'x' } } }),
     await on('workflow_run', {
-      workflow_run: { event: 'pull_request', pull_requests: [{ number: 5 }] },
+      workflow_run: { event: 'pull_request', head_branch: 'b5', pull_requests: [{ number: 5 }] },
     }),
     await on('workflow_run', { workflow_run: { event: 'pull_request', pull_requests: [] } }),
     // CONTROLS: the same events with no PR behind them keep the default keys.
     await on('issue_comment', { issue: { number: 9 } }),
     await on('workflow_run', { workflow_run: { event: 'push', pull_requests: [] } }),
     await on('push', {}),
-  ]).toEqual(['pr-7', 'pr-target', 'pr-9', 'pr-5', 'pr-target', undefined, undefined, undefined])
+  ]).toEqual([
+    'vznjs/vx:b7',
+    'pr-target',
+    'pr-9',
+    'vznjs/vx:b5',
+    'pr-target',
+    undefined,
+    undefined,
+    undefined,
+  ])
 })
 
 it('an unknown default branch gets its own scope', async () => {
@@ -102,15 +156,10 @@ it('an unknown default branch gets its own scope', async () => {
       ...actions('refs/heads/main', 'main'),
       GITHUB_EVENT_PATH: path.join(dir, 'none'),
     }),
-  ).toBe('ref-main')
+  ).toBe('vznjs/vx:main')
 })
 
-it('outside Actions, a declared scope, or cacheScope: false changes nothing', async () => {
-  expect(await scopeOf({ GITHUB_REF: 'refs/pull/1/merge' })).toBeUndefined()
-  expect(await scopeOf(actions('refs/pull/1/merge', '1/merge'), { cache: { scope: 'ci' } })).toBe(
-    'ci',
-  )
-  expect(
-    await scopeOf(actions('refs/pull/1/merge', '1/merge'), {}, { cacheScope: false }),
-  ).toBeUndefined()
+it('outside Actions, or with cacheScope: false, names nothing', async () => {
+  expect(await branchOf({ GITHUB_REF: 'refs/pull/1/merge' })).toEqual({})
+  expect(await branchOf(actions('refs/pull/1/merge', '1/merge'), { cacheScope: false })).toEqual({})
 })

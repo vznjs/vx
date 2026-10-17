@@ -216,6 +216,8 @@ export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 export const VERSION: string = pkg.version
 == function applyMigration (src/workspace/migration.ts)
 export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
+== function branchCacheScope (src/workspace/config-schema.ts)
+export function branchCacheScope(repo: string, branch: string): string
 == function code (src/util/ui.ts)
 export function code(frame: string): Block
 == function currentBranch (src/orchestrator/run-context.ts)
@@ -413,6 +415,11 @@ interface BaseContext {
 export interface Block {
   readonly lines: (colors: ColorSupport) => string[]
 }
+== type BranchFacts (src/orchestrator/plugin.ts)
+export interface BranchFacts {
+  scope?: string
+  base?: string
+}
 == type CacheConfig (src/config.ts)
 export interface CacheConfig {
   outputs: CacheOutputs
@@ -480,6 +487,7 @@ export interface CacheLayer {
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
+  noteKey?(taskId: string, hash: string): void
   drainUploads?(): Promise<void>
   stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>
@@ -544,7 +552,6 @@ export interface CacheSettings {
   dir?: string
   retention?: { olderThan?: Duration; maxSize?: string }
   policy?: string
-  scope?: string
   download?: 'all' | 'toplevel' | 'none'
   inputStability?: InputStability
   outputs?: { clean?: boolean }
@@ -602,6 +609,10 @@ export interface CommandContext extends BaseContext {
   readonly concurrency: number
   readonly vx: readonly string[]
   readonly cache: PluginCache
+}
+== type ConfigContext (src/orchestrator/plugin.ts)
+export interface ConfigContext extends WorkspaceHookContext {
+  setBranch(facts: BranchFacts): void
 }
 == type ContinueMode (src/graph/scheduler.ts)
 export type ContinueMode = 'never' | 'deps-ok' | 'always'
@@ -1135,6 +1146,7 @@ export interface PreparedRun {
   localCache: Cache
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
+  cacheScope: string | undefined
   remotes: ResolvedRemote[]
   priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
@@ -1219,10 +1231,17 @@ export interface RefusalParts {
 export interface RemoteCacheLayer {
   readonly endpoint?: string
   open?(ctx: RemoteOpenContext): Promise<void>
-  has(hash: string): Promise<boolean>
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
-  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  has(hash: string, at?: RemoteKey): Promise<boolean>
+  hasMany?(hashes: readonly string[], at?: readonly RemoteKey[]): Promise<Set<string> | null>
+  get(
+    hash: string,
+    at?: RemoteKey,
+  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  put(hash: string, body: Blob, meta: { durationMs: number } & RemoteKey): Promise<void>
+}
+== type RemoteKey (src/cache/layered-cache.ts)
+export interface RemoteKey {
+  readonly scope?: string
 }
 == type RemoteKeyTraffic (src/cache/cache.ts)
 export interface RemoteKeyTraffic {
@@ -1239,7 +1258,6 @@ export interface RemoteOpenContext extends PluginSecrets {
 export interface RemoteTraffic {
   inFlight: number
   readonly keys: Map<string, RemoteKeyTraffic>
-  readonly aliases: Map<string, string>
 }
 == type ResolvedRemote (src/cache/remote-lane.ts)
 export interface ResolvedRemote {
@@ -1279,6 +1297,7 @@ export interface RunContext {
   runId?: string | undefined
   concurrency?: number
   remoteCacheEnabled: boolean
+  cacheScope?: string | undefined
   cache?: {
     local: boolean
     localWrite: boolean
@@ -1352,6 +1371,8 @@ export interface RunOptions {
   cacheFlags?: CacheFlags
   remoteRequested?: boolean
   cacheScope?: string
+  scopeChanges?: AffectedChanges
+  scopeBase?: string
   remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
@@ -1448,7 +1469,6 @@ export interface RunResult {
 export interface RunSettings {
   concurrency?: number | `${number}%`
   schedule?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
-  affectedBase?: string
   timeout?: Duration
   retries?: number
   continue?: 'never' | 'deps-ok' | 'always'
@@ -1832,7 +1852,7 @@ export interface UploadTally {
 == type VxPlugin (src/orchestrator/plugin.ts)
 export interface VxPlugin {
   readonly name: string
-  config?(workspace: WorkspaceConfig, ctx: WorkspaceHookContext): void | Promise<void>
+  config?(workspace: WorkspaceConfig, ctx: ConfigContext): void | Promise<void>
   discover?(
     ctx: DiscoverContext,
   ): readonly DiscoveredProject[] | Promise<readonly DiscoveredProject[]>
@@ -1871,6 +1891,7 @@ export interface WatchSettings {
 }
 == type WorkspaceConfig (src/config.ts)
 export interface WorkspaceConfig {
+  baseBranch?: string
   run?: RunSettings
   cache?: CacheSettings
   lock?: LockSettings
