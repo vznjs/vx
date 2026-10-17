@@ -38,7 +38,7 @@ patched package. A claimant without `extraFiles` widens to every
 project (`affected.ts`). A lockfile without the key is not parsed.
 
 The same holds for any file a claim's `extraFiles` names, and for a
-directory it names (a `file:` dependency pnpm or bun copies at install, or npm links):
+directory it names (a `file:` dependency a manager copies at install or links, or a `link:` / `portal:` directory that is no workspace):
 a changed path outside every project below the root loads the claims,
 and one equal to or under a named path asks the claimant about its
 lockfile. A directory's two sides are not its bytes; they differ, so only

@@ -54,7 +54,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 16
+const DIGEST_VERSION = 17
 
 interface Manager {
   readonly name: string
@@ -152,8 +152,9 @@ const MANAGERS = {
   yarn: {
     name: 'yarn',
     files: ['yarn.lock'],
-    digest: (t) => yarnLock().importerDigests(yarnParse(t)),
+    digest: (t, files) => yarnLock().importerDigests(yarnParse(t), files),
     importers: (t) => yarnLock().importerLinks(yarnParse(t)),
+    extraFiles: (t) => yarnLock().fileDeps(yarnParse(t)),
     recorded: (t) => {
       const lock = yarnParse(t)
       const out = new Map<string, ReadonlyMap<string, unknown>>()

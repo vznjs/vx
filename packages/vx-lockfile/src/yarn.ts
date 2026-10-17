@@ -349,6 +349,12 @@ function linkedDir(
   dirOf: ReadonlyMap<string, string>,
   id: string,
 ): string | undefined {
+  const target = linkPath(dirOf, id)
+  return target !== undefined && lock.workspaces.has(target) ? target : undefined
+}
+
+/** The root-relative directory a berry `link:` or `portal:` entry symlinks. */
+function linkPath(dirOf: ReadonlyMap<string, string>, id: string): string | undefined {
   const m = /^(?:@[^@/]+\/)?[^@]+@(?:link|portal):([^:]*)::locator=([^&]+)/.exec(id)
   if (m === null) return undefined
   let locator: string
@@ -358,9 +364,36 @@ function linkedDir(
     return undefined
   }
   const from = dirOf.get(locator)
-  if (from === undefined) return undefined
-  const target = joinPosix(from, m[1]!)
-  return target !== undefined && lock.workspaces.has(target) ? target : undefined
+  return from === undefined ? undefined : joinPosix(from, m[1]!)
+}
+
+/**
+ * Each entry's directory whose content is what a task reads and the file
+ * pins nowhere: berry's `link:` / `portal:` to a directory that is no
+ * workspace (a symlink), and classic's `file:` (a copy, no hash). Berry's
+ * `file:` carries its own `::hash=`.
+ */
+function contentDirs(lock: Lockfile): Map<string, string> {
+  const out = new Map<string, string>()
+  if (lock.generation === 'classic') {
+    for (const id of lock.entries.keys()) {
+      const at = id.indexOf('@file:', 1)
+      if (at !== -1) out.set(id, id.slice(at + '@file:'.length))
+    }
+    return out
+  }
+  const dirOf = new Map<string, string>()
+  for (const [dir, id] of lock.workspaces) dirOf.set(id, dir)
+  for (const id of lock.entries.keys()) {
+    const target = linkPath(dirOf, id)
+    if (target !== undefined && target !== '.' && !lock.workspaces.has(target)) out.set(id, target)
+  }
+  return out
+}
+
+/** The directories `contentDirs` names, for the claim to hash. */
+export function fileDeps(lock: Lockfile): string[] {
+  return [...new Set(contentDirs(lock).values())].sort()
 }
 
 /** The entry a descriptor the file keys resolves to: as written, bound to `from`, or with berry's `npm:` prefix. */
@@ -383,13 +416,20 @@ function keyedDescriptor(
  * one digest is the root's (`.`) over every entry the file resolves —
  * coarse, and honest about what classic records.
  */
-export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
+export function importerDigests(
+  lock: Lockfile,
+  files: ReadonlyMap<string, string> = new Map(),
+): ReadonlyMap<string, string> {
   const index = new Map<string, number>()
   const material: string[] = []
   const edges: number[][] = []
+  const dirs = contentDirs(lock)
   for (const [id, e] of lock.entries) {
     index.set(id, material.length)
-    material.push(e.resolution)
+    const dir = dirs.get(id)
+    material.push(
+      dir === undefined ? e.resolution : `${e.resolution}\nfile\0${files.get(dir) ?? ''}`,
+    )
     edges.push([])
   }
   for (const [id, e] of lock.entries) {
