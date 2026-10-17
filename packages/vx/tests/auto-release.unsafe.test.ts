@@ -77,9 +77,13 @@ describe('auto-release.yml', () => {
     expect(checkout?.with).toEqual({ ref: 'main', 'fetch-depth': 0 })
   })
 
-  it('holds only the two grants it uses, and none at the top', () => {
+  it('holds only the grants it uses, and none at the top', () => {
     expect(auto.permissions).toEqual({})
-    expect(job?.permissions).toEqual({ contents: 'write', actions: 'write' })
+    expect(job?.permissions).toEqual({
+      contents: 'write',
+      actions: 'write',
+      'id-token': 'write',
+    })
   })
 
   it('dispatches release.yml and npm.yml with inputs each of them declares', () => {
