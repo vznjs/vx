@@ -18,7 +18,7 @@ const FILE_PREFIX_MTIME = -2
 import type { Database } from 'bun:sqlite'
 import { inHashes, lazyStatement } from './schema.js'
 import { modeMatches } from './umask.js'
-import { lstatSync, statSync } from 'node:fs'
+import { lstatSync, readlinkSync, statSync } from 'node:fs'
 import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -30,6 +30,19 @@ import {
   type OutputFileRow,
   WORKSPACE_OUTPUT_PREFIX,
 } from './layer.js'
+
+/**
+ * The mode a symlink output's row carries (S_IFLNK): its size is the
+ * target's byte length and its mtime the target's CRC-32.
+ */
+export const LINK_MODE = 0o120000
+
+/** A link row is current while a link with that target stands there; never followed. */
+function linkCurrent(abs: string, e: { size: number; mtimeMs: number }): boolean {
+  if (!lstatSync(abs).isSymbolicLink()) return false
+  const to = readlinkSync(abs, 'buffer')
+  return to.byteLength === e.size && Bun.hash.crc32(to) === e.mtimeMs
+}
 
 export class OutputIndex {
   private readonly insertOutputFile: ReturnType<Database['prepare']>
@@ -207,6 +220,7 @@ export class OutputIndex {
     // graph stage 100 → 54 ms, the whole process 422 → 368 ms.
     const results = expected.map((e) => {
       try {
+        if (e.mode === LINK_MODE) return linkCurrent(path.join(projectDir, e.path), e)
         const s = statSync(path.join(projectDir, e.path))
         // An empty output directory: current while a directory stands there.
         if (e.path.endsWith('/')) return s.isDirectory()
@@ -327,7 +341,7 @@ export class OutputIndex {
     const rows = this.rowsOf(hash)
     const stamps: Array<[string, number, number]> = []
     for (const e of rows) {
-      if (e.path.endsWith('/')) continue
+      if (e.path.endsWith('/') || e.mode === LINK_MODE) continue
       const ws = e.path.startsWith(WORKSPACE_OUTPUT_PREFIX)
       const abs = ws
         ? path.join(workspaceRoot, e.path.slice(WORKSPACE_OUTPUT_PREFIX.length))

@@ -116,9 +116,8 @@ export type SaveArgs = {
   projectDir: string
   outputFiles: string[] // absolute paths
   workspaceOutputFiles?: string[] // absolute paths of outputs.workspaceFiles matches
-  workspaceRoot?: string // required alongside workspaceOutputFiles
+  workspaceRoot?: string // required alongside workspaceOutputFiles; an output symlink must stay inside it
   inputComponents?: readonly TaskInputRow[] // entry_inputs rows, written in the save's transaction
-  readable?: (real: string) => boolean // a sandboxed task's reach: a link to what it could not read is refused
 }
 
 // Namespace discriminator for workspace outputs in the artifact and
@@ -673,7 +672,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v44'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v45'`; `SCHEMA_VERSION` is
 `'v40'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

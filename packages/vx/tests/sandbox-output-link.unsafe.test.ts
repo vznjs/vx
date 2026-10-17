@@ -1,12 +1,10 @@
-// vx packs a symlinked output as its target's bytes, outside the sandbox.
-// A sandboxed task denied a file in its own project (`read: ['src/']`
-// leaves `.env` out) could still plant `dist/x -> ../.env`: making a link
-// reads nothing. Seatbelt and an untraced Linux let it through, and the
-// save put `.env` in the cache and the remote. Linux's tracer failed it,
-// but only by judging the link by its target, which failed every link to
-// a file the task could read too (`ln -s ../src/a.ts dist/a`).
-import { readFile, rm } from 'node:fs/promises'
-import { realpathSync } from 'node:fs'
+// vx packs outputs outside the sandbox. A sandboxed task denied a file in
+// its own project (`read: ['src/']` leaves `.env` out) could still plant
+// `dist/x -> ../.env`: making a link reads nothing, and packing the link as
+// its target's bytes put `.env` in the cache and the remote. A link is now
+// kept as the link, so no byte of its target is read, whatever the task
+// may read; Linux's tracer must not fail the task for making it.
+import { readlink, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -16,12 +14,12 @@ import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('sandbox output link test')
 
-const config = (read: string, command = 'ln -sf ../.env dist/x') => `
+const config = (read: string) => `
   export default {
     tasks: {
       build: {
         exec: {
-          command: ${JSON.stringify(command)},
+          command: 'ln -sf ../.env dist/x',
           sandbox: { allow: { read: [${JSON.stringify(read)}], write: ['dist/'] } },
         },
         inputs: { files: ['package.json'] }, cache: { outputs: { files: ['dist/**'] } },
@@ -30,64 +28,37 @@ const config = (read: string, command = 'ln -sf ../.env dist/x') => `
   }
 `
 
-describe.skipIf(!available)('a sandboxed task linking an output to a file it cannot read', () => {
+describe.skipIf(!available)('a sandboxed task linking an output to its .env', () => {
   it(
-    'fails the save and stores none of the target; a readable target still caches',
+    'caches the link and stores none of the target, readable or not',
     async () => {
       const root = await makeWorkspace({ prefix: 'vx-sandbox-outlink-' })
       try {
+        const dirs: string[] = []
         for (const [name, read] of [
           ['denied', 'src/'],
           ['granted', '.'],
         ] as const) {
-          await addProject(root, name, {
-            config: config(read),
-            files: { '.env': `${name.toUpperCase()}-ENV-SECRET\n`, 'src/a.ts': '' },
-          })
+          dirs.push(
+            await addProject(root, name, {
+              config: config(read),
+              files: { '.env': `${name.toUpperCase()}-ENV-SECRET\n`, 'src/a.ts': '' },
+            }),
+          )
         }
         const r = await summarized(root, ['denied#build', 'granted#build'])
         expect(r.code).toBe(0)
-        expect(r.text).toContain(
-          `output dist/x is a symlink to ${path.join(realpathSync(root), 'packages', 'denied', '.env')}, which the task's sandbox does not let it read`,
-        )
-        expect(r.text).not.toContain(
-          'output dist/x is a symlink to ' + path.join(root, 'packages', 'granted'),
-        )
-        const held = { denied: false, granted: false }
-        for (const [, bytes] of storedBytesUnder(root)) {
-          const text = new TextDecoder().decode(Bun.zstdDecompressSync(bytes))
-          if (text.includes('DENIED-ENV-SECRET')) held.denied = true
-          if (text.includes('GRANTED-ENV-SECRET')) held.granted = true
-        }
-        expect(held).toEqual({ denied: false, granted: true })
-        expect(await readFile(path.join(root, 'packages', 'denied', '.env'), 'utf8')).toBe(
-          'DENIED-ENV-SECRET\n',
-        )
-      } finally {
-        await rm(root, { recursive: true, force: true })
-      }
-    },
-    TIMEOUT,
-  )
-})
-
-describe.skipIf(!available)('a sandboxed task linking an output to a file it can read', () => {
-  it(
-    'is no violation, and the link caches as the file',
-    async () => {
-      const root = await makeWorkspace({ prefix: 'vx-sandbox-outlink-ok-' })
-      try {
-        const dir = await addProject(root, 'app', {
-          config: config('src/', 'ln -sf ../src/a.ts dist/a'),
-          files: { 'src/a.ts': 'export const a = 1\n' },
-        })
-        const r = await summarized(root, ['app#build'])
         expect(r.text).not.toContain('violation')
-        expect(r.tasks.get('app#build')?.['status']).toBe('success')
-        await rm(path.join(dir, 'dist', 'a'))
-        const again = await summarized(root, ['app#build'])
-        expect(again.tasks.get('app#build')?.['status']).toBe('cache-hit')
-        expect(await readFile(path.join(dir, 'dist', 'a'), 'utf8')).toBe('export const a = 1\n')
+        expect(r.text).not.toContain('cache save failed')
+        for (const [, bytes] of storedBytesUnder(root)) {
+          expect(new TextDecoder().decode(Bun.zstdDecompressSync(bytes))).not.toContain(
+            'ENV-SECRET',
+          )
+        }
+        for (const dir of dirs) await rm(path.join(dir, 'dist', 'x'))
+        const again = await summarized(root, ['denied#build', 'granted#build'])
+        expect(again.tasks.get('denied#build')?.['status']).toBe('cache-hit')
+        for (const dir of dirs) expect(await readlink(path.join(dir, 'dist', 'x'))).toBe('../.env')
       } finally {
         await rm(root, { recursive: true, force: true })
       }

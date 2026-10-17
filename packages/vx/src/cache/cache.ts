@@ -109,7 +109,7 @@ import {
   zstdEncoder,
 } from './zstd.js'
 import { FileHashStore } from './file-hashes.js'
-import { OutputIndex } from './output-index.js'
+import { LINK_MODE, OutputIndex } from './output-index.js'
 import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
 import { behindLink } from './linked-inputs.js'
@@ -2131,7 +2131,6 @@ export class Cache implements CacheLayer {
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
     /** See `CacheLayer.save`. */
-    readable?: ((real: string) => boolean) | undefined
   }): Promise<void> {
     // Layout (v17, extended additively for workspaceFiles): one
     // `<hash>.tar.zst` per entry. Tar carries ONLY the things you'd
@@ -2333,7 +2332,6 @@ export class Cache implements CacheLayer {
     outputDirs?: string[]
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
-    readable?: ((real: string) => boolean) | undefined
   }): Promise<Uint8Array> {
     // stdout is ALWAYS present in the artifact, even if empty, so the
     // layout is predictable: a successful read finds `stdout` and
@@ -2357,8 +2355,7 @@ export class Cache implements CacheLayer {
       outputs: this.outputsOf(args),
       dirs: args.outputDirs?.map((d) => `outputs/${relPosix(args.projectDir, d)}`),
       exec: usageOfEntry(args.entry),
-      within: args.projectDir,
-      readable: args.readable,
+      root: args.workspaceRoot ?? args.projectDir,
     })
     if (plan.size > this.artifactCeiling) {
       throw new Error(
@@ -2496,7 +2493,10 @@ export class Cache implements CacheLayer {
             : `artifact was stored under another key (${scanned.key})`,
         )
       }
-      assertArtifactNames(hash, scanned.entries, meta.outputs, scanned.dirs)
+      assertArtifactNames(hash, scanned.entries, meta.outputs, [
+        ...scanned.dirs,
+        ...scanned.links.map(([name]) => name),
+      ])
     } catch (err) {
       if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
       if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
@@ -2537,6 +2537,18 @@ export class Cache implements CacheLayer {
         0,
         0,
         0,
+      ])
+    }
+    // A link's row: its rel, the target's length and CRC-32 where a file
+    // has its size and mtime, and the link type in the mode, so the hit's
+    // check compares the target and never follows it.
+    for (const [name, to] of scanned.links) {
+      const bytes = new TextEncoder().encode(to)
+      outputFileRows.push([
+        name.startsWith('outputs/') ? name.slice('outputs/'.length) : name,
+        bytes.byteLength,
+        LINK_MODE,
+        Bun.hash.crc32(bytes),
       ])
     }
     const stdoutText = scanned.stdout

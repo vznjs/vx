@@ -752,8 +752,8 @@ export function committedFiles(
 
 /**
  * The literal head of each output glob, walked: the scan follows a link
- * there (`dist -> ../elsewhere` for `dist/**`) and only there. A link to a
- * FILE is the archive's to judge (L-23); a dangling one the restore's.
+ * there (`dist -> ../elsewhere` for `dist/**`) and only there. A link
+ * below it is an output, kept as the link (`archive.ts`).
  */
 function refuseDirLinkedOut(projectDir: string, trees: readonly string[]): void {
   let realRoot: string | undefined
