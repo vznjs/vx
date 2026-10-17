@@ -1,9 +1,10 @@
 // A `file:` directory dependency: pnpm and bun copy the directory into
-// node_modules at install, and their lockfiles record only its path. An
-// edit inside it plus a reinstall changed what a task reads while no key
+// node_modules at install, npm links it, and their lockfiles record only
+// its path. An edit inside it changed what a task reads while no key
 // moved, so the hit replayed output built from the old copy (Growth,
-// file-dir-dep-stale.sh). The lockfile texts are the ones pnpm 10.28 and
-// bun 1.4 wrote for `"dep": "file:../../vendor/dep"` in packages/lib.
+// file-dir-dep-stale.sh). The lockfile texts are the ones pnpm 10.28,
+// bun 1.4 and npm 10.9 wrote for `"dep": "file:../../vendor/dep"` in
+// packages/lib.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -91,9 +92,32 @@ snapshots:
 }
 `,
   },
+  // npm links a `file:` directory into node_modules instead of copying it:
+  // what a task reads is the directory as it is now.
+  npm: {
+    file: 'package-lock.json',
+    text: `${JSON.stringify(
+      {
+        name: 'r',
+        lockfileVersion: 3,
+        requires: true,
+        packages: {
+          '': { name: 'r', workspaces: ['packages/*'] },
+          'node_modules/dep': { resolved: 'vendor/dep', link: true },
+          'node_modules/lib': { resolved: 'packages/lib', link: true },
+          'node_modules/other': { resolved: 'packages/other', link: true },
+          'packages/lib': { version: '1.0.0', dependencies: { dep: 'file:../../vendor/dep' } },
+          'packages/other': { version: '1.0.0' },
+          'vendor/dep': { version: '1.0.0' },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  },
 } as const
 
-for (const pm of ['pnpm', 'bun'] as const) {
+for (const pm of ['pnpm', 'bun', 'npm'] as const) {
   describe(`${pm}(): a \`file:\` directory dependency`, () => {
     let root: string
     beforeEach(async () => {
