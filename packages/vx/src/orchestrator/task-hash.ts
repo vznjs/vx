@@ -360,8 +360,9 @@ async function resolveKeyInput(
   // in-process blob-OID computation. Tasks declaring workspaceFiles
   // also merge the workspace-wide partition's OIDs (keyed by abs
   // path, so the two maps agree wherever they overlap).
-  let fileHashes = args.gitFilesCache?.oidsFor(args.node.projectDir)
-  if ((cfg.inputs?.workspaceFiles?.length ?? 0) > 0) {
+  // A fold that stops short of the files reads no OID: asking built the map.
+  let fileHashes = skipFiles ? undefined : args.gitFilesCache?.oidsFor(args.node.projectDir)
+  if (!skipFiles && (cfg.inputs?.workspaceFiles?.length ?? 0) > 0) {
     const wsOids = args.gitFilesCache?.oidsFor(args.workspaceRoot)
     if (wsOids !== undefined && wsOids !== fileHashes) {
       fileHashes = fileHashes === undefined ? wsOids : new Map([...wsOids, ...fileHashes])

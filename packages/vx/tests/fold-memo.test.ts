@@ -6,7 +6,10 @@
 import { Database } from 'bun:sqlite'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
+import { GitFilesCache } from '../src/cache/git-inputs.js'
+import type { Logger } from '../src/report/index.js'
+import { run } from './helpers/orchestrator.js'
 import { gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -117,3 +120,18 @@ it('a committed edit, a dirty edit, an untracked input and a new declaration eac
   build()
   expect(await runs()).toBe(6)
 }, 120_000)
+
+it('a key read back from the memo reads no index OID', async () => {
+  const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+  expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
+  // Each partition's OID map is built on its first read: 125,000 abs-path
+  // entries a warm 5,000-project run never needed were ~90 ms of it.
+  const reads = spyOn(GitFilesCache.prototype, 'oidsFor')
+  try {
+    expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
+    expect(reads).not.toHaveBeenCalled()
+  } finally {
+    reads.mockRestore()
+  }
+  expect(await runs()).toBe(1)
+}, 60_000)
