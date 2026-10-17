@@ -12,6 +12,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { wrapCommandWithSandboxMacOS } from '@anthropic-ai/sandbox-runtime/dist/sandbox/macos-sandbox-utils.js'
 import {
+  darwinAncestorRules,
+  darwinGrantRules,
   darwinWallRules,
   macProfileRules,
   resolveSandboxConfig,
@@ -178,6 +180,60 @@ describe('darwinWallRules', () => {
 
   it('CONTROL: no wall reached is no rule', () => {
     expect(darwinWallRules({ allowRead: ['/w/*'], allowWrite: [] }, [])).toEqual([])
+  })
+})
+
+// Linux makes every directory above a mount, so a task may list them;
+// seatbelt matches paths, so macOS grants the listing (2026-10-17).
+describe('darwinAncestorRules', () => {
+  it('lists the directories above a grant inside the anchor, and those a glob names', () => {
+    expect(
+      darwinAncestorRules(
+        {
+          allowRead: ['/w/packages/vx-*/package.json', '/w/a/**/*.ts', '/w/p/src'],
+          allowWrite: [],
+        },
+        ['/w'],
+      ),
+    ).toEqual([
+      '(allow file-read-data (literal "/w/packages"))',
+      '(allow file-read-data (literal "/w/a"))',
+      '(allow file-read-data (literal "/w/p"))',
+      '(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"^/w/packages/vx-[^/]*$")))',
+      '(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"^/w/a(/.*)?$")))',
+    ])
+  })
+
+  it('CONTROL: never the anchor itself, nor above it', () => {
+    expect(darwinAncestorRules({ allowRead: ['/w/x'], allowWrite: [] }, ['/w'])).toEqual([])
+  })
+
+  it('matches a regex special in the head as itself', () => {
+    expect(darwinAncestorRules({ allowRead: ['/w/a.b(1)+/*/x'], allowWrite: [] }, ['/w'])).toEqual([
+      '(allow file-read-data (literal "/w/a.b(1)+"))',
+      '(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"^/w/a[.]b[(]1[)][+]/[^/]*$")))',
+    ])
+  })
+
+  it('skips a name a seatbelt string cannot hold, rather than failing the task', () => {
+    expect(darwinAncestorRules({ allowRead: ['/w/a"b/x'], allowWrite: [] }, ['/w'])).toEqual([])
+  })
+
+  it('comes before the wall denies, so a wall under a `**` stays shut', () => {
+    const rules = darwinGrantRules(
+      {
+        allowRead: ['/w/a/**/*.ts'],
+        allowWrite: [],
+        wallsReached: { read: ['/w/a/b'], write: [] },
+      },
+      [],
+      ['/w'],
+    )
+    const listing = rules.indexOf(
+      '(allow file-read-data (require-all (vnode-type DIRECTORY) (regex #"^/w/a(/.*)?$")))',
+    )
+    const wall = rules.indexOf('(deny file-read-data (subpath "/w/a/b"))')
+    expect([listing >= 0, wall > listing]).toEqual([true, true])
   })
 })
 
