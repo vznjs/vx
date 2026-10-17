@@ -308,7 +308,8 @@ export async function affectedChanges(
     (claims ??= await args.fingerprintClaims?.())
   // A file a claimed lockfile names that its claimant keys but the
   // lockfile does not pin (`FingerprintClaim.extraFiles`: bun.lock's
-  // patches, a `file:` directory pnpm or bun copies at install) is part of
+  // patches, a `file:` directory pnpm or bun copies
+  // at install or npm links) is part of
   // that lockfile: a change to one, or under one, is a lockfile change the
   // claimant answers with it. Only a path no project below the root owns
   // can be one, so a diff inside the projects never loads the claims.

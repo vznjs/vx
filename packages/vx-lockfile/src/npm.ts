@@ -16,6 +16,8 @@ export interface Lockfile {
   readonly packages: ReadonlyMap<string, Entry>
   /** Material every workspace folds. */
   readonly global: string
+  /** Directories `file:` dependencies link to: not the root, not a workspace. */
+  readonly fileDirs: readonly string[]
 }
 
 export interface Entry {
@@ -46,8 +48,10 @@ export function parseLockfile(text: string): Lockfile {
       `package-lock.json: lockfileVersion ${version} has no \`packages\` map — npm 7+ writes version 2 or 3`,
     )
   }
+  const raws = record(d!['packages']) ?? {}
+  const globs = workspaceGlobs(raws[''])
   const packages = new Map<string, Entry>()
-  for (const [p, raw] of Object.entries(record(d!['packages']) ?? {})) {
+  for (const [p, raw] of Object.entries(raws)) {
     const e = record(raw) ?? {}
     const link = e['link'] === true && typeof e['resolved'] === 'string' ? e['resolved'] : undefined
     packages.set(p, {
@@ -59,14 +63,39 @@ export function parseLockfile(text: string): Lockfile {
               .join('\0')
           : '',
       link,
-      isWorkspace: p !== '' && !p.startsWith('node_modules/') && !p.includes('/node_modules/'),
+      isWorkspace:
+        p !== '' &&
+        !p.startsWith('node_modules/') &&
+        !p.includes('/node_modules/') &&
+        (globs === undefined || globs.some((g) => g.match(p))),
       peers: peerOnly(e),
     })
   }
   // Root `overrides` are not folded: what an override forced is the entry a
   // workspace reaches, and npm 10 does not write them here at all (D-142).
   const global = JSON.stringify({ lockfileVersion: version })
-  return { version, packages, global }
+  const fileDirs = new Set<string>()
+  for (const e of packages.values()) {
+    if (e.link !== undefined && e.link !== '' && packages.get(e.link)?.isWorkspace !== true) {
+      fileDirs.add(e.link)
+    }
+  }
+  return { version, packages, global, fileDirs: [...fileDirs].sort() }
+}
+
+/**
+ * The root's `workspaces` globs: what tells a workspace from a `file:`
+ * directory, both entries outside node_modules that a link resolves to.
+ * Taking every such entry for a workspace made `vendor/dep` a project, so
+ * an edit under it selected nothing. `undefined` when the root names none.
+ */
+function workspaceGlobs(root: unknown): Bun.Glob[] | undefined {
+  const ws = record(root)?.['workspaces']
+  const list = Array.isArray(ws) ? ws : record(ws)?.['packages']
+  if (!Array.isArray(list)) return undefined
+  return list
+    .filter((g): g is string => typeof g === 'string')
+    .map((g) => new Bun.Glob(g.replace(/^\.\//, '').replace(/\/+$/, '')))
 }
 
 /**
@@ -96,7 +125,10 @@ function resolve(lock: Lockfile, from: string, name: string): string | undefined
  * an edge per resolved dependency, a link's edge to its target — folded
  * by core's `reachDigests`.
  */
-export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
+export function importerDigests(
+  lock: Lockfile,
+  files: ReadonlyMap<string, string> = new Map(),
+): ReadonlyMap<string, string> {
   const index = new Map<string, number>()
   const material: string[] = []
   const edges: number[][] = []
@@ -108,6 +140,14 @@ export function importerDigests(lock: Lockfile): ReadonlyMap<string, string> {
     // The root and a workspace keep their path, which is who they are.
     material.push(`${p === '' || e.isWorkspace ? p : installName(p)}\0${e.resolution}`)
     edges.push([])
+  }
+  // npm links a `file:` directory, so what a task reads is its content now,
+  // which the lockfile does not record: an edit to it replayed a stale hit.
+  for (const dir of lock.fileDirs) {
+    const own = `\nfile\0${files.get(dir) ?? ''}`
+    const i = index.get(dir)
+    if (i !== undefined) material[i] += own
+    else for (const [p, e] of lock.packages) if (e.link === dir) material[index.get(p)!] += own
   }
   for (const [p, e] of lock.packages) {
     const from = index.get(p)!

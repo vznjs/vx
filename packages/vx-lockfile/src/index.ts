@@ -54,7 +54,7 @@ export interface LockfileOptions {
 }
 
 /** Bumps when a digest folds differently or the memo holds more (its identity). */
-const DIGEST_VERSION = 15
+const DIGEST_VERSION = 16
 
 interface Manager {
   readonly name: string
@@ -137,8 +137,9 @@ const MANAGERS = {
     name: 'npm',
     // npm reads npm-shrinkwrap.json over package-lock.json when both exist.
     files: ['npm-shrinkwrap.json', 'package-lock.json'],
-    digest: (t) => npmLock().importerDigests(npmParse(t)),
+    digest: (t, files) => npmLock().importerDigests(npmParse(t), files),
     importers: (t) => npmLock().importerLinks(npmParse(t)),
+    extraFiles: (t) => npmParse(t).fileDirs,
     recorded: (t) => {
       const out = new Map<string, ReadonlyMap<string, unknown>>()
       for (const [p, e] of npmParse(t).packages) {
