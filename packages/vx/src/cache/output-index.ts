@@ -433,10 +433,13 @@ export class OutputIndex {
     const results = rows.map((r) => {
       let st
       try {
-        st = lstatSync(path.join(projectDir, r.path))
+        // No throw for a missing dir: every restore after a clean asks
+        // about one, and an exception per hit cost more than the stat.
+        st = lstatSync(path.join(projectDir, r.path), { throwIfNoEntry: false })
       } catch {
         return r.mtimeMs === ABSENT_DIR_MTIME
       }
+      if (st === undefined) return r.mtimeMs === ABSENT_DIR_MTIME
       if (r.mtimeMs === ABSENT_DIR_MTIME) return false
       if (r.mtimeMs === FILE_PREFIX_MTIME) return st.isFile()
       return st.isDirectory() && Math.abs(st.mtimeMs - r.mtimeMs) < 1
