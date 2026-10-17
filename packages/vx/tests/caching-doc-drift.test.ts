@@ -86,10 +86,11 @@ describe('caching.md lists the key parts in the order key() folds them', () => {
       path.join(import.meta.dir, '..', 'src', 'cache', 'key-fold.ts'),
       'utf8',
     )
-    const body = src.slice(
-      src.indexOf('let h = xxh3(CACHE_VERSION)'),
-      src.indexOf('return h.toString(16)'),
-    )
+    // In fold order: foldHead's parts, then the files foldKey adds after it.
+    const head = src.slice(src.indexOf('export function foldHead('))
+    const body =
+      head.slice(0, head.indexOf('\n}\n')) +
+      src.slice(src.indexOf('let h = foldHead('), src.indexOf('return h.toString(16)'))
     expect(body.length).toBeGreaterThan(500)
     // Every labelled fold, in source order. A part folded per-item (the
     // `${n}\0${v}` pairs) carries no label of its own — the count line above
