@@ -128,6 +128,24 @@ describe('applyFilters', () => {
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['ui'])
   })
 
+  // Turbo's filter_name_on_cyclic_package_graph_selects_only_matching_package:
+  // a name filter on a graph with a cycle selects the one package, and the
+  // closure forms walk the cycle once.
+  it('a name filter on a cyclic package graph selects only that package', () => {
+    const cyclic = [
+      mkProject('a', `${ROOT}/packages/a`, ['b']),
+      mkProject('b', `${ROOT}/packages/b`, ['c']),
+      mkProject('c', `${ROOT}/packages/c`, ['a']),
+      mkProject('d', `${ROOT}/packages/d`),
+    ]
+    const g = buildPackageGraph(cyclic)
+    const pick = (f: string) =>
+      [...applyFilters({ filters: [parseFilter(f, ROOT)], projects: cyclic, graph: g })].sort()
+    expect(pick('b')).toEqual(['b'])
+    expect(pick('b...')).toEqual(['a', 'b', 'c'])
+    expect(pick('...b')).toEqual(['a', 'b', 'c'])
+  })
+
   it('glob name match', () => {
     const filters = [parseFilter('u*', ROOT)]
     expect([...applyFilters({ filters, projects, graph })].sort()).toEqual(['ui', 'utils'])

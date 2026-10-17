@@ -104,6 +104,8 @@ export interface DryTask {
   hash: string
   cacheStatus: string
   deps: string[]
+  /** Why `--affected` selected it: the file, and the dependencies it came through. */
+  affected?: { kind: string; file?: string; via?: string[] }
 }
 
 /** `vx run … --dry=json`, parsed; throws on a non-zero exit so a test reads the reason. */
