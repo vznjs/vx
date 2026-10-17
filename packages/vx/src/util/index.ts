@@ -74,6 +74,7 @@ export {
   taskGlob,
   wholeSubtreePrefixes,
   slashBraceExpansions,
+  braceAlternatives,
 } from './paths.js'
 export {
   claimExitForSignal,

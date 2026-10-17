@@ -34,6 +34,7 @@ import {
   relPosix,
   shellArgv,
   slashBraceExpansions,
+  braceAlternatives,
   splitNegations,
   staticPrefix,
   stripTrailingSlash,
@@ -274,7 +275,6 @@ function resolveWorkspaceFiles(args: {
 }): { files: Promise<string[]>; listing: InputListing } | undefined {
   const positive: string[] = []
   const negative: string[] = []
-  refuseOneAlternativeBrace(args.workspaceFiles, 'workspaceFiles')
   for (const entry of args.workspaceFiles) {
     if (entry.startsWith('!')) negative.push(entry.slice(1))
     else positive.push(entry)
@@ -1486,30 +1486,6 @@ function refuseUndecodable(
   )
 }
 
-const ONE_ALTERNATIVE_BRACE = /(?<!\\)\{[^{},]*\}/
-
-/**
- * `Bun.Glob` reads `{b}` as a brace of one alternative, so `src/{b}.ts`
- * matches `src/b.ts` and never a file named `{b}.ts`: that file stays out
- * of the key and an edit to it is a hit. Neither reading is sure to be
- * the one meant, so the entry is refused with both spellings.
- */
-function refuseOneAlternativeBrace(
-  entries: readonly string[],
-  field: 'files' | 'workspaceFiles',
-): void {
-  for (const entry of entries) {
-    const m = ONE_ALTERNATIVE_BRACE.exec(entry)
-    if (m === null) continue
-    const inner = m[0].slice(1, -1)
-    throw new UserError(
-      `inputs.${field}: "${entry}" holds a brace with one alternative, which matches ` +
-        `"${inner}" and never a name holding "${m[0]}". Write "${entry.replace(m[0], inner)}", ` +
-        `or "${entry.replace(m[0], `\\{${inner}\\}`)}" for the braces themselves.`,
-    )
-  }
-}
-
 /** What a `files` declaration and its task's outputs compile to, whatever the project. */
 interface FilesPlan {
   positive: string[]
@@ -1558,7 +1534,6 @@ function filesPlan(
   if (files === undefined) {
     positive.push(...DEFAULT_FILE_GLOBS)
   } else {
-    refuseOneAlternativeBrace(files, 'files')
     for (const entry of files) {
       if (entry.startsWith('!')) negative.push(entry.slice(1))
       else positive.push(entry)
@@ -1898,7 +1873,11 @@ export interface InputListing {
   literals: readonly string[]
 }
 
-function reachOf(positive: readonly string[]): { prefixes: string[]; literals: string[] } {
+function reachOf(entries: readonly string[]): { prefixes: string[]; literals: string[] } {
+  // Each alternative names what it would alone: `{gen/a.txt,gen/b.txt}`
+  // names both files, as `gen/{a,b}.txt` does; whole, it had no fixed
+  // prefix and named nothing (Growth's parity, 2026-10-17).
+  const positive = entries.flatMap(braceAlternatives)
   const prefixes = new Set<string>()
   for (const p of asTrees(positive)) {
     if (isLiteralPattern(p)) continue

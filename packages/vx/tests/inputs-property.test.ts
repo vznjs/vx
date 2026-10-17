@@ -38,20 +38,21 @@ const segs = (r: string): string[] => r.split('/')
 const base = (r: string): string => segs(r).at(-1)!
 const tree = (dir: string) => (r: string) => r === dir || r.startsWith(`${dir}/`)
 
-// The third field is the path an entry names outright (a literal, or a
-// glob's fixed directory): with nothing under it git reports, what is on
-// disk there is read anyway (owner, 2026-10-16).
-const POSITIVE: Array<[string, (r: string) => boolean, string?]> = [
+// The third field is the paths an entry names outright (a literal, or a
+// glob's fixed directory, each brace alternative on its own): with nothing
+// under one git reports, what is on disk there is read anyway (owner,
+// 2026-10-16).
+const POSITIVE: Array<[string, (r: string) => boolean, string[]?]> = [
   ['**/*', () => true],
   ['./**/*.ts', (r) => r.endsWith('.ts')],
-  ['src', tree('src'), 'src'],
-  ['src/', tree('src'), 'src'],
-  ['[id]/**', (r) => r.startsWith('[id]/'), '[id]'],
+  ['src', tree('src'), ['src']],
+  ['src/', tree('src'), ['src']],
+  ['[id]/**', (r) => r.startsWith('[id]/'), ['[id]']],
   ['**/.*', (r) => base(r).startsWith('.')],
   ['*.md', (r) => !r.includes('/') && r.endsWith('.md')],
-  ['{src,lib}/**', (r) => r.startsWith('src/') || r.startsWith('lib/')],
+  ['{src,lib}/**', (r) => r.startsWith('src/') || r.startsWith('lib/'), ['src', 'lib']],
   ['**/[id]/*', (r) => segs(r).at(-2) === '[id]'],
-  [`${HI}d`, tree(`${HI}d`), `${HI}d`],
+  [`${HI}d`, tree(`${HI}d`), [`${HI}d`]],
 ]
 const NEGATIVE: Array<[string, (r: string) => boolean]> = [
   ['!**/*.md', (r) => r.endsWith('.md')],
@@ -167,7 +168,7 @@ for (let seed = 1; seed <= 24; seed++) {
         fx,
         pos.map(([, p]) => p),
         neg.map(([, p]) => p),
-        pos.flatMap(([, , n]) => (n === undefined ? [] : [n])),
+        pos.flatMap(([, , n]) => n ?? []),
       )
       const populated = new GitFilesCache()
       await populateGitFilesCache(fx.root, projectDirs, populated)

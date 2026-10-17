@@ -430,7 +430,7 @@ export function slashBraceExpansions(pattern: string): string[] {
 }
 
 /** `pattern` with every brace group of two or more alternatives expanded. */
-function braceAlternatives(pattern: string): string[] {
+export function braceAlternatives(pattern: string): string[] {
   return expandBraces(pattern, false)
 }
 
