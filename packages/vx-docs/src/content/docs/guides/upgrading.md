@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: read vx docs from the version's tag on GitHub
+
+vx docs needs the network: it reads packages/vx/docs at the version's tag on GitHub and refuses with VX_E_NETWORK when it cannot. The npm package no longer ships docs/*.md.
+
 ## cache: read a warm task's key back from a files-fold memo
 
 The cache index moves to schema v42: the first run after upgrading drops the index once, so every cached task misses one time.

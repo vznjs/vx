@@ -47,6 +47,7 @@ import type { ClearResult } from '../src/cli/cache.js'
 import type { TaskNode } from '../src/graph/index.js'
 import { formatPlanJson, type PlanTaskJson } from '../src/cli/plan-format.js'
 import type { TaskStats } from '../src/cli/last.js'
+import { docsIn } from './helpers/docs-pages.js'
 import { declaredPaths, validate } from './helpers/json-schema.js'
 import { edgesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
@@ -296,7 +297,9 @@ beforeAll(async () => {
   } finally {
     await rm(fresh, { recursive: true, force: true })
   }
-  json('docs', ['cache', 'inputs', '--limit', '2'])
+  const d = await docsIn(['cache', 'inputs', '--limit', '2', '--format', 'json'])
+  if (d.code !== 0) throw new Error(`vx docs: ${d.code}\n${d.err}`)
+  outputs['docs']!.push(JSON.parse(d.out))
 }, TIMEOUT)
 
 afterAll(async () => {

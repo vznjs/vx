@@ -6,7 +6,7 @@ authors:
 tags:
   - ai
   - dx
-excerpt: 'Under --format json, a refusal is a JSON line with a stable code and a link to its fix. An agent branches on VX_E_UNKNOWN_TASK, not on the wording of a sentence, and vx docs <code> prints the fix offline.'
+excerpt: 'Under --format json, a refusal is a JSON line with a stable code and a link to its fix. An agent branches on VX_E_UNKNOWN_TASK, not on the wording of a sentence, and vx docs <code> prints the fix.'
 ---
 
 An agent that runs `vx run build --dry=json` reads stdout. When vx
@@ -36,8 +36,8 @@ is the contract; the message may change.
 
 ## Each code says the fix
 
-`docs` links that code's section. No network? The same section ships
-inside vx:
+`docs` links that code's section, and `vx docs` prints it in the
+terminal, as your version wrote it:
 
 ```sh frame="terminal"
 $ vx docs VX_E_UNKNOWN_TASK

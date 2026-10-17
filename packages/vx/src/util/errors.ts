@@ -97,7 +97,7 @@ export function wantsJson(argv: readonly string[]): boolean {
 /**
  * The JSON a verb that answers JSON prints for a refusal: one line. A
  * core code (`VX_E_…`) links its section of cli.md, which says the fix;
- * `vx docs <code>` prints the same section offline. A plugin's code has none.
+ * `vx docs <code>` prints the same section. A plugin's code has none.
  */
 export function errorDocument(code: string, message: string): string {
   const docs = code.startsWith('VX_E_')

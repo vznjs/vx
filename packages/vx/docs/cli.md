@@ -2159,7 +2159,7 @@ A verb asked for JSON (`--format json`, `--format=json`, `--dry=json`,
 before any `--`) answers a refusal on stdout too, as one line that
 `schemas/error.json` describes: `{"ok":false,"error":{"code","message","docs"}}`.
 `docs` links the code's section below, which says what to do;
-`vx docs <code>` prints that section offline. The exit code (1) and the
+`vx docs <code>` prints that section. The exit code (1) and the
 prose on stderr do not change. Branch on the code; the message may change.
 
 #### `VX_E_USAGE`
@@ -2257,6 +2257,14 @@ with. Pass a branch or commit you have locally, alone:
 A git command vx runs to read the diff failed; the message carries
 git's exit and its own words. Run that command in the workspace to see
 why (a broken index, a missing object in a partial clone).
+
+#### `VX_E_NETWORK`
+
+`vx docs` could not read its pages from GitHub: no network, a proxy that
+refuses, or GitHub's limit on anonymous listings. The message carries
+what failed. Retry with a network, set `GITHUB_TOKEN` or `GH_TOKEN` to
+lift the limit, or read the same pages on the site,
+`https://vznjs.github.io/vx/`.
 
 #### `VX_E_DEPENDS_ON`
 
@@ -2807,9 +2815,10 @@ parse error.
 
 ## `vx docs`
 
-`vx docs <query>` searches vx's reference with no network: `cli`,
-`schema`, `caching`, `execution`, `patterns`, `security` and `features`,
-which ship inside the package and the compiled binary. Each page is cut
+`vx docs <query>` searches vx's reference as this version wrote it:
+every page of `packages/vx/docs` at this vx's release tag on GitHub
+(`v<version>`; a source checkout reads `main`), read online each time,
+so nothing ships inside vx. Each page is cut
 at its headings; a section that holds every word of the query matches,
 and a word in its heading ranks it above any count in its text; a
 one-word query that titles a section, an error code
@@ -2821,8 +2830,9 @@ The guides live on the site: `https://vznjs.github.io/vx/llms.txt`
 indexes them.
 
 Exit codes: `0` the search ran, a search with no match included (it
-names the pages searched); `1` a missing query or a bad flag
-(`VX_E_USAGE`).
+names the tag searched); `1` a missing query or a bad flag
+(`VX_E_USAGE`), or the pages could not be read (`VX_E_NETWORK`, which
+names the site).
 
 ## `vx completions`
 

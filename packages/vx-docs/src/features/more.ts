@@ -588,7 +588,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Asked for JSON, a refusal is a JSON line with a stable code.',
     body: [
       'An agent that has to match the wording of an error message breaks when the message improves. vx gives every refusal a code that stays the same.',
-      'Unknown task, bad config, a graph cycle, no workspace: each has its own code, and a `docs` link to the fix. Offline, `vx docs <code>` prints the same fix.',
+      'Unknown task, bad config, a graph cycle, no workspace: each has its own code, and a `docs` link to the fix. `vx docs <code>` prints the same fix in the terminal.',
     ],
     example: {
       lang: 'text',
@@ -655,11 +655,11 @@ export const MORE: readonly Feature[] = [
   },
   {
     slug: 'vx-docs',
-    title: 'The reference, offline',
+    title: 'The reference at your version',
     category: 'insight',
-    hook: '`vx docs <query>` searches the CLI, config and cache reference with no network.',
+    hook: '`vx docs <query>` searches the reference your vx version wrote.',
     body: [
-      'The reference ships inside vx, so the answer matches the version you run, on a plane or in a locked-down CI box.',
+      'It reads the docs at your release tag on GitHub, so the answer matches the version you run, not the newest site.',
       'A query prints the best sections whole, with a link to each on the site. An error code prints its fix, and `--format json` hands the hits to an agent.',
     ],
     example: {
@@ -667,13 +667,13 @@ export const MORE: readonly Feature[] = [
       code: 'vx docs affected\nvx docs VX_E_CYCLE\nvx docs "remote cache" --format json',
     },
     image: 'vx-docs.png',
-    imageAlt: 'vx docs printing a reference section offline.',
+    imageAlt: 'vx docs printing a reference section.',
     docs: {
       label: 'vx docs',
       href: 'cli/#vx-docs',
     },
     deepDive: {
-      label: 'The reference, offline',
+      label: 'The reference at your version',
       href: 'blog/vx-docs-offline/',
     },
   },

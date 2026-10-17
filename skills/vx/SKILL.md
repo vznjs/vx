@@ -23,7 +23,7 @@ task failed or was skipped, or the command was refused. `vx last --format
 json` prints the run as JSON afterwards, a row per task. A refusal under
 `--format json` (or `--dry=json`) is one line on stdout,
 `{"ok":false,"error":{"code","message","docs"}}`: branch on `code`;
-`docs` (or `vx docs <code>` offline) says what to do.
+`docs` (or `vx docs <code>`) says what to do.
 Without a TTY a missing task name never prompts: vx exits 1 and lists the
 tasks it found.
 
@@ -95,9 +95,9 @@ vx info --format json   # vx and Bun versions, projects, config errors, plugins,
   the config, do not force. A task with no `inputs` has no key, so every
   cached task behind it misses: give it `inputs`.
 - Every JSON shape is a JSON Schema in `node_modules/@vzn/vx/schemas/`.
-- Offline reference: `vx docs <words> --format json` searches the CLI, config
-  and cache pages that ship with vx; the sections holding every word print
-  whole.
+- Reference: `vx docs <words> --format json` searches the reference pages at
+  this vx's release tag on GitHub (online); the sections holding every word
+  print whole.
 - Docs as markdown: https://vznjs.github.io/vx/llms.txt (its index).
   When that host is unreachable, the same pages are
   `https://raw.githubusercontent.com/vznjs/vx/main/packages/vx-docs/src/content/docs/<page>.md`:

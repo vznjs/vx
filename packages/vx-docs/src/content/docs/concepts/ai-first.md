@@ -74,8 +74,8 @@ A mistyped flag gets the right one back: `--concurency` hints
 ## Docs an agent can read
 
 [llms.txt](https://vznjs.github.io/vx/llms.txt) indexes every page as
-markdown, and `vx docs <query>` searches the reference that ships
-inside vx, offline.
+markdown, and `vx docs <query>` searches the reference at your vx's
+release tag.
 
 ## Still built for people
 

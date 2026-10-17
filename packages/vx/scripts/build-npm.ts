@@ -154,11 +154,6 @@ export function coreEntries(exports: Readonly<Record<string, unknown>>): readonl
 
 const PACKAGE_DATA = ['schemas'] as const
 
-async function docsPages(): Promise<string[]> {
-  const { PAGES } = await import('../src/cli/docs-corpus.ts')
-  return Object.keys(PAGES).map((p) => `docs/${p}.md`)
-}
-
 /**
  * Emit the primary `@vzn/vx` package — library source, the root shims, the
  * Node launcher and the manifest — into `<outDir>/vx`. Exported so the tree
@@ -190,9 +185,6 @@ export async function emitMainPackage(args: { version: string; outDir: string })
   for (const dir of PACKAGE_DATA) await cp(join(CORE, dir), join(mainDir, dir), { recursive: true })
   // At the repo root, where `npx skills add vznjs/vx` finds it.
   await cp(join(ROOT, 'skills'), join(mainDir, 'skills'), { recursive: true })
-  // The reference `vx docs` searches, where docs-corpus.ts imports it from.
-  const docs = await docsPages()
-  for (const f of docs) await cp(join(CORE, f), join(mainDir, f))
   await cp(join(CORE, 'npm-launcher.cjs'), join(mainDir, 'launcher.cjs'))
   await cp(join(CORE, 'npm-launcher.sh'), join(mainDir, 'launcher.sh'))
   await chmod(join(mainDir, 'launcher.sh'), 0o755)
@@ -221,7 +213,6 @@ export async function emitMainPackage(args: { version: string; outDir: string })
       ...entries,
       ...PACKAGE_DATA,
       'skills',
-      ...docs,
       'launcher.sh',
       'launcher.cjs',
       'README.md',
