@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, utimes, writeFile } from 'node:fs
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { isAlive, waitForDead } from './helpers/alive.js'
+import { isAlive, killIfAlive, waitForDead } from './helpers/alive.js'
 import { packagesSource, PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, gitIn, gitInit, makeWorkspace } from './helpers/workspace.js'
 import {
@@ -491,7 +491,7 @@ describe('vx watch with a persistent task (e2e)', () => {
       await watch.proc.exited
       watch = undefined
     }
-    for (const pid of await readPids()) if (isAlive(pid)) process.kill(pid, 'SIGKILL')
+    for (const pid of await readPids()) killIfAlive(pid)
     await rm(root, { recursive: true, force: true })
     await rm(outside, { recursive: true, force: true })
   })
