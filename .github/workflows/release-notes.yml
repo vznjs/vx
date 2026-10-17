@@ -18,16 +18,13 @@ concurrency:
   group: release-notes
   cancel-in-progress: false
 
-# The shared remote cache (turboCache() in .vx/workspace.ts).
-env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-
 jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write # editing a release's body
+      id-token: write # the remote cache's OIDC exchange (.vx/workspace.ts)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
