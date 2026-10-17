@@ -910,8 +910,8 @@ export const MORE: readonly Feature[] = [
     image: 'cache-scope.png',
     imageAlt: 'CI writing the remote cache, a laptop only reading.',
     docs: {
-      label: 'cache.scope',
-      href: 'schema/',
+      label: 'Cache scopes',
+      href: 'guides/ci/#cache-scopes-and-tokens',
     },
     deepDive: {
       label: 'The cache on your terms',
