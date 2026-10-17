@@ -378,7 +378,8 @@ plugin CLAIMS (`VxPlugin.fingerprint`, e.g. `pnpm-lock.yaml` under
 `@vzn/vx-lockfile`) is the exception on both sides: the key folds what the
 plugin says per project, so `--affected` asks the plugin which projects
 the change touches — given the bytes at the base ref and in the working
-tree — and selects those; only a plugin that cannot tell widens, as
+tree — and selects those. A patch edit that `bun.lock` names is asked
+about the same way, with the patch's bytes; only a plugin that cannot tell widens, as
 `@vzn/vx-lockfile` does for the install settings it claims (`.npmrc`,
 `bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`).
 

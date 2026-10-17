@@ -262,15 +262,29 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         // lockfile is broken" and "the base commit's is" — a migration
         // commit hits the second, and the bare parser message named
         // neither (2026-09-20).
-        const sideOf = (bytes: Uint8Array, side: string): ReadonlyMap<string, string> => {
+        // A changed extra file is folded by its content on each side; one
+        // left out is the same on both, so it moves no digest either way.
+        const extrasOf = (pick: 'before' | 'after'): Map<string, string> => {
+          const out = new Map<string, string>()
+          for (const [rel, sides] of change.extras ?? []) {
+            const bytes = sides[pick]
+            out.set(rel, bytes === null ? '' : xxh3hex(bytes))
+          }
+          return out
+        }
+        const sideOf = (
+          bytes: Uint8Array,
+          pick: 'before' | 'after',
+          side: string,
+        ): ReadonlyMap<string, string> => {
           try {
-            return digest(decode(bytes), new Map())
+            return digest(decode(bytes), extrasOf(pick))
           } catch (err) {
             throw new Error(`${err instanceof Error ? err.message : String(err)} (${side})`)
           }
         }
-        const before = sideOf(change.before, `as of the base ref`)
-        const after = sideOf(change.after, `in the working tree`)
+        const before = sideOf(change.before, 'before', `as of the base ref`)
+        const after = sideOf(change.after, 'after', `in the working tree`)
         const names: string[] = []
         for (const p of ctx.projects) {
           const importer = importerOf(ctx.workspaceRoot, p.dir)
@@ -278,6 +292,9 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
         }
         return names
       },
+      ...(options.extraFiles !== undefined
+        ? { extraFiles: (_file: string, bytes: Uint8Array) => options.extraFiles!(decode(bytes)) }
+        : {}),
     },
     async key(task, ctx) {
       const digests = await loadOnce(ctx)

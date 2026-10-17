@@ -781,6 +781,38 @@ describe('affectedProjects', () => {
       expect([...bare]).toEqual([])
     })
 
+    it('a claimant that reads the patch (`extraFiles`) is asked with its bytes and its answer selects', async () => {
+      const lock = '{"lockfileVersion":1,"patchedDependencies":{"x@1.0.0":"patches/x.patch"}}'
+      await writeFile(path.join(root, 'bun.lock'), lock)
+      await mkdir(path.join(root, 'patches'), { recursive: true })
+      await writeFile(path.join(root, 'patches/x.patch'), 'v1\n')
+      await git(root, 'add', '.')
+      await git(root, 'commit', '-q', '-m', 'patch')
+      await writeFile(path.join(root, 'patches/x.patch'), 'v2\n')
+      const asked: { file: string; extras?: ReadonlyMap<string, unknown> }[] = []
+      const out = await affectedProjects({
+        workspaceRoot: root,
+        since: 'HEAD',
+        projects,
+        fingerprintClaims: async () => ({
+          files: new Set(['bun.lock']),
+          extraFiles: () => ['patches/x.patch'],
+          affected: async (change) => {
+            asked.push(change)
+            return new Set(['b'])
+          },
+        }),
+      })
+      expect([...out]).toEqual(['b'])
+      expect(asked.map((c) => c.file)).toEqual(['bun.lock'])
+      const sides = asked[0]!.extras!.get('patches/x.patch') as {
+        before: Uint8Array
+        after: Uint8Array
+      }
+      expect(new TextDecoder().decode(sides.before)).toBe('v1\n')
+      expect(new TextDecoder().decode(sides.after)).toBe('v2\n')
+    })
+
     describe('a CLAIMED file asks its plugin instead of widening', () => {
       // The plugin folds what the file means per project, so the selection
       // question is the plugin's too: it sees the bytes at the base ref and

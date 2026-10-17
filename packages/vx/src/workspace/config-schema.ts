@@ -378,16 +378,21 @@ export function validateWorkspace(config: WorkspaceConfig, configPath: string): 
         }
       }
       if (plug.fingerprint !== undefined) {
-        const claim = plug.fingerprint as { files?: unknown; affected?: unknown } | null
+        const claim = plug.fingerprint as {
+          files?: unknown
+          affected?: unknown
+          extraFiles?: unknown
+        } | null
         if (
           claim === null ||
           typeof claim !== 'object' ||
           !Array.isArray(claim.files) ||
           claim.files.length === 0 ||
-          typeof claim.affected !== 'function'
+          typeof claim.affected !== 'function' ||
+          (claim.extraFiles !== undefined && typeof claim.extraFiles !== 'function')
         ) {
           throw new UserError(
-            `${configPath}: \`plugins[${i}].fingerprint\` of plugin '${pkg}' must be { files: [name, …], affected: function }`,
+            `${configPath}: \`plugins[${i}].fingerprint\` of plugin '${pkg}' must be { files: [name, …], affected: function, extraFiles?: function }`,
           )
         }
         for (const file of claim.files as unknown[]) {

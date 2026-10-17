@@ -515,6 +515,23 @@ describe('vx run with bun() declared', () => {
     expect(moved(before, await hashes())).toEqual(['a#build'])
   })
 
+  // The same edit selected every project: core saw a patch bun.lock names
+  // change and could not ask bun() about it, while only `a`'s key moved
+  // (Growth, bun-patch-affected-all.sh).
+  it('`--affected` after a patch edit selects only the project reaching it', async () => {
+    await mkdir(path.join(root, 'patches'), { recursive: true })
+    await writeFile(path.join(root, 'patches', 'bar.patch'), 'v1\n')
+    await writeFile(
+      path.join(root, 'bun.lock'),
+      lock({ top: '"patchedDependencies": { "bar@2.0.0": "patches/bar.patch" },' }),
+    )
+    const before = await hashes()
+    commitAll(root)
+    await writeFile(path.join(root, 'patches', 'bar.patch'), 'v2\n')
+    expect(moved(before, await hashes())).toEqual(['a#build'])
+    expect(affectedIds(root, 'build')).toEqual(['a#build'])
+  })
+
   it('`--affected` selects the projects the bump reaches', async () => {
     const git = (...args: string[]) =>
       Bun.spawnSync({

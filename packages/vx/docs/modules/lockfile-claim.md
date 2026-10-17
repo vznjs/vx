@@ -117,8 +117,10 @@ files; their content hashes reach `digest` and join the memo's identity
 and the workspace-scope key. The memo records the files and their hashes,
 so a warm run re-hashes the files it names and parses only when one
 moved; within a process the same identity gates the read beside the
-lockfile's, taken before each file is hashed. `--affected` does not yet see a change to one (a path no
-project owns): the key does.
+lockfile's, taken before each file is hashed. The claim's `extraFiles`
+names them to core, and `--affected` hands a changed one in
+`change.extras`, so `affected` digests both sides with its bytes. Today
+core asks only about the patches `bun.lock` names.
 
 ## What it does NOT do
 

@@ -285,6 +285,8 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         const before = folded(change.before)
         return before !== undefined && before === folded(change.after) ? [] : undefined
       },
+      extraFiles: (file, bytes) =>
+        claims.find((c) => c.file === file)?.claim.fingerprint.extraFiles?.(file, bytes) ?? [],
     },
     async key(task, ctx) {
       let settings = settingsPerRun.get(ctx)

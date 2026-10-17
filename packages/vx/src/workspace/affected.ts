@@ -122,7 +122,10 @@ export interface FingerprintClaims {
     file: string
     before: Uint8Array | null
     after: Uint8Array | null
+    extras?: ReadonlyMap<string, { before: Uint8Array | null; after: Uint8Array | null }>
   }): Promise<ReadonlySet<string> | undefined>
+  /** The files a claimed file names that its claimant keys too; absent = it reads none. */
+  extraFiles?(file: string, bytes: Uint8Array): readonly string[] | undefined
 }
 
 /**
@@ -305,30 +308,55 @@ export async function affectedChanges(
     (claims ??= await args.fingerprintClaims?.())
   // A patch bun.lock names folds into the key of the plugin that claims
   // bun.lock (`bun()`; the lockfile records no hash of it), so its edit
-  // widens as a lockfile edit does. A patch the lockfile no longer names
-  // moved bun.lock itself.
+  // is a bun.lock change the claimant answers with the patch's bytes
+  // (`FingerprintClaim.extraFiles`); one that cannot read them widens. A
+  // patch the lockfile no longer names moved bun.lock itself.
+  let patchClaim: { lock: Uint8Array; patch: string } | undefined
   if (changed.length > 0) {
     const lock = await bytesOrNull(path.join(args.workspaceRoot, 'bun.lock'))
     if (lock !== null) {
       const patches = new Set(bunPatchFiles(lock))
       const patch = changed.find((p) => patches.has(p))
       if (patch !== undefined && (await loadClaims())?.files.has('bun.lock')) {
-        return everything(patch)
+        patchClaim = { lock, patch }
       }
     }
   }
   const claimedOwned = new Map<string, string>()
   const rootNamesChanged = changed.filter((p) => !p.includes('/'))
+  if (patchClaim !== undefined && !rootNamesChanged.includes('bun.lock')) {
+    rootNamesChanged.push('bun.lock')
+  }
   const claimed = rootNamesChanged.length > 0 ? await loadClaims() : undefined
   for (const file of rootNamesChanged) {
     if (claimed === undefined || !claimed.files.has(file)) continue
-    const answer = await claimed.affected({
-      file,
-      before: await gitBytesAt(args.workspaceRoot, base, file),
-      after: await bytesOrNull(path.join(args.workspaceRoot, file)),
-    })
-    if (answer === undefined) return everything(file)
-    for (const name of answer) if (!claimedOwned.has(name)) claimedOwned.set(name, file)
+    const after =
+      file === 'bun.lock' && patchClaim !== undefined
+        ? patchClaim.lock
+        : await bytesOrNull(path.join(args.workspaceRoot, file))
+    const before = await gitBytesAt(args.workspaceRoot, base, file)
+    let extras: Map<string, { before: Uint8Array | null; after: Uint8Array | null }> | undefined
+    if (file === 'bun.lock' && patchClaim !== undefined) {
+      const named = new Set([
+        ...(before === null ? [] : (claimed.extraFiles?.(file, before) ?? [])),
+        ...(after === null ? [] : (claimed.extraFiles?.(file, after) ?? [])),
+      ])
+      const changedSet = new Set(changed)
+      extras = new Map()
+      for (const rel of named) {
+        if (!changedSet.has(path.posix.normalize(rel))) continue
+        extras.set(rel, {
+          before: await gitBytesAt(args.workspaceRoot, base, path.posix.normalize(rel)),
+          after: await bytesOrNull(path.join(args.workspaceRoot, rel)),
+        })
+      }
+      // A claimant naming no patch the diff changed cannot answer for it.
+      if (extras.size === 0) return everything(patchClaim.patch)
+    }
+    const answer = await claimed.affected({ file, before, after, ...(extras ? { extras } : {}) })
+    const why = extras === undefined ? file : patchClaim!.patch
+    if (answer === undefined) return everything(why)
+    for (const name of answer) if (!claimedOwned.has(name)) claimedOwned.set(name, why)
   }
 
   const realDirs = new Map(

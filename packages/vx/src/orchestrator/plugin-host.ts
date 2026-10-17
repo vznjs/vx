@@ -381,6 +381,36 @@ export async function claimedAffected(
   return names
 }
 
+/**
+ * The files a claimed file names that its plugin keys too
+ * (`FingerprintClaim.extraFiles`); `undefined` when it names none it can
+ * answer for, and a plugin that throws is refused by its name.
+ */
+export function claimedExtraFiles(
+  plugin: VxPlugin,
+  file: string,
+  bytes: Uint8Array,
+): readonly string[] | undefined {
+  const read = plugin.fingerprint?.extraFiles
+  if (read === undefined) return undefined
+  let names: unknown
+  try {
+    names = read.call(plugin.fingerprint, file, bytes)
+  } catch (err) {
+    throw new UserError(
+      maskedLine(
+        `plugin '${plugin.name}' failed in fingerprint: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    )
+  }
+  if (!Array.isArray(names) || names.some((n) => typeof n !== 'string')) {
+    throw new UserError(
+      `plugin '${plugin.name}' failed in fingerprint: extraFiles returned ${describeValue(names)}, not a list of paths`,
+    )
+  }
+  return names as string[]
+}
+
 /** What a run hands the `schedule` stage: a step per plugin, and where refined weights go. */
 export interface ScheduleRun {
   readonly step?: <T>(id: string, work: () => Promise<T>) => Promise<T>

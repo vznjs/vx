@@ -423,6 +423,14 @@ export interface FingerprintClaim {
     change: FingerprintChange,
     ctx: FingerprintContext,
   ): Iterable<string> | undefined | Promise<Iterable<string> | undefined>
+  /**
+   * The workspace-relative files a claimed file's bytes name that the
+   * plugin's key reads too: `bun.lock`'s patch files, which it names by
+   * path and hashes nowhere. A change to one asks `affected` about the
+   * file naming it, with `change.extras`. Without it, a patch edit
+   * selects every project.
+   */
+  extraFiles?(file: string, bytes: Uint8Array): readonly string[]
 }
 
 export interface FingerprintChange {
@@ -430,6 +438,11 @@ export interface FingerprintChange {
   readonly file: string
   readonly before: Uint8Array | null
   readonly after: Uint8Array | null
+  /** Each changed `extraFiles` entry, as the claimant names it, at the base ref and in the working tree. */
+  readonly extras?: ReadonlyMap<
+    string,
+    { readonly before: Uint8Array | null; readonly after: Uint8Array | null }
+  >
 }
 
 export interface FingerprintContext extends BaseContext {
