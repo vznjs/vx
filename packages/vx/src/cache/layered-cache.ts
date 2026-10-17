@@ -42,6 +42,8 @@ import type { PluginSecrets } from '../util/index.js'
 export interface RemoteOpenContext extends PluginSecrets {
   /** The run is on CI: nobody may be asked. */
   readonly ci: boolean
+  /** One line naming the plugin, for a fact that leaves the remote on. */
+  warn(message: string): void
 }
 
 /**

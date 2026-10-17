@@ -555,7 +555,8 @@ Every option falls back to the tool's own environment variable, so a self-hosted
 | Option            | Environment variable                                                                                                                     | Meaning                                                                                                                                                                                                                                                                       |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `apiUrl`          | `TURBO_API`                                                                                                                              | base URL of the cache server; default with a token: `https://vercel.com/api`; a `user:pass@` in it is refused                                                                                                                                                                 |
-| `token`           | `TURBO_TOKEN`                                                                                                                            | Bearer token on every request; then `.turbo/config.json`, then the OS keychain                                                                                                                                                                                                |
+| `token`           | `TURBO_TOKEN`                                                                                                                            | Bearer token on every request; then OIDC, `.turbo/config.json`, the OS keychain                                                                                                                                                                                               |
+| `oidc`            | `ACTIONS_ID_TOKEN_REQUEST_URL`, `ACTIONS_ID_TOKEN_REQUEST_TOKEN` (GitHub sets them)                                                      | `true` or `{ tokenUrl, revokeUrl, audience, params }`: exchange the GitHub Actions job's OIDC token for a short-lived one ([OIDC](#oidc-on-github-actions))                                                                                                                   |
 | `teamId`          | `TURBO_TEAMID`                                                                                                                           | `teamId` query parameter; required with `signatureKey`                                                                                                                                                                                                                        |
 | `teamSlug`        | `TURBO_TEAM`                                                                                                                             | `slug` query parameter                                                                                                                                                                                                                                                        |
 | `signatureKey`    | `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, read only under turbo.json's `remoteCache.signature: true` (or `TURBO_SIGNATURE`), as Turbo reads it | HMAC-SHA256 key (≥ 32 bytes, used raw); a download whose tag does not verify is a miss                                                                                                                                                                                        |
@@ -591,6 +592,20 @@ Every option falls back to the tool's own environment variable, and a missing to
 | `retries`     | —                                          | resends, as `turboCache()`'s (default 1)                                      |
 
 The Nx spec has no existence probe, so `has` (the `--dry` prediction; the prefetch pass calls `get`) is a `GET` whose body is cancelled before it answers. The wire carries no producing-task duration, so a remote hit reports none.
+
+## OIDC on GitHub Actions
+
+`turboCache({ oidc: true })` needs no `TURBO_TOKEN` secret on GitHub Actions: before the first task, when the run's policy uses the remote, it asks GitHub for the job's OIDC token (`ACTIONS_ID_TOKEN_REQUEST_URL`, with `audience` when given), exchanges it at the token endpoint (RFC 8693) for a short-lived cache token, and revokes that (RFC 7009) when the run ends. With Vercel's hosted cache the endpoints, Vercel's OAuth client id and `team_id_or_slug` (the team id, else slug; one is required) are the defaults, as Vercel's own action sends them; `params` adds fields such as `policy_id`. Any other server names its `tokenUrl` (and `revokeUrl`, or none); `params` carries its extras. `revokeUrl: false` skips the revoke.
+
+```yaml
+permissions:
+  id-token: write
+```
+
+- Order: the `token` option, `TURBO_TOKEN`, then OIDC, then `.turbo/config.json`, then the OS keychain.
+- A request is tried three times on a `429`, a `5xx` or no answer, 30 s each. A failed exchange is one warning and a local-only run; a failed revoke is a warning (the token expires on its own). No message quotes a token.
+- A job without `id-token: write` gets no OIDC variables: one warning, and the sources below OIDC answer. A pull request from a fork, and a Dependabot one, never gets an OIDC token.
+- `nxCache()` has no OIDC: Nx's cache spec names no exchange.
 
 ## Tokens and the OS keychain
 

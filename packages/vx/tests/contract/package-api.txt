@@ -1224,6 +1224,7 @@ export interface RemoteKeyTraffic {
 == type RemoteOpenContext (src/cache/layered-cache.ts)
 export interface RemoteOpenContext extends PluginSecrets {
   readonly ci: boolean
+  warn(message: string): void
 }
 == type RemoteTraffic (src/cache/cache.ts)
 export interface RemoteTraffic {

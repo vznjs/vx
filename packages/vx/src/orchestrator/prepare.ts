@@ -960,7 +960,11 @@ export async function openRemotes(
   for (const entry of remotes) {
     if (entry.remote.open === undefined || !(entry.read || entry.write)) continue
     try {
-      await entry.remote.open({ ci, ...secrets.for(entry.plugin ?? 'vx') })
+      await entry.remote.open({
+        ci,
+        warn: (message) => entry.onError?.(new Error(message)),
+        ...secrets.for(entry.plugin ?? 'vx'),
+      })
     } catch (err) {
       entry.read = false
       entry.write = false
