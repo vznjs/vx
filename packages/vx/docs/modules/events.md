@@ -19,7 +19,8 @@ run removes on its way out (`orchestrator.md`).
   hands to the sink's `warn` (stderr in the default logger).
 - `step:start` / `step:end` carry one of vx's own steps (`vx:uploads`,
   `<plugin>:setup`), emitted only where something renders them; `run:end`
-  is the graph's end and `run:done` the run's, just before the footer.
+  is the graph's end and `run:done` the run's, just before the footer;
+  `run:stop` says the run was stopped (once), so the region marks its rows.
   No step is a task: no outcome, history row or telemetry record holds one.
 - `terminalSubscriber(sink)` — drives a concrete renderer.
 - `WireEvent` + `toWireEvent` — the SERIALIZABLE projection (task ids

@@ -31,6 +31,7 @@ export interface Logger {
   stepStart?(id: string): void // one of vx's own steps (`vx:keys`) began; never a task
   stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
   runDone?(): void // the run's work is done; the footer follows
+  runStop?(): void // the run was stopped (a signal, an abort); idempotent
 }
 
 export interface OutputView {
@@ -175,7 +176,11 @@ ends. A failure logs a permanent one-liner the moment it lands
 region is rewritten in place, throttled with forced redraws on task
 events. At `runEnd` (the graph is done) its worker rows go and it
 keeps the footer and vx's own step rows (`tail`) until `runDone`, just
-before the final footer prints, removes it for good; the first
+before the final footer prints, removes it for good. A stop
+(`runStop`) keeps the region: running rows read `aborting` with their
+timers, blocked rows and the forecast go, each task that exits lists as
+an `aborted` (or `not run`) row, and the live footer counts them, so a
+slow stop never shows a blank screen (M, 2026-10-17); the first
 requested-task start in focused mode removes it too. A step
 (`stepStart` / `stepEnd`, ids `<owner>:<step>`) shows as a row below
 the worker rows once it has run `STEP_SHOWN_MS` (150 ms), bounded by

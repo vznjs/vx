@@ -603,6 +603,7 @@ async function runOnBus(
     handsTerminal: holders.size > 0,
     teardowns: prepared.plugins.filter((p) => p.teardown).length,
     onStop: () => {
+      log.runStop?.()
       stopRuntimeProbes(hashCache.runtime, hashCache.workspaceRuntime)
       cache.stopUploads?.()
       keeper?.stop()

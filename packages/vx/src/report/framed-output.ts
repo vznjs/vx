@@ -357,7 +357,8 @@ export function formatTaskRow(
   colors: ColorSupport = NO_COLOR,
 ): string {
   const st = cell(status, statusColor, STATUS_COL, colors)
-  const ca = cell(cache, cacheColor, CACHE_COL, colors)
+  // `aborting` runs one into the cache cell, which is blank beside it.
+  const ca = cell(cache, cacheColor, CACHE_COL - Math.max(0, status.length - STATUS_COL), colors)
   return ` ${glyph} ${timeCell(ms, colors)} ${st} ${ca} ${paintedId}`
 }
 

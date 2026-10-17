@@ -930,6 +930,7 @@ export interface Logger {
   runEnd?(): void
   stepStart?(id: string): void
   stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
+  runStop?(): void
   runDone?(): void
 }
 == type MigrationFormat (src/workspace/migration.ts)
@@ -1330,6 +1331,7 @@ export type RunEvent =
   | { kind: 'step:start'; id: string }
   | { kind: 'step:end'; id: string; durationMs: number; ok: boolean }
   | { kind: 'run:end' }
+  | { kind: 'run:stop' }
   | { kind: 'run:done' }
 == type RunEventSubscriber (src/report/events.ts)
 export type RunEventSubscriber = (event: RunEvent) => void

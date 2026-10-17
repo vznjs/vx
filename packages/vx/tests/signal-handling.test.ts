@@ -1179,7 +1179,7 @@ describe('forwardSignals in a process of its own', () => {
   })
 
   it(
-    'a signal clears the live region, stops the run, then SIGKILLs every child and closes the cache',
+    'a signal stops the run, keeps the live region until its summary, then SIGKILLs every child and closes the cache',
     async () => {
       const script = `
         import { appendFileSync, writeFileSync } from 'node:fs'
@@ -1226,7 +1226,7 @@ describe('forwardSignals in a process of its own', () => {
         proc.kill('SIGINT')
         expect(await proc.exited).toBe(130)
         expect(readFileSync(path.join(dir, 'events.txt'), 'utf8')).toBe(
-          'runDone\nstop SIGINT\nrunEnd\nclose\n',
+          'stop SIGINT\nrunEnd\nrunDone\nclose\n',
         )
         expect(await Promise.all(pids.map((p) => waitForDead(p, 3_000)))).toEqual([true, true])
       } finally {

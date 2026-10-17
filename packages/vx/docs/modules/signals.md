@@ -117,8 +117,10 @@ the process's signals passes `handleSignals: false`.
 - Return: the process handler exits once `run()` has left (or its bound
   has passed). The end-of-run shutdown of dependency-only persistent
   children is `persistent.ts`, with the same grace.
-- Run under a custom logger's control beyond `runEnd()`: the status
-  region is cleared so a TTY is not left with a frozen frame.
+- Clear the live region on the first signal: the stop marks its rows
+  `aborting` (`log.runStop`, run.ts) and the run's own end replaces it
+  with the footer. A second signal's exit calls `runEnd` then `runDone`,
+  so a TTY keeps no frozen region.
 
 ## Tests
 

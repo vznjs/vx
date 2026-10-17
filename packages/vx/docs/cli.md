@@ -3127,18 +3127,22 @@ its root; a skip with no failed upstream is fail-fast's and carries no
 suffix. A blocked group (a task with no command) has no row: it never
 starts by definition and no counter counts it.
 
-**Aborted and not-run rows.** After a stop (a shutdown signal), the
-task list names what it cut short (`aborted`, with its time so far) and
-what it reached first (`not run`). Neither reached the cache:
+**Aborted and not-run rows.** A stop (Ctrl-C, a shutdown signal)
+keeps the live view: each running row reads `aborting` with its timer
+until its task exits, and the task list names what the stop cut short
+(`aborted`, with its time so far) and what it reached first (`not
+run`). Neither reached the cache:
 
 ```
  ✗   2.41s aborted          app#dev
  ◌         not run          web#build
  ◌         not run          web#test
+     3.37s aborting         api#dev
 ```
 
-The tasks legend counts them in the total, each state its own segment
-of the bar: `2 success · 1 aborted · 2 not run · 5 total`. The total is
+The tasks legend counts them in the total as they land, each state its
+own segment of the bar: `2 success · 1 aborted · 2 not run · 5 total`.
+The summary then replaces the live view. The total is
 always last on its line. A framed task (focused or `full`) that
 printed while it stopped shows its frame instead of a row.
 

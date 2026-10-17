@@ -92,6 +92,8 @@ export interface Logger {
    */
   stepStart?(id: string): void
   stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
+  /** The run was stopped (a signal, an embedder's abort); its tasks are going down. Idempotent. */
+  runStop?(): void
   /** The run's work is done; the footer follows. Idempotent. */
   runDone?(): void
 }
@@ -386,6 +388,12 @@ export function defaultLogger(
   // The graph is done and vx's own closing steps run: the region stays,
   // footer and step rows, until the footer replaces it (M, 2026-10-15).
   let tail = false
+  // The run was stopped: the region stays, its running rows say
+  // `aborting`, and nothing is forecast or held (M, 2026-10-17).
+  let stopping = false
+  // Counted live once the run is stopping, as the footer counts them.
+  let stopped = 0
+  let notRun = 0
   // No footer before the run starts: vx's opening steps show alone.
   let started = false
   // vx's own steps running now, by id: a row once one passes STEP_SHOWN_MS.
@@ -467,7 +475,7 @@ export function defaultLogger(
     const now = Date.now()
     // A free row shows what it holds from the first frame: the graph
     // knows, without history (M, 2026-10-17).
-    if (forecastFn === undefined && graphForecast !== undefined && !tail)
+    if (forecastFn === undefined && graphForecast !== undefined && !tail && !stopping)
       for (let i = 0; i < shownSlots; i++)
         if (slots[i] === null) {
           forecastFn = graphForecast()
@@ -476,7 +484,7 @@ export function defaultLogger(
           break
         }
     // Twice a second at most: one pass over the unfinished graph.
-    if (forecastFn !== undefined && !tail && (force || now - etaAtMs >= 500)) {
+    if (forecastFn !== undefined && !tail && !stopping && (force || now - etaAtMs >= 500)) {
       etaAtMs = now
       const running = new Map<string, number>()
       for (const s of slots) if (s !== null) running.set(s.id, s.startedMs)
@@ -512,7 +520,9 @@ export function defaultLogger(
               failed,
               successful: succeeded + upToDate + restoredLocal + restoredRemote,
               skipped: skippedCount,
-              total,
+              total: total - stopped - notRun,
+              ...(stopped > 0 ? { aborted: stopped } : {}),
+              ...(notRun > 0 ? { notRun } : {}),
               upToDate,
               restoredLocal,
               restoredRemote,
@@ -521,8 +531,8 @@ export function defaultLogger(
               miss: succeeded + failed - noCache,
               noCache,
               savedMs,
-              left: total - done,
-              ...(etaMs !== undefined && !tail ? { etaMs } : {}),
+              left: total - done - stopped - notRun,
+              ...(etaMs !== undefined && !tail && !stopping ? { etaMs } : {}),
               buckets,
               spread:
                 spreadCount > 0
@@ -533,7 +543,7 @@ export function defaultLogger(
             colors,
             runContext,
           )
-    const held = blocked === undefined ? undefined : holdRows(blocked)
+    const held = blocked === undefined || stopping ? undefined : holdRows(blocked)
     const shownSteps: WorkerSlot[] = []
     for (const [id, startedMs] of steps)
       if (now - startedMs >= STEP_SHOWN_MS) shownSteps.push({ id, startedMs })
@@ -544,6 +554,7 @@ export function defaultLogger(
           slots: slots.slice(0, shownSlots),
           ...(held !== undefined ? { blocked: held } : {}),
           overflow: slotQueue.length,
+          ...(stopping ? { stopping } : {}),
           ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
           nowMs: Date.now(),
           summaryLines,
@@ -728,6 +739,13 @@ export function defaultLogger(
       if (durationMs < STEP_SHOWN_MS) return
       if (ok ? view.mode !== 'none' && view.mode !== 'errors-only' : view.mode !== 'none')
         emitLine(formatStepLine(id, durationMs, ok, colors))
+      refresh(true)
+    },
+    runStop() {
+      if (stopping) return
+      stopping = true
+      blocked = undefined
+      heldRows.length = 0
       refresh(true)
     },
     runDone() {
@@ -916,9 +934,13 @@ export function defaultLogger(
       // a ready one starts a fresh post-ready tail below.
       persistentTails.delete(node.id)
       // An aborted task (killed by a shutdown signal, or reached by the stop
-      // before it ran) frees its worker slot but is never counted live: the
-      // run is tearing down and it has no honest outcome.
+      // before it ran) frees its worker slot and counts as the footer will
+      // count it: `aborted` or `not run`, beside no total.
       if (outcome.status === 'aborted') {
+        if (!isGroupTask(node)) {
+          if (neverStarted(outcome)) notRun++
+          else stopped++
+        }
         const si = slots.findIndex((s) => s !== null && s.id === node.id)
         if (si >= 0) slots[si] = slotQueue.shift() ?? null
         else {

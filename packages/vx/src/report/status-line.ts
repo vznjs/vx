@@ -333,6 +333,8 @@ export interface StatusRegionState {
   blocked?: readonly (BlockedTask | null)[]
   /** Running tasks beyond the displayed slots. */
   overflow: number
+  /** The run was stopped: running rows say `aborting`, idle rows leave. */
+  stopping?: boolean
   /**
    * vx's own steps still running, shown below the worker rows: no worker
    * slot or `--concurrency` bounds them (M, 2026-10-15).
@@ -451,6 +453,7 @@ export function formatStatusRegion(
   // One task running has no path to compare against.
   const busy = s.slots.filter((x) => x !== null).length
   for (const [row, slot] of s.slots.entries()) {
+    if (slot === null && s.stopping === true) continue
     if (slot === null) {
       const w = s.blocked?.[row]
       lines.push(
@@ -463,6 +466,21 @@ export function formatStatusRegion(
     }
     // What waits on it, after the id: the row to watch is the one the
     // longest chain waits on, and the one the most tasks wait on.
+    if (s.stopping === true) {
+      lines.push(
+        formatTaskRow(
+          ' ',
+          Math.max(0, s.nowMs - slot.startedMs),
+          'aborting',
+          WARN,
+          '',
+          '',
+          paintPinnedId(slot.id, colors),
+          colors,
+        ),
+      )
+      continue
+    }
     const waiting = s.blocks?.get(slot.id) ?? 0
     const notes: string[] = []
     if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
