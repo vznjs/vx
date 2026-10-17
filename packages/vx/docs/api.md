@@ -1801,10 +1801,28 @@ plugin guide's example shows it).
 export interface RemoteCacheLayer {
   readonly endpoint?: string
   open?(ctx: RemoteOpenContext): Promise<void>
-  has(hash: string): Promise<boolean>
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
-  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  has(hash: string, at?: RemoteKey): Promise<boolean>
+  hasMany?(hashes: readonly string[], at?: readonly RemoteKey[]): Promise<Set<string> | null>
+  get(
+    hash: string,
+    at?: RemoteKey,
+  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  put(hash: string, body: Blob, meta: { durationMs: number } & RemoteKey): Promise<void>
+}
+```
+
+## `RemoteKey`
+
+type · `src/cache/layered-cache.ts`
+
+Where a remote call's key lives: `scope` names the branch scope a scoped
+key was derived in (`scopedKey`), absent for a task's own key. The key
+alone is enough; a backend that keeps one store per scope may use it to
+go straight to that store. turboCache(), nxCache() and vx-reapi ignore it.
+
+```ts
+export interface RemoteKey {
+  readonly scope?: string
 }
 ```
 
