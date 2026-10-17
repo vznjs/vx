@@ -27,12 +27,16 @@ export interface Lockfile {
   /** package name → every entry a descriptor of that name resolves to (berry only) */
   readonly names: ReadonlyMap<string, readonly string[]>
   /**
-   * `name@npm:range` → the entry of Yarn's builtin compat patch of it
-   * (`resolve`, `typescript`, `fsevents`; berry only). The workspace keeps
-   * asking for the plain descriptor, which keys the unpatched entry, while
-   * the patched one is what Yarn installs (item 1074).
+   * `name@npm:range` → the entries of every `patch:` over it (berry only):
+   * Yarn's builtin compat patches (`resolve`, `typescript`, `fsevents`,
+   * item 1074) and a root `resolutions` patch (`yarn patch-commit -s`).
+   * The workspace keeps asking for the plain descriptor, which keys the
+   * unpatched entry, while a patched one is what Yarn installs. A
+   * workspace asking for the plain descriptor beside one that names the
+   * patch itself reaches it too: a patch edit re-keys it once too often,
+   * never too seldom.
    */
-  readonly builtinPatches: ReadonlyMap<string, string>
+  readonly patches: ReadonlyMap<string, readonly string[]>
   readonly global: string
 }
 
@@ -66,7 +70,7 @@ function parseBerry(text: string): Lockfile {
   const descriptors = new Map<string, string>()
   const workspaces = new Map<string, string>()
   const names = new Map<string, string[]>()
-  const builtinPatches = new Map<string, string>()
+  const patches = new Map<string, string[]>()
   for (const [keys, raw] of Object.entries(d)) {
     if (keys === '__metadata') continue
     const e = record(raw) ?? {}
@@ -90,15 +94,17 @@ function parseBerry(text: string): Lockfile {
     for (const k of keys.split(',')) {
       const descriptor = k.trimStart()
       descriptors.set(descriptor, resolution)
-      const builtin = /@patch:(.+)#optional!builtin<[^>]*>$/.exec(descriptor)
-      if (builtin !== null) {
+      const patch = /@patch:(.+?)#/.exec(descriptor)
+      if (patch !== null) {
         let inner: string
         try {
-          inner = decodeURIComponent(builtin[1]!)
+          inner = decodeURIComponent(patch[1]!)
         } catch {
-          inner = builtin[1]!
+          inner = patch[1]!
         }
-        builtinPatches.set(inner, resolution)
+        const ids = patches.get(inner)
+        if (ids === undefined) patches.set(inner, [resolution])
+        else if (!ids.includes(resolution)) ids.push(resolution)
       }
       const name = descriptor.slice(0, descriptor.indexOf('@', 1))
       const ids = names.get(name)
@@ -115,7 +121,7 @@ function parseBerry(text: string): Lockfile {
     descriptors,
     workspaces,
     names,
-    builtinPatches,
+    patches,
     global: JSON.stringify({ version: meta['version'], cacheKey: meta['cacheKey'] }),
   }
 }
@@ -184,7 +190,7 @@ function parseClassic(text: string): Lockfile {
     descriptors,
     workspaces: new Map(),
     names: new Map(),
-    builtinPatches: new Map(),
+    patches: new Map(),
     global: 'classic',
   }
 }
@@ -257,11 +263,11 @@ function resolveDescriptor(
   name: string,
   range: string,
 ): readonly string[] {
-  // A descriptor Yarn compat-patches reaches the patched entry it installs
-  // as well as the plain one it keys (item 1074).
+  // A patched descriptor reaches the patched entries Yarn installs as well
+  // as the plain one it keys (item 1074).
   const withPatch = (descriptor: string, id: string): readonly string[] => {
-    const patched = lock.builtinPatches.get(descriptor)
-    return patched === undefined || patched === id ? [id] : [id, patched]
+    const patched = lock.patches.get(descriptor)
+    return patched === undefined ? [id] : [id, ...patched.filter((p) => p !== id)]
   }
   const direct = lock.descriptors.get(`${name}@${range}`)
   if (direct !== undefined) return withPatch(`${name}@${range}`, direct)
