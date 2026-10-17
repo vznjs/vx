@@ -199,8 +199,21 @@ function configObjectFormat(config: string): 'sha1' | 'sha256' | undefined {
 
 interface PartitionDigest {
   snapshot: readonly string[]
-  oids: Map<string, string> | undefined
+  oids: OidSlot | undefined
   digest: string
+}
+
+/**
+ * A partition's trusted OIDs, built on first read: a warm run whose keys
+ * come back from the fold memo reads none, and building 125,000 abs-path
+ * entries up front was ~90 ms of a 5,000-project warm run.
+ */
+class OidSlot {
+  private built: Map<string, string> | undefined
+  constructor(private build: () => Map<string, string>) {}
+  get map(): Map<string, string> {
+    return (this.built ??= this.build())
+  }
 }
 
 export class GitFilesCache extends Map<string, readonly string[]> {
@@ -218,7 +231,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * (`Cache.hashFile`) computes the identical blob OID from disk, so
    * dropping is a pure perf concession, never a correctness one.
    */
-  private oids = new Map<string, Map<string, string>>()
+  private oids = new Map<string, OidSlot>()
   /** Per partition, `filesDigest`'s answer and the snapshot and OIDs it describes. */
   private digests = new Map<string, PartitionDigest>()
   /**
@@ -422,7 +435,7 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     else this.changed.set(partitionDir, [...relPaths])
     // These paths just changed on disk; their index OIDs (if any) no
     // longer describe the working-tree content.
-    const partitionOids = this.oids.get(partitionDir)
+    const partitionOids = this.oids.get(partitionDir)?.map
     if (partitionOids) {
       for (const rel of relPaths) partitionOids.delete(path.resolve(partitionDir, rel))
     }
@@ -448,11 +461,12 @@ export class GitFilesCache extends Map<string, readonly string[]> {
 
   /** Trusted index OIDs for a project (abs path → oid), if any survive. */
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined {
-    return this.oids.get(projectDir)
+    return this.oids.get(projectDir)?.map
   }
 
-  setOids(projectDir: string, oids: Map<string, string>): void {
-    this.oids.set(projectDir, oids)
+  /** `oids`, or what builds them when a read first asks. */
+  setOids(projectDir: string, oids: Map<string, string> | (() => Map<string, string>)): void {
+    this.oids.set(projectDir, new OidSlot(typeof oids === 'function' ? oids : () => oids))
   }
 
   /** Snapshot if still valid for these input globs; undefined → re-spawn. */
@@ -1878,6 +1892,11 @@ export async function applyGitEnumeration(
     }
     return lo
   }
+  const rootOids = (): Map<string, string> => {
+    const oids = new Map<string, string>()
+    for (const [rel, oid] of trusted) oids.set(abs(rel), oid)
+    return oids
+  }
   for (const projectDir of projectDirs) {
     const spelled =
       base !== undefined && projectDir.startsWith(base) && path.normalize(projectDir) === projectDir
@@ -1890,8 +1909,6 @@ export async function applyGitEnumeration(
     const relPrefix = spelled.normalize('NFC')
     if (relPrefix === '' || relPrefix === '.') {
       cache.set(projectDir, all)
-      const rootOids = new Map<string, string>()
-      for (const [rel, oid] of trusted) rootOids.set(abs(rel), oid)
       cache.setOids(projectDir, rootOids)
       continue
     }
@@ -1899,18 +1916,25 @@ export async function applyGitEnumeration(
     const start = lowerBound(prefix)
     const end = lowerBound(`${relPrefix}0`)
     const matches: string[] = []
-    const projOids = new Map<string, string>()
     const projAbs =
       relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
+    const projOids = (): Map<string, string> => {
+      const oids = new Map<string, string>()
+      for (let i = start; i < end; i++) {
+        const rel = sorted[i]!
+        const oid = trusted.get(rel)
+        if (oid !== undefined) oids.set(projAbs(rel), oid)
+      }
+      return oids
+    }
     // One hash of the records joined: one per record was ~25 ms of 125,000.
     let records: string | undefined = ''
     for (let i = start; i < end; i++) {
       const rel = sorted[i]!
       const own = rel.slice(prefix.length)
       matches.push(own)
-      const oid = trusted.get(rel)
-      if (oid !== undefined) projOids.set(projAbs(rel), oid)
       if (records === undefined) continue
+      const oid = trusted.get(rel)
       if (oid === undefined || oid.startsWith('120000:') || undecodable?.has(rel) === true) {
         records = undefined
       } else records += `${own}\0${oid}\n`
@@ -1935,8 +1959,6 @@ export async function applyGitEnumeration(
     if (records !== undefined) cache.noteFilesDigest(projectDir, matches, xxh3hex(records))
   }
   if (workspaceWide) {
-    const rootOids = new Map<string, string>()
-    for (const [rel, oid] of trusted) rootOids.set(abs(rel), oid)
     cache.set(workspaceRoot, all)
     cache.setOids(workspaceRoot, rootOids)
     cache.setWorkspaceRoot(workspaceRoot)
