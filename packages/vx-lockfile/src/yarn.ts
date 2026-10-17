@@ -370,15 +370,16 @@ function linkPath(dirOf: ReadonlyMap<string, string>, id: string): string | unde
 /**
  * Each entry's directory whose content is what a task reads and the file
  * pins nowhere: berry's `link:` / `portal:` to a directory that is no
- * workspace (a symlink), and classic's `file:` (a copy, no hash). Berry's
+ * workspace (a symlink), and classic's `file:` (a copy, no hash) and
+ * `link:` (a symlink). Berry's
  * `file:` carries its own `::hash=`.
  */
 function contentDirs(lock: Lockfile): Map<string, string> {
   const out = new Map<string, string>()
   if (lock.generation === 'classic') {
     for (const id of lock.entries.keys()) {
-      const at = id.indexOf('@file:', 1)
-      if (at !== -1) out.set(id, id.slice(at + '@file:'.length))
+      const m = /^.[^@]*@(?:file|link):(.+)$/.exec(id)
+      if (m !== null) out.set(id, m[1]!)
     }
     return out
   }
