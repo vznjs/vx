@@ -1140,7 +1140,7 @@ describe('the plugins guide names the remote seam core defines', () => {
       name: m[1]!,
       optional: m[2] === '?',
     }))
-    expect(methods.map((m) => m.name).sort()).toEqual(['get', 'has', 'hasMany', 'put'])
+    expect(methods.map((m) => m.name).sort()).toEqual(['get', 'has', 'hasMany', 'open', 'put'])
     const page = section(readFileSync(path.join(GUIDES, 'plugins.md'), 'utf8'), 'Your own cache')
     for (const m of methods) expect(page).toContain('`' + m.name + '`')
     expect(methods.find((m) => m.name === 'hasMany')!.optional).toBe(true)

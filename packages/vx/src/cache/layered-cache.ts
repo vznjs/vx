@@ -36,6 +36,13 @@ import type {
 } from './cache.js'
 import type { OutputDirRow } from './cache.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
+import type { PluginSecrets } from '../util/index.js'
+
+/** What a remote's `open` is handed: the run's CI verdict and its plugin's keychain. */
+export interface RemoteOpenContext extends PluginSecrets {
+  /** The run is on CI: nobody may be asked. */
+  readonly ci: boolean
+}
 
 /**
  * What a remote cache layer must provide — THE plugin seam for remote
@@ -62,6 +69,17 @@ export interface RemoteCacheLayer {
    * dropped before it is printed.
    */
   readonly endpoint?: string
+  /**
+   * Optional: make the layer ready (read a credential, ask for one).
+   * Called once per run, in declared order, before the status line and the
+   * first task, and only when the run's policy lets this remote read or
+   * write: a `--cache-policy=remote:` run, `--no-cache` and a plan
+   * (`--dry`, `vx show`) never call it, so the other methods may be asked
+   * without it. A throw is a warning naming the plugin and turns the
+   * remote off for the run; the run goes on. `ctx.secret` reads the
+   * plugin's keychain and may ask on the terminal.
+   */
+  open?(ctx: RemoteOpenContext): Promise<void>
   /** Existence probe: `--dry` and `--force` ask it per key when the remote cannot batch. */
   has(hash: string): Promise<boolean>
   /**
@@ -99,7 +117,6 @@ export class LayeredCache implements CacheLayer {
   readonly hasRemote = true
 
   private readonly lanes: readonly RemoteLane[]
-  private readonly readable: readonly RemoteLane[]
 
   /**
    * In-flight remote pulls keyed by hash. `prefetch` and `get` both go
@@ -130,7 +147,11 @@ export class LayeredCache implements CacheLayer {
     remotes: readonly ResolvedRemote[],
   ) {
     this.lanes = remotes.map((r) => new RemoteLane(r, local.traffic))
-    this.readable = this.lanes.filter((l) => l.read)
+  }
+
+  // Asked, not kept: a remote whose `open` failed leaves the run after this is built.
+  private get readable(): RemoteLane[] {
+    return this.lanes.filter((l) => l.read)
   }
 
   key(input: CacheKeyInput): Promise<string> {

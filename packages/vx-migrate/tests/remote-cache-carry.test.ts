@@ -106,7 +106,7 @@ const every = (row: unknown) => ({
 })
 
 const SHARES = (factory: string, why: string) =>
-  `${factory}(): ${why}, so vx shares that remote cache (inert where the variable is unset).`
+  `${factory}(): ${why}, so vx shares that remote cache (token: the variable, else the OS keychain).`
 
 describe('a remote cache the repo shows is carried into the workspace file', () => {
   it(

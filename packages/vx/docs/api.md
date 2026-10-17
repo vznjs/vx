@@ -897,6 +897,16 @@ a run green on a status this build has never heard of.
 export function isPassStatus(status: string): boolean
 ```
 
+## `isSecretUnavailable`
+
+function · `src/util/secrets.ts`
+
+A `secret` rejection that is a missing secret, not a fault. By name: a plugin may load its own copy of core.
+
+```ts
+export function isSecretUnavailable(err: unknown): err is SecretUnavailable
+```
+
 ## `isUserError`
 
 function · `src/util/errors.ts`
@@ -1480,14 +1490,29 @@ export interface PluginOrigin {
 }
 ```
 
+## `PluginSecrets`
+
+type · `src/util/secrets.ts`
+
+A plugin's keychain, on the contexts of the hooks that run before the first task.
+
+```ts
+export interface PluginSecrets {
+  secret(req: SecretRequest): Promise<string>
+  forgetSecret(req: { readonly key: string }): Promise<void>
+}
+```
+
 ## `PluginSetupContext`
 
 type · `src/orchestrator/plugin.ts`
 
-What `setup` receives: the run's lifecycle, observe-only.
+What `setup` receives: the run's lifecycle, observe-only, and the
+plugin's keychain (`secret`, `forgetSecret`): setup runs before the
+status line, so a prompt there is seen.
 
 ```ts
-export interface PluginSetupContext extends BaseContext {
+export interface PluginSetupContext extends BaseContext, PluginSecrets {
   readonly cache: PluginCache
   readonly ci: boolean
   readonly branch: string | null
@@ -1509,6 +1534,7 @@ export interface PreparedRun {
   localCache: Cache
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
+  remotes: ResolvedRemote[]
   priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
   cacheFor: (plugin: string) => PluginCache
@@ -1732,10 +1758,23 @@ plugin guide's example shows it).
 ```ts
 export interface RemoteCacheLayer {
   readonly endpoint?: string
+  open?(ctx: RemoteOpenContext): Promise<void>
   has(hash: string): Promise<boolean>
   hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+}
+```
+
+## `RemoteOpenContext`
+
+type · `src/cache/layered-cache.ts`
+
+What a remote's `open` is handed: the run's CI verdict and its plugin's keychain.
+
+```ts
+export interface RemoteOpenContext extends PluginSecrets {
+  readonly ci: boolean
 }
 ```
 
@@ -2137,6 +2176,42 @@ export interface ScheduleHookContext extends BaseContext {
   readonly cache: PluginCache
   refine(weights: ReadonlyMap<string, number>): void
 }
+```
+
+## `SecretRequest`
+
+type · `src/util/secrets.ts`
+
+What `ctx.secret` is asked: the entry's name, and the question to ask on a terminal.
+
+```ts
+export interface SecretRequest {
+  readonly key: string
+  readonly prompt?: string
+}
+```
+
+## `SecretUnavailable`
+
+type · `src/util/secrets.ts`
+
+```ts
+export interface SecretUnavailable extends Error {
+  readonly reason: SecretUnavailableReason
+}
+```
+
+## `SecretUnavailableReason`
+
+type · `src/util/secrets.ts`
+
+Why `secret` had nothing: the keychain lacks it and no prompt was given
+(`not-found`), a prompt was given and nobody can answer — CI, no TTY, or
+the status line already up (`no-terminal`), the answer was empty
+(`declined`), or there is no keychain and no answer (`store-unavailable`).
+
+```ts
+export type SecretUnavailableReason = 'not-found' | 'no-terminal' | 'declined' | 'store-unavailable'
 ```
 
 ## `splitTaskId`

@@ -49,6 +49,7 @@ import {
   isUserError,
   detectColors,
   type ColorSupport,
+  SecretBroker,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
@@ -87,7 +88,7 @@ import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
-import { prepareRun, type PreparedRun } from './prepare.js'
+import { openRemotes, prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
 import { terminateChildren } from './signals.js'
 import { runStop } from './run-stop.js'
@@ -466,6 +467,9 @@ async function runOnBus(
           failures: keepRun.failures,
           traffic: prepared.localCache.traffic,
         })
+  // Before setup and the status line: a remote's `open` may ask on the terminal.
+  const secrets = new SecretBroker(ciContext.ci, warnOf(log))
+  const remotesClosed = await openRemotes(prepared.remotes, ciContext.ci, secrets)
   try {
     disposePlugins = await installPlugins({
       plugins: prepared.plugins,
@@ -476,6 +480,7 @@ async function runOnBus(
       cache: prepared.cacheFor,
       ci: ciContext.ci,
       branch: prepared.branch(),
+      secrets,
       step,
     })
   } catch (err) {
@@ -634,13 +639,15 @@ async function runOnBus(
   try {
     const runStartHrTimeNs = process.hrtime.bigint()
     const endedAtMsAtStart = Date.now()
-    const remoteCacheEnabled = prepared.hasRemoteLayer
+    // Every remote turned off by its `open` is no remote: a task must not clean
+    // its outputs for a save that goes nowhere.
+    const remoteCacheEnabled = prepared.hasRemoteLayer && !remotesClosed
     // Normalised ONCE so every consumer — execute-task, the dedup
     // predicate, the recorded invocation row — reads the policy that
     // actually governed the run. Reading the raw request here made tasks
     // clean their outputs before every exec for a save that never
     // happened.
-    const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, prepared.hasRemoteLayer)
+    const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, remoteCacheEnabled)
     if (options.remoteRequested === true && !prepared.hasRemoteLayer) {
       warnOf(log)(
         'vx: --cache-policy named the remote cache, but no cache plugin in .vx/workspace.* supplies one — the remote axes are off for this run',
@@ -811,6 +818,8 @@ async function runOnBus(
 
     // Lifecycle hooks drive the default logger's dynamic status line
     // (TTY-only); custom loggers may ignore them.
+    // The status line starts here: a prompt now would be drawn over.
+    secrets.closePrompts()
     log.runStart?.({
       total: taskCount,
       concurrency,

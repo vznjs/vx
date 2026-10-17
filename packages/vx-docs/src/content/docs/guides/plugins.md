@@ -226,6 +226,43 @@ replaced, and at most 1 MiB. A failure is an empty answer, never an
 error. `schedule` gets it too. `ctx.ci` and `ctx.branch` say where the
 run is.
 
+### Secrets
+
+`ctx.secret({ key, prompt })`, on `setup` and a remote's `open`, reads
+your plugin's entry `key` from the OS keychain (`Bun.secrets`, service:
+your package name). Missing, and given a `prompt`, it asks on the
+terminal with the input hidden and saves the answer, but only when stdin
+and stderr are TTYs and the run is not on CI; never once the status line
+is up. Otherwise it rejects: `isSecretUnavailable(err)` is true and
+`err.reason` says why (`not-found`, `no-terminal`, `declined`,
+`store-unavailable`). It reads no environment: check your option and
+variable first, so the keychain is the last source. One answer per key
+per run; prompts from two plugins never overlap.
+`ctx.forgetSecret({ key })` deletes the entry when your server refuses
+it, so the next run asks again.
+
+```ts
+import { definePlugin, isSecretUnavailable, type VxPlugin } from '@vzn/vx'
+
+export function acme(): VxPlugin {
+  let token: string | undefined
+  return definePlugin(import.meta, {
+    async setup(ctx) {
+      token =
+        process.env.ACME_TOKEN ||
+        (await ctx.secret({ key: 'acme', prompt: 'Acme token: ' }).catch((err: unknown) => {
+          if (!isSecretUnavailable(err)) throw err
+          ctx.warn(`acme: no token (${err.reason}); set ACME_TOKEN`)
+          return undefined
+        }))
+    },
+    teardown() {
+      token = undefined
+    },
+  })
+}
+```
+
 A run that writes a remote cache (CI by default) keeps there the log of
 each task that saved no entry, and, when `cache.upload.failures` covers
 the run (`'ci'`, the default), a failed task's log and the files its
@@ -424,6 +461,12 @@ function acmeCache(): VxPlugin {
 
 export default defineWorkspace({ plugins: [acmeCache()] })
 ```
+
+A remote that needs a credential first adds an optional `open`, asked once per
+run, before the first task and the status line, only when the policy
+reads or writes that remote (never by `--dry`, `--no-cache` or
+`--cache-policy=remote:`); a throw is a warning and the remote sits the
+run out. `ctx.secret` there is your [keychain](#secrets).
 
 ### Signed artifacts
 

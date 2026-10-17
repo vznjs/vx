@@ -14,6 +14,7 @@
 import {
   definePlugin,
   type RemoteCacheLayer,
+  type RemoteOpenContext,
   type VxPlugin,
   refuseUnknownOptions,
   type PluginOptionKinds,
@@ -21,12 +22,21 @@ import {
 import { deadline } from '../remote-deadline.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
-import { headerValueFault } from '../remote-token.js'
+import {
+  headerValueFault,
+  type KeychainRemote,
+  keychainToken,
+  remoteLabel,
+} from '../remote-token.js'
 
 export interface NxCacheOptions {
   /** Base URL of the cache server, or `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. */
   server?: string
-  /** Bearer token, or `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN`. Optional: a server may run open. */
+  /**
+   * Bearer token, or `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN`, then the OS
+   * keychain. `''` (option or variable) is a server that runs open: no
+   * token, nothing asked.
+   */
   accessToken?: string
   /** Per-request deadline (default 30 s). */
   timeoutMs?: number
@@ -36,6 +46,7 @@ export interface NxCacheOptions {
 
 export interface NxCacheConfig {
   server: string
+  /** Undefined: the layer's `open` asks the OS keychain; `''`: an open server. */
   accessToken?: string
   timeoutMs: number
   retries: number
@@ -58,7 +69,7 @@ export function resolveNxCacheConfig(
       )
   }
   const accessToken = options.accessToken ?? env['NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN']
-  const fault = accessToken ? headerValueFault(accessToken) : null
+  const fault = accessToken === undefined ? null : headerValueFault(accessToken)
   if (fault !== null)
     throw new Error(
       `vx/nx-cache: the access token holds ${fault}, which no HTTP header can carry — check the secret (it is not printed)`,
@@ -75,7 +86,7 @@ export function resolveNxCacheConfig(
     )
   return {
     server,
-    ...(accessToken ? { accessToken } : {}),
+    ...(accessToken !== undefined ? { accessToken } : {}),
     timeoutMs: options.timeoutMs ?? 30_000,
     retries,
   }
@@ -108,12 +119,29 @@ export class NxRemoteCache implements RemoteCacheLayer {
   readonly endpoint: string
   /** The remote's rate limit, which every request of this client waits out. */
   private readonly cooldown = new Cooldown()
+  /** Undefined until `open` reads the keychain; a layer never opened (a plan) asks the server nothing. */
+  private token: string | undefined
+  /** Set by `open` when the token came from the keychain: a refusal deletes it. */
+  private forget: (() => Promise<void>) | undefined
+  private readonly keychainRemote: KeychainRemote
   constructor(
     private readonly config: NxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly wait: (ms: number) => Promise<void> = Bun.sleep,
   ) {
     this.endpoint = `${config.server}/v1/cache`
+    this.token = config.accessToken
+    this.keychainRemote = {
+      key: this.endpoint,
+      label: remoteLabel(config.server, undefined),
+      env: 'NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN',
+    }
+  }
+
+  async open(ctx: RemoteOpenContext): Promise<void> {
+    if (this.token !== undefined) return
+    this.token = await keychainToken(ctx, this.keychainRemote)
+    this.forget = () => ctx.forgetSecret({ key: this.keychainRemote.key })
   }
 
   /**
@@ -127,8 +155,9 @@ export class NxRemoteCache implements RemoteCacheLayer {
     hash: string,
     body?: Blob,
   ): Promise<Response | undefined> {
+    if (this.token === undefined) return undefined
     const headers: Record<string, string> = {}
-    if (this.config.accessToken) headers['Authorization'] = `Bearer ${this.config.accessToken}`
+    if (this.token !== '') headers['Authorization'] = `Bearer ${this.token}`
     if (body !== undefined) {
       headers['Content-Type'] = 'application/octet-stream'
       headers['Content-Length'] = String(body.size)
@@ -166,8 +195,15 @@ export class NxRemoteCache implements RemoteCacheLayer {
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
+      const why =
+        res.status === 401
+          ? 'missing or invalid token'
+          : 'access forbidden (the token may not read)'
+      if (this.forget === undefined)
+        throw new Error(`HTTP ${res.status}: ${why}; remote cache off for this run`)
+      await this.forget()
       throw new Error(
-        `HTTP ${res.status}: ${res.status === 401 ? 'missing or invalid token' : 'access forbidden (the token may not read)'}; remote cache off for this run`,
+        `HTTP ${res.status}: ${why}; removed it from the OS keychain, so the next run asks again; remote cache off for this run`,
       )
     }
     return res

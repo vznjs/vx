@@ -19,6 +19,7 @@ export interface PreparedRun {
   localCache: Cache // the local handle `cache` may wrap; raw SQLite readers use it
   hasRemoteLayer: boolean // `cache` is more than the local handle — the remote policy axes mean something
   cachePolicy: CachePolicy // `--cache-policy`, `VX_CACHE_POLICY` or the workspace's `cache.policy`, with its `cache.scope` applied
+  remotes: ResolvedRemote[] // the run's remotes in declared order; `openRemotes` turns one whose `open` threw off
   priorities: ReadonlyMap<string, number> // the `schedule` stage's weights; empty without one
   branch: () => string | null // the run's branch: history records it, a forecast reads it first; learned once on first ask
   cacheFor: (plugin: string) => PluginCache // each plugin's `ctx.cache`: the run's layers under its policy and scope
@@ -61,6 +62,12 @@ export interface PreparedRun {
 }
 
 export function prepareRun(options: RunOptions, log: Logger): Promise<PreparedRun>
+// run() alone, before setup: each remote's `open` the policy allows, in order; true when none is left
+export function openRemotes(
+  remotes: readonly ResolvedRemote[],
+  ci: boolean,
+  secrets: SecretBroker,
+): Promise<boolean>
 ```
 
 ## Steps

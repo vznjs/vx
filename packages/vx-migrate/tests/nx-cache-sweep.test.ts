@@ -53,7 +53,7 @@ describe('resolveNxCacheConfig, exactly', () => {
     )
   })
 
-  it('the accessToken option wins over the env; an empty one is no token', () => {
+  it('the accessToken option wins over the env; an empty one is an open server', () => {
     const env = { NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: 'env' }
     expect(resolveNxCacheConfig({ server: SERVER, accessToken: 'opt' }, env)).toEqual({
       server: SERVER,
@@ -63,6 +63,7 @@ describe('resolveNxCacheConfig, exactly', () => {
     })
     expect(resolveNxCacheConfig({ server: SERVER, accessToken: '' }, env)).toEqual({
       server: SERVER,
+      accessToken: '',
       timeoutMs: 30_000,
       retries: 1,
     })
@@ -72,11 +73,10 @@ describe('resolveNxCacheConfig, exactly', () => {
 describe('the requests', () => {
   it('no token sends no Authorization; an upload declares its length', async () => {
     const { fetchImpl, calls } = stub(() => new Response(null, { status: 200 }))
-    await new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl).put(
-      'aa',
-      new Blob(['12345']),
-      { durationMs: 1 },
-    )
+    await new NxRemoteCache(
+      { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+      fetchImpl,
+    ).put('aa', new Blob(['12345']), { durationMs: 1 })
     expect(calls.map((c) => c.headers)).toEqual([
       { 'Content-Type': 'application/octet-stream', 'Content-Length': '5' },
     ])
@@ -85,12 +85,18 @@ describe('the requests', () => {
   it('a GET answering 500 is an error, not a miss', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 500 }))
     await expect(
-      new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl).get('aa'),
+      new NxRemoteCache(
+        { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+        fetchImpl,
+      ).get('aa'),
     ).rejects.toThrow('HTTP 500')
   })
   it('a GET answering 403 says a read was refused, not a write', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 403 }))
-    const err = await new NxRemoteCache({ server: SERVER, timeoutMs: 1000, retries: 0 }, fetchImpl)
+    const err = await new NxRemoteCache(
+      { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+      fetchImpl,
+    )
       .get('aa')
       .then(
         () => null,

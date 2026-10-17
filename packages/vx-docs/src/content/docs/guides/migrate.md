@@ -100,7 +100,7 @@ turbo.json, a `.turbo/config.json` that `turbo link` wrote, or
 declares `turboCache()` too, and init says why:
 
 ```text
-turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remote cache (inert where the variable is unset).
+turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remote cache (token: the variable, else the OS keychain).
 ```
 
 `bunx @vzn/vx-migrate`, like `vx init`, reports what it wrote, then locks the configs:

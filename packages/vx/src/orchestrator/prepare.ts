@@ -10,7 +10,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { WorkspaceConfig } from '../config.js'
-import { beginRun, mark, nearest, relPosix, UserError } from '../util/index.js'
+import { beginRun, mark, nearest, relPosix, type SecretBroker, UserError } from '../util/index.js'
 import {
   Cache,
   type CacheLayer,
@@ -113,6 +113,8 @@ export interface PreparedRun {
   hasRemoteLayer: boolean
   /** `--cache-policy` with the workspace's `cacheScope` applied: what the layers were built under. */
   cachePolicy: CachePolicy
+  /** The run's remotes in declared order, as the policy gates each; `openRemotes` turns one off. */
+  remotes: ResolvedRemote[]
   /**
    * Scheduling priorities from plugins' `schedule` stage (task id → weight,
    * merged over the structural baseline by the scheduler). Empty when no
@@ -532,6 +534,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       localCache,
       hasRemoteLayer,
       cachePolicy: policy,
+      remotes,
       keepRunEntry: undefined,
       priorities: () => Promise.resolve(new Map()),
       branch,
@@ -780,6 +783,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       localCache,
       hasRemoteLayer,
       cachePolicy: policy,
+      remotes,
       priorities,
       branch,
       cacheFor,
@@ -938,4 +942,32 @@ function refuseUnlockedConfig(
       `${spec}: ${relPosix(workspaceRoot, path.join(entry.dir, config))} is not in the lock yet — run \`vx lock\``,
     )
   }
+}
+
+/**
+ * Each remote's `open`, in declared order, for the ones the policy lets read
+ * or write. One at a time: two that ask on the terminal must not interleave.
+ * A throw warns through the remote's `onError` (naming its plugin) and
+ * turns that remote off; the run goes on, as after any remote failure.
+ * True when that left the run no remote at all.
+ */
+export async function openRemotes(
+  remotes: readonly ResolvedRemote[],
+  ci: boolean,
+  secrets: SecretBroker,
+): Promise<boolean> {
+  let closed = false
+  for (const entry of remotes) {
+    if (entry.remote.open === undefined || !(entry.read || entry.write)) continue
+    try {
+      await entry.remote.open({ ci, ...secrets.for(entry.plugin ?? 'vx') })
+    } catch (err) {
+      entry.read = false
+      entry.write = false
+      const e = err instanceof Error ? err : new Error(String(err))
+      entry.onError?.(e)
+      closed = true
+    }
+  }
+  return closed && !remotes.some((r) => r.read || r.write)
 }

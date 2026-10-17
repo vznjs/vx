@@ -83,9 +83,19 @@ export type {
   CacheLayer,
   PluginCache,
   RemoteCacheLayer,
+  RemoteOpenContext,
   RunRecord,
   InvocationRecord,
 } from './cache/index.js'
+// A plugin's keychain (`ctx.secret` on `setup` and a remote's `open`), and
+// the guard that tells a missing secret from a fault.
+export { isSecretUnavailable } from './util/index.js'
+export type {
+  PluginSecrets,
+  SecretRequest,
+  SecretUnavailable,
+  SecretUnavailableReason,
+} from './util/index.js'
 
 // Workspace discovery + the project/config catalog surface — an
 // out-of-process service/CLI needs these. `loadProjectConfig` is the RAW

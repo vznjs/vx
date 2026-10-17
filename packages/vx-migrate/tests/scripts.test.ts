@@ -1547,7 +1547,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       [
         `import { ${factory} } from '@vzn/vx-migrate'`,
         `    ${factory}(),`,
-        `${factory}(): ${why}, so vx shares that remote cache (inert where the variable is unset).`,
+        `${factory}(): ${why}, so vx shares that remote cache (token: the variable, else the OS keychain).`,
       ],
     ]
     const cloud = [
@@ -1594,7 +1594,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const gained = await vx(root, ['init', '--keep'])
       expect([row(gained.out, 'config'), row(gained.out, 'note')[1]]).toEqual([
         ['declared turboCache(), scheduleHistoryPlugin() in .vx/workspace.mjs'],
-        'turboCache(): turbo.json names a remoteCache, so vx shares that remote cache (inert where the variable is unset).',
+        'turboCache(): turbo.json names a remoteCache, so vx shares that remote cache (token: the variable, else the OS keychain).',
       ])
       expect(await Bun.file(path.join(root, '.vx/workspace.mjs')).text()).toContain(
         '    turboCache(),\n',

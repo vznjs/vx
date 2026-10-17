@@ -121,7 +121,10 @@ describe('a hung server costs three deadlines, not one per request', () => {
 
   it('nxCache()', async () => {
     const c = new NxRemoteCache(
-      resolveNxCacheConfig({ server: hung.url.origin, timeoutMs: 50, retries: 0 }, {})!,
+      resolveNxCacheConfig(
+        { server: hung.url.origin, accessToken: '', timeoutMs: 50, retries: 0 },
+        {},
+      )!,
     )
     expect(await count(() => c.get('abc'))).toEqual([
       ...Array(3).fill('no answer within 50 ms'),
@@ -168,7 +171,10 @@ describe('a hit whose body stalls past the deadline is an outage too', () => {
 
   it('nxCache()', async () => {
     const c = new NxRemoteCache(
-      resolveNxCacheConfig({ server: stalled.url.origin, timeoutMs: 50, retries: 0 }, {})!,
+      resolveNxCacheConfig(
+        { server: stalled.url.origin, accessToken: '', timeoutMs: 50, retries: 0 },
+        {},
+      )!,
     )
     expect(await count(() => c.get('abc'))).toEqual([
       ...Array(3).fill('no answer within 50 ms'),
@@ -201,7 +207,7 @@ describe('a GET body read no further is cancelled', () => {
     ).get('abc')
   const nx = (f: typeof fetch) =>
     new NxRemoteCache(
-      resolveNxCacheConfig({ server: 'http://cache.test', retries: 0 }, {})!,
+      resolveNxCacheConfig({ server: 'http://cache.test', accessToken: '', retries: 0 }, {})!,
       f,
     ).get('abc')
 

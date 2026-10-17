@@ -108,8 +108,9 @@ above are native vx config.
 vx way. None is dropped in silence.
 
 **Can I keep Vercel Remote Cache?**
-Yes. Set `TURBO_TOKEN` and `TURBO_TEAM`, declare `turboCache()`, and vx
-stores its own artifacts there. Turbo cannot read what vx stores, and vx
+Yes. Set `TURBO_TOKEN` and `TURBO_TEAM` (or, on a laptop, type the token
+once when asked; it stays in the OS keychain), declare `turboCache()`, and
+vx stores its own artifacts there. Turbo cannot read what vx stores, and vx
 does not read Turbo's entries.
 
 **What does it cost?**

@@ -119,3 +119,13 @@ export {
   secretNamed,
   type SecretMask,
 } from './secret-mask.js'
+export {
+  isSecretUnavailable,
+  SecretBroker,
+  type PluginSecrets,
+  type SecretRequest,
+  type SecretStore,
+  type SecretUnavailable,
+  type SecretUnavailableReason,
+} from './secrets.js'
+export { terminalOf, type SecretTerminal } from './hidden-prompt.js'

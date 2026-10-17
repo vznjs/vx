@@ -253,6 +253,10 @@ export TURBO_TOKEN=… TURBO_TEAM=…
 
 Then declare `plugins: [turboCache()]`. `nxCache()` does the same for a
 self-hosted Nx cache; your own backend is [a plugin](../plugins/#your-own-cache).
+A laptop needs no variable: with the URL or team known and no token, the
+first run in a terminal asks for one and keeps it in the OS keychain. On CI
+a missing token is one warning and a local-only run, never a failure;
+`--cache-policy=remote:` skips the remote and the question.
 Off CI a run reads the remote and does not write it (`local:rw,remote:r`);
 the [scopes](#cache-scopes-and-tokens) keep a pull request's writes apart.
 vx's policy alone decides: the plugins do not read Turbo's

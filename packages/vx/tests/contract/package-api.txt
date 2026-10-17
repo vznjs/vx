@@ -281,6 +281,8 @@ export function isCacheHit(status: string): boolean
 export function isLiteralPattern(glob: string): boolean
 == function isPassStatus (src/graph/task-status.ts)
 export function isPassStatus(status: string): boolean
+== function isSecretUnavailable (src/util/secrets.ts)
+export function isSecretUnavailable(err: unknown): err is SecretUnavailable
 == function isUserError (src/util/errors.ts)
 export function isUserError(err: unknown): err is UserError
 == function loadProjectConfig (src/workspace/project-loader.ts)
@@ -1102,8 +1104,13 @@ export interface PluginOrigin {
   readonly dir?: string
   readonly url?: string
 }
+== type PluginSecrets (src/util/secrets.ts)
+export interface PluginSecrets {
+  secret(req: SecretRequest): Promise<string>
+  forgetSecret(req: { readonly key: string }): Promise<void>
+}
 == type PluginSetupContext (src/orchestrator/plugin.ts)
-export interface PluginSetupContext extends BaseContext {
+export interface PluginSetupContext extends BaseContext, PluginSecrets {
   readonly cache: PluginCache
   readonly ci: boolean
   readonly branch: string | null
@@ -1119,6 +1126,7 @@ export interface PreparedRun {
   localCache: Cache
   hasRemoteLayer: boolean
   cachePolicy: CachePolicy
+  remotes: ResolvedRemote[]
   priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
   cacheFor: (plugin: string) => PluginCache
@@ -1201,6 +1209,7 @@ export interface RefusalParts {
 == type RemoteCacheLayer (src/cache/layered-cache.ts)
 export interface RemoteCacheLayer {
   readonly endpoint?: string
+  open?(ctx: RemoteOpenContext): Promise<void>
   has(hash: string): Promise<boolean>
   hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
@@ -1212,11 +1221,23 @@ export interface RemoteKeyTraffic {
   landed: boolean
   failures: string[]
 }
+== type RemoteOpenContext (src/cache/layered-cache.ts)
+export interface RemoteOpenContext extends PluginSecrets {
+  readonly ci: boolean
+}
 == type RemoteTraffic (src/cache/cache.ts)
 export interface RemoteTraffic {
   inFlight: number
   readonly keys: Map<string, RemoteKeyTraffic>
   readonly aliases: Map<string, string>
+}
+== type ResolvedRemote (src/cache/remote-lane.ts)
+export interface ResolvedRemote {
+  readonly remote: RemoteCacheLayer
+  readonly plugin?: string
+  read: boolean
+  write: boolean
+  readonly onError?: (err: Error) => void
 }
 == type ResolvedSandboxConfig (src/exec/sandbox-runtime.ts)
 export interface ResolvedSandboxConfig {
@@ -1523,6 +1544,17 @@ export interface SchemaReset {
   from: string
   to: string
 }
+== type SecretRequest (src/util/secrets.ts)
+export interface SecretRequest {
+  readonly key: string
+  readonly prompt?: string
+}
+== type SecretUnavailable (src/util/secrets.ts)
+export interface SecretUnavailable extends Error {
+  readonly reason: SecretUnavailableReason
+}
+== type SecretUnavailableReason (src/util/secrets.ts)
+export type SecretUnavailableReason = 'not-found' | 'no-terminal' | 'declined' | 'store-unavailable'
 == type Style (src/util/ui.ts)
 type Style = Tone | 'dim' | 'bold' | 'id'
 == type TaskConfig (src/config.ts)
