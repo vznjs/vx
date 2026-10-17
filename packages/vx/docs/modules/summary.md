@@ -45,7 +45,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined
 export interface RunContext {
   version: string
   packageCount: number // projects with a task to run → the bar's "affected" half
-  runId?: string | undefined // shortest unique prefix `vx last` takes (info row)
+  runId?: string | undefined // the whole id `vx last` takes (info row)
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
   cache?: {
@@ -113,7 +113,7 @@ a bare `vx` and the `projects` / `info` rows are skipped.
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             local 4↑
 
-  info      10 workers · local cache · run 01a14941-c8cf
+  info      10 workers · local cache · run 01a14941-c8cf-7a3e-9b51-2f06d4e8c713
   time      248ms · max 239ms · avg 215ms · min 190ms
 ```
 
@@ -122,7 +122,7 @@ cells. `projects` (the projects in the run vs the workspace total) leads the met
 `tasks` and `cache` follow, the tasks legend carrying a dim `N total`.
 A blank line separates the meters from the `info` row (worker pool +
 cache mode, `admit held N tasks · Ns` when a policy held any — a
-sum, said as one — and `run <id>`, the run's shortest unique id prefix as
+sum, said as one — and `run <id>`, the run's whole id as
 `vx last <id>` takes it) and the `time` row: the wall time, `<time> saved`
 (green: the hits' STORED exec times summed, what the cache skipped,
 never the restore this run paid; left out under 1 ms), the live

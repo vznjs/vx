@@ -112,7 +112,6 @@ import {
   type ShortCircuit,
 } from './local-shortcircuit.js'
 import { deriveStableKeys, probesAfterWrites } from './stable-keys.js'
-import { shortRunId } from './run-id.js'
 
 import { writeRunFailures } from './run-failures.js'
 import { assembleRunRecords, recordLateRemoteErrors } from './run-records.js'
@@ -1271,13 +1270,7 @@ async function runOnBus(
       })
     }
     mark('record history')
-    // The footer names the run as `vx last` takes it, read before the
-    // cache closes; the whole id's head when the history cannot say.
-    try {
-      runContext.runId = shortRunId(prepared.localCache.dbHandle(), runId)
-    } catch {
-      runContext.runId = runId.slice(0, 13)
-    }
+    runContext.runId = runId
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their
