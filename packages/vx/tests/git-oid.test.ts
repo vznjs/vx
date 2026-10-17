@@ -471,6 +471,27 @@ describe('GitFilesCache — OID bookkeeping', () => {
     expect(oids!.get(`${pkg}/src/a.ts`)).toBe('aaaa')
     expect(oids!.has(`${pkg}/dist/out.js`)).toBe(false)
   })
+
+  // A restore marks its outputs before anything reads the OIDs: the mark
+  // must not build the map, and the map built later must not hold them.
+  it('markOutputsChanged before the lazy OIDs are built drops them once built', () => {
+    const memo = new GitFilesCache()
+    memo.set(pkg, ['src/a.ts', 'dist/out.js'])
+    let builds = 0
+    memo.setLazyOids(pkg, () => {
+      builds++
+      return new Map([
+        [`${pkg}/src/a.ts`, 'aaaa'],
+        [`${pkg}/dist/out.js`, 'dddd'],
+      ])
+    })
+    memo.markOutputsChanged(pkg, ['dist/out.js'])
+    expect(builds).toBe(0)
+    const oids = memo.oidsFor(pkg)
+    expect(builds).toBe(1)
+    expect(oids!.get(`${pkg}/src/a.ts`)).toBe('aaaa')
+    expect(oids!.has(`${pkg}/dist/out.js`)).toBe(false)
+  })
 })
 
 describe('Cache.key — fileHashes seam', () => {
