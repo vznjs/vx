@@ -17,7 +17,7 @@ tasks (`routeTasks`) from what the branch changed
 export function scopedKey(scope: string, hash: string): string
 export class BranchScope {
   constructor(scope: string)
-  routeTasks(ids: ReadonlySet<string>): void
+  routeTasks(ids: () => Promise<ReadonlySet<string>>): void
   noteKey(taskId: string, hash: string): void
   remote(inner: RemoteCacheLayer): RemoteCacheLayer
 }
@@ -37,10 +37,15 @@ export class BranchScope {
   changed path no task declares reaches none, so a README edit leaves
   `build` on the default key). Before `routeTasks` is called every task
   is the scope's; a run always routes (`branchChanges`, or an embedder's
-  `scopeChanges`).
+  `scopeChanges`). The routes are found at the first remote call, so a
+  run the local cache answers never diffs (20-60 ms at 1k-5k projects
+  when the diff ran beside discovery).
 - **Reads** (`has`, `hasMany`, `get`) ask one key: the scope's for a
   scope task, the default key for any other. No fallthrough: a miss is a
   miss.
+- **Each call names its scope** (`RemoteKey.scope`, the last argument;
+  absent for a default key), for a backend that keeps a store per
+  branch. The key alone names the entry; no wire vx ships sends it.
 - **Writes** (`put`) go to the scope's key, every task's: a CI run saves
   every task it builds under the scope, so a branch never writes a
   default key. Whether a run writes at all is the policy's call.

@@ -1918,8 +1918,9 @@ interface CacheSettings {
   commit), else the merge base of HEAD and `origin/<baseBranch>`, else
   that branch's tip; with none every task reads the default key. A run
   that writes a remote saves every task it built there under the scope,
-  so a branch never writes a default key. The diff starts with the run
-  and runs beside discovery; an unscoped run asks git nothing for it. A
+  so a branch never writes a default key. Git is asked for the diff only
+  at a scoped run's first remote call: a run the local cache answers, or
+  an unscoped one, asks it nothing. A
   scope's key is derived from the task key, so every remote wire stores
   it unchanged. The scope never decides whether a run writes;
   `cache.policy` does. A client-side convention, not a security

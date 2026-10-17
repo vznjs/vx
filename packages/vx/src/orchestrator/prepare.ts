@@ -290,31 +290,32 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       ? Promise.resolve(reused.projects)
       : discoverProjects(workspaceRoot, readLock, plugins, cacheDir, warnOf(log), git)
   // What the branch changed decides which tasks read the scope (owner,
-  // 2026-10-17). Only a scoped run asks git, and it asks at once, beside
-  // discovery and the config evaluation, so the diff is off the run's path.
-  const scopeChanges: Promise<AffectedChanges> | undefined =
+  // 2026-10-17). Only a scoped run's first remote call asks git: a run the
+  // local cache answers makes no remote call, and diffing beside discovery
+  // cost it 20-60 ms at 1k-5k projects.
+  const scopeChanges: (() => Promise<AffectedChanges>) | undefined =
     cacheScope === undefined
       ? undefined
       : options.scopeChanges !== undefined
-        ? Promise.resolve(options.scopeChanges)
-        : branchChanges(
-            workspaceRoot,
-            options.scopeBase ?? branchFacts.base,
-            baseBranch,
-            discovering,
-            {
-              untracked: async () => (await git.start()).untracked,
-              // A scoped enumeration lists only its projects: null asks git.
-              links: async () => {
-                const g = await git.start()
-                if (!g.scopes.includes('.')) return null
-                const out: string[] = []
-                for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
-                return out
+        ? async () => options.scopeChanges!
+        : () =>
+            branchChanges(
+              workspaceRoot,
+              options.scopeBase ?? branchFacts.base,
+              baseBranch,
+              discovering,
+              {
+                untracked: async () => (await git.start()).untracked,
+                // A scoped enumeration lists only its projects: null asks git.
+                links: async () => {
+                  const g = await git.start()
+                  if (!g.scopes.includes('.')) return null
+                  const out: string[] = []
+                  for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
+                  return out
+                },
               },
-            },
-          )
-  void scopeChanges?.catch(() => {})
+            )
   const projectMetas = await discovering
   mark('discover projects')
 
@@ -763,12 +764,10 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log) })
     }
     // The final inputs decide which tasks the branch changed: they read
-    // the scope, every other task the default key. Only a remote call
-    // awaits the diff, so a run the local cache answers never waits on git
-    // nor maps it.
+    // the scope, every other task the default key.
     if (branchScope !== undefined && scopeChanges !== undefined) {
       branchScope.routeTasks(async () =>
-        keyedByChange(nodes, await scopeChanges, projects, packageGraph),
+        keyedByChange(nodes, await scopeChanges(), projects, packageGraph),
       )
     }
     refuseFiltersThroughGroups(nodes)

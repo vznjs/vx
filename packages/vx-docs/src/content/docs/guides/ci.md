@@ -152,7 +152,8 @@ reads what CI built for `feat-x`, read-only, and keeps it in the local
 cache under the task key: back on `main`, the same inputs hit it locally. The summary's `info` row names the scope. `VX_CACHE_SCOPE`
 names one by hand (a CI with a detached HEAD), and empty turns it off;
 `github({ cacheScope: false })` turns CI's off. Only a scoped run asks
-git for the diff, and it starts beside discovery.
+git for the diff, at its first remote call: a run the local cache
+answers asks it nothing.
 
 With no base to diff from (a laptop with no default branch fetched)
 every task reads `main`'s key.

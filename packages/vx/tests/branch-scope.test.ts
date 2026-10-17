@@ -224,7 +224,11 @@ it("a laptop keeps a branch's remote entry under the task key: any branch then h
 
 // The zero-cost gate (EA, 2026-10-17): a run with no scope, or on the
 // default branch, asks git nothing a run without scopes would not.
-it('only a scoped run diffs the branch: main and an unscoped run spawn no merge-base or diff', async () => {
+it('only a scoped run that asks its remote diffs the branch: main, a warm run and an unscoped run spawn no merge-base or diff', async () => {
+  const remote = pluginSource(
+    'org/remote',
+    '{ cache() { return { has: async () => false, get: async () => null, put: async () => {} } } }',
+  )
   const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-branch-scope-git-'))
   const log = path.join(bin, 'calls.log')
   const real = Bun.which('git')!
@@ -253,12 +257,16 @@ it('only a scoped run diffs the branch: main and an unscoped run spawn no merge-
   const diffs = (lines: string[]): string[] =>
     lines.filter((l) => /^(merge-base|diff|for-each-ref|symbolic-ref) /.test(l))
   try {
-    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([REMOTE]))
+    await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([remote]))
     git('add', '-A')
     git('commit', '-qm', 'remote')
     git('update-ref', 'refs/remotes/origin/main', 'HEAD')
     expect(diffs(await calls())).toEqual([])
     git('checkout', '-q', '-b', 'feat')
+    // The local cache answers: no remote call, so nothing to route.
+    expect(diffs(await calls()).filter((l) => /^(merge-base|diff) /.test(l))).toEqual([])
+    await writeFile(path.join(root, 'packages/app/src/in.txt'), 'v2')
+    git('commit', '-qam', 'change')
     expect(diffs(await calls()).some((l) => l.startsWith('merge-base'))).toBe(true)
     // No cache plugin: no scope, no diff.
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
