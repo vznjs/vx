@@ -17,7 +17,7 @@
     "@vzn/vx": "workspace:*",
     "@vzn/vx-ci": "workspace:*",
     "@vzn/vx-lockfile": "workspace:*",
-    "@vzn/vx-otel": "workspace:*",
+    "@vzn/vx-migrate": "workspace:*",
     "@vzn/vx-reapi": "workspace:*",
     "@vzn/vx-schedule-history": "workspace:*",
     "npm": "11.21.0",

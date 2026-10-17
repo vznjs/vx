@@ -28,6 +28,10 @@ concurrency:
   group: auto-release
   cancel-in-progress: false
 
+# The shared remote cache (turboCache() in .vx/workspace.ts).
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+
 jobs:
   release:
     runs-on: ubuntu-latest

@@ -28,6 +28,10 @@ permissions:
   id-token: write
   attestations: write
 
+# The shared remote cache (turboCache() in .vx/workspace.ts).
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+
 jobs:
   assets:
     runs-on: ubuntu-latest
