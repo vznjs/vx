@@ -119,6 +119,8 @@ async function runPlugin(
     ci: boolean
     branch: string
     ids: string[]
+    /** Tasks with no command: a group. */
+    groups?: string[]
     during?: () => void
     refined?: ReadonlyMap<string, number>[]
   },
@@ -135,6 +137,8 @@ async function runPlugin(
     forgetSecret: async () => {},
   })
   const nodes = new Map(opts.ids.map((id) => [id, node(id)]))
+  for (const id of opts.groups ?? [])
+    nodes.set(id, { ...node(id), config: {} as TaskNode['config'] })
   const weights = await plugin.schedule!(nodes, {
     ...base,
     localCache: cache,
@@ -257,6 +261,22 @@ describe('shared timings', () => {
     const spawn = spyOn(Bun, 'spawn')
     try {
       await runPlugin(shared, { ci: false, branch: 'main', ids: ['p#x'] })
+      expect(spawn).not.toHaveBeenCalled()
+    } finally {
+      spawn.mockRestore()
+    }
+    expect(shared.calls).toEqual([])
+  })
+
+  // A group runs nothing, so no branch ever times it: asked for, it read as
+  // a task lacking this branch's history, and every run tried an import.
+  it('a group lacks no history: no git spawn, no fetch', async () => {
+    commit()
+    timed('main', 'p#x', 10)
+    const shared = spyCache()
+    const spawn = spyOn(Bun, 'spawn')
+    try {
+      await runPlugin(shared, { ci: false, branch: 'main', ids: ['p#x'], groups: ['p#all'] })
       expect(spawn).not.toHaveBeenCalled()
     } finally {
       spawn.mockRestore()
