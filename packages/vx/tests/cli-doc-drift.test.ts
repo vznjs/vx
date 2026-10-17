@@ -288,7 +288,7 @@ describe('docs/cli.md — the broad-run sample is what the renderer prints', () 
           version: '0.0.0',
           packageCount: 1,
           remoteCacheEnabled: false,
-          runId: '01a14941-c8cf',
+          runId: '01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
           concurrency: 8,
           workspaceProjectCount: 3,
           cache: {

@@ -162,11 +162,13 @@ describe('formatRunSummary', () => {
         concurrency: 8,
         remoteCacheEnabled: true,
         workspaceProjectCount: 12,
-        runId: '01a14941-c8cf',
+        runId: '01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
       },
     )
     expect(lines[1]).toBe('─ vx 1.2.3 ' + '─'.repeat(51))
-    expect(lines).toContain('  info      8 workers · local + remote cache · run 01a14941-c8cf')
+    expect(lines).toContain(
+      '  info      8 workers · local + remote cache · run 01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
+    )
   })
 
   describe('the cache legend reads per layer: ✓ fresh, ↓ restored, ↑ saved, ✗ failed, ⇡ uploading (M, 2026-10-15)', () => {
@@ -536,7 +538,7 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
         concurrency: 10,
         remoteCacheEnabled: false,
         workspaceProjectCount: 2,
-        runId: '01a14941-c8cf',
+        runId: '01a14941-c8cf-7a3e-9b51-2f06d4e8c713',
         cache: {
           local: true,
           localWrite: true,

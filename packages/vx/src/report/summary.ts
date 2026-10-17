@@ -183,7 +183,7 @@ export interface RunContext {
   version: string
   /** Projects with a real task in the graph — the "affected" half of the bar. */
   packageCount: number
-  /** The run's id as `vx last` takes it (its shortest unique prefix); shown on the `info` row. */
+  /** The run's whole id, as `vx last` takes it; shown on the `info` row. */
   runId?: string | undefined
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
