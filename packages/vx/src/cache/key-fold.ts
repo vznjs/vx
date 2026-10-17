@@ -158,6 +158,87 @@ export async function foldKey(
    */
   behind?: (link: string) => Promise<string>,
 ): Promise<string> {
+  const cap = input.captureInto
+  let h = foldHead(input, digestValue)
+
+  // `resolveFiles` already returns its paths sorted, and a copy-and-sort
+  // of three thousand strings per task is not free: 7.4 ms of a 44-task
+  // run here (2026-09-20). A linear order check costs one comparison per
+  // file instead of n log n, and a caller that hands over an unsorted set
+  // — a plugin's own input list — still gets one. `>` on strings compares
+  // UTF-16 code units, which is what a comparator-less `sort` does.
+  let sortedInputs: readonly string[] = input.inputFiles
+  for (let i = 1; i < sortedInputs.length; i++) {
+    if (sortedInputs[i - 1]! > sortedInputs[i]!) {
+      sortedInputs = [...input.inputFiles].sort()
+      break
+    }
+  }
+  h = xxh3(`inputs:${sortedInputs.length}`, h)
+  // Per-file hash source, in preference order: the caller-supplied
+  // index-OID map (clean tracked files — zero I/O), then hashFile's
+  // stat memo (no read), then a full in-process blob-OID computation.
+  // All three describe the WORKTREE bytes, which is what the task
+  // reads — the index-OID map is only populated for paths whose
+  // worktree form matches their index form, because a clean filter
+  // (`text`/`eol`/`ident`/`filter`/`working-tree-encoding`) makes the index blob a DIFFERENT sequence
+  // of bytes and folding it would let two distinct worktree contents
+  // share a key. The fold order is locked to `sortedInputs` so
+  // results are stable across runs.
+  // The common warm shape is that the caller's OID map covers every file,
+  // and then there is nothing to await: building three thousand promises
+  // per task to resolve values already in hand cost 8.4 ms of that same
+  // run. One pass fills the array, and the first gap falls back to the
+  // awaited form for the whole list.
+  let fileHashes: readonly string[] | undefined
+  const provided = input.fileHashes
+  if (provided !== undefined) {
+    const out: string[] = []
+    for (const file of sortedInputs) {
+      const oid = provided.get(file)
+      if (oid === undefined) break
+      out.push(oid)
+    }
+    if (out.length === sortedInputs.length) fileHashes = out
+  }
+  fileHashes ??= await Promise.all(
+    sortedInputs.map((f) => provided?.get(f) ?? hashFile(f).catch(absentOr)),
+  )
+  // Links are rare, so a list without one awaits nothing more.
+  let behindLinks: Map<number, string> | undefined
+  if (behind !== undefined) {
+    const links: number[] = []
+    for (let i = 0; i < fileHashes.length; i++)
+      if (fileHashes[i]!.startsWith('120000:')) links.push(i)
+    if (links.length > 0) {
+      const digests = await Promise.all(links.map((i) => behind(sortedInputs[i]!)))
+      behindLinks = new Map(links.map((i, n) => [i, digests[n]!]))
+    }
+  }
+  for (let i = 0; i < sortedInputs.length; i++) {
+    const file = sortedInputs[i]!
+    const rel = relOf(file)
+    const oid = fileHashes[i]!
+    const linked = behindLinks?.get(i)
+    // A link folds what it points to in its own step, so a key without one is unchanged.
+    h = xxh3(linked === undefined ? `${rel}\0${oid}` : `${rel}\0${oid}\0${linked}`, h)
+    // The OID is already awaited — file capture is zero extra I/O.
+    if (cap) cap.push({ kind: 'file', name: rel, hash: oid })
+    if (linked !== undefined && cap) cap.push({ kind: 'linked', name: rel, hash: xxh3hex(linked) })
+  }
+
+  return h.toString(16).padStart(16, '0')
+}
+
+/**
+ * The fold up to the input files, which come last: what a task's key is
+ * once its files are folded onto it. `computeTaskHash` asks it alone when
+ * a remembered fold of the same files answers the rest (`FoldMemo`).
+ */
+export function foldHead(
+  input: CacheKeyInput,
+  digestValue: (value: string) => string = xxh3hex,
+): bigint {
   // Seed-chained xxHash3: each step folds one field into the
   // running digest via `xxh3(part, prevDigest)`. Equivalent to the
   // old CryptoHasher.update() pattern, no intermediate buffer.
@@ -237,72 +318,5 @@ export async function foldKey(
       for (const [n, v] of pluginParts) cap.push({ kind: 'plugin', name: n, hash: digestValue(v) })
     }
   }
-
-  // `resolveFiles` already returns its paths sorted, and a copy-and-sort
-  // of three thousand strings per task is not free: 7.4 ms of a 44-task
-  // run here (2026-09-20). A linear order check costs one comparison per
-  // file instead of n log n, and a caller that hands over an unsorted set
-  // — a plugin's own input list — still gets one. `>` on strings compares
-  // UTF-16 code units, which is what a comparator-less `sort` does.
-  let sortedInputs: readonly string[] = input.inputFiles
-  for (let i = 1; i < sortedInputs.length; i++) {
-    if (sortedInputs[i - 1]! > sortedInputs[i]!) {
-      sortedInputs = [...input.inputFiles].sort()
-      break
-    }
-  }
-  h = xxh3(`inputs:${sortedInputs.length}`, h)
-  // Per-file hash source, in preference order: the caller-supplied
-  // index-OID map (clean tracked files — zero I/O), then hashFile's
-  // stat memo (no read), then a full in-process blob-OID computation.
-  // All three describe the WORKTREE bytes, which is what the task
-  // reads — the index-OID map is only populated for paths whose
-  // worktree form matches their index form, because a clean filter
-  // (`text`/`eol`/`ident`/`filter`/`working-tree-encoding`) makes the index blob a DIFFERENT sequence
-  // of bytes and folding it would let two distinct worktree contents
-  // share a key. The fold order is locked to `sortedInputs` so
-  // results are stable across runs.
-  // The common warm shape is that the caller's OID map covers every file,
-  // and then there is nothing to await: building three thousand promises
-  // per task to resolve values already in hand cost 8.4 ms of that same
-  // run. One pass fills the array, and the first gap falls back to the
-  // awaited form for the whole list.
-  let fileHashes: readonly string[] | undefined
-  const provided = input.fileHashes
-  if (provided !== undefined) {
-    const out: string[] = []
-    for (const file of sortedInputs) {
-      const oid = provided.get(file)
-      if (oid === undefined) break
-      out.push(oid)
-    }
-    if (out.length === sortedInputs.length) fileHashes = out
-  }
-  fileHashes ??= await Promise.all(
-    sortedInputs.map((f) => provided?.get(f) ?? hashFile(f).catch(absentOr)),
-  )
-  // Links are rare, so a list without one awaits nothing more.
-  let behindLinks: Map<number, string> | undefined
-  if (behind !== undefined) {
-    const links: number[] = []
-    for (let i = 0; i < fileHashes.length; i++)
-      if (fileHashes[i]!.startsWith('120000:')) links.push(i)
-    if (links.length > 0) {
-      const digests = await Promise.all(links.map((i) => behind(sortedInputs[i]!)))
-      behindLinks = new Map(links.map((i, n) => [i, digests[n]!]))
-    }
-  }
-  for (let i = 0; i < sortedInputs.length; i++) {
-    const file = sortedInputs[i]!
-    const rel = relOf(file)
-    const oid = fileHashes[i]!
-    const linked = behindLinks?.get(i)
-    // A link folds what it points to in its own step, so a key without one is unchanged.
-    h = xxh3(linked === undefined ? `${rel}\0${oid}` : `${rel}\0${oid}\0${linked}`, h)
-    // The OID is already awaited — file capture is zero extra I/O.
-    if (cap) cap.push({ kind: 'file', name: rel, hash: oid })
-    if (linked !== undefined && cap) cap.push({ kind: 'linked', name: rel, hash: xxh3hex(linked) })
-  }
-
-  return h.toString(16).padStart(16, '0')
+  return h
 }

@@ -28,8 +28,9 @@ export interface HashCache {
   workspaceRuntime: Map<string, Promise<string>> // `workspaceRuntime` output, by command
   workspaceFiles: WorkspaceFilesCache // `inputs.workspaceFiles` resolution, by declaration
   projectFiles: ProjectFilesCache // `inputs.files` resolution, by projectDir + declaration
+  folds?: FoldMemo | undefined // each task's last key by its probe, across runs (cache.md, fold-memo.ts)
 }
-export function createHashCache(): HashCache
+export function createHashCache(folds?: FoldMemo): HashCache
 
 export interface ComputeHashArgs {
   node: TaskNode
@@ -75,7 +76,15 @@ export interface UpfrontGroupKey {
 - `computeTaskHash` — resolves `inputs.files` (git-backed) and
   `workspaceFiles`, reads `inputs.env` host values, runs the
   `runtime` commands once per run, hashes the resolved task config, folds in the filtered upstream hashes,
-  and calls `cache.key({...})`. Timed as the `task hash` span.
+  and calls `cache.key({...})`. Timed as the `task hash` span. With
+  `hashCache.folds` and a `filesToken` (inputs.md: a partition of
+  trusted, clean, unlinked files and a declaration that reaches no
+  ignored path and no workspace file), it first folds everything but the
+  files (`foldHead`, which ends where the files begin) and seeds it into
+  the token: a probe the memo already holds for the task names the key,
+  and no file is resolved or folded (~300 ms of a 5,000-project warm run,
+  2026-10-17). Any other probe takes the whole fold and remembers its
+  key. A capturing call never reads the memo.
 - `captureInto` — on a miss the orchestrator persists the captured
   components to `entry_inputs` inside the save transaction, so a later
   run can diff its inputs against this one (`vx why`); a hit captures

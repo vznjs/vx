@@ -112,6 +112,7 @@ import { FileHashStore } from './file-hashes.js'
 import { LINK_MODE, OutputIndex } from './output-index.js'
 import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
+import { FoldMemo } from './fold-memo.js'
 import { behindLink } from './linked-inputs.js'
 
 /**
@@ -317,7 +318,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        failed, for `vx last`. The cache KEY is unchanged.
 //   v41: the artifacts table is a rowid table (layout a2). The cache KEY
 //        is unchanged.
-export const SCHEMA_VERSION = 'v41'
+//   v42: fold_memo — each task's last key by its fold up to the files and
+//        a token of their git records. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v42'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -859,6 +862,7 @@ export class Cache implements CacheLayer {
   /** The per-file (mtime, size) → blob-OID memo behind `hashFile`. */
   private readonly files: FileHashStore
   private readonly outputs: OutputIndex
+  private readonly folds: FoldMemo
   private readonly history: RunHistory
 
   /**
@@ -1079,7 +1083,7 @@ export class Cache implements CacheLayer {
             // keeps it so).
             if (found !== undefined) {
               this.db.exec(
-                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta;',
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo;',
               )
             }
             // The tables land under the same write lock as the stamp: made
@@ -1241,6 +1245,7 @@ export class Cache implements CacheLayer {
     // the schema above is the one place every table is declared.
     this.files = new FileHashStore(this.db, cacheDir, this.write, repoDir)
     this.outputs = new OutputIndex(this.db)
+    this.folds = new FoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
 
     // A CACHE_VERSION bump keeps the index but moves every key, so the run
@@ -1508,6 +1513,11 @@ export class Cache implements CacheLayer {
     let rel = this.relMemo.get(file)
     if (rel === undefined) this.relMemo.set(file, (rel = relPosix(root, file)))
     return rel
+  }
+
+  /** Each task's last key by its probe (`computeTaskHash`). */
+  foldMemo(): FoldMemo {
+    return this.folds
   }
 
   key(input: CacheKeyInput): Promise<string> {
@@ -3088,6 +3098,7 @@ export class Cache implements CacheLayer {
     try {
       this.flushAccessed()
       this.outputs.flushOutputDirs()
+      this.folds.flush(Date.now() - 30 * 24 * 60 * 60 * 1000)
     } catch {
       // Same contract as the retention prune above, which was already
       // guarded while this sibling was not: `accessed_at` is LRU

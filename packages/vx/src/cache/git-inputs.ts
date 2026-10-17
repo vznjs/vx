@@ -197,6 +197,12 @@ function configObjectFormat(config: string): 'sha1' | 'sha256' | undefined {
   return format
 }
 
+interface PartitionDigest {
+  snapshot: readonly string[]
+  oids: Map<string, string> | undefined
+  digest: string
+}
+
 export class GitFilesCache extends Map<string, readonly string[]> {
   private changed = new Map<string, string[]>()
   /**
@@ -213,6 +219,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
    * dropping is a pure perf concession, never a correctness one.
    */
   private oids = new Map<string, Map<string, string>>()
+  /** Per partition, `filesDigest`'s answer and the snapshot and OIDs it describes. */
+  private digests = new Map<string, PartitionDigest>()
   /**
    * Set when `populateGitFilesCache` stored a WORKSPACE-WIDE partition
    * (any loaded task declares `inputs.workspaceFiles`). Null when the
@@ -420,6 +428,24 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     }
   }
 
+  /**
+   * A digest of `snapshot`'s paths and index OIDs, when the enumeration
+   * trusted an OID for every one, none is a symlink and every name decodes:
+   * then the files a task resolves there, and what it folds for them, are
+   * a function of this digest and its declaration (`filesToken`). Undefined
+   * once anything moved the partition: a re-enumeration, a changed path.
+   */
+  filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined {
+    const d = this.digests.get(projectDir)
+    if (d === undefined || d.snapshot !== snapshot || this.get(projectDir) !== snapshot) return
+    if (this.oids.get(projectDir) !== d.oids || this.changed.has(projectDir)) return
+    return d.digest
+  }
+
+  noteFilesDigest(projectDir: string, snapshot: readonly string[], digest: string): void {
+    this.digests.set(projectDir, { snapshot, oids: this.oids.get(projectDir), digest })
+  }
+
   /** Trusted index OIDs for a project (abs path → oid), if any survive. */
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined {
     return this.oids.get(projectDir)
@@ -443,18 +469,21 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   override set(key: string, value: readonly string[]): this {
     this.changed.delete(key)
     this.oids.delete(key)
+    this.digests.delete(key)
     return super.set(key, value)
   }
 
   override delete(key: string): boolean {
     this.changed.delete(key)
     this.oids.delete(key)
+    this.digests.delete(key)
     return super.delete(key)
   }
 
   override clear(): void {
     this.changed.clear()
     this.oids.clear()
+    this.digests.clear()
     super.clear()
   }
 }
@@ -1824,6 +1853,8 @@ export async function applyGitEnumeration(
     }
   }
   const sorted = inOrder ? all : [...all].sort()
+  const undecodable =
+    enumeration.undecodable.length === 0 ? undefined : new Set(enumeration.undecodable)
   // Git prints normalized relative paths, so under an absolute, normalized
   // root a join is a concatenation: `path.join` per tracked file and
   // `path.relative` per project were most of this pass (I-30's rule).
@@ -1871,11 +1902,18 @@ export async function applyGitEnumeration(
     const projOids = new Map<string, string>()
     const projAbs =
       relPrefix === spelled ? abs : (rel: string) => path.join(projectDir, rel.slice(prefix.length))
+    // One hash of the records joined: one per record was ~25 ms of 125,000.
+    let records: string | undefined = ''
     for (let i = start; i < end; i++) {
       const rel = sorted[i]!
-      matches.push(rel.slice(prefix.length))
+      const own = rel.slice(prefix.length)
+      matches.push(own)
       const oid = trusted.get(rel)
       if (oid !== undefined) projOids.set(projAbs(rel), oid)
+      if (records === undefined) continue
+      if (oid === undefined || oid.startsWith('120000:') || undecodable?.has(rel) === true) {
+        records = undefined
+      } else records += `${own}\0${oid}\n`
     }
     // An empty slice is a directory git did not see, not an empty project:
     // a project has at least its package.json, tracked or untracked. A
@@ -1894,6 +1932,7 @@ export async function applyGitEnumeration(
     // setOids AFTER set — set() drops the project's OID slot.
     cache.set(projectDir, matches)
     cache.setOids(projectDir, projOids)
+    if (records !== undefined) cache.noteFilesDigest(projectDir, matches, xxh3hex(records))
   }
   if (workspaceWide) {
     const rootOids = new Map<string, string>()

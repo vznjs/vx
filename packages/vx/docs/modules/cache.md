@@ -18,6 +18,12 @@ and key derivation logic live here.
   its first part. It touches no store, so the site's playground bundles
   it to derive the keys the CLI would; `Cache.key` delegates to it
   (item 691).
+  `foldHead` is the same fold up to the input files, which come last.
+- `fold-memo.ts` — `FoldMemo`: each task's last key over `fold_memo`, by
+  a probe that is `foldHead` seeded into the task's `filesToken`
+  (inputs.md). `computeTaskHash` reads a warm task's key back instead of
+  resolving and folding its files; rows are written at close, and a row
+  no run rewrote for 30 days goes.
 - `policy.ts` — `CachePolicy` (local/remote × read/write) and the
   `--cache-policy=<spec>` grammar.
 - `zstd.ts` — artifact framing: the declared-size gate against a
@@ -347,7 +353,15 @@ export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
 export function absentOr(err: unknown): string
-export const SCHEMA_VERSION = 'v41'
+// The fold up to the input files, which `foldKey` folds last (key-fold.ts).
+export function foldHead(input: CacheKeyInput, digestValue?: (value: string) => string): bigint
+// Each task's last key by its probe, over `fold_memo` (fold-memo.ts).
+export class FoldMemo {
+  get(taskId: string, probe: string): string | undefined
+  set(taskId: string, probe: string, key: string): void
+  flush(cutoff: number, now?: number): void // at close: this run's folds; rows unwritten since `cutoff` go
+}
+export const SCHEMA_VERSION = 'v42'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -512,6 +526,9 @@ SQLite stores metadata, and the small artifacts above:
 - **`store_meta`** — the shared store's `SCHEMA_VERSION`. Another
   version drops the store's tables, prints nothing, and keeps every
   artifact, indexed again from its own bytes when its task next hits.
+- **`fold_memo`** — each task's last key, `(task_id, probe, key, seen_at)`
+  (v42, `fold-memo.ts`). A memo: the key a row names is the one the whole
+  fold derives under that probe.
 - **`schema_meta`** — schema version sentinel. Mismatch → drop the
   tables and recreate (pre-alpha; no migration code). An open that does
   not read the current version re-reads it under `BEGIN IMMEDIATE`
@@ -673,7 +690,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v46'`; `SCHEMA_VERSION` is
-`'v41'`. Bump `CACHE_VERSION` when:
+`'v42'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

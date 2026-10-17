@@ -64,6 +64,8 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   setOids(projectDir: string, oids: Map<string, string>): void
+  filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined // the partition's paths + OIDs, all trusted, none a link
+  noteFilesDigest(projectDir: string, snapshot: readonly string[], digest: string): void
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
   get undecodableNames(): ReadonlySet<string> // listed paths whose names are not UTF-8 (lossy spelling)
   markUndecodable(absPaths: readonly string[]): void
@@ -164,6 +166,13 @@ export function attributeFilesOutsideTree(
   env: Readonly<Record<string, string | undefined>>,
 ): string[]
 ```
+
+`applyGitEnumeration` also digests each project's partition, its paths
+and index OIDs joined and hashed once, when the enumeration trusted an
+OID for every path and none is a symlink or an undecodable name.
+`filesDigest` answers it only while the partition is that snapshot with
+those OIDs and no path marked changed: a re-enumeration, a save or a
+restore in the project ends it for the run.
 
 `gitPathspecs` scopes the spawn to the projects in the run when there
 are at most `MAX_SCOPED_PATHSPECS` (64) of them and none is the root

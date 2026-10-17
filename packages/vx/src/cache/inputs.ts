@@ -169,6 +169,8 @@ export interface ResolveInputsArgs {
   workspaceFilesCache?: WorkspaceFilesCache
   /** Per-run memo for `inputs.files`; see `ProjectFilesCache`. */
   projectFilesCache?: ProjectFilesCache
+  /** Resolve no files: the caller folds them from a `filesToken` memo. */
+  skipFiles?: boolean
 }
 
 export type WorkspaceFilesCache = Map<
@@ -195,23 +197,63 @@ export type ProjectFilesCache = Map<
   { snapshot: readonly string[]; result: readonly string[] }
 >
 
+/**
+ * What a task's input files fold to is a function of this token when it is
+ * one of the git records alone: the project's partition holds only files
+ * the enumeration trusted an index OID for (`GitFilesCache.filesDigest`),
+ * and the declaration reaches no gitignored path and no workspace file.
+ * The token is the digest, the workspace root (the fold folds paths
+ * relative to it) and everything `resolveFiles` keys its memo on.
+ * Undefined when only resolving the files can say.
+ */
+export function filesToken(args: ResolveInputsArgs): string | undefined {
+  if ((args.inputs?.workspaceFiles?.length ?? 0) > 0) return undefined
+  const plan = filesPlan(args.inputs?.files, args.ownOutputs)
+  const cache = args.gitFilesCache
+  if (plan === null || cache === undefined) return undefined
+  const snapshot = cache.snapshotFor(args.projectDir, plan.positiveGlobs)
+  if (snapshot === undefined) return undefined
+  const digest = cache.filesDigest(args.projectDir, snapshot)
+  if (digest === undefined || ignoredReach(plan, snapshot).length > 0) return undefined
+  return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest}`
+}
+
+/** Everything below the git snapshot that decides `resolveFiles`' result. */
+function filesMemoKey(
+  projectDir: string,
+  plan: FilesPlan,
+  ownOutputs: readonly string[],
+  ownWorkspaceOutputs: readonly string[],
+  nestedProjectDirs: readonly string[],
+): string {
+  return `${projectDir}\0${plan.positive.join('\u0001')}\0${plan.negative.join('\u0001')}\0${ownOutputs.join('\u0001')}\0${ownWorkspaceOutputs.join('\u0001')}\0${nestedProjectDirs.join('\u0001')}`
+}
+
 export async function resolveInputs(args: ResolveInputsArgs): Promise<ResolvedInputs> {
-  const projectRel = path.relative(args.workspaceRoot, args.projectDir).split(path.sep).join('/')
-  const { files: projectFiles, listing } = await resolveFiles({
-    projectDir: args.projectDir,
-    workspaceRoot: args.workspaceRoot,
-    files: args.inputs?.files,
-    ownOutputs: args.ownOutputs,
-    ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
-    projectRel,
-    nestedProjectDirs: args.nestedProjectDirs,
-    ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
-    ...(args.projectFilesCache !== undefined ? { projectFilesCache: args.projectFilesCache } : {}),
-  })
+  const projectRel =
+    args.skipFiles === true
+      ? ''
+      : path.relative(args.workspaceRoot, args.projectDir).split(path.sep).join('/')
+  const { files: projectFiles, listing } =
+    args.skipFiles === true
+      ? { files: [], listing: undefined }
+      : await resolveFiles({
+          projectDir: args.projectDir,
+          workspaceRoot: args.workspaceRoot,
+          files: args.inputs?.files,
+          ownOutputs: args.ownOutputs,
+          ownWorkspaceOutputs: args.ownWorkspaceOutputs ?? [],
+          projectRel,
+          nestedProjectDirs: args.nestedProjectDirs,
+          ...(args.gitFilesCache !== undefined ? { gitFilesCache: args.gitFilesCache } : {}),
+          ...(args.projectFilesCache !== undefined
+            ? { projectFilesCache: args.projectFilesCache }
+            : {}),
+        })
   let files = projectFiles
   const listings = listing === undefined ? [] : [listing]
   const wsDecl = args.inputs?.workspaceFiles
-  if (wsDecl !== undefined && wsDecl.length > 0) {
+  if (wsDecl !== undefined && wsDecl.length > 0 && args.skipFiles !== true) {
     const ws = resolveWorkspaceFiles({
       workspaceRoot: args.workspaceRoot,
       workspaceFiles: wsDecl,
@@ -1372,7 +1414,8 @@ function ignoredReach(
   reach: { prefixes: readonly string[]; literals: readonly string[] },
   listed: readonly string[],
 ): readonly string[] {
-  const named = outright(reach)
+  let named = outrightMemo.get(reach)
+  if (named === undefined) outrightMemo.set(reach, (named = outright(reach)))
   if (named.length === 0) return []
   // Per listing and entries: thousands of tasks share a few declarations.
   let memo = reachMemo.get(listed)
@@ -1384,6 +1427,8 @@ function ignoredReach(
 }
 
 const reachMemo = new WeakMap<readonly string[], Map<string, readonly string[]>>()
+// A declaration's plan is memoized, so its entries are reckoned once.
+const outrightMemo = new WeakMap<object, string[]>()
 
 /**
  * A declaration's literals and globs' fixed prefixes, each once: none for a
@@ -1657,7 +1702,7 @@ async function resolveFiles(
 ): Promise<{ files: string[]; listing?: InputListing }> {
   const plan = filesPlan(args.files, args.ownOutputs)
   if (plan === null) return { files: [] }
-  const { positive, negative, isExcluded, ownOutput, positiveGlobs, isPositive } = plan
+  const { isExcluded, ownOutput, positiveGlobs, isPositive } = plan
 
   const nested = inNestedProject(args.projectDir, args.nestedProjectDirs)
   // Its root-anchored outputs that land in the project, as `files` sees them.
@@ -1673,7 +1718,13 @@ async function resolveFiles(
   // duration of one orchestrator run.
   // Everything below the snapshot that decides the result: the project, what
   // it declares, what it excludes as its own outputs, and the boundaries.
-  const memoKey = `${args.projectDir}\0${positive.join('\u0001')}\0${negative.join('\u0001')}\0${args.ownOutputs.join('\u0001')}\0${args.ownWorkspaceOutputs.join('\u0001')}\0${args.nestedProjectDirs.join('\u0001')}`
+  const memoKey = filesMemoKey(
+    args.projectDir,
+    plan,
+    args.ownOutputs,
+    args.ownWorkspaceOutputs,
+    args.nestedProjectDirs,
+  )
   let gitFiles = args.gitFilesCache?.snapshotFor(args.projectDir, positiveGlobs)
   let undecodable = args.gitFilesCache?.undecodableNames
   if (gitFiles !== undefined) {

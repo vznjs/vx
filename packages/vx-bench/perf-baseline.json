@@ -2,60 +2,60 @@
   "linux-x64": {
     "counts": {
       "cold run @25": {
-        "hash xxh3": 1619,
+        "hash xxh3": 1926,
         "spawn git": 6,
         "spawn sh": 51,
-        "sqlite statement": 699
+        "sqlite statement": 726
       },
       "up-to-date run @25": {
-        "hash xxh3": 836,
+        "hash xxh3": 986,
         "spawn git": 3,
-        "sqlite statement": 26
+        "sqlite statement": 53
       },
       "restore run @25": {
-        "hash xxh3": 836,
+        "hash xxh3": 611,
         "spawn git": 3,
-        "sqlite statement": 77
+        "sqlite statement": 78
       },
       "plan @25": {
-        "hash xxh3": 835,
+        "hash xxh3": 610,
         "spawn git": 3,
-        "sqlite statement": 118
+        "sqlite statement": 119
       },
       "one-edit run @25": {
         "hash blob update": 2,
-        "hash xxh3": 1118,
+        "hash xxh3": 1155,
         "spawn git": 3,
         "spawn sh": 18,
-        "sqlite statement": 198
+        "sqlite statement": 216
       },
       "cold run @100": {
-        "hash xxh3": 6569,
+        "hash xxh3": 7851,
         "spawn git": 6,
         "spawn sh": 200,
-        "sqlite statement": 2654
+        "sqlite statement": 2756
       },
       "up-to-date run @100": {
-        "hash xxh3": 3386,
+        "hash xxh3": 3986,
         "spawn git": 3,
-        "sqlite statement": 29
+        "sqlite statement": 131
       },
       "restore run @100": {
-        "hash xxh3": 3386,
+        "hash xxh3": 2486,
         "spawn git": 3,
-        "sqlite statement": 230
+        "sqlite statement": 231
       },
       "plan @100": {
-        "hash xxh3": 3385,
+        "hash xxh3": 2485,
         "spawn git": 3,
-        "sqlite statement": 418
+        "sqlite statement": 419
       },
       "one-edit run @100": {
         "hash blob update": 2,
-        "hash xxh3": 4468,
+        "hash xxh3": 4630,
         "spawn git": 3,
         "spawn sh": 68,
-        "sqlite statement": 651
+        "sqlite statement": 719
       }
     },
     "time": {
