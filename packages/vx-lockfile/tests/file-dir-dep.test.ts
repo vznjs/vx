@@ -5,7 +5,7 @@
 // file-dir-dep-stale.sh). The lockfile texts are the ones pnpm 10.28,
 // bun 1.4 and npm 10.9 wrote for `"dep": "file:../../vendor/dep"` in
 // packages/lib.
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -278,6 +278,14 @@ for (const row of [
     it('a file added to the directory re-keys the project reaching it', async () => {
       const before = await hashes()
       await writeFile(path.join(root, 'vendor/dep/extra.js'), '// new\n')
+      expect(moved(before, await hashes())).toEqual([...reaches])
+    })
+
+    it('a file the directory links to is its content', async () => {
+      await writeFile(path.join(root, 'vendor/shared.js'), '// shared v1\n')
+      await symlink('../shared.js', path.join(root, 'vendor/dep/shared.js'))
+      const before = await hashes()
+      await writeFile(path.join(root, 'vendor/shared.js'), '// shared v2\n')
       expect(moved(before, await hashes())).toEqual([...reaches])
     })
 

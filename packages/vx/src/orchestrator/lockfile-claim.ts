@@ -120,10 +120,15 @@ async function hashExtra(workspaceRoot: string, rel: string): Promise<string> {
   }
 }
 
-/** Every file under `dir` but its `node_modules` and `.git`, as `rel\0hash` lines in sorted order. */
+/**
+ * Every file under `dir` but its `node_modules` and `.git`, as `rel\0hash`
+ * lines in sorted order. Links are followed: a linked file is what a task
+ * reads, and the scan skipped it, so an edit to its target moved no key.
+ */
 async function hashDir(dir: string): Promise<string> {
   const rels: string[] = []
-  for await (const rel of new Bun.Glob('**').scan({ cwd: dir, dot: true, onlyFiles: true })) {
+  const scan = { cwd: dir, dot: true, onlyFiles: true, followSymlinks: true }
+  for await (const rel of new Bun.Glob('**').scan(scan)) {
     if (!rel.split('/').some((s) => s === 'node_modules' || s === '.git')) rels.push(rel)
   }
   rels.sort()
