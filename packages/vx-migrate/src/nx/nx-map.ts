@@ -563,6 +563,11 @@ export async function mapNxWorkspace(
         followNxGraph(t.task, nodeName, meta.name, nxEdges, metaByNode, emittedIds, reached)
       }
       dropUnheldDeps(t, emitted, emittedIds)
+      const reader = dependentReaders.get(t)
+      if (reader !== undefined && !reachesProducer(t, meta.name, emittedIds, reached)) {
+        delete t.task!['cache']
+        t.todos.push(orphanReaderTodo(reader.globs, reader.dependsOn))
+      }
     }
     const tags = nxTags(nodeName === undefined ? undefined : nodeMap[nodeName])
     projects.push({
@@ -895,9 +900,7 @@ function buildTask(
   const orphanReader =
     inputs.dependentOutputs.length > 0 && !deps.some((d) => !d.includes('#nx-input:'))
   if (orphanReader && cacheWanted && !persistent) {
-    todos.push(
-      `reads ${inputs.dependentOutputs.map((g) => `\`${g}\``).join(', ')} from the outputs of the tasks it depends on, and no task it depends on is migrated (dependsOn ${JSON.stringify(target.dependsOn ?? [])}) — uncached here, so it never replays output generated from an older input; migrate the producer and depend on it to cache this task`,
-    )
+    todos.push(orphanReaderTodo(inputs.dependentOutputs, target.dependsOn))
   }
   const cacheEnabled = !persistent && cacheWanted && wild === undefined && !orphanReader
   if (persistent && cacheWanted) {
@@ -1007,7 +1010,41 @@ function buildTask(
     task.cache = { outputs }
   }
 
-  return { name: variant.name, todos, task }
+  const generated: GeneratedTask = { name: variant.name, todos, task }
+  if (cacheEnabled && inputs.dependentOutputs.length > 0)
+    dependentReaders.set(generated, { globs: inputs.dependentOutputs, dependsOn: target.dependsOn })
+  return generated
+}
+
+/**
+ * The cached readers of `dependentTasksOutputFiles`, judged again once the
+ * graph has its final edges: a `^build` kept because another project builds
+ * reached no producer of this one (nx-examples' codegen, its .NET
+ * ProductsApi no node once @nx/dotnet failed to load), and the key saw
+ * nothing the task reads (Growth, nx-codegen-dropped-producer.sh).
+ */
+const dependentReaders = new WeakMap<GeneratedTask, { globs: string[]; dependsOn: unknown }>()
+
+function orphanReaderTodo(globs: readonly string[], dependsOn: unknown): string {
+  return `reads ${globs.map((g) => `\`${g}\``).join(', ')} from the outputs of the tasks it depends on, and no task it depends on is migrated (dependsOn ${JSON.stringify(dependsOn ?? [])}) — uncached here, so it never replays output generated from an older input; migrate the producer and depend on it to cache this task`
+}
+
+/** Whether one of `t`'s final edges reaches a task vx runs. */
+function reachesProducer(
+  t: GeneratedTask,
+  project: string,
+  emittedIds: ReadonlySet<string>,
+  reached: (name: string) => ReadonlySet<string>,
+): boolean {
+  const deps = t.task?.['dependsOn']
+  if (!Array.isArray(deps)) return false
+  return deps.some((d) => {
+    if (typeof d !== 'string' || d.includes('*')) return true
+    if (d.includes('#nx-input:')) return false
+    if (d.startsWith('^'))
+      return [...reached(project)].some((p) => emittedIds.has(`${p}#${d.slice(1)}`))
+    return d.includes('#') || emittedIds.has(`${project}#${d}`)
+  })
 }
 
 /**
