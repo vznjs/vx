@@ -214,7 +214,11 @@ export function filesToken(args: ResolveInputsArgs): string | undefined {
   const snapshot = cache.snapshotFor(args.projectDir, plan.positiveGlobs)
   if (snapshot === undefined) return undefined
   const digest = cache.filesDigest(args.projectDir, snapshot)
-  if (digest === undefined || ignoredReach(plan, snapshot).length > 0) return undefined
+  if (
+    digest === undefined ||
+    ignoredReach(plan, snapshot, { dir: args.projectDir, cache }).length > 0
+  )
+    return undefined
   return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest}`
 }
 
@@ -395,7 +399,10 @@ function resolveWorkspaceFiles(args: {
   const ownsAny =
     splitNegations(args.ownWorkspaceOutputs).positive.length > 0 ||
     splitNegations(args.ownOutputs).positive.length > 0
-  const reach = ignoredReach(reachOf(positive), gitFiles)
+  const reach = ignoredReach(reachOf(positive), gitFiles, {
+    dir: args.workspaceRoot,
+    cache: args.gitFilesCache,
+  })
   const files = base.then((all) => {
     const kept = ownsAny ? all.filter((abs) => !own(relPosix(args.workspaceRoot, abs))) : all
     refuseUndecodable(kept, undecodable, args.workspaceRoot, 'workspaceFiles')
@@ -1378,7 +1385,11 @@ export { asTrees } from '../util/index.js'
  * unanswered. Testing every literal against every file was ~1.5 ms of a
  * 1,800-file all-cached run (2026-10-06).
  */
-function unanswered(literals: readonly string[], files: readonly string[]): Set<string> {
+function unanswered(
+  literals: readonly string[],
+  files: readonly string[],
+  newIgnored?: (lit: string) => boolean,
+): Set<string> {
   const left = new Set<string>()
   for (const lit of literals) {
     const under = `${lit}/`
@@ -1386,7 +1397,7 @@ function unanswered(literals: readonly string[], files: readonly string[]): Set<
       files[lowerBound(files, lit)] === lit ||
       files[lowerBound(files, under)]?.startsWith(under) === true ||
       files.some((rel) => rel === lit || rel.startsWith(under))
-    if (!answered) left.add(lit)
+    if (!answered || newIgnored?.(lit) === true) left.add(lit)
   }
   return left
 }
@@ -1414,6 +1425,7 @@ function lowerBound(files: readonly string[], key: string): number {
 function ignoredReach(
   reach: { prefixes: readonly string[]; literals: readonly string[] },
   listed: readonly string[],
+  ignoredIn?: { dir: string; cache: GitFilesCache | undefined },
 ): readonly string[] {
   let named = outrightMemo.get(reach)
   if (named === undefined) outrightMemo.set(reach, (named = outright(reach)))
@@ -1423,7 +1435,17 @@ function ignoredReach(
   if (memo === undefined) reachMemo.set(listed, (memo = new Map()))
   const key = named.join('\0')
   let left = memo.get(key)
-  if (left === undefined) memo.set(key, (left = [...unanswered(named, listed)]))
+  if (left === undefined) {
+    // A listed path under a named directory git otherwise ignores (a kept
+    // `gen/.gitkeep`) answered for the whole of it, and the untracked files
+    // beside it never entered the key.
+    const cache = ignoredIn?.cache
+    const newIgnored =
+      cache === undefined
+        ? undefined
+        : (lit: string) => cache.newFilesIgnored(path.resolve(ignoredIn!.dir, lit))
+    memo.set(key, (left = [...unanswered(named, listed, newIgnored)]))
+  }
   return left
 }
 
@@ -1738,7 +1760,7 @@ async function resolveFiles(
         files: withIgnored(
           args.projectDir,
           memo.result,
-          ignoredReach(plan, gitFiles),
+          ignoredReach(plan, gitFiles, { dir: args.projectDir, cache: args.gitFilesCache }),
           plan,
           nested,
           ownWsOutput,
@@ -1800,7 +1822,7 @@ async function resolveFiles(
     if (!input && !committed(abs)) continue
     candidates.push(abs)
   }
-  const reach = ignoredReach(plan, gitFiles)
+  const reach = ignoredReach(plan, gitFiles, { dir: args.projectDir, cache: args.gitFilesCache })
   refuseUndecodable(candidates, undecodable, args.projectDir, 'files')
   // Second pass: existence check — but ONLY for paths without a
   // trusted index OID. A clean-per-status tracked file necessarily
