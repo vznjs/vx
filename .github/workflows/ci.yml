@@ -537,6 +537,14 @@ jobs:
       - name: sandbox enforcement canary
         run: bun packages/vx/tests/helpers/sandbox-canary.ts 20
 
+      # Every package's build under seatbelt, as a Mac developer runs it.
+      # Linux runs them under bwrap only, and a grant bwrap honoured by its
+      # mounts (listing `..` above `../vx-*/package.json`) failed
+      # `@vzn/vx-docs#import` on every Mac for a week (2026-10-17). No
+      # cache read: a hit would skip the very tasks this runs.
+      - name: vx run build --all (seatbelt)
+        run: bun packages/vx/src/bin.ts run build --all '--cache-policy=local:,remote:'
+
       # The linux job's cold cross-compile, under seatbelt: Bun extracts a
       # downloaded runtime into the package directory before moving it into
       # its cache, and seatbelt matches that directory by the grant's glob.
