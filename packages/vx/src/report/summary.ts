@@ -5,7 +5,6 @@
 
 import type { TaskOutcome } from '../graph/index.js'
 import { tallyOutcomes } from './tally.js'
-import { isCacheHit } from '../graph/index.js'
 import { outcomeLabel, projectOutcome, ranNoCache } from './events.js'
 import { isGroupTask } from '../graph/index.js'
 import {
@@ -106,8 +105,6 @@ export interface SummaryStats {
   held?: { count: number; sumMs: number }
   /** Live section only: the forecast of what is left, from history. */
   etaMs?: number
-  /** The hits' stored exec times summed: the work the cache skipped. */
-  savedMs?: number
   /** A run of groups only: their names, so `0 tasks` says why. */
   emptyGroups?: readonly string[]
   /** Each finished task's cache bucket by its key and its id (its run bytes), so its remote traffic can move it. */
@@ -392,10 +389,6 @@ export function formatSummarySection(
     }
   }
   const timeParts = [total]
-  // What the cache paid back, beside what the run cost: the stored exec
-  // time of every hit, never the restore this run spent on it.
-  if ((stats.savedMs ?? 0) >= 1)
-    timeParts.push(paint(SUCCESS, `${formatElapsed(stats.savedMs!)} saved`, colors))
   // The live run's forecast leads the spread: the one number on the row
   // that is about the future.
   if (stats.etaMs !== undefined)
@@ -492,9 +485,6 @@ export function formatRunSummary(
   const durations = outcomes
     .filter((o) => (o.status === 'success' || o.status === 'failed') && !isGroupTask(o.node))
     .map((o) => o.durationMs)
-  let savedMs = 0
-  for (const o of outcomes)
-    if (isCacheHit(o.status) && !isGroupTask(o.node)) savedMs += o.storedDurationMs ?? 0
   const heldOutcomes = outcomes.filter((o) => o.admissionHeldMs !== undefined)
   const notRun = outcomes.filter((o) => neverStarted(o) && !isGroupTask(o.node)).length
   const emptyGroups = outcomes.every((o) => isGroupTask(o.node))
@@ -515,7 +505,6 @@ export function formatRunSummary(
       notSaved: outcomes.filter((o) => !isGroupTask(o.node) && ranUnsaved(o)).length,
       miss: t.total - t.skipped - (t.cachedLocal + t.cachedRemote) - noCache,
       noCache,
-      savedMs,
       spread:
         durations.length > 0
           ? {

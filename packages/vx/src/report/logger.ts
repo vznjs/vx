@@ -382,7 +382,6 @@ export function defaultLogger(
   let saved = 0
   let notSaved = 0
   let skippedCount = 0
-  let savedMs = 0
   // Each finished task's cache bucket by its key: its remote traffic moves it.
   const buckets = new Map<string, CacheBucket>()
   // The graph is done and vx's own closing steps run: the region stays,
@@ -530,7 +529,6 @@ export function defaultLogger(
               notSaved,
               miss: succeeded + failed - noCache,
               noCache,
-              savedMs,
               left: total - done - stopped - notRun,
               ...(etaMs !== undefined && !tail && !stopping ? { etaMs } : {}),
               buckets,
@@ -1028,12 +1026,10 @@ export function defaultLogger(
           case 'cache-hit':
             if (outcome.restored === false) upToDate++
             else restoredLocal++
-            savedMs += outcome.storedDurationMs ?? 0
             break
           case 'cache-hit-remote':
             if (outcome.restored === false) upToDate++
             else restoredRemote++
-            savedMs += outcome.storedDurationMs ?? 0
             break
           case 'skipped':
             skippedCount++

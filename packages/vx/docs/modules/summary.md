@@ -31,7 +31,6 @@ export interface SummaryStats {
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null // the time row's per-task spread
   held?: { count: number; sumMs: number } // what an `admit` policy held, summed
   etaMs?: number // live section only: the forecast of what is left (`~3s left` on the time row)
-  savedMs?: number // the hits' stored exec times summed: what the cache skipped
   emptyGroups?: readonly string[] // a run of command-less groups: their names, after `0 tasks`
   buckets?: ReadonlyMap<string, CacheBucket> // each finished task's cache bucket by its key
 }
@@ -124,9 +123,7 @@ cells. `projects` (the projects in the run vs the workspace total) leads the met
 A blank line separates the meters from the `info` row (worker pool +
 cache mode, `admit held N tasks · Ns` when a policy held any — a
 sum, said as one — and `run <id>`, the run's whole id as
-`vx last <id>` takes it) and the `time` row: the wall time, `<time> saved`
-(green: the hits' STORED exec times summed, what the cache skipped,
-never the restore this run paid; left out under 1 ms), the live
+`vx last <id>` takes it) and the `time` row: the wall time, the live
 forecast (`~3s left`), then the dim `max / avg / min` spread over
 executed tasks. The footer never says a fact twice (M, 2026-10-14):
 no `result` row (it only repeated the tasks, cache and time rows), a
@@ -192,7 +189,7 @@ Duration:
 - Aborted and not-run tasks: counted in the tasks total, each its own
   bar segment, a group in neither; a total is last on its line; their rows
   (`formatTaskAbortedLine`) byte for byte.
-- Time row: blank line above, total, saved, then the dim 'max / avg / min' spread (executed tasks only; a repeated value left out).
+- Time row: blank line above, total, then the dim 'max / avg / min' spread (executed tasks only; a repeated value left out).
 - No value or count appears twice in a footer (`the footer never repeats a value or a count`).
 - Duration formatting (sub-second vs second+).
 - A flaky task's note: exact text for a pass that failed before, a

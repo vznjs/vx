@@ -3067,7 +3067,7 @@ A broad run looks like:
             local 1↓ 1↑
 
   info      8 workers · local cache · run 01a14941-c8cf-7a3e-9b51-2f06d4e8c713
-  time      5.34s · 900ms saved
+  time      5.34s
 ```
 
 The three bars are meters: `projects` is what the run covered against
@@ -3093,8 +3093,7 @@ nothing), `N not downloaded` (outputs left in the remote store) and
 every count show only when non-zero. `vx last` names each remote
 failure on its task's row. The `info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it. The
-`time` row is the wall time, then what the cache saved (the hits' stored
-exec times, never the restore), then the spread over executed tasks
+`time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
 fact twice: a spread value already on the row is left out, so one
 executed task shows no spread, and there is no closing `result` row
