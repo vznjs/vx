@@ -3522,10 +3522,10 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
 describe('an artifact on disk with no index row, through a run', () => {
   // Only the archive form is adopted: a tree's stdout lives in its row.
   beforeEach(() => {
-    process.env.VX_CACHE_STORE_COMPRESS = 'true'
+    process.env.VX_CACHE_STORE_DECOMPRESS = 'false'
   })
   afterEach(() => {
-    delete process.env.VX_CACHE_STORE_COMPRESS
+    delete process.env.VX_CACHE_STORE_DECOMPRESS
   })
   it('is indexed from its bytes and hits, restoring its outputs', async () => {
     const root = await makeWorkspace({ prefix: 'vx-rowless-' })

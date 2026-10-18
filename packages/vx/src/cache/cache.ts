@@ -812,15 +812,15 @@ export interface StoreOptions {
    * (docs/design/cache-save-cpu-2026-10.md). 0 keeps every entry as files.
    */
   embeddings: number
-  /** A file-backed entry is one `<hash>.tar.zst`; off, a `<hash>.tree` of plain files. */
-  compress: boolean
+  /** A file-backed entry is a `<hash>.tree` of plain files; off, one `<hash>.tar.zst`. */
+  decompress: boolean
   /** What a tree restore checks first: each file's size and mtime, every byte, or nothing. */
   verify: 'stat' | 'hash' | 'none'
 }
 
 export const DEFAULT_STORE: StoreOptions = {
   embeddings: 32 * 1024,
-  compress: false,
+  decompress: true,
   verify: 'stat',
 }
 
@@ -2427,9 +2427,9 @@ export class Cache implements CacheLayer {
     // A store of plain files holds a body up to the bulk decode's bound:
     // fetched whole, it is decoded in one call straight into the tree, with
     // no temp archive between (`writeArtifactAndIndex`).
-    const held = this.store.compress
-      ? this.store.embeddings
-      : Math.max(this.store.embeddings, STREAM_DECODE_FROM)
+    const held = this.store.decompress
+      ? Math.max(this.store.embeddings, STREAM_DECODE_FROM)
+      : this.store.embeddings
     try {
       const length =
         body instanceof Blob ? body.size : Number(body.headers.get('content-length') ?? 0)
@@ -2585,7 +2585,7 @@ export class Cache implements CacheLayer {
 
   /**
    * The save's local form: a small entry packed for the index when the
-   * store embeds, else a `.tar.zst` (`compress`) or a tree of the outputs
+   * store embeds, else a `.tar.zst` (`decompress: false`) or a tree of the outputs
    * copied as they are.
    */
   private async packForSave(
@@ -2595,7 +2595,7 @@ export class Cache implements CacheLayer {
     | { tmpPath: string }
     | { plan: true; saved: SavedTree }
   > {
-    if (this.store.compress) return this.packArtifactToTemp(this.tempPath(args.hash), args)
+    if (!this.store.decompress) return this.packArtifactToTemp(this.tempPath(args.hash), args)
     const plan = await this.planWithin(args)
     if (this.store.embeddings > 0 && plan.size <= this.store.embeddings) {
       const tar = await packArtifactBytes(plan)
@@ -2662,7 +2662,7 @@ export class Cache implements CacheLayer {
     // A remote hit this store keeps as plain files is decoded once, into the
     // tree, and checked there: nothing names the tree until the rows go in.
     const oneTree =
-      saved === undefined && inline === null && tar === undefined && !this.store.compress
+      saved === undefined && inline === null && tar === undefined && this.store.decompress
     let tmpPath: string | undefined
     if (saved !== undefined) {
       // The tree save wrote and scanned its own outputs.
@@ -2768,7 +2768,7 @@ export class Cache implements CacheLayer {
       await unlink(tmpPath).catch(() => undefined)
       tmpPath = undefined
     }
-    if (tree === undefined && inline === null && !this.store.compress) {
+    if (tree === undefined && inline === null && this.store.decompress) {
       const dir = this.tempTreePath(hash)
       try {
         const source =
@@ -3414,7 +3414,7 @@ export class Cache implements CacheLayer {
 
   /** The key's file-backed artifact (tar or tree), the form this store writes asked first. */
   private artifactStat(hash: string): { path: string; tree: boolean; mtimeMs: number } | undefined {
-    const order = this.store.compress ? [false, true] : [true, false]
+    const order = this.store.decompress ? [true, false] : [false, true]
     for (const tree of order) {
       const at = tree ? this.treePath(hash) : this.tarPath(hash)
       const st = statSync(at, { throwIfNoEntry: false })

@@ -77,7 +77,7 @@ const [name, dir] = process.argv.slice(2)
 const proj = ${JSON.stringify(root)} + '/w-' + name
 mkdirSync(proj + '/dist', { recursive: true })
 writeFileSync(proj + '/dist/' + name, name.repeat(64))
-const cache = new Cache(dir, undefined, undefined, undefined, undefined, undefined, { embeddings: 32 * 1024, compress: true, verify: 'stat' })
+const cache = new Cache(dir, undefined, undefined, undefined, undefined, undefined, { embeddings: 32 * 1024, decompress: false, verify: 'stat' })
 let n = 0
 while (!existsSync(${JSON.stringify(stop)})) {
   await cache.save({ hash: 'h1', projectDir: proj, outputFiles: [proj + '/dist/' + name],
@@ -89,7 +89,7 @@ console.log(n)
     )
     const reader = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     await save(reader, 'h1', 'a.js'.repeat(64), 'a.js')
@@ -129,7 +129,7 @@ describe('3: one key moving file → inline → file', () => {
   it('reads the latest bytes each time and leaves one copy', async () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -156,7 +156,7 @@ describe('3: one key moving file → inline → file', () => {
   it('a file no row names, shadowed by an inline save, is never read and the sweep takes it', async () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -200,7 +200,7 @@ describe('4: a reset keeps the inline artifacts', () => {
   it('a SCHEMA_VERSION reset drops the rows; the bytes stay and a lookup with a task adopts them', async () => {
     const writer = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     await save(writer, 'h1', 'kept')
@@ -210,7 +210,7 @@ describe('4: a reset keeps the inline artifacts', () => {
     raw.close()
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -228,7 +228,7 @@ describe('4: a reset keeps the inline artifacts', () => {
     const open = (): Cache =>
       new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
         embeddings: 32 * 1024,
-        compress: true,
+        decompress: false,
         verify: 'stat',
       })
     const writer = open()
@@ -263,7 +263,7 @@ describe('6: a small remote body is ingested inline', () => {
       undefined,
       undefined,
       undefined,
-      { embeddings: 32 * 1024, compress: true, verify: 'stat' },
+      { embeddings: 32 * 1024, decompress: false, verify: 'stat' },
     )
     try {
       await save(producer, hash, body)
@@ -290,7 +290,7 @@ describe('6: a small remote body is ingested inline', () => {
     const bytes = await produced('h1', 'remote')
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -310,7 +310,7 @@ describe('6: a small remote body is ingested inline', () => {
     const bytes = await produced('h2', body)
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -331,7 +331,7 @@ describe('6: a small remote body is ingested inline', () => {
     // A ceiling of 8 KiB puts the cap on the compressed bytes at 73,760.
     const cache = new Cache(cacheDir, undefined, undefined, 8192, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -375,7 +375,7 @@ describe('8: prune over inline artifacts', () => {
   it('counts inline sizes toward maxBytes and takes a victim’s bytes with its rows', async () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -414,7 +414,7 @@ describe('8: prune over inline artifacts', () => {
   it('reaps a row-less inline artifact by its `at`, counts it for `vx info`, and nothing younger', async () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -456,7 +456,7 @@ describe('8: prune over inline artifacts', () => {
   it('an adopt between the scan and the reap keeps the artifact', async () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -486,14 +486,14 @@ describe('a workspace index that held its entries itself, moved to a store', () 
     const store = path.join(root, 'store')
     const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     await save(own, 'h0', 'before')
     own.close()
     const moved = new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     await save(moved, 'h1', 'shared')
@@ -505,7 +505,7 @@ describe('a workspace index that held its entries itself, moved to a store', () 
       undefined,
       'open',
       store,
-      { embeddings: 32 * 1024, compress: true, verify: 'stat' },
+      { embeddings: 32 * 1024, decompress: false, verify: 'stat' },
     )
     try {
       expect((await other.get('h1'))?.hash).toBe('h1')
@@ -520,7 +520,7 @@ describe('12: the inline table’s own layout sentinel', () => {
   it('a foreign layout drops the inline artifacts, silently', async () => {
     const writer = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     await save(writer, 'h1', 'kept')
@@ -534,7 +534,7 @@ describe('12: the inline table’s own layout sentinel', () => {
     const out = spyOn(process.stdout, 'write')
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -553,14 +553,14 @@ describe('12: the inline table’s own layout sentinel', () => {
     // CONTROL: the layout this vx writes keeps them.
     const writer2 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     await save(writer2, 'h2', 'kept')
     writer2.close()
     const again = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -576,7 +576,7 @@ describe('12: the inline table’s own layout sentinel', () => {
     const open = (): Cache =>
       new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
         embeddings: 32 * 1024,
-        compress: true,
+        decompress: false,
         verify: 'stat',
       })
     const writer = open()
@@ -601,12 +601,12 @@ describe('12: the inline table’s own layout sentinel', () => {
     const store = path.join(root, 'store')
     new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     }).close()
     const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {
@@ -621,7 +621,7 @@ describe('12: the inline table’s own layout sentinel', () => {
   it('a warm open at this schema reads no layout: the open costs no statement for it', async () => {
     const writer = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     await save(writer, 'h1', 'kept')
@@ -631,7 +631,7 @@ describe('12: the inline table’s own layout sentinel', () => {
     raw.close()
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
-      compress: true,
+      decompress: false,
       verify: 'stat',
     })
     try {

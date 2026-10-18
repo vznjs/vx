@@ -199,10 +199,10 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.',
   },
   {
-    path: 'cache.store.compress',
+    path: 'cache.store.decompress',
     kind: { type: 'bool' },
-    default: 'false',
-    doc: 'Keep a larger entry as one `.tar.zst`; off, as its plain files, which a hit copies or clones out.',
+    default: 'true',
+    doc: 'Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.',
   },
   {
     path: 'cache.store.verify',

@@ -476,7 +476,7 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
 }
 
 /**
- * The tree form (`cache.store.compress: false`, v47): an artifact's members
+ * The tree form (`cache.store.decompress`, v47): an artifact's members
  * as plain files under one directory, `outputs/<rel>` and
  * `workspace-outputs/<rel>` as named in the tar, beside its sidecar and a
  * `.vx-sum` over them. stdout lives in the index. A restore copies (or

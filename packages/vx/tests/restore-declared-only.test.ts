@@ -156,7 +156,7 @@ it('a run whose hit carries an undeclared file runs the task instead', async () 
   git('commit', '-q', '-m', 'init')
   const cacheDir = path.join(root, '.cache')
   const first = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir], {
-    VX_CACHE_STORE_COMPRESS: 'true',
+    VX_CACHE_STORE_DECOMPRESS: 'false',
   })
   expect(`${first.code}\n${first.err}`).toStartWith('0\n')
   const artifact = readdirSync(cacheDir).find((f) => f.endsWith('.tar.zst'))!
@@ -170,7 +170,7 @@ it('a run whose hit carries an undeclared file runs the task instead', async () 
   rmSync(path.join(dir, 'out'), { recursive: true })
   const pkg = readFileSync(path.join(dir, 'package.json'), 'utf8')
   const second = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir], {
-    VX_CACHE_STORE_COMPRESS: 'true',
+    VX_CACHE_STORE_DECOMPRESS: 'false',
   })
   expect(`${second.code}\n${second.err}`).toStartWith('0\n')
   expect(second.out).toContain('1↑')
