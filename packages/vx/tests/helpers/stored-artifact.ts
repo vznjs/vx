@@ -39,14 +39,14 @@ export function removeStoredArtifact(cache: Cache, hash: string): void {
 
 /**
  * The keys with an artifact in a store directory, inline (its `dbFile`) or
- * as a `<hash>.tar.zst` file, sorted: what a test that listed the files
+ * as a `<hash>.tar.zst` file or a `<hash>.tree` directory, sorted: what a test that listed the files
  * asked.
  */
 export function storedKeys(dir: string, dbFile = 'cache.db'): string[] {
   const keys = new Set(
     readdirSync(dir)
-      .filter((n) => n.endsWith('.tar.zst'))
-      .map((n) => n.slice(0, -'.tar.zst'.length)),
+      .filter((n) => /^[0-9a-f]{16}\.(tar\.zst|tree)$/.test(n))
+      .map((n) => n.slice(0, 16)),
   )
   const file = path.join(dir, dbFile)
   if (existsSync(file)) {

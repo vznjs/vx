@@ -35,6 +35,7 @@ import { withSum } from './helpers/artifact-sum.js'
 import { vx } from './helpers/parity.js'
 import { streamOf } from './helpers/stream.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const made: string[] = []
 afterEach(() => {
@@ -236,7 +237,15 @@ it('eight restores of one entry at once all succeed', async () => {
   const src = path.join(root, 'src')
   mkdirSync(path.join(src, 'out'), { recursive: true })
   writeFileSync(path.join(src, 'out', 'a.bin'), crypto.getRandomValues(new Uint8Array(64 * 1024)))
-  const cache = new Cache(path.join(root, 'cache'))
+  const cache = new Cache(
+    path.join(root, 'cache'),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    TAR_STORE,
+  )
   try {
     await cache.save({
       hash: '00000000000000aa',
@@ -259,7 +268,15 @@ it('a batch lookup drops only the entries whose artifact is gone', async () => {
   const root = dir('vx-ported-batch-')
   const src = path.join(root, 'src')
   mkdirSync(src)
-  const cache = new Cache(path.join(root, 'cache'))
+  const cache = new Cache(
+    path.join(root, 'cache'),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    TAR_STORE,
+  )
   try {
     for (const h of ['00000000000000a1', '00000000000000a2']) {
       writeFileSync(path.join(src, `${h}.bin`), crypto.getRandomValues(new Uint8Array(64 * 1024)))

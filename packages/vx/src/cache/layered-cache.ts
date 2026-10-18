@@ -457,8 +457,10 @@ export class LayeredCache implements CacheLayer {
         return
       }
     }
-    const body = (): { body: Blob; release?: () => Promise<void> } =>
-      packed !== undefined ? { body: new Blob([packed]) } : this.local.pinArtifact(hash)
+    const body = (): Promise<{ body: Blob; release?: () => Promise<void> }> =>
+      packed !== undefined
+        ? Promise.resolve({ body: new Blob([packed]) })
+        : this.local.pinArtifact(hash)
     for (const lane of writable) lane.upload(hash, durationMs, body, this.local.uploads)
   }
 

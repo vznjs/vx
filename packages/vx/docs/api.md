@@ -124,6 +124,7 @@ export class Cache implements CacheLayer {
     private readonly artifactCeiling: number = MAX_DECOMPRESSED_ARTIFACT_BYTES,
     mode: 'open' | 'inspect' | 'preview' = 'open',
     storeRoot?: string | null,
+    private readonly store: StoreOptions = DEFAULT_STORE,
   )
   hashFile(filePath: string): Promise<string>
   hashBytes(bytes: Uint8Array, nearPath: string): string
@@ -177,8 +178,12 @@ export class Cache implements CacheLayer {
   }): Promise<void>
   get localWritesEnabled(): boolean
   packArtifactBytes(args: SaveArgs): Promise<Uint8Array>
-  pinArtifact(hash: string): { body: Blob; release: () => Promise<void> }
+  async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }>
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
+    | { compressed: Uint8Array; tar: Uint8Array }
+    | { tmpPath: string }
+    | { plan: true; saved: SavedTree }
+  >
   dbHandle(): Database
   recordRun(run: RunRecord): void
   recordRuns(runs: readonly RunRecord[]): void
@@ -347,6 +352,7 @@ export interface CacheSettings {
   inputStability?: InputStability
   outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
+  store?: { embedded?: boolean; compress?: boolean; verify?: 'stat' | 'hash' | 'none' }
 }
 ```
 

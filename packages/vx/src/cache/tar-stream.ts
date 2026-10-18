@@ -122,14 +122,19 @@ class Source {
   constructor(private readonly reader: AsyncIterator<Uint8Array>) {}
 
   private async fill(): Promise<boolean> {
-    if (this.done) return false
-    const { done, value } = await this.reader.next()
-    if (done === true || value === undefined) {
-      this.done = true
-      return false
+    // An empty chunk is skipped, never reported as data: the callers read
+    // `chunks[0]` after a true (the tar a tree packs back yields them).
+    for (;;) {
+      if (this.done) return false
+      const { done, value } = await this.reader.next()
+      if (done === true || value === undefined) {
+        this.done = true
+        return false
+      }
+      if (value.byteLength === 0) continue
+      this.chunks.push(value)
+      return true
     }
-    if (value.byteLength > 0) this.chunks.push(value)
-    return true
   }
 
   /** Exactly `n` bytes, or null at a clean end (nothing buffered), or a TarFormatError mid-entry. */

@@ -49,7 +49,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, readdir, rm, stat, unlink, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createArtifactTables, createTables, inHashes, lazyStatement } from './schema.js'
 import {
@@ -76,7 +76,12 @@ import {
   packArtifactBytes,
   packArtifactStream,
   planArtifact,
+  planOfTree,
+  sealTree,
+  treeIntact,
+  writeTree,
 } from './archive.js'
+import { readUmask, restoredMode } from './umask.js'
 import {
   ArtifactVanishedError,
   type CacheEntry,
@@ -150,7 +155,7 @@ const ACCESS_REFRESH_MS = 60 * 60 * 1000
  * directory), and the sweep once took any `*.tar.zst` an hour old there,
  * the user's own release tarball included (item 968).
  */
-const VX_ARTIFACT_NAME = /^([0-9a-f]{16})\.tar\.zst(\.tmp-\d+-\d+-[0-9a-z]*)?$/
+const VX_ARTIFACT_NAME = /^([0-9a-f]{16})\.(?:tar\.zst|tree)(\.tmp-\d+-\d+-[0-9a-z]*)?$/
 
 /** What vx writes in a cache directory besides its artifacts. */
 const VX_CACHE_NAMES = new Set([
@@ -509,8 +514,9 @@ async function scanOrphanFiles(
       const file = path.join(cacheDir, name)
       try {
         const st = await stat(file)
-        if (st.isFile() && st.mtimeMs <= cutoff) {
-          found.push({ file, size: st.size, mtimeMs: st.mtimeMs, temp })
+        if ((name.includes('.tree') ? st.isDirectory() : st.isFile()) && st.mtimeMs <= cutoff) {
+          const size = st.isDirectory() ? await treeBytes(file) : st.size
+          found.push({ file, size, mtimeMs: st.mtimeMs, temp })
         }
       } catch {
         // Gone between readdir and stat: not an orphan any more.
@@ -518,6 +524,16 @@ async function scanOrphanFiles(
     }),
   )
   return found
+}
+
+/** The bytes a tree-form artifact's files hold. */
+async function treeBytes(dir: string): Promise<number> {
+  let n = 0
+  for (const e of await readdir(dir, { recursive: true, withFileTypes: true }).catch(() => [])) {
+    if (e.isFile())
+      n += (await stat(path.join(e.parentPath, e.name)).catch(() => ({ size: 0 }))).size
+  }
+  return n
 }
 
 /**
@@ -788,6 +804,25 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/** A tree the save wrote from its own outputs, with the scan its tar would give. */
+interface SavedTree {
+  tree: string
+  scan: Awaited<ReturnType<typeof scanArtifact>>
+  bytes: number
+}
+
+/** How a save keeps an entry locally (`cache.store`). */
+export interface StoreOptions {
+  /** A small entry is kept in the index, as one zstd tar (fewer files to make). */
+  embedded: boolean
+  /** A file-backed entry is one `<hash>.tar.zst`; off, a `<hash>.tree` of plain files. */
+  compress: boolean
+  /** What a tree restore checks first: each file's size and mtime, every byte, or nothing. */
+  verify: 'stat' | 'hash' | 'none'
+}
+
+export const DEFAULT_STORE: StoreOptions = { embedded: true, compress: false, verify: 'stat' }
+
 /** What a run's background uploads moved: totals over the ones that landed. */
 export interface UploadTally {
   count: number
@@ -939,6 +974,7 @@ export class Cache implements CacheLayer {
      * records none (deleted, or never written beside a run's store).
      */
     storeRoot?: string | null,
+    private readonly store: StoreOptions = DEFAULT_STORE,
   ) {
     this.inspecting = mode !== 'open'
     this.read = localPolicy.read
@@ -1677,7 +1713,7 @@ export class Cache implements CacheLayer {
     } else {
       // Verify the artifact file actually exists. The DB and the
       // filesystem can drift if someone manually deletes the cache dir.
-      const st = statSync(this.tarPath(hash), { throwIfNoEntry: false })
+      const st = this.artifactStat(hash)
       if (st === undefined) return null
       if (st.mtimeMs < Date.now() - ORPHAN_GRACE_MS) this.staleTimes.add(hash)
     }
@@ -1717,7 +1753,7 @@ export class Cache implements CacheLayer {
       names = []
     }
     this.artifactNames ??= new Set(names)
-    return !names.some((n) => n.endsWith('.tar.zst'))
+    return !names.some((n) => n.endsWith('.tar.zst') || n.endsWith('.tree'))
   }
 
   /**
@@ -1766,7 +1802,7 @@ export class Cache implements CacheLayer {
         if (r.inline_at < graceStart) this.staleInline.add(r.hash)
         return true
       }
-      const st = statSync(this.tarPath(r.hash), { throwIfNoEntry: false })
+      const st = this.artifactStat(r.hash)
       if (st !== undefined && st.mtimeMs < graceStart) this.staleTimes.add(r.hash)
       return st !== undefined
     })
@@ -1811,7 +1847,7 @@ export class Cache implements CacheLayer {
   private storedHere(hash: string): boolean {
     const row = this.entryExists.get(hash) as { inline_at: number | null } | null
     if (row === null) return false
-    return row.inline_at !== null || existsSync(this.tarPath(hash))
+    return row.inline_at !== null || this.artifactStat(hash) !== undefined
   }
 
   // Local cache has no slower layer to warm from — prefetch is a no-op.
@@ -1886,9 +1922,120 @@ export class Cache implements CacheLayer {
     }
   }
 
+  /**
+   * Restore a tree-form entry: its files checked as `cache.store.verify`
+   * says, then copied (or cloned) out one by one where the outputs are
+   * absent, as on every restore after a clean. Anything else (a tree to
+   * restore into, a workspace output, a link) goes through the extractor
+   * the tar form uses, fed the tree packed back into its tar.
+   */
+  private async restoreTree(
+    hash: string,
+    tree: string,
+    rows: readonly OutputFileRow[],
+    projectDir: string,
+    workspaceRoot: string | undefined,
+    verify: (provided: ReadonlySet<string>) => void,
+    accept: ((name: string) => boolean) | undefined,
+  ): Promise<void> {
+    const files = rows.filter((r) => !r.path.endsWith('/') && r.mode !== LINK_MODE)
+    let bytes = 0
+    for (const r of files) bytes += r.size
+    if (bytes > this.artifactCeiling) {
+      throw new CorruptArtifactError(
+        hash,
+        `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
+      )
+    }
+    if (this.store.verify === 'stat') {
+      const changed = await Promise.all(
+        files.map((r) =>
+          stat(path.join(tree, treeName(r.path))).then(
+            (st) => st.size !== r.size || Math.floor(st.mtimeMs) !== r.mtimeMs,
+            () => true,
+          ),
+        ),
+      )
+      if (changed.includes(true)) {
+        throw new CorruptArtifactError(hash, 'a stored file changed since it was saved')
+      }
+    } else if (this.store.verify === 'hash' && !(await treeIntact(tree, this.stdoutText(hash)))) {
+      throw new CorruptArtifactError(hash, 'the stored files no longer sum to what was saved')
+    }
+    if (await this.copyTree(tree, rows, files, projectDir, accept)) return
+    await extractArtifactStream(
+      packArtifactStream(planOfTree(tree, this.stdoutText(hash))),
+      projectDir,
+      workspaceRoot,
+      verify,
+      accept,
+      workspaceRoot,
+    )
+  }
+
+  /** The copy-out: false, having written nothing, where it is not the case it serves. */
+  private async copyTree(
+    tree: string,
+    rows: readonly OutputFileRow[],
+    files: readonly OutputFileRow[],
+    projectDir: string,
+    accept: ((name: string) => boolean) | undefined,
+  ): Promise<boolean> {
+    const tops = new Set<string>()
+    for (const r of rows) {
+      if (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) || r.mode === LINK_MODE) return false
+      if (accept !== undefined && !r.path.endsWith('/') && !accept(`outputs/${r.path}`))
+        return false
+      tops.add(r.path.split('/')[0]!)
+    }
+    const held = await Promise.all(
+      [...tops].map((t) =>
+        lstat(path.join(projectDir, t)).then(
+          () => true,
+          () => false,
+        ),
+      ),
+    )
+    if (held.includes(true)) return false
+    readUmask()
+    const plain = restoredMode(0o666)
+    try {
+      const dirs = new Set<string>()
+      for (const r of rows) {
+        dirs.add(path.join(projectDir, r.path.endsWith('/') ? r.path : path.dirname(r.path)))
+      }
+      for (const d of dirs) await mkdir(d, { recursive: true })
+      await Promise.all(
+        files.map(async (r) => {
+          const to = path.join(projectDir, r.path)
+          await Bun.write(to, Bun.file(path.join(tree, treeName(r.path))), { createPath: false })
+          const mode = restoredMode(r.mode)
+          if (mode !== plain) await chmod(to, mode)
+          const at = new Date(r.mtimeMs)
+          await utimes(to, at, at)
+        }),
+      )
+    } catch (err) {
+      await Promise.all(
+        [...tops].map((t) => rm(path.join(projectDir, t), { recursive: true, force: true })),
+      )
+      throw err
+    }
+    return true
+  }
+
+  private stdoutText(hash: string): string {
+    const row = this.db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(hash) as {
+      stdout: string | Uint8Array
+    } | null
+    if (row === null) return ''
+    return typeof row.stdout === 'string' ? row.stdout : utf8Decode.decode(row.stdout)
+  }
+
   /** Remove one entry: its artifact first, then its rows (as `prune` orders them). */
   private async dropEntry(hash: string): Promise<void> {
     await rm(this.tarPath(hash), { force: true })
+    await rm(this.treePath(hash), { recursive: true, force: true })
     const drop = this.db.transaction(() => {
       this.deleteBlob.run(hash)
       this.deleteEntryRow.run(hash)
@@ -1986,6 +2133,8 @@ export class Cache implements CacheLayer {
     // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
+    const tree =
+      inline === undefined && existsSync(this.treePath(hash)) ? this.treePath(hash) : undefined
     const endExtract = span('restore: extract')
     try {
       // Every step here is an async filesystem call on purpose: a
@@ -1993,15 +2142,13 @@ export class Cache implements CacheLayer {
       // 0.62 ms sequential, 2026-09-10) and 30% slower in the run, where
       // four workers overlap their round trips and a blocking one stalls
       // the other three (1,000-project restore row 1.1–1.2 s → 1.5 s).
-      const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
-      await extractArtifactStream(
-        tar,
-        projectDir,
-        workspaceRoot,
-        verify,
-        outputs === undefined ? undefined : declaredName(outputs),
-        workspaceRoot,
-      )
+      const accept = outputs === undefined ? undefined : declaredName(outputs)
+      if (tree !== undefined) {
+        await this.restoreTree(hash, tree, rows, projectDir, workspaceRoot, verify, accept)
+      } else {
+        const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
+        await extractArtifactStream(tar, projectDir, workspaceRoot, verify, accept, workspaceRoot)
+      }
     } catch (err) {
       // A UserError here is the extractor naming the tree's fault (an
       // output directory that links out of the project).
@@ -2052,7 +2199,10 @@ export class Cache implements CacheLayer {
       // artifact is intact, the tree is not the process's to change.
       // A refusal to READ the artifact is the cache directory's, not the
       // outputs': the old line sent the reader to the wrong tree (A-40).
-      if (isFsRefusal(err) && err.path === src) {
+      if (
+        isFsRefusal(err) &&
+        (err.path === src || (tree !== undefined && inTree(err.path, tree)))
+      ) {
         throw new UserError(
           `restore of ${hash} could not read its artifact (${code}: ${err.message}). ` +
             `Make the cache directory readable by this user, or point cacheDir / --cache-dir at one that is.`,
@@ -2164,23 +2314,21 @@ export class Cache implements CacheLayer {
     // again in `writeArtifactAndIndex` cost every save two thread-pool
     // round trips for an EEXIST and a stat (item 630).
     const endPack = span('save: pack')
-    const packed = await this.packArtifactToTemp(this.tempPath(args.hash), args).catch(
-      (err: unknown) => {
-        // A save that could not open an output names the limit, not only
-        // the file, which is fine (A-39).
-        if (isOutOfFds(err)) {
-          throw new UserError(
-            `save of ${args.hash} could not open a file (${err.message}) — ${OUT_OF_FDS_HINT}`,
-          )
-        }
-        throw err
-      },
-    )
+    const packed = await this.packForSave(args).catch((err: unknown) => {
+      // A save that could not open an output names the limit, not only
+      // the file, which is fine (A-39).
+      if (isOutOfFds(err)) {
+        throw new UserError(
+          `save of ${args.hash} could not open a file (${err.message}) — ${OUT_OF_FDS_HINT}`,
+        )
+      }
+      throw err
+    })
     endPack()
     await this.guard(() =>
       this.writeArtifactAndIndex(
         args.hash,
-        'tar' in packed ? packed.compressed : packed,
+        'tar' in packed ? packed.compressed : 'plan' in packed ? packed.saved : packed,
         {
           taskId: args.entry.taskId,
           command: args.entry.command,
@@ -2220,11 +2368,30 @@ export class Cache implements CacheLayer {
    * gone; `release` unlinks the name. An inline artifact is read once into
    * the body, which no re-save can change.
    */
-  pinArtifact(hash: string): { body: Blob; release: () => Promise<void> } {
+  async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }> {
     const blob = this.guard(() => this.selectBlob.get(hash) as { bytes: Uint8Array } | null)
     if (blob !== null) return { body: new Blob([blob.bytes]), release: async () => {} }
     const pinned = this.tempPath(hash)
-    linkSync(this.tarPath(hash), pinned)
+    try {
+      linkSync(this.tarPath(hash), pinned)
+    } catch (err) {
+      const tree = this.treePath(hash)
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT' || !existsSync(tree)) throw err
+      // A tree is packed into the artifact a remote expects here, in the
+      // upload queue, off the save; a small one in memory.
+      const plan = planOfTree(tree, this.stdoutText(hash))
+      if (plan.size <= STREAM_DECODE_FROM) {
+        const bytes = await zstdCompress(await packArtifactBytes(plan))
+        return { body: new Blob([bytes]), release: async () => {} }
+      }
+      await Bun.write(
+        pinned,
+        new Response(packArtifactStream(plan).pipeThrough(zstdEncoder())),
+      ).catch(async (e: unknown) => {
+        await unlink(pinned).catch(() => undefined)
+        throw e
+      })
+    }
     return { body: Bun.file(pinned), release: () => unlink(pinned).catch(() => undefined) }
   }
 
@@ -2406,6 +2573,36 @@ export class Cache implements CacheLayer {
     return { tmpPath }
   }
 
+  /**
+   * The save's local form: a small entry packed for the index when the
+   * store embeds, else a `.tar.zst` (`compress`) or a tree of the outputs
+   * copied as they are.
+   */
+  private async packForSave(
+    args: Parameters<Cache['packArtifact']>[0],
+  ): Promise<
+    | { compressed: Uint8Array; tar: Uint8Array }
+    | { tmpPath: string }
+    | { plan: true; saved: SavedTree }
+  > {
+    if (this.store.compress) return this.packArtifactToTemp(this.tempPath(args.hash), args)
+    const plan = await this.planWithin(args)
+    if (this.store.embedded && plan.size <= INLINE_MAX) {
+      const tar = await packArtifactBytes(plan)
+      return { compressed: await zstdCompress(tar), tar }
+    }
+    const tree = this.tempTreePath(args.hash)
+    try {
+      const scan = await writeTree(plan, tree)
+      let bytes = 0
+      for (const e of scan.entries) bytes += e.size
+      return { plan: true, saved: { tree, scan, bytes } }
+    } catch (err) {
+      await rm(tree, { recursive: true, force: true })
+      throw err
+    }
+  }
+
   /** tmp suffix mixes pid + hrtime + a random hex chunk so two saves of
    *  the same hash from the same process (or from two forked workers that
    *  happen to share a wall-clock ms) don't pick the same tmp filename and
@@ -2424,7 +2621,7 @@ export class Cache implements CacheLayer {
    */
   private async writeArtifactAndIndex(
     hash: string,
-    compressed: Uint8Array | { tmpPath: string },
+    given: Uint8Array | { tmpPath: string } | SavedTree,
     meta: IngestMeta,
     /**
      * The tar `compressed` was made from, when this process packed it: it is
@@ -2441,12 +2638,21 @@ export class Cache implements CacheLayer {
     // restore, so the size/mode/mtime fingerprint we store matches
     // what isOutputsCurrent will compare against post-restore.
     const finalPath = this.tarPath(hash)
+    const saved = 'tree' in given ? given : undefined
+    const compressed = 'tree' in given ? new Uint8Array(0) : given
     // An inline artifact is written in the rows' transaction below: no
     // temp, no rename.
     const inline =
-      compressed instanceof Uint8Array && compressed.byteLength <= INLINE_MAX ? compressed : null
+      saved === undefined &&
+      this.store.embedded &&
+      compressed instanceof Uint8Array &&
+      compressed.byteLength <= INLINE_MAX
+        ? compressed
+        : null
     let tmpPath: string | undefined
-    if (inline === null && compressed instanceof Uint8Array) {
+    if (saved !== undefined) {
+      // The tree save wrote and scanned its own outputs.
+    } else if (inline === null && compressed instanceof Uint8Array) {
       const temp = this.tempPath(hash)
       tmpPath = temp
       // The temp is written BEFORE validation so a large artifact can be
@@ -2472,7 +2678,9 @@ export class Cache implements CacheLayer {
     let scanned: Awaited<ReturnType<typeof scanArtifact>>
     try {
       const endScan = span('save: scan')
-      if (tar !== undefined) {
+      if (saved !== undefined) {
+        scanned = saved.scan
+      } else if (tar !== undefined) {
         // Our own tar, in memory: read in place, on this thread.
         scanned = scanTarBytes(tar)
       } else {
@@ -2505,12 +2713,42 @@ export class Cache implements CacheLayer {
       ])
     } catch (err) {
       if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
+      if (saved !== undefined) await rm(saved.tree, { recursive: true, force: true })
       if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     }
     const { entries } = scanned
     const totalBytes =
-      compressed instanceof Uint8Array ? compressed.byteLength : Bun.file(tmpPath!).size
+      saved !== undefined
+        ? saved.bytes
+        : compressed instanceof Uint8Array
+          ? compressed.byteLength
+          : Bun.file(tmpPath!).size
+    // A remote hit this store keeps as plain files: the archive passed its
+    // checks above, so it is unpacked once here and its temp goes.
+    let tree = saved?.tree
+    if (tree === undefined && inline === null && !this.store.compress) {
+      const dir = this.tempTreePath(hash)
+      try {
+        const source =
+          compressed instanceof Uint8Array && compressed.byteLength > 0
+            ? compressed
+            : Bun.file(tmpPath!)
+        await extractArtifactStream(
+          await decodedTar(source, hash, this.artifactCeiling),
+          path.join(dir, 'outputs'),
+          path.join(dir, WORKSPACE_OUTPUT_PREFIX),
+        )
+        await sealTree(dir, scanned)
+      } catch (err) {
+        await rm(dir, { recursive: true, force: true })
+        if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
+        throw err
+      }
+      if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
+      tmpPath = undefined
+      tree = dir
+    }
     const outputFileRows: Array<[string, number, number, number]> = []
     // Per-output-file fingerprint rows feed the skip-restore check.
     // Row paths: project entries store the bare rel (`outputs/`
@@ -2600,19 +2838,27 @@ export class Cache implements CacheLayer {
     // bytes are in one place. An inline save moves aside whatever file the
     // key has, as a file save does: one rename that finds nothing on a
     // first save, where asking the index first was a statement per save.
-    let aside: string | undefined
-    let renamed = false
+    let aside: string[] = []
+    let renamed: string | undefined
     const upsertBlob = this.upsertBlob
     const deleteBlob = this.deleteBlob
-    const moveAside = (): string | undefined => {
-      const to = this.tempPath(hash)
-      try {
-        renameSync(finalPath, to)
-        return to
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-        return undefined
+    const treePath = this.treePath(hash)
+    // Both file forms are moved aside: a key re-saved under another
+    // `cache.store` leaves one live artifact.
+    const moveAside = (): string[] => {
+      const moved: string[] = []
+      for (const [from, to] of [
+        [finalPath, this.tempPath(hash)],
+        [treePath, this.tempTreePath(hash)],
+      ] as const) {
+        try {
+          renameSync(from, to)
+          moved.push(to)
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+        }
       }
+      return moved
     }
     const tx = this.db.transaction(() => {
       if (inline !== null) {
@@ -2620,9 +2866,10 @@ export class Cache implements CacheLayer {
         upsertBlob.run(hash, now, inline)
       } else {
         aside = moveAside()
-        renameSync(tmpPath!, finalPath)
-        this.artifactNames?.add(path.basename(finalPath))
-        renamed = true
+        const live = tree !== undefined ? treePath : finalPath
+        renameSync(tree ?? tmpPath!, live)
+        this.artifactNames?.add(path.basename(live))
+        renamed = live
         deleteBlob.run(hash)
       }
       insertEntry.run(
@@ -2665,13 +2912,17 @@ export class Cache implements CacheLayer {
       tx.immediate()
     } catch (err) {
       endTx()
-      const left = renamed ? finalPath : tmpPath
-      if (left !== undefined) await unlink(left).catch(() => undefined)
-      if (aside !== undefined) await unlink(aside).catch(() => undefined)
+      const left = renamed ?? tree ?? tmpPath
+      if (left !== undefined) await rm(left, { recursive: true, force: true })
+      for (const a of aside) await rm(a, { recursive: true, force: true })
       throw err
     }
     endTx()
-    if (aside !== undefined) await unlink(aside).catch(() => undefined)
+    for (const a of aside) await rm(a, { recursive: true, force: true })
+  }
+
+  private tempTreePath(hash: string): string {
+    return `${this.treePath(hash)}.tmp-${process.pid}-${process.hrtime.bigint()}-${Math.random().toString(36).slice(2, 10)}`
   }
 
   /** Apply the deferred accessed_at bumps in one statement. */
@@ -2688,7 +2939,7 @@ export class Cache implements CacheLayer {
     const at = new Date(now)
     for (const hash of this.staleTimes) {
       try {
-        utimesSync(this.tarPath(hash), at, at)
+        utimesSync(this.artifactStat(hash)?.path ?? this.tarPath(hash), at, at)
       } catch {
         // Gone, or another user's file: a sweep judges its old time.
       }
@@ -2891,7 +3142,12 @@ export class Cache implements CacheLayer {
       // and the one verb meant to free a full disk freed nothing (A-14). An
       // inline artifact goes with its rows, in their transaction.
       await Promise.all(
-        hashes.filter((h) => !inline.has(h)).map((h) => rm(this.tarPath(h), { force: true })),
+        hashes
+          .filter((h) => !inline.has(h))
+          .flatMap((h) => [
+            rm(this.tarPath(h), { force: true }),
+            rm(this.treePath(h), { recursive: true, force: true }),
+          ]),
       )
       const { test, params } = inHashes(rows)
       const deleteRows = this.db.transaction(() => {
@@ -2967,7 +3223,7 @@ export class Cache implements CacheLayer {
         try {
           // unlink, not `rm({ force })`: force swallows ENOENT, and a file a
           // concurrent prune took first must not be counted as ours.
-          await unlink(o.file)
+          await rm(o.file, { recursive: true })
           orphans += 1
           orphanBytes += o.size
         } catch {
@@ -3016,7 +3272,8 @@ export class Cache implements CacheLayer {
     const phantoms = new Map<string, number>()
     const stale: string[] = []
     for (const r of rows) {
-      if (r.inline === 1 || present.has(`${r.hash}.tar.zst`)) continue
+      if (r.inline === 1 || present.has(`${r.hash}.tar.zst`) || present.has(`${r.hash}.tree`))
+        continue
       phantoms.set(r.hash, r.size_bytes)
       if (r.accessed_at < graceStart) stale.push(r.hash)
     }
@@ -3109,6 +3366,21 @@ export class Cache implements CacheLayer {
   private tarPath(hash: string): string {
     return path.join(this.artifactDir, `${hash}.tar.zst`)
   }
+
+  private treePath(hash: string): string {
+    return path.join(this.artifactDir, `${hash}.tree`)
+  }
+
+  /** The key's file-backed artifact (tar or tree), the form this store writes asked first. */
+  private artifactStat(hash: string): { path: string; tree: boolean; mtimeMs: number } | undefined {
+    const order = this.store.compress ? [false, true] : [true, false]
+    for (const tree of order) {
+      const at = tree ? this.treePath(hash) : this.tarPath(hash)
+      const st = statSync(at, { throwIfNoEntry: false })
+      if (st !== undefined) return { path: at, tree, mtimeMs: st.mtimeMs }
+    }
+    return undefined
+  }
 }
 
 /**
@@ -3180,6 +3452,17 @@ function assertArtifactNames(
     }
   }
 }
+
+/** A row's path as the tree names its file. */
+function treeName(rowPath: string): string {
+  return rowPath.startsWith(WORKSPACE_OUTPUT_PREFIX) ? rowPath : `outputs/${rowPath}`
+}
+
+function inTree(p: string | undefined, tree: string): boolean {
+  return p !== undefined && (p === tree || p.startsWith(`${tree}/`))
+}
+
+const utf8Decode = new TextDecoder('utf-8', { ignoreBOM: true })
 
 /**
  * Whether an artifact entry names one of the task's declared outputs, as

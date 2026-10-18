@@ -22,6 +22,7 @@ import {
   replaceStoredArtifact,
   storedArtifact,
 } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const TIMEOUT = 60_000
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -375,7 +376,7 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     cacheDir = path.join(root, 'cache')
     projectDir = path.join(root, 'proj')
     await mkdir(projectDir, { recursive: true })
-    cache = new Cache(cacheDir)
+    cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
   })
 
   afterEach(() => {
@@ -520,7 +521,15 @@ describe('restoreOutputs refuses to report a hit it cannot materialize', () => {
     await saveEntry('ro-garbled')
     replaceStoredArtifact(cache, 'ro-garbled', new Uint8Array([0xde, 0xad, 0xbe, 0xef]))
     await rm(path.join(projectDir, 'dist'), { recursive: true, force: true })
-    const ro = new Cache(cacheDir, { read: true, write: false })
+    const ro = new Cache(
+      cacheDir,
+      { read: true, write: false },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const err = await ro.restoreOutputs('ro-garbled', projectDir).catch((e: unknown) => e)
       expect([err instanceof ArtifactVanishedError, (err as Error).message]).toEqual([
@@ -576,7 +585,7 @@ describe('restoreOutputs decodes a large artifact as a stream', () => {
     cacheDir = path.join(root, 'cache')
     projectDir = path.join(root, 'proj')
     await mkdir(projectDir, { recursive: true })
-    cache = new Cache(cacheDir)
+    cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
   })
 
   afterEach(() => {
@@ -727,7 +736,15 @@ describe('a project output under the reserved workspace-outputs/', () => {
 
   beforeEach(() => {
     projectDir = path.join(root, 'proj')
-    cache = new Cache(path.join(root, 'cache'))
+    cache = new Cache(
+      path.join(root, 'cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
   })
 
   afterEach(() => {

@@ -70,6 +70,7 @@ import {
   stat,
   symlink,
   unlink,
+  utimes,
   writeFile,
 } from 'node:fs/promises'
 import path from 'node:path'
@@ -469,6 +470,113 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
       void gen.return(undefined)
     },
   })
+}
+
+/**
+ * The tree form (`cache.store.compress: false`, v47): an artifact's members
+ * as plain files under one directory, `outputs/<rel>` and
+ * `workspace-outputs/<rel>` as named in the tar, beside its sidecar and a
+ * `.vx-sum` over them. stdout lives in the index. A restore copies (or
+ * clones) each file out, so a hit decodes nothing; an upload packs the
+ * tree back into the artifact a remote expects.
+ */
+const TREE_SUM = SUM_ENTRY
+
+/**
+ * Write `plan`'s outputs into the empty `dir` as the tree form, each copied
+ * by the kernel (`copy_file_range`, or a clone where the filesystem has one)
+ * and given its sidecar mtime, and return what a scan of the plan's tar
+ * would: the save indexes from it without packing a tar.
+ */
+export async function writeTree(plan: ArtifactPlan, dir: string): Promise<ArtifactScan> {
+  const fold = new ScanFold()
+  const meta = plan.inputs.find((i) => i.name === META_ENTRY)!.body as Uint8Array
+  const metaText = utf8.decode(meta)
+  fold.sidecar(metaText)
+  const times = (JSON.parse(metaText) as MetaFile).files
+  for (const i of plan.inputs) {
+    if (i.name === META_ENTRY) continue
+    assertSafeName(i.name)
+    if (i.name === STDOUT_ENTRY) fold.stdout = utf8.decode(i.body as Uint8Array)
+    fold.entry(i.name, i.size, times[i.name]?.[1] ?? 0)
+  }
+  // A stdout-only entry writes no file to make the directory.
+  await mkdir(dir, { recursive: true })
+  await Promise.all(
+    plan.inputs.map(async (i) => {
+      if (!(i.body instanceof Blob)) return
+      const to = path.join(dir, i.name)
+      await Bun.write(to, i.body)
+      const at = new Date(times[i.name]![1])
+      await utimes(to, at, at)
+    }),
+  )
+  await writeFile(path.join(dir, META_ENTRY), meta)
+  await writeFile(path.join(dir, TREE_SUM), await treeSum(dir, stdoutOf(plan)))
+  return fold.result()
+}
+
+function stdoutOf(plan: ArtifactPlan): string {
+  return utf8.decode(plan.inputs.find((i) => i.name === STDOUT_ENTRY)!.body as Uint8Array)
+}
+
+/**
+ * Write a scanned artifact's sidecar and sum into `dir`, whose outputs an
+ * extract just wrote: an ingested remote hit kept as a tree.
+ */
+export async function sealTree(dir: string, scan: ArtifactScan): Promise<void> {
+  const meta: MetaFile = { version: 1, files: {} }
+  if (scan.key !== undefined) meta.key = scan.key
+  for (const e of scan.entries) {
+    if (e.name !== STDOUT_ENTRY) meta.files[e.name] = [e.mode, e.mtimeMs]
+  }
+  if (scan.dirs.length > 0) meta.dirs = scan.dirs
+  if (scan.links.length > 0) meta.links = Object.fromEntries(scan.links)
+  if (scan.exec !== undefined) meta.exec = scan.exec
+  await writeFile(path.join(dir, META_ENTRY), JSON.stringify(meta))
+  await writeFile(path.join(dir, TREE_SUM), await treeSum(dir, scan.stdout ?? ''))
+}
+
+/** The plan that packs the tree in `dir` back into the artifact it holds. */
+export function planOfTree(dir: string, stdout: string): ArtifactPlan {
+  const metaBytes = readFileSync(path.join(dir, META_ENTRY))
+  const meta = JSON.parse(utf8.decode(metaBytes)) as MetaFile
+  const out = new TextEncoder().encode(stdout)
+  const inputs: TarInput[] = [{ name: STDOUT_ENTRY, size: out.byteLength, body: out }]
+  for (const [name, [mode, mtimeMs]] of Object.entries(meta.files)) {
+    const file = Bun.file(path.join(dir, name))
+    inputs.push({
+      name,
+      size: statSync(path.join(dir, name)).size,
+      mode,
+      mtime: Math.min(USTAR_MTIME_MAX, Math.max(0, Math.floor(mtimeMs / 1000))),
+      body: file,
+    })
+  }
+  inputs.push({ name: META_ENTRY, size: metaBytes.byteLength, body: new Uint8Array(metaBytes) })
+  return { inputs, size: tarSize([...inputs, sumInput('0'.repeat(SUM_SIZE))]) }
+}
+
+/** The sum over the tree's members, as `SUM_ENTRY` defines it for the tar it packs to. */
+async function treeSum(dir: string, stdout: string): Promise<string> {
+  const sum = new EntrySum()
+  for (const i of planOfTree(dir, stdout).inputs) {
+    sum.entry(i.name)
+    if (i.body instanceof Blob && i.size > 1 << 20)
+      for await (const c of i.body.stream()) sum.add(c)
+    else if (i.body instanceof Blob) sum.add(await i.body.bytes())
+    else sum.add(i.body as Uint8Array)
+  }
+  return sum.hex()
+}
+
+/** Whether the tree's bytes still sum to what was stored (`cache.store.verify: 'hash'`). */
+export async function treeIntact(dir: string, stdout: string): Promise<boolean> {
+  try {
+    return (await treeSum(dir, stdout)) === readFileSync(path.join(dir, TREE_SUM), 'utf8')
+  } catch {
+    return false
+  }
 }
 
 /** What a scan of an artifact reads out of it. */

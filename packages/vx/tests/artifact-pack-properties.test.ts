@@ -35,6 +35,7 @@ import { TarFormatError } from '../src/cache/tar-stream.js'
 import { UserError } from '../src/util/index.js'
 import { streamOf } from './helpers/stream.js'
 import { replaceStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const enc = new TextEncoder()
 const same = (a: Uint8Array, b: Uint8Array): boolean => Buffer.compare(a, b) === 0
@@ -213,7 +214,15 @@ const meta = { taskId: 'p#build', command: 'build', durationMs: 1 }
 
 describe('Cache.save → restoreOutputs, seeded', () => {
   it('restores the tree, matches libarchive, and packs one tree to one artifact', async () => {
-    const cache = new Cache(fresh('cache'))
+    const cache = new Cache(
+      fresh('cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       for (const [i, seed] of SEEDS.entries()) {
         const ctx = `seed ${seed}`
@@ -267,7 +276,15 @@ describe('Cache.save → restoreOutputs, seeded', () => {
   })
 
   it('refuses a symlinked output out of the project and stores nothing', async () => {
-    const cache = new Cache(fresh('cache'))
+    const cache = new Cache(
+      fresh('cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const proj = fresh('p')
       mkdirSync(path.join(proj, 'out'), { recursive: true })
@@ -321,8 +338,24 @@ function apply(b: Uint8Array, d: Damage): Uint8Array {
 describe('a damaged artifact, seeded', () => {
   it('is refused with the cache error and leaves nothing, or restores the exact tree', async () => {
     // The remote side only ingests: an accepted artifact is replaced by a fresh cache.
-    let cache = new Cache(fresh('cache'))
-    const local = new Cache(fresh('cache'))
+    let cache = new Cache(
+      fresh('cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
+    const local = new Cache(
+      fresh('cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const outcomes = { refused: 0, exact: 0 }
     try {
       for (const seed of SEEDS.slice(1, 9)) {
@@ -385,7 +418,15 @@ describe('a damaged artifact, seeded', () => {
             expectTree(snapshot(dest), want, ctx)
             outcomes.exact++
             cache.close()
-            cache = new Cache(fresh('cache'))
+            cache = new Cache(
+              fresh('cache'),
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              TAR_STORE,
+            )
           }
 
           // Local: bytes damaged on disk after a good save, every other pair.

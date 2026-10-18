@@ -37,7 +37,7 @@ const root = ${JSON.stringify(root)}
 const proj = root + '/p'
 mkdirSync(proj + '/dist', { recursive: true })
 writeFileSync(proj + '/dist/a.js', ${file} ? crypto.getRandomValues(new Uint8Array(48 * 1024)) : 'x')
-const cache = new Cache(root + '/cache')
+const cache = new Cache(root + '/cache', undefined, undefined, undefined, undefined, undefined, { embedded: true, compress: true, verify: 'stat' })
 const args = { hash: 'h1', projectDir: proj, outputFiles: [proj + '/dist/a.js'], entry: { taskId: 'p#b', command: 'x', durationMs: 1, stdout: '' } }
 if (${JSON.stringify(op)} === 'restore') await cache.save(args)
 const held = []
@@ -49,7 +49,7 @@ if (${JSON.stringify(op)} === 'open') closeSync(held.pop())
 let out
 try {
   const op = ${JSON.stringify(op)}
-  await (op === 'open' ? new Cache(root + '/cache') : op === 'save' ? cache.save(args) : cache.restoreOutputs('h1', proj, root))
+  await (op === 'open' ? new Cache(root + '/cache', undefined, undefined, undefined, undefined, undefined, { embedded: true, compress: true, verify: 'stat' }) : op === 'save' ? cache.save(args) : cache.restoreOutputs('h1', proj, root))
   out = { name: 'none', message: '' }
 } catch (e) {
   out = { name: e.name, message: e.message }
@@ -116,7 +116,18 @@ describe('opening the cache out of file descriptors', () => {
     const { Cache } = await import('../src/cache/index.js')
     mkdirSync(path.join(root, 'cache', 'cache.db'), { recursive: true })
     const err = await Promise.resolve()
-      .then(() => new Cache(path.join(root, 'cache')))
+      .then(
+        () =>
+          new Cache(
+            path.join(root, 'cache'),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            { embedded: true, compress: true, verify: 'stat' },
+          ),
+      )
       .then(
         () => null,
         (e: unknown) => e as Error,

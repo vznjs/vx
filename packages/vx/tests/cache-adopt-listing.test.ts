@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 // A row-less lookup stats its artifact path for the first 64 asks, then
 // the artifact directory is listed once (a cold run asked 3,270 times
@@ -32,11 +33,11 @@ describe('row-less lookups past the stat limit', () => {
     try {
       const dir = path.join(root, 'cache')
       const listed = 'aaaaaaaaaaaaaaaa'
-      const saver = new Cache(dir)
+      const saver = new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
       await saveFile(saver, root, listed)
       saver.close()
 
-      const cache = new Cache(dir)
+      const cache = new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
       try {
         for (let i = 0; i < 100; i++) {
           expect(await cache.get(i.toString(16).padStart(16, 'f'), ctx)).toBeNull()

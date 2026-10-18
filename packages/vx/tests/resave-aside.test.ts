@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const realFs = { ...fs }
 /** Each rename into the cache dir: its destination, and whether it existed. */
@@ -37,7 +38,7 @@ describe('a re-save of a key', () => {
     cacheDir = path.join(root, 'cache')
     projectDir = path.join(root, 'pkg')
     await mkdir(path.join(projectDir, 'dist'), { recursive: true })
-    cache = new Cache(cacheDir)
+    cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     watched = cacheDir + path.sep
     renames.length = 0
   })

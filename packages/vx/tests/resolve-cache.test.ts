@@ -9,10 +9,22 @@ import { Cache, LayeredCache, type CacheLayer, type RemoteCacheLayer } from '../
 import { resolveCache, type VxPlugin } from '../src/orchestrator/index.js'
 import { testPlugin } from './helpers/plugin.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 function tmpCache(tag: string): { cache: Cache; dir: string } {
   const dir = mkdtempSync(path.join(tmpdir(), `vx-remotes-${tag}-`))
-  return { cache: new Cache(dir, { read: true, write: true }), dir }
+  return {
+    cache: new Cache(
+      dir,
+      { read: true, write: true },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    ),
+    dir,
+  }
 }
 
 async function saveEntry(cache: CacheLayer, hash: string, projectDir: string) {

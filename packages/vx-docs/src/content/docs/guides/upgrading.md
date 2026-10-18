@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: keep local entries as plain files a hit copies out
+
+CACHE_VERSION is vx-cache-v47; a v46 local cache is not read. Set cache.store.compress: true to keep the tar.zst form.
+
 ## cache: scope a branch's remote cache by owner/repo:branch
 
 --cache-scope and cache.scope are removed; set VX_CACHE_SCOPE. run.affectedBase / VX_RUN_AFFECTED_BASE are now baseBranch / VX_BASE_BRANCH, a branch name. A bare --affected on the base branch is refused (no HEAD~1 fallback): pass --affected=<sha>. github() scopes <owner>/<repo>:<branch>, not pr-<n>. The config hook's ctx gains setBranch. The local cache stores every entry under its task key, whatever the scope.

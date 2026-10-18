@@ -107,6 +107,15 @@ export interface CacheSettings {
    * both (`'always'`). Only a run whose policy writes a remote keeps any.
    */
   upload?: { failures?: 'ci' | 'local' | 'always' }
+  /**
+   * How the local cache keeps an entry. `embedded` (default true): a small
+   * one inside the index. `compress` (default false): a larger one as one
+   * `.tar.zst`; off, as its plain files, which a hit copies or clones out
+   * with no decode. `verify` (default `'stat'`): what a hit on plain files
+   * checks first, each file's size and mtime, every byte (`'hash'`), or
+   * nothing (`'none'`).
+   */
+  store?: { embedded?: boolean; compress?: boolean; verify?: 'stat' | 'hash' | 'none' }
 }
 
 /** `WorkspaceConfig.lock`. */

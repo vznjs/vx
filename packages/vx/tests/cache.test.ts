@@ -21,6 +21,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from './helpers/orchestrator.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 /** How many key components `entry_inputs` holds (one row per entry, v34). */
 const COMPONENT_COUNT = 'SELECT COUNT(*) AS n FROM entry_inputs, json_each(entry_inputs.components)'
@@ -186,7 +187,15 @@ describe('Cache.key', () => {
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'nxt-cache-key-'))
     workspaceRoot = dir
-    cache = new Cache(path.join(dir, '.vx', 'cache'))
+    cache = new Cache(
+      path.join(dir, '.vx', 'cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
   })
 
   afterEach(async () => {
@@ -322,7 +331,15 @@ describe('Cache.key', () => {
     const first = await under(cache, rootA)
     const reused = await under(cache, rootB)
     expect(reused).not.toBe(first)
-    const fresh = new Cache(path.join(dir, 'cache-fresh'))
+    const fresh = new Cache(
+      path.join(dir, 'cache-fresh'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       expect(reused).toBe(await under(fresh, rootB))
     } finally {
@@ -538,7 +555,7 @@ describe('Cache.key', () => {
     const files = byKind('file')
     expect(files.map((r) => r.name).sort()).toEqual(['one.txt', 'two.txt'])
     // Total rows = sum of every component above.
-    expect(byKind('format')).toEqual([{ name: 'cache-version', hash: 'vx-cache-v46' }])
+    expect(byKind('format')).toEqual([{ name: 'cache-version', hash: 'vx-cache-v47' }])
     expect(sink.length).toBe(1 + 1 + 1 + 2 + 1 + 1 + 1 + 2)
   })
 
@@ -582,8 +599,24 @@ describe('Cache.key', () => {
     }
     const first = await envHash(cache)
     cache.close()
-    const reopened = new Cache(path.join(dir, '.vx', 'cache'))
-    const other = new Cache(path.join(dir, '.vx', 'other-cache'))
+    const reopened = new Cache(
+      path.join(dir, '.vx', 'cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
+    const other = new Cache(
+      path.join(dir, '.vx', 'other-cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       expect({
         again: await envHash(reopened),
@@ -593,7 +626,15 @@ describe('Cache.key', () => {
     } finally {
       reopened.close()
       other.close()
-      cache = new Cache(path.join(dir, '.vx', 'cache'))
+      cache = new Cache(
+        path.join(dir, '.vx', 'cache'),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
     }
   })
 
@@ -622,7 +663,7 @@ describe('Cache storage (v10)', () => {
     workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-v10-'))
     cacheDir = path.join(workspaceRoot, '.vx', 'cache')
     projectDir = path.join(workspaceRoot, 'project')
-    cache = new Cache(cacheDir)
+    cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
   })
 
   afterEach(async () => {
@@ -822,7 +863,15 @@ describe('Cache storage (v10)', () => {
       // start, so the probe needs a cache opened AFTER the mode changed.
       for (const f of await readdir(cacheDir)) await chmod(path.join(cacheDir, f), 0o444)
       await chmod(cacheDir, 0o555)
-      const later = new Cache(cacheDir)
+      const later = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       try {
         // A reader's stores are quiet no-ops on it: the file-hash memo
         // skips its upsert, nothing reaches SQLite.
@@ -852,8 +901,30 @@ describe('Cache storage (v10)', () => {
       await mkdir(parent, { recursive: true })
       await chmod(parent, 0o555)
       try {
-        expect(() => new Cache(path.join(parent, '.vx', 'cache'))).toThrow(UserError)
-        expect(() => new Cache(path.join(parent, '.vx', 'cache'))).toThrow(
+        expect(
+          () =>
+            new Cache(
+              path.join(parent, '.vx', 'cache'),
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              TAR_STORE,
+            ),
+        ).toThrow(UserError)
+        expect(
+          () =>
+            new Cache(
+              path.join(parent, '.vx', 'cache'),
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              TAR_STORE,
+            ),
+        ).toThrow(
           /^cannot create cache directory .*sealed\/\.vx\/cache \(EACCES: .*\) — vx keeps its cache there; make the workspace writable, set `cache\.dir` in \.vx\/workspace\.ts, or pass --cache-dir <path>$/,
         )
       } finally {
@@ -870,7 +941,7 @@ describe('Cache storage (v10)', () => {
     await writeFile(file, 'x')
     let thrown: unknown
     try {
-      new Cache(file).close()
+      new Cache(file, undefined, undefined, undefined, undefined, undefined, TAR_STORE).close()
     } catch (err) {
       thrown = err
     }
@@ -998,7 +1069,15 @@ describe('Cache storage (v10)', () => {
     // metadata (taskId, command, durationMs): the usage must come out of
     // the artifact itself, or a fresh runner learns nothing.
     const otherDir = path.join(workspaceRoot, 'other-cache')
-    const other = new Cache(otherDir)
+    const other = new Cache(
+      otherDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const bytes = storedArtifact(cache, 'h-usage')!
       await other.ingest('h-usage', new Blob([bytes]), {
@@ -1204,7 +1283,7 @@ describe('Cache storage (v10)', () => {
     const before = Date.now()
     await cache.get('h-close')
     cache.close()
-    cache = new Cache(cacheDir)
+    cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     const accessed = (
       cache
         .dbHandle()
@@ -1904,7 +1983,15 @@ describe('Cache storage (v10)', () => {
     const twoHoursAgo = (Date.now() - 2 * 60 * 60 * 1000) / 1000
     await utimes(cache.outputsPath(hash), twoHoursAgo, twoHoursAgo)
 
-    const other = new Cache(cacheDir, { read: true, write: true })
+    const other = new Cache(
+      cacheDir,
+      { read: true, write: true },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     let swept: { orphans: number } | undefined
     const target = cache as unknown as {
       writeArtifactAndIndex: (...args: unknown[]) => Promise<void>
@@ -1984,7 +2071,15 @@ describe('Cache storage (v10)', () => {
     // Linux give the loser ENOENT. The code is right for the rule; the
     // runtime there is not, and the Linux job is the gate for this claim.
     const again = await aged('00000000000000dd.tar.zst', 'w'.repeat(7))
-    const other = new Cache(cacheDir, { read: true, write: true })
+    const other = new Cache(
+      cacheDir,
+      { read: true, write: true },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     if (process.platform !== 'linux') {
       other.close()
       return
@@ -2097,7 +2192,15 @@ describe('Cache storage (v10)', () => {
     // two parallel `vx run` invocations would race on the small INSERT
     // and one would die with `SQLiteError: database is locked`. With the
     // 5s busy_timeout the second one waits and succeeds.
-    const second = new Cache(cacheDir)
+    const second = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const now = Date.now()
       const writeMany = async (label: string, c: Cache): Promise<void> => {
@@ -2133,7 +2236,15 @@ describe('Cache storage (v10)', () => {
     const outFile = path.join(projectDir, 'dist', 'out.txt')
     await mkdir(path.dirname(outFile), { recursive: true })
     await writeFile(outFile, 'concurrent-payload')
-    const second = new Cache(cacheDir)
+    const second = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const saveOnce = (c: Cache): Promise<void> =>
         c.save({
@@ -2234,7 +2345,15 @@ describe('Cache storage (v10)', () => {
     // Second save at the same hash with different content: it succeeds and
     // writes nothing, so a read still sees the first.
     await writeFile(outFile, 'second-version-longer')
-    const forced = new Cache(cacheDir, { read: false, write: true })
+    const forced = new Cache(
+      cacheDir,
+      { read: false, write: true },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     await forced.save({
       hash: 'h-overwrite',
       projectDir,
@@ -2352,7 +2471,15 @@ describe('Cache storage (v10)', () => {
     const outFile = path.join(projectDir, 'dist', 'out.txt')
     await mkdir(path.dirname(outFile), { recursive: true })
     await writeFile(outFile, 'payload-for-atomicity-test')
-    const second = new Cache(cacheDir)
+    const second = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const savePromise = cache.save({
         hash: 'h-atomic',
@@ -2390,7 +2517,15 @@ describe('Cache storage (v10)', () => {
   // listed as restorable.
   describe('a failure cannot enter the cache', () => {
     it('is unrepresentable in the save contract, not merely gated by callers', async () => {
-      const cache = new Cache(cacheDir)
+      const cache = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       try {
         await cache.save({
           hash: 'exitcode-refused',
@@ -2416,7 +2551,15 @@ describe('Cache storage (v10)', () => {
       // `IngestMeta` never carried an exitCode, so `save` and `ingest` now
       // agree. Without this the invariant would hold on one path and not the
       // other, which is how the asymmetry went unnoticed for as long as it did.
-      const donor = new Cache(cacheDir)
+      const donor = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       let bytes: Uint8Array
       try {
         bytes = await donor.packArtifactBytes({
@@ -2428,7 +2571,15 @@ describe('Cache storage (v10)', () => {
       } finally {
         donor.close()
       }
-      const cache = new Cache(path.join(workspaceRoot, 'cache-ingest'))
+      const cache = new Cache(
+        path.join(workspaceRoot, 'cache-ingest'),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       try {
         await cache.ingest('ingest-symmetry', new Blob([bytes]), {
           taskId: 'pkg#build',
@@ -2473,7 +2624,15 @@ describe('Cache.close() is best-effort', () => {
     // on a write to an unlinked file); Linux writes on happily, so there this
     // is a control that passes either way.
     const cacheDir = path.join(dir, 'cache')
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const outFile = path.join(dir, 'out.txt')
     await writeFile(outFile, 'produced')
     await cache.save({
@@ -2525,7 +2684,7 @@ describe('Cache schema/version recovery', () => {
     // `created_at = 1` and a TTL sweep removes anything that old — the
     // payload has to be one the code would really see (item 488).
     const { Database } = await import('bun:sqlite')
-    const c1 = new Cache(cacheDir)
+    const c1 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     c1.close()
     const dbPath = path.join(cacheDir, 'cache.db')
 
@@ -2574,7 +2733,7 @@ describe('Cache schema/version recovery', () => {
     raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
 
-    const c2 = new Cache(cacheDir)
+    const c2 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     expect(c2.schemaReset).toEqual({ from: 'v0-ancient', to: expect.stringMatching(/^v\d+$/) })
     c2.close()
 
@@ -2591,7 +2750,7 @@ describe('Cache schema/version recovery', () => {
     // a column a later schema adds would fail every insert on an upgraded
     // cache and never on a fresh one, which is all a test makes (A-54).
     const { Database } = await import('bun:sqlite')
-    new Cache(cacheDir).close()
+    new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE).close()
     const dbPath = path.join(cacheDir, 'cache.db')
     const columns = (db: InstanceType<typeof Database>): Record<string, string[]> =>
       Object.fromEntries(
@@ -2621,7 +2780,7 @@ describe('Cache schema/version recovery', () => {
     raw.query("UPDATE artifacts_meta SET value = 'a0' WHERE key = 'layout'").run()
     raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
-    new Cache(cacheDir).close()
+    new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE).close()
     const after = new Database(dbPath)
     try {
       expect(columns(after)).toEqual(fresh)
@@ -2632,7 +2791,7 @@ describe('Cache schema/version recovery', () => {
 
   it('SCHEMA_VERSION mismatch wipes entries + runs and recreates cleanly', async () => {
     // Round 1: write a real entry to a fresh cache.
-    const c1 = new Cache(cacheDir)
+    const c1 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     const projectDir = path.join(workspaceRoot, 'pkg')
     await mkdir(projectDir, { recursive: true })
     expect(c1.schemaReset).toBeNull()
@@ -2670,7 +2829,7 @@ describe('Cache schema/version recovery', () => {
     // Round 2: opening a fresh Cache detects the mismatch, drops the
     // tables, recreates them, and updates the sentinel. The old run
     // row is gone; new writes succeed.
-    const c2 = new Cache(cacheDir)
+    const c2 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     try {
       // The open that dropped the tables is the one that knows; the next
       // open sees the current version and reports nothing.
@@ -2678,7 +2837,15 @@ describe('Cache schema/version recovery', () => {
         from: 'unknown-future-version',
         to: expect.stringMatching(/^v\d+$/),
       })
-      const c3 = new Cache(cacheDir)
+      const c3 = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       expect(c3.schemaReset).toBeNull()
       c3.close()
       expect(c2.stats().runCountLast24h).toBe(0)
@@ -2732,7 +2899,15 @@ describe('Cache schema/version recovery', () => {
     // doesn't care about derivation), but `key()` for the same inputs
     // won't reproduce that hash. The test guards against accidentally
     // dropping the CACHE_VERSION prefix from the hash composition.
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const input: CacheKeyInput = {
         taskId: 'pkg#build',
@@ -2820,7 +2995,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
   }
 
   it('writes the invocation header row atomically (no input rows here)', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const runId = 'run-1'
     const runs = [
       {
@@ -2891,7 +3074,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       )
         .map((r) => r.name)
         .sort()
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       expect(indexesOnRuns(cache.dbHandle())).toEqual(['runs_run_id', 'runs_started_at'])
       cache.dbHandle().exec("CREATE INDEX runs_failed ON runs(hash) WHERE status = 'failed'")
@@ -2900,7 +3091,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     } finally {
       cache.close()
     }
-    const reopened = new Cache(cacheDir)
+    const reopened = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       expect(indexesOnRuns(reopened.dbHandle())).toEqual(['runs_run_id', 'runs_started_at'])
     } finally {
@@ -2909,7 +3108,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
   })
 
   it('close() prunes runs and invocations older than 30 days (header never outlives its runs)', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const old = 40 * 24 * 60 * 60 * 1000
     const runRow = (runId: string, endedAt: number) => ({
       hash: `h-${runId}`,
@@ -2937,7 +3144,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     // The prune runs on close.
     cache.close()
 
-    const reopened = new Cache(cacheDir)
+    const reopened = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const db = reopened.dbHandle()
       const ids = (
@@ -2956,7 +3171,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
   })
 
   it('persists entry_inputs inside the entry-save transaction (miss path)', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await saveWithInputs(cache, 'h-save', [
         { kind: 'config', name: 'config', hash: 'cfg-a' },
@@ -2983,7 +3206,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
   })
 
   it('a repeated component keeps its first hash, as the per-component key did', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await saveWithInputs(cache, 'h-dup', [
         { kind: 'file', name: 'b.ts', hash: 'first' },
@@ -3004,7 +3235,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
   })
 
   it('a warm cache hit writes NOTHING to entry_inputs (idempotent re-save)', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const db = cache.dbHandle()
       // Cold: a miss/save populates the rows for this hash.
@@ -3051,7 +3290,15 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
   })
 
   it('a null dirty flag stays null (distinct from 0)', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const runId = 'run-nogit'
     try {
       const inv = { ...invocation(runId), dirty: null, commitSha: null, branch: null }
@@ -3070,12 +3317,12 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
 
   it('survives a close/reopen round-trip', async () => {
     const runId = 'run-persist'
-    const c1 = new Cache(cacheDir)
+    const c1 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     c1.recordRunBundle({ runs: [], invocation: invocation(runId) })
     await saveWithInputs(c1, 'h-persist', [{ kind: 'config', name: 'config', hash: 'c' }])
     c1.close()
 
-    const c2 = new Cache(cacheDir)
+    const c2 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     try {
       const n = c2.dbHandle().query(`${COMPONENT_COUNT} WHERE entry_hash = ?`).get('h-persist') as {
         n: number
@@ -3097,7 +3344,15 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
   beforeEach(async () => {
     workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'vx-cache-ms-'))
     projectDir = path.join(workspaceRoot, 'project')
-    cache = new Cache(path.join(workspaceRoot, '.vx', 'cache'))
+    cache = new Cache(
+      path.join(workspaceRoot, '.vx', 'cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const { mkdir } = await import('node:fs/promises')
     await mkdir(path.join(projectDir, 'dist'), { recursive: true })
   })
@@ -3265,6 +3520,13 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
 // its inventory (owner, 2026-10-06): an artifact with no row is indexed from
 // its own bytes and hits.
 describe('an artifact on disk with no index row, through a run', () => {
+  // Only the archive form is adopted: a tree's stdout lives in its row.
+  beforeEach(() => {
+    process.env.VX_CACHE_STORE_COMPRESS = 'true'
+  })
+  afterEach(() => {
+    delete process.env.VX_CACHE_STORE_COMPRESS
+  })
   it('is indexed from its bytes and hits, restoring its outputs', async () => {
     const root = await makeWorkspace({ prefix: 'vx-rowless-' })
     // Past INLINE_MAX compressed, so the artifact is a file and outlives
@@ -3335,14 +3597,14 @@ describe('the WAL a closed cache leaves', () => {
       const dir = path.join(root, 'cache')
       const wal = path.join(dir, 'cache.db-wal')
       // The first open creates the index; the WAL persists from the second.
-      new Cache(dir).close()
-      const cache = new Cache(dir)
+      new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE).close()
+      const cache = new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
       cache.rememberBlobSizes(new Map([['oid', 1]]))
       // CONTROL: the write sits in the WAL until the close checkpoints it.
       expect(statSync(wal).size).toBeGreaterThan(0)
       cache.close()
       expect(statSync(wal).size).toBe(0)
-      const again = new Cache(dir)
+      const again = new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
       expect(again.knownBlobSizes(['oid'])).toEqual(new Map([['oid', 1]]))
       again.close()
     } finally {

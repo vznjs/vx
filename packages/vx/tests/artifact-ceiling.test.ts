@@ -14,6 +14,7 @@ import { type Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 import { storedKeys } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const CEILING = 64 * 1024
 
@@ -36,8 +37,10 @@ describe('an output set past the artifact ceiling', () => {
   let root: string
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-artifact-ceiling-' })
+    process.env.VX_CACHE_STORE_COMPRESS = 'true'
   })
   afterEach(async () => {
+    delete process.env.VX_CACHE_STORE_COMPRESS
     await rm(root, { recursive: true, force: true })
   })
 
@@ -165,7 +168,7 @@ describe('an output set past the artifact ceiling', () => {
     const bytes = await Bun.file(path.join(root, '.vx', 'cache', artifact!)).bytes()
     const hash = artifact!.slice(0, -'.tar.zst'.length)
     const otherDir = path.join(root, 'other-cache')
-    const other = new Cache(otherDir, undefined, undefined, 1024)
+    const other = new Cache(otherDir, undefined, undefined, 1024, undefined, undefined, TAR_STORE)
     try {
       const err = await other
         .ingest(hash, new Blob([bytes]), { taskId: 'big#build', command: 'x', durationMs: 1 })
@@ -187,7 +190,15 @@ describe('an output set past the artifact ceiling', () => {
   })
 
   it('an ingest bounds the compressed body too: an endless remote body never fills the disk (L-5)', async () => {
-    const other = new Cache(path.join(root, 'other-cache'), undefined, undefined, 1024)
+    const other = new Cache(
+      path.join(root, 'other-cache'),
+      undefined,
+      undefined,
+      1024,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const bound = 1024 + (1024 >> 8) + 64 * 1024
     const meta = { taskId: 'big#build', command: 'x', durationMs: 1 }
     const refusal = (e: unknown): string => (e as Error).message
@@ -232,7 +243,15 @@ describe('an output set past the artifact ceiling', () => {
   })
 
   it('an ingest that refuses a body cancels it: no refusal leaves the response held', async () => {
-    const other = new Cache(path.join(root, 'other-cache'), undefined, undefined, 1024)
+    const other = new Cache(
+      path.join(root, 'other-cache'),
+      undefined,
+      undefined,
+      1024,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const bound = 1024 + (1024 >> 8) + 64 * 1024
     const meta = { taskId: 'big#build', command: 'x', durationMs: 1 }
     const body = (headers: Record<string, string> = {}) => {

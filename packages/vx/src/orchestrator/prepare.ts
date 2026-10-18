@@ -33,6 +33,8 @@ import {
   startGitEnumeration,
   lazyGitEnumeration,
   measureFsClockLag,
+  DEFAULT_STORE,
+  type StoreOptions,
 } from '../cache/index.js'
 import {
   buildPackageGraph,
@@ -89,7 +91,7 @@ import { currentBranch, resolveCacheScope } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { RunOptions } from './options.js'
-import { runRules } from '../settings.js'
+import { resolveSetting, runRules } from '../settings.js'
 
 export interface PreparedRun {
   workspaceRoot: string
@@ -376,6 +378,14 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     options.artifactCeiling,
     'open',
     await storeRoot,
+    {
+      embedded: (resolveSetting('cache.store.embedded', workspaceConfig).value ??
+        DEFAULT_STORE.embedded) as boolean,
+      compress: (resolveSetting('cache.store.compress', workspaceConfig).value ??
+        DEFAULT_STORE.compress) as boolean,
+      verify: (resolveSetting('cache.store.verify', workspaceConfig).value ??
+        DEFAULT_STORE.verify) as StoreOptions['verify'],
+    },
   )
   const unwritable = localCache.readOnlyNotice()
   if (unwritable !== null) warnOf(log)(`[vx] ${unwritable}`)

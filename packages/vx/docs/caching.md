@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v46'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v47'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -1282,8 +1282,8 @@ owner-only; vx closes one of yours that others can read (chmod 700), and one oth
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, task_durations,
 │                                           plugin_blobs, store_meta; artifacts
-│                                           of at most 32 KiB compressed (v33)
-└── <hash>.tar.zst                          the larger artifacts (below)
+│                                           of at most 32 KiB (v33, `cache.store.embedded`)
+└── <hash>.tree/                            the larger artifacts, as plain files (below)
 
 <workspaceRoot>/.vx/cache/                  this workspace's own index
 └── cache.db                                run history, memos, output stamps;
@@ -1318,17 +1318,34 @@ root) and it holds everything, shared with no other workspace:
 ├── failures/<runId>.json                   a failed run's task output and the files it
 │                                           names (`vx last --format json`, getFailures);
 │                                           the newest 50 kept
-└── <hash>.tar.zst                          one artifact per cache entry, the larger ones:
-    ├── stdout                              captured stdout (always present, may be empty)
-    ├── outputs/<rel>                       declared output files, project-relative (when any)
+└── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
+    ├── outputs/<rel>                       declared output files, project-relative (when any),
+    │                                       each with its saved mode and mtime
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
     │                                       WORKSPACE-ROOT-relative (when any)
     ├── .vx-meta.json                       per-output [mode, mtimeMs], the key it was
     │                                       packed under (v35), the miss's CPU and RSS,
     │                                       the empty output directories (v44),
     │                                       the output symlinks (v45)
-    └── .vx-sum                             CRC-32 of every entry above (v36)
+    └── .vx-sum                             CRC-32 of the archive this tree packs to (v36)
 ```
+
+The stdout of a tree entry is its `entry_stdout` row. With
+`cache.store.compress: true` an artifact is instead one `<hash>.tar.zst`
+holding `stdout`, `outputs/`, `workspace-outputs/`, `.vx-meta.json` and
+`.vx-sum`: the bytes a remote stores. The tree form is that archive
+unpacked once at save (or at ingest of a remote hit), so a restore copies
+each file out (`copy_file_range`, a clone on a filesystem that has one;
+never a hard link: a later write to a restored output must not reach the
+store). A restore into outputs already on disk, a workspace output or a
+symlink takes the archive extractor, fed the tree packed back into its
+tar. An upload packs the tree into the tar.zst in the upload queue, off
+the save. `cache.store.verify` checks a tree file before it is copied:
+`stat` (default) its size and mtime against the meta, `hash` the whole
+tree against `.vx-sum`, `none` nothing. A failed check is a corrupt
+artifact: the entry is dropped and the task runs. A tree no row names
+is an orphan the sweep reaps; only the archive form is adopted back
+after a `SCHEMA_VERSION` reset, as a tree's stdout lives in its row.
 
 `failures/` sits outside `cache.db` so the index layout, and every
 shared store under it, stays as it was. Each file is
@@ -2031,6 +2048,9 @@ breaking footer).
 
 ### History
 
+- **v46 → v47**: the container changes. A file-backed entry is a
+  `<hash>.tree/` of plain files (`cache.store`); the tar.zst is packed
+  only to upload. A v46 store holds archives a v47 read would not look for.
 - **v43 kept** (2026-10-14): core stopped folding the project's
   `package.json` and the root fingerprint files; every key moved, so
   nothing replays wrong bytes and no bump was needed.

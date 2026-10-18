@@ -77,7 +77,7 @@ const [name, dir] = process.argv.slice(2)
 const proj = ${JSON.stringify(root)} + '/w-' + name
 mkdirSync(proj + '/dist', { recursive: true })
 writeFileSync(proj + '/dist/' + name, name.repeat(64))
-const cache = new Cache(dir)
+const cache = new Cache(dir, undefined, undefined, undefined, undefined, undefined, { embedded: true, compress: true, verify: 'stat' })
 let n = 0
 while (!existsSync(${JSON.stringify(stop)})) {
   await cache.save({ hash: 'h1', projectDir: proj, outputFiles: [proj + '/dist/' + name],
@@ -87,7 +87,11 @@ cache.close()
 console.log(n)
 `,
     )
-    const reader = new Cache(cacheDir)
+    const reader = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     await save(reader, 'h1', 'a.js'.repeat(64), 'a.js')
     const writers = ['a.js', 'b.js'].map((n) =>
       Bun.spawn([process.execPath, script, n, cacheDir], { stdout: 'pipe', stderr: 'inherit' }),
@@ -123,7 +127,11 @@ console.log(n)
 
 describe('3: one key moving file → inline → file', () => {
   it('reads the latest bytes each time and leaves one copy', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       const first = big()
       await save(cache, 'h1', first)
@@ -146,7 +154,11 @@ describe('3: one key moving file → inline → file', () => {
   })
 
   it('a file no row names, shadowed by an inline save, is never read and the sweep takes it', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       const old = big()
       await save(cache, 'aaaaaaaaaaaaaaaa', old)
@@ -186,13 +198,21 @@ describe('3: one key moving file → inline → file', () => {
 
 describe('4: a reset keeps the inline artifacts', () => {
   it('a SCHEMA_VERSION reset drops the rows; the bytes stay and a lookup with a task adopts them', async () => {
-    const writer = new Cache(cacheDir)
+    const writer = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     await save(writer, 'h1', 'kept')
     writer.close()
     const raw = new Database(path.join(cacheDir, 'cache.db'))
     raw.query("UPDATE schema_meta SET value = 'v0' WHERE key = 'version'").run()
     raw.close()
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       expect(cache.schemaReset?.from).toBe('v0')
       expect([await cache.get('h1'), storedArtifact(cache, 'h1') !== null]).toEqual([null, true])
@@ -205,7 +225,12 @@ describe('4: a reset keeps the inline artifacts', () => {
 
   it("an older vx's reset of the store drops what it knows and leaves `artifacts` alone", async () => {
     const store = path.join(root, 'store')
-    const open = (): Cache => new Cache(cacheDir, undefined, undefined, undefined, 'open', store)
+    const open = (): Cache =>
+      new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
+        embedded: true,
+        compress: true,
+        verify: 'stat',
+      })
     const writer = open()
     await save(writer, 'h1', 'kept')
     writer.close()
@@ -231,7 +256,15 @@ describe('4: a reset keeps the inline artifacts', () => {
 describe('6: a small remote body is ingested inline', () => {
   /** A good artifact for `hash`, as a producer saved it. */
   async function produced(hash: string, body: string | Uint8Array): Promise<Uint8Array> {
-    const producer = new Cache(path.join(root, `producer-${hash}`))
+    const producer = new Cache(
+      path.join(root, `producer-${hash}`),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { embedded: true, compress: true, verify: 'stat' },
+    )
     try {
       await save(producer, hash, body)
       return storedArtifact(producer, hash)!
@@ -255,7 +288,11 @@ describe('6: a small remote body is ingested inline', () => {
 
   it('a good body lands inline and hits, as a Blob and as a stream with no length', async () => {
     const bytes = await produced('h1', 'remote')
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       await cache.ingest('h1', new Blob([bytes]), { ...ctx, durationMs: 1 })
       expect([isInline(cache, 'h1'), files()]).toEqual([true, []])
@@ -271,7 +308,11 @@ describe('6: a small remote body is ingested inline', () => {
   it('a large body streamed with no length is counted past INLINE_MAX and lands as a file', async () => {
     const body = big()
     const bytes = await produced('h2', body)
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       await cache.ingest('h2', chunked(bytes), { ...ctx, durationMs: 1 })
       expect([isInline(cache, 'h2'), files()]).toEqual([false, ['h2.tar.zst']])
@@ -288,7 +329,11 @@ describe('6: a small remote body is ingested inline', () => {
     for (let i = 0; i < 8; i++) fcs[i] = Number((threeGiB >> BigInt(8 * i)) & 0xffn)
     const bomb = new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0xc0, 0x00, ...fcs, 0, 0, 0, 0])
     // A ceiling of 8 KiB puts the cap on the compressed bytes at 73,760.
-    const cache = new Cache(cacheDir, undefined, undefined, 8192)
+    const cache = new Cache(cacheDir, undefined, undefined, 8192, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       const refused = async (hash: string, body: Blob | Response): Promise<unknown> =>
         cache.ingest(hash, body, { ...ctx, durationMs: 1 }).then(
@@ -328,7 +373,11 @@ describe('6: a small remote body is ingested inline', () => {
 
 describe('8: prune over inline artifacts', () => {
   it('counts inline sizes toward maxBytes and takes a victim’s bytes with its rows', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       await save(cache, 'h1', 'one')
       await save(cache, 'h2', 'two')
@@ -363,7 +412,11 @@ describe('8: prune over inline artifacts', () => {
   })
 
   it('reaps a row-less inline artifact by its `at`, counts it for `vx info`, and nothing younger', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       for (const h of ['00000000000000a1', '00000000000000a2', '00000000000000a3']) {
         await save(cache, h, h)
@@ -401,7 +454,11 @@ describe('8: prune over inline artifacts', () => {
   })
 
   it('an adopt between the scan and the reap keeps the artifact', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       await save(cache, '00000000000000a1', 'adopted')
       const db = cache.dbHandle()
@@ -427,10 +484,18 @@ describe('a workspace index that held its entries itself, moved to a store', () 
   // workspace's index while its rows went to the store.
   it("saves its inline bytes into the store, where another workspace's lookup finds them", async () => {
     const store = path.join(root, 'store')
-    const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null)
+    const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     await save(own, 'h0', 'before')
     own.close()
-    const moved = new Cache(cacheDir, undefined, undefined, undefined, 'open', store)
+    const moved = new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     await save(moved, 'h1', 'shared')
     moved.close()
     const other = new Cache(
@@ -440,6 +505,7 @@ describe('a workspace index that held its entries itself, moved to a store', () 
       undefined,
       'open',
       store,
+      { embedded: true, compress: true, verify: 'stat' },
     )
     try {
       expect((await other.get('h1'))?.hash).toBe('h1')
@@ -452,7 +518,11 @@ describe('a workspace index that held its entries itself, moved to a store', () 
 
 describe('12: the inline table’s own layout sentinel', () => {
   it('a foreign layout drops the inline artifacts, silently', async () => {
-    const writer = new Cache(cacheDir)
+    const writer = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     await save(writer, 'h1', 'kept')
     writer.close()
     // Another vx's: a layout change comes with a schema of its own.
@@ -462,7 +532,11 @@ describe('12: the inline table’s own layout sentinel', () => {
     raw.close()
     const err = spyOn(process.stderr, 'write')
     const out = spyOn(process.stdout, 'write')
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       expect([err.mock.calls.length, out.mock.calls.length]).toEqual([0, 0])
       const db = cache.dbHandle()
@@ -477,10 +551,18 @@ describe('12: the inline table’s own layout sentinel', () => {
       cache.close()
     }
     // CONTROL: the layout this vx writes keeps them.
-    const writer2 = new Cache(cacheDir)
+    const writer2 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     await save(writer2, 'h2', 'kept')
     writer2.close()
-    const again = new Cache(cacheDir)
+    const again = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       expect(isInline(again, 'h2')).toBe(true)
     } finally {
@@ -491,7 +573,12 @@ describe('12: the inline table’s own layout sentinel', () => {
 
   it("a store at another vx's schema and layout drops the store's inline artifacts", async () => {
     const store = path.join(root, 'store')
-    const open = (): Cache => new Cache(cacheDir, undefined, undefined, undefined, 'open', store)
+    const open = (): Cache =>
+      new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
+        embedded: true,
+        compress: true,
+        verify: 'stat',
+      })
     const writer = open()
     await save(writer, 'h1', 'kept')
     writer.close()
@@ -512,8 +599,16 @@ describe('12: the inline table’s own layout sentinel', () => {
 
   it('an index whose entries come back from a store stamps the table it makes', async () => {
     const store = path.join(root, 'store')
-    new Cache(cacheDir, undefined, undefined, undefined, 'open', store).close()
-    const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null)
+    new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    }).close()
+    const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       expect(
         own.dbHandle().query("SELECT value FROM main.artifacts_meta WHERE key = 'layout'").get(),
@@ -524,13 +619,21 @@ describe('12: the inline table’s own layout sentinel', () => {
   })
 
   it('a warm open at this schema reads no layout: the open costs no statement for it', async () => {
-    const writer = new Cache(cacheDir)
+    const writer = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     await save(writer, 'h1', 'kept')
     writer.close()
     const raw = new Database(path.join(cacheDir, 'cache.db'))
     raw.query("UPDATE artifacts_meta SET value = 'zz' WHERE key = 'layout'").run()
     raw.close()
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
+      embedded: true,
+      compress: true,
+      verify: 'stat',
+    })
     try {
       expect(isInline(cache, 'h1')).toBe(true)
     } finally {
