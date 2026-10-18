@@ -45,7 +45,8 @@ export class BranchScope {
   miss.
 - **Each call names its scope** (`RemoteKey.scope`, the last argument;
   absent for a default key), for a backend that keeps a store per
-  branch. The key alone names the entry; no wire vx ships sends it.
+  branch. The key alone names the entry; `turboCache()` and `nxCache()` send it
+  as `x-vx-cache-scope` (`trusted` for a default key, layered-cache.md).
 - **Writes** (`put`) go to the scope's key, every task's: a CI run saves
   every task it builds under the scope, so a branch never writes a
   default key. Whether a run writes at all is the policy's call.

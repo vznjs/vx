@@ -363,6 +363,38 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await c.get('bb22')).toBeNull()
   })
 
+  // Owner, 2026-10-18: every request names the bucket it means, `trusted`
+  // for a task's own key, so a server need not layer; the key is unchanged.
+  it('every request names its scope in x-vx-cache-scope: trusted for a default key', async () => {
+    const c = cache()
+    const at = { scope: 'acme/app:feat' }
+    const from = srv.seen.length
+    await c.put('a0c1', new Blob(['x']), { durationMs: 1 })
+    await c.put('a0c2', new Blob(['x']), { durationMs: 1, ...at })
+    await c.get('a0c1')
+    await c.get('a0c2', at)
+    await c.has('a0c2', at)
+    await c.hasMany(['a0c1', 'a0c2', 'a0c3'], [{}, at, at])
+    expect(
+      srv.seen
+        .slice(from)
+        .map((r) => `${r.method} ${new URL(r.url).pathname} ${r.headers['x-vx-cache-scope']}`),
+    ).toEqual([
+      'HEAD /v8/artifacts/a0c1 trusted',
+      'PUT /v8/artifacts/a0c1 trusted',
+      'HEAD /v8/artifacts/a0c2 acme/app:feat',
+      'PUT /v8/artifacts/a0c2 acme/app:feat',
+      'GET /v8/artifacts/a0c1 trusted',
+      'GET /v8/artifacts/a0c2 acme/app:feat',
+      'HEAD /v8/artifacts/a0c2 acme/app:feat',
+      'POST /v8/artifacts trusted',
+      'POST /v8/artifacts acme/app:feat',
+    ])
+    expect(await c.hasMany(['a0c1', 'a0c2', 'a0c3'], [{}, at, at])).toEqual(
+      new Set(['a0c1', 'a0c2']),
+    )
+  })
+
   // Turbo's API client sends a team id only in Vercel's `team_` form; a
   // personal account's owner id (VERCEL_ARTIFACTS_OWNER) went out as one.
   it('sends teamId only in Vercel’s team_ form; the slug either way', async () => {

@@ -71,7 +71,14 @@ export async function loadWorkspacePlugins(
   const setBranch = (facts: BranchFacts): void => {
     if (facts.scope !== undefined && !isCacheScope(facts.scope))
       throw new UserError(`setBranch: ${cacheScopeError('scope')}`)
-    if (facts.scope !== undefined) branch.scope = facts.scope
+    if (facts.trusted === true) {
+      delete branch.scope
+      branch.trusted = true
+    }
+    if (facts.scope !== undefined) {
+      branch.scope = facts.scope
+      delete branch.trusted
+    }
     if (facts.base !== undefined) branch.base = facts.base
   }
   await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) =>

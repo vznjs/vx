@@ -263,7 +263,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     options.cacheScope ??
     resolveCacheScope(
       workspaceRoot,
-      branchFacts.scope,
+      branchFacts.trusted === true ? null : branchFacts.scope,
       plugins.some((p) => p.cache !== undefined),
       baseBranch,
     )

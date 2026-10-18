@@ -86,8 +86,13 @@ Every `has`, `hasMany`, `get` and `put` also says which branch scope its
 key was derived in (`RemoteKey.scope`, absent for a task's own key;
 owner, 2026-10-17). The key alone names the entry: a remote may ignore
 it. A backend that keeps one store per scope can use it to go straight
-to the default or the branch store. No wire vx ships sends it:
-`turboCache()`, `nxCache()` and `vx-reapi` put nothing new on the wire.
+to the default or the branch store. `turboCache()` and `nxCache()` send it as the `x-vx-cache-scope`
+header on every request: `trusted` for a task's own key, else the branch
+scope (owner, 2026-10-18). It states intent only: the key is unchanged,
+a server that keeps one bucket per scope skips its own layering, and
+whether a write to `trusted` is allowed stays the server's call (a CI ID
+token). A request without the header, from an older client, leaves the
+layering to the server. `vx-reapi` sends nothing new.
 
 ## Bodies stream, both ways
 

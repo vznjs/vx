@@ -150,6 +150,20 @@ it("an event that runs in main's context for a pull request is the PR's", async 
   ])
 })
 
+// Owner, 2026-10-18: a merge queue builds what is about to land on main,
+// so it reads and writes the default keys; its queue branch is a scope
+// nobody reads.
+it("a merge queue's run is trusted: no scope, compared with the queue's base", async () => {
+  const ref = 'refs/heads/gh-readonly-queue/main/pr-7-abc'
+  expect(
+    await branchOf({
+      ...actions(ref, 'gh-readonly-queue/main/pr-7-abc'),
+      GITHUB_EVENT_NAME: 'merge_group',
+      GITHUB_EVENT_PATH: await event({ merge_group: { base_sha: 'b4se', head_ref: ref } }),
+    }),
+  ).toEqual({ trusted: true, base: 'b4se' })
+})
+
 it('an unknown default branch gets its own scope', async () => {
   expect(
     await scopeOf({

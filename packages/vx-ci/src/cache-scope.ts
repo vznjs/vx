@@ -2,7 +2,7 @@
 // `setBranch`: the default branch writes the default keys, a branch its own
 // scope, the one a laptop on that branch reads (owner, 2026-10-17).
 import { readFile } from 'node:fs/promises'
-import { branchCacheScope } from '@vzn/vx'
+import { type BranchFacts, branchCacheScope } from '@vzn/vx'
 
 /**
  * What an Actions run knows of its branch (owner, 2026-10-17). `scope`:
@@ -15,15 +15,21 @@ import { branchCacheScope } from '@vzn/vx'
  * `workflow_run` a PR started) is the PR's, whatever `GITHUB_REF` says: a
  * workflow that checks out the PR's head there would otherwise write the
  * default keys. `issue_comment` names no branch, so it writes `pr-<n>`.
+ * A merge queue's run (`merge_group`) is trusted (owner, 2026-10-18): no
+ * scope, only the default keys, compared with `merge_group.base_sha`.
  * `base`: a pull request's base commit (`pull_request.base.sha`), what its
  * merge checkout is compared with, no git call needed.
  */
 export async function githubBranch(
   env: Readonly<Record<string, string | undefined>>,
-): Promise<{ scope?: string; base?: string }> {
+): Promise<BranchFacts> {
   if (env['GITHUB_ACTIONS'] !== 'true') return {}
   const ref = env['GITHUB_REF'] ?? ''
   const event = await eventOf(env['GITHUB_EVENT_PATH'])
+  if (env['GITHUB_EVENT_NAME'] === 'merge_group') {
+    const base = stringOf(event?.merge_group?.base_sha)
+    return { trusted: true, ...(base !== undefined ? { base } : {}) }
+  }
   const repo = stringOf(event?.repository?.full_name) ?? env['GITHUB_REPOSITORY']
   const base = stringOf(event?.pull_request?.base?.sha)
   const withBase = (scope: string | undefined): { scope?: string; base?: string } => ({
@@ -54,6 +60,7 @@ interface ActionsEvent {
     base?: { sha?: unknown }
   }
   issue?: { number?: unknown; pull_request?: unknown }
+  merge_group?: { base_sha?: unknown }
   workflow_run?: {
     event?: unknown
     head_branch?: unknown

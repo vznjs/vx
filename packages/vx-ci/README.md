@@ -64,7 +64,10 @@ the default keys). A push to, or a pull request from, a branch names
 fork's pull request names the fork; so does a `pull_request_target` or
 `workflow_run` run on a PR's behalf (by `GITHUB_EVENT_NAME`, though its
 ref is main's), and an `issue_comment` on a PR, which names no branch,
-`pr-<n>`. A pull request also names its base commit
+`pr-<n>`. A merge queue's run (`merge_group`) is trusted: no scope,
+whatever its `gh-readonly-queue/...` branch, so it reads and writes only
+the default keys (`x-vx-cache-scope: trusted`), compared with
+`merge_group.base_sha`. A pull request also names its base commit
 (`pull_request.base.sha`), so vx diffs the merge checkout from it with
 no git call. A scoped run's changed tasks read the scope's remote entry,
 the rest the default keys, and every task it builds is saved to the

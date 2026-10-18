@@ -18,12 +18,14 @@ import path from 'node:path'
 import {
   definePlugin,
   type RemoteCacheLayer,
+  type RemoteKey,
   type RemoteOpenContext,
   type VxPlugin,
   refuseUnknownOptions,
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
+import { scopeHeader } from '../remote-scope.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
 import {
@@ -614,9 +616,9 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     await revokeOidc(this.config.oidc!, token, this.fetchImpl, this.wait)
   }
 
-  async has(hash: string): Promise<boolean> {
+  async has(hash: string, at?: RemoteKey): Promise<boolean> {
     if (this.disabled) return false
-    const res = await this.request('HEAD', `/${hash}`)
+    const res = await this.request('HEAD', `/${hash}`, { headers: scopeHeader(at) })
     if (res === undefined) return false
     if (res.status === 200) return true
     if (res.status === 404) {
@@ -626,11 +628,27 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     throw new Error(`HTTP ${res.status}`)
   }
 
-  async hasMany(hashes: readonly string[]): Promise<Set<string> | null> {
+  async hasMany(hashes: readonly string[], at?: readonly RemoteKey[]): Promise<Set<string> | null> {
     if (this.disabled || hashes.length === 0) return this.disabled ? new Set() : null
+    // One query names one scope, so a batch asks once per scope in it.
+    const byScope = new Map<string | undefined, string[]>()
+    hashes.forEach((h, i) => {
+      const scope = at?.[i]?.scope
+      byScope.set(scope, [...(byScope.get(scope) ?? []), h])
+    })
+    const held = new Set<string>()
+    for (const [scope, group] of byScope) {
+      const found = await this.queryHeld(group, scope === undefined ? {} : { scope })
+      if (found === null) return null
+      for (const h of found) held.add(h)
+    }
+    return held
+  }
+
+  private async queryHeld(hashes: readonly string[], at: RemoteKey): Promise<Set<string> | null> {
     const res = await this.request('POST', '', {
       body: JSON.stringify({ hashes }),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...scopeHeader(at) },
     })
     if (res === undefined) return new Set()
     if (res.status !== 200) return null
@@ -653,12 +671,15 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     return held
   }
 
-  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
+  async get(
+    hash: string,
+    at?: RemoteKey,
+  ): Promise<{ body: Response; durationMs: number | undefined } | null> {
     if (this.disabled) return null
     // A gateway that keys binary media on Accept base64-encodes a `*/*`
     // response, and every hit read as a corrupt artifact (nx#33092's class).
     const res = await this.request('GET', `/${hash}`, {
-      headers: { Accept: 'application/octet-stream' },
+      headers: { Accept: 'application/octet-stream', ...scopeHeader(at) },
     })
     if (res === undefined) return null
     if (res.status !== 200) {
@@ -716,13 +737,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     return new Response(unlinkingStream(temp))
   }
 
-  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
+  async put(hash: string, body: Blob, meta: { durationMs: number } & RemoteKey): Promise<void> {
     if (this.disabled || this.writesRefused) return
     if (!this.absent.has(hash)) {
       // Part of the upload, so under its deadline. Any answer but 200 or 404
       // uploads: a lost store costs more. A server the HEAD cannot reach
       // fails the put, as the PUT would.
       const head = await this.request('HEAD', `/${hash}`, {
+        headers: scopeHeader(meta),
         timeoutMs: this.config.uploadTimeoutMs,
       })
       if (head === undefined || head.status === 200) return
@@ -732,6 +754,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(body.size),
       'x-artifact-duration': String(Math.max(0, Math.round(meta.durationMs))),
+      ...scopeHeader(meta),
     }
     if (this.key !== undefined) {
       headers['x-artifact-tag'] = await artifactTag(this.key, hash, this.config.teamId ?? '', body)

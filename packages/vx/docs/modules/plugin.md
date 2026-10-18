@@ -161,6 +161,7 @@ the commit a pull request is compared with. The `config` stage says so:
 export interface BranchFacts {
   scope?: string // the cache scope, `<owner>/<repo>:<branch>`; VX_CACHE_SCOPE beats it
   base?: string // the commit a bare --affected and the scope split diff from
+  trusted?: boolean // no scope, whatever git names: only the default keys (a merge queue)
 }
 export interface ConfigContext extends WorkspaceHookContext {
   setBranch(facts: BranchFacts): void // a later plugin's field wins; a bad scope is refused

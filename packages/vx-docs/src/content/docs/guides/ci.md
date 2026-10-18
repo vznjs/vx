@@ -155,6 +155,16 @@ names one by hand (a CI with a detached HEAD), and empty turns it off;
 git for the diff, at its first remote call: a run the local cache
 answers asks it nothing.
 
+A merge queue's run (`merge_group`) builds what is about to land on
+`main`, so `github()` names it trusted: no scope, only the default keys,
+compared with the queue's base commit.
+
+`turboCache()` and `nxCache()` tell the server which bucket each request
+means in an `x-vx-cache-scope` header: `trusted` for a default key, else
+the branch scope. The key does not change; the header lets a server that
+keeps one bucket per branch skip its own layering, and the server still
+decides from the token whether a write to `trusted` is allowed.
+
 With no base to diff from (a laptop with no default branch fetched)
 every task reads `main`'s key.
 

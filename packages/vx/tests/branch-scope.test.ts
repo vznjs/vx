@@ -8,7 +8,11 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import { localBranchScope, resolveCacheScope } from '../src/orchestrator/index.js'
+import {
+  loadWorkspacePlugins,
+  localBranchScope,
+  resolveCacheScope,
+} from '../src/orchestrator/index.js'
 import { branchChanges, configuredBaseBranch } from '../src/workspace/index.js'
 import { scopedKey } from '../src/cache/scoped-cache.js'
 import type { RemoteCacheLayer } from '../src/cache/index.js'
@@ -67,6 +71,27 @@ it('the default branch is `baseBranch`, else the remote HEAD when one is set', (
   expect(localBranchScope(root, undefined, env)).toBe('acme/app:main2')
   // A configured `baseBranch` names it instead.
   expect(localBranchScope(root, 'main2', env)).toBeUndefined()
+})
+
+// Owner, 2026-10-18: a merge queue's run is trusted. It reads and writes
+// the default keys, whatever branch git names; VX_CACHE_SCOPE still wins.
+it("a plugin's trusted run has no scope, whatever git names", async () => {
+  git('checkout', '-q', '-b', 'feat')
+  expect(resolveCacheScope(root, null, true, undefined, env)).toBeUndefined()
+  expect(resolveCacheScope(root, null, true, undefined, { VX_CACHE_SCOPE: 'x:y' })).toBe('x:y')
+  const facts = async (...calls: string[]) => {
+    const hook = calls.map((c) => `ctx.setBranch(${c})`).join('; ')
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([pluginSource('org/ci', `{ config(_w, ctx) { ${hook} } }`)]),
+    )
+    return (await loadWorkspacePlugins(root, () => {})).branch
+  }
+  expect(await facts("{ scope: 'a/b:c' }", "{ trusted: true, base: 'b4' }")).toEqual({
+    trusted: true,
+    base: 'b4',
+  })
+  expect(await facts('{ trusted: true }', "{ scope: 'a/b:c' }")).toEqual({ scope: 'a/b:c' })
 })
 
 it("VX_CACHE_SCOPE beats a plugin's scope, which beats git's; git's needs a cache plugin", () => {
