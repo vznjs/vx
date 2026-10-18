@@ -111,6 +111,42 @@ describe.each(combos)('cache.store %o', (store) => {
     })
   }
 
+  it('an entry with no outputs ingests and restores its stdout', async () => {
+    const cache = new Cache(
+      path.join(root, 'n'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    )
+    const proj = path.join(root, 'p-n')
+    await mkdir(proj, { recursive: true })
+    await cache.save({
+      hash: HASH,
+      entry: { taskId: 'p#check', command: 'check', durationMs: 1, stdout: 'ok\n' },
+      projectDir: proj,
+      outputFiles: [],
+    })
+    const pinned = await cache.pinArtifact(HASH)
+    const other = new Cache(
+      path.join(root, 'o'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    )
+    await other.ingest(HASH, pinned.body, { taskId: 'p#check', command: 'check', durationMs: 1 })
+    await pinned.release()
+    await other.restoreOutputs(HASH, path.join(root, 'into'))
+    expect((await other.get(HASH))?.stdout).toBe('ok\n')
+    cache.close()
+    other.close()
+  })
+
   it('prune takes the entry in every form', async () => {
     const { cache } = await saved(store, LARGE)
     await cache.prune({ olderThanMs: Date.now() + 2 * 60 * 60 * 1000 })

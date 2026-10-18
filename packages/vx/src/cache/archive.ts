@@ -525,6 +525,8 @@ function stdoutOf(plan: ArtifactPlan): string {
  * extract just wrote: an ingested remote hit kept as a tree.
  */
 export async function sealTree(dir: string, scan: ArtifactScan): Promise<void> {
+  // An artifact with no outputs extracts nothing, so nothing made `dir`.
+  await mkdir(dir, { recursive: true })
   const meta: MetaFile = { version: 1, files: {} }
   if (scan.key !== undefined) meta.key = scan.key
   for (const e of scan.entries) {
