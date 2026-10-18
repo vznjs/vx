@@ -39,6 +39,7 @@ src/remote-breaker.ts
 src/remote-cache.ts
 src/remote-deadline.ts
 src/remote-retry.ts
+src/remote-scope.ts
 src/remote-token.ts
 src/script-command.ts
 src/sealed-tsconfig.ts
