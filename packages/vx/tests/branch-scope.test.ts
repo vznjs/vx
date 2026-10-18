@@ -56,6 +56,14 @@ it("a checkout names its remote's repository and the branch it tracks, else its 
   expect(localBranchScope(root, undefined, env)).toBeUndefined()
 })
 
+// A GitLab subgroup's project is `group/sub/app` on CI (`gitlab()`); a
+// laptop that kept only the last two segments named another scope.
+it("a subgroup's project path is kept whole, as gitlab() names it", () => {
+  git('remote', 'set-url', 'origin', 'https://gitlab.com/Acme/Web/App.git')
+  git('checkout', '-q', '-b', 'feat')
+  expect(localBranchScope(root, undefined, env)).toBe('acme/web/app:feat')
+})
+
 it('no remote URL, no scope: nothing names the repository', () => {
   git('remote', 'remove', 'origin')
   git('checkout', '-q', '-b', 'feat')

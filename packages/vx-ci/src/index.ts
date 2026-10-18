@@ -1,4 +1,4 @@
-// Public API for @vzn/vx-ci — the GitHub Actions integration plugin.
+// Public API for @vzn/vx-ci — the GitHub Actions and GitLab CI plugins.
 //
 // Usage in .vx/workspace.ts:
 //   import { defineWorkspace } from '@vzn/vx'
@@ -9,6 +9,7 @@
 // appends a job summary: verdict, stats, failures, and the per-task table.
 // Anywhere else the plugin declines and costs nothing.
 export { github, type GithubPluginOptions } from './plugin.js'
+export { gitlab, type GitlabPluginOptions } from './gitlab.js'
 export { renderJobSummary } from './summary.js'
 
 // The Checks API helpers are the plugin's own; only the transport type

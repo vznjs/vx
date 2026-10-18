@@ -1,5 +1,7 @@
 == function github (src/plugin.ts)
 export function github(options: GithubPluginOptions = {}): VxPlugin | undefined
+== function gitlab (src/gitlab.ts)
+export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined
 == function renderJobSummary (src/summary.ts)
 export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): string
 == type FetchFn (src/checks.ts)
@@ -17,4 +19,8 @@ export interface GithubPluginOptions {
   append?: (file: string, markdown: string) => Promise<void>
   fetchFn?: FetchFn
   sizeOf?: (file: string) => Promise<number>
+}
+== type GitlabPluginOptions (src/gitlab.ts)
+export interface GitlabPluginOptions {
+  cacheScope?: boolean
 }

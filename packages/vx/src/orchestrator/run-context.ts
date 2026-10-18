@@ -553,10 +553,13 @@ export function localBranchScope(
   return branchCacheScope(repo, name)
 }
 
-/** `owner/repo` from a remote URL (its last two path segments); undefined for a local path. */
+/**
+ * The repository's path on its host (`owner/repo`; a GitLab subgroup's
+ * `group/sub/repo` whole, as `gitlab()` names it); undefined for a local path.
+ */
 function repoOfUrl(url: string): string | undefined {
   const parts = normalizeRemoteUrl(url).split('/')
-  return parts.length < 3 ? undefined : parts.slice(-2).join('/')
+  return parts.length < 3 ? undefined : parts.slice(1).join('/')
 }
 
 /** `.git/config`'s sections, each a key → value map (last wins); empty when it cannot be read. */

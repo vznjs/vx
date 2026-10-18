@@ -1573,7 +1573,7 @@ export const MORE: readonly Feature[] = [
     category: 'ci',
     hook: 'On Actions, main writes the default cache entries and a branch writes only its own.',
     body: [
-      'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the branch: the default branch writes the default entries, a push or pull request from `feat-x` writes `acme/app:feat-x`, the scope a laptop on `feat-x` reads. A merge queue’s run is trusted: it reads and writes only the default entries.',
+      'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the branch: the default branch writes the default entries, a push or pull request from `feat-x` writes `acme/app:feat-x`, the scope a laptop on `feat-x` reads. A merge queue’s run is trusted: it reads and writes only the default entries. `gitlab()` does the same on GitLab CI, merge trains included.',
       'No config needed; `VX_CACHE_SCOPE` overrides it.',
     ],
     example: {
