@@ -40,8 +40,8 @@ checked and nothing loads, so declaring it unconditionally is safe.
 
 The options type is `GithubPluginOptions`; `renderJobSummary` renders the
 summary lines the plugin posts (the site's CI guide sample is rendered from it).
-The package exports `github`, `renderJobSummary` and the types `GithubPluginOptions`
-and `FetchFn`; nothing else. `fetchFn`, `append` and `sizeOf` are test seams:
+The package exports `github`, `gitlab`, `renderJobSummary` and the types
+`GithubPluginOptions`, `GitlabPluginOptions` and `FetchFn`; nothing else. `fetchFn`, `append` and `sizeOf` are test seams:
 they replace the Checks API transport, the summary writer and its size probe.
 
 ```ts
@@ -102,7 +102,7 @@ fork's `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and its diff base
 (`CI_MERGE_REQUEST_DIFF_BASE_SHA`), so vx diffs from it with no git
 call. A merge train's pipeline (`CI_MERGE_REQUEST_EVENT_TYPE=merge_train`)
 builds what lands on the target, so it is trusted: no scope, only the
-default keys. `gitlab({ cacheScope: false })` turns it off;
+default keys. `gitlab({ cacheScope: false })` (`GitlabPluginOptions`) turns it off;
 `VX_CACHE_SCOPE` overrides it. Anywhere else `gitlab()` returns
 `undefined`, so declaring both plugins is safe. Merge request comments
 and reports are not part of it yet.
