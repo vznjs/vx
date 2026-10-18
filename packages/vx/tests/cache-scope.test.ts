@@ -35,7 +35,7 @@ const BUILD_CONFIG = `
   }
 `
 
-function memoryRemote(): {
+function memoryRemote(probeDelayMs = 0): {
   layer: RemoteCacheLayer
   store: Map<string, Uint8Array>
   gets: string[]
@@ -47,6 +47,7 @@ function memoryRemote(): {
       return store.has(hash)
     },
     async hasMany(hashes) {
+      if (probeDelayMs > 0) await Bun.sleep(probeDelayMs)
       return new Set(hashes.filter((h) => store.has(h)))
     },
     async get(hash) {
@@ -230,6 +231,30 @@ describe('cache.scope', () => {
         calls.length = 0
         expect((await once()).outcomes[0]!.status).toBe('cache-hit')
         expect(calls).toEqual([])
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a lookup that lands before the batch probe answers waits for it: no GET for an absent key',
+    async () => {
+      // The task's own lookup raced the prefetch's probe: under load it
+      // spent a GET the probe was about to call absent (2 in 25 runs).
+      // A slow probe makes the race certain.
+      const fixture = await makeWorkspace('vx-cache-scope-')
+      const { layer, gets } = memoryRemote(300)
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        expect((await runScoped(fixture, layer, undefined, 'v1')).status).toBe('success')
+        expect(gets).toEqual([])
+        expect((await runScoped(fixture, layer, 'ref-b', 'v2')).status).toBe('success')
+        expect(gets).toEqual([])
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

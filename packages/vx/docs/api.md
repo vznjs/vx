@@ -253,6 +253,7 @@ export interface CacheLayer {
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
+  probeFirst?(started: Promise<void>): void
   noteKey?(taskId: string, hash: string): void
   drainUploads?(): Promise<void>
   stopUploads?(): void

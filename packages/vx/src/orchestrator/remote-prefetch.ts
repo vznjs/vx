@@ -75,10 +75,14 @@ export function startRemotePrefetch(args: PrefetchArgs): Promise<void> {
   // a still-in-flight prefetch can never ingest into a closed DB. Errors
   // degrade inside LayeredCache.prefetch; the catch keeps the handle
   // from ever rejecting.
-  return runPrefetch(args).catch(() => {})
+  const started = Promise.withResolvers<void>()
+  args.cache.probeFirst?.(started.promise)
+  return runPrefetch(args, started.resolve)
+    .catch(() => {})
+    .finally(started.resolve)
 }
 
-async function runPrefetch(args: PrefetchArgs): Promise<void> {
+async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<void> {
   const stableKeys = await deriveStableKeys(args)
   if (stableKeys.length === 0) return
 
@@ -94,7 +98,10 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   let toPrefetch = held === null ? stableKeys : stableKeys.filter((k) => !held.has(k.hash))
   if (toPrefetch.length === 0) return
   const uniqueHashes = [...new Set(toPrefetch.map((k) => k.hash))]
-  const present = (await args.cache.remoteHasMany?.(uniqueHashes)) ?? null
+  const asked = args.cache.remoteHasMany?.(uniqueHashes)
+  // Every lookup that waited on the probe now finds its hash in it.
+  probing()
+  const present = (await asked) ?? null
   if (present !== null) {
     args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))
     // The pre-mark above already answers a pull for an absent hash from
