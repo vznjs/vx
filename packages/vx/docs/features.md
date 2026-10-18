@@ -142,6 +142,7 @@ config key or an environment variable is missing here.
 - **Results on GitHub** (`@vzn/vx-ci`: `github()`) — job summary and Checks API annotations. [page](https://vznjs.github.io/vx/features/github-ci/) · post: [Your run, on the pull request](https://vznjs.github.io/vx/blog/results-on-github/)
 - **PR check run** (`github({ checks })`) — a check run on the commit with the run summary as its output. [page](https://vznjs.github.io/vx/features/pr-check-run/) · post: [Your run, on the pull request](https://vznjs.github.io/vx/blog/results-on-github/)
 - **Cache scope from the ref** (`github({ cacheScope })`) — main writes the default keys; a branch or its PR writes `<owner>/<repo>:<branch>`, compared with the PR's base commit; a merge queue's run is trusted (default keys only). [page](https://vznjs.github.io/vx/features/ref-cache-scope/) · post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
+- **Cache scope on GitLab CI** (`@vzn/vx-ci`: `gitlab({ cacheScope })`) — the default branch and a merge train keep the default keys; a branch or its merge request writes `<project path>:<branch>`, compared with the merge request's diff base. [page](https://vznjs.github.io/vx/features/ref-cache-scope/) · post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 
 ## Adoption
 

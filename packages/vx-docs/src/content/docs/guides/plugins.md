@@ -563,7 +563,7 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 | [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/)          | `discover`, `project`, `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)) |
 | [`@vzn/vx-schedule-history`](../../plugins/vx-schedule-history/)  | `schedule`, `admit`, `commands`            |
 | [`@vzn/vx-otel`](../../plugins/vx-otel/)              | `telemetry` ([below](#opentelemetry))      |
-| [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry` ([GitHub Actions](../ci/#github-actions)) |
+| [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry` ([GitHub Actions](../ci/#github-actions), [GitLab CI](../ci/#gitlab-ci)) |
 
 One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 

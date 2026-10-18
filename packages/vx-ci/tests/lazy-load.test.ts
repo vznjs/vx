@@ -41,7 +41,7 @@ it('a run with no summary file loads no sink, renderer or Checks API client', as
   expect({ code, err: code === 0 ? '' : err }).toEqual({ code: 0, err: '' })
   const line = out.split('\n').find((l) => l.startsWith('SEEN ')) ?? 'SEEN {}'
   const { before, after } = JSON.parse(line.slice(5)) as { before: string[]; after: string[] }
-  expect(before).toEqual(['cache-scope.ts', 'index.ts', 'plugin.ts', 'summary.ts'])
+  expect(before).toEqual(['cache-scope.ts', 'gitlab.ts', 'index.ts', 'plugin.ts', 'summary.ts'])
   // The control: a summary file does load the sink, so the probe sees a load.
   expect(after).toEqual([...before, 'checks.ts', 'sink.ts'].sort())
 })

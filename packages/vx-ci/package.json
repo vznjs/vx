@@ -2,12 +2,13 @@
   "name": "@vzn/vx-ci",
   "version": "0.0.0",
   "license": "MIT",
-  "description": "GitHub Actions integration for vx — a telemetry plugin that writes the run as a GitHub Actions job summary.",
+  "description": "GitHub Actions and GitLab CI integration for vx — a job summary on Actions and the branch cache scope on both.",
   "keywords": [
     "vx",
     "vx-plugin",
     "monorepo",
     "github-actions",
+    "gitlab-ci",
     "job-summary",
     "checks"
   ],

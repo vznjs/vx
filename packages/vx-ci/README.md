@@ -2,9 +2,10 @@
 
 Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-ci/> · source: <https://github.com/vznjs/vx>
 
-GitHub Actions integration for [`@vzn/vx`](https://vznjs.github.io/vx/) — a
-telemetry plugin that writes every `vx run` as a **job summary** on the
-workflow run page.
+GitHub Actions and GitLab CI integration for [`@vzn/vx`](https://vznjs.github.io/vx/):
+`github()` writes every `vx run` as a **job summary** on the workflow run
+page and names the run's cache scope; `gitlab()` names the run's cache
+scope on GitLab CI ([below](#gitlab-ci)).
 
 ```sh
 npm install -D @vzn/vx @vzn/vx-ci   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
@@ -39,8 +40,8 @@ checked and nothing loads, so declaring it unconditionally is safe.
 
 The options type is `GithubPluginOptions`; `renderJobSummary` renders the
 summary lines the plugin posts (the site's CI guide sample is rendered from it).
-The package exports `github`, `renderJobSummary` and the types `GithubPluginOptions`
-and `FetchFn`; nothing else. `fetchFn`, `append` and `sizeOf` are test seams:
+The package exports `github`, `gitlab`, `renderJobSummary` and the types
+`GithubPluginOptions`, `GitlabPluginOptions` and `FetchFn`; nothing else. `fetchFn`, `append` and `sizeOf` are test seams:
 they replace the Checks API transport, the summary writer and its size probe.
 
 ```ts
@@ -78,6 +79,33 @@ same scope. Whether a run writes at all is `cache.policy`'s call.
 real boundary is a cache token the server limits, so give PR jobs one
 that cannot write the default keys (`docs/security.md` § Cache
 poisoning).
+
+## GitLab CI
+
+```ts
+// .vx/workspace.ts
+import { defineWorkspace } from '@vzn/vx/config'
+import { github, gitlab } from '@vzn/vx-ci'
+
+export default defineWorkspace({ plugins: [github(), gitlab()] })
+```
+
+On GitLab CI (`GITLAB_CI=true`) `gitlab()`'s `config` stage names the
+run's branch through `ctx.setBranch`, from GitLab's predefined
+variables, as `github()` does on Actions. The default branch
+(`CI_DEFAULT_BRANCH`) names no scope. Another branch or a tag (`CI_COMMIT_TAG`) names
+`<project path>:<ref>` (`CI_PROJECT_PATH`, `CI_COMMIT_REF_NAME`), so a
+subgroup's project is `group/sub/app:feat-x`, the scope a laptop on
+`feat-x` derives. A merge request pipeline names its source branch
+(`CI_MERGE_REQUEST_SOURCE_BRANCH_NAME`) in the project it lives in (a
+fork's `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and its diff base
+(`CI_MERGE_REQUEST_DIFF_BASE_SHA`), so vx diffs from it with no git
+call. A merge train's pipeline (`CI_MERGE_REQUEST_EVENT_TYPE=merge_train`)
+builds what lands on the target, so it is trusted: no scope, only the
+default keys. `gitlab({ cacheScope: false })` (`GitlabPluginOptions`) turns it off;
+`VX_CACHE_SCOPE` overrides it. Anywhere else `gitlab()` returns
+`undefined`, so declaring both plugins is safe. Merge request comments
+and reports are not part of it yet.
 
 ## How it works
 

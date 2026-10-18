@@ -255,6 +255,29 @@ app only when it is in that list:
 - **`nothing affected since <ref>` on every push.** `origin/main` on a push to `main` is the commit itself. Use `github.event.before`.
 - **The whole log lands in the job summary.** Don't redirect vx's output there; declare `github()` from `@vzn/vx-ci`, which writes the summary.
 
+## GitLab CI
+
+`gitlab()` from `@vzn/vx-ci` names the cache scope on GitLab CI, as
+`github()` does on Actions:
+
+```ts
+// .vx/workspace.ts
+import { defineWorkspace } from '@vzn/vx/config'
+import { gitlab } from '@vzn/vx-ci'
+
+export default defineWorkspace({ plugins: [gitlab()] })
+```
+
+The default branch keeps the default keys. A branch or a tag writes
+`<project path>:<branch>`, so a subgroup's project is
+`group/sub/app:feat-x`, the scope a laptop on `feat-x` reads. A merge
+request pipeline writes its source branch's scope (a fork's in the fork)
+and is compared with the merge request's diff base, so the job needs no
+history beyond that commit. A merge train builds what lands on the
+target branch, so it reads and writes only the default keys.
+`gitlab({ cacheScope: false })` turns it off. It writes no merge
+request comments or reports yet.
+
 ## Remote cache
 
 A shared cache is a plugin. vx looks here, then asks the remote, and
