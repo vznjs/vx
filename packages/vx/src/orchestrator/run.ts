@@ -11,6 +11,7 @@ import {
   type CachePolicy,
   cachesNothing,
   formatCachePolicy,
+  networkConcurrency,
   stopRuntimeProbes,
   sweepStaging,
 } from '../cache/index.js'
@@ -259,6 +260,10 @@ function refuseRunOptions(options: RunOptions): void {
   const { concurrency, retries, timeout } = options
   if (concurrency !== undefined && !(Number.isInteger(concurrency) && concurrency > 0))
     refuse('concurrency', concurrency, 'a positive integer')
+  for (const field of ['downloadConcurrency', 'uploadConcurrency', 'restoreConcurrency'] as const) {
+    const v = options[field]
+    if (v !== undefined && !(Number.isInteger(v) && v > 0)) refuse(field, v, 'a positive integer')
+  }
   if (retries !== undefined && !(Number.isInteger(retries) && retries >= 0))
     refuse('retries', retries, 'a non-negative integer')
   if (
@@ -871,7 +876,7 @@ async function runOnBus(
           nestedDirsByProject,
           gitFilesCache,
           hashCache,
-          concurrency,
+          concurrency: options.downloadConcurrency ?? networkConcurrency(),
           remoteRead: policy.remoteRead,
           remoteWrite: policy.remoteWrite,
         }),
@@ -1088,6 +1093,7 @@ async function runOnBus(
     const outcomes = await runGraph({
       nodes,
       concurrency,
+      restoreConcurrency: options.restoreConcurrency ?? 2 * concurrency,
       settledOf: (o) => deferredSaves.get(o.node.id),
       ...(hasPooledExecutor(executors) ? { poolOf: poolOfPlacement(placements) } : {}),
       ...(admit !== undefined ? { admit } : {}),

@@ -353,6 +353,7 @@ export interface CacheSettings {
   outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
   store?: { embedded?: boolean; compress?: boolean; verify?: 'stat' | 'hash' | 'none' }
+  concurrency?: { download?: number; upload?: number; restore?: number }
 }
 ```
 
@@ -1969,6 +1970,9 @@ export interface RunOptions {
   remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
+  downloadConcurrency?: number
+  uploadConcurrency?: number
+  restoreConcurrency?: number
   flow?: 'focused' | 'broad'
   retries?: number
   timeout?: number

@@ -529,7 +529,7 @@ So before execution starts, `run()` kicks off **background prefetches**:
    memo — no double hashing). This derivation touches **no cache layer**
    — keys only.
 2. Each **stable-key** task's remote GET is fired concurrently under a
-   bounded pool (the run's concurrency). The prefetch ingests a hit
+   bounded pool (`cache.concurrency.download`). The prefetch ingests a hit
    into the _local_ cache; misses/errors degrade to `false`.
 3. Execution starts immediately — the prefetches race alongside it, so
    remote latency overlaps real work instead of blocking it.

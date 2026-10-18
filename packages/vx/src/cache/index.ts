@@ -87,6 +87,7 @@ export {
   type RemoteKey,
   type RemoteOpenContext,
 } from './layered-cache.js'
+export { networkConcurrency } from './remote-lane.js'
 export type { ResolvedRemote } from './remote-lane.js'
 export { BranchScope } from './scoped-cache.js'
 export {

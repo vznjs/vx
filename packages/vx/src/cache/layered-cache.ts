@@ -192,9 +192,11 @@ export class LayeredCache implements CacheLayer {
     remotes: readonly ResolvedRemote[],
     /** The run's branch scope: it picks each remote key; the local store never sees it. */
     private readonly branch?: BranchScope,
+    uploadConcurrency?: number,
   ) {
     this.lanes = remotes.map(
-      (r) => new RemoteLane(r, local.traffic, branch?.remote(r.remote) ?? r.remote),
+      (r) =>
+        new RemoteLane(r, local.traffic, branch?.remote(r.remote) ?? r.remote, uploadConcurrency),
     )
   }
 

@@ -109,6 +109,9 @@ const SETTING_OPTIONS = [
   ['run.retries', 'retries'],
   ['run.outputLogs', 'outputLogs'],
   ['cache.download', 'download'],
+  ['cache.concurrency.download', 'downloadConcurrency'],
+  ['cache.concurrency.upload', 'uploadConcurrency'],
+  ['cache.concurrency.restore', 'restoreConcurrency'],
 ] as const satisfies readonly (readonly [string, keyof RunOptions])[]
 
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and

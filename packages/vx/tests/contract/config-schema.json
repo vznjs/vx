@@ -5,6 +5,7 @@
       "run": ["concurrency", "continue", "retries", "rules", "schedule", "timeout"],
       "run.rules": ["dependencies", "exclusiveOutputs"],
       "cache": [
+        "concurrency",
         "dir",
         "download",
         "inputStability",
@@ -19,6 +20,7 @@
       "cache.outputs": ["clean"],
       "cache.upload": ["failures"],
       "cache.store": ["compress", "embedded", "verify"],
+      "cache.concurrency": ["download", "restore", "upload"],
       "lock": ["reviewFiles"],
       "watch": ["poll"]
     },
@@ -634,7 +636,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache` has unknown field \"x\" (allowed: dir, download, inputStability, outputs, policy, retention, store, upload)": [
+        "$CONFIG: `cache` has unknown field \"x\" (allowed: concurrency, dir, download, inputStability, outputs, policy, retention, store, upload)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1583,6 +1585,162 @@
         ],
         "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got {})": ["{}"],
         "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.concurrency": {
+        "ok": ["<absent>", "{}", "<seed>"],
+        "$CONFIG: `cache.concurrency` must be an object (fields: download, upload, restore)": [
+          "null",
+          "true",
+          "false",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]"
+        ],
+        "$CONFIG: `cache.concurrency` has unknown field \"x\" (allowed: download, restore, upload)": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.concurrency.download": {
+        "ok": ["<absent>", "1", "65536", "2147483648", "64"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got null)": ["null"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got true)": ["true"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got false)": ["false"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"\")": ["\"\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"10\")": ["\"10\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [1])": ["[1]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got {})": ["{}"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.concurrency.upload": {
+        "ok": ["<absent>", "1", "65536", "2147483648", "64"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got null)": ["null"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got true)": ["true"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got false)": ["false"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"\")": ["\"\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"10\")": ["\"10\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [1])": ["[1]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got {})": ["{}"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "cache.concurrency.restore": {
+        "ok": ["<absent>", "1", "65536", "2147483648", "16"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got null)": ["null"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got true)": ["true"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got false)": ["false"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"\")": ["\"\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"10\")": ["\"10\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [1])": ["[1]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"!/x\"])": [
+          "[\"!/x\"]"
+        ],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"../x\"])": [
+          "[\"../x\"]"
+        ],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
+          "[\"!!x\",\"y\"]"
+        ],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"A=B\"])": [
+          "[\"A=B\"]"
+        ],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got {})": ["{}"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },

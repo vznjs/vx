@@ -142,6 +142,27 @@ export const SETTINGS: readonly Setting[] = [
     config: false,
   },
   {
+    path: 'cache.concurrency.download',
+    kind: { type: 'int', min: 1 },
+    default: 'min(96, max(cores × 3, 64))',
+    doc: 'Remote downloads at once.',
+    flag: { verb: 'run', name: '--cache-concurrency-download' },
+  },
+  {
+    path: 'cache.concurrency.upload',
+    kind: { type: 'int', min: 1 },
+    default: 'min(96, max(cores × 3, 64))',
+    doc: 'Uploads at once, per remote.',
+    flag: { verb: 'run', name: '--cache-concurrency-upload' },
+  },
+  {
+    path: 'cache.concurrency.restore',
+    kind: { type: 'int', min: 1 },
+    default: 'twice `run.concurrency`',
+    doc: 'Local hits restoring outputs at once.',
+    flag: { verb: 'run', name: '--cache-concurrency-restore' },
+  },
+  {
     path: 'cache.download',
     kind: { type: 'enum', values: ['all', 'toplevel', 'none'] },
     default: 'all',

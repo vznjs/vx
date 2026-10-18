@@ -532,7 +532,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   }
   try {
     cache = options.remoteCache
-      ? new LayeredCache(localCache, remotes, branchScope)
+      ? new LayeredCache(localCache, remotes, branchScope, options.uploadConcurrency)
       : await resolveCache(plugins, {
           workspaceRoot,
           cacheDir,
@@ -542,6 +542,9 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
           policy,
           remotes,
           ...(branchScope !== undefined ? { branch: branchScope } : {}),
+          ...(options.uploadConcurrency !== undefined
+            ? { uploadConcurrency: options.uploadConcurrency }
+            : {}),
         })
   } catch (err) {
     // A cache plugin that throws or returns something off-contract is

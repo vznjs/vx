@@ -9,7 +9,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/cache.js'
 import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.js'
-import type { InvocationRecord } from '../src/cache/index.js'
+import { networkConcurrency, type InvocationRecord } from '../src/cache/index.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { layeredOver } from './helpers/layered.js'
 import { TAR_STORE } from './helpers/tar-store.js'
@@ -139,8 +139,14 @@ describe('LayeredCache', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  function makeLayered(opts?: { onRemoteError?: (e: Error) => void }): LayeredCache {
+  function makeLayered(opts?: {
+    onRemoteError?: (e: Error) => void
+    uploadConcurrency?: number
+  }): LayeredCache {
     return layeredOver(local, remote.layer, {
+      ...(opts?.uploadConcurrency !== undefined
+        ? { uploadConcurrency: opts.uploadConcurrency }
+        : {}),
       onRemoteError:
         opts?.onRemoteError ??
         (() => {
@@ -574,27 +580,33 @@ describe('LayeredCache', () => {
     expect(await layered.remoteHasMany(['h1'])).toBeNull()
   })
 
-  it('runs four uploads at once, and the fifth waits', async () => {
-    let release!: () => void
-    remote.putGate = new Promise<void>((r) => (release = r))
-    const layered = makeLayered()
-    const outFile = path.join(projectDir, 'dist', 'out.txt')
-    await mkdir(path.dirname(outFile), { recursive: true })
-    for (let i = 0; i < 5; i++) {
-      await writeFile(outFile, `produced-${i}`)
-      await layered.save({
-        hash: `h-pool-${i}`,
-        projectDir,
-        outputFiles: [outFile],
-        entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
-      })
-    }
-    await Bun.sleep(0)
-    expect(remote.puts).toBe(4)
-    release()
-    await layered.drainUploads()
-    expect(remote.puts).toBe(5)
-  })
+  it.each([
+    [3, 3],
+    [undefined, networkConcurrency()],
+  ])(
+    'runs cache.concurrency.upload %p uploads at once (%p), and the next waits',
+    async (cap, at) => {
+      let release!: () => void
+      remote.putGate = new Promise<void>((r) => (release = r))
+      const layered = makeLayered(cap === undefined ? {} : { uploadConcurrency: cap })
+      const outFile = path.join(projectDir, 'dist', 'out.txt')
+      await mkdir(path.dirname(outFile), { recursive: true })
+      for (let i = 0; i <= at; i++) {
+        await writeFile(outFile, `produced-${i}`)
+        await layered.save({
+          hash: `h-pool-${i}`,
+          projectDir,
+          outputFiles: [outFile],
+          entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
+        })
+      }
+      await Bun.sleep(0)
+      expect(remote.puts).toBe(at)
+      release()
+      await layered.drainUploads()
+      expect(remote.puts).toBe(at + 1)
+    },
+  )
 
   it('drainUploads() waits for an upload still running once the queue is empty', async () => {
     const gates = new Map<string, () => void>()
@@ -796,7 +808,7 @@ describe('LayeredCache', () => {
   })
 
   it('a queued upload holds no artifact bytes — it reads them when the PUT runs', async () => {
-    // UPLOAD_CONCURRENCY bounds sockets, not memory: a queued closure that
+    // cache.concurrency.upload bounds sockets, not memory: a queued closure that
     // captured its own artifact keeps the WHOLE backlog resident, so peak
     // RSS scaled with total miss artifact bytes. Proving non-retention
     // WITHOUT an RSS assertion: stall the pool, save, then delete the local
@@ -808,7 +820,7 @@ describe('LayeredCache', () => {
       releasePut = resolve
     })
     const errors: Error[] = []
-    const layered = makeLayered({ onRemoteError: (e) => errors.push(e) })
+    const layered = makeLayered({ onRemoteError: (e) => errors.push(e), uploadConcurrency: 4 })
 
     // One more save than the pool can run at once, so some genuinely queue.
     const queuedHashes = ['h-q0', 'h-q1', 'h-q2', 'h-q3', 'h-q4', 'h-q5']

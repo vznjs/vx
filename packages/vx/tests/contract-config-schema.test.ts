@@ -86,6 +86,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       outputs: true,
       upload: true,
       store: true,
+      concurrency: true,
     }),
     'cache.retention': keys<NonNullable<CacheSettings['retention']>>({
       olderThan: true,
@@ -94,6 +95,11 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
     'cache.inputStability': keys<InputStability>({ strategy: true, severity: true }),
     'cache.outputs': keys<NonNullable<CacheSettings['outputs']>>({ clean: true }),
     'cache.upload': keys<NonNullable<CacheSettings['upload']>>({ failures: true }),
+    'cache.concurrency': keys<NonNullable<CacheSettings['concurrency']>>({
+      download: true,
+      upload: true,
+      restore: true,
+    }),
     'cache.store': keys<NonNullable<CacheSettings['store']>>({
       embedded: true,
       compress: true,
@@ -186,6 +192,7 @@ function workspaceSeed(): Record<string, unknown> {
       outputs: { clean: false },
       upload: { failures: 'always' },
       store: { embedded: true, compress: false, verify: 'stat' },
+      concurrency: { download: 64, upload: 64, restore: 16 },
     },
     lock: { reviewFiles: false },
     watch: { poll: true },

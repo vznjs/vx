@@ -791,6 +791,29 @@ describe('runGraph restore-tier (local short-circuit)', () => {
     expect(await peak(2)).toBe(2)
   })
 
+  it.each([
+    [undefined, 4],
+    [3, 3],
+    [8, 8],
+  ])('restoreConcurrency %p runs %p restores at once beside concurrency 2', async (cap, at) => {
+    let inFlight = 0
+    let max = 0
+    const ids = Array.from({ length: 12 }, (_, i) => `r${i}#hit`)
+    await runGraph({
+      nodes: nodes(...ids.map((id) => node(id))),
+      concurrency: 2,
+      ...(cap !== undefined ? { restoreConcurrency: cap } : {}),
+      restoreTier: new Set(ids),
+      execute: async (n) => {
+        max = Math.max(max, ++inFlight)
+        await new Promise((r) => setTimeout(r, 10))
+        inFlight--
+        return hit(n)
+      },
+    })
+    expect(max).toBe(at)
+  })
+
   it('a restore placed on a pooled executor stays on the restore lane', async () => {
     // It took the pool's arm: every restore ran at once, past the lane's
     // cap and `--concurrency 1`, and pushed the pool over its capacity.

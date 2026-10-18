@@ -10,7 +10,12 @@ import {
 export function layeredOver(
   local: Cache,
   remote: RemoteCacheLayer,
-  opts: { policy?: CachePolicy; onRemoteError?: (err: Error) => void; branch?: BranchScope } = {},
+  opts: {
+    policy?: CachePolicy
+    onRemoteError?: (err: Error) => void
+    branch?: BranchScope
+    uploadConcurrency?: number
+  } = {},
 ): LayeredCache {
   return new LayeredCache(
     local,
@@ -23,5 +28,6 @@ export function layeredOver(
       },
     ],
     opts.branch,
+    opts.uploadConcurrency,
   )
 }

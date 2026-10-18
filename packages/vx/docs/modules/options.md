@@ -31,6 +31,9 @@ export interface RunOptions {
   remoteReadOnlyByDefault?: boolean // the default policy writes no remote; the CLI passes it off CI
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'
+  downloadConcurrency?: number // cache.concurrency.download
+  uploadConcurrency?: number // cache.concurrency.upload, per remote
+  restoreConcurrency?: number // cache.concurrency.restore; twice concurrency unset
   flow?: 'focused' | 'broad'
   retries?: number // run.retries; a task's exec.retries beats it
   timeout?: number // run.timeout in ms; a task's exec.timeout beats it
