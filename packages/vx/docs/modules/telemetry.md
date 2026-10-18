@@ -111,7 +111,7 @@ interface TaskTelemetry {
   queuedMs?: number // how long it waited ready for a worker, any admission hold included
   inputFiles?: number // on a cacheable task that ran: the files its key read
   inputChanges?: InputChanges // and what its key changed since the last saved entry, ten named
-  artifactBytes?: number // the artifact's compressed size: a hit's entry, or a miss's save
+  artifactBytes?: number // the artifact's stored size: a hit's entry, or a miss's save
   fetchMs?: number // a remote hit this run pulled: download + ingest
   saveMs?: number // a miss that saved: the save's own time
   restored?: boolean // on a hit: outputs restored (true) or already up to date (false)

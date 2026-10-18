@@ -1707,7 +1707,7 @@ export default defineWorkspace({
     inputStability: { strategy: 'immutable', severity: 'warn' },
     outputs: { clean: true },
     upload: { failures: 'ci' },
-    store: { embedded: true, compress: false, verify: 'stat' },
+    store: { decompress: true, verify: 'stat' },
     concurrency: { download: 64, upload: 64, restore: 16 },
   },
   lock: { reviewFiles: true },
@@ -1758,8 +1758,7 @@ default and where it came from.
 | `cache.inputStability.strategy`                | `VX_CACHE_INPUT_STABILITY_STRATEGY` | —                              | one of 'immutable', 'mutable', 'unchecked'                              | immutable                                                                     | What a write to an input during the command means for the save, for tasks without their own. A task's own `cache.inputStability.strategy` beats it.                       |
 | `cache.inputStability.severity`                | `VX_CACHE_INPUT_STABILITY_SEVERITY` | —                              | one of 'warn', 'error'                                                  | warn                                                                          | Whether a skipped save warns or fails the task, for tasks without their own. A task's own `cache.inputStability.severity` beats it.                                       |
 | `cache.outputs.clean`                          | —                                   | —                              | true or false                                                           | true                                                                          | Remove a task's declared outputs before it runs on a miss, for tasks without their own. A task's own `cache.outputs.clean` beats it.                                      |
-| `cache.store.embedded`                         | `VX_CACHE_STORE_EMBEDDED`           | —                              | true or false                                                           | true                                                                          | Keep a small entry inside the cache index, one zstd tar, rather than as files.                                                                                            |
-| `cache.store.compress`                         | `VX_CACHE_STORE_COMPRESS`           | —                              | true or false                                                           | false                                                                         | Keep a larger entry as one `.tar.zst`; off, as its plain files, which a hit copies or clones out.                                                                         |
+| `cache.store.decompress`                       | `VX_CACHE_STORE_DECOMPRESS`         | —                              | true or false                                                           | true                                                                          | Keep an entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`, which saves disk but every restore decompresses just in time.                 |
 | `cache.store.verify`                           | `VX_CACHE_STORE_VERIFY`             | —                              | one of 'stat', 'hash', 'none'                                           | stat                                                                          | What a hit on plain files checks first: each file's size and mtime, every byte, or nothing.                                                                               |
 | `cache.upload.failures`                        | —                                   | —                              | one of 'ci', 'local', 'always'                                          | ci                                                                            | Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.                                                                               |
 | `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`              | —                              | true or false                                                           | true                                                                          | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                         |
@@ -1808,7 +1807,7 @@ interface CacheSettings {
   inputStability?: InputStability
   outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
-  store?: { embedded?: boolean; compress?: boolean; verify?: 'stat' | 'hash' | 'none' }
+  store?: { decompress?: boolean; verify?: 'stat' | 'hash' | 'none' }
   concurrency?: { download?: number; upload?: number; restore?: number }
 }
 ```
@@ -1905,12 +1904,11 @@ interface CacheSettings {
   once per remote. A transfer waits on the network, not a core.
 - **`cache.concurrency.restore`** (default twice `run.concurrency`) —
   local hits writing their outputs at once.
-- **`cache.store.embedded`** (default `true`) — a small entry (at most
-  32 KiB) lives inside the cache index: one row, no file to make.
-- **`cache.store.compress`** (default `false`) — a larger entry is one
-  `<hash>.tar.zst`; off, it is its plain files under `<hash>.tree/`, which a
-  hit copies (or clones) out with no decode. A remote always gets the
-  tar.zst.
+- **`cache.store.decompress`** (default `true`) — an entry is its plain
+  files under `<hash>.tree/`, which a hit copies (or clones) out with no
+  decode. `false` optimizes disk space but trades speed: the entry is one
+  `<hash>.tar.zst`, and every restore decompresses it just in time. A
+  remote always gets the tar.zst.
 - **`cache.store.verify`** (default `'stat'`) — what a hit on plain files
   checks before copying: each file's size and mtime (`'stat'`), every
   byte against the entry's checksum (`'hash'`), or nothing (`'none'`). A

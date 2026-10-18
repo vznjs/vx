@@ -1616,6 +1616,8 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
     async () => {
       const fixture = await makeFixture('vx-remote-e2e-')
       const mem = memoryLayer()
+      // The `.tar.zst` form, whose stored size is the uploaded one.
+      process.env.VX_CACHE_STORE_DECOMPRESS = 'false'
       try {
         await addProject(fixture.root, 'app', {
           files: { 'src/in.txt': 'v1' },
@@ -1671,6 +1673,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
           uploads: undefined,
         })
       } finally {
+        delete process.env.VX_CACHE_STORE_DECOMPRESS
         await rm(fixture.root, { recursive: true, force: true })
       }
     },

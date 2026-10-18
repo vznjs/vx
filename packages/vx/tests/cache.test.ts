@@ -1,4 +1,4 @@
-import { existsSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -20,7 +20,7 @@ import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { run } from './helpers/orchestrator.js'
 import { withSum } from './helpers/artifact-sum.js'
-import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
+import { removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { TAR_STORE } from './helpers/tar-store.js'
 
 /** How many key components `entry_inputs` holds (one row per entry, v34). */
@@ -694,11 +694,10 @@ describe('Cache storage (v10)', () => {
       },
     })
 
-    // Layout v17: single zstd-compressed tar archive per entry, inline in
-    // the index when small (v33). The artifact carries stdout + outputs/ —
-    // entry metadata (command, exitCode, durationMs) lives in the SQLite
-    // entries row.
-    expect(isInline(cache, 'h1')).toBe(true)
+    // Layout v17: single zstd-compressed tar archive per entry. The artifact
+    // carries stdout + outputs/ — entry metadata (command, exitCode,
+    // durationMs) lives in the SQLite entries row.
+    expect(existsSync(cache.outputsPath('h1'))).toBe(true)
     // No legacy <hash>/ directory layout.
     expect(existsSync(path.join(cacheDir, 'h1'))).toBe(false)
     expect(existsSync(path.join(cacheDir, 'h1', 'stdout'))).toBe(false)
@@ -788,8 +787,6 @@ describe('Cache storage (v10)', () => {
       const { chmod, mkdir, writeFile } = await import('node:fs/promises')
       const outFile = path.join(projectDir, 'dist', 'out.txt')
       await mkdir(path.dirname(outFile), { recursive: true })
-      // Incompressible and past INLINE_MAX: the artifact is a file, the
-      // thing a user's permissions can refuse (an inline one is the index's).
       await writeFile(outFile, crypto.getRandomValues(new Uint8Array(48 * 1024)))
       await cache.save({
         hash: 'h-unread',
@@ -798,7 +795,6 @@ describe('Cache storage (v10)', () => {
         entry: { taskId: 'pkg#build', command: 'x', durationMs: 1, stdout: '' },
       })
       const artifact = path.join(cacheDir, 'h-unread.tar.zst')
-      expect(isInline(cache, 'h-unread')).toBe(false)
       await chmod(artifact, 0o000)
       try {
         const err = await cache.restoreOutputs('h-unread', projectDir).then(
@@ -1969,7 +1965,6 @@ describe('Cache storage (v10)', () => {
     // row-less artifact as hour-old orphans.
     await mkdir(projectDir, { recursive: true })
     const f = path.join(projectDir, 'out.txt')
-    // Incompressible and past INLINE_MAX: the artifact is a file.
     await writeFile(f, crypto.getRandomValues(new Uint8Array(48 * 1024)))
     const hash = 'aaaaaaaaaaaaaaaa'
     const ctx = { taskId: 'pkg#build', command: 'noop' }
@@ -2663,7 +2658,7 @@ describe('Cache schema/version recovery', () => {
     await rm(workspaceRoot, { recursive: true, force: true })
   })
 
-  it('a SCHEMA_VERSION reset leaves NO row behind but its own version and the inline artifacts', async () => {
+  it('a SCHEMA_VERSION reset leaves NO row behind but its own version', async () => {
     // Item 504. The row below names two tables; this one quantifies over
     // every table the schema creates, because the hazard is a table ADDED
     // later and left out of the DROP list — stale rows under a new schema,
@@ -2676,9 +2671,6 @@ describe('Cache schema/version recovery', () => {
     //                    columns stayed.
     //   schema_meta      holds the sentinel the gate just wrote; dropping
     //                    it would lose the version it is recording.
-    //   artifacts        the inline artifacts (v33) and their layout
-    //   artifacts_meta   sentinel: the record, which a reset keeps as it
-    //                    keeps artifact files, each indexed again on a hit.
     //
     // The first probe of this said nothing survived, because it planted
     // `created_at = 1` and a TTL sweep removes anything that old — the
@@ -2726,9 +2718,8 @@ describe('Cache schema/version recovery', () => {
       ]),
     )
     // `schema_meta` holds the schema version, the cache format (item 671)
-    // and the `file_hashes` sweep's clock (item 1082). `artifacts_meta`
-    // holds the layout row beside the planted one.
-    const seeded: Record<string, number> = { schema_meta: 3, artifacts_meta: 2 }
+    // and the `file_hashes` sweep's clock (item 1082).
+    const seeded: Record<string, number> = { schema_meta: 3 }
     expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, seeded[t] ?? 1])))
     raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
@@ -2742,7 +2733,7 @@ describe('Cache schema/version recovery', () => {
       .filter((t) => (after.query(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n > 0)
       .sort()
     after.close()
-    expect(survivors).toEqual(['artifacts', 'artifacts_meta', 'schema_meta'])
+    expect(survivors).toEqual(['schema_meta'])
   })
 
   it("a SCHEMA_VERSION reset renews every table's columns, not only its rows", async () => {
@@ -2772,12 +2763,9 @@ describe('Cache schema/version recovery', () => {
     const raw = new Database(dbPath)
     const fresh = columns(raw)
     for (const t of Object.keys(fresh)) {
-      // The inline artifacts' table outlives a reset; its own layout
-      // sentinel, in a table whose shape never changes, renews it.
-      if (t === 'schema_meta' || t === 'artifacts_meta') continue
+      if (t === 'schema_meta') continue
       raw.exec(`DROP TABLE ${t}; CREATE TABLE ${t} (old_shape TEXT)`)
     }
-    raw.query("UPDATE artifacts_meta SET value = 'a0' WHERE key = 'layout'").run()
     raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
     new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE).close()
@@ -2873,15 +2861,14 @@ describe('Cache schema/version recovery', () => {
         endedAt: Date.now() + 1,
       })
       expect(c2.stats().runCountLast24h).toBe(1)
-      // The drop orphaned round 1's artifact, inline: no row knows it, so
+      // The drop orphaned round 1's artifact file: no row knows it, so
       // a lookup with no task to adopt it for misses, and prune's sweep is
       // what reclaims the bytes once it is past the in-flight grace window.
       const orphan = '00000000000000ee'
       expect(await c2.get(orphan)).toBeNull()
       expect(storedArtifact(c2, orphan)).not.toBeNull()
-      c2.dbHandle()
-        .query('UPDATE artifacts SET at = ? WHERE hash = ?')
-        .run(Date.now() - 2 * 60 * 60 * 1000, orphan)
+      const old = (Date.now() - 2 * 60 * 60 * 1000) / 1000
+      utimesSync(c2.outputsPath(orphan), old, old)
       const pruned = await c2.prune({ olderThanMs: Date.now() - 30 * 60 * 1000 })
       expect(pruned.orphans).toBe(1)
       expect(storedArtifact(c2, orphan)).toBeNull()
@@ -3522,15 +3509,14 @@ describe('skip-restore staleness — millisecond mtimes (the v22 KNOWN-OPEN fix)
 describe('an artifact on disk with no index row, through a run', () => {
   // Only the archive form is adopted: a tree's stdout lives in its row.
   beforeEach(() => {
-    process.env.VX_CACHE_STORE_COMPRESS = 'true'
+    process.env.VX_CACHE_STORE_DECOMPRESS = 'false'
   })
   afterEach(() => {
-    delete process.env.VX_CACHE_STORE_COMPRESS
+    delete process.env.VX_CACHE_STORE_DECOMPRESS
   })
   it('is indexed from its bytes and hits, restoring its outputs', async () => {
     const root = await makeWorkspace({ prefix: 'vx-rowless-' })
-    // Past INLINE_MAX compressed, so the artifact is a file and outlives
-    // the deleted index (an inline one is in it).
+    // The artifact is a file, which outlives the deleted index.
     const built = `${Buffer.from(crypto.getRandomValues(new Uint8Array(64 * 1024))).toString('base64')}\n`
     try {
       await addProject(root, 'app', {

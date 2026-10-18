@@ -192,16 +192,10 @@ export const SETTINGS: readonly Setting[] = [
     env: false,
   },
   {
-    path: 'cache.store.embedded',
+    path: 'cache.store.decompress',
     kind: { type: 'bool' },
     default: 'true',
-    doc: 'Keep a small entry inside the cache index, one zstd tar, rather than as files.',
-  },
-  {
-    path: 'cache.store.compress',
-    kind: { type: 'bool' },
-    default: 'false',
-    doc: 'Keep a larger entry as one `.tar.zst`; off, as its plain files, which a hit copies or clones out.',
+    doc: 'Keep an entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`, which saves disk but every restore decompresses just in time.',
   },
   {
     path: 'cache.store.verify',

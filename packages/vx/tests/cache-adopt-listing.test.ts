@@ -16,7 +16,6 @@ async function saveFile(cache: Cache, root: string, hash: string): Promise<void>
   const projectDir = path.join(root, hash)
   await mkdir(path.join(projectDir, 'dist'), { recursive: true })
   const out = path.join(projectDir, 'dist', 'out.bin')
-  // Incompressible and past INLINE_MAX: the artifact is a file.
   await writeFile(out, crypto.getRandomValues(new Uint8Array(48 * 1024)))
   await cache.save({
     hash,

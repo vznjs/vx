@@ -1,4 +1,4 @@
-// `cache.store`: every combination of embedded × compress × verify saves,
+// `cache.store`: every combination of decompress × verify saves,
 // restores and uploads the same bytes; only where they live differs.
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
@@ -50,7 +50,7 @@ const form = (cacheDir: string): string => {
   const names = readdirSync(cacheDir, { recursive: true }).map(String)
   if (names.some((n) => n.endsWith(`${HASH}.tree`))) return 'tree'
   if (names.some((n) => n.endsWith(`${HASH}.tar.zst`))) return 'tar'
-  return 'inline'
+  return 'none'
 }
 
 const treeFile = (cacheDir: string): string => {
@@ -61,10 +61,8 @@ const treeFile = (cacheDir: string): string => {
 }
 
 const combos: StoreOptions[] = []
-for (const embedded of [true, false])
-  for (const compress of [true, false])
-    for (const verify of ['stat', 'hash', 'none'] as const)
-      combos.push({ embedded, compress, verify })
+for (const decompress of [true, false])
+  for (const verify of ['stat', 'hash', 'none'] as const) combos.push({ decompress, verify })
 
 describe.each(combos)('cache.store %o', (store) => {
   for (const [label, bytes] of [
@@ -73,14 +71,7 @@ describe.each(combos)('cache.store %o', (store) => {
   ] as const) {
     it(`a ${label} output restores byte-exact, in the form the store names`, async () => {
       const { cache, proj } = await saved(store, bytes)
-      const expected = store.compress
-        ? store.embedded && label === 'small'
-          ? 'inline'
-          : 'tar'
-        : store.embedded && label === 'small'
-          ? 'inline'
-          : 'tree'
-      expect(form(path.join(root, 'c'))).toBe(expected)
+      expect(form(path.join(root, 'c'))).toBe(store.decompress ? 'tree' : 'tar')
       expect((await cache.get(HASH))?.stdout).toBe('built\n')
       await cache.restoreOutputs(HASH, proj)
       expect(new Uint8Array(await readFile(path.join(proj, 'out/a.bin')))).toEqual(bytes)
@@ -121,7 +112,7 @@ describe.each(combos)('cache.store %o', (store) => {
 })
 
 describe('verify on a tree whose stored file changed', () => {
-  const tree: StoreOptions = { embedded: false, compress: false, verify: 'stat' }
+  const tree: StoreOptions = { decompress: true, verify: 'stat' }
 
   it('stat catches a size change: the entry is dropped, nothing lands', async () => {
     const { cache, proj } = await saved(tree, LARGE)
@@ -161,7 +152,7 @@ describe('verify on a tree whose stored file changed', () => {
 
 describe('a tree no row names', () => {
   it('is an orphan the sweep sizes and reaps; an indexed tree stays', async () => {
-    const { cache, proj } = await saved({ embedded: false, compress: false, verify: 'stat' }, LARGE)
+    const { cache, proj } = await saved({ decompress: true, verify: 'stat' }, LARGE)
     const indexed = path.dirname(path.dirname(path.dirname(treeFile(path.join(root, 'c')))))
     const orphan = path.join(path.dirname(indexed), 'fedcba9876543210.tree')
     await mkdir(path.join(orphan, 'outputs'), { recursive: true })

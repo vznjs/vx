@@ -105,7 +105,7 @@ const WORKSPACE_CACHE = [
   'store',
   'upload',
 ] as const satisfies readonly Keys<CacheSettings>[]
-const STORE = ['compress', 'embedded', 'verify'] as const satisfies readonly Keys<
+const STORE = ['decompress', 'verify'] as const satisfies readonly Keys<
   NonNullable<CacheSettings['store']>
 >[]
 const CONCURRENCY = ['download', 'restore', 'upload'] as const satisfies readonly Keys<

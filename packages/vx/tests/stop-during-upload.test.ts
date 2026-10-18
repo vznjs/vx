@@ -23,6 +23,9 @@ it(
   'a run stopped mid-upload returns at once and starts no queued upload',
   async () => {
     const fixture = await makeWorkspace('vx-stop-upload-')
+    // The `.tar.zst` form: its first upload starts while the other tasks
+    // still run, so the stop also aborts them.
+    process.env.VX_CACHE_STORE_DECOMPRESS = 'false'
     try {
       for (const name of ['a', 'b', 'c', 'd', 'e', 'f']) {
         await addProject(fixture.root, name, { files: { 'src/in.txt': name }, config: CONFIG })
@@ -52,6 +55,7 @@ it(
       // Four upload slots: the queue behind the first never starts.
       expect(puts).toBeLessThanOrEqual(4)
     } finally {
+      delete process.env.VX_CACHE_STORE_DECOMPRESS
       await rm(fixture.root, { recursive: true, force: true })
     }
   },

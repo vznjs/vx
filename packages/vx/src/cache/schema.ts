@@ -1,8 +1,7 @@
 // The index's tables, one concern: what a cache.db holds. `Cache` opens the
 // file, checks `SCHEMA_VERSION` and creates these; every statement against
 // them lives in the store that owns the table (file-hashes, output-index,
-// history) or in cache.ts for `entries`, `entry_inputs` and
-// `artifacts`.
+// history) or in cache.ts for `entries` and `entry_inputs`.
 
 import type { Database, SQLQueryBindings } from 'bun:sqlite'
 
@@ -314,38 +313,7 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       bytes BLOB NOT NULL,
       at    INTEGER NOT NULL
     );
-    ${artifactTables(store)}
   `)
-}
-
-/**
- * v33: an artifact of at most `INLINE_MAX` compressed bytes lives here, its
- * exact `<hash>.tar.zst` bytes, written in the transaction that writes its
- * rows. No foreign key and outside every drop a `SCHEMA_VERSION` reset makes:
- * the artifact is the record and the entries only its inventory, so a reset
- * drops the rows and keeps these, as it keeps the files. `artifacts_meta`
- * holds the table's own layout version (`'layout'`), the one thing that may
- * drop it. `at` is the last use a row-less sweep judges, as a file's mtime.
- * A rowid table, not WITHOUT ROWID: there the blob sits in the key's b-tree,
- * so every probe of a hash reads overflow pages; 10 000 lookups took 312 ms
- * against 8.5 (a2, 2026-10-17).
- */
-export function createArtifactTables(db: Database, store: 'main' | 'store'): void {
-  db.exec(artifactTables(store))
-}
-
-// In the entry tables' exec, so an open runs no statement more for them.
-function artifactTables(store: 'main' | 'store'): string {
-  return `
-    CREATE TABLE IF NOT EXISTS ${store}.artifacts (
-      hash  TEXT PRIMARY KEY,
-      at    INTEGER NOT NULL,
-      bytes BLOB NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS ${store}.artifacts_meta (
-      key   TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );`
 }
 
 /**

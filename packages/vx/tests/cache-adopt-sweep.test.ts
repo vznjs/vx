@@ -20,7 +20,6 @@ describe('an adopt beside another process sweeping orphans', () => {
       const projectDir = path.join(root, 'pkg')
       await mkdir(path.join(projectDir, 'dist'), { recursive: true })
       const outFile = path.join(projectDir, 'dist', 'out.txt')
-      // Incompressible and past INLINE_MAX: the artifact is a file.
       await writeFile(outFile, crypto.getRandomValues(new Uint8Array(48 * 1024)))
       const hash = '0123456789abcdef'
       const saver = new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)

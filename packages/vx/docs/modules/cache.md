@@ -57,11 +57,10 @@ and key derivation logic live here.
 ```ts
 /** How a save keeps an entry locally (`cache.store`). */
 export interface StoreOptions {
-  embedded: boolean
-  compress: boolean
+  decompress: boolean
   verify: 'stat' | 'hash' | 'none'
 }
-export const DEFAULT_STORE: StoreOptions // { embedded: true, compress: false, verify: 'stat' }
+export const DEFAULT_STORE: StoreOptions // { decompress: true, verify: 'stat' }
 
 /**
  * Shape every cache implementation honors. Both Cache (local v10) and
@@ -356,7 +355,7 @@ export interface CacheStats {
 // an unchanged key, or when the container changes); SCHEMA_VERSION
 // gates the SQLite schema, and a bump drops every table — which is why
 // the first run after one says so and names `vx cache clean`.
-export const CACHE_VERSION = 'vx-cache-v42' // key-fold.ts
+export const CACHE_VERSION = 'vx-cache-v48' // key-fold.ts
 // An input gone between its listing and its hash folds as this, never an
 // identity a file has (A-55); absentOr maps ENOENT/ENOTDIR to it.
 export const ABSENT_INPUT = 'absent' // key-fold.ts
@@ -369,7 +368,7 @@ export class FoldMemo {
   set(taskId: string, probe: string, key: string): void
   flush(cutoff: number, now?: number): void // at close: this run's folds; rows unwritten since `cutoff` go
 }
-export const SCHEMA_VERSION = 'v42'
+export const SCHEMA_VERSION = 'v43'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -463,10 +462,9 @@ everything in `cache.db`.
 
 ```
 ~/.vx/<id>/cache/            # the shared store (unversioned: keys are seeded with CACHE_VERSION)
-├── store.db                 # entries, entry_stdout, output_files, entry_inputs, store_meta,
-│                            # artifacts + artifacts_meta (the small artifacts, v33)
-└── <hash>.tree/             # an artifact past INLINE_MAX, as plain files (v47);
-                             # <hash>.tar.zst instead under cache.store.compress
+├── store.db                 # entries, entry_stdout, output_files, entry_inputs, store_meta
+└── <hash>.tree/             # an artifact as plain files (v47);
+                             # <hash>.tar.zst instead under cache.store.decompress: false
 
 <root>/.vx/cache/            # or a named <cacheDir>, which then also holds the store's tables and artifacts
 └── cache.db                 # SQLite (with cache.db-wal, cache.db-shm): runs, memos, output stamps
@@ -481,9 +479,9 @@ everything in `cache.db`.
 ```
 
 `cache.store` (`StoreOptions`, `DEFAULT_STORE`, the Cache's last
-constructor argument) picks the local form: `embedded` keeps a small
-entry inline, `compress` keeps a file-backed one as the tar.zst, and
-otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTree`
+constructor argument) picks the local form: `decompress` (the default)
+keeps `<hash>.tree/`, and off it is the tar.zst, which saves disk but
+every restore decompresses. The tree is the same entries unpacked (`writeTree`
 at save, the validated tar extracted at ingest, `sealTree`), stdout in
 its `entry_stdout` row. A tree restore checks `verify` (`stat`: size and
 mtime per file; `hash`: `treeIntact`, the CRC of `planOfTree`'s tar),
@@ -516,28 +514,7 @@ Both scanners run one header decoder (`TarDecoder`), so a save indexes
 the rows a restore reads and refuses the names a restore refuses
 (`tests/scan-tar-bytes.test.ts`).
 
-An artifact of at most `INLINE_MAX` (32 KiB) compressed is not a file:
-its exact `<hash>.tar.zst` bytes are a row of the store's `artifacts`
-table, `(hash, at, bytes)` (v33). Every reader takes the inline bytes
-first, then the file. `at` is the last use, renewed as a file time is
-(a hit over an hour old), for the sweep of row-less artifacts.
-`artifacts` is in no drop a `SCHEMA_VERSION` reset makes (neither
-`STORE_TABLES` nor the index's list): a reset keeps the bytes, as it
-keeps files, and each is indexed again from them on its next hit
-(`adopt`): the lookup that finds no row is driven by the asked keys, so
-it reports a row-less inline artifact in the same statement, and a miss
-asks `artifacts` only then. Its own version is `artifacts_meta.layout`
-(`'a2'`); another value drops the table, silently. It is read only
-where the schema was not this vx's (a reset, a new index or store, a
-store moved), so a warm open spends no statement on it and a layout
-change bumps `SCHEMA_VERSION` too. A reading open over an index or store
-of another schema (`vx cache clean --dry-run` after an upgrade) reads
-them through a TEMP view over the file, so it names the row-less ones
-the real prune reaps. A workspace index whose entries move to a store
-drops its own `artifacts`, which an unqualified name would otherwise
-find first.
-
-SQLite stores metadata, and the small artifacts above:
+SQLite stores metadata:
 
 - **`entries`** — one row per cached output:
   `(hash, project, task, command, exit_code, duration_ms, size_bytes, created_at, accessed_at, cpu_ms, peak_rss_bytes)`.
@@ -578,31 +555,19 @@ layer carries it as it carried stdout (v42).
    `<cacheDir>/<hash>.tar.zst.tmp-<pid>-…`.
 2. Scans it as a restore would (a readable archive whose sum
    matches, a `stdout` entry, its own key in the sidecar); a failure
-   removes the temp. An artifact of at most `INLINE_MAX` compressed
-   is never written to a file; a larger one in memory is written to
-   the temp first.
-3. In one `BEGIN IMMEDIATE` transaction, upserts an inline artifact
-   into `artifacts` — moving aside any file of the key, unlinked after
-   the commit — or `rename(2)`s the temp to
-   `<cacheDir>/<hash>.tar.zst` and deletes the key's inline bytes; and
+   removes the temp. One packed in memory is written to the temp first.
+3. In one `BEGIN IMMEDIATE` transaction, moves aside any artifact of
+   the key (unlinked after the commit), `rename(2)`s the temp to
+   `<cacheDir>/<hash>.tar.zst` (or the tree to `<hash>.tree/`), and
    writes the `entries` row (`ON CONFLICT(hash) DO UPDATE …`), the
    `output_files` rows and the `entry_inputs` rows, so bytes and rows
    go live together and a key's bytes are in one place as of every
-   commit. An inline save that fails leaves the previous entry whole,
-   bytes and rows: nothing was written outside the transaction. A
-   commit that fails after a rename unlinks the artifact: the old rows
-   then name none, and the key misses (A-3). `ingest()` takes the same
-   path; a remote body of at most `INLINE_MAX` (its size, or counted
-   as it streams) is read to memory and stored inline.
+   commit. A commit that fails after a rename unlinks the artifact: the
+   old rows then name none, and the key misses (A-3). `ingest()` takes
+   the same path.
 
-`restoreOutputs()` reads an inline artifact and the entry's
-`output_files` rows in one read transaction, so a re-save in another
-process cannot pair its rows with the other bytes. The rows a probe
-held (X-162) serve it only while the blob's `at` is the one the probe
-read; a re-save or renewal since moves it and the rows are read again
-in the blob's snapshot. `pinArtifact()`
-(the upload's body) hands an inline artifact over as a `Blob` of its
-bytes, read once; a file as a private hard link.
+`pinArtifact()` (the upload's body) hands a file over as a private hard
+link, a tree packed into a temp tar.zst.
 
 Reads via `get()` are non-blocking thanks to WAL.
 
@@ -644,12 +609,9 @@ Reads via `get()` are non-blocking thanks to WAL.
 
 `get(hash)`:
 
-- One indexed SELECT against `entries`, joined to `artifacts` for
-  whether the artifact is inline (`at` only: it sits before `bytes`, so
-  no blob is read).
-- An inline artifact needs nothing more. A file is `stat`ed: `null` if
-  the DB row is present but the artifact was deleted out from under
-  us.
+- One indexed SELECT against `entries`.
+- The artifact is `stat`ed: `null` if the DB row is present but the
+  artifact was deleted out from under us.
 - Marks the hash touched; `accessed_at` (the LRU order `prune`'s
   `maxBytes` evicts by) is written in one batch at prune, stats or close.
 - Pure SQL: stdout from its `entry_stdout` row (one LEFT JOIN on the
@@ -712,7 +674,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
-`'v42'`. Bump `CACHE_VERSION` when:
+`'v43'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

@@ -54,7 +54,7 @@ the values it takes and each refusal's exact words are recorded in
 | `cache.inputStability` | `severity`, `strategy`                                                                                  |
 | `cache.outputs`        | `clean`                                                                                                 |
 | `cache.concurrency`    | `download`, `restore`, `upload`                                                                         |
-| `cache.store`          | `compress`, `embedded`, `verify`                                                                        |
+| `cache.store`          | `decompress`, `verify`                                                                                  |
 | `cache.upload`         | `failures`                                                                                              |
 | `watch`                | `poll`                                                                                                  |
 

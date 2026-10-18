@@ -26,6 +26,7 @@ import { computeTaskHash } from '../src/orchestrator/task-hash.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const TIMEOUT = 30_000
 
@@ -577,7 +578,8 @@ describe('workspace-outputs artifact namespace', () => {
     wsRoot = path.join(dir, 'ws')
     projectDir = path.join(wsRoot, 'pkg')
     await mkdir(projectDir, { recursive: true })
-    cache = new Cache(cacheDir)
+    // The `.tar.zst` form: the test reads the archive's names.
+    cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
   })
 
   afterEach(async () => {

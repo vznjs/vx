@@ -113,7 +113,7 @@ describe('the shared store', () => {
     expect(await build(b)).toEqual({ status: 'cache-hit', restored: true })
     expect(await readFile(path.join(b.pkg, 'out.txt'), 'utf8')).toBe('hi\n')
     // The entry and its artifact are the store's, not either workspace's.
-    expect(storedKeys(await store(), 'store.db')).toHaveLength(1)
+    expect(storedKeys(await store())).toHaveLength(1)
     expect(storedKeys(path.join(a.root, '.vx', 'cache'))).toEqual([])
     expect(
       rows(
@@ -265,6 +265,9 @@ describe('the shared store', () => {
   })
 
   it('a store of another schema loses its inventory, not its artifacts', async () => {
+    // The `.tar.zst` form: a tree's stdout lives in its row, so only an
+    // archive is adopted again.
+    process.env['VX_CACHE_STORE_DECOMPRESS'] = 'false'
     const a = await workspace()
     await build(a)
     const db = new Database(path.join(await store(), 'store.db'))

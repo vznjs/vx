@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v42",
+    "version": "v43",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -19,17 +19,6 @@
       "ON task_durations(project, task, source, id)",
       "",
       "CREATE INDEX task_outcomes_hash ON task_outcomes(hash, status)",
-      "",
-      "CREATE TABLE artifacts (",
-      "hash  TEXT PRIMARY KEY,",
-      "at    INTEGER NOT NULL,",
-      "bytes BLOB NOT NULL",
-      ")",
-      "",
-      "CREATE TABLE artifacts_meta (",
-      "key   TEXT PRIMARY KEY,",
-      "value TEXT NOT NULL",
-      ")",
       "",
       "CREATE TABLE blob_sizes (",
       "oid     TEXT PRIMARY KEY,",

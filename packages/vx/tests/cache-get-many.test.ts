@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { CacheGetContext } from '../src/cache/cache.js'
 import { Cache } from '../src/cache/index.js'
 import { removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 describe('Cache.getMany agrees with Cache.get', () => {
   let cacheDir: string
@@ -81,7 +82,15 @@ describe('Cache.getMany agrees with Cache.get', () => {
   })
 
   it('honours the read gate with a task context, whose miss may adopt an artifact', async () => {
-    const writer = new Cache(cacheDir)
+    const writer = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     await seed(writer, ['aa', 'bb'])
     writer.close()
     // A row-less artifact: what `adopt` indexes on a hit.
@@ -92,7 +101,15 @@ describe('Cache.getMany agrees with Cache.get', () => {
       taskId: `p#${hash}`,
       command: `echo ${hash}`,
     })
-    const gated = new Cache(cacheDir, { read: false, write: true })
+    const gated = new Cache(
+      cacheDir,
+      { read: false, write: true },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       for (const hash of ['aa', 'bb']) expect(await gated.get(hash, ctx(hash))).toBeNull()
       expect([...(await gated.getMany(['aa', 'bb'], ctx)).keys()]).toEqual([])
@@ -100,7 +117,15 @@ describe('Cache.getMany agrees with Cache.get', () => {
       gated.close()
     }
     // CONTROL: gate open, both are hits, the row-less one adopted.
-    const open = new Cache(cacheDir)
+    const open = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       expect([...(await open.getMany(['aa', 'bb'], ctx)).keys()].sort()).toEqual(['aa', 'bb'])
     } finally {

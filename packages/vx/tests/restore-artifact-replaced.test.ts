@@ -29,9 +29,7 @@ async function saveInto(cache: Cache, proj: string, body: string): Promise<void>
 
 const random = (n: number): string => crypto.getRandomValues(new Uint8Array(n)).toBase64()
 
-// "small" is decoded in one call, below STREAM_DECODE_FROM, and past
-// INLINE_MAX so that it is a file at all: an inline artifact is no file to
-// rename over.
+// "small" is decoded in one call, below STREAM_DECODE_FROM.
 for (const [kind, before, after] of [
   ['small', 48 * 1024, 56 * 1024],
   ['streamed', 4 * 1024 * 1024, 5 * 1024 * 1024],

@@ -396,9 +396,8 @@ On a hit:
    vx's own write, in place or as a new file that took the same inode,
    with its mtime forged back, still matches.
 3. Otherwise the `outputs/<rel>` (+ `workspace-outputs/<rel>`) entries
-   are extracted from the artifact (its bytes inline in the index, read
-   in one read transaction with the entry's rows, or
-   `<cacheDir>/<hash>.tar.zst`) **in place**: every entry is staged in
+   are extracted from the artifact (`<cacheDir>/<hash>.tar.zst`, or
+   copied out of `<hash>.tree/`) **in place**: every entry is staged in
    the workspace's `.vx/tmp/` (never an output folder), and only once the
    whole archive has staged is each renamed over the file it replaces.
    A folder missing on the way (a cleaned `dist/`) is built whole there
@@ -711,13 +710,11 @@ is on):
    characters of the task's output, the dropped middle named where it was), the `outputs/<rel>` (+
    `workspace-outputs/<rel>`) entries, the `.vx-meta.json` sidecar and
    the `.vx-sum` checksum — is packed in-process (no staging dir, no subprocess) into a
-   single `<hash>.tar.zst` and validated. One of at most 32 KiB
-   compressed (`INLINE_MAX`, almost every artifact: a one-file `dist/`
-   is a few hundred bytes) stays in memory; a larger one is written to a
-   temp name.
-4. One `BEGIN IMMEDIATE` SQLite transaction upserts a small artifact's
-   bytes into `artifacts` (v33), or renames a large one into place and
-   deletes the key's inline bytes, and upserts the `entries` row (taskId, command, exit code,
+   single `<hash>.tar.zst` and validated, written to a temp name (with
+   `cache.store.decompress`, the default, the outputs are kept as a
+   `<hash>.tree/` instead).
+4. One `BEGIN IMMEDIATE` SQLite transaction renames the artifact into
+   place and upserts the `entries` row (taskId, command, exit code,
    duration, size, stdout, timestamps), the `output_files` fingerprint
    rows, and the entry's one `entry_inputs` row (`INSERT OR IGNORE`).
    Concurrent readers see either no entry or a complete entry — never a
@@ -735,13 +732,6 @@ is on):
    incoming file when a rename replaces one, 0.55 ms a save on the main
    thread against 0.04 (a forced 1,000-task run 4.01 s → 3.46 s,
    2026-10-02). A reader probing between the two renames misses.
-   An inline save moves aside whatever file its key has, the same way
-   (a rename that finds nothing on a first save, in place of a statement
-   asking the index). As of every commit a key's bytes are in one place,
-   and a reader takes the inline bytes first, so a file an older vx
-   wrote beside them is never read and the sweep takes it. An inline save writes no file at all: no temp, no rename,
-   and a crash leaves nothing behind (the bytes and the rows are one
-   transaction in one database file).
 
 **The key is re-checked before the save** (item 743). It was taken
 before the command ran — at the task's start, or up front by the local
@@ -1277,9 +1267,8 @@ owner-only; vx closes one of yours that others can read (chmod 700), and one oth
 ~/.vx/<id>/cache/                           the shared store
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, task_durations,
-│                                           plugin_blobs, store_meta; artifacts
-│                                           of at most 32 KiB (v33, `cache.store.embedded`)
-└── <hash>.tree/                            the larger artifacts, as plain files (below)
+│                                           plugin_blobs, store_meta
+└── <hash>.tree/                            the artifacts, as plain files (below)
 
 <workspaceRoot>/.vx/cache/                  this workspace's own index
 └── cache.db                                run history, memos, output stamps;
@@ -1291,8 +1280,8 @@ The store's directory carries no version: every key is seeded with
 two vx versions never read each other's artifacts. `store.db` is the
 artifacts' inventory and records its schema (`store_meta.schema`): a vx
 of another `SCHEMA_VERSION` drops its tables, prints nothing (the
-cache is vx's to keep), and keeps every artifact, each indexed again
-when its task next hits. The check, drop, re-create and stamp are one
+cache is vx's to keep), and keeps every artifact; a `.tar.zst` is
+indexed again when its task next hits, a tree is swept. The check, drop, re-create and stamp are one
 write transaction, so another version's open waits rather than landing
 between them. A home this user cannot write keeps the store
 in `<workspaceRoot>/.vx/cache/` instead, silently. Name a
@@ -1306,15 +1295,13 @@ root) and it holds everything, shared with no other workspace:
 │                                           existing dir that lacks one, so the cache is
 │                                           never committed and never enumerated as an
 │                                           input (a user's own file is left alone)
-├── cache.db                                SQLite metadata + run history, and the
-│                                           artifacts of at most 32 KiB compressed,
-│                                           the same bytes as a file below (v33)
+├── cache.db                                SQLite metadata + run history
 ├── cache.db-wal                            write-ahead log
 ├── cache.db-shm                            shared memory
 ├── failures/<runId>.json                   a failed run's task output and the files it
 │                                           names (`vx last --format json`, getFailures);
 │                                           the newest 50 kept
-└── <hash>.tree/                             one artifact per cache entry, the larger ones (v47):
+└── <hash>.tree/                            one artifact per cache entry (v47):
     ├── outputs/<rel>                       declared output files, project-relative (when any),
     │                                       each with its saved mode and mtime
     ├── workspace-outputs/<rel>             declared outputs.workspaceFiles,
@@ -1327,9 +1314,10 @@ root) and it holds everything, shared with no other workspace:
 ```
 
 The stdout of a tree entry is its `entry_stdout` row. With
-`cache.store.compress: true` an artifact is instead one `<hash>.tar.zst`
+`cache.store.decompress: false` an artifact is instead one `<hash>.tar.zst`
 holding `stdout`, `outputs/`, `workspace-outputs/`, `.vx-meta.json` and
-`.vx-sum`: the bytes a remote stores. The tree form is that archive
+`.vx-sum`: the bytes a remote stores. That optimizes disk space but
+trades speed, as every restore decompresses it just in time. The tree form is that archive
 unpacked once at save (or at ingest of a remote hit), so a restore copies
 each file out (`copy_file_range`, a clone on a filesystem that has one;
 never a hard link: a later write to a restored output must not reach the
@@ -1530,9 +1518,8 @@ pruned (`tests/archive-security.test.ts`). A backslash in a name is a
 name character (vx runs on Linux and macOS; Windows through WSL), so an
 output like `dist/back\slash` caches and restores as written.
 
-**Key properties:** one entry is one artifact — a row of `artifacts`
-when small, else one file, so eviction is one delete in the rows'
-transaction or a single unlink; no per-entry manifest, no separate
+**Key properties:** one entry is one artifact — one tree or one file,
+so eviction is a single removal; no per-entry manifest, no separate
 `logs/` tree; and local + remote layers transport the exact same
 tar.zst bytes end-to-end, wherever the local copy lives.
 The artifact is the record and the index its inventory (owner,
@@ -1541,10 +1528,7 @@ The artifact is the record and the index its inventory (owner,
 `cache.db` or `store.db`) has the artifact indexed again from its own
 bytes, checked as a remote's are (its recorded key, its names against
 the task's declared outputs), and hits; one that fails the check is a
-miss, and the save that follows replaces it. An inline artifact with no
-row is indexed the same way, from its bytes, in one transaction; a reset
-keeps the `artifacts` table, but deleting `store.db` or `cache.db` by
-hand takes the inline artifacts with it. A `.tmp-*` a crashed save
+miss, and the save that follows replaces it. A `.tmp-*` a crashed save
 left is never a hit. `vx cache clean` sweeps row-less files, and so does a run whose workspace declares `cache.retention`, at
 most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
 the policy sums index rows, so orphans alone never make it due). A
@@ -1553,10 +1537,8 @@ each open drops the other's rows. So the policy judges it as it judges a
 row, its file time standing for `accessed_at`: past `olderThan` it goes,
 and under `maxSize` it counts, oldest use first with the rows. A hit
 renews a file time over an hour old, so the last use is read as the file
-time plus an hour. An inline artifact with no row is judged the same
-way, its `at` standing for the file time, and `vx info` counts it with
-the files. A temp a crashed save left goes once it is an hour
-old, and so does a file an inline artifact of its key shadows; nothing
+time plus an hour. A temp a crashed save left goes once it is an hour
+old; nothing
 younger than an hour is taken. Re-indexing touches the
 artifact's mtime before it links its temp, so the sweep sees that one
 fresh too.
@@ -1587,11 +1569,12 @@ A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
 says why (item 896; `vx cache clean --dry-run` previews the reset
 instead, item 1083).
 That open prints nothing (owner, 2026-10-06: the cache is vx's to
-keep). The artifacts stay: each is indexed again from its own bytes
-when its task next asks for its key (below).
+keep). The artifacts stay: a `.tar.zst` is indexed again from its own
+bytes when its task next asks for its key (below); a tree, whose stdout
+was a dropped row, is an orphan the sweep takes.
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v42', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v43', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes and plugin_blobs live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1865,24 +1848,6 @@ CREATE TABLE plugin_blobs (
   bytes BLOB NOT NULL,
   at    INTEGER NOT NULL
 );
-
--- v33: an artifact of at most 32 KiB compressed, its exact <hash>.tar.zst
--- bytes, written in the transaction that writes its entry rows. In the
--- store (or a named cache dir's cache.db), and outside every drop a
--- SCHEMA_VERSION reset makes: the artifact is the record.
-CREATE TABLE artifacts (
-  hash  TEXT PRIMARY KEY,
-  at    INTEGER NOT NULL,              -- last use (ms): a row-less sweep's file time
-  bytes BLOB NOT NULL
-);                                     -- rowid: a hash probe never reads a blob
-
--- 'layout' = 'a2': the artifacts table's own version; another value
--- drops the table, silently. Nothing else drops it. Read only where
--- the schema was not this vx's, so a layout change bumps the schema.
-CREATE TABLE artifacts_meta (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
 ```
 
 WAL mode is on; readers don't block writers. `PRAGMA busy_timeout =
@@ -1930,15 +1895,14 @@ moat.
   trustworthy (see "Clean filters") — hash in-process (whole-file
   read, behind a `(mtime, size, ctime, ino)` memo). Narrow
   `inputs.files` still helps on heavily dirty trees.
-- **Cache read** is three indexed `SELECT`s (the `entries` row, which
-  joins whether the artifact is inline, its `output_files` and its
-  `output_dirs`), plus a `stat` of the artifact when it is a file.
-  Restore is a tar.zst extract, skipped entirely when the on-disk
-  tree already matches. `accessed_at` bumps (only rows over an hour
+- **Cache read** is three indexed `SELECT`s (the `entries` row, its
+  `output_files` and its `output_dirs`), plus a `stat` of the artifact.
+  Restore copies (or clones) the tree's files out, or extracts the
+  tar.zst under `cache.store.decompress: false`, skipped entirely when
+  the on-disk tree already matches. `accessed_at` bumps (only rows over an hour
   old) are batched into one UPDATE at flush time.
-- **Cache write** is one in-process tar.zst pack + one SQLite
-  transaction, which holds a small artifact's bytes itself; a large one
-  adds a temp write and an atomic rename. Hashing dominates the run; storage itself
+- **Cache write** is one in-process tar.zst pack, a temp write, one
+  SQLite transaction and an atomic rename. Hashing dominates the run; storage itself
   is cheap. The remote upload (if any) is backgrounded.
 - **Claimed root files** (a lockfile plugin's lockfile and settings)
   are read once per `vx run` invocation; after a task that may rewrite

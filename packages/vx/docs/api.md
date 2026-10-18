@@ -353,7 +353,7 @@ export interface CacheSettings {
   inputStability?: InputStability
   outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
-  store?: { embedded?: boolean; compress?: boolean; verify?: 'stat' | 'hash' | 'none' }
+  store?: { decompress?: boolean; verify?: 'stat' | 'hash' | 'none' }
   concurrency?: { download?: number; upload?: number; restore?: number }
 }
 ```

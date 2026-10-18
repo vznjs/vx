@@ -51,7 +51,7 @@ import {
 } from 'node:fs'
 import { chmod, lstat, mkdir, readdir, rm, stat, unlink, utimes, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { createArtifactTables, createTables, inHashes, lazyStatement } from './schema.js'
+import { createTables, inHashes, lazyStatement } from './schema.js'
 import {
   UserError,
   DOT_VX_GITIGNORE,
@@ -325,7 +325,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        is unchanged.
 //   v42: fold_memo — each task's last key by its fold up to the files and
 //        a token of their git records. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v42'
+//   v43: the `artifacts` table is gone: every entry's artifact is a file
+//        or a tree (M, 2026-10-18). The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v43'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -360,27 +362,11 @@ const STORE_TABLES = [
   'entries',
 ]
 
-/**
- * The inline artifacts' tables (schema.ts): dropped from a workspace index
- * whose entries moved to a store, where an unqualified name would find them
- * first, and never by a schema reset.
- */
+/** The inline artifacts' tables an index before v43 held: dropped by the reset. */
 const ARTIFACT_TABLES = ['artifacts', 'artifacts_meta']
 
-/**
- * The `artifacts` table's own layout (`artifacts_meta.layout`): another value
- * drops the table. It is read only where the schema was not this vx's (a
- * reset, a new index or store, a store moved), so a change to it bumps
- * `SCHEMA_VERSION` too: a warm open reads no statement for it.
- */
-const ARTIFACT_LAYOUT = 'a2'
-
-/**
- * The largest compressed artifact kept in the index rather than in a file
- * of its own: it is written in its rows' transaction, with no temp and no
- * rename (docs/design/cache-save-cpu-2026-10.md).
- */
-const INLINE_MAX = 32 * 1024
+/** The largest remote body read to memory rather than streamed to a temp. */
+const IN_MEMORY_MAX = 32 * 1024
 
 /**
  * An index that records a schema other than this vx's: the one an opener
@@ -408,24 +394,19 @@ function indexOfAnotherSchema(dbFile: string): boolean {
 
 /**
  * Each asked key's entry row with its stdout, which lives apart (v29), none
- * stored reading as '', and its inline artifact's last use, null when the
- * artifact is a file. Driven by the keys, so a key with an inline artifact
- * and no row (a reset kept it) answers too, `hash` null: the miss learns
- * there is something to adopt in the statement that found no entry.
+ * stored reading as ''.
  */
 const selectEntries = (keys: string): string =>
-  `SELECT q.value AS key, e.*, COALESCE(s.stdout, '') AS stdout, a.at AS inline_at FROM ${keys} q LEFT JOIN entries e ON e.hash = q.value LEFT JOIN entry_stdout s ON s.hash = e.hash LEFT JOIN artifacts a ON a.hash = q.value WHERE e.hash IS NOT NULL OR a.at IS NOT NULL`
+  `SELECT e.*, COALESCE(s.stdout, '') AS stdout FROM ${keys} q JOIN entries e ON e.hash = q.value LEFT JOIN entry_stdout s ON s.hash = e.hash`
 const SELECT_ENTRY = selectEntries('(SELECT ? AS value)')
 const SELECT_ENTRIES = selectEntries('json_each(?)')
 
 /**
- * What the orphan sweep may judge: a row-less artifact file or inline
- * artifact (`blob`, its hash), or a dead file — a temp, or a file an
- * inline artifact of its key shadows — which goes whatever the policy.
+ * What the orphan sweep may judge: a row-less artifact file, or a temp,
+ * which goes whatever the policy.
  */
 interface RowlessFile {
-  file?: string
-  blob?: string
+  file: string
   size: number
   mtimeMs: number
   temp: boolean
@@ -489,7 +470,7 @@ function pickVictims(
  */
 async function scanOrphanFiles(
   cacheDir: string,
-  indexedHashes: () => { files: ReadonlySet<string>; inline: ReadonlySet<string> },
+  indexedHashes: () => ReadonlySet<string>,
 ): Promise<RowlessFile[]> {
   let names: string[]
   try {
@@ -503,10 +484,8 @@ async function scanOrphanFiles(
   for (const name of names) {
     const m = VX_ARTIFACT_NAME.exec(name)
     if (m === null) continue
-    // A file whose key has an inline artifact is never read: readers take
-    // the blob first. It is what an inline save of a re-built key left.
-    const temp = m[2] !== undefined || indexed.inline.has(m[1]!)
-    if (temp || !indexed.files.has(m[1]!)) candidates.push({ name, temp })
+    const temp = m[2] !== undefined
+    if (temp || !indexed.has(m[1]!)) candidates.push({ name, temp })
   }
   const found: RowlessFile[] = []
   await Promise.all(
@@ -568,12 +547,8 @@ export * from './layer.js'
 export * from './policy.js'
 export { zstdContentSize } from './zstd.js'
 
-type LiveRow = EntryRow & { hash: string }
-
 interface EntryRow {
-  key: string
-  /** Null for a row-less inline artifact. */
-  hash: string | null
+  hash: string
   project: string
   task: string
   command: string
@@ -585,10 +560,9 @@ interface EntryRow {
   accessed_at: number
   cpu_ms: number | null
   peak_rss_bytes: number | null
-  inline_at: number | null
 }
 
-function entryOf(row: LiveRow, fileRows: OutputFileRow[]): CacheEntry {
+function entryOf(row: EntryRow, fileRows: OutputFileRow[]): CacheEntry {
   return {
     hash: row.hash,
     taskId: `${row.project}#${row.task}`,
@@ -813,15 +787,13 @@ interface SavedTree {
 
 /** How a save keeps an entry locally (`cache.store`). */
 export interface StoreOptions {
-  /** A small entry is kept in the index, as one zstd tar (fewer files to make). */
-  embedded: boolean
-  /** A file-backed entry is one `<hash>.tar.zst`; off, a `<hash>.tree` of plain files. */
-  compress: boolean
+  /** An entry is a `<hash>.tree` of plain files; off, one `<hash>.tar.zst`. */
+  decompress: boolean
   /** What a tree restore checks first: each file's size and mtime, every byte, or nothing. */
   verify: 'stat' | 'hash' | 'none'
 }
 
-export const DEFAULT_STORE: StoreOptions = { embedded: true, compress: false, verify: 'stat' }
+export const DEFAULT_STORE: StoreOptions = { decompress: true, verify: 'stat' }
 
 /** What a run's background uploads moved: totals over the ones that landed. */
 export interface UploadTally {
@@ -868,21 +840,9 @@ export class Cache implements CacheLayer {
   private readonly upsertStdout: ReturnType<Database['prepare']>
   private readonly deleteStdout: ReturnType<Database['prepare']>
   private readonly entryExists: ReturnType<Database['prepare']>
-  private readonly selectBlob: ReturnType<Database['prepare']>
-  private readonly upsertBlob: ReturnType<Database['prepare']>
-  private readonly deleteBlob: ReturnType<Database['prepare']>
   private readonly touched = new Set<string>()
   /** Hit artifacts whose file time is past the grace: renewed at the flush (`ORPHAN_GRACE_MS`). */
   private readonly staleTimes = new Set<string>()
-  /** The same for inline artifacts, whose `at` stands for the file time. */
-  private readonly staleInline = new Set<string>()
-  /**
-   * The `at` of each inline artifact the last probe held rows for: a restore
-   * serves those rows only while the blob still carries it.
-   */
-  private readonly heldInlineAt = new Map<string, number>()
-  /** Keys the last lookups found an inline artifact for and no row: `adopt`'s to read. */
-  private readonly rowless = new Set<string>()
   /** Row-less lookups that stat'ed their artifact path (`artifactFileMayExist`). */
   private adoptStats = 0
   /** The artifact directory's names, listed once past `ADOPT_STATS`; this process's writes kept in it. */
@@ -1113,7 +1073,7 @@ export class Cache implements CacheLayer {
             // keeps it so).
             if (found !== undefined) {
               this.db.exec(
-                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo;',
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo; DROP TABLE IF EXISTS main.artifacts; DROP TABLE IF EXISTS main.artifacts_meta;',
               )
             }
             // The tables land under the same write lock as the stamp: made
@@ -1125,8 +1085,7 @@ export class Cache implements CacheLayer {
               .prepare("SELECT 1 FROM schema_meta WHERE key = 'store_dir'")
               .get()
             if (storeRoot === undefined ? recordedStore != null : storeRoot !== null) {
-              for (const t of [...STORE_TABLES, ...ARTIFACT_TABLES])
-                this.db.exec(`DROP TABLE main.${t}`)
+              for (const t of STORE_TABLES) this.db.exec(`DROP TABLE main.${t}`)
             }
             this.db
               .prepare(
@@ -1180,7 +1139,7 @@ export class Cache implements CacheLayer {
       // An index that held its entries itself would shadow the store's:
       // SQLite resolves an unqualified name in `main` first. Its history
       // and memos stay; its entries' artifact files are orphans `prune`
-      // reaps, and its inline artifacts go with their table.
+      // reaps.
       const holds = readable(
         () =>
           this.db
@@ -1206,11 +1165,6 @@ export class Cache implements CacheLayer {
       this.storeReset = this.matchStoreSchema(mode === 'open' && this.writeBlocked === null)
     } else {
       createTables(this.db, 'main')
-      if (absent && existsSync(dbFile)) this.keepArtifacts(dbFile)
-    }
-    const foreign = storeDir === undefined ? current !== SCHEMA_VERSION : this.storeStamped
-    if (mode === 'open' && this.writeBlocked === null && (foreign || storeDir !== recorded)) {
-      readable(() => this.matchArtifactLayout(storeDir === undefined ? 'main' : 'store'))
     }
     if (mode === 'open' && this.writeBlocked === null && storeDir !== recorded) {
       if (storeDir === undefined)
@@ -1251,16 +1205,7 @@ export class Cache implements CacheLayer {
     // with no stdout joined. A column off the index, so the table row is
     // still read and a corrupt table refuses here as it does on `get`
     // (`SELECT 1` answers from the index alone).
-    this.entryExists = lazyStatement(
-      this.db,
-      'SELECT e.exit_code, a.at AS inline_at FROM entries e LEFT JOIN artifacts a ON a.hash = e.hash WHERE e.hash = ?',
-    )
-    this.selectBlob = lazyStatement(this.db, 'SELECT at, bytes FROM artifacts WHERE hash = ?')
-    this.upsertBlob = lazyStatement(
-      this.db,
-      'INSERT INTO artifacts(hash, at, bytes) VALUES (?, ?, ?) ON CONFLICT(hash) DO UPDATE SET at = excluded.at, bytes = excluded.bytes',
-    )
-    this.deleteBlob = lazyStatement(this.db, 'DELETE FROM artifacts WHERE hash = ?')
+    this.entryExists = lazyStatement(this.db, 'SELECT exit_code FROM entries WHERE hash = ?')
     // INSERT OR IGNORE: re-saving the same hash (idempotent ingest /
     // overlapping concurrent saves) leaves the existing rows untouched —
     // identical inputs derive the identical hash, so the rows are too.
@@ -1390,17 +1335,11 @@ export class Cache implements CacheLayer {
       return null
     }
     if (!writable) {
-      const file = this.db
-        .prepare("SELECT file FROM pragma_database_list WHERE name = 'store'")
-        .get() as {
-        file: string
-      }
       if (seen.has) {
         this.db.exec('DETACH DATABASE store')
         this.db.prepare('ATTACH DATABASE ? AS store').run(':memory:')
       }
       createTables(this.db, 'store')
-      if (seen.has && file.file !== '') this.keepArtifacts(file.file)
       return null
     }
     // Re-read, drop, create and stamp under one write lock: as separate
@@ -1412,7 +1351,7 @@ export class Cache implements CacheLayer {
         const now = read()
         let reset: SchemaReset | null = null
         if (now.has && now.found !== SCHEMA_VERSION) {
-          for (const t of STORE_TABLES) {
+          for (const t of [...STORE_TABLES, ...ARTIFACT_TABLES]) {
             if (t !== 'store_meta') this.db.exec(`DROP TABLE IF EXISTS store.${t}`)
           }
           reset = { from: now.found ?? 'an earlier schema', to: SCHEMA_VERSION }
@@ -1424,64 +1363,6 @@ export class Cache implements CacheLayer {
           )
           .run(SCHEMA_VERSION)
         return reset
-      })
-      .immediate()
-  }
-
-  /**
-   * A reading open over an index or store of another schema reads it as
-   * the reset a writing open makes leaves it: empty, but for the inline
-   * artifacts, which a reset keeps. They are read from the file in place,
-   * through a view that shadows the empty table (a TEMP name is found
-   * first), so a dry prune names the row-less ones the real prune reaps.
-   */
-  private keepArtifacts(file: string): void {
-    this.db.prepare('ATTACH DATABASE ? AS kept').run(file)
-    const layout = this.db
-      .prepare("SELECT 1 FROM kept.sqlite_master WHERE type = 'table' AND name = 'artifacts_meta'")
-      .get()
-      ? (
-          this.db.prepare("SELECT value FROM kept.artifacts_meta WHERE key = 'layout'").get() as {
-            value: string
-          } | null
-        )?.value
-      : undefined
-    if (layout === ARTIFACT_LAYOUT) {
-      this.db.exec('CREATE TEMP VIEW artifacts AS SELECT hash, at, bytes FROM kept.artifacts')
-    }
-  }
-
-  /**
-   * `artifacts` holds the layout this vx writes, or is dropped and made
-   * again: its version is its own (`ARTIFACT_LAYOUT`), apart from the
-   * schema's, so a schema reset keeps it. Silent, as a reset is. Asked
-   * only where the schema was not this vx's (`ARTIFACT_LAYOUT`).
-   */
-  private matchArtifactLayout(schema: 'main' | 'store'): void {
-    const read = (): string | undefined =>
-      (
-        this.db
-          .prepare(`SELECT value FROM ${schema}.artifacts_meta WHERE key = 'layout'`)
-          .get() as {
-          value: string
-        } | null
-      )?.value
-    // Read first: a workspace's first open of a current store asks too,
-    // and must not wait on the store's write lock to learn it holds `a1`.
-    if (read() === ARTIFACT_LAYOUT) return
-    this.db
-      .transaction(() => {
-        const found = read()
-        if (found === ARTIFACT_LAYOUT) return
-        if (found !== undefined) {
-          this.db.exec(`DROP TABLE ${schema}.artifacts`)
-          createArtifactTables(this.db, schema)
-        }
-        this.db
-          .prepare(
-            `INSERT INTO ${schema}.artifacts_meta(key, value) VALUES ('layout', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-          )
-          .run(ARTIFACT_LAYOUT)
       })
       .immediate()
   }
@@ -1619,8 +1500,7 @@ export class Cache implements CacheLayer {
    * `store.db` deleted) loses nothing a task asks for again. The artifact
    * is checked as an ingest checks a remote's (its recorded key, its names
    * against the declared outputs); one that fails is a miss, and the run
-   * that follows saves over it. An inline artifact is read first, as every
-   * reader reads it, and indexed in one transaction with its bytes.
+   * that follows saves over it.
    */
   private async adopt(hash: string, ctx: CacheGetContext): Promise<boolean> {
     // Built only for an artifact found: its command is masked on read.
@@ -1630,12 +1510,6 @@ export class Cache implements CacheLayer {
       durationMs: 0,
       ...(ctx.outputs !== undefined ? { outputs: ctx.outputs } : {}),
     })
-    // Only a key whose lookup saw a row-less inline artifact asks for it: a
-    // statement per miss otherwise, on every cold save.
-    const blob = this.rowless.delete(hash)
-      ? (this.selectBlob.get(hash) as { bytes: Uint8Array } | null)
-      : null
-    if (blob !== null) return this.adopted(this.writeArtifactAndIndex(hash, blob.bytes, meta()))
     const finalPath = this.tarPath(hash)
     if (!this.artifactFileMayExist(hash)) return false
     const tmpPath = this.tempPath(hash)
@@ -1703,20 +1577,11 @@ export class Cache implements CacheLayer {
   private async readEntry(hash: string): Promise<CacheEntry | null> {
     const row = this.selectEntry.get(hash) as EntryRow | null
     if (row === null) return null
-    if (row.hash === null) {
-      this.rowless.add(hash)
-      return null
-    }
-
-    if (row.inline_at !== null) {
-      if (row.inline_at < Date.now() - ORPHAN_GRACE_MS) this.staleInline.add(hash)
-    } else {
-      // Verify the artifact file actually exists. The DB and the
-      // filesystem can drift if someone manually deletes the cache dir.
-      const st = this.artifactStat(hash)
-      if (st === undefined) return null
-      if (st.mtimeMs < Date.now() - ORPHAN_GRACE_MS) this.staleTimes.add(hash)
-    }
+    // Verify the artifact file actually exists. The DB and the
+    // filesystem can drift if someone manually deletes the cache dir.
+    const st = this.artifactStat(hash)
+    if (st === undefined) return null
+    if (st.mtimeMs < Date.now() - ORPHAN_GRACE_MS) this.staleTimes.add(hash)
 
     // Deferred: per-hit UPDATEs cost ~60 ms across 2000+ probes on a
     // full-cache run. Hashes are collected and flushed as ONE batched
@@ -1730,21 +1595,17 @@ export class Cache implements CacheLayer {
     // for four up-to-date hits on ~70 MB binaries). restoreOutputs
     // reads the artifact itself, only when extraction actually runs.
     const fileRows = this.loadOutputFilesBatch([hash]).get(hash) ?? []
-    const entry = entryOf(row as LiveRow, fileRows)
+    const entry = entryOf(row, fileRows)
     entry.outputDirRows = this.loadOutputDirsBatch([hash]).get(hash) ?? []
     return entry
   }
 
   /**
-   * Whether no lookup here can hit: no artifact, inline or file. Every
-   * entry has one, and a row-less one is still a hit (`adopt`). The listing
-   * is kept for `adopt`.
+   * Whether no lookup here can hit: no artifact. Every entry has one, and
+   * a row-less one is still a hit (`adopt`). The listing is kept for `adopt`.
    */
   holdsNothing(): boolean {
     if (!this.read) return true
-    if (this.guard(() => this.db.query('SELECT 1 FROM artifacts LIMIT 1').get()) != null) {
-      return false
-    }
     let names: string[]
     try {
       names = readdirSync(this.artifactDir)
@@ -1789,19 +1650,11 @@ export class Cache implements CacheLayer {
         ? [this.selectEntry.get(hashes[0]!)].filter((r) => r !== null)
         : this.db.query(SELECT_ENTRIES).all(JSON.stringify(hashes))
     ) as EntryRow[]
-    const rows: LiveRow[] = []
-    for (const r of found) {
-      if (r.hash === null) this.rowless.add(r.key)
-      else rows.push(r as LiveRow)
-    }
+    const rows = found
     if (rows.length === 0) return out
     const graceStart = Date.now() - ORPHAN_GRACE_MS
     const refreshStart = Date.now() - ACCESS_REFRESH_MS
     const live = rows.filter((r) => {
-      if (r.inline_at !== null) {
-        if (r.inline_at < graceStart) this.staleInline.add(r.hash)
-        return true
-      }
       const st = this.artifactStat(r.hash)
       if (st !== undefined && st.mtimeMs < graceStart) this.staleTimes.add(r.hash)
       return st !== undefined
@@ -1809,8 +1662,6 @@ export class Cache implements CacheLayer {
     const liveHashes = live.map((r) => r.hash)
     const fileRows = this.loadOutputFilesBatch(liveHashes)
     this.outputs.hold(fileRows)
-    this.heldInlineAt.clear()
-    for (const r of live) if (r.inline_at !== null) this.heldInlineAt.set(r.hash, r.inline_at)
     const dirRows = this.loadOutputDirsBatch(liveHashes)
     for (const row of live) {
       if (row.accessed_at < refreshStart) this.touched.add(row.hash)
@@ -1821,8 +1672,7 @@ export class Cache implements CacheLayer {
     return out
   }
 
-  // Existence probe: SQL row + where its artifact is (an inline one, or a
-  // file on disk), no byte reads and no accessed_at bump (the plan path
+  // Existence probe: SQL row + its artifact on disk, no byte reads and no accessed_at bump (the plan path
   // must stay read-only).
   async has(hash: string): Promise<'local' | 'remote' | null> {
     return this.guard(() => this.hasEntry(hash))
@@ -1845,9 +1695,8 @@ export class Cache implements CacheLayer {
 
   /** The index row and its artifact are both here, whatever the run may read. */
   private storedHere(hash: string): boolean {
-    const row = this.entryExists.get(hash) as { inline_at: number | null } | null
-    if (row === null) return false
-    return row.inline_at !== null || this.artifactStat(hash) !== undefined
+    if (this.entryExists.get(hash) === null) return false
+    return this.artifactStat(hash) !== undefined
   }
 
   // Local cache has no slower layer to warm from — prefetch is a no-op.
@@ -2037,7 +1886,6 @@ export class Cache implements CacheLayer {
     await rm(this.tarPath(hash), { force: true })
     await rm(this.treePath(hash), { recursive: true, force: true })
     const drop = this.db.transaction(() => {
-      this.deleteBlob.run(hash)
       this.deleteEntryRow.run(hash)
       this.outputs.forget([hash])
     })
@@ -2091,25 +1939,7 @@ export class Cache implements CacheLayer {
     // same truncated expectation against the same truncated tree and agrees
     // forever. Refuse instead of silently under-restoring — checked before
     // anything is renamed into place.
-    //
-    // An inline artifact and its rows are read in one read transaction, so
-    // one snapshot: a re-save of the key in another process replaces both
-    // in one commit, and two reads could pair its rows with the old bytes.
-    // The probe's held rows (X-162) serve only while the blob carries the
-    // `at` the probe saw: a re-save or a renewal since moves it, and then
-    // the rows are read again in the blob's snapshot.
-    let rows: readonly OutputFileRow[] = []
-    let inline: Uint8Array | undefined
-    this.guard(() =>
-      this.db.transaction(() => {
-        const blob = this.selectBlob.get(hash) as { at: number; bytes: Uint8Array } | null
-        inline = blob?.bytes
-        rows =
-          blob === null || blob.at === this.heldInlineAt.get(hash)
-            ? this.outputs.rowsOf(hash)
-            : (this.outputs.loadOutputFilesBatch([hash]).get(hash) ?? [])
-      })(),
-    )
+    const rows = this.guard(() => this.outputs.rowsOf(hash))
     const expected = rows
       .filter((r) => workspaceRoot !== undefined || !r.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
       .map((r) => (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) ? r.path : `outputs/${r.path}`))
@@ -2133,8 +1963,7 @@ export class Cache implements CacheLayer {
     // when every artifact is a one-file `dist/` (measured: 390 vs 355 ms
     // per 1 000). The local artifact was validated at ingest, so a missing
     // declared size is allowed; the output ceiling applies to both.
-    const tree =
-      inline === undefined && existsSync(this.treePath(hash)) ? this.treePath(hash) : undefined
+    const tree = existsSync(this.treePath(hash)) ? this.treePath(hash) : undefined
     const endExtract = span('restore: extract')
     try {
       // Every step here is an async filesystem call on purpose: a
@@ -2146,7 +1975,7 @@ export class Cache implements CacheLayer {
       if (tree !== undefined) {
         await this.restoreTree(hash, tree, rows, projectDir, workspaceRoot, verify, accept)
       } else {
-        const tar = await decodedTar(inline ?? Bun.file(src), hash, this.artifactCeiling)
+        const tar = await decodedTar(Bun.file(src), hash, this.artifactCeiling)
         await extractArtifactStream(tar, projectDir, workspaceRoot, verify, accept, workspaceRoot)
       }
     } catch (err) {
@@ -2368,12 +2197,9 @@ export class Cache implements CacheLayer {
    * opened by path read those mid-upload (a digest of one artifact over
    * the bytes of another). A `Bun.file` over an fd is no answer — its
    * second read starts where the first ended. Throws when the artifact is
-   * gone; `release` unlinks the name. An inline artifact is read once into
-   * the body, which no re-save can change.
+   * gone; `release` unlinks the name.
    */
   async pinArtifact(hash: string): Promise<{ body: Blob; release: () => Promise<void> }> {
-    const blob = this.guard(() => this.selectBlob.get(hash) as { bytes: Uint8Array } | null)
-    if (blob !== null) return { body: new Blob([blob.bytes]), release: async () => {} }
     const pinned = this.tempPath(hash)
     try {
       linkSync(this.tarPath(hash), pinned)
@@ -2403,8 +2229,8 @@ export class Cache implements CacheLayer {
    * `Response` and copies a file `Blob` without collecting either, so a
    * pull never holds the artifact. A body that fails mid-stream (a dropped
    * socket) leaves a partial temp behind it, removed here; validation
-   * removes its own. A body of at most `INLINE_MAX` bytes — by its size,
-   * or counted as it streams — is read to memory and stored inline.
+   * removes its own. A body of at most `IN_MEMORY_MAX` bytes — by its size,
+   * or counted as it streams — is read to memory.
    */
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
     const tmpPath = this.tempPath(hash)
@@ -2428,17 +2254,17 @@ export class Cache implements CacheLayer {
         body instanceof Blob ? body.size : Number(body.headers.get('content-length') ?? 0)
       if (length > cap) throw past()
       if (body instanceof Blob) {
-        if (length <= INLINE_MAX) small = await body.bytes()
+        if (length <= IN_MEMORY_MAX) small = await body.bytes()
         else await Bun.write(tmpPath, body)
       } else {
         let source = body.body
         if (source === null) small = new Uint8Array(0)
-        else if (length <= INLINE_MAX) {
+        else if (length <= IN_MEMORY_MAX) {
           // Counted as it streams: a length the server did not send, or
-          // one it sent short, cannot make a large body inline.
+          // one it sent short, cannot read a large body to memory.
           const r: ChunkReader = source.getReader()
           reader = r
-          const head = await readUpTo(r, INLINE_MAX)
+          const head = await readUpTo(r, IN_MEMORY_MAX)
           if (head.done) small = head.bytes
           else source = prepended(head.bytes, r)
         }
@@ -2577,9 +2403,8 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * The save's local form: a small entry packed for the index when the
-   * store embeds, else a `.tar.zst` (`compress`) or a tree of the outputs
-   * copied as they are.
+   * The save's local form: a tree of the outputs copied as they are
+   * (`decompress`), else a `.tar.zst`.
    */
   private async packForSave(
     args: Parameters<Cache['packArtifact']>[0],
@@ -2588,12 +2413,8 @@ export class Cache implements CacheLayer {
     | { tmpPath: string }
     | { plan: true; saved: SavedTree }
   > {
-    if (this.store.compress) return this.packArtifactToTemp(this.tempPath(args.hash), args)
+    if (!this.store.decompress) return this.packArtifactToTemp(this.tempPath(args.hash), args)
     const plan = await this.planWithin(args)
-    if (this.store.embedded && plan.size <= INLINE_MAX) {
-      const tar = await packArtifactBytes(plan)
-      return { compressed: await zstdCompress(tar), tar }
-    }
     const tree = this.tempTreePath(args.hash)
     try {
       const scan = await writeTree(plan, tree)
@@ -2615,8 +2436,7 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * Atomically write `compressed` to `<hash>.tar.zst`, or inline into
-   * `artifacts` when it is at most `INLINE_MAX` bytes, and (re)build the
+   * Atomically write `compressed` to `<hash>.tar.zst` or its tree, and (re)build the
    * entries + output_files SQL rows from the archive itself. Shared by
    * `save()` (we just packed the bytes) and `ingest()` (it streamed them
    * from the remote layer into a temp) — both index the identical values, because both
@@ -2643,19 +2463,10 @@ export class Cache implements CacheLayer {
     const finalPath = this.tarPath(hash)
     const saved = 'tree' in given ? given : undefined
     const compressed = 'tree' in given ? new Uint8Array(0) : given
-    // An inline artifact is written in the rows' transaction below: no
-    // temp, no rename.
-    const inline =
-      saved === undefined &&
-      this.store.embedded &&
-      compressed instanceof Uint8Array &&
-      compressed.byteLength <= INLINE_MAX
-        ? compressed
-        : null
     let tmpPath: string | undefined
     if (saved !== undefined) {
       // The tree save wrote and scanned its own outputs.
-    } else if (inline === null && compressed instanceof Uint8Array) {
+    } else if (compressed instanceof Uint8Array) {
       const temp = this.tempPath(hash)
       tmpPath = temp
       // The temp is written BEFORE validation so a large artifact can be
@@ -2730,7 +2541,7 @@ export class Cache implements CacheLayer {
     // A remote hit this store keeps as plain files: the archive passed its
     // checks above, so it is unpacked once here and its temp goes.
     let tree = saved?.tree
-    if (tree === undefined && inline === null && !this.store.compress) {
+    if (tree === undefined && this.store.decompress) {
       const dir = this.tempTreePath(hash)
       try {
         const source =
@@ -2835,16 +2646,8 @@ export class Cache implements CacheLayer {
     // renames finds no artifact, a miss (`ArtifactVanishedError`); one
     // holding the old file still reads it whole. The aside name is a temp
     // name, so a crash before its unlink leaves an orphan the sweep takes.
-    //
-    // An inline artifact is upserted in the same transaction, and a file
-    // save deletes the key's inline one: as of every commit a key's live
-    // bytes are in one place. An inline save moves aside whatever file the
-    // key has, as a file save does: one rename that finds nothing on a
-    // first save, where asking the index first was a statement per save.
     let aside: string[] = []
     let renamed: string | undefined
-    const upsertBlob = this.upsertBlob
-    const deleteBlob = this.deleteBlob
     const treePath = this.treePath(hash)
     // Both file forms are moved aside: a key re-saved under another
     // `cache.store` leaves one live artifact.
@@ -2864,17 +2667,11 @@ export class Cache implements CacheLayer {
       return moved
     }
     const tx = this.db.transaction(() => {
-      if (inline !== null) {
-        aside = moveAside()
-        upsertBlob.run(hash, now, inline)
-      } else {
-        aside = moveAside()
-        const live = tree !== undefined ? treePath : finalPath
-        renameSync(tree ?? tmpPath!, live)
-        this.artifactNames?.add(path.basename(live))
-        renamed = live
-        deleteBlob.run(hash)
-      }
+      aside = moveAside()
+      const live = tree !== undefined ? treePath : finalPath
+      renameSync(tree ?? tmpPath!, live)
+      this.artifactNames?.add(path.basename(live))
+      renamed = live
       insertEntry.run(
         hash,
         project,
@@ -2931,9 +2728,7 @@ export class Cache implements CacheLayer {
   /** Apply the deferred accessed_at bumps in one statement. */
   private flushAccessed(): void {
     // Apart: a hit whose row is fresh still renews an old file time.
-    if (this.touched.size === 0 && this.staleTimes.size === 0 && this.staleInline.size === 0) {
-      return
-    }
+    if (this.touched.size === 0 && this.staleTimes.size === 0) return
     const hashes = [...this.touched]
     this.touched.clear()
     const now = Date.now()
@@ -2948,15 +2743,9 @@ export class Cache implements CacheLayer {
       }
     }
     this.staleTimes.clear()
-    const inline = [...this.staleInline]
-    this.staleInline.clear()
     // LRU bookkeeping: on a full disk the bumps are dropped, never the prune
     // or the stats that asked for them (A-14).
     try {
-      if (inline.length > 0) {
-        const { test, params } = inHashes(inline)
-        this.db.prepare(`UPDATE artifacts SET at = ? WHERE hash ${test}`).run(now, ...params)
-      }
       if (hashes.length > 0) this.writeAccessed(hashes, now)
     } catch (err) {
       if (!isIndexFull(err)) throw err
@@ -3113,7 +2902,7 @@ export class Cache implements CacheLayer {
     // them and evicted real entries to make room for them (item 975). None
     // is evicted or freed, whatever its age (item 1081); the ones past the
     // grace window are dropped.
-    const { phantoms, stale, rows, inline } = await this.phantomRows()
+    const { phantoms, stale, rows } = await this.phantomRows()
     const picked = pickVictims(
       rows.filter((r) => !phantoms.has(r.hash)),
       await this.scanOrphans(),
@@ -3142,19 +2931,15 @@ export class Cache implements CacheLayer {
       // Artifacts first: a row whose artifact is gone reads as a miss, so the
       // order is safe, and on a full disk the delete's own journal needs the
       // space the unlinks free. Rows-first failed there before any file went,
-      // and the one verb meant to free a full disk freed nothing (A-14). An
-      // inline artifact goes with its rows, in their transaction.
+      // and the one verb meant to free a full disk freed nothing (A-14).
       await Promise.all(
-        hashes
-          .filter((h) => !inline.has(h))
-          .flatMap((h) => [
-            rm(this.tarPath(h), { force: true }),
-            rm(this.treePath(h), { recursive: true, force: true }),
-          ]),
+        hashes.flatMap((h) => [
+          rm(this.tarPath(h), { force: true }),
+          rm(this.treePath(h), { recursive: true, force: true }),
+        ]),
       )
       const { test, params } = inHashes(rows)
       const deleteRows = this.db.transaction(() => {
-        this.db.prepare(`DELETE FROM artifacts WHERE hash ${test}`).run(...params)
         this.db.prepare(`DELETE FROM entries WHERE hash ${test}`).run(...params)
         this.outputs.forget(rows)
       })
@@ -3181,8 +2966,7 @@ export class Cache implements CacheLayer {
    * Unlink the row-less files `pickVictims` took: a `<hash>.tar.zst` with
    * no `entries` row (another vx version's open dropped it, a `cache.db`
    * deleted by hand) past the policy, a `<hash>.tar.zst.tmp-*` a crashed
-   * save never renamed, and a file an inline artifact shadows; and delete
-   * the row-less inline artifacts it took. Nothing else reaps them — a
+   * save never renamed. Nothing else reaps them — a
    * lookup starts at the row, and a save of the same key replaces the
    * bytes, so a key that never recurs leaks its bytes forever.
    */
@@ -3200,29 +2984,8 @@ export class Cache implements CacheLayer {
     }
     let orphans = 0
     let orphanBytes = 0
-    const blobs = taken.filter((o) => o.blob !== undefined)
-    if (blobs.length > 0) {
-      // Only while still row-less: an adopt since the scan keeps it.
-      const drop = this.db.prepare(
-        'DELETE FROM artifacts WHERE hash = ? AND NOT EXISTS (SELECT 1 FROM entries WHERE hash = ?)',
-      )
-      try {
-        this.db.transaction(() => {
-          for (const o of blobs) {
-            if (drop.run(o.blob!, o.blob!).changes === 0) continue
-            orphans += 1
-            orphanBytes += o.size
-          }
-        })()
-      } catch (err) {
-        if (!isIndexFull(err)) throw err
-        orphans = 0
-        orphanBytes = 0
-      }
-    }
     await Promise.all(
       taken.map(async (o) => {
-        if (o.file === undefined) return
         try {
           // unlink, not `rm({ force })`: force swallows ENOENT, and a file a
           // concurrent prune took first must not be counted as ours.
@@ -3250,37 +3013,26 @@ export class Cache implements CacheLayer {
     phantoms: Map<string, number>
     stale: string[]
     rows: Array<{ hash: string; size_bytes: number; accessed_at: number }>
-    /** The rows whose artifact is inline: present, whatever the directory holds. */
-    inline: Set<string>
   }> {
     const graceStart = Date.now() - ORPHAN_GRACE_MS
     const rows = this.db
-      .prepare(
-        'SELECT e.hash, e.size_bytes, e.accessed_at, a.hash IS NOT NULL AS inline FROM entries e LEFT JOIN artifacts a ON a.hash = e.hash',
-      )
-      .all() as Array<{
-      hash: string
-      size_bytes: number
-      accessed_at: number
-      inline: number
-    }>
-    const inline = new Set(rows.filter((r) => r.inline === 1).map((r) => r.hash))
+      .prepare('SELECT hash, size_bytes, accessed_at FROM entries')
+      .all() as Array<{ hash: string; size_bytes: number; accessed_at: number }>
     let names: string[]
     try {
       names = await readdir(this.artifactDir)
     } catch {
-      return { phantoms: new Map(), stale: [], rows, inline }
+      return { phantoms: new Map(), stale: [], rows }
     }
     const present = new Set(names)
     const phantoms = new Map<string, number>()
     const stale: string[] = []
     for (const r of rows) {
-      if (r.inline === 1 || present.has(`${r.hash}.tar.zst`) || present.has(`${r.hash}.tree`))
-        continue
+      if (present.has(`${r.hash}.tar.zst`) || present.has(`${r.hash}.tree`)) continue
       phantoms.set(r.hash, r.size_bytes)
       if (r.accessed_at < graceStart) stale.push(r.hash)
     }
-    return { phantoms, stale, rows, inline }
+    return { phantoms, stale, rows }
   }
 
   /** Row-less artifacts past the in-flight grace, for `vx info`: a prune reaps them by its policy. */
@@ -3293,38 +3045,23 @@ export class Cache implements CacheLayer {
 
   /**
    * Row-less artifacts and temps past the in-flight grace window: one
-   * readdir, one stat per candidate, and the row-less inline artifacts,
-   * their `at` standing for the file time.
+   * readdir, one stat per candidate.
    */
   private async scanOrphans(): Promise<RowlessFile[]> {
     // Asked once the directory read succeeded, as the rows are (scanOrphanFiles).
-    let rowless: Array<{ hash: string; size: number; at: number }> = []
-    const found = await scanOrphanFiles(this.artifactDir, () => {
-      rowless = this.db
-        .prepare(
-          'SELECT hash, length(bytes) AS size, at FROM artifacts WHERE at <= ? AND hash NOT IN (SELECT hash FROM entries)',
-        )
-        .all(Date.now() - ORPHAN_GRACE_MS) as typeof rowless
-      const rows = this.db
-        .prepare(
-          'SELECT e.hash, a.hash IS NOT NULL AS inline FROM entries e LEFT JOIN artifacts a ON a.hash = e.hash',
-        )
-        .all() as Array<{ hash: string; inline: number }>
-      const blobs = this.db.prepare('SELECT hash FROM artifacts').all() as Array<{ hash: string }>
-      return {
-        files: new Set(rows.filter((r) => r.inline === 0).map((r) => r.hash)),
-        inline: new Set(blobs.map((r) => r.hash)),
-      }
-    })
-    for (const b of rowless) found.push({ blob: b.hash, size: b.size, mtimeMs: b.at, temp: false })
+    const found = await scanOrphanFiles(
+      this.artifactDir,
+      () =>
+        new Set(
+          (this.db.prepare('SELECT hash FROM entries').all() as Array<{ hash: string }>).map(
+            (r) => r.hash,
+          ),
+        ),
+    )
     // With a shared store, no artifact in `cacheDir` is indexed: they are
     // what this workspace saved before its entries moved out.
     if (this.artifactDir === this.cacheDir) return found
-    const none = new Set<string>()
-    return [
-      ...found,
-      ...(await scanOrphanFiles(this.cacheDir, () => ({ files: none, inline: none }))),
-    ]
+    return [...found, ...(await scanOrphanFiles(this.cacheDir, () => new Set()))]
   }
 
   close(): void {
@@ -3376,7 +3113,7 @@ export class Cache implements CacheLayer {
 
   /** The key's file-backed artifact (tar or tree), the form this store writes asked first. */
   private artifactStat(hash: string): { path: string; tree: boolean; mtimeMs: number } | undefined {
-    const order = this.store.compress ? [false, true] : [true, false]
+    const order = this.store.decompress ? [true, false] : [false, true]
     for (const tree of order) {
       const at = tree ? this.treePath(hash) : this.tarPath(hash)
       const st = statSync(at, { throwIfNoEntry: false })

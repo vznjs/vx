@@ -15,13 +15,23 @@ import { scanArtifact } from '../src/cache/archive.js'
 import { Cache } from '../src/cache/cache.js'
 import { decodedTar } from '../src/cache/zstd.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 let root: string
 let cache: Cache
 
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-save-plan-'))
-  cache = new Cache(path.join(root, 'cache'))
+  // The `.tar.zst` form: the saved bytes are what the test scans.
+  cache = new Cache(
+    path.join(root, 'cache'),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    TAR_STORE,
+  )
 })
 afterEach(async () => {
   cache.close()

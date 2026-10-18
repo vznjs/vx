@@ -4,7 +4,6 @@
 // them, not only to `vx run`. Subprocess-driven so the dispatcher wiring is
 // the one a user hits.
 
-import { Database } from 'bun:sqlite'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
@@ -51,7 +50,8 @@ async function vx(
   const proc = Bun.spawn([process.execPath, BIN, ...args], {
     cwd: root,
     // The config stage's cache.dir loses to VX_CACHE_DIR, which the gate sets.
-    env: { ...process.env, NO_COLOR: '1', VX_CACHE_DIR: '' },
+    // The `.tar.zst` form: one file, whose size the prune must report.
+    env: { ...process.env, NO_COLOR: '1', VX_CACHE_DIR: '', VX_CACHE_STORE_DECOMPRESS: 'false' },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -113,15 +113,10 @@ describe('the `config` stage reaches every verb that opens the cache', () => {
     '`vx cache clean` prunes the moved directory and never creates the default one',
     async () => {
       // The freed figure is the artifact the prune deletes, measured where it
-      // is stored (inline, the bytes themselves) rather than read back from
-      // the entry row the prune itself sums.
+      // is stored rather than read back from the entry row the prune itself sums.
       const moved = path.join(root, '.vx', 'moved')
       expect(storedKeys(moved)).toHaveLength(1)
-      const db = new Database(path.join(moved, 'cache.db'), { readonly: true })
-      const { size } = db.query('SELECT length(bytes) AS size FROM artifacts').get() as {
-        size: number
-      }
-      db.close()
+      const size = Bun.file(path.join(moved, `${storedKeys(moved)[0]}.tar.zst`)).size
       expect(size).toBeLessThan(1024)
 
       const r = await vx(root, ['cache', 'clean', '--max-size', '1B'])

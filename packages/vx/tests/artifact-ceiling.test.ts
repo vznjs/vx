@@ -37,10 +37,10 @@ describe('an output set past the artifact ceiling', () => {
   let root: string
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-artifact-ceiling-' })
-    process.env.VX_CACHE_STORE_COMPRESS = 'true'
+    process.env.VX_CACHE_STORE_DECOMPRESS = 'false'
   })
   afterEach(async () => {
-    delete process.env.VX_CACHE_STORE_COMPRESS
+    delete process.env.VX_CACHE_STORE_DECOMPRESS
     await rm(root, { recursive: true, force: true })
   })
 

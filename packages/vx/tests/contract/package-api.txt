@@ -563,7 +563,7 @@ export interface CacheSettings {
   inputStability?: InputStability
   outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
-  store?: { embedded?: boolean; compress?: boolean; verify?: 'stat' | 'hash' | 'none' }
+  store?: { decompress?: boolean; verify?: 'stat' | 'hash' | 'none' }
   concurrency?: { download?: number; upload?: number; restore?: number }
 }
 == type CacheSource (src/graph/task-status.ts)
@@ -1606,8 +1606,7 @@ export interface SecretUnavailable extends Error {
 export type SecretUnavailableReason = 'not-found' | 'no-terminal' | 'declined' | 'store-unavailable'
 == type StoreOptions (src/cache/cache.ts)
 export interface StoreOptions {
-  embedded: boolean
-  compress: boolean
+  decompress: boolean
   verify: 'stat' | 'hash' | 'none'
 }
 == type Style (src/util/ui.ts)

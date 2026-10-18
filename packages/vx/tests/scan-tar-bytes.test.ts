@@ -25,6 +25,7 @@ import { withSum } from './helpers/artifact-sum.js'
 import { rng } from './helpers/rng.js'
 import { scanBoth, type ScanOutcome } from './helpers/scan-parity.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const dir = mkdtempSync(path.join(os.tmpdir(), 'vx-scanbytes-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -335,7 +336,15 @@ describe("a save's index rows are the rows a restore reads", () => {
       const p = path.join(proj, rel)
       await Bun.write(p, `body ${i}`)
     }
-    const saved = new Cache(path.join(root, 'a'))
+    const saved = new Cache(
+      path.join(root, 'a'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const ingested = new Cache(path.join(root, 'b'))
     try {
       await saved.save({

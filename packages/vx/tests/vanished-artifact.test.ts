@@ -264,8 +264,11 @@ describe('a local cache artifact whose bytes are corrupt', () => {
   let root: string
   beforeEach(async () => {
     root = await makeWorkspace({ prefix: 'vx-corrupt-local-' })
+    // The `.tar.zst` form, whose bytes the test damages.
+    process.env.VX_CACHE_STORE_DECOMPRESS = 'false'
   })
   afterEach(async () => {
+    delete process.env.VX_CACHE_STORE_DECOMPRESS
     await rm(root, { recursive: true, force: true })
   })
 

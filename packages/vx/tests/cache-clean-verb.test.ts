@@ -51,7 +51,7 @@ describe('vx cache clean', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  /** The keys with an artifact in the cache directory, inline or as a file. */
+  /** The keys with an artifact in the cache directory. */
   const artifacts = async (): Promise<string[]> => storedKeys(cacheDir)
 
   it(

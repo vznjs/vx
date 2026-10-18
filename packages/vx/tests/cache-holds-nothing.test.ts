@@ -1,7 +1,7 @@
 // A run whose local cache holds nothing skips the up-front probe: every
 // lookup would miss, and a cold 1,090-package run started its first task
-// ~90 ms later for it. "Nothing" counts what a lookup can hit: an index row,
-// an inline artifact, and an artifact file `adopt` indexes on a hit.
+// ~90 ms later for it. "Nothing" counts what a lookup can hit: an index row
+// and an artifact file `adopt` indexes on a hit.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -37,8 +37,6 @@ async function save(cache: Cache, hash: string, body: Uint8Array | 'none'): Prom
 }
 
 const small = (): Uint8Array => new TextEncoder().encode('x')
-/** Incompressible bytes past INLINE_MAX: an artifact holding them is a file. */
-const big = (): Uint8Array => crypto.getRandomValues(new Uint8Array(48 * 1024))
 
 /** After a save of `body` and the removal of its `entries` row, if `dropRow`. */
 async function holdsNothingAfter(
@@ -61,17 +59,13 @@ describe('Cache.holdsNothing', () => {
   it('is true only when no lookup can hit', async () => {
     expect({
       fresh: await holdsNothingAfter(null, false),
-      inlineEntry: await holdsNothingAfter(small(), false),
+      entry: await holdsNothingAfter(small(), false),
       noOutputEntry: await holdsNothingAfter('none', false),
-    }).toEqual({ fresh: true, inlineEntry: false, noOutputEntry: false })
-  })
-
-  it('a row-less inline artifact can still hit', async () => {
-    expect(await holdsNothingAfter(small(), true)).toBe(false)
+    }).toEqual({ fresh: true, entry: false, noOutputEntry: false })
   })
 
   it('a row-less artifact file can still hit (adopt)', async () => {
-    expect(await holdsNothingAfter(big(), true)).toBe(false)
+    expect(await holdsNothingAfter(small(), true)).toBe(false)
   })
 
   it('a cache that reads nothing holds nothing for this run', async () => {

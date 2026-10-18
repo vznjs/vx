@@ -49,7 +49,7 @@ function fill(cache: Cache, insert: (i: number, pad: string) => void): void {
   }
 }
 
-/** `file`: an incompressible output past INLINE_MAX, so the artifact is a file, not inline. */
+/** `file`: an incompressible output. */
 async function save(cache: Cache, hash: string, file = false): Promise<void> {
   const out = path.join(proj, 'dist', `${hash}.txt`)
   writeFileSync(out, file ? crypto.getRandomValues(new Uint8Array(48 * 1024)) : hash.repeat(50))

@@ -25,7 +25,7 @@ await mock.module('node:fs', () => ({
 const { Cache } = await import('../src/cache/index.js')
 
 const HASH = '0123456789abcdef'
-/** Incompressible bytes past INLINE_MAX: the artifact is a file, not inline in the index. */
+/** Incompressible bytes. */
 const PAD = crypto.getRandomValues(new Uint8Array(48 * 1024))
 
 describe('a re-save of a key', () => {
@@ -64,7 +64,6 @@ describe('a re-save of a key', () => {
     // An entry is immutable, so a re-save comes only after its row is
     // gone (dropped as corrupt, or two writers that both found it absent).
     cache.dbHandle().run('DELETE FROM entries WHERE hash = ?', [HASH])
-    cache.dbHandle().run('DELETE FROM artifacts WHERE hash = ?', [HASH])
     await save('second')
     const final = path.join(cacheDir, `${HASH}.tar.zst`)
     expect(renames.filter((r) => r.to === final).map((r) => r.existed)).toEqual([false, false])

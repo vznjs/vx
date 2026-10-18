@@ -14,8 +14,7 @@
 //   - a hit restored into a tree without its outputs walked the output
 //     globs twice (the check, then the clean) and asked realpath about the
 //     missing output directory (X-161, X-163);
-//   - a hit stat'ed its artifact file to prove it was there, which an
-//     artifact inline in the index (v33) is by its row.
+//   - a hit stat'ed its artifact file more than once.
 //
 // Unsafe: strace ptraces its tracee, which a sandboxed shard cannot host.
 // Linux only — strace is Linux's. CI's Linux job installs strace for the
@@ -26,7 +25,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
-import { isInline } from './helpers/stored-artifact.js'
 import { addProject, gitIn, gitInitCommit, makeWorkspace } from './helpers/workspace.js'
 
 const SRC = path.resolve(import.meta.dir, '..', 'src')
@@ -315,14 +313,13 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
         `,
       )
       // The link check and the walk's absent-prefix probe, once each (the
-      // clean takes the walk's answer), then the extractor's containment
-      // probe, which an lstat answers and the staged tree reuses; the
-      // directory is built in `.vx/tmp/` and renamed in whole, so nothing
-      // else asks about it before the run-end snapshot.
+      // clean takes the walk's answer), then the store tree's copy-out
+      // makes the directory and the run-end snapshot reads it.
       expect(on(calls, path.join(proj, 'dist'))).toEqual([
         'lstat',
         'lstat',
         'lstat',
+        'mkdir',
         'lstat',
         'openat',
       ])
@@ -331,7 +328,7 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
   )
 
   it(
-    'a hit on an inline artifact asks the file system nothing about it; a file hit stats it once',
+    'a hit stats its stored artifact once',
     async () => {
       const cacheDir = path.join(dir, 'hits', 'cache')
       const proj = path.join(dir, 'hits', 'p')
@@ -349,12 +346,7 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
       try {
         await save('00000000000000a1', 'small')
         await save('00000000000000a2', 'many')
-        // Incompressible and past INLINE_MAX: a file.
         await save('00000000000000f1', crypto.getRandomValues(new Uint8Array(48 * 1024)))
-        expect(['00000000000000a1', '00000000000000f1'].map((h) => isInline(cache, h))).toEqual([
-          true,
-          false,
-        ])
       } finally {
         cache.close()
       }
@@ -366,7 +358,6 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
         if ((await cache.get('00000000000000a1')) === null) throw new Error('no hit')
         if ((await cache.getMany(['00000000000000a2'])).size !== 1) throw new Error('no hit')
         if ((await cache.get('00000000000000f1')) === null) throw new Error('no hit')
-        if ((await cache.has('00000000000000a1')) !== 'local') throw new Error('no hit')
         cache.close()
         `,
       )
@@ -375,7 +366,7 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
           on(calls, path.join(cacheDir, `${h}.tar.zst`)),
           on(calls, path.join(cacheDir, `${h}.tree`)),
         ]),
-      ).toEqual([[], [], [], [], [], ['stat']])
+      ).toEqual([[], ['stat'], [], ['stat'], [], ['stat']])
     },
     TIMEOUT,
   )

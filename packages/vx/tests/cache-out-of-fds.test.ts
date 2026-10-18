@@ -21,8 +21,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }))
 
 /**
  * Save `p/dist/a.js` (or restore it after a save), with the fd table full for
- * the call. `file`: an incompressible `a.js` past INLINE_MAX, so the artifact
- * is a file the restore opens, not bytes inline in the index.
+ * the call. `file`: an incompressible `a.js`.
  */
 async function outOfFds(
   op: 'save' | 'restore' | 'open',
@@ -37,7 +36,7 @@ const root = ${JSON.stringify(root)}
 const proj = root + '/p'
 mkdirSync(proj + '/dist', { recursive: true })
 writeFileSync(proj + '/dist/a.js', ${file} ? crypto.getRandomValues(new Uint8Array(48 * 1024)) : 'x')
-const cache = new Cache(root + '/cache', undefined, undefined, undefined, undefined, undefined, { embedded: true, compress: true, verify: 'stat' })
+const cache = new Cache(root + '/cache', undefined, undefined, undefined, undefined, undefined, { decompress: false, verify: 'stat' })
 const args = { hash: 'h1', projectDir: proj, outputFiles: [proj + '/dist/a.js'], entry: { taskId: 'p#b', command: 'x', durationMs: 1, stdout: '' } }
 if (${JSON.stringify(op)} === 'restore') await cache.save(args)
 const held = []
@@ -49,7 +48,7 @@ if (${JSON.stringify(op)} === 'open') closeSync(held.pop())
 let out
 try {
   const op = ${JSON.stringify(op)}
-  await (op === 'open' ? new Cache(root + '/cache', undefined, undefined, undefined, undefined, undefined, { embedded: true, compress: true, verify: 'stat' }) : op === 'save' ? cache.save(args) : cache.restoreOutputs('h1', proj, root))
+  await (op === 'open' ? new Cache(root + '/cache', undefined, undefined, undefined, undefined, undefined, { decompress: false, verify: 'stat' }) : op === 'save' ? cache.save(args) : cache.restoreOutputs('h1', proj, root))
   out = { name: 'none', message: '' }
 } catch (e) {
   out = { name: e.name, message: e.message }
@@ -77,21 +76,6 @@ describe('a process out of file descriptors', () => {
       name: 'UserError',
       message: `restore of h1 into ${root}/p could not open a file (EMFILE: too many open files, open '${artifact}') — ${HINT}`,
     })
-  })
-
-  // The first file it opens is the output it compares the entry with.
-  it('fails the restore of an inline artifact the same way, at the first file it opens', async () => {
-    const { name, message } = await outOfFds('restore')
-    const staged = message.match(/open '(.*)'\) — /)?.[1]
-    expect([
-      name,
-      path.dirname(path.dirname(staged ?? '')),
-      message.replace(staged ?? '', '<staged>'),
-    ]).toEqual([
-      'UserError',
-      `${root}/p`,
-      `restore of h1 into ${root}/p could not open a file (EMFILE: too many open files, open '<staged>') — ${HINT}`,
-    ])
   })
 
   it('fails a save with the limit to raise', async () => {
@@ -125,7 +109,7 @@ describe('opening the cache out of file descriptors', () => {
             undefined,
             undefined,
             undefined,
-            { embedded: true, compress: true, verify: 'stat' },
+            { decompress: false, verify: 'stat' },
           ),
       )
       .then(

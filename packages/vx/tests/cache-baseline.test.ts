@@ -28,6 +28,7 @@ import { streamOf } from './helpers/stream.js'
 import { Cache } from '../src/cache/cache.js'
 import { xxh3, xxh3hex } from '../src/util/hash.js'
 import { withSum } from './helpers/artifact-sum.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 // CI auto-scales budgets ~3× to cover shared-runner variance; dev
 // runs the calibration-tight values unless VX_PERF_SCALE is set
@@ -450,6 +451,15 @@ describePerf('cache baseline: save + restore', () => {
     // (entries + output_files rows carry everything, stdout included
     // since schema v20). Decompression happens exactly once, inside
     // restoreOutputs, and only when extraction actually runs.
+    const cache = new Cache(
+      path.join(tmpdir, '.vx-cache-tar'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     await cache.save({
       hash: 'sd-hot',
       entry: {
@@ -492,6 +502,7 @@ describePerf('cache baseline: save + restore', () => {
     } finally {
       bunMut.zstdDecompress = origDecompress
       bunMut.zstdDecompressSync = origDecompressSync
+      cache.close()
     }
   })
 

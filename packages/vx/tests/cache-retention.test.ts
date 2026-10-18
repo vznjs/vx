@@ -41,7 +41,7 @@ describe('Cache.evictIfDue', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  /** `file`: incompressible outputs past INLINE_MAX, so each artifact is a file, not inline. */
+  /** `file`: incompressible outputs. */
   async function seed(cache: Cache, hashes: readonly string[], file = false): Promise<void> {
     for (const hash of hashes) {
       const out = path.join(projectDir, 'dist', `${hash}.txt`)
@@ -448,65 +448,54 @@ describe('Cache.evictIfDue', () => {
     }
   })
 
-  // An inline artifact's `at` stands for the file time: renewed the same way,
-  // judged the same way.
-  for (const where of ['file', 'inline'] as const) {
-    it(`a hit or an adopt renews the ${where} artifact's time another version judges by`, async () => {
-      // Names the sweep may take: a key `foldKey` prints.
-      const keys = ['00000000000000b1', '00000000000000b2', '00000000000000b3', '00000000000000b4']
-      const [hit, hitMany, adopted] = keys as [string, string, string, string]
-      const present = (cache: Cache): boolean[] =>
-        keys.map((h) =>
-          where === 'file'
-            ? existsSync(path.join(cacheDir, `${h}.tar.zst`))
-            : storedArtifact(cache, h) !== null,
-        )
-      const writer = new Cache(
-        cacheDir,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        TAR_STORE,
-      )
-      try {
-        await seed(writer, keys, where === 'file')
-        const when = Date.now() - 2 * DAY
-        for (const h of keys) {
-          if (where === 'file')
-            await utimes(path.join(cacheDir, `${h}.tar.zst`), when / 1000, when / 1000)
-          else writer.dbHandle().query('UPDATE artifacts SET at = ? WHERE hash = ?').run(when, h)
-        }
-        expect(present(writer)).toEqual([true, true, true, true])
-        expect(await writer.get(hit)).not.toBeNull()
-        expect((await writer.getMany([hitMany])).size).toBe(1)
-        // Another version's open dropped this row; this one finds the artifact.
-        writer.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(adopted)
-        expect(await writer.get(adopted, { taskId: 'p#b3', command: 'echo b3' })).not.toBeNull()
-      } finally {
-        writer.close()
-      }
-      // The other version's open: every row gone.
-      const other = new Cache(
-        cacheDir,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        TAR_STORE,
-      )
-      try {
-        other.dbHandle().query('DELETE FROM entries').run()
-        expect((await other.evictIfDue({ maxAgeMs: DAY }))?.orphans).toBe(1)
-        // CONTROL: the one never used goes.
-        expect(present(other)).toEqual([true, true, true, false])
-      } finally {
-        other.close()
-      }
-    })
-  }
+  it("a hit or an adopt renews the artifact's time another version judges by", async () => {
+    // Names the sweep may take: a key `foldKey` prints.
+    const keys = ['00000000000000b1', '00000000000000b2', '00000000000000b3', '00000000000000b4']
+    const [hit, hitMany, adopted] = keys as [string, string, string, string]
+    const present = (): boolean[] =>
+      keys.map((h) => existsSync(path.join(cacheDir, `${h}.tar.zst`)))
+    const writer = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
+    try {
+      await seed(writer, keys, true)
+      const when = Date.now() - 2 * DAY
+      for (const h of keys)
+        await utimes(path.join(cacheDir, `${h}.tar.zst`), when / 1000, when / 1000)
+      expect(present()).toEqual([true, true, true, true])
+      expect(await writer.get(hit)).not.toBeNull()
+      expect((await writer.getMany([hitMany])).size).toBe(1)
+      // Another version's open dropped this row; this one finds the artifact.
+      writer.dbHandle().query('DELETE FROM entries WHERE hash = ?').run(adopted)
+      expect(await writer.get(adopted, { taskId: 'p#b3', command: 'echo b3' })).not.toBeNull()
+    } finally {
+      writer.close()
+    }
+    // The other version's open: every row gone.
+    const other = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
+    try {
+      other.dbHandle().query('DELETE FROM entries').run()
+      expect((await other.evictIfDue({ maxAgeMs: DAY }))?.orphans).toBe(1)
+      // CONTROL: the one never used goes.
+      expect(present()).toEqual([true, true, true, false])
+    } finally {
+      other.close()
+    }
+  })
 
   // turborepo test_evict_removes_stale_entries: a killed save leaves its
   // temp, and eviction reaps it like a row-less artifact.

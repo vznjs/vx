@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: drop embedded entries for store.decompress
+
+cache.store.embedded is removed: every entry is a file. cache.store.compress is now cache.store.decompress (VX_CACHE_STORE_DECOMPRESS), default true; compress: true is decompress: false. The cache index moves to schema v43: every cached task misses once.
+
 ## cache: read one plugin cache key per request
 
 Plugin API: on a branch, ctx.cache.get, has and hasMany no longer fall back to the default branch's entry; pass false to read it.
