@@ -56,25 +56,32 @@ function timed(branch: string, id: string, ms: number): void {
 }
 
 interface Spy extends PluginCache {
+  /** The default branch's entries. */
   store: Map<string, Uint8Array>
+  /** The run's scope's entries: a scoped read's, and a put's when `scoped`. */
+  scoped: Map<string, Uint8Array>
+  /** A scoped read is `get!`. */
   calls: string[]
 }
 
-function spyCache(opts: { hang?: boolean } = {}): Spy {
+function spyCache(opts: { hang?: boolean; scoped?: boolean } = {}): Spy {
   const store = new Map<string, Uint8Array>()
+  const scoped = new Map<string, Uint8Array>()
   const calls: string[] = []
   const never = new Promise<never>(() => {})
   return {
     store,
+    scoped,
     calls,
-    async get(k) {
-      calls.push('get')
+    async get(k, fromScope = true) {
+      calls.push(fromScope ? 'get!' : 'get')
       if (opts.hang) return never
-      return store.get(k) ?? null
+      return (fromScope ? scoped : store).get(k) ?? null
     },
     async put(k, b) {
       calls.push('put')
-      if (!store.has(k)) store.set(k, b)
+      const into = opts.scoped ? scoped : store
+      if (!into.has(k)) into.set(k, b)
     },
     async has(k) {
       calls.push('has')
@@ -169,15 +176,48 @@ describe('shared timings', () => {
     })
   })
 
-  it('a local run never writes, nor CI on another branch', async () => {
+  it('a local run never writes', async () => {
     commit()
     const shared = spyCache()
     timed('main', 'p#x', 10)
     await runPlugin(shared, { ci: false, branch: 'main', ids: ['p#x'] })
+    expect(shared.calls.filter((c) => c === 'put')).toEqual([])
+  })
+
+  it('CI on a branch writes its commit blob under its scope', async () => {
+    commit()
     git('checkout', '-q', '-b', 'feature')
+    const head = commit()
+    const shared = spyCache({ scoped: true })
     timed('feature', 'p#x', 10)
     await runPlugin(shared, { ci: true, branch: 'feature', ids: ['p#x'] })
-    expect(shared.calls.filter((c) => c === 'put')).toEqual([])
+    expect(read(shared.scoped.get(key(head)))).toEqual({ version: 1, tasks: { 'p#x': 10 } })
+    expect(shared.store.size).toBe(0)
+  })
+
+  it("a branch reads its last commit's blob over the merge-base's: its tasks win, the rest keep main's", async () => {
+    const a = commit()
+    git('checkout', '-q', '-b', 'feature')
+    const parent = commit()
+    commit()
+    const shared = spyCache()
+    shared.store.set(key(a), blob({ 'p#x': 100, 'p#y': 50 }))
+    shared.scoped.set(key(parent), blob({ 'p#x': 7 }))
+    const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+    await importTimings({
+      root,
+      defaultBranch: 'main',
+      cache: shared,
+      provider,
+      ids: ['p#x', 'p#y'],
+      triedFile: triedFile(),
+      branch: true,
+    })
+    expect(Object.fromEntries(await provider.p50sFor(['p#x', 'p#y']))).toEqual({
+      'p#x': 7,
+      'p#y': 50,
+    })
+    expect(shared.calls).toEqual(['hasMany', 'get', 'get!'])
   })
 
   it("a branch with no history orders from local history at once, then re-ranks by its merge-base's blob", async () => {
@@ -189,7 +229,7 @@ describe('shared timings', () => {
     const shared = spyCache()
     const get = shared.get.bind(shared)
     // The blob arrives only after the schedule answer: the run never waits on it.
-    shared.get = async (k) => (await answered, get(k))
+    shared.get = async (k, scoped) => (await answered, get(k, scoped))
     shared.store.set(key(a), blob({ 'p#slow': 9_000, 'p#fast': 10 }))
     const refined: ReadonlyMap<string, number>[] = []
     const weights = await runPlugin(shared, {
@@ -215,6 +255,7 @@ describe('shared timings', () => {
         provider,
         ids: ['p#x'],
         triedFile: triedFile(),
+        branch: false,
       })
     }
     expect(shared.calls).toEqual(['hasMany'])
@@ -233,6 +274,7 @@ describe('shared timings', () => {
       provider,
       ids: ['p#x'],
       triedFile: triedFile(),
+      branch: false,
     })
     expect((await provider.p50sFor(['p#x'])).get('p#x')).toBe(42)
     expect(shared.calls).toEqual(['hasMany', 'get'])
@@ -249,6 +291,7 @@ describe('shared timings', () => {
       provider,
       ids: ['p#x'],
       triedFile: triedFile(),
+      branch: false,
     })
     expect(performance.now() - started).toBeLessThan(2_000)
     expect((await provider.p50sFor(['p#x'])).size).toBe(0)
@@ -297,6 +340,7 @@ describe('shared timings', () => {
         provider,
         ids: ['p#x'],
         triedFile: triedFile(),
+        branch: false,
       })
     }
     expect(shared.calls.filter((c) => c === 'get')).toHaveLength(1)

@@ -307,6 +307,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
             provider,
             ids,
             triedFile: path.join(ctx.cacheDir, 'schedule-history-base'),
+            branch: ctx.branch !== null && ctx.branch !== (options.defaultBranch ?? DEFAULT_BRANCH),
           })
           if (imported) ctx.refine(order(await provider.resourcesFor(ids)))
         })().catch(() => {
@@ -340,10 +341,9 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   let shared: { cache: Cache; ids: string[]; branch: string | null } | undefined
   let exporting: { cache: PluginCache; root: string } | undefined
   hooks.setup = (ctx) => {
-    exporting =
-      ctx.ci && ctx.branch === (options.defaultBranch ?? DEFAULT_BRANCH)
-        ? { cache: ctx.cache, root: ctx.workspaceRoot }
-        : undefined
+    // A branch's write lands under its scope (M, 2026-10-18), for its next
+    // commit's runs to read.
+    exporting = ctx.ci ? { cache: ctx.cache, root: ctx.workspaceRoot } : undefined
     if (options.file === undefined) return
     inRun = true
     changed = false
