@@ -17,19 +17,32 @@ import { runReadKeys } from './run-store.js'
 /** The largest entry kept or read, in bytes: a remote's larger body is a miss, read no further. */
 export const PLUGIN_ENTRY_MAX_BYTES = 1024 * 1024
 
+/**
+ * The bucket a plugin says its entry is in (M, 2026-10-18), sent as each
+ * request's `x-vx-cache-scope`: `'trusted'` when it knows the entry is
+ * the base branch's, the branch scope (`ctx.cache.scope`) when it knows
+ * it is the branch's. Left out, the request names none and the server
+ * layers. Keys never follow it.
+ */
+export interface PluginCacheAt {
+  readonly scope?: string | undefined
+}
+
 /** What a plugin's `ctx.cache` offers. Keys are the plugin's own names. */
 export interface PluginCache {
+  /** The run's branch scope; undefined on the base branch. */
+  readonly scope: string | undefined
   /** The bytes stored under `key`, from the first layer holding them; null when none does. */
-  get(key: string): Promise<Uint8Array | null>
+  get(key: string, at?: PluginCacheAt): Promise<Uint8Array | null>
   /** Store `bytes` under `key` in every layer the policy writes, where it is not already; empty bytes store nothing. */
-  put(key: string, bytes: Uint8Array): Promise<void>
+  put(key: string, bytes: Uint8Array, at?: PluginCacheAt): Promise<void>
   /** Whether some layer holds `key`; null when no layer could answer. */
-  has(key: string): Promise<boolean | null>
+  has(key: string, at?: PluginCacheAt): Promise<boolean | null>
   /**
    * The subset of `keys` some layer holds, in one probe per layer; null
    * when a readable remote has no batch probe: ask `get` one at a time.
    */
-  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  hasMany(keys: readonly string[], at?: PluginCacheAt): Promise<Set<string> | null>
   /**
    * What core kept of a run under `name` (a `log` or `outputs` name its
    * `RunReport` hands `teardown`), from the first readable remote holding
@@ -89,14 +102,14 @@ async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint
  * `plugin`'s view of the cache. The local store never knows a scope
  * (owner, 2026-10-17): it keeps every entry under its name's key. A scoped
  * run reads a remote under the default key, then the scope's, and writes
- * a remote only under the scope's.
+ * a remote only under the scope's. A request names the bucket `at` says,
+ * else none.
  */
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache {
   const { db, policy, scope } = host
   const readers = host.remotes.filter((r) => r.read)
   const writers = host.remotes.filter((r) => r.write)
   const at: RemoteKey = scope === undefined ? {} : { scope }
-  const atOf = (key: string, name: string): RemoteKey => (key === entryKey(plugin, name) ? {} : at)
   const reads = (name: string): string[] => {
     const key = entryKey(plugin, name)
     return scope === undefined ? [key] : [key, scopedKey(scope, key)]
@@ -105,6 +118,8 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
     const key = entryKey(plugin, name)
     return scope === undefined ? key : scopedKey(scope, key)
   }
+  const remoteAt = (a?: PluginCacheAt): RemoteKey =>
+    a?.scope === undefined ? { scope: null } : a.scope === 'trusted' ? {} : { scope: a.scope }
 
   const localGet = (key: string): Uint8Array | null => {
     if (!policy.localRead) return null
@@ -143,7 +158,9 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
   }
 
   return {
-    async get(name) {
+    scope,
+
+    async get(name, a) {
       const local = entryKey(plugin, name)
       const hit = localGet(local)
       if (hit !== null) return hit
@@ -151,7 +168,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       for (const { remote } of readers) {
         for (const key of keys) {
           try {
-            const got = await remote.get(key, atOf(key, name))
+            const got = await remote.get(key, remoteAt(a))
             if (got === null) continue
             const bytes = await capped(got.body)
             if (bytes === null) continue
@@ -165,27 +182,27 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       return null
     },
 
-    async put(name, bytes) {
+    async put(name, bytes, a) {
       if (bytes.byteLength === 0 || bytes.byteLength > PLUGIN_ENTRY_MAX_BYTES) return
       const key = writeKey(name)
       if (policy.localWrite) localPut(entryKey(plugin, name), bytes)
       for (const { remote } of writers) {
         try {
-          await remote.put(key, new Blob([bytes]), { durationMs: 0, ...at })
+          await remote.put(key, new Blob([bytes]), { durationMs: 0, ...remoteAt(a) })
         } catch {
           // the other layers still keep it
         }
       }
     },
 
-    async has(name) {
+    async has(name, a) {
       if (localHas([entryKey(plugin, name)]).size > 0) return true
       const keys = reads(name)
       let answered = policy.localRead
       for (const { remote } of readers) {
         for (const key of keys) {
           try {
-            if (await remote.has(key, atOf(key, name))) return true
+            if (await remote.has(key, remoteAt(a))) return true
             answered = true
           } catch {
             // no answer from this remote
@@ -195,7 +212,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       return answered ? false : null
     },
 
-    async hasMany(names) {
+    async hasMany(names, a) {
       const byKey = new Map<string, string>()
       for (const name of names) for (const key of reads(name)) byKey.set(key, name)
       const keys = [...byKey.keys()]
@@ -208,7 +225,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
         try {
           const got: unknown = await remote.hasMany(
             ask,
-            ask.map((k) => atOf(k, byKey.get(k)!)),
+            ask.map(() => remoteAt(a)),
           )
           if (!(got instanceof Set)) return null
           for (const key of got) if (byKey.has(key as string)) found.add(byKey.get(key as string)!)
@@ -239,6 +256,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
 
 /** A cache with no layer: every answer absent. What a context built outside a run holds. */
 export const absentPluginCache: PluginCache = {
+  scope: undefined,
   get: async () => null,
   put: async () => {},
   has: async () => null,

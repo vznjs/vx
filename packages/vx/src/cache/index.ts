@@ -95,6 +95,7 @@ export {
   pluginCache,
   PLUGIN_ENTRY_MAX_BYTES,
   type PluginCache,
+  type PluginCacheAt,
 } from './plugin-cache.js'
 export { packRunOutputs, putRunEntry, runEntryName, writesRunStore } from './run-store.js'
 export { branchSource } from './run-history.js'

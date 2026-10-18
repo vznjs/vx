@@ -156,6 +156,11 @@ describe('NxRemoteCache against the spec server', () => {
     await c.has('a0c2', at)
     expect([scope(-3), scope(-2), scope(-1)]).toEqual([at.scope, at.scope, at.scope])
     expect(new URL(srv.seen.at(-1)!.url).pathname).toBe('/v1/cache/a0c2')
+    // A plugin entry naming no bucket sends no header: the server layers.
+    await c.put('a0c3', new Blob(['x']), { durationMs: 1, scope: null })
+    await c.get('a0c3', { scope: null })
+    await c.has('a0c3', { scope: null })
+    expect([scope(-3), scope(-2), scope(-1)]).toEqual([undefined, undefined, undefined])
   })
 
   // Core asks `has` only for a `--dry` prediction; no `get` follows it.

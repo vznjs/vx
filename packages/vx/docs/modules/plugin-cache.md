@@ -12,11 +12,15 @@ is its first user.
 
 ```ts
 export const PLUGIN_ENTRY_MAX_BYTES = 1048576
+export interface PluginCacheAt {
+  readonly scope?: string
+} // 'trusted' or a branch scope
 export interface PluginCache {
-  get(key: string): Promise<Uint8Array | null>
-  put(key: string, bytes: Uint8Array): Promise<void>
-  has(key: string): Promise<boolean | null>
-  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  readonly scope: string | undefined // the run's branch scope
+  get(key: string, at?: PluginCacheAt): Promise<Uint8Array | null>
+  put(key: string, bytes: Uint8Array, at?: PluginCacheAt): Promise<void>
+  has(key: string, at?: PluginCacheAt): Promise<boolean | null>
+  hasMany(keys: readonly string[], at?: PluginCacheAt): Promise<Set<string> | null>
   getRun(name: string): Promise<Uint8Array | null> // run bytes core kept (run-store.ts), first readable remote, uncapped
 }
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache
@@ -48,7 +52,10 @@ export function packRunOutputs(
   remote's policy (the run's) gates it. The local store keeps every
   entry under its name's key. A scoped run reads a remote under the
   default key, then the scope's (`scopedKey`), and writes a remote only
-  under the scope's.
+  under the scope's. Such a request names no bucket (`RemoteKey.scope`
+  null, no `x-vx-cache-scope`): the server layers (M, 2026-10-18). A
+  plugin that knows the bucket passes `at: { scope }` (`'trusted'` or the
+  branch scope), sent as the header; the keys stay the same.
 - **Immutable.** A local write is `INSERT OR IGNORE`; a remote write
   asks `has` first and skips a present key.
 - **Bounded.** An entry is at most `PLUGIN_ENTRY_MAX_BYTES`: a bigger

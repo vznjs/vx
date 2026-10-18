@@ -78,12 +78,13 @@ export interface RemoteOpenContext extends PluginSecrets {
 
 /**
  * Where a remote call's key lives: `scope` names the branch scope a scoped
- * key was derived in (`scopedKey`), absent for a task's own key. The key
- * alone is enough; a backend that keeps one store per scope may use it to
- * go straight to that store. turboCache(), nxCache() and vx-reapi ignore it.
+ * key was derived in (`scopedKey`), absent for a task's own key, null when
+ * the request names no bucket and the server layers (a plugin entry,
+ * `ctx.cache`). The key alone is enough; a backend that keeps one store
+ * per scope may use it to go straight to that store.
  */
 export interface RemoteKey {
-  readonly scope?: string
+  readonly scope?: string | null
 }
 
 /**

@@ -1090,11 +1090,16 @@ export interface Plugin {
 }
 == type PluginCache (src/cache/plugin-cache.ts)
 export interface PluginCache {
-  get(key: string): Promise<Uint8Array | null>
-  put(key: string, bytes: Uint8Array): Promise<void>
-  has(key: string): Promise<boolean | null>
-  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  readonly scope: string | undefined
+  get(key: string, at?: PluginCacheAt): Promise<Uint8Array | null>
+  put(key: string, bytes: Uint8Array, at?: PluginCacheAt): Promise<void>
+  has(key: string, at?: PluginCacheAt): Promise<boolean | null>
+  hasMany(keys: readonly string[], at?: PluginCacheAt): Promise<Set<string> | null>
   getRun(name: string): Promise<Uint8Array | null>
+}
+== type PluginCacheAt (src/cache/plugin-cache.ts)
+export interface PluginCacheAt {
+  readonly scope?: string | undefined
 }
 == type PluginCommand (src/orchestrator/plugin.ts)
 export interface PluginCommand {
@@ -1250,7 +1255,7 @@ export interface RemoteCacheLayer {
 }
 == type RemoteKey (src/cache/layered-cache.ts)
 export interface RemoteKey {
-  readonly scope?: string
+  readonly scope?: string | null
 }
 == type RemoteKeyTraffic (src/cache/cache.ts)
 export interface RemoteKeyTraffic {

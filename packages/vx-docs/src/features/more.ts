@@ -1598,7 +1598,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Point vx at the remote cache server you already run.',
     body: [
       'Switching runners should not mean switching cache servers. `turboCache()` talks to any server with Turbo’s artifacts API, Vercel’s included, and `nxCache()` to Nx’s self-hosted cache spec.',
-      'Your server stays; vx stores its own entries in it. Each request names its bucket in an `x-vx-cache-scope` header, `trusted` or the branch scope, so a server that keeps one per branch need not guess.',
+      'Your server stays; vx stores its own entries in it. Each request names its bucket in an `x-vx-cache-scope` header, `trusted` or the branch scope, so a server that keeps one per branch need not guess; a plugin entry names one only when the plugin knows it.',
     ],
     example: {
       lang: 'text',

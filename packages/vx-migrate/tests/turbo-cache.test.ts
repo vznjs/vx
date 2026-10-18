@@ -393,6 +393,16 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await c.hasMany(['a0c1', 'a0c2', 'a0c3'], [{}, at, at])).toEqual(
       new Set(['a0c1', 'a0c2']),
     )
+    // A plugin entry naming no bucket sends no header: the server layers.
+    const none = { scope: null }
+    const mark = srv.seen.length
+    await c.put('a0c4', new Blob(['x']), { durationMs: 1, ...none })
+    await c.get('a0c4', none)
+    expect(srv.seen.slice(mark).map((r) => r.headers['x-vx-cache-scope'])).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ])
   })
 
   // Turbo's API client sends a team id only in Vercel's `team_` form; a

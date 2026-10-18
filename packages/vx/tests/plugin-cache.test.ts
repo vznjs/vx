@@ -39,27 +39,30 @@ function wire(opts: { batch?: boolean; fail?: boolean } = {}): Wire {
   const w: Wire = {
     store,
     calls,
-    async has(h) {
-      calls.push(`has ${h}`)
+    async has(h, at) {
+      calls.push(`has ${h}${typeof at?.scope === 'string' ? ` @${at.scope}` : ''}`)
       boom()
       return store.has(h)
     },
-    async get(h) {
-      calls.push(`get ${h}`)
+    async get(h, at) {
+      calls.push(`get ${h}${typeof at?.scope === 'string' ? ` @${at.scope}` : ''}`)
       boom()
       const b = store.get(h)
       return b === undefined ? null : { body: new Blob([b]), durationMs: undefined }
     },
     // The seam's contract: a put of a stored key keeps the stored bytes.
-    async put(h, body) {
-      calls.push(`put ${h}`)
+    async put(h, body, meta) {
+      calls.push(`put ${h}${typeof meta.scope === 'string' ? ` @${meta.scope}` : ''}`)
       boom()
       if (!store.has(h)) store.set(h, new Uint8Array(await body.arrayBuffer()))
     },
   }
   if (opts.batch) {
-    w.hasMany = async (hs) => {
-      calls.push(`hasMany ${hs.length}`)
+    w.hasMany = async (hs, at) => {
+      const scopes = (at ?? []).flatMap((k) =>
+        typeof k.scope === 'string' ? [` @${k.scope}`] : [],
+      )
+      calls.push(`hasMany ${hs.length}${scopes.join('')}`)
       boom()
       return new Set(hs.filter((h) => store.has(h)))
     }
@@ -205,6 +208,41 @@ describe('ctx.cache', () => {
       scope: undefined,
     })
     expect(await other.get('mine')).toBeNull()
+  })
+
+  it('a scoped run sends no scope header for a plugin entry', async () => {
+    const remote = wire({ batch: true })
+    const scoped = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: { ...FULL, localRead: false },
+      remotes: [remoteOf(remote)],
+      scope: 'pr-1',
+    })
+    await scoped.put('x', bytes('pr'))
+    await scoped.get('y')
+    await scoped.has('y')
+    await scoped.hasMany(['y'])
+    expect(remote.calls.filter((c) => c.includes('@'))).toEqual([])
+  })
+
+  it('a plugin names the bucket it knows; the keys stay the run’s', async () => {
+    const remote = wire()
+    const scoped = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: { ...FULL, localRead: false },
+      remotes: [remoteOf(remote)],
+      scope: 'pr-1',
+    })
+    await scoped.get('t', { scope: 'trusted' })
+    await scoped.put('b', bytes('pr'), { scope: scoped.scope })
+    const t = xxh3hex('vx-plugin\0org/a\0t')
+    const b = xxh3hex('vx-plugin\0org/a\0b')
+    // `trusted` is the default bucket: a key the wire sends no scope for.
+    expect(remote.calls).toEqual([
+      `get ${t}`,
+      `get ${xxh3hex(`vx-cache-scope\0pr-1\0${t}`)}`,
+      `put ${xxh3hex(`vx-cache-scope\0pr-1\0${b}`)} @pr-1`,
+    ])
   })
 
   it('hasMany is one probe per layer, and null when a remote cannot batch', async () => {

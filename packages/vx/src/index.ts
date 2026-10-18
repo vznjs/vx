@@ -83,6 +83,7 @@ export { Cache } from './cache/index.js'
 export type {
   CacheLayer,
   PluginCache,
+  PluginCacheAt,
   RemoteCacheLayer,
   RemoteKey,
   RemoteOpenContext,

@@ -1443,11 +1443,28 @@ What a plugin's `ctx.cache` offers. Keys are the plugin's own names.
 
 ```ts
 export interface PluginCache {
-  get(key: string): Promise<Uint8Array | null>
-  put(key: string, bytes: Uint8Array): Promise<void>
-  has(key: string): Promise<boolean | null>
-  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  readonly scope: string | undefined
+  get(key: string, at?: PluginCacheAt): Promise<Uint8Array | null>
+  put(key: string, bytes: Uint8Array, at?: PluginCacheAt): Promise<void>
+  has(key: string, at?: PluginCacheAt): Promise<boolean | null>
+  hasMany(keys: readonly string[], at?: PluginCacheAt): Promise<Set<string> | null>
   getRun(name: string): Promise<Uint8Array | null>
+}
+```
+
+## `PluginCacheAt`
+
+type · `src/cache/plugin-cache.ts`
+
+The bucket a plugin says its entry is in (M, 2026-10-18), sent as each
+request's `x-vx-cache-scope`: `'trusted'` when it knows the entry is
+the base branch's, the branch scope (`ctx.cache.scope`) when it knows
+it is the branch's. Left out, the request names none and the server
+layers. Keys never follow it.
+
+```ts
+export interface PluginCacheAt {
+  readonly scope?: string | undefined
 }
 ```
 
@@ -1827,13 +1844,14 @@ export interface RemoteCacheLayer {
 type · `src/cache/layered-cache.ts`
 
 Where a remote call's key lives: `scope` names the branch scope a scoped
-key was derived in (`scopedKey`), absent for a task's own key. The key
-alone is enough; a backend that keeps one store per scope may use it to
-go straight to that store. turboCache(), nxCache() and vx-reapi ignore it.
+key was derived in (`scopedKey`), absent for a task's own key, null when
+the request names no bucket and the server layers (a plugin entry,
+`ctx.cache`). The key alone is enough; a backend that keeps one store
+per scope may use it to go straight to that store.
 
 ```ts
 export interface RemoteKey {
-  readonly scope?: string
+  readonly scope?: string | null
 }
 ```
 
