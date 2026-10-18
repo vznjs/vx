@@ -400,7 +400,7 @@ describe('8: prune over inline artifacts', () => {
       await expect(cache.prune({ maxBytes: two })).rejects.toThrow('refused')
       expect(isInline(cache, 'h1')).toBe(true)
       db.exec('DROP TRIGGER refuse')
-      expect((await cache.evictIfDue({ maxBytes: two }))?.evicted).toBe(1)
+      expect((await cache.prune({ maxBytes: two })).evicted).toBe(1)
       expect([storedArtifact(cache, 'h1'), await cache.get('h1'), isInline(cache, 'h2')]).toEqual([
         null,
         null,

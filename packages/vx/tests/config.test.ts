@@ -276,8 +276,8 @@ describe('defineWorkspace', () => {
     defineWorkspace({ plugins: [], run: { concurency: 4 } })
     // @ts-expect-error Turbo's `pipeline` is not a WorkspaceConfig key.
     defineWorkspace({ cache: { dir: '.vx' }, pipeline: {} })
-    // @ts-expect-error `maxAge` is not a cache.retention key.
-    defineWorkspace({ cache: { retention: { olderThan: '7d', maxAge: '1d' } } })
+    // @ts-expect-error `severty` is a typo of `severity`.
+    defineWorkspace({ cache: { inputStability: { strategy: 'immutable', severty: 'warn' } } })
     // @ts-expect-error `exclusiveOutput` is a typo of `exclusiveOutputs` (D-155).
     defineWorkspace({ run: { rules: { exclusiveOutput: false } } })
     // @ts-expect-error a duration carries its unit.
@@ -295,7 +295,6 @@ describe('defineWorkspace', () => {
       },
       cache: {
         dir: '.vx',
-        retention: { olderThan: '7d', maxSize: '1g' },
         policy: 'local:rw',
         download: 'all',
         inputStability: { strategy: 'mutable', severity: 'error' },

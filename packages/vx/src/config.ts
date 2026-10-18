@@ -80,15 +80,6 @@ export interface CacheSettings {
    */
   dir?: string
   /**
-   * Evict from the local cache at the end of every run, whatever its
-   * policy (a remote hit is ingested under any), by the same policy
-   * `vx cache clean` takes as flags: entries not used for `olderThan`
-   * (`'30d'`, `'12h'`), then least-recently-used entries until the cache
-   * is under `maxSize` (`'10GB'`, `'500MB'`). Either or both. Omitted →
-   * nothing is evicted unless you run `vx cache clean`.
-   */
-  retention?: { olderThan?: Duration; maxSize?: string }
-  /**
    * Which layers a run reads and writes (`'local:rw,remote:r'`; a layer it
    * leaves out stays on); `--no-cache` and `--force` still apply on top.
    * Omitted → every layer reads and writes. The local layer is always read
@@ -801,7 +792,6 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         rules?: Known<At<At<T, 'run'>, 'rules'>, WorkspaceRules>
       }
       cache?: Known<At<T, 'cache'>, CacheSettings> & {
-        retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
         inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
       }
       lock?: Known<At<T, 'lock'>, LockSettings>

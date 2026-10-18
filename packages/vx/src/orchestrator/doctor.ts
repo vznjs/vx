@@ -18,7 +18,6 @@ import {
   isUserError,
   machineMemoryBytes,
   machineParallelism,
-  parseSize,
   treeBytes,
 } from '../util/index.js'
 import { vxPath } from '../handoff.js'
@@ -99,8 +98,6 @@ export interface InfoFacts {
     string,
     { value: string | number | boolean | null; source: 'env' | 'workspace' | 'default' }
   >
-  /** `cache.retention`, with `maxSize` in bytes; null when none is set. */
-  cacheRetention: { olderThan?: string; maxSize?: string; maxBytes?: number } | null
   orphans: { artifacts: number; bytes: number }
   runs24h: number
   hits24h: number
@@ -261,7 +258,6 @@ async function collectWorkspaceInfo(
     cacheEntries: stats.entryCount,
     cacheBytes: stats.totalBytes,
     settings: settingsFact(workspaceConfig),
-    cacheRetention: retentionFact(workspaceConfig),
     // A row-less artifact is indexed again only when its task asks for its
     // key; the rest only `vx cache clean` reclaims (after an upgrade's
     // schema reset, most often).
@@ -394,17 +390,4 @@ function settingsFact(config: WorkspaceConfig | null): InfoFacts['settings'] {
           : { value: null, source: 'default' }
   }
   return out
-}
-
-function retentionFact(config: WorkspaceConfig | null): InfoFacts['cacheRetention'] {
-  const raw = (path: string): string | undefined =>
-    process.env[envName(path)] || (atPath(config, path) as string | undefined)
-  const olderThan = raw('cache.retention.olderThan')
-  const maxSize = raw('cache.retention.maxSize')
-  if (olderThan === undefined && maxSize === undefined) return null
-  return {
-    ...(olderThan !== undefined ? { olderThan } : {}),
-    // Validated before the run (env) or at load (workspace), so it parses.
-    ...(maxSize !== undefined ? { maxSize, maxBytes: parseSize(maxSize)! } : {}),
-  }
 }

@@ -26,14 +26,11 @@
 @vzn/vx-migrate NX_BASE
 @vzn/vx-migrate NX_DAEMON
 @vzn/vx-migrate NX_LOAD_DOT_ENV_FILES
-@vzn/vx-migrate NX_MAX_CACHE_SIZE
 @vzn/vx-migrate NX_PARALLEL
 @vzn/vx-migrate NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN
 @vzn/vx-migrate NX_SELF_HOSTED_REMOTE_CACHE_SERVER
 @vzn/vx-migrate NX_VERBOSE_LOGGING
 @vzn/vx-migrate TURBO_API
-@vzn/vx-migrate TURBO_CACHE_MAX_AGE
-@vzn/vx-migrate TURBO_CACHE_MAX_SIZE
 @vzn/vx-migrate TURBO_CI_VENDOR_ENV_KEY
 @vzn/vx-migrate TURBO_CONCURRENCY
 @vzn/vx-migrate TURBO_ENV_MODE

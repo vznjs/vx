@@ -159,7 +159,7 @@ beforeAll(async () => {
   // A plugin, so \`vx info\` lists one.
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}, ${edgesSource({ app: ['lib'] })}], cache: { retention: { olderThan: '3650d', maxSize: '10G' } } }\n`,
+    `${PLUGIN_IMPORT}export default { plugins: [${pluginSource('noop', '{ setup() {} }')}, ${edgesSource({ app: ['lib'] })}] }\n`,
   )
   expect(vx(['run', 'build', '--filter', 'app...']).code).toBe(0)
   expect(vx(['run', 'lib#stamp']).code).toBe(0)
@@ -378,7 +378,6 @@ describe('each schema object is its source type', () => {
         cacheEntries: true,
         cacheBytes: true,
         settings: true,
-        cacheRetention: true,
         orphans: true,
         runs24h: true,
         hits24h: true,

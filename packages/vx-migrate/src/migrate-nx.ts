@@ -5,7 +5,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { type GeneratedProject, type MigrationFormat, type MigrationPlan } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
-import { mapNxWorkspace, nxSizeText, parseNxGraph, readNxJson } from './nx/nx-map.js'
+import { mapNxWorkspace, parseNxGraph, readNxJson } from './nx/nx-map.js'
 import { spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { adoptedToolNotes } from './workspace-notes.js'
 import { relPosix } from './paths.js'
@@ -165,7 +165,7 @@ async function unlistedProjects(
 /** A `.vx/workspace.ts` field nx.json's run settings call for. */
 export interface NxWorkspaceField {
   /** The setting's path: its group, then its field, or a top-level key. */
-  readonly field: 'run.concurrency' | 'baseBranch' | 'cache.retention'
+  readonly field: 'run.concurrency' | 'baseBranch'
   /** The value as TypeScript source; undefined when vx cannot read it. */
   readonly source: string | undefined
   /** What to tell a user whose workspace file this run does not write. */
@@ -187,7 +187,6 @@ export function nxWorkspaceFields(json: Record<string, unknown> | undefined): Nx
         tasksRunnerOptions?: { default?: { options?: { parallel?: unknown } } }
         defaultBase?: unknown
         affected?: { defaultBase?: unknown }
-        maxCacheSize?: unknown
       }
     | undefined
   const out: NxWorkspaceField[] = []
@@ -207,12 +206,5 @@ export function nxWorkspaceFields(json: Record<string, unknown> | undefined): Nx
       note: `nx.json \`defaultBase\` ${JSON.stringify(base.trim())}: add \`baseBranch: ${JSON.stringify(branch)}\` to .vx/workspace.ts`,
     })
   }
-  const size = nxSizeText(nx?.maxCacheSize)
-  if (size !== undefined)
-    out.push({
-      field: 'cache.retention',
-      source: /^\d+[KMG]?B$/.test(size) ? `{ maxSize: ${quoted(size)} }` : undefined,
-      note: `nx.json \`maxCacheSize\`: add \`cache: { retention: { maxSize: ${JSON.stringify(size)} } }\` to .vx/workspace.ts`,
-    })
   return out
 }

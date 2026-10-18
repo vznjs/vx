@@ -623,7 +623,7 @@ async function runOnBus(
   // `vx cache clean` can evict entries the run just hit. Once-only
   // because the normal path closes before the persistent-task wait —
   // holding the handle open for a dev server's whole lifetime would be
-  // worse — and because close() re-runs its retention DELETEs.
+  // worse.
   let cacheClosed = false
   const closeCache = async (): Promise<void> => {
     if (cacheClosed) return
@@ -1355,9 +1355,6 @@ async function runOnBus(
     // The miss path's output-directory snapshots first (miss-save.ts).
     await step('vx:snapshots', () => recordOutputDirSnapshots(cache, outputDirSnapshots))
     mark('output dir snapshots')
-    // Not on a stopped run: one stopped while it waited on another run's
-    // lock never held it, and its prune evicted under that run (item 858).
-    if (!stop.signal.aborted) await step('vx:retention', () => applyCacheRetention(prepared))
     // A plugin hears the run until its teardown and nothing after: released
     // only in the finally, its handlers heard a kept server through the
     // whole keep-alive wait below (C-66). Idempotent; the finally's stay.
@@ -1491,27 +1488,6 @@ async function runOnBus(
     await stop.aborting?.catch(() => {})
     // Last: a process signal waits for this before it exits.
     stop.left()
-  }
-}
-
-/**
- * `cache.retention`, after every save and upload of this run
- * has landed (so nothing this run wrote is mid-flight) and before the cache
- * closes. Housekeeping, not the run's work: silent, and a failure is never
- * a failed run. Declared nowhere → one property read.
- */
-async function applyCacheRetention(prepared: PreparedRun): Promise<void> {
-  const ws = prepared.workspaceConfig
-  const maxAgeMs = resolveSetting('cache.retention.olderThan', ws).value as number | undefined
-  const maxBytes = resolveSetting('cache.retention.maxSize', ws).value as number | undefined
-  if (maxAgeMs === undefined && maxBytes === undefined) return
-  try {
-    await prepared.localCache.evictIfDue({
-      ...(maxAgeMs !== undefined ? { maxAgeMs } : {}),
-      ...(maxBytes !== undefined ? { maxBytes } : {}),
-    })
-  } catch {
-    // Housekeeping says nothing (owner): the next due run tries again.
   }
 }
 

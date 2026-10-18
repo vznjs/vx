@@ -4,8 +4,7 @@
 
 Implements `vx cache clean`, which trims with a bound and clears with
 none. Both parsers are `util/size.ts`'s,
-re-exported here: the workspace's `cache.retention` field reads the
-same spellings the flags do. Drives
+re-exported here. Drives
 `Cache.prune({...})` from `src/cache/cache.ts` against the cache
 directory a run would use.
 

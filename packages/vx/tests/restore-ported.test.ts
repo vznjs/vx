@@ -1,7 +1,7 @@
 // Turbo's and Nx's restore and output tests that vx had no row for, ported
 // (Growth's map, org/growth/parity/restore-tests, 2026-10-16). Each test
-// names its upstream source; the cache retention ones are in
-// cache-retention.test.ts, the declared-outputs gate in
+// names its upstream source; the cache prune ones are in
+// cache-prune-policy.test.ts, the declared-outputs gate in
 // restore-declared-only.test.ts, the swapped parent in
 // restore-link-swap.test.ts.
 

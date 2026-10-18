@@ -190,10 +190,6 @@ export class Cache implements CacheLayer {
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
-  async evictIfDue(
-    policy: { maxAgeMs?: number; maxBytes?: number },
-    now: number = Date.now(),
-  ): Promise<PruneResult | null>
   async prune(options: PruneOptions): Promise<PruneResult>
   async orphanStats(): Promise<{ orphans: number; orphanBytes: number }>
   close(): void
@@ -347,7 +343,6 @@ type · `src/config.ts`
 ```ts
 export interface CacheSettings {
   dir?: string
-  retention?: { olderThan?: Duration; maxSize?: string }
   policy?: string
   download?: 'all' | 'toplevel' | 'none'
   inputStability?: InputStability
@@ -477,7 +472,6 @@ export function defineWorkspace<T extends WorkspaceConfig>(
         rules?: Known<At<At<T, 'run'>, 'rules'>, WorkspaceRules>
       }
       cache?: Known<At<T, 'cache'>, CacheSettings> & {
-        retention?: Known<At<At<T, 'cache'>, 'retention'>, NonNullable<CacheSettings['retention']>>
         inputStability?: Known<At<At<T, 'cache'>, 'inputStability'>, InputStability>
       }
       lock?: Known<At<T, 'lock'>, LockSettings>

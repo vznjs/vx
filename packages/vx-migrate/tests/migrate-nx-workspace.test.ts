@@ -1,4 +1,4 @@
-// `nx()` applies nx.json's `parallel`, `defaultBase` and `maxCacheSize`
+// `nx()` applies nx.json's `parallel` and `defaultBase`
 // live; a migration writes them into the `.vx/workspace.ts` it writes, and
 // names each field to add to one already there. Silent, nx-examples'
 // `parallel: 1` ran on every core once migrated; nartc/mapper's migration
@@ -28,10 +28,9 @@ const notes = async (nxJson: unknown): Promise<string[]> => {
 }
 
 it('names each nx.json run setting the written workspace file needs', async () => {
-  expect(await notes({ parallel: 1, defaultBase: 'master', maxCacheSize: '10GB' })).toEqual([
+  expect(await notes({ parallel: 1, defaultBase: 'master' })).toEqual([
     'nx.json `parallel: 1`: add `run: { concurrency: 1 }` to .vx/workspace.ts',
     'nx.json `defaultBase` "master": add `baseBranch: "master"` to .vx/workspace.ts',
-    'nx.json `maxCacheSize`: add `cache: { retention: { maxSize: "10GB" } }` to .vx/workspace.ts',
   ])
   // The legacy spellings Nx still reads.
   expect(
@@ -43,20 +42,17 @@ it('names each nx.json run setting the written workspace file needs', async () =
     'nx.json `parallel: 3`: add `run: { concurrency: 3 }` to .vx/workspace.ts',
     'nx.json `defaultBase` "develop": add `baseBranch: "develop"` to .vx/workspace.ts',
   ])
-  // CONTROL: none set, `0` is no cap, and the environment is not read.
+  // CONTROL: none set, and the environment is not read.
   process.env['NX_PARALLEL'] = '2'
   try {
-    expect(await notes({ maxCacheSize: '0' })).toEqual([])
+    expect(await notes({})).toEqual([])
   } finally {
     delete process.env['NX_PARALLEL']
   }
 })
 
-it('writes them into the .vx/workspace.ts it writes; one it cannot read stays a note', async () => {
-  await writeFile(
-    path.join(root, 'nx.json'),
-    JSON.stringify({ parallel: 2, defaultBase: 'main', maxCacheSize: '10GB' }),
-  )
+it('writes them into the .vx/workspace.ts it writes', async () => {
+  await writeFile(path.join(root, 'nx.json'), JSON.stringify({ parallel: 2, defaultBase: 'main' }))
   await writeFile(
     path.join(root, 'package.json'),
     '{"name":"r","private":true,"workspaces":["libs/*"]}\n',
@@ -83,19 +79,8 @@ it('writes them into the .vx/workspace.ts it writes; one it cannot read stays a 
   // Beside it, the ignore that keeps only the machine-local cache and staging out of git.
   expect(await readFile(path.join(root, '.vx/.gitignore'), 'utf8')).toBe('/cache\n/tmp\n')
   expect([ws.match(/^ {2}\w+: .*,$/gm), out.includes('to .vx/workspace.ts')]).toEqual([
-    [
-      "  baseBranch: 'main',",
-      '  run: { concurrency: 2 },',
-      "  cache: { retention: { maxSize: '10GB' } },",
-    ],
+    ["  baseBranch: 'main',", '  run: { concurrency: 2 },'],
     false,
-  ])
-  // A size vx cannot read is not written: the note keeps it.
-  await writeFile(path.join(root, 'nx.json'), JSON.stringify({ maxCacheSize: '1.5 TB' }))
-  expect(
-    (await migrateNx(root, [], 'ts', undefined, true)).notes.filter((n) => n.startsWith('nx.json')),
-  ).toEqual([
-    'nx.json `maxCacheSize`: add `cache: { retention: { maxSize: "1.5 TB" } }` to .vx/workspace.ts',
   ])
 })
 

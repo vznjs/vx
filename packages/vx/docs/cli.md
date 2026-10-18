@@ -1417,6 +1417,9 @@ Evict old or oversized cache entries. Operates on the entries and
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
 
+A clean with a bound also drops run
+history and hash memos older than 30 days; a run never does.
+
 `clean` is the only `vx cache` subcommand: the statistics other runners
 put under a `cache` verb — the directory, the entry count, the size —
 are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
@@ -1435,10 +1438,8 @@ vx cache clean --global                     # Also clear every other repository'
 
 With no bound it clears the cache ([below](#with-no-bound-clear-the-cache)).
 Both bounds may be combined: age-based eviction runs first, then LRU eviction if the
-total is still over the size cap. The same policy runs unattended at
-the end of every run when `.vx/workspace.ts` declares
-`cacheRetention: { olderThan, maxSize }` (same spellings; see
-[schema](./schema.md)).
+total is still over the size cap. No run evicts anything: to bound the
+cache, run this from a schedule or CI.
 
 After eviction, prune sweeps the cache directory for **orphans**: a
 `<hash>.tar.zst` the index has no row for (a `SCHEMA_VERSION` bump
@@ -1459,10 +1460,7 @@ evicted total: they are on no disk, and counting them evicted real
 entries to make room for them (item 975). A row used within the hour
 is kept until a later prune, but its bytes are left out all the same
 (item 1081). The sweep runs on every prune, under
-either flag, and reports separately from the policy's evictions. A
-workspace's `cache.retention` runs it too, at the end of a run, at most
-once an hour even when nothing the index holds is due (the policy sums
-index rows, so orphans alone never make it due).
+either flag, and reports separately from the policy's evictions.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
@@ -2531,9 +2529,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   with its size on disk, or `none: the cache dir holds the entries` when
   the workspace names its cache dir. Before a first run it is the store a
   run would open. A bare `vx cache clean` frees both sizes.
-- `cache entries` counts the entries and their size; with a
-  `cacheRetention.maxSize` it reads against it (`812 (3.0 GB of 10 GB,
-30%)`), and a `cache retention` row says what each run's end evicts.
+- `cache entries` counts the entries and their size.
   Paths under the home directory print as `~/…`; the JSON keeps them
   absolute.
 - `cache policy` is the policy a `vx run` takes when no flag names one,
@@ -2565,8 +2561,7 @@ cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes
   dir holds the entries), `cacheStoreBytes` (on disk, null with no store), `cacheVersion`,
   `schemaVersion`, `cacheEntries`, `cacheBytes`, `settings` (every
   setting by path, `{ value, source }`, `source` one of `env` /
-  `workspace` / `default`, `value` null for the default), `cacheRetention`
-  (`{ olderThan, maxSize, maxBytes }`, each only when set, null when none is declared),
+  `workspace` / `default`, `value` null for the default),
   `orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
   runs, as the row), `restored24h` (of those hits, the ones that restored
   outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
@@ -2953,8 +2948,6 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_RUN_OUTPUT_LOGS`                | [`run.outputLogs`](schema.md#settings)                | Which task output the run prints. Chosen before the workspace loads, so flag and env only.                                                                                |
 | `VX_RUN_RULES_EXCLUSIVE_OUTPUTS`    | [`run.rules.exclusiveOutputs`](schema.md#settings)    | Refuse two tasks whose outputs overlap even when an edge orders them.                                                                                                     |
 | `VX_CACHE_DIR`                      | [`cache.dir`](schema.md#settings)                     | Where the cache lives, relative to the workspace root; named, it holds the whole cache.                                                                                   |
-| `VX_CACHE_RETENTION_MAX_SIZE`       | [`cache.retention.maxSize`](schema.md#settings)       | Evict least-recently-used entries at each run's end until the cache is under this (`'10GB'`).                                                                             |
-| `VX_CACHE_RETENTION_OLDER_THAN`     | [`cache.retention.olderThan`](schema.md#settings)     | Evict entries unused for this long at each run's end (`'30d'`).                                                                                                           |
 | `VX_CACHE_POLICY`                   | [`cache.policy`](schema.md#settings)                  | Which layers a run reads and writes (`'local:rw,remote:r'`); `--no-cache` and `--force` apply on top.                                                                     |
 | `VX_CACHE_SCOPE`                    | [`cache.scope`](schema.md#settings)                   | A branch's remote entries (`'vznjs/vx:feat-x'`): tasks the branch changed read the scope's key, the rest the default key; the local cache never uses it. Empty: no scope. |
 | `VX_CACHE_CONCURRENCY_DOWNLOAD`     | [`cache.concurrency.download`](schema.md#settings)    | Remote downloads at once.                                                                                                                                                 |
@@ -3111,8 +3104,7 @@ What a run has to say about one task rides that task's row; what it
 says about the run (a server that died, outputs left remote, a file
 `--profile` wrote, a history, upload, plugin or sandbox
 warning) prints above the footer: it prints once the run's closing work
-is done, the `VX_DEBUG_TIMING=1` table included. Cache housekeeping
-(`cache.retention`) prints nothing. Only a kept server's own output
+is done, the `VX_DEBUG_TIMING=1` table included. Only a kept server's own output
 follows it.
 
 **Narrow terminals.** The footer is 62 columns: its rule and 50-cell

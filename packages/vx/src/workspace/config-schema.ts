@@ -19,8 +19,6 @@ import {
   CORE_VERBS,
   nearest,
   normalizeGlob,
-  parseDuration,
-  parseSize,
   UserError,
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
@@ -203,15 +201,6 @@ function validateDependencyRules(value: unknown, where: string): void {
 /** `value` as the setting at `path` takes it, refused in `where`'s words. */
 function validateSettingValue(value: unknown, path: string, where: string): void {
   const { kind } = setting(path)
-  // The bound `vx cache clean` refuses too: each run would empty the cache,
-  // the entries it just saved included, so nothing ever hits (item 969).
-  if (
-    path === 'cache.retention.olderThan' &&
-    typeof value === 'string' &&
-    parseDuration(value) === 0
-  ) {
-    throw new UserError(`${where} of 0 evicts every entry after every run`)
-  }
   // A file's values are typed: a count or a switch is no string (only a
   // share of the cores is), as a variable's or a flag's must be.
   const untyped =
@@ -237,7 +226,6 @@ function validateSettingsExtra(config: WorkspaceConfig, configPath: string): voi
   }
   // `policy`'s grammar is the cache module's (`parseCachePolicy`), which
   // this module may not import: the run parses it before any task (prepare.ts).
-  if (config.cache?.retention !== undefined) validateRetention(config.cache.retention, configPath)
 }
 
 /**
@@ -248,30 +236,6 @@ function validateSettingsExtra(config: WorkspaceConfig, configPath: string): voi
  */
 function shown(v: unknown): string {
   return typeof v === 'bigint' ? `${v}n` : (JSON.stringify(v) ?? String(v))
-}
-
-function validateRetention(
-  retention: NonNullable<NonNullable<WorkspaceConfig['cache']>['retention']>,
-  configPath: string,
-): void {
-  const { olderThan, maxSize } = retention
-  // An empty object would load and evict nothing, which reads as a policy.
-  if (olderThan === undefined && maxSize === undefined) {
-    throw new UserError(
-      `${configPath}: \`cache.retention\` names neither \`olderThan\` nor \`maxSize\``,
-    )
-  }
-  // As for olderThan (item 969).
-  if (maxSize !== undefined && parseSize(maxSize) === 0) {
-    throw new UserError(
-      `${configPath}: \`cache.retention.maxSize\` of 0 evicts every entry after every run`,
-    )
-  }
-  if (maxSize !== undefined && /^\d+$/.test(maxSize)) {
-    throw new UserError(
-      `${configPath}: \`cache.retention.maxSize\` '${maxSize}' reads as ${maxSize} bytes — give a unit (e.g. '${maxSize}MB', '${maxSize}GB')`,
-    )
-  }
 }
 
 /** A `plugins` entry that stands for no plugin: `undefined`, `null` or `false`. */

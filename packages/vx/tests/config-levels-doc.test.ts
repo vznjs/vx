@@ -3,7 +3,7 @@
 // `config-types-schema.test.ts` holds the TypeScript types to it. This holds
 // the reference: docs/schema.md reprints each level's shape, as an
 // `interface` block (held to src/config.ts by schema-doc-drift) or an inline
-// object type (`cacheRetention?: { olderThan?: string; maxSize?: string }`),
+// object type,
 // with exactly the fields the record holds; and every interface it reprints
 // is one of those levels. A field the validator takes that no reprint shows
 // is a key users cannot find; a reprinted field it refuses is a key they

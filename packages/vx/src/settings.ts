@@ -117,18 +117,6 @@ export const SETTINGS: readonly Setting[] = [
     flag: { verb: 'run', name: '--cache-dir' },
   },
   {
-    path: 'cache.retention.maxSize',
-    kind: { type: 'size' },
-    default: 'none',
-    doc: "Evict least-recently-used entries at each run's end until the cache is under this (`'10GB'`).",
-  },
-  {
-    path: 'cache.retention.olderThan',
-    kind: { type: 'duration' },
-    default: 'none',
-    doc: "Evict entries unused for this long at each run's end (`'30d'`).",
-  },
-  {
     path: 'cache.policy',
     kind: { type: 'string' },
     default: 'every layer reads and writes',

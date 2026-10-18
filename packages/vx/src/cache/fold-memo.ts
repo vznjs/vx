@@ -43,16 +43,20 @@ export class FoldMemo {
     if (this.write) this.dirty.set(taskId, { probe, key })
   }
 
-  /** Write the folds this run made; rows a run has not rewritten for `cutoff` go. */
-  flush(cutoff: number, now: number = Date.now()): void {
+  /** Write the folds this run made. */
+  flush(now: number = Date.now()): void {
     if (this.dirty.size === 0) return
     const upsert = this.db.prepare(
       'INSERT OR REPLACE INTO fold_memo(task_id, probe, key, seen_at) VALUES (?, ?, ?, ?)',
     )
     this.db.transaction(() => {
       for (const [taskId, r] of this.dirty) upsert.run(taskId, r.probe, r.key, now)
-      this.db.prepare('DELETE FROM fold_memo WHERE seen_at < ?').run(cutoff)
     })()
     this.dirty.clear()
+  }
+
+  /** Rows no run has rewritten since `cutoff`. */
+  prune(cutoff: number): void {
+    this.db.prepare('DELETE FROM fold_memo WHERE seen_at < ?').run(cutoff)
   }
 }

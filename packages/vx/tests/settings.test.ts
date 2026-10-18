@@ -266,7 +266,6 @@ describe('parseSettingValue', () => {
     expect(parseSettingValue(timer, '500ms')).toBe(500)
     expect(parseSettingValue(timer, '2h')).toBe(7_200_000)
     expect(parseSettingValue(timer, '30d')).toBeNull()
-    expect(parseSettingValue(setting('cache.retention.olderThan').kind, '30d')).toBe(2_592_000_000)
   })
 })
 

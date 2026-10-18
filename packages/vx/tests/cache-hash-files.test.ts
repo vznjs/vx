@@ -290,16 +290,13 @@ describe('file_hashes retention', () => {
     ).map((r) => r.path)
   }
 
-  it('a close drops rows unseen for 30 days, at most once a day', async () => {
+  it('a prune drops rows unseen for 30 days; a close drops none', async () => {
     seed('/gone/old', Date.now() - 31 * DAY)
     seed('/kept/fresh', Date.now() - 29 * DAY)
     cache.close()
     cache = new Cache(path.join(dir, 'cache'), { read: true, write: true })
+    expect(paths()).toEqual(['/gone/old', '/kept/fresh'])
+    await cache.prune({ olderThanMs: 0 })
     expect(paths()).toEqual(['/kept/fresh'])
-    // The sweep's clock: a second close within the day scans nothing.
-    seed('/gone/later', Date.now() - 31 * DAY)
-    cache.close()
-    cache = new Cache(path.join(dir, 'cache'), { read: true, write: true })
-    expect(paths()).toEqual(['/gone/later', '/kept/fresh'])
   })
 })

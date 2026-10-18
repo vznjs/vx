@@ -22,8 +22,8 @@ and key derivation logic live here.
 - `fold-memo.ts` — `FoldMemo`: each task's last key over `fold_memo`, by
   a probe that is `foldHead` seeded into the task's `filesToken`
   (inputs.md). `computeTaskHash` reads a warm task's key back instead of
-  resolving and folding its files; rows are written at close, and a row
-  no run rewrote for 30 days goes.
+  resolving and folding its files; rows are written at close, and a prune
+  drops a row no run rewrote for 30 days.
 - `policy.ts` — `CachePolicy` (local/remote × read/write) and the
   `--cache-policy=<spec>` grammar.
 - `zstd.ts` — artifact framing: the declared-size gate against a
@@ -41,8 +41,8 @@ and key derivation logic live here.
   and the two proofs a hit runs before skipping a restore.
 - `run-history.ts` — `RunHistory`: `runs` + `invocations` writes (one
   transaction per run), the SQL binders, and the 30-day retention (run
-  on a writing handle's close only: a reading verb's `Cache.inspect` and
-  a dry-run prune delete nothing, item 1004).
+  by a prune only, never a run's close; a dry-run prune deletes nothing,
+  item 1004).
 - `schema.ts` — `createTables`: every table's DDL, the one place each is
   declared, with what each row means.
 - `cache.ts` — opening the index (`SCHEMA_VERSION` check and reset), the
@@ -696,13 +696,9 @@ Surfaced by `vx info`.
 
 - Doesn't garbage-collect old entries unasked. Eviction is
   `vx cache clean --older-than <d>` / `--max-size <s>` (calls into
-  `Cache.prune`), or the workspace's `cache.retention` at the end of a
-  run (`Cache.evictIfDue`); both sweep artifacts the index has no row
+  `Cache.prune`), never a run; it sweeps artifacts the index has no row
   for by the same policy, on file times, and temps once an hour old
-  (`docs/caching.md` § Storage layout). `evictIfDue` runs that sweep on its own when the
-  policy has nothing due but the last sweep (`schema_meta`
-  `orphans_swept_at`, stamped by every sweep) is an hour old: the
-  policy sums index rows, so orphans never make it due.
+  (`docs/caching.md` § Storage layout).
 - Doesn't verify an artifact it does not open: its `.vx-sum` (L-19) is
   checked on scan and restore only. The file existence check gates
   every hit; `restore

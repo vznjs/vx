@@ -11,7 +11,7 @@ excerpt: 'A build cache only grows unless something takes entries out. How vx ev
 Every cache miss in a monorepo adds an entry: the outputs of one task,
 packed and stored under its key. Nothing in that loop ever takes one out.
 Left alone, a busy repository's cache grows until the disk is full. vx
-gives you two ways to bound it and does the cleanup it can do on its own.
+gives you two ways to bound it.
 
 ## Two policies: age, then size
 
@@ -39,30 +39,21 @@ Durations take `s`, `m`, `h` and `d` (`30d`, `24h`). Sizes take `K`,
 `M`, `G` and `T` in powers of 1024, with an optional `B` or `iB` (`500M`,
 `1gb`, `32KiB`).
 
-## Set it once, forget it
+## Run it on a schedule
 
-The same policy can run by itself. Declare it in `.vx/workspace.ts`:
+No run evicts anything: cleanup at the end of every run made every run
+pay for it. Put the clean where it runs on its own, in a cron job or a
+scheduled CI workflow:
 
-```ts title=".vx/workspace.ts"
-import { defineWorkspace } from '@vzn/vx/config'
-
-export default defineWorkspace({
-  cache: { retention: { olderThan: '30d', maxSize: '10GB' } },
-})
+```sh frame="terminal"
+vx cache clean --older-than 30d --max-size 10G
 ```
 
-At the end of every run, after its saves and uploads have landed, vx
-applies that policy. It prints nothing: housekeeping is not the run's
-news. A run with nothing to evict pays one scan of the index. A
-cleanup that fails is silent and never fails the run, and a run stopped
-by Ctrl-C or an abort skips it.
-
 One thing to know about the size cap: it is least recently used first,
-so a `maxSize` smaller than one run's outputs evicts that run's own
+so a `--max-size` smaller than one run's outputs evicts that run's own
 entries. Set it above what a full build saves.
 
-`vx info` shows where you stand, as `812 (3.0 GB of 10 GB, 30%)`, and
-what each run's end will evict.
+`vx info` shows where you stand: the entry count and their size.
 
 ## Files no index knows
 

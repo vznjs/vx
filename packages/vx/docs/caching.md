@@ -1193,7 +1193,7 @@ has staged). Machines sharing a workspace over a network file system
 do not share a temp directory, so they do not share the lock.
 
 An eviction can still land between a hit's probe and its restore: a
-`vx cache clean` in another shell, or the `cache.retention` of another
+`vx cache clean` in another shell, or one run for another
 workspace that shares the `--cache-dir` (a different workspace, so a
 different lock), which cannot see this run's pending `accessed_at`
 bumps and reads its fresh hits as old. The restore then finds no
@@ -1546,9 +1546,7 @@ miss, and the save that follows replaces it. An inline artifact with no
 row is indexed the same way, from its bytes, in one transaction; a reset
 keeps the `artifacts` table, but deleting `store.db` or `cache.db` by
 hand takes the inline artifacts with it. A `.tmp-*` a crashed save
-left is never a hit. `vx cache clean` sweeps row-less files, and so does a run whose workspace declares `cache.retention`, at
-most once an hour (the sweep's clock is `schema_meta.orphans_swept_at`;
-the policy sums index rows, so orphans alone never make it due). A
+left is never a hit. `vx cache clean` sweeps row-less files. A
 row-less artifact may be in use: two vx versions share one store, and
 each open drops the other's rows. So the policy judges it as it judges a
 row, its file time standing for `accessed_at`: past `olderThan` it goes,
@@ -1598,7 +1596,7 @@ when its task next asks for its key (below).
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
-  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'orphans_swept_at', 'file_hashes_swept_at', 'store_dir'
+  key   TEXT PRIMARY KEY,  -- 'version', 'cache_version', 'store_dir'
   value TEXT NOT NULL
 );
 
@@ -1680,8 +1678,8 @@ CREATE INDEX runs_run_id     ON runs(run_id);
 -- The file-hash memo: a content hash per input file that git could not
 -- answer (untracked or dirty), keyed by the stat identity that proves
 -- the bytes unchanged. Machine-local; § Cache key derivation step 10.
--- A writing close drops rows unwritten for 30 days, at most once a day
--- (a memo miss is the whole cost of a dropped row; item 1082).
+-- A prune (`vx cache clean` with a bound) drops rows unwritten for
+-- 30 days (a memo miss is the whole cost of a dropped row; item 1082).
 CREATE TABLE file_hashes (
   path         TEXT PRIMARY KEY,
   mtime_ms     INTEGER NOT NULL,
@@ -1695,7 +1693,7 @@ CREATE TABLE file_hashes (
 -- v42: each task's last key by a probe of the fold up to its files and
 -- its files' git records, so a warm task's key is read back, not folded
 -- again (src/cache/fold-memo.ts). A pure memo: rows unwritten for 30 days
--- go at a writing close.
+-- go with a prune.
 CREATE TABLE fold_memo (
   task_id TEXT PRIMARY KEY,
   probe   TEXT NOT NULL,
@@ -1997,8 +1995,7 @@ The cache records the version it was written under
 (`schema_meta.cache_version`). After an upgrade every cached task
 misses once and re-saves, with nothing printed (owner, 2026-10-06: the
 cache is vx's to keep). The index survives, so the old entries stay
-until they age out under `vx cache clean --older-than` or
-`cache.retention`; no key derives to them again.
+until they age out under `vx cache clean --older-than`; no key derives to them again.
 
 Required when:
 

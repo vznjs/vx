@@ -21,13 +21,13 @@
   },
   {
     "key": "turbo.json cacheMaxAge",
-    "status": "mapped",
-    "reason": "turbo() fills `cache.retention.olderThan` when `.vx/workspace.ts` sets no retention; weeks become days, `\"0\"` is off; `TURBO_CACHE_MAX_AGE` wins over it."
+    "status": "not-supported",
+    "reason": "Ignored without a warning, as is `TURBO_CACHE_MAX_AGE`; no vx run evicts, `vx cache clean --older-than` does."
   },
   {
     "key": "turbo.json cacheMaxSize",
-    "status": "mapped",
-    "reason": "turbo() fills `cache.retention.maxSize` when `.vx/workspace.ts` sets no retention; `\"0\"` is off; `TURBO_CACHE_MAX_SIZE` wins over it."
+    "status": "not-supported",
+    "reason": "Ignored without a warning, as is `TURBO_CACHE_MAX_SIZE`; no vx run evicts, `vx cache clean --max-size` does."
   },
   {
     "key": "turbo.json concurrency",

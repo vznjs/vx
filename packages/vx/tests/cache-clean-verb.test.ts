@@ -83,6 +83,25 @@ describe('vx cache clean', () => {
     TIMEOUT,
   )
 
+  // nx#35329: a cache directory several workspaces share grew without bound.
+  it(
+    'evicts from a cache directory outside the workspace, named by --cache-dir',
+    async () => {
+      const outside = realpathSync(await mkdtemp(path.join(os.tmpdir(), 'vx-prune-shared-')))
+      try {
+        const flag = ['--cache-dir', outside]
+        expect((await vx(root, ['run', 'build', '--all', ...flag])).code).toBe(0)
+        expect(await storedKeys(outside)).toHaveLength(1)
+        const r = await vx(root, ['cache', 'clean', '--max-size', '1B', ...flag])
+        expect({ code: r.code, err: r.err }).toEqual({ code: 0, err: '' })
+        expect(await storedKeys(outside)).toEqual([])
+      } finally {
+        await rm(outside, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it(
     'outside a workspace it exits 1 naming why',
     async () => {

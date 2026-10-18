@@ -39,7 +39,6 @@ import {
   mapNxWorkspace,
   type NxExecutors,
   type NxGraph,
-  nxSizeText,
   parseNxGraph,
   readNxJson,
 } from './nx-map.js'
@@ -166,11 +165,6 @@ export function nx(options: NxPluginOptions = {}): VxPlugin {
               rules: { ...workspace.run?.rules, dependencies },
             }
         }
-        if (workspace.cache?.retention === undefined) {
-          const maxSize = await nxMaxCacheSize(root)
-          if (maxSize !== undefined)
-            workspace.cache = { ...workspace.cache, retention: { maxSize } }
-        }
       },
       // The package manager's members are projects, each with no vx.config
       // written. An integrated Nx repo keeps projects out of that list
@@ -292,24 +286,6 @@ async function nxDefaultBase(root: string): Promise<string | undefined> {
   const b = json?.defaultBase ?? json?.affected?.defaultBase
   // `baseBranch` is the branch; vx compares with it on `origin`.
   return typeof b === 'string' && b.trim() !== '' ? b.trim().replace(/^origin\//, '') : undefined
-}
-
-/**
- * nx.json's `maxCacheSize`, or `NX_MAX_CACHE_SIZE` above it, as core's
- * size: Nx caps its local cache there (`resolveMaxCacheSize`), and read by
- * nothing a capped cache grew without bound under vx, as turbo.json's
- * `cacheMaxSize` once did (G-49). 1024-based, a fraction truncated to
- * bytes; `0` is no cap. A value Nx would refuse is left to core's
- * refusal, which names the field.
- */
-async function nxMaxCacheSize(root: string): Promise<string | undefined> {
-  const env = process.env['NX_MAX_CACHE_SIZE']
-  const raw =
-    env !== undefined
-      ? env
-      : ((await readNxJson(root).catch(() => null))?.json as { maxCacheSize?: unknown } | undefined)
-          ?.maxCacheSize
-  return nxSizeText(raw)
 }
 
 interface LoadedGraph {

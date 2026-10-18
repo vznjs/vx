@@ -100,9 +100,6 @@ export function renderInfo(f: InfoFacts, colors: ColorSupport = { enabled: false
     ...(Object.values(f.settings).some((s) => s.source !== 'default')
       ? ([['settings', describeSettings(f.settings)]] as [string, string][])
       : []),
-    ...(f.cacheRetention !== null
-      ? ([['cache retention', describeRetention(f.cacheRetention)]] as [string, string][])
-      : []),
     // Only when there is something to say.
     ...(f.orphans.artifacts > 0
       ? ([
@@ -128,14 +125,9 @@ export function renderInfo(f: InfoFacts, colors: ColorSupport = { enabled: false
   return ui.report('vx info', rows).lines(colors).join('\n')
 }
 
-/** `812 (1.2 GB)`, or against `cacheRetention.maxSize`: `812 (1.2 GB of 10 GB, 12%)`. */
+/** `812 (1.2 GB)`. */
 function describeEntries(f: InfoFacts): string {
-  const max = f.cacheRetention?.maxBytes
-  const size =
-    max === undefined
-      ? formatBytes(f.cacheBytes)
-      : `${formatBytes(f.cacheBytes)} of ${formatBytes(max)}, ${Math.round((f.cacheBytes / max) * 100)}%`
-  return `${f.cacheEntries} (${size})`
+  return `${f.cacheEntries} (${formatBytes(f.cacheBytes)})`
 }
 
 /**
@@ -150,15 +142,6 @@ function describeSettings(settings: InfoFacts['settings']): string {
         `${path} ${String(s.value)} (${s.source === 'env' ? envName(path) : '.vx/workspace'})`,
     )
     .join(', ')
-}
-
-/** What a run's end evicts: `entries unused for 30d, and the oldest entries past 10G`. */
-function describeRetention(r: NonNullable<InfoFacts['cacheRetention']>): string {
-  const parts = [
-    ...(r.olderThan !== undefined ? [`entries unused for ${r.olderThan}`] : []),
-    ...(r.maxSize !== undefined ? [`the oldest entries past ${r.maxSize}`] : []),
-  ]
-  return `each run evicts ${parts.join(', and ')}`
 }
 
 /** A path under the home directory as `~/…`: shorter, and no user name in a pasted report. */

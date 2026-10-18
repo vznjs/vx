@@ -335,7 +335,7 @@ async function restoreProbed(
 
 /**
  * A hit restored, or null when its artifact was removed after the probe (a
- * prune, another workspace's retention on a shared cache directory): a
+ * `vx cache clean`, here or for a workspace sharing the cache directory): a
  * miss. The restore has wiped the declared outputs by then; the run path
  * cleans them again and the task writes them.
  */

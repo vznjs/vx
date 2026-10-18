@@ -60,7 +60,7 @@ export function adoptionPlugin(
   mapRun: (ctx: ProjectHookContext) => Promise<AdoptionRun>,
   reads: readonly string[] = [],
   // `config`: a workspace-wide key of the adopted tool's (nx.json `parallel`,
-  // Turbo's `cacheMaxSize`) that the workspace itself leaves unset.
+  // Turbo's `concurrency`) that the workspace itself leaves unset.
   // `discover`: a project the tool has that no member glob lists.
   stages: Pick<VxPlugin, 'config' | 'discover'> = {},
 ): VxPlugin {

@@ -6,7 +6,7 @@ authors:
 tags:
   - dx
   - caching
-excerpt: 'vx info answers the questions a bug report starts with: versions, projects, workers, memory, cache size, flaky tasks, sandbox. And the cache keeps itself in bounds without a word.'
+excerpt: 'vx info answers the questions a bug report starts with: versions, projects, workers, memory, cache size, flaky tasks, sandbox. And one command keeps the cache in bounds.'
 ---
 
 "Which version? How big is the cache? Can this machine sandbox?" Every
@@ -40,33 +40,10 @@ host. It notes when a container caps memory below the machine's, and
 whether git's fast status cache is on. `--format json` gives agents the
 same facts.
 
-## A cache that keeps itself in bounds
+## A cache you keep in bounds
 
-A content-addressed cache only grows. Set a policy once, in
-`.vx/workspace.ts`:
-
-```ts title=".vx/workspace.ts"
-import { defineWorkspace } from '@vzn/vx/config'
-
-export default defineWorkspace({
-  cache: { retention: { olderThan: '30d', maxSize: '10GB' } },
-})
-```
-
-After each run, entries unused for 30 days go first, then the least
-recently used until the cache is under 10 GB. It prints nothing, and a
-run with nothing due pays one scan of the index.
-
-```mermaid
-flowchart LR
-  RUN["a run ends"] --> DUE{"anything due?"}
-  DUE -- no --> DONE["done, silently"]
-  DUE -- yes --> OLD["evict unused > olderThan"]
-  OLD --> LRU["evict LRU until < maxSize"]
-  style LRU stroke:#c6f84e,stroke-width:2px
-```
-
-Or trim by hand, and look first:
+A content-addressed cache only grows, and no run evicts. Trim it by
+hand or from a schedule, and look first:
 
 ```sh frame="terminal"
 $ vx cache clean --max-size 4KB --dry-run
