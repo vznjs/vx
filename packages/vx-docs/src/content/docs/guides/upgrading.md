@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: size embedded entries with cache.store.embeddings
+
+cache.store.embedded is now cache.store.embeddings (VX_CACHE_STORE_EMBEDDINGS): false, or the largest entry kept in the index as a size string, default '32KiB'. true is no longer a value.
+
 ## cache: read one plugin cache key per request
 
 Plugin API: on a branch, ctx.cache.get, has and hasMany no longer fall back to the default branch's entry; pass false to read it.

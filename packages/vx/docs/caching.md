@@ -1278,7 +1278,7 @@ owner-only; vx closes one of yours that others can read (chmod 700), and one oth
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, task_durations,
 │                                           plugin_blobs, store_meta; artifacts
-│                                           of at most 32 KiB (v33, `cache.store.embedded`)
+│                                           up to `cache.store.embeddings` (v33)
 └── <hash>.tree/                            the larger artifacts, as plain files (below)
 
 <workspaceRoot>/.vx/cache/                  this workspace's own index

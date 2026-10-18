@@ -36,8 +36,8 @@ obvious win: whatever nobody asked for in a month is unlikely to be
 asked for tomorrow.
 
 Durations take `s`, `m`, `h` and `d` (`30d`, `24h`). Sizes take `K`,
-`M`, `G` and `T` in powers of 1024, with an optional `B` (`500M`,
-`1gb`).
+`M`, `G` and `T` in powers of 1024, with an optional `B` or `iB` (`500M`,
+`1gb`, `32KiB`).
 
 ## Set it once, forget it
 

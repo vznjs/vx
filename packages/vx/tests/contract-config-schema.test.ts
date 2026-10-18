@@ -101,7 +101,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       restore: true,
     }),
     'cache.store': keys<NonNullable<CacheSettings['store']>>({
-      embedded: true,
+      embeddings: true,
       compress: true,
       verify: true,
     }),
@@ -191,7 +191,7 @@ function workspaceSeed(): Record<string, unknown> {
       inputStability: { strategy: 'mutable', severity: 'error' },
       outputs: { clean: false },
       upload: { failures: 'always' },
-      store: { embedded: true, compress: false, verify: 'stat' },
+      store: { embeddings: '32KiB', compress: false, verify: 'stat' },
       concurrency: { download: 64, upload: 64, restore: 16 },
     },
     lock: { reviewFiles: false },
