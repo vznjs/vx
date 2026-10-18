@@ -37,20 +37,22 @@ A fresh CI runner or a new branch has no timings of its own. With a
 remote cache declared, the plugin carries them there, with nothing to
 configure:
 
-- **Write.** A CI run on `defaultBranch` (default `'main'`) writes each
-  task's p50 under its commit after the run. A commit's timings are
-  written once and never replaced; a read-only cache policy keeps them
-  local. A local run never writes.
+- **Write.** A CI run writes each task's p50 under its commit after the
+  run; on a branch that lands under the branch's cache scope. A commit's
+  timings are written once and never replaced; a read-only cache policy
+  keeps them local. A local run never writes.
 - **Read.** When some task has no timing on this branch, the plugin
   takes the merge-base of HEAD with `defaultBranch` (or
   `origin/<defaultBranch>`) and imports the newest timings at it or its
   4 first-parent ancestors, once per merge-base for all its worktrees.
-  The run never waits for them: it starts in the order local history
+  On a branch it then reads HEAD's parent's timings from the branch's
+  scope, once per commit: a task there overrides the default branch's,
+  and a task missing there keeps it. The run never waits for them: it starts in the order local history
   gives, and when the timings land (within 500 ms) the tasks not yet
   started re-rank. A run whose tasks all have timings on its branch
   spawns no git and asks no cache.
 - **Order.** A forecast reads this branch's last five timings first,
-  then the default branch's imported one, then any branch's, then
+  then the newest imported one, then any branch's, then
   `assume`.
 - **Untrusted.** A blob over 1 MiB, not `{ version: 1, tasks }`, with
   more than 50 000 tasks, or with a time outside 0 to 24 h, is dropped,

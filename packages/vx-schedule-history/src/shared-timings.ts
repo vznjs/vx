@@ -1,8 +1,9 @@
 // Task timings through the workspace's cache (design
-// packages/vx/docs/design/shared-timings-2026-10.md): CI on the default
-// branch writes each task's p50 under its commit; a run whose tasks lack
-// timings on its branch imports the blob of its merge-base with the default
-// branch into the shared store, once per repo. The blob is untrusted: it
+// packages/vx/docs/design/shared-timings-2026-10.md): CI writes each
+// task's p50 under its commit (a branch's under its scope); a run whose
+// tasks lack timings on its branch imports the blob of its merge-base with
+// the default branch into the shared store, once per repo, and on a branch
+// its last commit's over it. The blob is untrusted: it
 // can only order a run, never change what runs, and every refusal is
 // silent (M: no extra runtime warnings).
 
@@ -101,34 +102,24 @@ export interface ImportArgs {
   readonly ids: readonly string[]
   /** Holds the last merge-base asked, so one with no blob is asked once. */
   readonly triedFile: string
+  /** The run is on a branch: also import its last commit's blob, scoped. */
+  readonly branch: boolean
 }
 
 /**
- * Import the merge-base's timings once per merge-base: unless a row
- * already carries that commit or `triedFile` names it. Gives up after
- * `IMPORT_DEADLINE_MS`. Resolves true when rows were added. The caller
- * asks only when its forecast read lacked some branch timing.
+ * Import the merge-base's timings once per merge-base, and on a branch its
+ * last commit's: each unless a row already carries that commit or its
+ * tried file names it. Gives up after `IMPORT_DEADLINE_MS`. Resolves true
+ * when rows were added. The caller asks only when its forecast read lacked
+ * some branch timing.
  */
 export async function importTimings(args: ImportArgs): Promise<boolean> {
   let late = false
+  const isLate = (): boolean => late
   const work = (async (): Promise<boolean> => {
-    const base = await mergeBase(args.root, args.defaultBranch)
-    if (base === null || args.provider.hasImported(base)) return false
-    if (
-      (await Bun.file(args.triedFile)
-        .text()
-        .catch(() => '')) === base
-    )
-      return false
-    const shas = await lineage(args.root, base)
-    if (shas === null) return false
-    const blob = await newestBlob(args.cache, shas)
-    if (late) return false
-    await Bun.write(args.triedFile, base).catch(() => {})
-    const timings = blob === null ? null : parseTimings(blob, new Set(args.ids))
-    if (timings === null) return false
-    args.provider.importTimings(base, timings)
-    return timings.size > 0
+    const base = await importBase(args, isLate)
+    if (!args.branch || late) return base
+    return (await importParent(args, isLate)) || base
   })()
   let timer: ReturnType<typeof setTimeout> | undefined
   const deadline = new Promise<boolean>((resolve) => {
@@ -142,6 +133,49 @@ export async function importTimings(args: ImportArgs): Promise<boolean> {
   } finally {
     clearTimeout(timer)
   }
+}
+
+/** The merge-base's lineage blob, once per merge-base. */
+async function importBase(args: ImportArgs, late: () => boolean): Promise<boolean> {
+  const base = await mergeBase(args.root, args.defaultBranch)
+  if (base === null || args.provider.hasImported(base)) return false
+  if ((await readTried(args.triedFile)) === base) return false
+  const shas = await lineage(args.root, base)
+  if (shas === null) return false
+  const blob = await newestBlob(args.cache, shas)
+  if (late()) return false
+  await Bun.write(args.triedFile, base).catch(() => {})
+  return keep(args, base, blob)
+}
+
+/**
+ * The branch's last commit's blob (M, 2026-10-18): one scoped read of
+ * HEAD's parent, which CI on the branch wrote. Imported after the
+ * merge-base's, so its rows are the newer and override main's per task;
+ * a task it lacks keeps main's.
+ */
+async function importParent(args: ImportArgs, late: () => boolean): Promise<boolean> {
+  const parent = (await git(args.root, ['rev-parse', '--verify', '-q', 'HEAD^']))?.[0]
+  if (parent === undefined || args.provider.hasImported(parent)) return false
+  const tried = `${args.triedFile}-branch`
+  if ((await readTried(tried)) === parent) return false
+  const blob = await args.cache.get(keyOf(parent))
+  if (late()) return false
+  await Bun.write(tried, parent).catch(() => {})
+  return keep(args, parent, blob)
+}
+
+const readTried = (file: string): Promise<string> =>
+  Bun.file(file)
+    .text()
+    .catch(() => '')
+
+/** Keep `blob`'s timings as `sha`'s rows; true when any were added. */
+function keep(args: ImportArgs, sha: string, blob: Uint8Array | null): boolean {
+  const timings = blob === null ? null : parseTimings(blob, new Set(args.ids))
+  if (timings === null) return false
+  args.provider.importTimings(sha, timings)
+  return timings.size > 0
 }
 
 export interface ExportArgs {

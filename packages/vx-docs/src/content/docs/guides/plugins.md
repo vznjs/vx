@@ -187,9 +187,10 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
 ```
 
-A CI runner starts with no history. With a remote cache declared, CI on
-`main` writes its timings there and a fresh runner or a new branch reads
-its merge-base's. Without one, `scheduleHistoryPlugin({ file: '.vx-timings.json' })`
+A CI runner starts with no history. With a remote cache declared, CI
+writes its timings there (a branch's under its scope) and a fresh runner
+or a new branch reads its merge-base's, then on a branch its last
+commit's, whose tasks win. Without one, `scheduleHistoryPlugin({ file: '.vx-timings.json' })`
 keeps what it learned in one file your CI cache carries
 ([post](../../blog/ci-timings-file/)).
 
