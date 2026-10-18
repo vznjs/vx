@@ -576,6 +576,12 @@ export interface CacheLayer {
    * `hasRemote`.
    */
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
+  /**
+   * The run's batch probe starts when `started` settles: until then a pull
+   * waits, so a lookup that lands first does not GET a key the probe is
+   * about to call absent. Only meaningful with `hasRemote`.
+   */
+  probeFirst?(started: Promise<void>): void
   /** `taskId`'s key is `hash`: a scoped run picks each remote key by its task (`BranchScope`). */
   noteKey?(taskId: string, hash: string): void
   /**

@@ -44,7 +44,9 @@ export function getContext(node: TaskNode, command: string): CacheGetContext
 3. One batched existence probe when the layer offers it
    (`remoteHasMany`): the hashes it reports absent are marked
    (`markRemoteAbsent`, so the lazy read-through skips them too) and
-   only the present ones are fetched.
+   only the present ones are fetched. Until the probe starts
+   (`probeFirst`) and while it is out, a task's own lookup waits for it,
+   so a key the probe calls absent costs no GET.
 4. `concurrency` pumps drain the list through the layer's `prefetch`
    (the hash, the task id and its command); a rejected fetch is
    swallowed.

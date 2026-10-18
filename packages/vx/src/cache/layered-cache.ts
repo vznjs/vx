@@ -176,6 +176,17 @@ export class LayeredCache implements CacheLayer {
   private readonly inflight = new Map<string, Promise<boolean>>()
 
   /**
+   * Hashes a batch probe is asking about, each resolving whether a pull may
+   * still find it (false: no remote holds it). A `get` that lands while the
+   * probe is out waits for its answer instead of spending a GET on a key
+   * the probe is about to call absent.
+   */
+  private readonly probing = new Map<string, Promise<boolean>>()
+
+  /** Settles once the run's batch probe has started (`probeFirst`); a pull waits on it. */
+  private probeStarted: Promise<void> | null = null
+
+  /**
    * Hashes whose local artifact was materialized FROM a remote this run
    * (by `prefetch` or `get`'s read-through). A later `get` finds them as
    * a local hit, but the work was still saved by the remote cache — so
@@ -240,6 +251,27 @@ export class LayeredCache implements CacheLayer {
    */
   async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
     if (this.readable.length === 0) return null
+    const answer = this.probeMany(hashes)
+    const waiting = hashes.filter((h) => !this.inflight.has(h) && !this.probing.has(h))
+    for (const h of waiting) {
+      this.probing.set(
+        h,
+        answer.then(
+          (found) => {
+            this.probing.delete(h)
+            return found === null || found.has(h)
+          },
+          () => {
+            this.probing.delete(h)
+            return true
+          },
+        ),
+      )
+    }
+    return answer
+  }
+
+  private async probeMany(hashes: readonly string[]): Promise<Set<string> | null> {
     let out: Set<string> | null = new Set()
     for (const lane of this.readable) {
       const found = await lane.hasMany(hashes)
@@ -261,6 +293,17 @@ export class LayeredCache implements CacheLayer {
     for (const hash of hashes) {
       if (!this.inflight.has(hash)) this.inflight.set(hash, Promise.resolve(false))
     }
+  }
+
+  probeFirst(started: Promise<void>): void {
+    const gate = started.then(
+      () => {},
+      () => {},
+    )
+    this.probeStarted = gate
+    void gate.then(() => {
+      if (this.probeStarted === gate) this.probeStarted = null
+    })
   }
 
   probeBeforeUpload(hashes: Promise<readonly string[]>): void {
@@ -333,6 +376,11 @@ export class LayeredCache implements CacheLayer {
   private pullFromRemote(hash: string, ctx?: CacheGetContext): Promise<boolean> {
     const existing = this.inflight.get(hash)
     if (existing) return existing
+    const probed = this.probing.get(hash)
+    if (probed !== undefined)
+      return probed.then((found) => (found ? this.pullFromRemote(hash, ctx) : false))
+    if (this.probeStarted !== null)
+      return this.probeStarted.then(() => this.pullFromRemote(hash, ctx))
     const p = this.doPullFromRemote(hash, ctx)
     this.inflight.set(hash, p)
     return p
