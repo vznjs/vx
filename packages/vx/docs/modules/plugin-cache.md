@@ -13,10 +13,10 @@ is its first user.
 ```ts
 export const PLUGIN_ENTRY_MAX_BYTES = 1048576
 export interface PluginCache {
-  get(key: string): Promise<Uint8Array | null>
+  get(key: string, scoped?: boolean): Promise<Uint8Array | null> // scoped defaults to true
   put(key: string, bytes: Uint8Array): Promise<void>
-  has(key: string): Promise<boolean | null>
-  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  has(key: string, scoped?: boolean): Promise<boolean | null>
+  hasMany(keys: readonly string[], scoped?: boolean): Promise<Set<string> | null>
   getRun(name: string): Promise<Uint8Array | null> // run bytes core kept (run-store.ts), first readable remote, uncapped
 }
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache
@@ -46,9 +46,10 @@ export function packRunOutputs(
   hit is kept locally when the policy writes the local store.
 - **Policy and scope.** The local axes gate the local store; each
   remote's policy (the run's) gates it. The local store keeps every
-  entry under its name's key. A scoped run reads a remote under the
-  default key, then the scope's (`scopedKey`), and writes a remote only
-  under the scope's.
+  entry under its name's key. A scoped run writes a remote only under the
+  scope's key (`scopedKey`) and reads one key per request (M, 2026-10-18):
+  the scope's, or with `scoped` false the default, sent `trusted`. A run
+  with no scope uses the default key either way.
 - **Immutable.** A local write is `INSERT OR IGNORE`; a remote write
   asks `has` first and skips a present key.
 - **Bounded.** An entry is at most `PLUGIN_ENTRY_MAX_BYTES`: a bigger

@@ -221,7 +221,9 @@ export function taskLog(): VxPlugin {
 `ctx.cache` keeps your plugin's own small entries in the workspace's
 cache: `get(name)`, `put(name, bytes)`, `has(name)`, `hasMany(names)`.
 The local cache answers first, then each remote, under the run's cache
-policy and scope. Names are yours alone; an entry is written once, never
+policy and scope. On a branch a read asks the branch's entry; pass
+`false` as the last argument (`get(name, false)`) to read the base
+branch's. Names are yours alone; an entry is written once, never
 replaced, and at most 1 MiB. A failure is an empty answer, never an
 error. `schedule` gets it too. `ctx.ci` and `ctx.branch` say where the
 run is.

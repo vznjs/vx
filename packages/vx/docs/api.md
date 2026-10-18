@@ -1443,10 +1443,10 @@ What a plugin's `ctx.cache` offers. Keys are the plugin's own names.
 
 ```ts
 export interface PluginCache {
-  get(key: string): Promise<Uint8Array | null>
+  get(key: string, scoped?: boolean): Promise<Uint8Array | null>
   put(key: string, bytes: Uint8Array): Promise<void>
-  has(key: string): Promise<boolean | null>
-  hasMany(keys: readonly string[]): Promise<Set<string> | null>
+  has(key: string, scoped?: boolean): Promise<boolean | null>
+  hasMany(keys: readonly string[], scoped?: boolean): Promise<Set<string> | null>
   getRun(name: string): Promise<Uint8Array | null>
 }
 ```
