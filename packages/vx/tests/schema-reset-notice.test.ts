@@ -3,6 +3,7 @@
 // every key. vx keeps its own cache: neither is printed (owner,
 // 2026-10-06, "no more comments like this").
 
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -183,6 +184,7 @@ describe('an upgrade resets the cache in silence', () => {
   function artifact(): { key: string; bytes: number; inline: boolean } {
     const cacheDir = path.join(root, '.vx', 'cache')
     const files = Array.from(new Bun.Glob('*.tar.zst').scanSync({ cwd: cacheDir }))
+    const trees = readdirSync(cacheDir).filter((n) => n.endsWith('.tree'))
     const db = new Database(path.join(cacheDir, 'cache.db'))
     try {
       const rows = db.query('SELECT hash, length(bytes) AS bytes FROM artifacts').all() as Array<{
@@ -196,6 +198,13 @@ describe('an upgrade resets the cache in silence', () => {
           bytes: Bun.file(path.join(cacheDir, f)).size,
           inline: false,
         })),
+        ...trees.map((t) => ({
+          key: t.slice(0, -'.tree'.length),
+          bytes: Array.from(
+            new Bun.Glob('**').scanSync({ cwd: path.join(cacheDir, t), dot: true }),
+          ).reduce((n, f) => n + Bun.file(path.join(cacheDir, t, f)).size, 0),
+          inline: false,
+        })),
       ]
       expect(found).toHaveLength(1)
       return found[0]!
@@ -207,7 +216,10 @@ describe('an upgrade resets the cache in silence', () => {
   /** Set the artifact's last use, as a row-less sweep reads it: its file time, or its `at`. */
   async function lastUsed(a: { key: string; inline: boolean }, when: Date): Promise<void> {
     const cacheDir = path.join(root, '.vx', 'cache')
-    if (!a.inline) return utimes(path.join(cacheDir, `${a.key}.tar.zst`), when, when)
+    if (!a.inline) {
+      const tree = path.join(cacheDir, `${a.key}.tree`)
+      return utimes(existsSync(tree) ? tree : path.join(cacheDir, `${a.key}.tar.zst`), when, when)
+    }
     const db = new Database(path.join(cacheDir, 'cache.db'))
     db.query('UPDATE artifacts SET at = ? WHERE hash = ?').run(when.getTime(), a.key)
     db.close()

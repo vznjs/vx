@@ -171,6 +171,24 @@ export const SETTINGS: readonly Setting[] = [
     env: false,
   },
   {
+    path: 'cache.store.embedded',
+    kind: { type: 'bool' },
+    default: 'true',
+    doc: 'Keep a small entry inside the cache index, one zstd tar, rather than as files.',
+  },
+  {
+    path: 'cache.store.compress',
+    kind: { type: 'bool' },
+    default: 'false',
+    doc: 'Keep a larger entry as one `.tar.zst`; off, as its plain files, which a hit copies or clones out.',
+  },
+  {
+    path: 'cache.store.verify',
+    kind: { type: 'enum', values: ['stat', 'hash', 'none'] },
+    default: 'stat',
+    doc: "What a hit on plain files checks first: each file's size and mtime, every byte, or nothing.",
+  },
+  {
     path: 'cache.upload.failures',
     kind: { type: 'enum', values: ['ci', 'local', 'always'] },
     default: 'ci',

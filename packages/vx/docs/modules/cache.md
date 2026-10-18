@@ -55,6 +55,14 @@ and key derivation logic live here.
 ## Public surface
 
 ```ts
+/** How a save keeps an entry locally (`cache.store`). */
+export interface StoreOptions {
+  embedded: boolean
+  compress: boolean
+  verify: 'stat' | 'hash' | 'none'
+}
+export const DEFAULT_STORE: StoreOptions // { embedded: true, compress: false, verify: 'stat' }
+
 /**
  * Shape every cache implementation honors. Both Cache (local v10) and
  * LayeredCache (local + remote) implement it. Orchestrator uses
@@ -456,7 +464,8 @@ everything in `cache.db`.
 ~/.vx/<id>/cache/            # the shared store (unversioned: keys are seeded with CACHE_VERSION)
 ├── store.db                 # entries, entry_stdout, output_files, entry_inputs, store_meta,
 │                            # artifacts + artifacts_meta (the small artifacts, v33)
-└── <hash>.tar.zst           # an artifact past INLINE_MAX
+└── <hash>.tree/             # an artifact past INLINE_MAX, as plain files (v47);
+                             # <hash>.tar.zst instead under cache.store.compress
 
 <root>/.vx/cache/            # or a named <cacheDir>, which then also holds the store's tables and artifacts
 └── cache.db                 # SQLite (with cache.db-wal, cache.db-shm): runs, memos, output stamps
@@ -469,6 +478,19 @@ everything in `cache.db`.
     ├── .vx-meta.json        #   { version, key, files: { <entry>: [mode, mtimeMs] }, exec? }
     └── .vx-sum              #   CRC-32 of every entry above (v36)
 ```
+
+`cache.store` (`StoreOptions`, `DEFAULT_STORE`, the Cache's last
+constructor argument) picks the local form: `embedded` keeps a small
+entry inline, `compress` keeps a file-backed one as the tar.zst, and
+otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTree`
+at save, the validated tar extracted at ingest, `sealTree`), stdout in
+its `entry_stdout` row. A tree restore checks `verify` (`stat`: size and
+mtime per file; `hash`: `treeIntact`, the CRC of `planOfTree`'s tar),
+then copies each file with `Bun.write` (copy_file_range, a clone where
+the filesystem has one; never a hard link). Into existing outputs, a
+workspace output or a link it feeds `extractArtifactStream` the
+tree packed back (`packArtifactStream(planOfTree(…))`). `pinArtifact`
+packs a tree into the upload's tar.zst.
 
 `exec` is `{ cpuMs?, peakRssBytes? }` — what the producing execution
 used, so an entry ingested from a remote knows it too (see caching.md
@@ -688,7 +710,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v46'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v47'`; `SCHEMA_VERSION` is
 `'v42'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

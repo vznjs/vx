@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, spyOn } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const HASH = '0123456789abcdef'
 let root = ''
@@ -37,8 +38,24 @@ for (const [kind, before, after] of [
 ] as const) {
   it(`a ${kind} artifact renamed over mid-restore restores the new copy`, async () => {
     root = mkdtempSync(path.join(tmpdir(), 'vx-replaced-'))
-    const cache = new Cache(path.join(root, 'cache'), { read: true, write: true })
-    const other = new Cache(path.join(root, 'other'), { read: true, write: true })
+    const cache = new Cache(
+      path.join(root, 'cache'),
+      { read: true, write: true },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
+    const other = new Cache(
+      path.join(root, 'other'),
+      { read: true, write: true },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await saveInto(cache, path.join(root, 'a'), random(before))
       const grown = random(after)

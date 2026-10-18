@@ -19,6 +19,7 @@ import { tarPack } from '../src/cache/tar-stream.js'
 import { withSum } from './helpers/artifact-sum.js'
 import { vx } from './helpers/parity.js'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const HASH = '0123456789abcdef'
 let root = ''
@@ -44,7 +45,15 @@ async function forged(extra: Record<string, string>): Promise<{ cache: Cache; de
   const src = path.join(root, 'src')
   mkdirSync(path.join(src, 'out'), { recursive: true })
   writeFileSync(path.join(src, 'out', 'a.txt'), BIG)
-  const cache = new Cache(path.join(root, 'cache'), { read: true, write: true })
+  const cache = new Cache(
+    path.join(root, 'cache'),
+    { read: true, write: true },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    TAR_STORE,
+  )
   await cache.save({
     hash: HASH,
     entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: '' },
@@ -146,7 +155,9 @@ it('a run whose hit carries an undeclared file runs the task instead', async () 
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
   const cacheDir = path.join(root, '.cache')
-  const first = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+  const first = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir], {
+    VX_CACHE_STORE_COMPRESS: 'true',
+  })
   expect(`${first.code}\n${first.err}`).toStartWith('0\n')
   const artifact = readdirSync(cacheDir).find((f) => f.endsWith('.tar.zst'))!
   const body = readFileSync(path.join(dir, 'out', 'a.txt'), 'utf8')
@@ -158,7 +169,9 @@ it('a run whose hit carries an undeclared file runs the task instead', async () 
   )
   rmSync(path.join(dir, 'out'), { recursive: true })
   const pkg = readFileSync(path.join(dir, 'package.json'), 'utf8')
-  const second = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+  const second = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir], {
+    VX_CACHE_STORE_COMPRESS: 'true',
+  })
   expect(`${second.code}\n${second.err}`).toStartWith('0\n')
   expect(second.out).toContain('1↑')
   expect(readFileSync(path.join(dir, 'package.json'), 'utf8')).toBe(pkg)

@@ -255,7 +255,7 @@ export class RemoteLane {
   upload(
     hash: string,
     durationMs: number,
-    body: () => { body: Blob; release?: () => Promise<void> },
+    body: () => Promise<{ body: Blob; release?: () => Promise<void> }>,
     tally: { count: number; bytes: number; ms: number; failed: number },
   ): void {
     const key = this.trafficOf(hash)
@@ -268,7 +268,7 @@ export class RemoteLane {
         if (!this.read && (await this.holds(hash))) return
         if (this.stopped) return
         const start = performance.now()
-        const got = body()
+        const got = await body()
         release = got.release
         await this.remote.put(hash, got.body, { durationMs })
         tally.count++

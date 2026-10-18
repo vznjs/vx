@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { Cache } from '../src/cache/index.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 // Adopting a row-less artifact hard-links it to a temp name, and a link
 // shares the artifact's inode, so the temp carried the artifact's old
@@ -22,7 +23,7 @@ describe('an adopt beside another process sweeping orphans', () => {
       // Incompressible and past INLINE_MAX: the artifact is a file.
       await writeFile(outFile, crypto.getRandomValues(new Uint8Array(48 * 1024)))
       const hash = '0123456789abcdef'
-      const saver = new Cache(dir)
+      const saver = new Cache(dir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
       await saver.save({
         hash,
         projectDir,
@@ -35,8 +36,24 @@ describe('an adopt beside another process sweeping orphans', () => {
       const old = new Date(Date.now() - 2 * 60 * 60 * 1000)
       await utimes(artifact, old, old)
 
-      const adopter = new Cache(dir)
-      const sweeper = new Cache(dir)
+      const adopter = new Cache(
+        dir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
+      const sweeper = new Cache(
+        dir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       const index = adopter as unknown as {
         writeArtifactAndIndex: (...args: unknown[]) => Promise<void>
       }

@@ -248,7 +248,7 @@ process or socket.
 The cache is not a single file. It is composed:
 
 - **`cache.ts`** — local cache. `bun:sqlite` metadata index +
-  one `<cacheDir>/<hash>.tar.zst` artifact per entry (`stdout` +
+  one `<cacheDir>/<hash>.tree/` artifact per entry (plain files, stdout in its row:
   `outputs/<rel>` + `workspace-outputs/<rel>`; metadata lives in the
   SQLite `entries` row).
   The constructor takes the local slice of the 4-axis `CachePolicy`

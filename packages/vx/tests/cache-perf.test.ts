@@ -13,6 +13,7 @@ import {
   FILE_HASH_RACY_MS,
 } from '../src/cache/cache.js'
 import { isInline, storedArtifact } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 /** Git blob OID (sha1 domain — fixtures live outside any repo). */
 function blobOid(content: string): string {
@@ -29,7 +30,15 @@ describe('Cache.hashFile (mtime+size fast path)', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-hashfile-'))
-    cache = new Cache(path.join(dir, '.vx-cache'))
+    cache = new Cache(
+      path.join(dir, '.vx-cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
   })
 
   afterEach(async () => {
@@ -163,7 +172,15 @@ describe('Cache.recordRuns (batched)', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-recordRuns-'))
-    cache = new Cache(path.join(dir, '.vx-cache'))
+    cache = new Cache(
+      path.join(dir, '.vx-cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
   })
 
   afterEach(async () => {
@@ -203,7 +220,7 @@ describe('Cache.recordRuns (batched)', () => {
 
   it('equivalent to N recordRun calls', () => {
     const dir2 = path.join(dir, 'sibling')
-    const cache2 = new Cache(dir2)
+    const cache2 = new Cache(dir2, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     try {
       const rows = Array.from({ length: 7 }, (_, i) => sampleRun(i))
       for (const r of rows) cache2.recordRun(r)
@@ -221,7 +238,15 @@ describe('createHashCache + within-run hash memoization', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-hashCache-'))
-    cache = new Cache(path.join(dir, '.vx-cache'))
+    cache = new Cache(
+      path.join(dir, '.vx-cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
   })
 
   afterEach(async () => {
@@ -275,7 +300,15 @@ describe('cache layout v15: <hash>.tar single file (Turbo-style)', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(os.tmpdir(), 'vx-tar-'))
-    cache = new Cache(path.join(dir, '.vx-cache'))
+    cache = new Cache(
+      path.join(dir, '.vx-cache'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     projectDir = path.join(dir, 'project')
     await mkdir(projectDir, { recursive: true })
   })

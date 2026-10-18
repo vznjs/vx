@@ -101,8 +101,12 @@ const WORKSPACE_CACHE = [
   'outputs',
   'policy',
   'retention',
+  'store',
   'upload',
 ] as const satisfies readonly Keys<CacheSettings>[]
+const STORE = ['compress', 'embedded', 'verify'] as const satisfies readonly Keys<
+  NonNullable<CacheSettings['store']>
+>[]
 const UPLOAD = ['failures'] as const satisfies readonly Keys<NonNullable<CacheSettings['upload']>>[]
 const PERSISTENT = ['readyWhen'] as const satisfies readonly Keys<PersistentConfig>[]
 const SANDBOX = [
@@ -148,12 +152,14 @@ const exhaustive: [
   Exhaustive<NonNullable<CacheSettings['retention']>, typeof RETENTION>,
   Exhaustive<CacheSettings, typeof WORKSPACE_CACHE>,
   Exhaustive<NonNullable<CacheSettings['upload']>, typeof UPLOAD>,
+  Exhaustive<NonNullable<CacheSettings['store']>, typeof STORE>,
   Exhaustive<PersistentConfig, typeof PERSISTENT>,
   Exhaustive<SandboxConfig, typeof SANDBOX>,
   Exhaustive<SandboxGrants, typeof GRANTS>,
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
 ] = [
+  true,
   true,
   true,
   true,
@@ -266,6 +272,7 @@ describe('the config types and the validator agree on every level (D-71)', () =>
       RETENTION,
       () => validateWorkspace({ cache: { retention: { ...X } } } as never, 'w'),
     ],
+    ['cache.store', STORE, () => validateWorkspace({ cache: { store: { ...X } } } as never, 'w')],
     [
       'cache.upload',
       UPLOAD,

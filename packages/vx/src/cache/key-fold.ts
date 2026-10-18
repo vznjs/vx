@@ -117,7 +117,7 @@ import type { CacheKeyInput } from './layer.js'
 // v46: vx's names are reserved only at the project root; a v45 artifact
 // left out a build's own `dist/.git/**`, `dist/.vx/**` and nested
 // `vx.lock.json` (Growth's parity, 2026-10-17).
-export const CACHE_VERSION = 'vx-cache-v46'
+export const CACHE_VERSION = 'vx-cache-v47'
 
 /**
  * The digest a key folds for an input gone between its enumeration and its

@@ -12,6 +12,7 @@ import { LayeredCache, type RemoteCacheLayer } from '../src/cache/layered-cache.
 import type { InvocationRecord } from '../src/cache/index.js'
 import { isInline, removeStoredArtifact, storedArtifact } from './helpers/stored-artifact.js'
 import { layeredOver } from './helpers/layered.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 /** A minimal invocation row: `recordRunBundle` is the only run-history write a layer takes. */
 function invocation(runId: string): InvocationRecord {
@@ -129,7 +130,7 @@ describe('LayeredCache', () => {
     projectDir = path.join(workspaceRoot, 'project')
     cacheDir = path.join(workspaceRoot, '.vx', 'cache')
     await mkdir(projectDir, { recursive: true })
-    local = new Cache(cacheDir)
+    local = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     remote = stubRemote()
   })
 
@@ -152,7 +153,7 @@ describe('LayeredCache', () => {
   async function wipeLocal(): Promise<void> {
     local.close()
     await rm(cacheDir, { recursive: true, force: true })
-    local = new Cache(cacheDir)
+    local = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
   }
 
   /** `file`: incompressible bytes past INLINE_MAX beside it, so the artifact is a file. */
@@ -472,10 +473,18 @@ describe('LayeredCache', () => {
     // not the task's — reported, no PUT, the task already succeeded.
     // Deleting the catch survived the whole core suite (item 642).
     const errors: Error[] = []
-    const writeless = new Cache(path.join(workspaceRoot, '.vx', 'nowrite-pack'), {
-      read: true,
-      write: false,
-    })
+    const writeless = new Cache(
+      path.join(workspaceRoot, '.vx', 'nowrite-pack'),
+      {
+        read: true,
+        write: false,
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     const layered = layeredOver(writeless, remote.layer, {
       policy: { localRead: true, localWrite: false, remoteRead: true, remoteWrite: true },
       onRemoteError: (e) => errors.push(e),
@@ -923,10 +932,18 @@ describe('LayeredCache', () => {
     // is no on-disk artifact to read later, so those bytes MUST be captured
     // during save() while the task's outputs are still on disk. Must behave
     // identically before and after the deferral.
-    const writeless = new Cache(path.join(workspaceRoot, '.vx', 'nowrite'), {
-      read: false,
-      write: false,
-    })
+    const writeless = new Cache(
+      path.join(workspaceRoot, '.vx', 'nowrite'),
+      {
+        read: false,
+        write: false,
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const layered = layeredOver(writeless, remote.layer, { onRemoteError: () => {} })
       const outFile = path.join(projectDir, 'dist', 'packed.txt')
@@ -1063,7 +1080,7 @@ describe('LayeredCache', () => {
     /** Close the layer (the repeat count is said there) and reopen `local` for afterEach. */
     function closeAndReopen(layered: LayeredCache): void {
       layered.close()
-      local = new Cache(cacheDir)
+      local = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
     }
 
     it('each call names its operation, its artifact and the endpoint', async () => {

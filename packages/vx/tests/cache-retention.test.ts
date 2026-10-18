@@ -21,6 +21,7 @@ import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { workspaceWith } from './helpers/local-workspace.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
 import { storedArtifact } from './helpers/stored-artifact.js'
+import { TAR_STORE } from './helpers/tar-store.js'
 
 const DAY = 86_400_000
 
@@ -75,8 +76,24 @@ describe('Cache.evictIfDue', () => {
   it('applies under a local-read-only policy, whose run still ingests remote hits (A-7)', async () => {
     // What `--cache-policy=local:r,remote:rw` leaves here: a save writes nothing,
     // and every remote hit lands through `ingest`.
-    const producer = new Cache(path.join(root, 'remote'))
-    const readOnly = new Cache(cacheDir, { read: true, write: false })
+    const producer = new Cache(
+      path.join(root, 'remote'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
+    const readOnly = new Cache(
+      cacheDir,
+      { read: true, write: false },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await seed(producer, ['aa'])
       await readOnly.ingest('aa', new Blob([storedArtifact(producer, 'aa')!]), {
@@ -97,7 +114,15 @@ describe('Cache.evictIfDue', () => {
   it.skipIf(skipAsRoot('a cache this user cannot write evicts nothing (A-37)'))(
     'a cache this user cannot write evicts nothing (A-37)',
     async () => {
-      const writer = new Cache(cacheDir)
+      const writer = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       try {
         await seed(writer, ['aa'])
       } finally {
@@ -105,7 +130,15 @@ describe('Cache.evictIfDue', () => {
       }
       await chmod(cacheDir, 0o555)
       try {
-        const reader = new Cache(cacheDir)
+        const reader = new Cache(
+          cacheDir,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          TAR_STORE,
+        )
         try {
           expect(await reader.evictIfDue({ maxBytes: 1 })).toBeNull()
           expect(storedArtifact(reader, 'aa')).not.toBeNull()
@@ -119,7 +152,15 @@ describe('Cache.evictIfDue', () => {
   )
 
   it('evicts an entry unused for longer than maxAge, and only that one', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await seed(cache, ['aa', 'bb'])
       const now = Date.now()
@@ -146,7 +187,15 @@ describe('Cache.evictIfDue', () => {
   }
 
   it('does nothing — not even the orphan sweep — when nothing is due', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await seed(cache, ['aa', 'bb'])
       // A new cache has never been swept: the first call sweeps (below).
@@ -171,7 +220,15 @@ describe('Cache.evictIfDue', () => {
     // victims, so the entry would survive either way; what the flush in
     // `evictIfDue` decides is whether a prune (and its orphan sweep's
     // readdir) runs at all on a cache with nothing due.
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await seed(cache, ['aa', 'bb'])
       await cache.evictIfDue({ maxAgeMs: 1000 * DAY })
@@ -198,12 +255,30 @@ describe('Cache.evictIfDue', () => {
   // the prune's orphan sweep may list it row-less; the grace window keeps it.
   for (const shared of [true, false]) {
     it(`an entry saved while a prune runs survives it (${shared ? 'one handle' : 'two handles'})`, async () => {
-      const seeding = new Cache(cacheDir)
+      const seeding = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       await seed(seeding, ['aa'], true)
       seeding.close()
       age('aa', Date.now() - 40 * DAY)
-      const cache = new Cache(cacheDir)
-      const other = shared ? cache : new Cache(cacheDir)
+      const cache = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
+      const other = shared
+        ? cache
+        : new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
       try {
         const pruning = cache.prune({ olderThanMs: Date.now() - 30 * DAY })
         await seed(other, ['bb'], true)
@@ -220,7 +295,15 @@ describe('Cache.evictIfDue', () => {
   }
 
   it('evicts least-recently-used entries until the cache is under maxSize', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await seed(cache, ['aa', 'bb', 'cc'])
       const now = Date.now()
@@ -246,7 +329,15 @@ describe('Cache.evictIfDue', () => {
     // 9 MiB of these sat under a 1 MB limit through every run (upstream
     // survey, nx#35483).
     const MiB = 1024 * 1024
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await seed(cache, ['aa'])
       const first = await orphan('00000000000000a1', 3 * MiB, 3 * 3_600_000)
@@ -269,7 +360,15 @@ describe('Cache.evictIfDue', () => {
       expect(existsSync(later)).toBe(true)
       // An hour on, it is due again: from a fresh handle, so the clock is
       // the index's, not this process's.
-      const reopened = new Cache(cacheDir)
+      const reopened = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       try {
         expect((await reopened.evictIfDue({ maxBytes: MiB }, now + 3_700_000))?.orphans).toBe(1)
       } finally {
@@ -288,7 +387,15 @@ describe('Cache.evictIfDue', () => {
   // against the age limit, as a row is by `accessed_at`, never by a
   // one-hour grace.
   it('a row-less artifact younger than the age limit survives the sweep', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const recent = await orphan('00000000000000a1', 1024, 3 * 3_600_000)
       // A hit renews a file time only once it is an hour old, so the last
@@ -308,7 +415,15 @@ describe('Cache.evictIfDue', () => {
   })
 
   it('a row-less artifact counts toward maxSize, oldest use first with the rows', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       await seed(cache, ['aa'])
       age('aa', Date.now() - 2 * DAY)
@@ -346,7 +461,15 @@ describe('Cache.evictIfDue', () => {
             ? existsSync(path.join(cacheDir, `${h}.tar.zst`))
             : storedArtifact(cache, h) !== null,
         )
-      const writer = new Cache(cacheDir)
+      const writer = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       try {
         await seed(writer, keys, where === 'file')
         const when = Date.now() - 2 * DAY
@@ -365,7 +488,15 @@ describe('Cache.evictIfDue', () => {
         writer.close()
       }
       // The other version's open: every row gone.
-      const other = new Cache(cacheDir)
+      const other = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
       try {
         other.dbHandle().query('DELETE FROM entries').run()
         expect((await other.evictIfDue({ maxAgeMs: DAY }))?.orphans).toBe(1)
@@ -380,7 +511,15 @@ describe('Cache.evictIfDue', () => {
   // turborepo test_evict_removes_stale_entries: a killed save leaves its
   // temp, and eviction reaps it like a row-less artifact.
   it("reaps a killed save's temp past the age limit", async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       const temp = path.join(cacheDir, '00000000000000b1.tar.zst.tmp-4242-1-ab12cd34')
       await writeFile(temp, new Uint8Array(1024))
@@ -395,7 +534,15 @@ describe('Cache.evictIfDue', () => {
 
   // turborepo test_evict_empty_cache.
   it('an empty cache prunes to nothing, without error', async () => {
-    const cache = new Cache(cacheDir)
+    const cache = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     try {
       expect(await cache.prune({ olderThanMs: Date.now(), maxBytes: 1 })).toEqual({
         evicted: 0,
@@ -412,8 +559,19 @@ describe('Cache.evictIfDue', () => {
   // separate}_database: a save landing while a prune runs survives it.
   for (const handles of ['one handle', 'two handles'] as const) {
     it(`an entry saved while a prune runs survives it, through ${handles}`, async () => {
-      const cache = new Cache(cacheDir)
-      const writer = handles === 'one handle' ? cache : new Cache(cacheDir)
+      const cache = new Cache(
+        cacheDir,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        TAR_STORE,
+      )
+      const writer =
+        handles === 'one handle'
+          ? cache
+          : new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, TAR_STORE)
       try {
         await seed(cache, ['aa', 'bb', 'cc'], true)
         for (const h of ['aa', 'bb', 'cc']) age(h, Date.now() - 3 * DAY)
@@ -430,7 +588,15 @@ describe('Cache.evictIfDue', () => {
   }
 
   it("a reading verb's handle evicts nothing, with an entry due", async () => {
-    const writer = new Cache(cacheDir)
+    const writer = new Cache(
+      cacheDir,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      TAR_STORE,
+    )
     await seed(writer, ['aa'])
     writer.close()
     age('aa', 1)
@@ -440,6 +606,8 @@ describe('Cache.evictIfDue', () => {
       undefined,
       undefined,
       'inspect',
+      undefined,
+      TAR_STORE,
     )
     try {
       expect(await reader.evictIfDue({ maxAgeMs: DAY })).toBeNull()
