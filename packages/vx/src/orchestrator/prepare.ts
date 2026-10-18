@@ -379,8 +379,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     'open',
     await storeRoot,
     {
-      embedded: (resolveSetting('cache.store.embedded', workspaceConfig).value ??
-        DEFAULT_STORE.embedded) as boolean,
+      embeddings: (resolveSetting('cache.store.embeddings', workspaceConfig).value ??
+        DEFAULT_STORE.embeddings) as number,
       compress: (resolveSetting('cache.store.compress', workspaceConfig).value ??
         DEFAULT_STORE.compress) as boolean,
       verify: (resolveSetting('cache.store.verify', workspaceConfig).value ??

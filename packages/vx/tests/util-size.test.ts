@@ -72,6 +72,14 @@ describe('parseSize — accepted forms', () => {
     expect(parseSize('512MB')).toBe(512 * MiB)
   })
 
+  it('reads an iB unit as the same power of 1024', () => {
+    expect(parseSize('32KiB')).toBe(32 * 1024)
+    expect(parseSize('1GiB')).toBe(GiB)
+    expect(parseSize('1MiB')).toBe(MiB)
+    expect(parseSize('1iB')).toBeNull()
+    expect(parseSize('1Ki')).toBeNull()
+  })
+
   // With no unit letter the optional `B` still matches, so `4096B` is a legal
   // way to write bytes. Pinned because it is the one form where the capture
   // group is undefined AND the `B` is consumed — the branch a "require a unit
@@ -272,23 +280,10 @@ describe('parseSize — signs, units, and structural junk', () => {
     for (const raw of ['B', 'K', 'M', 'G', 'T', 'KB', 'GB', 'b', 'gb', '']) rejects(raw)
   })
 
-  // Only K/M/G/T are units. P/E and the IEC spellings look right to a user and
+  // Only K/M/G/T are units. P/E and a unit-less `i` look right to a user and
   // must fail loudly rather than being read as some other unit.
-  it('rejects unknown and IEC unit spellings', () => {
-    for (const raw of [
-      '1P',
-      '1PB',
-      '1E',
-      '1EB',
-      '1Z',
-      '1KiB',
-      '1MiB',
-      '1Ki',
-      '1i',
-      '1kib',
-      '1byte',
-      '1bytes',
-    ]) {
+  it('rejects unknown unit spellings', () => {
+    for (const raw of ['1P', '1PB', '1E', '1EB', '1Z', '1Ki', '1i', '1byte', '1bytes']) {
       rejects(raw)
     }
   })
@@ -537,7 +532,7 @@ describe('call-site contracts', () => {
   })
 
   it('refuses the strings the loader must reject with a UserError', () => {
-    for (const raw of ['1.5GB', '-1', 'big', '', '1 GB', '1KiB']) rejects(raw)
+    for (const raw of ['1.5GB', '-1', 'big', '', '1 GB', '1Ki']) rejects(raw)
   })
 
   // parseSize's own `(\d+)` capture is handed straight to parseDecimalInt

@@ -103,10 +103,10 @@ parse fail; the caller surfaces `--older-than must be a duration like 30d, 24h o
 ### `parseSize(input): number | null`
 
 ```
-/^(\d+)([KMGT])?B?$/i
+/^(\d+)(?:([KMGT])(?:i?B)?|B)?$/i
 ```
 
-Returns bytes. Multipliers are powers of 1024 (`K`, `M`, `G`, `T`).
+Returns bytes. Multipliers are powers of 1024 (`K`, `M`, `G`, `T`), with an optional `B` or `iB` (`32KiB`).
 Optional trailing `B` is allowed. `null` on parse fail — including
 digits past 2^53, which would parse to a number the user did not type;
 the caller surfaces `--max-size must be a size like 500M or 1G (got <value>)`.

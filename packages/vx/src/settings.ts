@@ -17,7 +17,8 @@ export type SettingKind =
   | { readonly type: 'concurrency' }
   // `zero`: 0 is a value ("wait for nothing not already done"), not a typo.
   | { readonly type: 'duration'; readonly timer?: true; readonly zero?: true }
-  | { readonly type: 'size' }
+  // `off`: `false` is a value, 0 bytes (the thing the size bounds is off).
+  | { readonly type: 'size'; readonly off?: true }
   | { readonly type: 'bool' }
   | { readonly type: 'enum'; readonly values: readonly string[] }
   | { readonly type: 'string' }
@@ -192,10 +193,10 @@ export const SETTINGS: readonly Setting[] = [
     env: false,
   },
   {
-    path: 'cache.store.embedded',
-    kind: { type: 'bool' },
-    default: 'true',
-    doc: 'Keep a small entry inside the cache index, one zstd tar, rather than as files.',
+    path: 'cache.store.embeddings',
+    kind: { type: 'size', off: true },
+    default: "'32KiB'",
+    doc: 'Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.',
   },
   {
     path: 'cache.store.compress',
@@ -289,7 +290,7 @@ export function kindHint(kind: SettingKind): string {
         ? "a duration like '500ms', '30s' or '5m', at most 24 days"
         : "a duration like '45s', '12h' or '30d'"
     case 'size':
-      return "a size like '500MB' or '10GB'"
+      return kind.off === true ? "false, or a size like '32KiB'" : "a size like '500MB' or '10GB'"
     case 'bool':
       return 'true or false'
     case 'enum':
@@ -337,6 +338,7 @@ export function parseSettingValue(kind: SettingKind, raw: unknown): unknown {
       return kind.timer === true && n > MAX_TIMEOUT_MS ? null : n
     }
     case 'size':
+      if (kind.off === true && (raw === false || raw === 'false')) return 0
       return typeof raw === 'string' ? parseSize(raw) : null
     case 'bool':
       if (typeof raw === 'boolean') return raw

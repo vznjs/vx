@@ -300,7 +300,7 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        output_files' ino + ctime_ms moved to the workspace's own
 //        output_stamps, output_dirs lost its foreign key, and the value
 //        salt moved to store_meta. The cache KEY is unchanged.
-//   v33: an artifact of at most INLINE_MAX compressed bytes lives in the
+//   v33: an artifact of at most 32 KiB compressed lives in the
 //        store's `artifacts` table, written in its rows' transaction, and
 //        every entry read joins it. The artifact bytes and the cache KEY are
 //        unchanged (CACHE_VERSION not bumped).
@@ -374,13 +374,6 @@ const ARTIFACT_TABLES = ['artifacts', 'artifacts_meta']
  * `SCHEMA_VERSION` too: a warm open reads no statement for it.
  */
 const ARTIFACT_LAYOUT = 'a2'
-
-/**
- * The largest compressed artifact kept in the index rather than in a file
- * of its own: it is written in its rows' transaction, with no temp and no
- * rename (docs/design/cache-save-cpu-2026-10.md).
- */
-const INLINE_MAX = 32 * 1024
 
 /**
  * An index that records a schema other than this vx's: the one an opener
@@ -813,15 +806,23 @@ interface SavedTree {
 
 /** How a save keeps an entry locally (`cache.store`). */
 export interface StoreOptions {
-  /** A small entry is kept in the index, as one zstd tar (fewer files to make). */
-  embedded: boolean
+  /**
+   * The largest entry kept in the index, as one zstd tar (fewer files to
+   * make): written in its rows' transaction, with no temp and no rename
+   * (docs/design/cache-save-cpu-2026-10.md). 0 keeps every entry as files.
+   */
+  embeddings: number
   /** A file-backed entry is one `<hash>.tar.zst`; off, a `<hash>.tree` of plain files. */
   compress: boolean
   /** What a tree restore checks first: each file's size and mtime, every byte, or nothing. */
   verify: 'stat' | 'hash' | 'none'
 }
 
-export const DEFAULT_STORE: StoreOptions = { embedded: true, compress: false, verify: 'stat' }
+export const DEFAULT_STORE: StoreOptions = {
+  embeddings: 32 * 1024,
+  compress: false,
+  verify: 'stat',
+}
 
 /** What a run's background uploads moved: totals over the ones that landed. */
 export interface UploadTally {
@@ -2403,7 +2404,7 @@ export class Cache implements CacheLayer {
    * `Response` and copies a file `Blob` without collecting either, so a
    * pull never holds the artifact. A body that fails mid-stream (a dropped
    * socket) leaves a partial temp behind it, removed here; validation
-   * removes its own. A body of at most `INLINE_MAX` bytes — by its size,
+   * removes its own. A body of at most `cache.store.embeddings` bytes — by its size,
    * or counted as it streams — is read to memory and stored inline.
    */
   async ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void> {
@@ -2428,17 +2429,17 @@ export class Cache implements CacheLayer {
         body instanceof Blob ? body.size : Number(body.headers.get('content-length') ?? 0)
       if (length > cap) throw past()
       if (body instanceof Blob) {
-        if (length <= INLINE_MAX) small = await body.bytes()
+        if (length <= this.store.embeddings && this.store.embeddings > 0) small = await body.bytes()
         else await Bun.write(tmpPath, body)
       } else {
         let source = body.body
         if (source === null) small = new Uint8Array(0)
-        else if (length <= INLINE_MAX) {
+        else if (length <= this.store.embeddings && this.store.embeddings > 0) {
           // Counted as it streams: a length the server did not send, or
           // one it sent short, cannot make a large body inline.
           const r: ChunkReader = source.getReader()
           reader = r
-          const head = await readUpTo(r, INLINE_MAX)
+          const head = await readUpTo(r, this.store.embeddings)
           if (head.done) small = head.bytes
           else source = prepended(head.bytes, r)
         }
@@ -2590,7 +2591,7 @@ export class Cache implements CacheLayer {
   > {
     if (this.store.compress) return this.packArtifactToTemp(this.tempPath(args.hash), args)
     const plan = await this.planWithin(args)
-    if (this.store.embedded && plan.size <= INLINE_MAX) {
+    if (this.store.embeddings > 0 && plan.size <= this.store.embeddings) {
       const tar = await packArtifactBytes(plan)
       return { compressed: await zstdCompress(tar), tar }
     }
@@ -2616,7 +2617,7 @@ export class Cache implements CacheLayer {
 
   /**
    * Atomically write `compressed` to `<hash>.tar.zst`, or inline into
-   * `artifacts` when it is at most `INLINE_MAX` bytes, and (re)build the
+   * `artifacts` when it is at most `cache.store.embeddings` bytes, and (re)build the
    * entries + output_files SQL rows from the archive itself. Shared by
    * `save()` (we just packed the bytes) and `ingest()` (it streamed them
    * from the remote layer into a temp) — both index the identical values, because both
@@ -2647,9 +2648,9 @@ export class Cache implements CacheLayer {
     // temp, no rename.
     const inline =
       saved === undefined &&
-      this.store.embedded &&
+      this.store.embeddings > 0 &&
       compressed instanceof Uint8Array &&
-      compressed.byteLength <= INLINE_MAX
+      compressed.byteLength <= this.store.embeddings
         ? compressed
         : null
     let tmpPath: string | undefined

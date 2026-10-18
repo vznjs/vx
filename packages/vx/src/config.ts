@@ -108,14 +108,14 @@ export interface CacheSettings {
    */
   upload?: { failures?: 'ci' | 'local' | 'always' }
   /**
-   * How the local cache keeps an entry. `embedded` (default true): a small
-   * one inside the index. `compress` (default false): a larger one as one
+   * How the local cache keeps an entry. `embeddings` (default `'32KiB'`):
+   * an entry up to this size inside the index; `false`, none. `compress` (default false): a larger one as one
    * `.tar.zst`; off, as its plain files, which a hit copies or clones out
    * with no decode. `verify` (default `'stat'`): what a hit on plain files
    * checks first, each file's size and mtime, every byte (`'hash'`), or
    * nothing (`'none'`).
    */
-  store?: { embedded?: boolean; compress?: boolean; verify?: 'stat' | 'hash' | 'none' }
+  store?: { embeddings?: false | string; compress?: boolean; verify?: 'stat' | 'hash' | 'none' }
   /**
    * Cache transfers at once. `download` and `upload` (per remote) default
    * to min(96, max(cores × 3, 64)); `restore`, local hits writing their

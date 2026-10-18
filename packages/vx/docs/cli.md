@@ -1469,7 +1469,7 @@ Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 **Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
 `30d`, `24h`, `60m`, `30s`, `30D`.
 
-**Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive.
+**Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
 Optional `B` suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`,
 `500MB`, `1gb`. A bare number is refused here: `--max-size 10` would
 read as ten bytes and evict nearly everything, and nobody means that —
@@ -2963,7 +2963,7 @@ what a TASK sees is `exec.env` in `docs/schema.md`.
 | `VX_CACHE_DOWNLOAD`                 | [`cache.download`](schema.md#settings)                | Which remote hits land on disk: every one, only the requested tasks, or none.                                                                                             |
 | `VX_CACHE_INPUT_STABILITY_STRATEGY` | [`cache.inputStability.strategy`](schema.md#settings) | What a write to an input during the command means for the save, for tasks without their own.                                                                              |
 | `VX_CACHE_INPUT_STABILITY_SEVERITY` | [`cache.inputStability.severity`](schema.md#settings) | Whether a skipped save warns or fails the task, for tasks without their own.                                                                                              |
-| `VX_CACHE_STORE_EMBEDDED`           | [`cache.store.embedded`](schema.md#settings)          | Keep a small entry inside the cache index, one zstd tar, rather than as files.                                                                                            |
+| `VX_CACHE_STORE_EMBEDDINGS`         | [`cache.store.embeddings`](schema.md#settings)        | Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.                                                             |
 | `VX_CACHE_STORE_COMPRESS`           | [`cache.store.compress`](schema.md#settings)          | Keep a larger entry as one `.tar.zst`; off, as its plain files, which a hit copies or clones out.                                                                         |
 | `VX_CACHE_STORE_VERIFY`             | [`cache.store.verify`](schema.md#settings)            | What a hit on plain files checks first: each file's size and mtime, every byte, or nothing.                                                                               |
 | `VX_LOCK_REVIEW_FILES`              | [`lock.reviewFiles`](schema.md#settings)              | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                         |

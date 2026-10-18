@@ -57,11 +57,11 @@ and key derivation logic live here.
 ```ts
 /** How a save keeps an entry locally (`cache.store`). */
 export interface StoreOptions {
-  embedded: boolean
+  embeddings: number // bytes; 0 keeps every entry as files
   compress: boolean
   verify: 'stat' | 'hash' | 'none'
 }
-export const DEFAULT_STORE: StoreOptions // { embedded: true, compress: false, verify: 'stat' }
+export const DEFAULT_STORE: StoreOptions // { embeddings: 32 * 1024, compress: false, verify: 'stat' }
 
 /**
  * Shape every cache implementation honors. Both Cache (local v10) and
@@ -481,8 +481,8 @@ everything in `cache.db`.
 ```
 
 `cache.store` (`StoreOptions`, `DEFAULT_STORE`, the Cache's last
-constructor argument) picks the local form: `embedded` keeps a small
-entry inline, `compress` keeps a file-backed one as the tar.zst, and
+constructor argument) picks the local form: `embeddings` keeps an entry up
+to that size inline, `compress` keeps a file-backed one as the tar.zst, and
 otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTree`
 at save, the validated tar extracted at ingest, `sealTree`), stdout in
 its `entry_stdout` row. A tree restore checks `verify` (`stat`: size and
