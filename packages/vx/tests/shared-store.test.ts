@@ -167,6 +167,18 @@ describe('the shared store', () => {
     expect(existsSync(path.join(a.root, '.vx', 'own', 'cache.db'))).toBe(true)
   })
 
+  it('an open store is not searched for a project directory', async () => {
+    // The search is for a FIRST index in a project's own directory. A store
+    // that has its index was searched on every open, one probe per manifest
+    // name in each of its entry directories: 14 000 at 1 000 entries.
+    const a = await workspace()
+    expect((await build(a)).status).toBe('success')
+    await mkdir(path.join(await store(), 'planted'))
+    await writeFile(path.join(await store(), 'planted', 'package.json'), '{}')
+    await rm(path.join(a.pkg, 'out.txt'))
+    expect(await build(a)).toEqual({ status: 'cache-hit', restored: true })
+  })
+
   it('an unusable store keeps the entries in the workspace, in silence', async () => {
     // A file where the store's root should be: mkdir fails as any user.
     await writeFile(path.join(home, '.vx'), '')

@@ -629,7 +629,7 @@ function usageOfEntry(entry: { cpuMs?: number; peakRssBytes?: number }): ExecUsa
  * it there", and the ignore file is created exclusively instead of probed
  * first. An existing cache costs three calls; it cost six.
  */
-function openCacheDir(cacheDir: string, workspaceRoot?: string): string | null {
+function openCacheDir(cacheDir: string, workspaceRoot?: string, index = 'cache.db'): string | null {
   const [ignore, ignoreText] = ignoreFileFor(cacheDir)
   try {
     accessSync(cacheDir, constants.W_OK)
@@ -640,7 +640,7 @@ function openCacheDir(cacheDir: string, workspaceRoot?: string): string | null {
     return null
   }
   try {
-    accessSync(path.join(cacheDir, 'cache.db'), constants.W_OK)
+    accessSync(path.join(cacheDir, index), constants.W_OK)
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     // A FILE at `cacheDir` passed the `access` above; mkdir names it.
@@ -665,7 +665,7 @@ function storeBlocked(storeDir: string, storeRoot: string | null): string | null
         if (refused !== null) return refused
       }
     }
-    return openCacheDir(storeDir)
+    return openCacheDir(storeDir, undefined, 'store.db')
   } catch (err) {
     return errorText(err)
   }
