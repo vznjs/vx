@@ -62,11 +62,12 @@ type PluginHookName = keyof PluginHookHandlers
 
 `setup` and `schedule` receive the plugin's own entries in the cache the
 workspace declares (`PluginCache`, `cache/plugin-cache.ts`; design
-`design/shared-timings-2026-10.md`): `get(name)`, `put(name, bytes)`,
-`has(name)`, `hasMany(names)`. The local store (the shared store's
+`design/shared-timings-2026-10.md`): `get(name, scoped?)`, `put(name, bytes)`,
+`has(name, scoped?)`, `hasMany(names, scoped?)`. The local store (the shared store's
 `plugin_blobs`) answers first, then each remote in declared order, under
-the run's policy (a read-only remote is never written) and scope (read
-the default entry, then the scope's; write only the scope's). Core
+the run's policy (a read-only remote is never written) and scope: a
+scoped run writes only the scope's entry and reads one, the scope's, or
+with `scoped` false the default (base branch) entry. Core
 derives each key from the plugin's name and the entry's
 (`xxh3('vx-plugin\0' + plugin + '\0' + name)`), so a plugin reaches no
 other plugin's entries and no task's. A `put` never replaces an entry:

@@ -181,7 +181,7 @@ describe('ctx.cache', () => {
     expect([...remote.store.keys()]).toEqual([xxh3hex('vx-plugin\0org/a\0x')])
   })
 
-  it('a scoped run reads the default entry and writes only its own', async () => {
+  it('a scoped run reads the default entry when asked and writes only its own', async () => {
     const remote = wire()
     const plain = pluginCache('org/a', {
       db: localStore().dbHandle(),
@@ -196,7 +196,7 @@ describe('ctx.cache', () => {
       remotes: [remoteOf(remote)],
       scope: 'pr-1',
     })
-    expect(text(await scoped.get('shared'))).toBe('main')
+    expect(text(await scoped.get('shared', false))).toBe('main')
     await scoped.put('mine', bytes('pr'))
     const other = pluginCache('org/a', {
       db: localStore().dbHandle(),
@@ -205,6 +205,32 @@ describe('ctx.cache', () => {
       scope: undefined,
     })
     expect(await other.get('mine')).toBeNull()
+  })
+
+  it("a scoped run asks one key per read: the scope's, or the default with scoped false", async () => {
+    const remote = wire({ batch: true })
+    const scoped = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: { ...FULL, localRead: false },
+      remotes: [remoteOf(remote)],
+      scope: 'pr-1',
+    })
+    const plain = xxh3hex('vx-plugin\0org/a\0x')
+    const own = xxh3hex(`vx-cache-scope\0pr-1\0${plain}`)
+    await scoped.get('x')
+    await scoped.has('x')
+    await scoped.hasMany(['x'])
+    await scoped.get('x', false)
+    await scoped.has('x', false)
+    await scoped.hasMany(['x'], false)
+    expect(remote.calls).toEqual([
+      `get ${own}`,
+      `has ${own}`,
+      'hasMany 1',
+      `get ${plain}`,
+      `has ${plain}`,
+      'hasMany 1',
+    ])
   })
 
   it('hasMany is one probe per layer, and null when a remote cannot batch', async () => {

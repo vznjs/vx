@@ -77,12 +77,16 @@ async function mergeBase(root: string, defaultBranch: string): Promise<string | 
   return null
 }
 
-/** The newest blob along `shas`: one batch probe, one fetch; sequential fetches with no batch probe. */
+/**
+ * The newest blob along `shas`, the default branch's lineage, so its entries
+ * are the base branch's (`scoped` false): one batch probe, one fetch;
+ * sequential fetches with no batch probe.
+ */
 async function newestBlob(cache: PluginCache, shas: readonly string[]): Promise<Uint8Array | null> {
-  const present = await cache.hasMany(shas.map(keyOf))
+  const present = await cache.hasMany(shas.map(keyOf), false)
   for (const sha of shas) {
     if (present !== null && !present.has(keyOf(sha))) continue
-    const got = await cache.get(keyOf(sha))
+    const got = await cache.get(keyOf(sha), false)
     if (got !== null) return got
     if (present !== null) return null
   }
