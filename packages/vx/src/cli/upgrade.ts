@@ -21,6 +21,7 @@ import { access, chmod, chown, link, mkdtemp, rename, rm, stat } from 'node:fs/p
 import path from 'node:path'
 import { flagHint, seeHelp } from './help.js'
 import { UserError, sayNotice, ui } from '../util/index.js'
+import { findWorkspaceRoot } from '../workspace/index.js'
 import { VERSION } from '../version.js'
 
 const REGISTRY = 'https://registry.npmjs.org'
@@ -596,11 +597,11 @@ export async function upgradeManaged(
   version: string,
   current = VERSION,
   step = '',
-): Promise<void> {
+): Promise<boolean> {
   const plugins = install.plugins ?? []
   if (version === current && plugins.every((p) => installedVersion(install.cwd, p) === version)) {
     ui.print('out', ui.status('info', 'vx upgrade', `${step}already at ${current}`))
-    return
+    return false
   }
   const argv = upgradeArgv(install, version)
   // PATH as it is now: `Bun.which` alone reads the one the process started with.
@@ -636,6 +637,7 @@ export async function upgradeManaged(
       }`,
     )
   }
+  return true
 }
 
 /**
@@ -648,7 +650,7 @@ async function upgradeBinary(
   current = VERSION,
   step = '',
   key: SigningKey = NPM_SIGNING_KEY,
-): Promise<void> {
+): Promise<boolean> {
   const pkg = platformPackage()
   let installed: string | undefined
   const replaced = await replaceBinary(
@@ -679,6 +681,7 @@ async function upgradeBinary(
       ? ui.status('ok', 'vx upgrade', `${step}installed ${installed}`)
       : ui.status('info', 'vx upgrade', `${step}already at ${current}`),
   )
+  return replaced
 }
 
 /** The version `bin --version` answers, without the hand-off note a handed-off run adds. */
@@ -738,9 +741,9 @@ export async function upgradeOnlyGlobal(
 }
 
 /** `run`, its refusal naming `what` after the verb: a run that moves two installs says which failed. */
-async function named(what: string, run: () => Promise<void>): Promise<void> {
+async function named<T>(what: string, run: () => Promise<T>): Promise<T> {
   try {
-    await run()
+    return await run()
   } catch (err) {
     if (!(err instanceof UserError)) throw err
     throw new UserError(err.message.replace(/^vx upgrade: /, `vx upgrade: ${what}: `), err.code)
@@ -787,17 +790,44 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
   const from = handedOffFrom
   if (from !== undefined) {
     const version = await targetVersion(tag)
-    await named('project vx', () =>
+    const moved = await named('project vx', () =>
       install === null
         ? upgradeBinary(dest, version, VERSION, 'project ')
         : upgradeManaged(install, version, VERSION, 'project '),
     )
     await upgradeGlobal(from, version)
+    if (moved) await relock(newVx(install, dest))
     return 0
   }
-  if (install !== null) await upgradeManaged(install, await targetVersion(tag))
-  else await upgradeBinary(dest, versionSpec(tag))
+  const moved =
+    install !== null
+      ? await upgradeManaged(install, await targetVersion(tag))
+      : await upgradeBinary(dest, versionSpec(tag))
+  if (moved) await relock(newVx(install, dest))
   return 0
+}
+
+/**
+ * The vx an upgrade just installed: the replaced binary, or the project's
+ * `node_modules/.bin/vx` (a manager's store path names the old version).
+ */
+const newVx = (install: ManagedInstall | null, dest: string): string =>
+  install === null ? dest : path.join(install.cwd, 'node_modules', '.bin', 'vx')
+
+/**
+ * Lock the workspace with the vx just installed at `bin` (M, 2026-10-18):
+ * a release may record the lock differently. `-g` never re-locks. A lock
+ * that fails leaves the upgrade done and says what to run.
+ */
+export async function relock(bin: string, cwd = process.cwd()): Promise<void> {
+  const root = await findWorkspaceRoot(cwd).catch(() => null)
+  if (root === null) return
+  const proc = Bun.spawnSync({
+    cmd: [bin, 'lock'],
+    cwd: root,
+    stdio: ['inherit', 'inherit', 'inherit'],
+  })
+  if (proc.exitCode !== 0) sayNotice('warn', 'vx upgrade', 'vx lock failed: run vx lock')
 }
 
 /**

@@ -1866,6 +1866,11 @@ swapped back for the previous vx, and the command exits 1 saying so
 already is it says `› vx upgrade  already at <version>` and downloads
 nothing.
 
+After an upgrade that installed something, inside a workspace, the new
+vx runs `vx lock` at the workspace root, since a release may record the
+lock differently. A lock that fails leaves the upgrade done and prints
+`vx upgrade  vx lock failed: run vx lock`. `vx upgrade -g` never locks.
+
 **A vx a package manager installed** (the npm package's launcher runs
 `…/node_modules/@vzn/vx-<os>-<arch>/vx`) is upgraded by that package
 manager, never by a rename over its file, which the next install would

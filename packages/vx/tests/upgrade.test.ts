@@ -18,7 +18,7 @@ import { generateKeyPairSync, sign } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, describe, expect, it } from 'bun:test'
+import { afterAll, describe, expect, it, spyOn } from 'bun:test'
 import {
   binaryFromTarball,
   fetchManifest,
@@ -26,6 +26,7 @@ import {
   managedInstall,
   NPM_SIGNING_KEY,
   npmOwnedBinary,
+  relock,
   releaseBinary,
   replaceBinary,
   startedVersion,
@@ -916,5 +917,47 @@ describe('vx upgrade (CLI)', () => {
     )
     expect(code).toBe(1)
     expect(err).toBe(noticed('vx upgrade: unexpected argument: v2 (see `vx upgrade --help`)\n'))
+  })
+})
+
+describe('relock', () => {
+  // M, 2026-10-18: an upgrade locks with the new vx; a failed lock says to run it.
+  const workspace = async (name: string, lock: string): Promise<{ root: string; bin: string }> => {
+    const root = path.join(dir, name)
+    await mkdir(path.join(root, '.vx', 'sub'), { recursive: true })
+    await writeFile(path.join(root, '.vx', 'workspace.ts'), 'export default {}\n')
+    const bin = path.join(root, 'vx')
+    await writeFile(bin, `#!/bin/sh\necho "$1 $PWD" > "${root}/ran"\n${lock}\n`)
+    await chmod(bin, 0o755)
+    return { root, bin }
+  }
+
+  it("runs the new vx's lock at the workspace root", async () => {
+    const { root, bin } = await workspace('relock-ok', 'exit 0')
+    await relock(bin, path.join(root, '.vx', 'sub'))
+    expect((await readFile(path.join(root, 'ran'), 'utf8')).trim()).toBe(
+      `lock ${realpathSync(root)}`,
+    )
+  })
+
+  it('a lock that fails says to run vx lock, and the upgrade stands', async () => {
+    const { root, bin } = await workspace('relock-fail', 'exit 1')
+    const err = spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      await relock(bin, root)
+      expect(err.mock.calls.map((c) => String(c[0])).join('')).toContain('run vx lock')
+    } finally {
+      err.mockRestore()
+    }
+  })
+
+  it('outside a workspace runs nothing', async () => {
+    const out = path.join(dir, 'relock-none')
+    await mkdir(out, { recursive: true })
+    const bin = path.join(out, 'vx')
+    await writeFile(bin, `#!/bin/sh\ntouch "${out}/ran"\n`)
+    await chmod(bin, 0o755)
+    await relock(bin, out)
+    expect(existsSync(path.join(out, 'ran'))).toBe(false)
   })
 })
