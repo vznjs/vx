@@ -51,10 +51,10 @@ export function localBranchScope(
   env?: NodeJS.ProcessEnv,
 ): string | undefined
 // The run's scope: VX_CACHE_SCOPE (empty: none), else the plugin's
-// (setBranch), else, with a cache plugin, localBranchScope.
+// (setBranch; null: trusted, none), else, with a cache plugin, localBranchScope.
 export function resolveCacheScope(
   workspaceRoot: string,
-  pluginScope: string | undefined,
+  pluginScope: string | null | undefined,
   hasRemote: boolean,
   baseBranch: string | undefined,
   env?: NodeJS.ProcessEnv,

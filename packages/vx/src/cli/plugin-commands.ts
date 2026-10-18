@@ -144,7 +144,7 @@ async function verbCache(
   ])
   const scope = resolveCacheScope(
     ws.workspaceRoot,
-    ws.branch.scope,
+    ws.branch.trusted === true ? null : ws.branch.scope,
     ws.plugins.some((p) => p.cache !== undefined),
     configuredBaseBranch(ws.workspaceConfig),
   )

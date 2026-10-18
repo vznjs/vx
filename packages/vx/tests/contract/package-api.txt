@@ -419,6 +419,7 @@ export interface Block {
 export interface BranchFacts {
   scope?: string
   base?: string
+  trusted?: boolean
 }
 == type CacheConfig (src/config.ts)
 export interface CacheConfig {

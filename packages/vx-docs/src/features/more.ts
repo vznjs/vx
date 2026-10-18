@@ -1573,7 +1573,7 @@ export const MORE: readonly Feature[] = [
     category: 'ci',
     hook: 'On Actions, main writes the default cache entries and a branch writes only its own.',
     body: [
-      'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the branch: the default branch writes the default entries, a push or pull request from `feat-x` writes `acme/app:feat-x`, the scope a laptop on `feat-x` reads.',
+      'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the branch: the default branch writes the default entries, a push or pull request from `feat-x` writes `acme/app:feat-x`, the scope a laptop on `feat-x` reads. A merge queue’s run is trusted: it reads and writes only the default entries.',
       'No config needed; `VX_CACHE_SCOPE` overrides it.',
     ],
     example: {
@@ -1598,7 +1598,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Point vx at the remote cache server you already run.',
     body: [
       'Switching runners should not mean switching cache servers. `turboCache()` talks to any server with Turbo’s artifacts API, Vercel’s included, and `nxCache()` to Nx’s self-hosted cache spec.',
-      'Your server stays; vx stores its own entries in it.',
+      'Your server stays; vx stores its own entries in it. Each request names its bucket in an `x-vx-cache-scope` header, `trusted` or the branch scope, so a server that keeps one per branch need not guess.',
     ],
     example: {
       lang: 'text',

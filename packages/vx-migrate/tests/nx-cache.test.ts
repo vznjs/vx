@@ -141,6 +141,23 @@ describe('NxRemoteCache against the spec server', () => {
     expect(await (await c.get('aa11'))!.body.bytes()).toEqual(body) // immutable record kept
   })
 
+  // Owner, 2026-10-18: every request names the bucket it means, `trusted`
+  // for a task's own key, so a server need not layer; the key is unchanged.
+  it('every request names its scope in x-vx-cache-scope: trusted for a default key', async () => {
+    const c = cache()
+    const scope = (n = -1) => srv.seen.at(n)!.headers['x-vx-cache-scope']
+    await c.put('a0c1', new Blob(['x']), { durationMs: 1 })
+    await c.get('a0c1')
+    await c.has('a0c1')
+    expect([scope(-3), scope(-2), scope(-1)]).toEqual(['trusted', 'trusted', 'trusted'])
+    const at = { scope: 'acme/app:feat' }
+    await c.put('a0c2', new Blob(['x']), { durationMs: 1, ...at })
+    await c.get('a0c2', at)
+    await c.has('a0c2', at)
+    expect([scope(-3), scope(-2), scope(-1)]).toEqual([at.scope, at.scope, at.scope])
+    expect(new URL(srv.seen.at(-1)!.url).pathname).toBe('/v1/cache/a0c2')
+  })
+
   // Core asks `has` only for a `--dry` prediction; no `get` follows it.
   // The kept response the next probe released held the last one's
   // connection until the deadline.

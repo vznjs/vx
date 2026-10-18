@@ -78,7 +78,11 @@ describe('the requests', () => {
       fetchImpl,
     ).put('aa', new Blob(['12345']), { durationMs: 1 })
     expect(calls.map((c) => c.headers)).toEqual([
-      { 'Content-Type': 'application/octet-stream', 'Content-Length': '5' },
+      {
+        'x-vx-cache-scope': 'trusted',
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': '5',
+      },
     ])
   })
 

@@ -586,12 +586,13 @@ function gitConfigSections(workspaceRoot: string): Map<string, Map<string, strin
 
 /**
  * The run's cache scope (owner, 2026-10-17): `VX_CACHE_SCOPE` (empty: none),
- * else a plugin's (`setBranch`, `github()` on Actions), else, with a cache
- * plugin to share it, the branch's from git. Undefined: the default keys.
+ * else a plugin's (`setBranch`, `github()` on Actions; null: the plugin
+ * named the run trusted), else, with a cache plugin to share it, the
+ * branch's from git. Undefined: the default keys.
  */
 export function resolveCacheScope(
   workspaceRoot: string,
-  pluginScope: string | undefined,
+  pluginScope: string | null | undefined,
   hasRemote: boolean,
   baseBranch: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
@@ -602,6 +603,7 @@ export function resolveCacheScope(
     if (!isCacheScope(named)) throw cacheScopeEnvError()
     return named
   }
+  if (pluginScope === null) return undefined
   return pluginScope ?? (hasRemote ? localBranchScope(workspaceRoot, baseBranch, env) : undefined)
 }
 
