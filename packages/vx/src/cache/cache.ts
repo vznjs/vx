@@ -124,7 +124,7 @@ import { behindLink } from './linked-inputs.js'
  * An artifact or temp file without an `entries` row is never reaped
  * younger than this: a crashed save's temp is stale long before it. A
  * row-less artifact may still be in use (another vx version's open dropped
- * its row), so past this it is judged by the retention policy, its file
+ * its row), so past this it is judged by the prune policy, its file
  * time standing for `accessed_at`. A hit renews a file time older than
  * this, so the file time trails the last use by at most this much, and
  * the policy reads the file time plus this as the last use.
@@ -142,7 +142,7 @@ const ADOPT_STATS = 64
  * A hit renews an entry's `accessed_at` only once it is older than this:
  * renewing every hit rewrote 2,180 rows at a warm 1,090-package run's
  * close, ~30 ms of it. So `accessed_at` trails the last use by at most
- * this much, and the retention policy reads it plus this as the last use:
+ * this much, and the prune policy reads it plus this as the last use:
  * an entry used within the limit is never pruned, and one may stay up to
  * this long past it (owner, 2026-10-08).
  */
@@ -191,8 +191,8 @@ export function vxCacheEntries(cacheDir: string): string[] {
   })
 }
 
-/** The `schema_meta` key holding when the orphan sweep last ran (ms epoch). */
-const SWEPT_AT = 'orphans_swept_at'
+/** What `vx cache clean` keeps of run history and the hash memos. */
+const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
 export interface SchemaReset {
   from: string
@@ -2072,7 +2072,7 @@ export class Cache implements CacheLayer {
     // outputs, so a restore that did not fail here would report a green cache
     // hit over an emptied output tree. The artifact existed when `get()`
     // probed it, so its absence now means something removed it underneath us
-    // (a `vx cache clean` in another shell, or another workspace's retention
+    // (a `vx cache clean` in another shell, here or for another workspace
     // on a shared `--cache-dir`) — `ArtifactVanishedError`, which the caller
     // turns into a miss: the task runs.
     //
@@ -3069,67 +3069,6 @@ export class Cache implements CacheLayer {
     }
   }
 
-  /**
-   * The workspace's `cacheRetention`, applied at the end of a run: `prune()`
-   * with the same policy, but only when it would evict something, else the
-   * orphan sweep alone when an hour has passed since the last one. A run
-   * with nothing due pays the accessed-at flush it owed at close anyway, one
-   * scan of the index and one read of the sweep's clock — never the
-   * sweep's readdir. Null when nothing was due or the directory is not this
-   * handle's to write. The local WRITE axis does not gate it: under
-   * `--cache-policy=local:r,remote:rw` a save writes nothing here, but every remote
-   * hit is still ingested (`ingest`, ungated by design), and gated on that
-   * axis the retention never ran while the store grew hit by hit (A-7).
-   */
-  async evictIfDue(
-    policy: { maxAgeMs?: number; maxBytes?: number },
-    now: number = Date.now(),
-  ): Promise<PruneResult | null> {
-    return this.guard(() => this.evictIfDueNow(policy, now))
-  }
-
-  private async evictIfDueNow(
-    policy: { maxAgeMs?: number; maxBytes?: number },
-    now: number,
-  ): Promise<PruneResult | null> {
-    if (this.writeBlocked !== null || this.inspecting) return null
-    // First: an entry this run restored still carries its old `accessed_at`
-    // until the deferred bump lands, and would read as due for eviction.
-    this.flushAccessed()
-    const olderThanMs = policy.maxAgeMs === undefined ? undefined : now - policy.maxAgeMs
-    const { oldest, bytes } = this.db
-      .prepare(
-        'SELECT MIN(accessed_at) AS oldest, COALESCE(SUM(size_bytes), 0) AS bytes FROM entries',
-      )
-      .get() as { oldest: number | null; bytes: number }
-    const ageDue =
-      olderThanMs !== undefined && oldest !== null && oldest + ACCESS_REFRESH_MS < olderThanMs
-    const sizeDue = policy.maxBytes !== undefined && bytes > policy.maxBytes
-    if (ageDue || sizeDue) {
-      return this.prune({
-        ...(olderThanMs !== undefined ? { olderThanMs } : {}),
-        ...(policy.maxBytes !== undefined ? { maxBytes: policy.maxBytes } : {}),
-      })
-    }
-    // Row-less artifacts are bytes the index cannot count, so the policy
-    // above never sees them (upstream survey, nx#35483: 9 MiB of them sat
-    // under a 1 MB limit). Listing the directory to find them costs 0.5 ms
-    // per 1,000 entries (4.9 ms at 10,000), every run; the sweep's own
-    // clock in `schema_meta` costs one indexed read. The sweep is the
-    // policy's own prune, with the row-less files counted.
-    const swept = this.db.prepare('SELECT value FROM schema_meta WHERE key = ?').get(SWEPT_AT) as {
-      value: string
-    } | null
-    if (swept !== null && now - Number(swept.value) < ORPHAN_GRACE_MS) return null
-    return this.pruneIndex(
-      {
-        ...(olderThanMs !== undefined ? { olderThanMs } : {}),
-        ...(policy.maxBytes !== undefined ? { maxBytes: policy.maxBytes } : {}),
-      },
-      now,
-    )
-  }
-
   async prune(options: PruneOptions): Promise<PruneResult> {
     return this.guard(() => this.pruneIndex(options))
   }
@@ -3211,7 +3150,15 @@ export class Cache implements CacheLayer {
     } catch (err) {
       if (!isIndexFull(err)) throw err
     }
-    const orphans = await this.reapOrphans(picked.files, now)
+    // History and memo rows a month old go with a prune, never a run's
+    // close: five DELETEs on every run's exit was its slowest step (owner,
+    // 2026-10-18). `invocations` shares the window with `runs`, or `vx last`
+    // would list a run whose task rows are gone.
+    const cutoff = now - HISTORY_RETENTION_MS
+    this.history.pruneOlderThan(cutoff)
+    this.files.pruneOlderThan(cutoff)
+    this.folds.prune(cutoff)
+    const orphans = await this.reapOrphans(picked.files)
     return { evicted: victims.size, bytesFreed, ...orphans }
   }
 
@@ -3226,16 +3173,7 @@ export class Cache implements CacheLayer {
    */
   private async reapOrphans(
     taken: readonly RowlessFile[],
-    now: number,
   ): Promise<{ orphans: number; orphanBytes: number }> {
-    try {
-      this.db
-        .prepare('INSERT OR REPLACE INTO schema_meta(key, value) VALUES (?, ?)')
-        .run(SWEPT_AT, String(now))
-    } catch (err) {
-      // The sweep's clock: on a full disk the sweep runs again next time.
-      if (!isIndexFull(err)) throw err
-    }
     let orphans = 0
     let orphanBytes = 0
     const blobs = taken.filter((o) => o.blob !== undefined)
@@ -3366,34 +3304,12 @@ export class Cache implements CacheLayer {
   }
 
   close(): void {
-    // Run-history retention: the runs table grows by one row per
-    // executed task per invocation — a 2000-task repo accretes ~20k
-    // rows in days, inflating insert and checkpoint cost forever.
-    // 30 days comfortably covers `vx info` (24 h windows) and any
-    // CI-side analytics consumers. The `invocations` header table (one
-    // row per `vx run`) is pruned on the SAME window — otherwise a
-    // header would outlive its `runs` rows, so `vx info`/`vx last` would
-    // list an invocation whose task detail is already gone, and the
-    // table would grow unbounded on a long-lived checkout.
-    // A reading verb and a dry run delete nothing: `vx last --list` over
-    // month-old runs emptied the history it listed, and `vx cache clean
-    // --dry-run` pruned it (item 1004).
-    try {
-      if (!this.inspecting) {
-        const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
-        this.history.pruneOlderThan(cutoff)
-        if (this.write) this.files.pruneOlderThan(cutoff)
-      }
-    } catch {
-      // Retention is best-effort; never block closing the handle.
-    }
     try {
       this.flushAccessed()
       this.outputs.flushOutputDirs()
-      this.folds.flush(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      this.folds.flush()
     } catch {
-      // Same contract as the retention prune above, which was already
-      // guarded while this sibling was not: `accessed_at` is LRU
+      // `accessed_at` is LRU
       // bookkeeping, never correctness, and the run's results are
       // already recorded by the time we get here. Letting it throw also
       // SKIPPED `db.close()` below, leaking the handle. Reachable when

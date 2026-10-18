@@ -21,7 +21,6 @@ the rendered row only), `git`, `gitStatusCache`, `workspaceRoot`,
 (`{ usableBytes, totalBytes, cgroupLimitBytes }`), `cacheDir`,
 `cacheVersion`, `schemaVersion`, `cacheEntries`, `cacheBytes`,
 `settings` (`{ [path]: { value, source } }`),
-`cacheRetention` (the workspace's, `maxSize` also as `maxBytes`; null when none),
 `orphans`, `runs24h`, `hits24h`, `restored24h` (of those hits, the ones that restored outputs), `flakyTasks`, `lockfile`, `sandbox`
 (`{ available, reason, declared, untraced }`: whether this host can run
 an `exec.sandbox`, the probe's reason, how many loaded tasks declare

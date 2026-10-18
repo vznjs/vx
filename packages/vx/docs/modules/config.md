@@ -74,7 +74,7 @@ its `allow`, `deny`, `ignore`, D-156), `cache`, `inputs` and
 generic argument skips TypeScript's excess-property check, so a
 Turbo-shaped `outputs` on a task or a `cwd` in `exec` type-checked and
 failed only when vx loaded the config (D-69). `defineWorkspace` does
-the same for its keys, `cache.retention`'s and `rules`': a lone unknown key failed
+the same for its keys, `cache.inputStability`'s and `rules`': a lone unknown key failed
 TypeScript's weak-type check, but a typo beside a known one
 (`{ plugins, concurency }`, D-70; `rules: { exclusiveOutput }`,
 D-155) type-checked.
@@ -111,7 +111,7 @@ The function body is a one-liner today and that's by design.
 
 - The exported types and helpers are the **only** public contract.
 - The types and `config-schema.ts` name the same keys at every level
-  (workspace, `cache.retention`, project, task, `exec`, `exec.env`,
+  (workspace, project, task, `exec`, `exec.env`,
   `exec.persistent`, `exec.sandbox` and its `allow` / `deny` /
   `ignore`, `cache`, `inputs`, `cache.outputs`):
   `tests/config-types-schema.test.ts` holds each list to the type with

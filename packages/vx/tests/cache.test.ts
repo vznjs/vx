@@ -1360,7 +1360,6 @@ describe('Cache storage (v10)', () => {
     db.query('UPDATE entries SET accessed_at = ?').run(Date.now() - 50 * 60 * 1000)
     expect(await cache.get('h-used')).not.toBeNull()
     expect((await cache.prune({ olderThanMs: Date.now() - limit })).evicted).toBe(0)
-    expect((await cache.evictIfDue({ maxAgeMs: limit }))?.evicted ?? 0).toBe(0)
     // CONTROL: last renewed past the limit plus the hour, it goes.
     db.query('UPDATE entries SET accessed_at = ?').run(Date.now() - limit - REFRESH - 60_000)
     expect((await cache.prune({ olderThanMs: Date.now() - limit })).evicted).toBe(1)
@@ -2725,10 +2724,9 @@ describe('Cache schema/version recovery', () => {
         (raw.query(`SELECT COUNT(*) AS n FROM ${t}`).get() as { n: number }).n,
       ]),
     )
-    // `schema_meta` holds the schema version, the cache format (item 671)
-    // and the `file_hashes` sweep's clock (item 1082). `artifacts_meta`
-    // holds the layout row beside the planted one.
-    const seeded: Record<string, number> = { schema_meta: 3, artifacts_meta: 2 }
+    // `schema_meta` holds the schema version and the cache format (item
+    // 671). `artifacts_meta` holds the layout row beside the planted one.
+    const seeded: Record<string, number> = { schema_meta: 2, artifacts_meta: 2 }
     expect(before).toEqual(Object.fromEntries(tables.map((t) => [t, seeded[t] ?? 1])))
     raw.query("UPDATE schema_meta SET value = 'v0-ancient' WHERE key = 'version'").run()
     raw.close()
@@ -3107,7 +3105,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
     }
   })
 
-  it('close() prunes runs and invocations older than 30 days (header never outlives its runs)', async () => {
+  it('a prune drops runs and invocations older than 30 days (header never outlives its runs)', async () => {
     const cache = new Cache(
       cacheDir,
       undefined,
@@ -3141,7 +3139,7 @@ describe('Cache.recordRunBundle (Tier 3)', () => {
       runs: [runRow('recent-run', Date.now())],
       invocation: invocation('recent-run'),
     })
-    // The prune runs on close.
+    await cache.prune({ olderThanMs: 0 })
     cache.close()
 
     const reopened = new Cache(

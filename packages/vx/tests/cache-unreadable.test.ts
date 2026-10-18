@@ -143,7 +143,6 @@ describe('an index corrupt past the pages the open reads', () => {
         ['has', () => cache.has('h7')],
         ['stats', () => cache.stats()],
         ['prune', () => cache.prune({ maxBytes: 1 })],
-        ['evictIfDue', () => cache.evictIfDue({ maxBytes: 1 })],
         [
           'save',
           () =>

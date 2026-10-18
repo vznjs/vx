@@ -17,8 +17,8 @@ Every key `turbo.json`, `nx.json` and `project.json` accept, read from the upstr
 | `agentGuidance` | not applicable | Guidance for AI agents, not task or cache config; vx ignores it. |
 | `boundaries` | not applicable | Turbo's import-rule checker; vx has no module-boundary rules and ignores it. |
 | `cacheDir` | not supported | Ignored without a warning; vx uses its own `cache.dir` in `.vx/workspace.ts`. |
-| `cacheMaxAge` | mapped, with a note | turbo() fills `cache.retention.olderThan` when `.vx/workspace.ts` sets no retention; weeks become days, `"0"` is off; `TURBO_CACHE_MAX_AGE` wins over it. |
-| `cacheMaxSize` | mapped, with a note | turbo() fills `cache.retention.maxSize` when `.vx/workspace.ts` sets no retention; `"0"` is off; `TURBO_CACHE_MAX_SIZE` wins over it. |
+| `cacheMaxAge` | not supported | Ignored without a warning, as is `TURBO_CACHE_MAX_AGE`; no vx run evicts, `vx cache clean --older-than` does. |
+| `cacheMaxSize` | not supported | Ignored without a warning, as is `TURBO_CACHE_MAX_SIZE`; no vx run evicts, `vx cache clean --max-size` does. |
 | `concurrency` | mapped, with a note | turbo() fills the workspace's `run.concurrency` when `.vx/workspace.ts` sets none (`"50%"` of the cores too); `TURBO_CONCURRENCY` wins over it, as in Turbo. |
 | `daemon` | not applicable | vx has no daemon by design. |
 | `dangerouslyDisablePackageManagerCheck` | not applicable | Turbo's package-manager check; vx has none. |

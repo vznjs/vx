@@ -253,7 +253,6 @@ export default defineWorkspace({
   },
   cache: {
     dir: 'build/.vx', // unset: entries shared by this repo's checkouts in ~/.vx/<id>/cache
-    retention: { olderThan: '30d', maxSize: '10GB' },
   },
 })
 ```
@@ -262,7 +261,7 @@ Settings sit in groups, `run`, `cache` and `watch`, beside `plugins`.
 Each has one path, and its variable and flag come from it:
 `run.timeout` is `VX_RUN_TIMEOUT` and `vx run --timeout`. A flag beats
 the variable, which beats this file. Durations carry a unit (`'500ms'`,
-`'30s'`, `'10m'`), sizes too (`'10GB'`). The
+`'30s'`, `'10m'`), sizes too (`'32KiB'`). The
 [settings table](../../schema/#settings) lists all of them.
 
 | Field            | Sets                                                                  |
@@ -274,7 +273,6 @@ the variable, which beats this file. Durations carry a unit (`'500ms'`,
 | `run.schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest chain), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/scheduling-strategies/#pick-the-guess)) |
 | `run.rules` | graph checks: `exclusiveOutputs` (on unless `false`) refuses two tasks on one output path even when one depends on the other; `vx lock` and `vx lock --check` check it, never a run. A task whose inputs can match another task's outputs is always refused, unless it is a dependency the key leaves out of `inputs.tasks`, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
 | `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
-| `cache.retention` | evict at the end of every run: `olderThan` unused, then least recently used past `maxSize`; default none |
 | `cache.policy` | which layers read and write (`'local:rw,remote:r'`) |
 | `cache.inputStability` | every task's `cache.inputStability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_CACHE_INPUT_STABILITY_*` variables win over both ([Schema](../../schema/#cache-optional)) |
 | `lock.reviewFiles` | `false` stops `vx lock` writing a pretty `vx.lock.json` (the project's resolved config, for review) beside each `vx.config` |

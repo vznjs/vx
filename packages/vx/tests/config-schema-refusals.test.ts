@@ -192,28 +192,22 @@ describe('workspace refusals the sweep found unheld (item 653)', () => {
   })
 })
 
-describe('cache.retention refusals the sweep found unheld (item 653)', () => {
-  const SHAPE = `${WS}: \`cache.retention\` must be an object (fields: maxSize, olderThan)`
-
-  it('a null retention is refused by name, not by a TypeError from the field scan', () => {
-    expect(refusal({ cache: { retention: null } })).toBe(SHAPE)
-  })
-
-  it('a NUMBER maxSize is refused by name, not by a TypeError from parseSize', () => {
+describe('setting refusals the sweep found unheld (item 653)', () => {
+  it('a NUMBER size is refused by name, not by a TypeError from parseSize', () => {
     // `parseSize` takes a string; the type arm is what keeps a number from it.
-    expect(refusal({ cache: { retention: { maxSize: 1048576 } } })).toBe(
-      `${WS}: \`cache.retention.maxSize\` must be a size like '500MB' or '10GB' (got 1048576)`,
+    expect(refusal({ cache: { store: { embeddings: 1048576 } } })).toBe(
+      `${WS}: \`cache.store.embeddings\` must be false, or a size like '32KiB' (got 1048576)`,
     )
-    expect(refusal({ cache: { retention: { maxSize: '1048576B' } } })).toBeNull()
+    expect(refusal({ cache: { store: { embeddings: '1048576B' } } })).toBeNull()
   })
 
   it('a bigint or symbol value is refused by name, not by a TypeError from quoting it', () => {
     // The workspace file has no JSON rule before its schema; the fuzz found it.
-    expect(refusal({ cache: { retention: { olderThan: 30n } } })).toBe(
-      `${WS}: \`cache.retention.olderThan\` must be a duration like '45s', '12h' or '30d' (got 30n)`,
+    expect(refusal({ run: { timeout: 30n } })).toBe(
+      `${WS}: \`run.timeout\` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 30n)`,
     )
-    expect(refusal({ cache: { retention: { maxSize: Symbol('s') } } })).toBe(
-      `${WS}: \`cache.retention.maxSize\` must be a size like '500MB' or '10GB' (got Symbol(s))`,
+    expect(refusal({ cache: { store: { embeddings: Symbol('s') } } })).toBe(
+      `${WS}: \`cache.store.embeddings\` must be false, or a size like '32KiB' (got Symbol(s))`,
     )
     const p = testPlugin('fz-fp-bigint', {
       fingerprint: { files: [1n], affected: () => new Set<string>() } as never,

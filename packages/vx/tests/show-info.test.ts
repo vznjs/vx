@@ -784,7 +784,6 @@ describe('vx info — the rendered rows', () => {
     cacheEntries: 0,
     cacheBytes: 0,
     settings: {},
-    cacheRetention: null,
     orphans: { artifacts: 0, bytes: 0 },
     runs24h: 5,
     hits24h: 2,
@@ -852,7 +851,6 @@ describe('vx info — the rendered rows', () => {
       cacheStore: null,
       cacheEntries: 3,
       cacheBytes: 3 * GB,
-      cacheRetention: { olderThan: '30d', maxSize: '10G', maxBytes: 10 * GB },
       orphans: { artifacts: 1, bytes: 512 },
       runs24h: 0,
       hits24h: 0,
@@ -880,8 +878,7 @@ describe('vx info — the rendered rows', () => {
         "  cache dir         /w/.vx (0 B, the entries and this workspace's run history)",
         '  cache store       none: the cache dir holds the entries',
         '  cache versions    keys vx-cache-v39 · index schema v28',
-        '  cache entries     3 (3.0 GB of 10 GB, 30%)',
-        '  cache retention   each run evicts entries unused for 30d, and the oldest entries past 10G',
+        '  cache entries     3 (3.0 GB)',
         '  orphans           1 artifact (512 B) the index does not know — `vx cache clean` reaps them',
         '  task runs (24h)   0 (0 cache hits)',
         '  flaky tasks       2 — a#test (3 of 7 runs failed on unchanged inputs); b#e2e (1 of 4 runs failed)',
@@ -891,22 +888,20 @@ describe('vx info — the rendered rows', () => {
     )
   })
 
-  it('prints paths under the home directory as ~, and a size-only retention', () => {
+  it('prints paths under the home directory as ~', () => {
     const home = os.homedir()
     const out = renderInfo({
       ...healthy,
       workspaceRoot: path.join(home, 'w'),
       cacheDir: path.join(home, 'w', '.vx'),
       cacheStore: path.join(home, '.vx', 'id', 'cache'),
-      cacheRetention: { maxSize: '1G', maxBytes: GB },
     }).split('\n')
-    expect(out.filter((l) => /^ {2}(workspace root|cache |cache retention)/.test(l))).toEqual([
+    expect(out.filter((l) => /^ {2}(workspace root|cache )/.test(l))).toEqual([
       '  workspace root    ~/w',
       "  cache dir         ~/w/.vx (0 B, this workspace's run history)",
       "  cache store       ~/.vx/id/cache (0 B, shared by this repo's checkouts)",
       '  cache versions    keys vx-cache-v39 · index schema v28',
-      '  cache entries     0 (0 B of 1.0 GB, 0%)',
-      '  cache retention   each run evicts the oldest entries past 1G',
+      '  cache entries     0 (0 B)',
     ])
   })
 

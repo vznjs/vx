@@ -91,9 +91,6 @@ const OUTPUTS = [
   'files',
   'workspaceFiles',
 ] as const satisfies readonly Keys<CacheOutputs>[]
-const RETENTION = ['maxSize', 'olderThan'] as const satisfies readonly Keys<
-  NonNullable<CacheSettings['retention']>
->[]
 const WORKSPACE_CACHE = [
   'concurrency',
   'dir',
@@ -101,7 +98,6 @@ const WORKSPACE_CACHE = [
   'inputStability',
   'outputs',
   'policy',
-  'retention',
   'store',
   'upload',
 ] as const satisfies readonly Keys<CacheSettings>[]
@@ -153,7 +149,6 @@ const exhaustive: [
   Exhaustive<InputsConfig, typeof INPUTS>,
   Exhaustive<CacheOutputs, typeof OUTPUTS>,
   Exhaustive<InputStability, typeof STABILITY>,
-  Exhaustive<NonNullable<CacheSettings['retention']>, typeof RETENTION>,
   Exhaustive<CacheSettings, typeof WORKSPACE_CACHE>,
   Exhaustive<NonNullable<CacheSettings['upload']>, typeof UPLOAD>,
   Exhaustive<NonNullable<CacheSettings['store']>, typeof STORE>,
@@ -164,7 +159,6 @@ const exhaustive: [
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
 ] = [
-  true,
   true,
   true,
   true,
@@ -272,11 +266,6 @@ describe('the config types and the validator agree on every level (D-71)', () =>
       'cache.inputStability (workspace)',
       STABILITY,
       () => validateWorkspace({ cache: { inputStability: X } } as never, 'w'),
-    ],
-    [
-      'cache.retention',
-      RETENTION,
-      () => validateWorkspace({ cache: { retention: { ...X } } } as never, 'w'),
     ],
     [
       'cache.concurrency',

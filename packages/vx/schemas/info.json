@@ -26,7 +26,6 @@
     "cacheEntries",
     "cacheBytes",
     "settings",
-    "cacheRetention",
     "orphans",
     "runs24h",
     "hits24h",
@@ -103,16 +102,6 @@
           "value": { "type": ["string", "number", "boolean", "null"] },
           "source": { "enum": ["env", "workspace", "default"] }
         }
-      }
-    },
-    "cacheRetention": {
-      "type": ["object", "null"],
-      "description": "cache.retention from its variables, else the workspace, maxSize also in bytes; null when none is declared",
-      "additionalProperties": false,
-      "properties": {
-        "olderThan": { "type": "string" },
-        "maxSize": { "type": "string" },
-        "maxBytes": { "type": "integer" }
       }
     },
     "orphans": {

@@ -925,7 +925,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Evict by age or size, oldest use first, by hand or on a schedule.',
     body: [
       'Caches grow. `vx cache clean` removes entries older than a cutoff or trims the cache to a size, least recently used first.',
-      'Set `cache.retention` once and vx keeps to it; `--dry-run` shows what would go first.',
+      'No run evicts: run it from a schedule or CI; `--dry-run` shows what would go first.',
     ],
     example: {
       lang: 'sh',

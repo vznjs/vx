@@ -158,15 +158,6 @@ function genWorkspace(r: R): Obj {
     cache: maybe(r, () =>
       fields({
         dir: maybe(r, () => '.vx-cache'),
-        retention: maybe(r, () => {
-          const olderThan = maybe(r, () => pick(r, ['30d', '12h', '90m']))
-          const maxSize = maybe(
-            r,
-            () => pick(r, ['10G', '500MB']),
-            olderThan === undefined ? 1 : 0.5,
-          )
-          return fields({ olderThan, maxSize })
-        }),
         policy: maybe(r, () => pick(r, ['local:rw,remote:r', 'remote:', 'local:r'])),
         download: maybe(r, () => pick(r, ['all', 'none'])),
         inputStability: maybe(r, () =>
@@ -214,7 +205,7 @@ const fieldPath = (path: readonly Seg[]): string[] => {
 }
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-/** `a.b.c` as the messages spell it: `tasks.x.exec.timeout`, `` `cache.retention.maxSize` ``. */
+/** `a.b.c` as the messages spell it: `tasks.x.exec.timeout`, `` `cache.store.verify` ``. */
 const names = (field: readonly string[]): RegExp =>
   new RegExp(`(?<![\\w.])${field.map(escape).join('`?\\.`?')}(?![\\w.])`)
 
@@ -252,8 +243,6 @@ const BAD_VALUES: Record<string, readonly unknown[]> = {
   download: ['some'],
   strategy: ['content'],
   severity: ['fail'],
-  olderThan: ['soon', '0d'],
-  maxSize: ['big', '0G', '100'],
   baseBranch: ['-x', 'a b', 'a..b'],
   policy: ['', '   ', 3],
   localBinding: [0, 70_000],
@@ -339,8 +328,6 @@ const SCHEMAS: Schema[] = [
       'download',
       'strategy',
       'severity',
-      'olderThan',
-      'maxSize',
       'baseBranch',
       'policy',
     ],

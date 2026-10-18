@@ -979,7 +979,7 @@ describe('a reading handle prunes no history', () => {
     dir = undefined
   })
 
-  it('month-old runs survive an inspect close; a writing close prunes them (CONTROL)', () => {
+  it('month-old runs survive an inspect and a writing close; a prune drops them (CONTROL)', async () => {
     dir = mkdtempSync(path.join(tmpdir(), 'vx-inspect-prune-'))
     const old = Date.now() - 40 * 24 * 60 * 60 * 1000
     const counts = (db: Database) => [
@@ -1013,6 +1013,10 @@ describe('a reading handle prunes no history', () => {
     const again = new Cache(dir)
     expect(counts(again.dbHandle())).toEqual([1, 1])
     again.close()
+    const pruner = new Cache(dir)
+    expect(counts(pruner.dbHandle())).toEqual([1, 1])
+    await pruner.prune({ olderThanMs: 0 })
+    pruner.close()
     const after = Cache.inspect(dir)
     expect(counts(after.dbHandle())).toEqual([0, 0])
     after.close()

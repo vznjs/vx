@@ -524,22 +524,6 @@ const WORKSPACE_CASES: Array<[string, () => Promise<string | null>]> = [
     workspaceConfig('{ cache: { dir: "a\\0b" } }'),
   ],
   ["baseBranch must be a branch name like 'main'", workspaceConfig('{ baseBranch: "--output=x" }')],
-  [
-    'cache.retention names neither olderThan nor maxSize',
-    workspaceConfig('{ cache: { retention: {} } }'),
-  ],
-  [
-    'cache.retention.olderThan of 0 evicts every entry after every run',
-    workspaceConfig('{ cache: { retention: { olderThan: "0d" } } }'),
-  ],
-  [
-    'cache.retention.maxSize of 0 evicts every entry after every run',
-    workspaceConfig('{ cache: { retention: { maxSize: "0G" } } }'),
-  ],
-  [
-    "cache.retention.maxSize '<n>' reads as <n> bytes — give a unit (e.g. '<n>MB', '<n>GB')",
-    workspaceConfig('{ cache: { retention: { maxSize: "10" } } }'),
-  ],
   ['plugins must be an array of plugin objects', workspaceConfig('{ plugins: {} }')],
   ['plugins[<i>] must be an object', workspaceConfig('{ plugins: ["nope"] }')],
   [

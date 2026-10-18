@@ -30,7 +30,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({
   run: { concurrency: 4, retries: 2 },
-  cache: { retention: { olderThan: '30d', maxSize: '10GB' } },
+  cache: { dir: 'build/.vx' },
 })
 ```
 
@@ -50,12 +50,12 @@ $ VX_RUN_CONCURRENCY=2 vx info
 ## Units are part of the value
 
 A duration says its unit (`'500ms'`, `'30s'`, `'10m'`, `'2h'`, `'30d'`),
-and a size says its own (`'10GB'`). A bare number is refused, because
+and a size says its own (`'32KiB'`). A bare number is refused, because
 nobody can tell whether `2000` means milliseconds or seconds:
 
 ```sh frame="terminal"
-$ VX_CACHE_RETENTION_OLDER_THAN=2000 vx run build
-✗ vx run  VX_CACHE_RETENTION_OLDER_THAN takes a duration with its unit, like '2000ms' or '2s' (got 2000)
+$ VX_CONFIG_WORKER_TIMEOUT=2000 vx run build
+✗ vx run  VX_CONFIG_WORKER_TIMEOUT takes a duration with its unit, like '2000ms' or '2s' (got 2000)
 ```
 
 ## Unknown names are refused
