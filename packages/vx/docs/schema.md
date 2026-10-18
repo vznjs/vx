@@ -780,13 +780,12 @@ refused too (D-51): vx keys a task on its dependencies through
 `dependsOn`. A bare named input (`default`) can be a directory, so it
 is taken as one and only warns when it matches nothing.
 
-The wildcards are `*`, `**`, `?` and a brace set `{a,b}`, which matches
-what its alternatives match on their own: `{src/**,lib/**}` is `src/**`
-plus `lib/**`. A bracket is a
-**literal character**, not a character class: `app/[id]/**` is the route
-directory `app/[id]` (Next.js, SvelteKit, Astro), never `app/i` or
-`app/d`. The escaped spelling `app/\[id\]/**` (Turbo's) means the same
-path. An input brace of one alternative (`{b}.ts`) is refused at `vx
+The wildcards are `*`, `**`, `?`, a character class `[ab]` (`[a-z]`,
+`[!a]`) and a brace set `{a,b}`, which matches what its alternatives
+match on their own: `{src/**,lib/**}` is `src/**` plus `lib/**`. A
+backslash escapes: a route directory (Next.js, SvelteKit, Astro) is
+`app/\[id\]/**`; bare, `app/[id]/**` is the class that matches `app/i`
+and `app/d`, never the route. An input brace of one alternative (`{b}.ts`) is refused at `vx
 lock`: it would match `b.ts` and never a file named `{b}.ts`; write the
 one you mean, `\{b\}.ts` for the braces. So is an input under `.git`
 (`.git/config`): git never lists it, so it would key nothing. An extglob (`@(a|b)`, `!(x)`,
@@ -798,7 +797,7 @@ takes a route group back. This holds for every task glob — `inputs.files`,
 for everything read from them (`--affected`, `vx watch`, the
 overlapping-output refusal). Package-manager member globs (`workspaces`,
 `pnpm-workspace.yaml`) and `--filter` path globs keep the package
-manager's grammar, class included — all but extglob (`packages/!(x)`),
+manager's grammar — all but extglob (`packages/!(x)`),
 which a member glob refuses by name: `Bun.Glob` cannot read it, and
 list the exclusion as its own `!packages/x` entry instead.
 
@@ -808,7 +807,7 @@ files: ['src/**', '!**/*.test.ts'] // narrow with exclusion
 files: [] // no file inputs at all
 files: ['src/**', 'tsconfig.json', 'package.json'] // specific paths
 files: ['src', 'package.json'] // a directory literal is its tree
-files: ['app/[id]/**'] // a bracket is literal: the route dir `[id]`
+files: ['app/\\[id\\]/**'] // the route dir `[id]`; bare `[id]` is a class
 ```
 
 Empty array is valid — the cache key still incorporates command, env,
@@ -1401,8 +1400,7 @@ file created later is not covered — grant its directory instead. On both
 platforms `<dir>/**` and `<dir>/**/*` collapse to `<dir>`, so
 `read: ['**/*']` lets a task list its own cwd; a `<dir>` that is itself a
 glob keeps its subtree (`.*.tmp/**` covers what is inside each match).
-Unlike a task glob, a grant keeps `Bun.Glob`'s brackets: `[id]` is a
-class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
+As in a task glob, `[id]` is a class, so a Next.js route is granted escaped, `read: ['pages/\\[id\\].tsx']`.
 On Linux a WRITE path holding a bracket, `*` or `?` cannot be mounted
 (the runtime drops it): vx says so once, names the directory above it to
 grant instead, and a write under it is refused and reported. A READ path

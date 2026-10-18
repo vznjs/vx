@@ -55,6 +55,7 @@ export {
   EXTGLOB,
   grantPrefix,
   isLiteralPattern,
+  literalPath,
   GLOB_WILDCARDS,
   normalizeBunGlob,
   normalizeGlob,

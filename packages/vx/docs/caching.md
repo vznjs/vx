@@ -44,7 +44,7 @@ The cache key for one task is a **16-hex xxHash3 digest**, seed-chained
 over (in order):
 
 1. **`CACHE_VERSION`** — the key-derivation sentinel
-   (currently `'vx-cache-v47'`, in `src/cache/key-fold.ts`). Bumped when
+   (currently `'vx-cache-v48'`, in `src/cache/key-fold.ts`). Bumped when
    the key derivation or the artifact container changes, or stored bytes
    are wrong under an unchanged key. See
    [§ Bumping CACHE_VERSION](#bumping-cache_version).
@@ -280,14 +280,10 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     directory named outright folds every file under it; an empty one
     folds nothing.
 
-    A **bracket is literal** in a task glob, and there are no character
-    classes (item 667): `app/[id]/**` folds the route directory
-    `app/[id]`, and `app/\[id\]/**` is the same path. Read as a class
-    — what `Bun.Glob`, Turbo and Nx do — it matched `app/i/…` and never
-    the route, so the route's files keyed nothing (an edit replayed the
-    old output, green) and an output declared under it cleaned an
-    unrelated `app/i/page.js` before every run while the artifact
-    saved nothing.
+    A task glob is a **standard glob**: `[ab]` is a character class, as
+    in `Bun.Glob`, Turbo and Nx, and a route directory is escaped:
+    `app/\[id\]/**` folds `app/[id]`. Bare, `app/[id]/**` is the class
+    and folds `app/i/…` and `app/d/…`, never the route.
 
     An index OID is only trusted where git stores the worktree bytes
     **verbatim**, so the enumeration prunes it three ways:
@@ -2048,6 +2044,12 @@ breaking footer).
 
 ### History
 
+- **v47 → v48**: stored bytes wrong under a key the change does not move
+  (2026-10-18). A task glob is a standard glob again: `[...]` is a
+  character class and `\[id\]` names a route directory, which reverts
+  v28. An output glob folds as its text, so `outputs: ['app/[id]/page.js']`
+  keeps its key while what it selects changes; a v47 entry under it holds
+  the literal route and would restore it.
 - **v46 → v47**: the container changes. A file-backed entry is a
   `<hash>.tree/` of plain files (`cache.store`); the tar.zst is packed
   only to upload. A v46 store holds archives a v47 read would not look for.

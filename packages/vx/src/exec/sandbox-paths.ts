@@ -16,8 +16,8 @@ import path from 'node:path'
  * move that spelling into the scan, which finds nothing before the task has
  * written, and turn a working grant into `Read-only file system`. The two
  * predicates answer different questions: whether a declaration must be
- * MATCHED against other declarations (495; `GLOB_WILDCARDS`, where a bracket
- * is literal since item 667), and whether a grant can be mounted (here).
+ * MATCHED against other declarations (495; `GLOB_WILDCARDS`), and whether a
+ * grant can be mounted (here).
  * Item 577 gave each question one spelling.
  */
 export const MOUNT_WILDCARDS = /[*?[\]]/

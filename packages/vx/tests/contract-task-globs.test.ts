@@ -77,6 +77,7 @@ const INPUTS: readonly (readonly string[])[] = [
   ['src/{a,index}.ts'],
   ['{src,lib}/**/*.js'],
   ['src/[id].ts'],
+  ['src/\\[id\\].ts'],
   ['src/{b}.ts'],
   ['src/(group)/page.ts'],
   ['src/(group)/*'],
@@ -85,6 +86,7 @@ const INPUTS: readonly (readonly string[])[] = [
   ['src/**', '!src/**/*.test.ts'],
   ['**', '!src/**'],
   ['src/*.ts', '!src/[id].ts'],
+  ['src/*.ts', '!src/\\[id\\].ts'],
 ]
 
 /** Output lists, resolved by the resolver `cleanOutputs` and a save share. */
@@ -96,6 +98,7 @@ const OUTPUTS: readonly (readonly string[])[] = [
   ['**/*.js'],
   ['lib/*.js'],
   ['src/[id].ts'],
+  ['src/\\[id\\].ts'],
   ['.github/**'],
 ]
 

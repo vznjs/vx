@@ -564,17 +564,9 @@ in [`design/turbo-nx-test-gaps.md`](./design/turbo-nx-test-gaps.md).
   resolves outside the project is refused before any delete. The
   symlink-cycle test (`tests/inputs.test.ts`) pins that the resolver
   doesn't hang.
-- **A bracket is literal; no character classes (item 667).** Turbo and
-  Nx read `[id]` in a glob as a class, so `app/[id]/**` matches
-  `app/i/…` and never the route directory. Bracket route directories are
-  everywhere in JS monorepos (Next.js, SvelteKit, Astro), and a class
-  there silently keys nothing — a stale hit — while an output clean
-  deletes the class's namesakes. vx reads `[` and `]` literally in every
-  task glob; the escaped `\[id\]` Turbo users write means the same path.
-  Member globs and `--filter` path globs keep the package manager's
-  grammar. Under `turbo()` and `nx()` a class in turbo.json or an Nx
-  input is translated: `[jt]` and a range (`[a-c]`, `[0-9]`) become
-  their members plus the literal route directory, a negated class `?`.
+- **Standard globs.** As in Turbo and Nx, `[id]` in a task glob is a
+  character class and `\[id\]` names a route directory, so a turbo.json
+  or Nx input glob means the same files under `turbo()` and `nx()`.
 
 ### Engine / scheduling
 

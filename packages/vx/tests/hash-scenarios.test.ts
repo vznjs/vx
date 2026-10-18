@@ -319,11 +319,13 @@ describe('names taken literally (Turbo, Nx disk expansion)', () => {
     expect(await resolve(['src/a,b.ts'])).toEqual(['src/a,b.ts'])
   })
 
-  it('`@scope`, `a+b`, `(group)` and `[id]` name their directories', async () => {
+  it('`@scope`, `a+b`, `(group)` and an escaped `\\[id\\]` name their directories', async () => {
     expect(await resolve(['src/@scope/pkg/*.js'])).toEqual(['src/@scope/pkg/x.js'])
     expect(await resolve(['src/a+b/**'])).toEqual(['src/a+b/y.txt'])
     expect(await resolve(['app/(marketing)/**'])).toEqual(['app/(marketing)/page.js'])
-    expect(await resolve(['app/[id]/*.js'])).toEqual(['app/[id]/page.js'])
+    expect(await resolve(['app/\\[id\\]/*.js'])).toEqual(['app/[id]/page.js'])
+    // Bare, `[id]` is a class: it names `app/i` or `app/d`, never the route.
+    expect(await resolve(['app/[id]/*.js'])).toEqual([])
   })
 })
 

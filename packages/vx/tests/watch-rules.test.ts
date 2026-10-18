@@ -116,11 +116,19 @@ describe("a path some task reads is never ignored as another task's output (item
   })
 })
 
-describe("a task's own outputs are not edits, and a route directory is literal (item 667)", () => {
-  it('ignores a write under the route and not one under the class sibling', () => {
+describe("a task's own outputs are not edits, a bracket a class or, escaped, a route", () => {
+  it('ignores a write the glob matches and not one it does not', () => {
     const dir = path.join(os.tmpdir(), 'vx-watch-route')
-    const ignore = makeWatchIgnore(path.join(dir, '.vx'), new Map([[dir, ['app/[id]/*.js']]]))
-    expect([ignore(dir, 'app/[id]/x.js'), ignore(dir, 'app/i/x.js')]).toEqual([true, false])
+    const ignore = makeWatchIgnore(
+      path.join(dir, '.vx'),
+      new Map([[dir, ['app/\\[id\\]/*.js', 'lib/[ab]/*.js']]]),
+    )
+    expect([
+      ignore(dir, 'app/[id]/x.js'),
+      ignore(dir, 'app/i/x.js'),
+      ignore(dir, 'lib/a/x.js'),
+      ignore(dir, 'lib/[ab]/x.js'),
+    ]).toEqual([true, false, true, false])
   })
 })
 
@@ -505,9 +513,14 @@ describe('the recursive root watcher keeps only the events a key can see', () =>
     ])
   })
 
-  it('a route directory in a workspaceFiles glob is the directory, not a class (item 667)', () => {
-    const route = makeRootEventFilter(root, [], ['app/[id]/**'])
-    expect([route('app/[id]/page.js'), route('app/i/page.js')]).toEqual([true, false])
+  it('a workspaceFiles bracket is a class; escaped, the route directory', () => {
+    const route = makeRootEventFilter(root, [], ['app/\\[id\\]/**', 'lib/[ab]/**'])
+    expect([
+      route('app/[id]/page.js'),
+      route('app/i/page.js'),
+      route('lib/a/x.js'),
+      route('lib/[ab]/x.js'),
+    ]).toEqual([true, false, true, false])
   })
 
   it('a directory literal in workspaceFiles is its tree, as the key reads it (WD-2)', () => {

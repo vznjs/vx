@@ -687,39 +687,38 @@ describe('turbo-map: turbo 1 `$NAME` env dependencies', () => {
   })
 })
 
-// Item 1031: Turbo's globs have character classes and extglobs, and a vx
-// bracket is a literal, so `src/**/*.[jt]s` keyed on nothing and an edit
-// replayed the old build; an output glob with a wildcard first segment
+// Item 1031: Turbo's globs have extglobs and vx's do not, so
+// `src/**/*.@(js|ts)` keyed on nothing and an edit replayed the old build; an output glob with a wildcard first segment
 // reaches the sources, which vx cleans before every run, so `**/*.d.ts`
 // deleted a hand-written `src/env.d.ts`.
 describe('turbo-map: Turbo’s glob grammar', () => {
   const cacheOf = (t: TurboMappedTask) =>
     t.task!['cache'] as { outputs?: { files: string[] } } | undefined
 
-  it('inputs translate classes and extglobs; one with no safe form widens to every file', async () => {
+  it('inputs keep classes and translate extglobs; one with no safe form widens to every file', async () => {
     const t = await taskOf(
       {
         tasks: {
-          build: { inputs: ['src/**/*.[jt]s', '!**/*.[jt]s.map', 'lib/[a-Z]/**'], outputs: [] },
+          build: { inputs: ['src/**/*.[jt]s', '!**/*.@(js|ts).map', 'lib/!(a)/**'], outputs: [] },
         },
       },
       { a: { scripts: { build: 'b' } } },
     )
     expect({ files: (t.task!['inputs'] as { files: string[] }).files, todos: t.todos }).toEqual({
-      files: ['src/**/*.{[jt],j,t}s', '!**/*.{j,t}s.map', '**/*'],
-      todos: ['input "lib/[a-Z]/**": glob syntax vx cannot take — map manually'],
+      files: ['src/**/*.[jt]s', '!**/*.{js,ts}.map', '**/*'],
+      todos: ['input "lib/!(a)/**": glob syntax vx cannot take — map manually'],
     })
   })
 
-  it('an output past its first segment translates; the first stays a literal', async () => {
+  it('an output keeps its classes and translates its extglobs', async () => {
     const t = await taskOf(
-      { tasks: { build: { outputs: ['dist/**/*.[cm]js', '[locale]/**'] } } },
+      { tasks: { build: { outputs: ['dist/**/*.[cm]js', 'out/*.@(js|map)'] } } },
       { a: { scripts: { build: 'b' } } },
     )
-    expect(cacheOf(t)!.outputs!.files).toEqual(['dist/**/*.{[cm],c,m}js', '[locale]/**'])
+    expect(cacheOf(t)!.outputs!.files).toEqual(['dist/**/*.[cm]js', 'out/*.{js,map}'])
   })
 
-  it.each([['**/*.d.ts'], ['*.tsbuildinfo']])(
+  it.each([['**/*.d.ts'], ['*.tsbuildinfo'], ['[ab]/**']])(
     'an output whose first segment is a wildcard (%s) runs the task uncached',
     async (wild) => {
       const t = await taskOf(

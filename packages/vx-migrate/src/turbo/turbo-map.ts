@@ -2023,9 +2023,9 @@ function buildTask(
         continue
       }
       const neg = i.startsWith('!')
-      // Turbo's globs have character classes and extglobs; a vx bracket is
-      // a literal, so `src/**/*.[jt]s` keyed on nothing and an edit
-      // replayed the old build (item 1031). A positive glob with no safe
+      // Turbo's globs have extglobs and vx's do not, so
+      // `src/**/*.@(js|ts)` keyed on nothing and an edit replayed the old
+      // build (item 1031). A positive glob with no safe
       // form widens to every package file; a negation with none is dropped
       // (it would exclude fewer files, never more).
       const wax = minimatchToVx(neg ? i.slice(1) : i, neg)
@@ -2103,19 +2103,16 @@ function buildTask(
   const zeroed = new Set<string>()
   const wsOutFiles: string[] = []
   for (const raw of def.outputs ?? []) {
-    // The first segment stays a literal (a route directory, item 667);
-    // the rest is Turbo's grammar: `dist/**/*.[cm]js` matched nothing, so
-    // a hit restored nothing (item 1031).
-    const cut = raw.indexOf('/')
-    const rest = cut < 0 ? null : minimatchToVx(raw.slice(cut + 1), raw.startsWith('!'))
-    if (cut >= 0 && rest === null) {
+    // Turbo's grammar: an extglob in `dist/**/*.@(js|mjs)` matched
+    // nothing, so a hit restored nothing (item 1031).
+    const mapped = minimatchToVx(raw, raw.startsWith('!'))
+    if (mapped === null) {
       todos.push(
         `output ${JSON.stringify(raw)}: glob syntax vx cannot take — task runs uncached; ` +
           'declare the exact outputs in a vx.config to cache it',
       )
       return { name, todos, task, uses }
     }
-    const mapped = cut < 0 ? raw : `${raw.slice(0, cut + 1)}${rest}`
     // A `!` output takes a path back, as Turbo's does (A-44): Next's
     // `.next/**` minus `!.next/cache/**` saved the cache and cleaned it
     // before every run while vx outputs could not exclude.
