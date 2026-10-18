@@ -2424,22 +2424,28 @@ export class Cache implements CacheLayer {
     let counted: ReadableStream<Uint8Array> | undefined
     let reader: ChunkReader | undefined
     let small: Uint8Array | undefined
+    // A store of plain files holds a body up to the bulk decode's bound:
+    // fetched whole, it is decoded in one call straight into the tree, with
+    // no temp archive between (`writeArtifactAndIndex`).
+    const held = this.store.compress
+      ? this.store.embeddings
+      : Math.max(this.store.embeddings, STREAM_DECODE_FROM)
     try {
       const length =
         body instanceof Blob ? body.size : Number(body.headers.get('content-length') ?? 0)
       if (length > cap) throw past()
       if (body instanceof Blob) {
-        if (length <= this.store.embeddings && this.store.embeddings > 0) small = await body.bytes()
+        if (length <= held && held > 0) small = await body.bytes()
         else await Bun.write(tmpPath, body)
       } else {
         let source = body.body
         if (source === null) small = new Uint8Array(0)
-        else if (length <= this.store.embeddings && this.store.embeddings > 0) {
+        else if (length <= held && held > 0) {
           // Counted as it streams: a length the server did not send, or
-          // one it sent short, cannot make a large body inline.
+          // one it sent short, cannot read a large body to memory.
           const r: ChunkReader = source.getReader()
           reader = r
-          const head = await readUpTo(r, this.store.embeddings)
+          const head = await readUpTo(r, held)
           if (head.done) small = head.bytes
           else source = prepended(head.bytes, r)
         }
@@ -2653,10 +2659,14 @@ export class Cache implements CacheLayer {
       compressed.byteLength <= this.store.embeddings
         ? compressed
         : null
+    // A remote hit this store keeps as plain files is decoded once, into the
+    // tree, and checked there: nothing names the tree until the rows go in.
+    const oneTree =
+      saved === undefined && inline === null && tar === undefined && !this.store.compress
     let tmpPath: string | undefined
     if (saved !== undefined) {
       // The tree save wrote and scanned its own outputs.
-    } else if (inline === null && compressed instanceof Uint8Array) {
+    } else if (inline === null && compressed instanceof Uint8Array && !oneTree) {
       const temp = this.tempPath(hash)
       tmpPath = temp
       // The temp is written BEFORE validation so a large artifact can be
@@ -2680,10 +2690,34 @@ export class Cache implements CacheLayer {
       tmpPath = compressed.tmpPath
     }
     let scanned: Awaited<ReturnType<typeof scanArtifact>>
+    let tree = saved?.tree
     try {
       const endScan = span('save: scan')
       if (saved !== undefined) {
         scanned = saved.scan
+      } else if (oneTree) {
+        const dir = this.tempTreePath(hash)
+        tree = dir
+        let scan: Awaited<ReturnType<typeof scanArtifact>> | undefined
+        let raw: { meta: string; sum: string } | undefined
+        await extractArtifactStream(
+          await decodedTar(
+            compressed instanceof Uint8Array ? compressed : Bun.file(tmpPath!),
+            hash,
+            this.artifactCeiling,
+          ),
+          path.join(dir, 'outputs'),
+          path.join(dir, WORKSPACE_OUTPUT_PREFIX),
+          undefined,
+          undefined,
+          undefined,
+          (s, r) => {
+            scan = s
+            raw = r
+          },
+        )
+        scanned = scan!
+        await sealTree(dir, scanned, raw)
       } else if (tar !== undefined) {
         // Our own tar, in memory: read in place, on this thread.
         scanned = scanTarBytes(tar)
@@ -2717,7 +2751,7 @@ export class Cache implements CacheLayer {
       ])
     } catch (err) {
       if (tmpPath !== undefined) await unlink(tmpPath).catch(() => undefined)
-      if (saved !== undefined) await rm(saved.tree, { recursive: true, force: true })
+      if (tree !== undefined) await rm(tree, { recursive: true, force: true })
       if (err instanceof ArchiveSecurityError || err instanceof CorruptArtifactError) throw err
       throw new CorruptArtifactError(hash, 'artifact is not a readable archive', err)
     }
@@ -2730,7 +2764,10 @@ export class Cache implements CacheLayer {
           : Bun.file(tmpPath!).size
     // A remote hit this store keeps as plain files: the archive passed its
     // checks above, so it is unpacked once here and its temp goes.
-    let tree = saved?.tree
+    if (oneTree && tmpPath !== undefined) {
+      await unlink(tmpPath).catch(() => undefined)
+      tmpPath = undefined
+    }
     if (tree === undefined && inline === null && !this.store.compress) {
       const dir = this.tempTreePath(hash)
       try {

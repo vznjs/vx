@@ -512,6 +512,11 @@ its outputs, run on the calling thread: a thread-pool round trip cost
 more CPU than the work for a one-file artifact. A save scans the tar it
 packed rather than decoding its own bytes back, in memory and on the
 calling thread (`scanTarBytes`); an ingest decodes and scans the stream.
+An ingest into the tree form is one pass: a body up to 4 MiB is fetched
+whole, decoded in one call, and extracted straight into a temp tree whose
+scan (`extractArtifactStream`'s `onScan`) indexes the rows and whose sum
+is the archive's, so no temp archive, second decode or read-back happens;
+a larger body goes to a temp file first and still decodes once.
 Both scanners run one header decoder (`TarDecoder`), so a save indexes
 the rows a restore reads and refuses the names a restore refuses
 (`tests/scan-tar-bytes.test.ts`).
