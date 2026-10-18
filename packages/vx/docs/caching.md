@@ -1330,7 +1330,8 @@ The stdout of a tree entry is its `entry_stdout` row. With
 `cache.store.compress: true` an artifact is instead one `<hash>.tar.zst`
 holding `stdout`, `outputs/`, `workspace-outputs/`, `.vx-meta.json` and
 `.vx-sum`: the bytes a remote stores. The tree form is that archive
-unpacked once at save (or at ingest of a remote hit), so a restore copies
+unpacked once at save (or at ingest of a remote hit, decoded once straight
+into the tree), so a restore copies
 each file out (`copy_file_range`, a clone on a filesystem that has one;
 never a hard link: a later write to a restored output must not reach the
 store). A restore into outputs already on disk, a workspace output or a
