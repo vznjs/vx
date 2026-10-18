@@ -58,10 +58,10 @@ and key derivation logic live here.
 /** How a save keeps an entry locally (`cache.store`). */
 export interface StoreOptions {
   embeddings: number // bytes; 0 keeps every entry as files
-  compress: boolean
+  decompress: boolean
   verify: 'stat' | 'hash' | 'none'
 }
-export const DEFAULT_STORE: StoreOptions // { embeddings: 32 * 1024, compress: false, verify: 'stat' }
+export const DEFAULT_STORE: StoreOptions // { embeddings: 32 * 1024, decompress: true, verify: 'stat' }
 
 /**
  * Shape every cache implementation honors. Both Cache (local v10) and
@@ -466,7 +466,7 @@ everything in `cache.db`.
 ├── store.db                 # entries, entry_stdout, output_files, entry_inputs, store_meta,
 │                            # artifacts + artifacts_meta (the small artifacts, v33)
 └── <hash>.tree/             # an artifact past INLINE_MAX, as plain files (v47);
-                             # <hash>.tar.zst instead under cache.store.compress
+                             # <hash>.tar.zst instead with cache.store.decompress off
 
 <root>/.vx/cache/            # or a named <cacheDir>, which then also holds the store's tables and artifacts
 └── cache.db                 # SQLite (with cache.db-wal, cache.db-shm): runs, memos, output stamps
@@ -482,8 +482,8 @@ everything in `cache.db`.
 
 `cache.store` (`StoreOptions`, `DEFAULT_STORE`, the Cache's last
 constructor argument) picks the local form: `embeddings` keeps an entry up
-to that size inline, `compress` keeps a file-backed one as the tar.zst, and
-otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTree`
+to that size inline, `decompress: false` keeps a file-backed one as the
+tar.zst, and otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTree`
 at save, the validated tar extracted at ingest, `sealTree`), stdout in
 its `entry_stdout` row. A tree restore checks `verify` (`stat`: size and
 mtime per file; `hash`: `treeIntact`, the CRC of `planOfTree`'s tar),
