@@ -10,6 +10,7 @@ order, the local store and provenance.
 ## Public surface
 
 ```ts
+export function networkConcurrency(): number // min(96, max(cores × 3, 64)): requests at once to a remote
 export interface ResolvedRemote {
   readonly remote: RemoteCacheLayer
   readonly plugin?: string // the plugin that supplied it: its keychain is what `open` reads
@@ -45,7 +46,7 @@ export class RemoteLane {
 - **Absences are its own.** A batch probe records the hashes this remote
   lacks; a later `get` of one skips the round-trip. A sibling's answer
   never marks this remote.
-- **Uploads**: at most 4 at once per remote, FIFO; `body()` is asked
+- **Uploads**: at most `cache.concurrency.upload` at once per remote, FIFO; `body()` is asked
   when the job starts, so a queued job holds no bytes; each landed or
   failed upload is tallied on the local cache's `uploads`.
 - `ResolvedRemote` is also what a plugin's `ctx.cache` and the run store

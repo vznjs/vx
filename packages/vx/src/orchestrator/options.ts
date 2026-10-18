@@ -130,6 +130,12 @@ export interface RunOptions {
    * Locally-placed tasks always write in place and ignore this.
    */
   download?: 'all' | 'toplevel' | 'none'
+  /** Remote downloads at once (`cache.concurrency.download`). */
+  downloadConcurrency?: number
+  /** Uploads at once, per remote (`cache.concurrency.upload`). */
+  uploadConcurrency?: number
+  /** Local hits restoring at once (`cache.concurrency.restore`); twice `concurrency` unset. */
+  restoreConcurrency?: number
   /**
    * Run intent, derived by the CLI from selection flags: 'broad' iff
    * `--all` / `--filter` / `--affected` was passed, else 'focused'.

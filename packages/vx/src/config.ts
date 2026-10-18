@@ -116,6 +116,12 @@ export interface CacheSettings {
    * nothing (`'none'`).
    */
   store?: { embedded?: boolean; compress?: boolean; verify?: 'stat' | 'hash' | 'none' }
+  /**
+   * Cache transfers at once. `download` and `upload` (per remote) default
+   * to min(96, max(cores × 3, 64)); `restore`, local hits writing their
+   * outputs, to twice `run.concurrency`.
+   */
+  concurrency?: { download?: number; upload?: number; restore?: number }
 }
 
 /** `WorkspaceConfig.lock`. */

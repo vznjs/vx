@@ -54,6 +54,9 @@
       "--affected",
       "--all",
       "--branch",
+      "--cache-concurrency-download",
+      "--cache-concurrency-restore",
+      "--cache-concurrency-upload",
       "--cache-dir",
       "--cache-download",
       "--cache-policy",
@@ -89,6 +92,9 @@
       "--affected",
       "--all",
       "--branch",
+      "--cache-concurrency-download",
+      "--cache-concurrency-restore",
+      "--cache-concurrency-upload",
       "--cache-dir",
       "--cache-download",
       "--cache-policy",
@@ -183,6 +189,21 @@
     "run --branch": [
       "*"
     ],
+    "run --cache-concurrency-download": [
+      "1",
+      "10",
+      "2"
+    ],
+    "run --cache-concurrency-restore": [
+      "1",
+      "10",
+      "2"
+    ],
+    "run --cache-concurrency-upload": [
+      "1",
+      "10",
+      "2"
+    ],
     "run --cache-dir": [
       "*"
     ],
@@ -269,6 +290,21 @@
     "watch --branch": [
       "*"
     ],
+    "watch --cache-concurrency-download": [
+      "1",
+      "10",
+      "2"
+    ],
+    "watch --cache-concurrency-restore": [
+      "1",
+      "10",
+      "2"
+    ],
+    "watch --cache-concurrency-upload": [
+      "1",
+      "10",
+      "2"
+    ],
     "watch --cache-dir": [
       "*"
     ],
@@ -339,6 +375,9 @@
   },
   "env": [
     "VX_BASE_BRANCH",
+    "VX_CACHE_CONCURRENCY_DOWNLOAD",
+    "VX_CACHE_CONCURRENCY_RESTORE",
+    "VX_CACHE_CONCURRENCY_UPLOAD",
     "VX_CACHE_DIR",
     "VX_CACHE_DOWNLOAD",
     "VX_CACHE_INPUT_STABILITY_SEVERITY",

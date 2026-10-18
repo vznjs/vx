@@ -37,7 +37,7 @@ export interface PrefetchArgs {
   nestedDirsByProject: Map<string, string[]>
   gitFilesCache: GitFilesCache
   hashCache: HashCache
-  /** Cap on concurrent in-flight prefetches — the run's concurrency. */
+  /** Cap on concurrent in-flight prefetches (`cache.concurrency.download`). */
   concurrency: number
   /** When false (remote reads disabled), no prefetch fires. */
   remoteRead: boolean

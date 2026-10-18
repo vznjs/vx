@@ -14,6 +14,9 @@ const FROM_OPTIONS = {
   retries: 'run.retries',
   continueMode: 'run.continue',
   download: 'cache.download',
+  downloadConcurrency: 'cache.concurrency.download',
+  uploadConcurrency: 'cache.concurrency.upload',
+  restoreConcurrency: 'cache.concurrency.restore',
 } as const satisfies Partial<Record<keyof RunOptions, string>>
 
 /**

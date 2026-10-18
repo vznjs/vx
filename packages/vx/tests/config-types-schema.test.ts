@@ -95,6 +95,7 @@ const RETENTION = ['maxSize', 'olderThan'] as const satisfies readonly Keys<
   NonNullable<CacheSettings['retention']>
 >[]
 const WORKSPACE_CACHE = [
+  'concurrency',
   'dir',
   'download',
   'inputStability',
@@ -106,6 +107,9 @@ const WORKSPACE_CACHE = [
 ] as const satisfies readonly Keys<CacheSettings>[]
 const STORE = ['compress', 'embedded', 'verify'] as const satisfies readonly Keys<
   NonNullable<CacheSettings['store']>
+>[]
+const CONCURRENCY = ['download', 'restore', 'upload'] as const satisfies readonly Keys<
+  NonNullable<CacheSettings['concurrency']>
 >[]
 const UPLOAD = ['failures'] as const satisfies readonly Keys<NonNullable<CacheSettings['upload']>>[]
 const PERSISTENT = ['readyWhen'] as const satisfies readonly Keys<PersistentConfig>[]
@@ -153,12 +157,14 @@ const exhaustive: [
   Exhaustive<CacheSettings, typeof WORKSPACE_CACHE>,
   Exhaustive<NonNullable<CacheSettings['upload']>, typeof UPLOAD>,
   Exhaustive<NonNullable<CacheSettings['store']>, typeof STORE>,
+  Exhaustive<NonNullable<CacheSettings['concurrency']>, typeof CONCURRENCY>,
   Exhaustive<PersistentConfig, typeof PERSISTENT>,
   Exhaustive<SandboxConfig, typeof SANDBOX>,
   Exhaustive<SandboxGrants, typeof GRANTS>,
   Exhaustive<SandboxDenials, typeof DENIALS>,
   Exhaustive<SandboxIgnore, typeof IGNORES>,
 ] = [
+  true,
   true,
   true,
   true,
@@ -271,6 +277,11 @@ describe('the config types and the validator agree on every level (D-71)', () =>
       'cache.retention',
       RETENTION,
       () => validateWorkspace({ cache: { retention: { ...X } } } as never, 'w'),
+    ],
+    [
+      'cache.concurrency',
+      CONCURRENCY,
+      () => validateWorkspace({ cache: { concurrency: { ...X } } } as never, 'w'),
     ],
     ['cache.store', STORE, () => validateWorkspace({ cache: { store: { ...X } } } as never, 'w')],
     [

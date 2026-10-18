@@ -239,6 +239,8 @@ export type ContinueMode = 'never' | 'deps-ok' | 'always'
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
+  /** Restore-tier tasks at once; twice `concurrency` unset. */
+  restoreConcurrency?: number
   /**
    * An aborted run dispatches nothing further: every task not yet
    * started completes `aborted` (the ones in flight are being killed by
@@ -604,7 +606,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // the two lanes share its one slot, where a lane each let an 80 MB
   // restore run inside another task's execution (item 1103).
   let activeRestore = 0
-  const restoreConcurrency = 2 * concurrency
+  const restoreConcurrency = options.restoreConcurrency ?? 2 * concurrency
   const serial = concurrency === 1
   const execRoom = (): boolean => (serial ? active + activeRestore < 1 : active < concurrency)
   const restoreRoom = (): boolean =>

@@ -4,6 +4,7 @@
 // class with the endpoint named. The order across remotes, the local store
 // and provenance are `LayeredCache`'s; nothing here knows another remote.
 
+import { machineParallelism } from '../util/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
 import type { RemoteCacheLayer } from './layered-cache.js'
 
@@ -20,11 +21,13 @@ export interface ResolvedRemote {
 }
 
 /**
- * Cap on concurrent background PUTs per remote. Keeps a burst of cache
- * misses from opening one socket per task; excess uploads queue and drain
- * FIFO.
+ * Requests at once to a remote, by default: pnpm's network concurrency
+ * (Bun's is a fixed 64). A request waits on the network, not a core, so
+ * the cap follows cores only past 21 of them.
  */
-const UPLOAD_CONCURRENCY = 4
+export function networkConcurrency(): number {
+  return Math.min(96, Math.max(machineParallelism() * 3, 64))
+}
 
 /** The seam call a failure happened in, as the warning names it. */
 export type RemoteOp = 'probe' | 'download' | 'upload'
@@ -135,6 +138,8 @@ export class RemoteLane {
     private readonly traffic: RemoteTraffic,
     /** The wire as this run asks it: a branch scope's view of `resolved.remote`. */
     remote: RemoteCacheLayer = resolved.remote,
+    /** Background PUTs at once; excess uploads queue and drain FIFO. */
+    private readonly uploadConcurrency: number = networkConcurrency(),
   ) {
     this.resolved = resolved
     this.remote = remote
@@ -369,7 +374,7 @@ export class RemoteLane {
   }
 
   private pump(): void {
-    while (this.activeUploads < UPLOAD_CONCURRENCY && this.uploadQueue.length > 0) {
+    while (this.activeUploads < this.uploadConcurrency && this.uploadQueue.length > 0) {
       const job = this.uploadQueue.shift()!
       this.activeUploads++
       // Jobs never reject (each wraps its PUT in the never-fail guard).

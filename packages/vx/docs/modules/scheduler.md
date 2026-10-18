@@ -73,6 +73,7 @@ export type ContinueMode = 'never' | 'deps-ok' | 'always'
 export interface ScheduleOptions {
   nodes: Map<string, TaskNode>
   concurrency: number
+  restoreConcurrency?: number // restore-tier tasks at once; twice concurrency unset
   /** Aborted → nothing further dispatches; every task not yet started completes `aborted`. */
   signal?: AbortSignal
   /** Failure propagation; default 'deps-ok'. */
