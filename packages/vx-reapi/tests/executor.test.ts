@@ -31,12 +31,13 @@ describe('globToOutputPath', () => {
     ['**', ''],
     ['gen?/x', ''],
     ['{a,b}/x', ''],
-    // A bracket is literal in a vx task glob (item 667): the route directory
-    // `app/[id]` read as a class collapsed to `app`, so the worker returned
-    // the whole of `app` and a consumer's graft replaced its sources.
-    ['out-[ab].txt', 'out-[ab].txt'],
-    ['app/[id]/page.js', 'app/[id]/page.js'],
-    ['app/[id]/*.js', 'app/[id]'],
+    // A bracket is a class; escaped, the route directory `app/[id]`, which
+    // collapsed to `app` returned the whole of `app` and a consumer's graft
+    // replaced its sources.
+    ['out-[ab].txt', ''],
+    ['app/[id]/page.js', 'app'],
+    ['app/\\[id\\]/page.js', 'app/[id]/page.js'],
+    ['app/\\[id\\]/*.js', 'app/[id]'],
   ])('%s → %j', (glob, expected) => {
     expect(globToOutputPath(glob)).toBe(expected)
   })
@@ -79,13 +80,14 @@ describe('outputPathSets', () => {
     expect(sets.outputPaths).toContain('../../node_modules')
   })
 
-  it("reads core's spelling: the escaped bracket names the same literal file (item 667)", () => {
-    const sets = outputPathSets(req(['app/\\[id\\]/page.js', 'app/[slug]/*.js']), '')
+  it('an escaped bracket names the literal file; a bare one is a class', () => {
+    const sets = outputPathSets(req(['app/\\[id\\]/page.js', 'app/\\[slug\\]/*.js']), '')
     expect(sets).toEqual({
       outputPaths: ['app/[id]/page.js', 'app/[slug]'],
       legacyFiles: ['app/[id]/page.js'],
       legacyDirectories: ['app/[slug]'],
     })
+    expect(outputPathSets(req(['app/[slug]/*.js']), '').outputPaths).toEqual(['app'])
   })
 
   it('a first-segment wildcard collapses to "" — the whole working directory', () => {

@@ -133,7 +133,8 @@
     ],
     "[\"src/{a,index}.ts\"]": ["src/index.ts"],
     "[\"{src,lib}/**/*.js\"]": ["lib/b.js", "src/a.js"],
-    "[\"src/[id].ts\"]": ["src/[id].ts"],
+    "[\"src/[id].ts\"]": [],
+    "[\"src/\\\\[id\\\\].ts\"]": ["src/[id].ts"],
     "[\"src/{b}.ts\"]": "refused: inputs.files: \"src/{b}.ts\" holds a brace with one alternative, which matches \"b\" and never a name holding \"{b}\". Write \"src/b.ts\", or \"src/\\{b\\}.ts\" for the braces themselves.",
     "[\"src/(group)/page.ts\"]": ["src/(group)/page.ts"],
     "[\"src/(group)/*\"]": ["src/(group)/page.ts"],
@@ -162,6 +163,13 @@
       "package.json"
     ],
     "[\"src/*.ts\",\"!src/[id].ts\"]": [
+      "src/[id].ts",
+      "src/a.test.ts",
+      "src/file with space.ts",
+      "src/index.ts",
+      "src/{b}.ts"
+    ],
+    "[\"src/*.ts\",\"!src/\\\\[id\\\\].ts\"]": [
       "src/a.test.ts",
       "src/file with space.ts",
       "src/index.ts",
@@ -175,7 +183,8 @@
     "[\"dist/*\"]": ["dist/out.js"],
     "[\"**/*.js\"]": ["dist/nested/chunk.js", "dist/out.js", "lib/b.js", "src/a.js"],
     "[\"lib/*.js\"]": ["lib/b.js"],
-    "[\"src/[id].ts\"]": ["src/[id].ts"],
+    "[\"src/[id].ts\"]": [],
+    "[\"src/\\\\[id\\\\].ts\"]": ["src/[id].ts"],
     "[\".github/**\"]": [".github/ci.yml"]
   }
 }

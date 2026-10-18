@@ -10,8 +10,8 @@ import { Glob } from '../src/playground/shim/glob.js'
 
 // Bun's match count per domain pins that the fuzz is still the table's.
 const DOMAINS = [
-  ['task', 'git', 16_994],
-  ['task', 'any', 23_775],
+  ['task', 'git', 17_107],
+  ['task', 'any', 23_917],
   ['bun', 'git', 29_095],
   ['bun', 'any', 33_440],
 ] as const

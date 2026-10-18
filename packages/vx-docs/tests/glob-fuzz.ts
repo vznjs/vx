@@ -4,9 +4,9 @@
 // exactly the domains the design note reports.
 //
 // Patterns:
-//   task — vx's task-glob alphabet (`*`, `**`, `?`, braces, `\`, and LITERAL
-//          brackets since item 667), compiled by core's own `taskGlob` so the
-//          escaping under test is core's, not a copy;
+//   task — vx's task-glob alphabet (`*`, `**`, `?`, braces, `\` and
+//          brackets), compiled by core's own `taskGlob` so the pattern
+//          under test is core's, not a copy;
 //   bun  — Bun's whole alphabet (classes, negation, dangling escapes and
 //          braces), the globs vx does not own.
 // Paths:

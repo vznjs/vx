@@ -418,24 +418,22 @@ describe('two tasks cannot claim the same output', () => {
   // class's sibling are two paths, and the refusal must not break a Next.js
   // app whose `app/i/page.js` sits beside `app/[id]/page.js` — while two
   // tasks that both declare the route do delete each other's file.
-  it('a route directory overlaps itself and not the sibling a class would have matched', () => {
+  it('an escaped route directory overlaps itself; a class overlaps what it matches', () => {
+    const R = 'app/\\[id\\]'
+    expect(() =>
+      graph({ app: { a: task([`${R}/page.js`]), b: task(['app/i/page.js']) } }),
+    ).not.toThrow()
+    expect(() =>
+      graph({ app: { a: task([`${R}/*.js`]), b: task(['app/i/page.js']) } }),
+    ).not.toThrow()
+    expect(() => graph({ app: { a: task([`${R}/page.js`]), b: task([`${R}/page.js`]) } })).toThrow(
+      /both declare the output/,
+    )
+    expect(() => graph({ app: { a: task([`${R}/*.js`]), b: task([`${R}/page.js`]) } })).toThrow(
+      /both declare the output/,
+    )
     expect(() =>
       graph({ app: { a: task(['app/[id]/page.js']), b: task(['app/i/page.js']) } }),
-    ).not.toThrow()
-    expect(() =>
-      graph({ app: { a: task(['app/[id]/*.js']), b: task(['app/i/page.js']) } }),
-    ).not.toThrow()
-    expect(() =>
-      graph({ app: { a: task(['app/i/page.js']), b: task(['app/[id]/*.js']) } }),
-    ).not.toThrow()
-    expect(() =>
-      graph({ app: { a: task(['app/[id]/page.js']), b: task(['app/[id]/page.js']) } }),
-    ).toThrow(/both declare the output/)
-    expect(() =>
-      graph({ app: { a: task(['app/[id]/*.js']), b: task(['app/[id]/page.js']) } }),
-    ).toThrow(/both declare the output/)
-    expect(() =>
-      graph({ app: { a: task(['app/\\[id\\]/page.js']), b: task(['app/[id]/page.js']) } }),
     ).toThrow(/both declare the output/)
   })
 })
@@ -881,6 +879,8 @@ describe('the path index finds every pair the rule refuses', () => {
     '{dist,lib}',
     'a?',
     'di\\st',
+    '[ab]',
+    '\\[a\\]',
     '*.js',
     // Leading, `!` makes the entry a negation that takes paths back (A-44);
     // deeper, it is a glob character the rule and the index must agree on.

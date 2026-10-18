@@ -4,6 +4,7 @@ import {
   checkIgnoreSync,
   ignoreProbes,
   isLiteralPattern,
+  literalPath,
   listedSync,
   normalizeGlob,
   relPosix,
@@ -915,15 +916,17 @@ export function outputsOverlap(rawA: string, rawB: string): boolean {
   // A built path proves overlap only between globs as written: a literal's
   // `/**` twin reads it as a directory, and `dist/types.d.ts` met
   // `dist/**/*.js` at `dist/types.d.ts/x.js`, a file no one can write.
-  const bothGlobs = !isLiteralPattern(rawA) && !isLiteralPattern(rawB)
+  const bothGlobs = literalPath(rawA) === null && literalPath(rawB) === null
   for (const a of asTrees([rawA])) {
     for (const b of asTrees([rawB])) {
-      if (isLiteralPattern(a) && isLiteralPattern(b)) {
-        if (a === b) return true
-      } else if (isLiteralPattern(a)) {
-        if (taskGlob(b).match(a)) return true
-      } else if (isLiteralPattern(b)) {
-        if (taskGlob(a).match(b)) return true
+      const la = literalPath(a)
+      const lb = literalPath(b)
+      if (la !== null && lb !== null) {
+        if (la === lb) return true
+      } else if (la !== null) {
+        if (taskGlob(b).match(la)) return true
+      } else if (lb !== null) {
+        if (taskGlob(a).match(lb)) return true
       } else if (a === b || covers(a, b) || covers(b, a) || (bothGlobs && witnessed(a, b)))
         return true
     }
@@ -1202,13 +1205,13 @@ function collideAcross(
  * found no match outside the head this cuts, and thousands once `\` and
  * `!` were left out (item 746).
  */
-const GLOB_HEAD_END = /[*?{}\\!]/
+const GLOB_HEAD_END = /[*?{}[\]\\!]/
 
 /** `firstSegment`'s answer for a glob that can start anywhere. */
 const ANYWHERE = ''
 
 /** Where a glob's first segment ends: a separator, or anything `GLOB_HEAD_END` stops at. */
-const FIRST_SEGMENT_END = /[*?{}\\!/]/
+const FIRST_SEGMENT_END = /[*?{}[\]\\!/]/
 
 const firstSegments = new Map<string, string>()
 
@@ -1315,8 +1318,9 @@ function overlapCandidates<T>(
     const s = sideOf?.(tasks[i]!) === true ? 1 : 0
     side.push(s)
     for (const tree of asTrees(globsOf(tasks[i]!) ?? [])) {
-      if (isLiteralPattern(tree)) {
-        literals.push([i, tree])
+      const lit = literalPath(tree)
+      if (lit !== null) {
+        literals.push([i, lit])
         continue
       }
       file(globs[s]!, tree, i)

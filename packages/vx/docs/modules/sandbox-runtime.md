@@ -834,8 +834,7 @@ writable.
 `*?[]` and a brace-spelled grant is therefore treated as a file — placed,
 then widened to its directory. It deliberately does NOT read
 `BUN_GLOB_WILDCARDS`, `Bun.Glob`'s own set, which also counts `{}`
-(nor `isLiteralPattern`, the task-glob predicate item 495 unified, where
-a bracket is literal since item 667): doing so would move that spelling into the scan and turn a
+(nor `isLiteralPattern`, the task-glob predicate item 495 unified): doing so would move that spelling into the scan and turn a
 working grant into `Read-only file system`. The two predicates answer
 different questions — whether a declaration must be MATCHED against
 other declarations, and whether a grant can be MOUNTED.

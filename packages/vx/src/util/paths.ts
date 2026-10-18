@@ -48,7 +48,15 @@ export function relPosix(from: string, to: string): string {
  * Every glob reaching here is user-written, so every one takes the rule.
  */
 export function staticPrefix(rawGlob: string): string {
-  return prefixOf(normalizeGlob(rawGlob), GLOB_WILDCARDS)
+  // An escaped character is part of the prefix and names itself:
+  // `app/\[id\]/**` is rooted at the directory `app/[id]`.
+  const g = normalizeGlob(rawGlob)
+  if (!g.includes('\\')) return prefixOf(g, GLOB_WILDCARDS)
+  const masked = g.replace(/\\./g, '\0\0')
+  const prefix = prefixOf(masked, GLOB_WILDCARDS)
+  return prefix === '.' || prefix === '/'
+    ? prefix
+    : g.slice(0, prefix.length).replace(/\\(.)/g, '$1')
 }
 
 /**
@@ -98,10 +106,10 @@ export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null 
   if (globs.length === 0) return null
   const out: string[] = []
   for (const g of globs.map(normalizeGlob)) {
-    const m = /^([^*?{}!]+?)\/\*\*$/.exec(g)
-    const whole = m?.[1] ?? (isLiteralPattern(g) && !g.startsWith('!') ? g : null)
-    if (whole === null) return null
-    const dir = whole.replace(/\/+$/, '')
+    const named = /^(.+?)\/\*\*$/.exec(g)?.[1] ?? g
+    if (g.startsWith('!') || !namesOnePath(named)) return null
+    // An escaped bracket names itself: `app/\[id\]/**` is the tree `app/[id]`.
+    const dir = named.replace(/\\(.)/g, '$1').replace(/\/+$/, '')
     if (dir === '' || dir === '.' || dir.startsWith('/') || dir.split('/').includes('..'))
       return null
     out.push(dir)
@@ -136,10 +144,6 @@ function normalizeWith(glob: string, wildcards: RegExp): string {
   let g = neg ? glob.slice(1) : glob
   g = g.replace(/\/{2,}/g, '/').replace(/(^|\/)(\.\/)+/g, '$1')
   if (g === '.') g = ''
-  // Where a bracket is literal, Turbo's escaped spelling `\[id\]` names the
-  // same path as `[id]`; one spelling is what lets every literal fast path
-  // (string compare, `settleLiterals`, `asTrees`) see it as a literal.
-  if (wildcards === GLOB_WILDCARDS && g.includes('\\')) g = g.replace(/\\([[\]])/g, '$1')
   if (wildcards.test(g) && g.endsWith('/')) g = `${g.replace(/\/+$/, '')}/**`
   return neg ? `!${g}` : g
 }
@@ -172,21 +176,19 @@ export function isLiteralPattern(glob: string): boolean {
  * class written out nine times — a spelling that drifts is how two guards
  * come to answer differently for one pattern.
  *
- * `[` and `]` are NOT in it: a bracket is a literal character in a task
- * glob, and there are no character classes (item 667). Route directories
- * are named `[id]` across Next.js, SvelteKit and Astro, and read as a class
- * `app/[id]/**` matched `app/i/…` and `app/d/…` and never the route: the
- * file never entered the key (a stale hit) and the output clean deleted an
- * unrelated `app/i/page.js`. {@link taskGlob} is how such a glob reaches
- * `Bun.Glob`, whose own alphabet still reads the class.
+ * A task glob is a standard glob (M, 2026-10-18): `[...]` is a character
+ * class and `\[id\]` names the route directory `[id]`. An escape counts as
+ * a wildcard too: such a pattern is matched by `Bun.Glob`, which reads the
+ * escape, never compared as a string; `asTrees` still reads an escaped-only
+ * pattern as one path.
  */
-export const GLOB_WILDCARDS = /[*?{}]/
+export const GLOB_WILDCARDS = /[*?{}[\]\\]/
 
 /**
- * `Bun.Glob`'s own alphabet, the class included, for the globs vx does not
- * own: package-manager workspace members and `--filter` path globs follow
- * npm/pnpm semantics, and a sandbox grant's prefix must stop where the scan
- * that expands the grant (`Bun.Glob`, `MOUNT_WILDCARDS`) sees a wildcard.
+ * `Bun.Glob`'s own alphabet, for the globs vx does not own: package-manager
+ * workspace members and `--filter` path globs follow npm/pnpm semantics,
+ * and a sandbox grant's prefix must stop where the scan that expands the
+ * grant (`Bun.Glob`, `MOUNT_WILDCARDS`) sees a wildcard.
  */
 export const BUN_GLOB_WILDCARDS = /[*?[\]{}]/
 
@@ -200,11 +202,7 @@ export const BUN_GLOB_WILDCARDS = /[*?[\]{}]/
  */
 export const EXTGLOB = /[!@+*?]\(/
 
-/**
- * Compile a task glob for `Bun.Glob`, with every bare bracket escaped so it
- * matches itself (item 667). Every task glob is compiled here and nowhere
- * else: one site that forgot is a route directory that keys nothing.
- */
+/** Compile a task glob for `Bun.Glob`. Every task glob is compiled here and nowhere else. */
 export function taskGlob(pattern: string): Bun.Glob {
   const memo = memoFor(taskGlobs)
   let glob = memo.get(pattern)
@@ -230,9 +228,7 @@ function memoFor<T>(memos: WeakMap<object, Map<string, T>>): Map<string, T> {
 }
 
 function compileTaskGlob(pattern: string): Bun.Glob {
-  // A `]` with no `[` before it is already literal to `Bun.Glob`.
-  const source = pattern.includes('[') ? pattern.replace(/(?<!\\)[[\]]/g, '\\$&') : pattern
-  const glob = new Bun.Glob(source)
+  const glob = new Bun.Glob(pattern)
   const alternatives = braceAlternatives(pattern)
   if (alternatives.length > 1) {
     const any = anyTaskGlob(alternatives)
@@ -288,12 +284,12 @@ const REGEXP_SYNTAX = /[\\^$.*+?()[\]{}|]/g
  * The RegExp source of a task glob, matching what `Bun.Glob` matches
  * (`tests/util-paths.test.ts` holds the two to the same verdict on every
  * shape): `*` any run within a name, `?` one character, a `**` segment any
- * number of directories, a bracket itself. Null for the syntax left to
- * `Bun.Glob`: a brace, an escape, a leading `!`, an empty, `.` or `..`
+ * number of directories. Null for the syntax left to `Bun.Glob`: a brace,
+ * a character class, an escape, a leading `!`, an empty, `.` or `..`
  * segment, a `**` inside a name, or two `**` segments in a row.
  */
 function regExpSource(pattern: string): string | null {
-  if (/[\\{}]/.test(pattern) || pattern.startsWith('!')) return null
+  if (/[\\{}[\]]/.test(pattern) || pattern.startsWith('!')) return null
   const segments = pattern.split('/')
   let out = ''
   for (let i = 0; i < segments.length; i++) {
@@ -342,7 +338,7 @@ export function asTrees(patterns: readonly string[]): string[] {
   const out: string[] = []
   for (const raw of patterns) {
     const p = normalizeGlob(raw)
-    if (!isLiteralPattern(p)) {
+    if (!namesOnePath(p)) {
       out.push(p)
       continue
     }
@@ -351,6 +347,19 @@ export function asTrees(patterns: readonly string[]): string[] {
     out.push(lit, `${lit}/**`)
   }
   return out
+}
+
+/**
+ * The one path a task glob names, an escaped one included (`app/\[id\]`
+ * names `app/[id]`), or null for a pattern.
+ */
+export function literalPath(glob: string): string | null {
+  if (isLiteralPattern(glob)) return glob
+  return isLiteralPattern(glob.replace(/\\./g, '_')) ? glob.replace(/\\(.)/g, '$1') : null
+}
+
+function namesOnePath(glob: string): boolean {
+  return literalPath(glob) !== null
 }
 
 /**

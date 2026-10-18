@@ -76,8 +76,9 @@ async function decomposeOutputDir(
   // Only globs that COLLAPSED to this entry are interesting; a literal glob
   // already names its own path.
   const wild = globs
-    .filter((g) => globToOutputPath(g) === entry.path && g !== entry.path)
-    .map((g) => g.slice(entry.path.length + 1).split('/'))
+    .map(literalHead)
+    .filter((h) => h.path === entry.path && h.rest.length > 0)
+    .map((h) => h.rest)
   if (wild.length === 0) return whole
   // Only whole-segment wildcards are walked. One glob the walk cannot follow
   // (`*.js`, `**`) keeps the entry whole: splitting for its siblings would
@@ -1267,17 +1268,23 @@ function fullCommand(req: ExecuteRequest, cdInto: string, projectRel: string): s
  * a glob whose FIRST segment already has the wildcard collapses to `''` —
  * which REAPI defines as "the entire working directory". Passing the raw
  * glob instead would name a file literally called `dist/**`, and the action
- * would return no outputs with no error anywhere.
+ * would return no outputs with no error anywhere. An escaped segment
+ * (`\[id\]`, a route directory) is literal: the path names it unescaped.
  */
 export function globToOutputPath(glob: string): string {
+  return literalHead(glob).path
+}
+
+/** `glob`'s literal head, unescaped, and the segments past it: none when the glob is a literal path. */
+function literalHead(glob: string): { path: string; rest: string[] } {
   const segments = glob.split('/')
-  const literal: string[] = []
-  for (const seg of segments) {
-    if (!isLiteralPattern(seg)) break
-    literal.push(seg)
-  }
-  if (literal.length === segments.length) return glob // no wildcard: a literal path
-  return literal.join('/')
+  let i = 0
+  while (i < segments.length && isLiteralPattern(segments[i]!.replace(/\\./g, '_'))) i++
+  const path = segments
+    .slice(0, i)
+    .map((seg) => seg.replace(/\\(.)/g, '$1'))
+    .join('/')
+  return { path, rest: segments.slice(i) }
 }
 
 /**
@@ -1334,7 +1341,7 @@ export function outputPathSets(
   // PROJECT-relative globs are the ones needing a prefix.
   const prefix = (p: string): string =>
     workingDirectory === '' && projectRel !== '' ? `${projectRel}/${p}` : p
-  // Core's spelling first: `app/\[id\]/x` names the file `app/[id]/x` (item 667).
+  // `app/\[id\]/x` names the file `app/[id]/x`: `literalHead` unescapes.
   const globs = [...req.outputs.files.map(prefix), ...req.outputs.workspaceFiles.map(rebase)].map(
     (g) => normalizeGlob(g),
   )
@@ -1342,11 +1349,11 @@ export function outputPathSets(
   const files = new Set<string>()
   const dirs = new Set<string>()
   for (const glob of globs) {
-    const literal = globToOutputPath(glob)
+    const { path: literal, rest } = literalHead(glob)
     paths.add(literal)
     // The legacy split has to GUESS what a path is; a wildcard-free glob was
     // declared as a file, a prefix cut at a wildcard is necessarily a dir.
-    if (literal === glob) files.add(literal)
+    if (rest.length === 0) files.add(literal)
     else dirs.add(literal)
   }
   return {

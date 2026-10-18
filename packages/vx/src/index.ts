@@ -20,7 +20,7 @@ export { PLUGIN_HOOKS, type PluginHook } from './config.js'
 // the second, so the cgroup walk has one implementation.
 export { machineMemoryBytes, machineParallelism } from './util/index.js'
 // How core reads a task glob — its spelling, and which characters are
-// wildcards (`[` `]` are not; item 667) — for a plugin that turns declared
+// wildcards (`[` `]` and an escape are) — for a plugin that turns declared
 // outputs into something else (`@vzn/vx-reapi`'s literal `output_paths`).
 export { isLiteralPattern, normalizeGlob, restorableOutput } from './util/index.js'
 

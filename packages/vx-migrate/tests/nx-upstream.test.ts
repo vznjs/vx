@@ -149,7 +149,7 @@ describe('nx-upstream: what the sweep found unheld', () => {
   it('a walked-through node’s dir stays literal in the reader’s globs', async () => {
     for (const [libRoot, glob] of [
       ['packages/l{b}', 'packages/l\\{b\\}/src/**'],
-      ['packages/[x]', 'packages/[x]/src/**'],
+      ['packages/[x]', 'packages/\\[x\\]/src/**'],
     ] as const) {
       const t = await graph({
         inputs: ['^production'],

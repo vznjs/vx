@@ -47,11 +47,12 @@ const POSITIVE: Array<[string, (r: string) => boolean, string[]?]> = [
   ['./**/*.ts', (r) => r.endsWith('.ts')],
   ['src', tree('src'), ['src']],
   ['src/', tree('src'), ['src']],
-  ['[id]/**', (r) => r.startsWith('[id]/'), ['[id]']],
+  ['\\[id\\]/**', (r) => r.startsWith('[id]/'), ['[id]']],
+  ['[il]d.ts', (r) => !r.includes('/') && (r === 'id.ts' || r === 'ld.ts')],
   ['**/.*', (r) => base(r).startsWith('.')],
   ['*.md', (r) => !r.includes('/') && r.endsWith('.md')],
   ['{src,lib}/**', (r) => r.startsWith('src/') || r.startsWith('lib/'), ['src', 'lib']],
-  ['**/[id]/*', (r) => segs(r).at(-2) === '[id]'],
+  ['**/\\[id\\]/*', (r) => segs(r).at(-2) === '[id]'],
   [`${HI}d`, tree(`${HI}d`), [`${HI}d`]],
 ]
 const NEGATIVE: Array<[string, (r: string) => boolean]> = [

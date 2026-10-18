@@ -939,24 +939,6 @@ describe('output negation', () => {
     },
     TIMEOUT,
   )
-
-  it(
-    'a route directory first is a literal, not a wildcard reaching the sources (item 667)',
-    async () => {
-      // A bracket is literal in a vx task glob, so `[locale]/**` names one
-      // directory, and the task stays cached with its negation.
-      await writeFile(
-        path.join(root, 'turbo.json'),
-        JSON.stringify({ tasks: { build: { outputs: ['[locale]/**', '!**/*.map'] } } }),
-      )
-      const log = silent()
-      const plan = await planRun({ cwd: root, tasks: ['build'], log })
-      const app = plan.tasks.find((t) => t.node.id === 'app#build')!.node
-      expect(app.config.cache?.outputs.files).toEqual(['[locale]/**', '!**/*.map'])
-      expect((await lockWarnings()).join('\n')).not.toContain('reaches the sources')
-    },
-    TIMEOUT,
-  )
 })
 
 describe('per-package turbo.json', () => {

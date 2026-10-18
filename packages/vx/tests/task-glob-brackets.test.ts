@@ -1,11 +1,9 @@
-// A bracket is a LITERAL character in a task glob (item 667). Route
-// directories are named `[id]` across Next.js, SvelteKit and Astro, and
-// `Bun.Glob` reads `app/[id]/**` as the class `[id]`: it matched `app/i/…`
-// and `app/d/…` and never the route. So the route's file never entered the
-// key — an edit replayed the old output as a green hit — and an output
-// declared under it cleaned an unrelated `app/i/page.js` before every run
-// while the artifact saved nothing. `\[id\]`, the spelling Turbo users
-// escape with, names the same path.
+// A task glob is a standard glob (M, 2026-10-18): `[ab]` is a character
+// class, and a route directory named `[id]` (Next.js, SvelteKit, Astro) is
+// spelled `app/\[id\]`. The escaped route must key and restore exactly the
+// route: read as the class, it matched `app/i/…` and never the route, so an
+// edit replayed the old output as a green hit and an output declared under
+// it cleaned an unrelated `app/i/page.js`.
 
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -61,14 +59,24 @@ async function project(
   return { dir, statuses }
 }
 
-// Both spellings, every row: the bare route directory and Turbo's escape.
-const spellings: Array<[string, (p: string) => string]> = [
-  ['bare', (p) => p],
-  ['escaped', (p) => p.replace(/[[\]]/g, '\\$&')],
-]
+const glob = (p: string): string => p.replace(/[[\]]/g, '\\$&')
 
-for (const [spelling, glob] of spellings) {
-  describe(`a route directory in a task glob, ${spelling} (${glob('app/[id]')})`, () => {
+describe('a bracket is a character class in a task glob', () => {
+  it('app/[ab]/*.js keys app/a and app/b, and not a directory named [ab]', async () => {
+    const { dir, statuses } = await project(
+      { command: 'echo ok > out.txt', inputs: ['app/[ab]/*.js'], outputs: ['out.txt'] },
+      { 'app/a/x.js': 'a', 'app/b/x.js': 'b', 'app/[ab]/x.js': 'lit' },
+    )
+    expect(await statuses()).toEqual(['success'])
+    await writeFile(path.join(dir, 'app/[ab]/x.js'), 'lit2')
+    expect(await statuses()).toEqual(['cache-hit'])
+    await writeFile(path.join(dir, 'app/b/x.js'), 'b2')
+    expect(await statuses()).toEqual(['success'])
+  }, 30_000)
+})
+
+{
+  describe(`a route directory in a task glob, escaped (${glob('app/[id]')})`, () => {
     it('an input under it keys the task: an edit reruns, never replays', async () => {
       const { dir, statuses } = await project(
         {

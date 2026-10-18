@@ -1,28 +1,22 @@
-// The glob grammar Nx and Turbo share and vx's own differ in brackets and
-// extglobs; both adapters translate through here (items 914, 1031).
+// The glob grammar Nx and Turbo share and vx's own differ in extglobs;
+// both adapters translate through here (items 914, 1031).
 
 const EXTGLOB = /([?@+*!])\(([^()]*)\)/g
 
 /**
  * A minimatch-family glob (Nx's minimatch, Turbo's wax) in vx's grammar,
- * or null when it has no safe form. vx has no character classes (a bracket is a literal, for route
- * dirs, item 667) and no extglobs, so `src/**\/*.[jt]s` matched nothing
- * and Nx's own default `production` negation,
- * `?(*.)+(spec|test).[jt]s?(x)`, excluded nothing (item 914):
- * - `[jt]` is the brace set `{j,t}`, plus the literal `[jt]` itself in a
- *   positive glob (a superset of inputs is safe; the route dir may be
- *   meant); a range within digits or one case of letters (`[a-c]`,
- *   `[0-9]`) is its members;
- * - a negated class (`[!a]`) is `?` in a positive glob, a superset;
+ * or null when it has no safe form. Character classes pass through (vx
+ * reads them the same way); vx has no extglobs, so Nx's own default
+ * `production` negation, `?(*.)+(spec|test).[jt]s?(x)`, excluded nothing
+ * (item 914):
  * - `?(a|b)` is `{a,b,}` and `@(a|b)` is `{a,b}`;
  * - `+(a|b)` and `*(a|b)` narrow to one repetition, which only a
  *   NEGATION may do — it then excludes fewer files, never more;
- * - any other range, a negated class in a negation, `!(…)`, or nesting is
- *   null.
+ * - `!(…)` or nesting is null.
  */
 export function minimatchToVx(glob: string, negated: boolean): string | null {
-  if (!/[[(]/.test(glob)) return glob
-  let out = glob.replace(EXTGLOB, (whole, kind: string, body: string) => {
+  if (!glob.includes('(')) return glob
+  const out = glob.replace(EXTGLOB, (_whole, kind: string, body: string) => {
     const alts = body.split('|')
     if (alts.some((a) => /[{},]/.test(a))) return '\0'
     if (kind === '?') return `{${alts.join(',')},}`
@@ -30,36 +24,7 @@ export function minimatchToVx(glob: string, negated: boolean): string | null {
     if (!negated || kind === '!') return '\0'
     return kind === '+' ? `{${alts.join(',')}}` : `{${alts.join(',')},}`
   })
-  if (out.includes('\0') || /[?@+*!]\(/.test(out)) return null
-  out = out.replace(/\[([^\]]*)\]/g, (whole, body: string) => {
-    if (body === '' || /[{},/]/.test(body)) return '\0'
-    if (/^[!^]/.test(body)) return negated || body.length === 1 ? '\0' : '?'
-    const chars = classMembers(body)
-    if (chars === null) return '\0'
-    return negated ? `{${chars.join(',')}}` : `{${whole},${chars.join(',')}}`
-  })
-  return out.includes('\0') ? null : out
-}
-
-const RANGES = ['0123456789', 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ']
-
-/** A class body's characters, ranges spelled out; null for a range across kinds or backwards. */
-function classMembers(body: string): string[] | null {
-  const out = new Set<string>()
-  for (let i = 0; i < body.length; i++) {
-    const c = body[i]!
-    // A `-` first or last is itself, as in minimatch.
-    if (body[i + 1] === '-' && i + 2 < body.length) {
-      const end = body[i + 2]!
-      const kind = RANGES.find((r) => r.includes(c))
-      const from = kind?.indexOf(c) ?? -1
-      const to = kind?.indexOf(end) ?? -1
-      if (kind === undefined || to < from) return null
-      for (const m of kind.slice(from, to + 1)) out.add(m)
-      i += 2
-    } else out.add(c)
-  }
-  return [...out]
+  return out.includes('\0') || /[?@+*!]\(/.test(out) ? null : out
 }
 
 /**
@@ -73,7 +38,7 @@ function classMembers(body: string): string[] | null {
  */
 export function withoutTakenBack<T>(entries: readonly T[]): T[] {
   const list = [...new Set(entries)]
-  const wild = /[*?{}]/
+  const wild = /[*?{}[\]\\]/
   const negative = list.flatMap((e) =>
     typeof e === 'string' && e.startsWith('!') ? [e.slice(1)] : [],
   )
@@ -90,10 +55,10 @@ export function withoutTakenBack<T>(entries: readonly T[]): T[] {
 
 /**
  * A path from the file system as a task glob that names only itself: a dir
- * named `my{app}` read as a brace matched `myapp` instead. `[` `]` are
- * literal in a task glob already; `*` and `?` stay, since the schema reads
- * `\*` as a Windows separator, and they match the name too (a superset).
+ * named `my{app}` read as a brace matched `myapp` instead, and `app/[id]` a
+ * class. `*` and `?` stay, since the schema reads `\*` as a Windows
+ * separator, and they match the name too (a superset).
  */
 export function literalGlob(p: string): string {
-  return p.replace(/^!|[{}]/g, '\\$&')
+  return p.replace(/^!|[{}[\]]/g, '\\$&')
 }

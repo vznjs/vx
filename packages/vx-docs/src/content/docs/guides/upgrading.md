@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: read [...] in a task glob as a character class
+
+A [...] in a task glob is a character class, as in every glob tool; escape a literal route directory: `app/\[id\]/**`. CACHE_VERSION is vx-cache-v48.
+
 ## cache: keep local entries as plain files a hit copies out
 
 CACHE_VERSION is vx-cache-v47; a v46 local cache is not read. Set cache.store.compress: true to keep the tar.zst form.
