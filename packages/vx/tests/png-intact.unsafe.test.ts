@@ -15,11 +15,12 @@ function broken(file: string): string | null {
   let i = 8
   while (i < d.length) {
     const n = d.readUInt32BE(i)
-    const type = d.subarray(i + 4, i + 8)
+    const tag = d.subarray(i + 4, i + 8)
+    const type = tag.toString()
     const body = d.subarray(i + 8, i + 8 + n)
     const crc = d.readUInt32BE(i + 8 + n)
-    if (Bun.hash.crc32(Buffer.concat([type, body])) >>> 0 !== crc) return `${type} CRC`
-    if (type.toString() === 'IDAT') idat.push(body)
+    if (Bun.hash.crc32(Buffer.concat([tag, body])) >>> 0 !== crc) return `${type} CRC`
+    if (type === 'IDAT') idat.push(body)
     i += 12 + n
   }
   try {
