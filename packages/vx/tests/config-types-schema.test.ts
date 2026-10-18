@@ -180,6 +180,7 @@ const exhaustive: [
   true,
   true,
   true,
+  true,
 ]
 void exhaustive
 
