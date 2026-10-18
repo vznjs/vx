@@ -2199,8 +2199,11 @@ export class Cache implements CacheLayer {
       // artifact is intact, the tree is not the process's to change.
       // A refusal to READ the artifact is the cache directory's, not the
       // outputs': the old line sent the reader to the wrong tree (A-40).
+      // A tree copy's error can name its source; no read fails ENOSPC.
       if (
         isFsRefusal(err) &&
+        code !== 'ENOSPC' &&
+        code !== 'EDQUOT' &&
         (err.path === src || (tree !== undefined && inTree(err.path, tree)))
       ) {
         throw new UserError(
