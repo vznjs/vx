@@ -935,7 +935,9 @@ describe('relock', () => {
   it("runs the new vx's lock at the workspace root", async () => {
     const { root, bin } = await workspace('relock-ok', 'exit 0')
     await relock(bin, path.join(root, '.vx', 'sub'))
-    expect((await readFile(path.join(root, 'ran'), 'utf8')).trim()).toBe(`lock ${realpathSync(root)}`)
+    expect((await readFile(path.join(root, 'ran'), 'utf8')).trim()).toBe(
+      `lock ${realpathSync(root)}`,
+    )
   })
 
   it('a lock that fails says to run vx lock, and the upgrade stands', async () => {
