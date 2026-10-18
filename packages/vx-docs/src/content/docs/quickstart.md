@@ -91,10 +91,10 @@ of a small package (first run, again, again after `rm -rf dist`):
   time      332ms
 
 └─ @demo/app#build ── (3ms) up-to-date
-  time      23ms · 60ms saved
+  time      23ms
 
 └─ @demo/app#build ── (14ms) restored-local
-  time      31ms · 60ms saved
+  time      31ms
 ```
 
 ## When to run vx lock

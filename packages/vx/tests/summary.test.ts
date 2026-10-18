@@ -358,21 +358,18 @@ describe('formatRunSummary', () => {
     expect(lines.find((l) => l.startsWith('  result'))).toBeUndefined()
   })
 
-  it('ends on the time row, which carries what the cache saved; no result row repeats the rest', () => {
+  it('ends on the time row; no result row repeats the rest', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
     const last = (outcomes: TaskOutcome[], ms: number): string | undefined =>
       formatRunSummary(outcomes, ms, { enabled: false }, ctx).at(-1)
-    // A hit says what it saved: its STORED exec time, not the restore.
-    const hit = (id: string, storedDurationMs: number): TaskOutcome => ({
-      ...outcome(id, 'cache-hit'),
+    // A hit's stored exec time is not said: summed, it overstated the wall
+    // time hits would have taken side by side (M, 2026-10-18).
+    const hit: TaskOutcome = {
+      ...outcome('a#x', 'cache-hit'),
       durationMs: 2,
-      storedDurationMs,
-    })
-    expect(last([hit('a#x', 2010), hit('b#x', 300), outcome('c#x', 'success')], 90)).toBe(
-      '  time      90ms · 2.31s saved',
-    )
-    // Nothing saved under a millisecond is said.
-    expect(last([outcome('a#x', 'success')], 37)).toBe('  time      37ms')
+      storedDurationMs: 2010,
+    }
+    expect(last([hit, outcome('c#x', 'success')], 90)).toBe('  time      90ms')
     // The wall time is said once (M, 2026-10-14).
     const footer = formatRunSummary([outcome('a#x', 'cache-hit')], 4321, { enabled: false }, ctx)
     expect(footer.filter((l) => l.includes('4.32s'))).toEqual(['  time      4.32s'])
@@ -633,8 +630,8 @@ describe('the footer never repeats a value or a count', () => {
     })
   }
 
-  it('saved rides the time row', () => {
-    expect(footers['all hits']!.at(-1)).toBe('  time      10ms · 85.16s saved')
+  it('the time row says only the wall time', () => {
+    expect(footers['all hits']!.at(-1)).toBe('  time      10ms')
   })
 })
 

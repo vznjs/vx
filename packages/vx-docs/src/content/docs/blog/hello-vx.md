@@ -34,7 +34,7 @@ $ vx run build test --all --force
   time      879ms
 
 $ vx run build test --all
-  time      26ms · 2.06s saved
+  time      26ms
 ```
 
 The second run takes 26ms instead of 879ms, because every key matched and every output

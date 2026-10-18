@@ -442,10 +442,10 @@ would run:
     category: 'daily',
     hook: 'Every run ends with one block, and nothing prints below it.',
     body: [
-      'The end of a run is a footer: projects, tasks and cache as meters, the run id `vx last` opens, the run time with what the cache saved, and the spread of task times.',
+      'The end of a run is a footer: projects, tasks and cache as meters, the run id `vx last` opens, the run time, and the spread of task times.',
       'It is always the last word. Warnings and notes about the run print above it, so you never scroll for the verdict.',
     ],
-    example: { lang: 'text', code: 'time      40ms · 1.24s saved' },
+    example: { lang: 'text', code: 'time      40ms · max 31ms · min 9ms' },
     image: 'run-summary.png',
     imageAlt: 'The run footer with meters for projects, tasks and cache.',
     docs: { label: 'Output format', href: 'cli/#output-format' },

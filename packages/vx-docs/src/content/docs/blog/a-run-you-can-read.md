@@ -59,11 +59,10 @@ own frame, in the order tasks finish.
             local 8✓
 
   info      4 workers · local cache · run 01a14941-c8cf-7a3e-9b51-2f06d4e8c713
-  time      23ms · 2.12s saved
+  time      23ms
 ```
 
-That is the same eight tasks a second time, all cached: 23 ms, and the
-summary says how much work the cache saved.
+That is the same eight tasks a second time, all cached: 23 ms.
 
 ```mermaid
 flowchart TB
