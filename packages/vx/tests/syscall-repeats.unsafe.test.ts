@@ -371,10 +371,11 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
         `,
       )
       expect(
-        ['00000000000000a1', '00000000000000a2', '00000000000000f1'].map((h) =>
+        ['00000000000000a1', '00000000000000a2', '00000000000000f1'].flatMap((h) => [
           on(calls, path.join(cacheDir, `${h}.tar.zst`)),
-        ),
-      ).toEqual([[], [], ['stat']])
+          on(calls, path.join(cacheDir, `${h}.tree`)),
+        ]),
+      ).toEqual([[], [], [], [], [], ['stat']])
     },
     TIMEOUT,
   )

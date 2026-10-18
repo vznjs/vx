@@ -1709,6 +1709,7 @@ export default defineWorkspace({
     inputStability: { strategy: 'immutable', severity: 'warn' },
     outputs: { clean: true },
     upload: { failures: 'ci' },
+    store: { embedded: true, compress: false, verify: 'stat' },
   },
   lock: { reviewFiles: true },
   watch: { poll: false },
