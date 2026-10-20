@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@vzn/vx"><img src="https://img.shields.io/npm/v/@vzn/vx?color=7cb518" alt="npm"></a>
-  <a href="https://github.com/vznjs/vx/actions/workflows/ci.yml"><img src="https://github.com/vznjs/vx/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/vznjs/vx/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush"><img src="https://github.com/vznjs/vx/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <a href="https://vznjs.github.io/vx/"><img src="https://img.shields.io/badge/docs-vznjs.github.io%2Fvx-c6f84e" alt="Documentation"></a>
 </p>
