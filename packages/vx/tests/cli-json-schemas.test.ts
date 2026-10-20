@@ -246,8 +246,8 @@ beforeAll(async () => {
   outputs['lock']!.push(JSON.parse(noLock.out))
   expect(vx(['lock']).code).toBe(0)
   json('lock', ['--check'])
-  // The init plan core writes itself: a directory with no package.json
-  // (a repo with one is @vzn/vx-migrate's plan).
+  // The init plan core writes itself: a directory with no Turbo or Nx
+  // config (a repo with one is @vzn/vx-migrate's plan).
   const fresh = await mkdtemp(path.join(tmpdir(), 'vx-init-json-'))
   try {
     const p = Bun.spawnSync({

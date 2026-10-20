@@ -475,7 +475,7 @@ function installedVersion(dir: string, pkg: string): string | undefined {
 }
 
 /** The project's package manager: its lockfile, then `packageManager`, then the tree's shape. */
-function projectManager(dir: string, execPath: string): ManagedInstall['manager'] {
+export function projectManager(dir: string, execPath: string): ManagedInstall['manager'] {
   for (let d = dir; ; d = path.dirname(d)) {
     if (existsSync(path.join(d, 'pnpm-lock.yaml'))) return 'pnpm'
     if (existsSync(path.join(d, 'bun.lock')) || existsSync(path.join(d, 'bun.lockb'))) return 'bun'

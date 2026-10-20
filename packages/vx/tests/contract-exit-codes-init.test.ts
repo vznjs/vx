@@ -16,8 +16,8 @@ import { afterAll, beforeAll, expect, it } from 'bun:test'
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const RECORD = path.join(import.meta.dir, 'contract', 'exit-codes-init.json')
 
-// No package.json: core writes the starter itself. With one, `vx init` is
-// @vzn/vx-migrate's, and the exit is its own (its suite records them).
+// No Turbo or Nx config: core writes the starter itself. With one, `vx init`
+// is @vzn/vx-migrate's, and the exit is its own (its suite records them).
 let root: string
 let dry: string
 
@@ -44,7 +44,7 @@ function vx(cwd: string, ...args: string[]): number {
 it('each vx init outcome exits as tests/contract/exit-codes-init.json records', () => {
   const live: Record<string, number> = {}
   live['init: an unknown flag: vx init --bogus'] = vx(root, 'init', '--bogus')
-  live['init: no package.json, --keep: vx init --keep'] = vx(root, 'init', '--keep')
+  live['init: no turbo.json or nx.json, --keep: vx init --keep'] = vx(root, 'init', '--keep')
   live['init: --dry: vx init --dry'] = vx(dry, 'init', '--dry')
   live['init: files written: vx init'] = vx(root, 'init')
   live['init: files exist: vx init'] = vx(root, 'init')

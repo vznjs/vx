@@ -1619,10 +1619,10 @@ export const MORE: readonly Feature[] = [
     slug: 'npm-hooks',
     title: 'pre and post scripts kept',
     category: 'adoption',
-    hook: '`prebuild` and `postbuild` fold into `build` when `vx init` maps your scripts.',
+    hook: '`prebuild` and `postbuild` fold into `build` when `@vzn/vx-migrate` maps your scripts.',
     body: [
       'npm runs `prebuild` and `postbuild` around `build` without being asked. A migration that drops them changes what your build does.',
-      '`vx init` folds them into the task’s command in that order, and says so in its report.',
+      '`@vzn/vx-migrate` folds them into the task’s command in that order, and says so in its report.',
     ],
     example: {
       lang: 'text',

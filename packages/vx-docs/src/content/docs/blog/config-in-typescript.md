@@ -100,9 +100,8 @@ read at lock time.
 
 ## The migration path
 
-`vx init` writes these files from `package.json` scripts.
-`bunx @vzn/vx-migrate` writes them from a `turbo.json` or an Nx project
-graph, and when it meets a `globalDependencies` list it generates the
+`bunx @vzn/vx-migrate` writes these files from `package.json` scripts, a
+`turbo.json` or an Nx project graph, and when it meets a `globalDependencies` list it generates the
 preset file and the import for you, because that is what the list was
 trying to be. The schema reference is [Configuration
 schema](../../schema/).
