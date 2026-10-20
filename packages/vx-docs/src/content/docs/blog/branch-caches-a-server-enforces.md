@@ -88,9 +88,12 @@ batch query, so a list of keys would cost one request per ref.
 ## Building the server half
 
 Everything below is the Turbo artifacts API (`/v8/artifacts`) plus one
-header. A cache server can implement it in an afternoon.
+header.
 
 ### Server config
+
+vx ships no cache server, so this is an example for one you run. A
+trust policy might look like this:
 
 The user sets a trust policy per team. A rule names token claims; each
 value is an exact string, a glob, or a list. A token matches a rule when
@@ -121,8 +124,8 @@ export default {
 }
 ```
 
-Pin `repository_id` or `project_id`, not the name: a re-created
-repository can take an old name, never an old id. Trusted is `main`
+Pin `repository_id` or `project_id`, not the name: after a rename or
+delete, another repository can take the name, never the id. Trusted is `main`
 and its merge queue only: anyone who can push can tag any commit, so a
 tag's run writes to its own scope, as a branch does.
 
@@ -173,7 +176,7 @@ writes to:
 | merge queue | `ref=refs/heads/gh-readonly-queue/main/…` | `refs/heads/gh-readonly-queue/main/…, refs/heads/main` | trusted | trusted |
 | PR #12 (feature→main) | `ref=refs/pull/12/merge`, `head_ref=feature`, `base_ref=main` | `refs/heads/feature, refs/heads/main` | feature, trusted | `refs/heads/feature` |
 | branch push | `ref=refs/heads/feature` | `refs/heads/feature, refs/heads/main` | feature, trusted | `refs/heads/feature` |
-| fork PR | no token | `refs/heads/<head>, refs/heads/main` | head, trusted | nothing |
+| fork PR | no token | `refs/heads/<head>, refs/heads/main` | nothing (no token) | nothing |
 | local on main | personal token (read-only) | `refs/heads/main` | trusted | nothing |
 | local on feature | personal token (read-only) | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing |
 
@@ -185,7 +188,7 @@ writes to:
 | merge train | `ref_path=refs/heads/feature` | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing (client read-only) |
 | MR or merged results (feature→main) | `ref_path=refs/heads/feature` | `refs/heads/feature, refs/heads/main` | feature, trusted | `refs/heads/feature` |
 | branch pipeline | `ref_path=refs/heads/feature` | `refs/heads/feature, refs/heads/main` | feature, trusted | `refs/heads/feature` |
-| fork MR | fork project's token | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing (wrong project) |
+| fork MR | fork project's token | `refs/heads/feature, refs/heads/main` | nothing (wrong project) | nothing (wrong project) |
 | local on main | personal token (read-only) | `refs/heads/main` | trusted | nothing |
 | local on feature | personal token (read-only) | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing |
 
@@ -213,7 +216,8 @@ and `feature-b, main` on a laptop.
 - `turboCache()` gains `scope: 'header' | 'key'` and sends
   `x-artifact-read-scopes` on every read. A `PUT` names no scope.
 - `nxCache()` and `turboCache()` no longer send `x-vx-cache-scope`.
-- `VX_CACHE_SCOPE` and `github({ cacheScope })` now scope only what
+- `VX_CACHE_SCOPE`, `github({ cacheScope })` and `gitlab({ cacheScope })`
+  now scope only what
   plugins store themselves (`ctx.cache`, run records).
 
 The CI guide's [cache scopes and tokens](../../guides/ci/#cache-scopes-and-tokens) has the setup.

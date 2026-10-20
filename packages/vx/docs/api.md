@@ -92,8 +92,7 @@ cache scope (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it
 beats the one git names), and `base`, the commit the branch is compared
 with (a pull request's base), for a bare `--affected`. `trusted`: the
 run has no scope, whatever git names (a merge queue's run, owner
-2026-10-18). The scope keys only plugin entries; task keys never carry
-it. A later plugin's field wins.
+2026-10-18). The scope keys plugin entries only. A later plugin's field wins.
 
 ```ts
 export interface BranchFacts {
@@ -216,6 +215,7 @@ A `cache` hook's context: the workspace and the run's scope, never the local sto
 ```ts
 export interface CacheContext extends BaseContext {
   readonly scope: string | undefined
+  readonly refs: readonly string[]
 }
 ```
 
