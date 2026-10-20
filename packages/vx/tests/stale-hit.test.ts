@@ -189,6 +189,123 @@ describe('stale cache hits', () => {
     },
     TIMEOUT,
   )
+  it(
+    'an input named with odd characters still re-keys on each edit, tracked or not',
+    async () => {
+      // Port of Turbo's globwalk test_weird_filenames, comma_patterns and
+      // workspace_globbing_includes_dotfiles: a name git quotes or a glob
+      // reads as syntax must still reach the key.
+      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await writeLocalWorkspace(root)
+      const pkg = path.join(root, 'packages', 'lib')
+      const names = [
+        'a b\nc',
+        '"q"',
+        'back\\slash',
+        'foo:bar',
+        'a,b',
+        '\u00e9',
+        '.hidden/x',
+        '[id]/p',
+        '{a,b}/p',
+      ]
+      for (const n of names) await write(path.join(pkg, 'src', n), 'v1')
+      await write(
+        path.join(pkg, 'vx.config.mjs'),
+        `export default { name: 'lib', tasks: { build: {
+           exec: { command: 'mkdir -p dist && date +%N > dist/o' },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      const miss = (): boolean => /1↑/.test(vx(root, 'run', 'build', '--all'))
+      const seen: string[] = []
+      expect(miss()).toBe(true)
+      for (const n of names) {
+        await write(path.join(pkg, 'src', n), 'v2')
+        if (!miss() || miss()) seen.push(`${n} tracked`)
+        await write(path.join(pkg, 'src', `${n}.new`), 'v1')
+        if (!miss()) seen.push(`${n} untracked added`)
+        await write(path.join(pkg, 'src', `${n}.new`), 'v2')
+        if (!miss() || miss()) seen.push(`${n} untracked edit`)
+      }
+      expect(seen).toEqual([])
+    },
+    TIMEOUT,
+  )
+  it(
+    'a run from a link to the workspace keys the same files as one from its real path',
+    async () => {
+      // Port of Turbo's scm test_symlinked_git_root: entered through a link,
+      // the workspace's paths must still resolve inside git's top level.
+      const real = path.join(root, 'real')
+      const link = path.join(root, 'link')
+      await write(path.join(real, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await writeLocalWorkspace(real)
+      const pkg = path.join(real, 'packages', 'lib')
+      await write(path.join(pkg, 'src', 'a'), '1')
+      await write(
+        path.join(pkg, 'vx.config.mjs'),
+        `export default { name: 'lib', tasks: { build: {
+           exec: { command: 'mkdir -p dist && cat src/a > dist/o' },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(real, 'init', '-q')
+      git(real, 'add', '-A')
+      git(real, 'commit', '-q', '-m', 'init')
+      await symlink(real, link)
+      const seen: string[] = []
+      for (const [cwd, v] of [
+        [link, '1'],
+        [link, '1'],
+        [real, '1'],
+        [link, '2'],
+        [path.join(link, 'packages', 'lib'), '3'],
+        [real, '3'],
+      ] as const) {
+        await write(path.join(pkg, 'src', 'a'), v)
+        const word = /1↑/.test(vx(cwd, 'run', 'build', '--all')) ? 'miss' : 'hit'
+        seen.push(`${word} ${await readFile(path.join(pkg, 'dist', 'o'), 'utf8')}`)
+      }
+      expect(seen).toEqual(['miss 1', 'hit 1', 'hit 1', 'miss 2', 'miss 3', 'hit 3'])
+    },
+    TIMEOUT,
+  )
+  it(
+    'an edit inside a git worktree checked out under the inputs re-keys the task',
+    async () => {
+      // Port of Nx's git-worktrees nestedWorktreeRoots: git lists a nested
+      // worktree as one untracked directory and never descends into it, so
+      // its files must still reach the key through vx's own walk.
+      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await writeLocalWorkspace(root)
+      const pkg = path.join(root, 'packages', 'lib')
+      await write(path.join(pkg, 'src', 'a'), '1')
+      await write(
+        path.join(pkg, 'vx.config.mjs'),
+        `export default { name: 'lib', tasks: { build: {
+           exec: { command: 'mkdir -p dist && cat src/a src/wt/packages/lib/src/a > dist/o' },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      git(root, 'worktree', 'add', '-q', path.join(pkg, 'src', 'wt'))
+      const step = async (): Promise<string> => {
+        const word = /1↑/.test(vx(root, 'run', 'build', '--all')) ? 'miss' : 'hit'
+        return `${word} ${await readFile(path.join(pkg, 'dist', 'o'), 'utf8')}`
+      }
+      const seen = [await step(), await step()]
+      await write(path.join(pkg, 'src', 'wt', 'packages', 'lib', 'src', 'a'), '2')
+      seen.push(await step())
+      expect(seen).toEqual(['miss 11', 'hit 11', 'miss 12'])
+    },
+    TIMEOUT,
+  )
   // Every spelling git reads as false (A-33).
   for (const off of ['false', 'no', 'off', '0']) {
     it(
