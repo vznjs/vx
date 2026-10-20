@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { RemoteCacheLayer } from '@vzn/vx'
-import { keyedByRef, refKey, remoteScope } from '../src/turbo-cache/scope.js'
+import { keyedByRef, readScopes, refKey, remoteScope } from '../src/turbo-cache/scope.js'
 
 function memory(batches = true): {
   layer: RemoteCacheLayer
@@ -81,5 +81,10 @@ describe("scope: 'key'", () => {
     expect(() => remoteScope('turbo-cache', 'branch')).toThrow(
       `vx/turbo-cache: scope must be 'header' or 'key', got "branch"`,
     )
+  })
+
+  it('the read header names at most 8 refs, the first ones', () => {
+    const refs = Array.from({ length: 10 }, (_, i) => `refs/heads/b${i}`)
+    expect(readScopes(refs)['x-artifact-read-scopes']!.split(', ')).toEqual(refs.slice(0, 8))
   })
 })

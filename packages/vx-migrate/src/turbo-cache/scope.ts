@@ -15,9 +15,14 @@ export function remoteScope(name: string, scope: unknown): RemoteScope {
   throw new Error(`vx/${name}: scope must be 'header' or 'key', got ${JSON.stringify(scope)}`)
 }
 
+/** A server caps the read header at this many refs (the server rules), so vx never sends more. */
+const MAX_READ_SCOPES = 8
+
 /** The read header: the refs in order. Writes carry none: the server files them by the token. */
 export function readScopes(refs: readonly string[]): Record<string, string> {
-  return refs.length === 0 ? {} : { 'x-artifact-read-scopes': refs.join(', ') }
+  return refs.length === 0
+    ? {}
+    : { 'x-artifact-read-scopes': refs.slice(0, MAX_READ_SCOPES).join(', ') }
 }
 
 /** The key `ref` stores `hash` under: 16 hex, task-key shaped, so every wire takes it. */

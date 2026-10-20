@@ -142,8 +142,9 @@ then `origin/HEAD`'s), so `git checkout feat-x` reads what CI built for
 `feat-x`. A server that ignores the header keeps one shared cache. For
 one like that (Vercel), `turboCache({ scope: 'key' })` folds the ref
 into each key: a run writes under its own ref's key and asks every
-ref's key in one batch, first hit wins. The local cache never knows a
-branch: back on `main`, the same inputs hit locally.
+ref's key in one batch, first hit wins. That keeps branches apart but
+does not secure them: any writer can compute `main`'s key. The local
+cache never knows a branch: back on `main`, the same inputs hit locally.
 [Branch caches a server enforces](../../blog/branch-caches-a-server-enforces/)
 shows how a server implements the header. `nxCache()` sends plain
 requests.

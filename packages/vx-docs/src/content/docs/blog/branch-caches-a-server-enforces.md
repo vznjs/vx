@@ -80,9 +80,9 @@ export default defineWorkspace({
 
 `'key'` gives a header-blind server separate branch entries: a run
 writes under its own ref's key and asks every ref's key in one batch.
-It cannot stop a branch from writing under `main`'s key, because that
-server checks nothing. Only the server can enforce, so `'header'` is
-the default. `nxCache()` sends plain requests: the Nx cache spec has no
+That is isolation, not security: any writer can compute `main`'s key,
+and that server checks nothing. Only a server can enforce, so
+`'header'` is the default. `nxCache()` sends plain requests: the Nx cache spec has no
 batch query, so a list of keys would cost one request per ref.
 
 ## Building the server half
@@ -103,7 +103,9 @@ export default {
     {
       iss: 'https://token.actions.githubusercontent.com',
       repository_id: '123456789',
+      event_name: ['push', 'merge_group'], // pull_request_target and issue_comment run PR code with ref=main
       ref: ['refs/heads/main', 'refs/heads/gh-readonly-queue/main/*', 'refs/tags/v*'],
+      ref_protected: 'true', // an unprotected tag or branch can be pushed with unreviewed code
       job_workflow_ref: 'org/repo/.github/workflows/ci.yml@refs/heads/main',
     },
     // GitLab: protected main or tags, on our own runners
@@ -112,14 +114,16 @@ export default {
       project_id: '4567',
       ref_path: ['refs/heads/main', 'refs/tags/v*'],
       ref_protected: 'true',
+      pipeline_source: ['push', 'schedule'], // a manual pipeline can inject CI variables
       runner_environment: 'self-hosted',
     },
   ],
 }
 ```
 
-Pin `repository_id` or `project_id`, not the name: a renamed or
-re-created repository keeps its name, not its id.
+Pin `repository_id` or `project_id`, not the name: a re-created
+repository can take an old name, never an old id. Protect release tags
+with a ruleset too, or anyone who can push could tag unreviewed code.
 
 ### Write scope
 
@@ -134,18 +138,31 @@ writes to:
 
 1. **Auth.** Accept GitHub and GitLab OIDC tokens as `Authorization:
    Bearer`, and verify the signature (the issuer's JWKS), `iss`, `aud`
-   and `exp`. A plain team token only reads.
-2. **Trust match.** As above: every claim a rule names must match.
-3. **Write** (`PUT /v8/artifacts/:hash`). A token that matches a rule
+   and `exp`. Every read needs a token. Each developer creates their own
+   read-only token, and a shared read-only token may serve other CIs;
+   neither ever writes.
+2. **Audience.** `aud` must be this server's own, so a token minted for
+   another service can't be replayed here.
+3. **Trust match.** As above: every claim a rule names must match.
+4. **Write** (`PUT /v8/artifacts/:hash`). A token that matches a rule
    stores to trusted. Any other token stores to its write scope. A token
    from a repository or project no rule names writes nothing. Entries
    are immutable.
-4. **Read** (`GET` and `HEAD /v8/artifacts/:hash`, and the batch
+5. **Read** (`GET` and `HEAD /v8/artifacts/:hash`, and the batch
    `POST /v8/artifacts`). For each ref in the header, in order: if it
    matches a rule's ref glob, look in trusted; otherwise look in that
    ref's scope. Return the first hit.
-5. **No header.** Read from trusted only, so plain Turbo clients keep
+6. **No header.** Read from trusted only, so plain Turbo clients keep
    working.
+7. **Per repository.** Every scope, trusted included, lives in that
+   repository's own bucket, taken from the token (`repository_id`,
+   `project_id`, or the read token's repository). One team's repositories
+   never share a branch.
+8. **Header limits.** Each entry must be a `refs/...` string; dedupe the
+   list and cap it at 8 refs. vx sends at most 8.
+9. **Merge queue.** It writes to trusted before its code lands, so a
+   queued PR that drops out leaves trusted entries behind. That is
+   accepted: queue code is approved code.
 
 ### GitHub
 
@@ -156,8 +173,8 @@ writes to:
 | PR #12 (feature→main) | `ref=refs/pull/12/merge`, `head_ref=feature`, `base_ref=main` | `refs/heads/feature, refs/heads/main` | feature, trusted | `refs/heads/feature` |
 | branch push | `ref=refs/heads/feature` | `refs/heads/feature, refs/heads/main` | feature, trusted | `refs/heads/feature` |
 | fork PR | no token | `refs/heads/<head>, refs/heads/main` | head, trusted | nothing |
-| local on main | team token (read-only) | `refs/heads/main` | trusted | nothing |
-| local on feature | team token (read-only) | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing |
+| local on main | personal token (read-only) | `refs/heads/main` | trusted | nothing |
+| local on feature | personal token (read-only) | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing |
 
 ### GitLab
 
@@ -168,8 +185,8 @@ writes to:
 | MR or merged results (feature→main) | `ref_path=refs/heads/feature` | `refs/heads/feature, refs/heads/main` | feature, trusted | `refs/heads/feature` |
 | branch pipeline | `ref_path=refs/heads/feature` | `refs/heads/feature, refs/heads/main` | feature, trusted | `refs/heads/feature` |
 | fork MR | fork project's token | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing (wrong project) |
-| local on main | team token (read-only) | `refs/heads/main` | trusted | nothing |
-| local on feature | team token (read-only) | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing |
+| local on main | personal token (read-only) | `refs/heads/main` | trusted | nothing |
+| local on feature | personal token (read-only) | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing |
 
 A GitLab token has no merge-train claim, so the server would store a
 train's results in the source branch's scope. Those results are built
