@@ -68,6 +68,7 @@ describe.if(CHUNKING_SUPPORTED)('a wedged remote (accepts TCP, never answers)', 
         workspaceRoot: dir,
         cacheDir: path.join(dir, 'cache'),
         scope: undefined,
+        refs: [],
       }))!
       const t0 = Date.now()
       const threw = await remote.get('e'.repeat(64)).then(

@@ -115,7 +115,7 @@ it('the plugin reads the PEM files its options or VX_REAPI_TLS_* name; an unread
   const cacheOf = async (opts: Parameters<typeof reapi>[0]): Promise<string> => {
     const p = reapi({ endpoint: 'localhost:1', ...opts })
     try {
-      await p.cache!({ warn, workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', scope: undefined })
+      await p.cache!({ warn, workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', scope: undefined, refs: [] })
       return 'ok'
     } catch (err) {
       return (err as Error).message
@@ -158,6 +158,7 @@ it('reapi() options reach the connection: CA and client pair through the plugin'
         workspaceRoot: dir2,
         cacheDir: path.join(dir2, 'cache'),
         scope: undefined,
+        refs: [],
       }))!
       try {
         // A refused handshake is a throw; core makes it a miss and a warning.
@@ -186,6 +187,7 @@ it('reapi() options reach the connection: CA and client pair through the plugin'
       workspaceRoot: dir2,
       cacheDir: path.join(dir2, 'cache'),
       scope: undefined,
+      refs: [],
     }))!
     try {
       expect([await caLayer.get('f'.repeat(64)), warns]).toEqual([null, []])
