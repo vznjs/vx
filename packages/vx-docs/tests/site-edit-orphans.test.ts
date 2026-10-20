@@ -33,6 +33,10 @@ const skipped = (f: string, html: string): boolean =>
   /http-equiv="refresh"/.test(html) ||
   f === '404.html' ||
   f === 'index.html' ||
+  // The diagram kit's render page is diagram-kit.test.ts's fixture; with no
+  // contributor index (vx takes issues, not contributions: M, 2026-10-20)
+  // no page links it.
+  f === 'internals/diagrams/index.html' ||
   /^blog\/(?:tags|authors|\d+)\/|^(?:blog|releases)\/index\.html$/.test(f)
 
 it('every page has an edit link to a real file, and another page links to it', () => {

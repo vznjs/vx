@@ -121,16 +121,13 @@ describe('the sidebars', () => {
     ])
   })
 
-  it('the Reference is its groups, and ends with the internals index, which links every internals page', () => {
+  // vx takes issues, not contributions (M, 2026-10-20): no contributor
+  // index ends the Reference.
+  it('the Reference is its groups, ending with the glossary', () => {
     expect(groupLabels(reference)).toEqual(REFERENCE_GROUPS)
     const links = sidebarLinks(reference)
-    expect(links.at(-1)).toEqual(['Internals (for contributors)', 'internals/'])
+    expect(links.at(-1)).toEqual(['Glossary', 'glossary/'])
     expect(links.map(([, href]) => href)).toContain('cli/')
-    const index = html('internals/')
-    const linked = [...index.matchAll(/<a href="([^"]*)"/g)].map((m) => m[1]!)
-    for (const p of [...INTERNALS_TOP, ...INTERNALS_DIRS]) {
-      expect(linked).toContain(`../${p}`)
-    }
   })
 
   it('the two share no page', () => {

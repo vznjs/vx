@@ -6,7 +6,7 @@ const SECTIONS: readonly [string, (id: string) => boolean][] = [
   ['Reference', (id) => !/^(blog|releases)\//.test(id) && !isInternal(id)],
   ['Blog', (id) => id.startsWith('blog/')],
   ['Releases', (id) => id.startsWith('releases/')],
-  ['Internals (for contributors)', isInternal],
+  ['How vx is built', isInternal],
 ]
 
 export const GET: APIRoute = async ({ site }) => {

@@ -90,8 +90,8 @@ inference via tracing; folding `NODE_OPTIONS` into the key; lookahead
 and idle-insertion scheduling; a first-party platform, dashboard, agents
 or cloud; Turbo's remote-cache wire in core; HTTP/3. Each was either
 measured and lost, or conflicts with a principle above. The list lives
-in the repository's own memory file, next to the principles, where a
-contributor reads it before writing code.
+in the repository's own memory file, next to the principles, read
+before any code is written.
 
 ## Rules learned the hard way
 

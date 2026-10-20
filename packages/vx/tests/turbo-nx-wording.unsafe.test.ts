@@ -22,7 +22,6 @@ const CLAIMS = [
 ]
 const PAGES = [
   'README.md',
-  'CONTRIBUTING.md',
   'packages/*/README.md',
   'examples/*/README.md',
   'packages/vx/docs/**/*.md',

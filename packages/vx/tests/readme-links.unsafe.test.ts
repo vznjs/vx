@@ -1,5 +1,4 @@
-// The READMEs a reader lands on first — the root one, CONTRIBUTING, each
-// package's and each starter's — sit outside docs/, so neither the site's
+// The READMEs a reader lands on first — the root one, each package's and each starter's — sit outside docs/, so neither the site's
 // built-link row nor doc-references' prose row reads them. Each relative
 // link, and each `github.com/vznjs/vx/(tree|blob)/main/<path>` link, must
 // name a file in this checkout; a `#anchor` into a Markdown file, one of its
@@ -15,7 +14,7 @@ import { describe, expect, it } from 'bun:test'
 const ROOT = path.resolve(import.meta.dir, '..', '..', '..')
 
 function readmes(): string[] {
-  const out = ['README.md', 'CONTRIBUTING.md']
+  const out = ['README.md']
   for (const dir of ['packages', 'examples'])
     for (const name of readdirSync(path.join(ROOT, dir)))
       if (existsSync(path.join(ROOT, dir, name, 'README.md'))) out.push(`${dir}/${name}/README.md`)
