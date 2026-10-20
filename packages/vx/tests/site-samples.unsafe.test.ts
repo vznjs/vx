@@ -145,25 +145,6 @@ describe('the plugins guide states the CacheLayer method count', () => {
 })
 
 // The environment-variables guide is the configure page's section now.
-describe('CONTRIBUTING names what the gate runs on', () => {
-  // It said "Needs Bun ≥ 1.4 and git" and "No Node in the toolchain"; with no
-  // `node` on PATH every nx-exec row of @vzn/vx-migrate#test fails (J-107).
-  it('nx-exec.test.ts spawns node, and CONTRIBUTING names Node', () => {
-    const repo = path.resolve(import.meta.dir, '..', '..', '..')
-    const nxExec = readFileSync(
-      path.join(repo, 'packages', 'vx-migrate', 'tests', 'nx-exec.test.ts'),
-      'utf8',
-    )
-    expect(nxExec).toContain("Bun.spawn(['node', BIN, ...args]")
-    const contributing = readFileSync(path.join(repo, 'CONTRIBUTING.md'), 'utf8').replace(
-      /\s+/g,
-      ' ',
-    )
-    expect(contributing).toContain('Needs Bun ≥ 1.4, git and Node')
-    expect(contributing).not.toContain('No Node in the toolchain')
-  })
-})
-
 // The configure guide said a task sees only the variables you pass and
 // gave `CI` as a passThrough example, and a post said env reaches a task
 // only through `exec.env`: `CI` is essential and reaches every task.
@@ -264,32 +245,6 @@ describe("the README's comparison agrees with comparison.md on Turbo's daemon", 
   })
 })
 
-describe('the quickstart shows what a run prints and what its flags do', () => {
-  it('the `vx run build` hit comment opens with the glyph and words formatTaskHitLine prints for a local hit', () => {
-    // The page showed ◌, a glyph no source file prints (item 312, 2026-09-16).
-    const page = readFileSync(path.join(DOCS, 'quickstart.md'), 'utf8')
-    const m = /^vx run build\s+# (\S+) (\S+ \S+) —/m.exec(page)
-    expect(m).not.toBeNull()
-    const node = {
-      id: 'app#build',
-      projectName: 'app',
-      taskName: 'build',
-      config: { exec: { command: 'tsc -b' }, cache: {} },
-    } as unknown as TaskNode
-    const outcome = {
-      node,
-      status: 'cache-hit',
-      exitCode: 0,
-      durationMs: 12,
-      hash: 'abcdef0123456789',
-      restored: true,
-    } as unknown as TaskOutcome
-    const row = formatTaskHitLine(node, outcome)
-    expect(m![1]).toBe(row.trimStart().split(' ')[0]!)
-    expect(row.replace(/\s+/g, ' ')).toContain(` ${m![2]} `)
-  })
-})
-
 // The add-to-existing-repo page folded into the quickstart, and its
 // .vx/workspace.ts block into the configure page's workspace section.
 describe('the configure guide states the concurrency default `vx help` states', () => {
@@ -383,16 +338,16 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
   })
 })
 
-describe("the quickstart's known limits are still limits", () => {
+describe("troubleshooting's known limits are still limits", () => {
   // It listed "A workspaceFiles glob stops at a git submodule's edge"; since
   // 2026-09-27 the nested repository's files are listed and keyed
   // (caching.md), and an edit inside a submodule under `workspaceFiles:
   // ['sub/**']` missed, its revert hit (J-114).
-  it('caching.md keys a submodule under workspaceFiles, and the quickstart names no edge', () => {
+  it('caching.md keys a submodule under workspaceFiles, and the known limits name no edge', () => {
     const caching = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'caching.md'), 'utf8')
     expect(caching.replace(/\s+/g, ' ')).toContain('and for a `workspaceFiles` glob')
     const limits = /## Known limits\n([\s\S]*)$/.exec(
-      readFileSync(path.join(DOCS, 'quickstart.md'), 'utf8'),
+      readFileSync(path.join(GUIDES, 'troubleshooting.md'), 'utf8'),
     )![1]!
     expect(limits).not.toContain('submodule')
   })
@@ -950,9 +905,9 @@ describe('every page naming the Linux sandbox binaries names all three', () => {
       return bins.filter((bin) => names(text, bin)).length >= 2
     })
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
-      'quickstart.md',
       'sandboxing.md',
       'the-sandbox.md',
+      'troubleshooting.md',
     ])
     for (const page of pages) {
       const flat = readFileSync(page, 'utf8').replace(/\s+/g, ' ')
@@ -2227,7 +2182,7 @@ describe('the install pages name the libc the Linux binary needs', () => {
   // directory`), and with the loader and its libs it prints its version
   // (J-100). With no musl target, each page that names the platforms says
   // glibc.
-  it('build-npm ships no musl target, and the README, quickstart and one-binary post say glibc', () => {
+  it('build-npm ships no musl target, and the README, troubleshooting and one-binary post say glibc', () => {
     const build = readFileSync(
       path.resolve(import.meta.dir, '..', 'scripts', 'build-npm.ts'),
       'utf8',
@@ -2238,7 +2193,7 @@ describe('the install pages name the libc the Linux binary needs', () => {
     expect(flat(path.resolve(import.meta.dir, '..', '..', '..', 'README.md'))).toContain(
       "prebuilt binary for Linux (glibc, not Alpine's musl) and macOS",
     )
-    expect(flat(path.join(DOCS, 'quickstart.md'))).toContain(
+    expect(flat(path.join(GUIDES, 'troubleshooting.md'))).toContain(
       "on Linux with glibc (not Alpine's musl) or macOS",
     )
     expect(flat(path.join(DOCS, 'blog', 'one-binary.md'))).toContain(
@@ -2277,13 +2232,13 @@ describe('the README says what Ctrl-C reaches', () => {
   // "Ctrl-C reaps every child": a task's `setsid sleep … &` outlived a
   // SIGINT'd `vx run` (exit 130, the sleep still running), since vx signals
   // the task's process group (J-106).
-  it('the README names the process group, and the quickstart the setsid limit', () => {
+  it('the README names the process group, and troubleshooting the setsid limit', () => {
     const repo = path.resolve(import.meta.dir, '..', '..', '..')
     const flat = (p: string) => readFileSync(p, 'utf8').replace(/\s+/g, ' ')
     expect(flat(path.join(repo, 'README.md'))).toContain(
       "**Clean exits:** Ctrl-C reaps each task's process group.",
     )
-    expect(flat(path.join(DOCS, 'quickstart.md'))).toContain(
+    expect(flat(path.join(GUIDES, 'troubleshooting.md'))).toContain(
       "A process a task detaches into its own session (`setsid … &`) outlives Ctrl-C: vx signals the task's process group.",
     )
   })

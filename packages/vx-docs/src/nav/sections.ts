@@ -8,8 +8,8 @@
 // Starlight has one sidebar. SIDEBAR is it, as two top-level groups whose
 // labels are the section names; route-data.ts shows a page only the group its
 // section owns. Internals (modules/, design/, overview, architecture,
-// optimizations, patterns, flows) are in no group: the one way in is the
-// "Internals (for contributors)" page at the end of the Reference.
+// optimizations, patterns, flows) are in no group: pages that explain them
+// link them.
 
 import type { StarlightUserConfig } from '@astrojs/starlight/types'
 
@@ -107,7 +107,6 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
       ],
     },
     { label: 'Glossary', link: '/glossary/' },
-    { label: 'Internals (for contributors)', link: '/internals/' },
   ],
 }
 

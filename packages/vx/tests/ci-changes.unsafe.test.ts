@@ -132,7 +132,6 @@ describe('the changes job', () => {
         write(root, 'packages/vx-bench/run.ts', 'x\n')
         write(root, 'README.md', 'changed\n')
         write(root, 'CLAUDE.md', 'x\n')
-        write(root, 'CONTRIBUTING.md', 'x\n')
         write(root, 'SECURITY.md', 'x\n')
         write(root, '.claude/skills/x/SKILL.md', 'x\n')
       }),

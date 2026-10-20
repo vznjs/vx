@@ -679,7 +679,7 @@ export default defineProject({
     example: { lang: 'sh', code: 'npx @vzn/vx init\nvx version' },
     image: 'one-binary.png',
     imageAlt: 'One vx binary per platform, with nothing installed underneath.',
-    docs: { label: 'Install', href: 'quickstart/#install' },
+    docs: { label: 'Install', href: 'quickstart/' },
     deepDive: { label: 'One binary', href: 'blog/one-binary/' },
   },
   {

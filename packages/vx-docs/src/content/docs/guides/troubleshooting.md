@@ -19,6 +19,7 @@ specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
 | `vx requires git: … is not inside a git work tree` | Run `git init` at the workspace root.                                   |
 | `vx requires git: failed to spawn 'git'`           | Install git.                                                            |
 | `--affected has no base here`                      | Fetch the history (`fetch-depth: 0` in CI), or pass `--affected=<ref>`. |
+| `--affected has no default on the base branch`     | On `main` itself, name the last commit that passed: `--affected=<sha>`. |
 | `… has unknown field "<key>"`                      | A typo, or a Turbo or Nx key: the message lists the fields vx allows.  |
 | `dependsOn cycle`                     | Remove one `dependsOn` edge of the loop it prints.                      |
 | `dependsOn … but no such project or task is declared`  | Fix the name, or declare that task in that package.                 |
@@ -81,12 +82,41 @@ $ vx run build --filter @demo/ap
   allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
   you list: add it to `exec.env.passThrough`
   ([Environment variables](../configure/#environment-variables)).
-- **`dist/` is empty after `tsc -b`.** tsc's build info sits outside
-  `dist/`; add `tsconfig.tsbuildinfo` to `outputs.files`
-  ([Quickstart](../../quickstart/#common-problems)).
+- **`dist/` is empty after `tsc -b`.** With `rootDir: "src"`, tsc writes
+  `tsconfig.tsbuildinfo` beside `tsconfig.json`, outside `dist/`. vx
+  empties `dist/` before a miss, tsc sees the buildinfo, thinks it is
+  current and writes nothing. Add `tsconfig.tsbuildinfo` to
+  `outputs.files`, or point `tsBuildInfoFile` into `dist/`.
+- **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency.
+  vx itself runs a config without it.
+- **A package has no `vx.config.ts`.** It gets a default `build`: a
+  group behind `^build`, keyed on all its files, so editing it re-runs
+  the packages that depend on it.
+- **A package has nothing to build, but others depend on it.** Its
+  default `build` waits on its own dependencies' builds.
+  `build: { dependsOn: [] }` waits on nothing, but also drops its files
+  from its dependents' keys: use it only when no dependent reads its
+  source.
 
 ## Platforms
 
-- **Windows:** use WSL.
-- **Alpine:** not supported; vx's Linux binary needs glibc.
-- **From source:** Bun 1.4 or later. The binary needs neither Bun nor Node.
+vx runs on Linux with glibc (not Alpine's musl) or macOS, in a git
+repository (sha1 or sha256, files or reftable refs). The release binary
+needs neither Node nor Bun; installed from npm, the `vx` command is a
+small Node script that runs that binary.
+
+- **Windows:** run vx inside WSL2.
+- **From source:** Bun 1.4 or later.
+- **The Linux sandbox** needs `bubblewrap`, `socat` and `ripgrep`, and no
+  root in a container, or set `exec.sandbox.weakerWhenNested: true` on
+  each sandboxed task ([Sandboxing](../sandboxing/#requirements--platform-support)).
+
+## Known limits
+
+- On macOS the sandbox's report can miss records under load. Enforcement
+  holds.
+- A cache hit replays the first and last 8 MiB of a task's output.
+- A `kill -9` of vx leaves its persistent tasks running, except a server
+  that exits when its stdin closes (esbuild `--watch`).
+- A process a task detaches into its own session (`setsid … &`) outlives
+  Ctrl-C: vx signals the task's process group.

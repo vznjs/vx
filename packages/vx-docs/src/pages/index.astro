@@ -184,9 +184,10 @@ const whyRun = `$ vx why @demo/web#build
   root cause:
     @demo/web#build ← @demo/ui#build ← file packages/ui/src/index.ts`
 
-const startCommands = `npx @vzn/vx init                 # installs vx, writes a vx.config.ts per package; add the cache block each TODO shows
-npx @vzn/vx run build --all      # builds in dependency order; stores what is cached
-npx @vzn/vx run build --all      # again: the cached tasks are up-to-date`
+const startCommands = `npx @vzn/vx init     # installs vx, writes .vx/workspace.ts and an empty vx.config.ts
+vx lock              # after you declare a task in vx.config.ts
+vx run build         # runs it and stores what it writes
+vx run build         # again: up-to-date, from the cache`
 
 ---
 
@@ -449,7 +450,7 @@ npx @vzn/vx run build --all      # again: the cached tasks are up-to-date`
           <pre class="code"><code>{startCommands}</code></pre>
           <p class="sub">Coming from Turbo or Nx: the same <code>vx init</code> writes the native vx config from it.</p>
           <div class="section-links">
-            <a class="section-link" href={href('quickstart/')}>Quickstart: a cache block, the first hit <span class="arr">→</span></a>
+            <a class="section-link" href={href('quickstart/')}>Quickstart: your first cached task <span class="arr">→</span></a>
             <a class="section-link" href={href('guides/migrate/')}>Migrate from Turbo or Nx <span class="arr">→</span></a>
           </div>
         </div>

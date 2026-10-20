@@ -385,14 +385,10 @@ describe('the landing page', () => {
       .exec(start)![1]!
       .split('\n')
       .map((l) => l.replace(/\s+#.*$/, '').trim())
-    expect(lines).toEqual([
-      'npx @vzn/vx init',
-      'npx @vzn/vx run build --all',
-      'npx @vzn/vx run build --all',
-    ])
-    // `vx init` writes no cache block (its report says so), so the block
-    // that promises a hit on the second build names the step between.
-    expect(/npx @vzn\/vx init +# ([^\n]*)/.exec(start)![1]).toContain('add the cache block')
+    expect(lines).toEqual(['npx @vzn/vx init', 'vx lock', 'vx run build', 'vx run build'])
+    // `vx init` outside Turbo and Nx writes an empty root project (#3778),
+    // so the block that promises a hit names the task the reader declares.
+    expect(/vx lock +# ([^\n]*)/.exec(start)![1]).toContain('declare a task')
     const subs = [...start.matchAll(/<p class="sub">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
     expect(subs).toEqual([
       // `vx init` is the one way to start, Turbo and Nx included (M, 2026-10-14).

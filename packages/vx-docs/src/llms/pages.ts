@@ -30,12 +30,11 @@ const INTERNAL_PAGES = new Set([
   'flows',
   'parity',
   'upstream-ledger',
-  'internals',
   'modules',
   'design',
 ])
 
-/** Contributor pages: how vx is built, not how to use it. */
+/** How vx is built, not how to use it. */
 export function isInternal(id: string): boolean {
   return INTERNAL_PAGES.has(id) || id.startsWith('modules/') || id.startsWith('design/')
 }

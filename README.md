@@ -187,17 +187,10 @@ Same graph, commands and concurrency: [how it is measured](https://vznjs.github.
 vx. The schema may still change; 1.0's promise:
 [versioning-1.0.md](packages/vx/docs/design/versioning-1.0.md).
 
-## Contributing
+## Issues
 
-```sh
-git clone https://github.com/vznjs/vx && cd vx
-bun install
-bun packages/vx/src/bin.ts run ci --all     # lint, test, docs build: every package
-```
-
-Needs Bun ≥ 1.4. Every dev task is a vx task; no `package.json`
-scripts. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and
-[STATUS.md](packages/vx/docs/STATUS.md).
+vx is maintained by VZN and takes issues, not pull requests: report a
+bug or ask for a feature in [issues](https://github.com/vznjs/vx/issues).
 
 ## License
 

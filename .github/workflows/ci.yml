@@ -72,7 +72,7 @@ jobs:
               packages/vx-reapi/* | packages/vx-migrate/* | packages/*/vx.config.ts | packages/*/package.json) packages=true ;;
               packages/vx/docs/* | packages/vx/tests/* | packages/vx-docs/* | packages/vx-bench/* | packages/vx-plugin-examples/*) ;;
               packages/vx-ci/tests/* | packages/vx-lockfile/tests/* | packages/vx-otel/tests/* | packages/vx-schedule-history/tests/*) ;;
-              README.md | CLAUDE.md | CONTRIBUTING.md | SECURITY.md | LICENSE | .claude/* | skills/*) ;;
+              README.md | CLAUDE.md | SECURITY.md | LICENSE | .claude/* | skills/*) ;;
               *) packages=true ;;
             esac
             # macOS runs for what can behave differently there: the

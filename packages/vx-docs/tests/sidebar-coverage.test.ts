@@ -7,8 +7,7 @@
 // sidebar cannot drift silently.
 //
 // Kept out on purpose (design/site-redo-2026-09.md): the internals, reached
-// through the internals index at the end of the Reference, and the blog,
-// which has its own.
+// from the pages that explain them, and the blog, which has its own.
 //
 // It reads only THIS project: the site's sidebar module, its `.gitignore`,
 // and the generated content collection. The generated set is what the
