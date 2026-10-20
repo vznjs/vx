@@ -16,9 +16,9 @@ One number first, because it is the one that decides whether a runner
 is worth having. Imagine your tasks take two minutes on their own.
 What does the tool add on top? On the 9,603-task workspace below the
 tasks alone take 1 min 53 s under an ideal schedule. On a cold build vx
-adds **6.68 s**, the least of the four: Turborepo **8.43 s**, Vite Task
-**8.99 s** and Nx **3 min 19 s**. With nothing changed, vx adds **703 ms**
-and Turborepo **726 ms**. No tool leads every row, and the table says
+adds **6.13 s**, the least of the four: Vite Task **7.94 s**, Turborepo
+**8.87 s** and Nx **3 min 20 s**. With nothing changed, vx adds **700 ms**
+and Turborepo **705 ms**. No tool leads every row, and the table says
 where vx does not.
 
 ```mermaid
@@ -60,10 +60,10 @@ build over its ideal schedule; with nothing changed, over one git walk):
 
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
-| vx        | **6.68 s** | **703 ms** | 30.14 s |
-| Turborepo | 8.43 s | 726 ms | 1 min 5 s |
-| Nx        | 3 min 19 s | 22.66 s | 5 min 42 s |
-| Vite Task | 8.99 s | 11.57 s | 23.79 s |
+| vx        | **6.13 s** | **700 ms** | 29.97 s |
+| Turborepo | 8.87 s | 705 ms | 1 min 8 s |
+| Nx        | 3 min 20 s | 22.57 s | 5 min 44 s |
+| Vite Task | 7.94 s | 12.20 s | 23.82 s |
 
 Time each tool adds over the ideal run; lower is better.
 
@@ -75,7 +75,7 @@ system, of the invocation and every child it waited for, less what the
 task commands burn), because on a synthetic workspace the tasks sleep
 and that column measures the runner's own work. A daemon that outlives
 the invocation is not counted, so Turborepo's and Nx's are floors. Every
-row, the ideal run and the measured floors (one git walk is 61 ms on
+row, the ideal run and the measured floors (one git walk is 56 ms on
 that machine) are in [Benchmarks](../../benchmarks/).
 
 ## Real repositories: rerun pending

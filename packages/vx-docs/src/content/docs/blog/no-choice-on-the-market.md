@@ -56,10 +56,10 @@ open-source runner carries a daemon that is on by default, a heavy
 schema (`project.json`, `nx.json`, `namedInputs`, `targetDefaults`,
 executors wrapping every tool behind a JSON options object), and a
 cached-run cost of its own: on a 9,603-task
-workspace with nothing changed, Nx adds 22.66 s against Turborepo's
-726 ms and vx's 703 ms, Nx's daemon off as in
-CI. Its cold build burns 5 min 42 s of runner CPU where Turborepo burns
-1 min 5 s and vx 30.14 s.
+workspace with nothing changed, Nx adds 22.57 s against Turborepo's
+705 ms and vx's 700 ms, Nx's daemon off as in
+CI. Its cold build burns 5 min 44 s of runner CPU where Turborepo burns
+1 min 8 s and vx 29.97 s.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
 Run 2026-10-12 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.

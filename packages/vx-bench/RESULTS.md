@@ -4,7 +4,7 @@
 
 - **Workspace:** 1,601 projects, 9,603 tasks: 29 levels × 50 libs and 100 apps, 50 terminal libs at level 15, one `e2e` on every edge, five core libs ~400 projects each use (packages/vx-bench/shape.ts).
 - **Tasks:** `installDeps` (^build, no command), `build`, `lint`, `test` (after installDeps), `publish` (after build), `typecheck` (^build). Each sleeps: build 300 ms, lint 75 ms, test 150 ms, publish 30 ms, typecheck 150 ms. `build` writes dist/index.js from 20 source files and 200 KB of seeded incompressible bytes. Identical commands in every runner.
-- **Concurrency:** 10 for every runner. **Reps:** cold 1, the rest median of 3.
+- **Concurrency:** 10 for every runner. **Reps:** cold 1, the rest median of 7.
 - **vx:** compiled binary from a `vx lock` snapshot, as every run does. Uses `scheduleHistoryPlugin({ file: 'vx-timings.json' })`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
 - **Git:** default config for every runner (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`); the bench host's own sets `core.checkstat=minimal`, under which vx hashes every input from disk.
 - **Host:** Linux 6.18.44-fc-v139 · 4 cores · linux/x64
@@ -14,20 +14,20 @@
 
 | Runner    | Version              | Warm overhead | Restore overhead | Cold overhead |
 | --------- | -------------------- | ------------- | ---------------- | ------------- |
-| vx        | vx 0.0.0 @ a3e1aa99d | 703 ms        | 1.00 s           | 6.68 s        |
-| turbo     | 2.11.9               | 726 ms        | 1.20 s           | 8.43 s        |
-| nx        | 23.3.0               | 22.66 s       | 22.43 s          | 3m 19s        |
-| vite-task | 1.3.0                | 11.57 s       | 11.17 s          | 8.99 s        |
+| vx        | vx 0.0.0 @ a88652b0b | 700 ms        | 670 ms           | 6.13 s        |
+| turbo     | 2.11.9               | 705 ms        | 1.17 s           | 8.87 s        |
+| nx        | 23.3.0               | 22.57 s       | 21.56 s          | 3m 20s        |
+| vite-task | 1.3.0                | 12.20 s       | 11.06 s          | 7.94 s        |
 
 ## Wall time (warm, restore)
 
 | Runner    | Warm    | Restore | CPU, cold | CPU, warm |
 | --------- | ------- | ------- | --------- | --------- |
-| ideal     | 61 ms   | 431 ms  | 28.77 s   | 101 ms    |
-| vx        | 764 ms  | 1.43 s  | 58.91 s   | 1.53 s    |
-| turbo     | 787 ms  | 1.63 s  | 1m 33s    | 1.65 s    |
-| nx        | 22.72 s | 22.86 s | 6m 10s    | 27.96 s   |
-| vite-task | 11.64 s | 11.60 s | 52.56 s   | 11.53 s   |
+| ideal     | 56 ms   | 598 ms  | 25.73 s   | 90 ms     |
+| vx        | 757 ms  | 1.27 s  | 55.70 s   | 1.54 s    |
+| turbo     | 761 ms  | 1.76 s  | 1m 34s    | 1.61 s    |
+| nx        | 22.63 s | 22.16 s | 6m 10s    | 27.46 s   |
+| vite-task | 12.26 s | 11.66 s | 49.55 s   | 11.30 s   |
 
 **Ideal** is the theoretical best case: cold is the tasks' own durations
 list-scheduled critical-path first on 10 workers (critical path
@@ -37,4 +37,4 @@ copy of every output.
 CPU is user + system of the invocation and the children it waited for; a
 daemon that outlives the invocation (Turbo's, Nx's) is not counted.
 
-Reproduce: `bun packages/vx-bench/compare.ts 3`.
+Reproduce: `bun packages/vx-bench/compare.ts 7`.

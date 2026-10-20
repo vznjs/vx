@@ -135,8 +135,8 @@ upstream task's outputs wipes nothing before a run and restores only
 the files it recorded. A failed task is never saved. `--force` runs
 and refreshes the cache; `--no-cache` ignores it.
 
-Overhead on a 9,603-task run where nothing changed: vx 703 ms,
-Turborepo 726 ms, Nx 22.66 s
+Overhead on a 9,603-task run where nothing changed: vx 700 ms,
+Turborepo 705 ms, Nx 22.57 s
 ([benchmarks](../../benchmarks/); the key, part by part:
 [Caching in depth](../../caching/)).
 
