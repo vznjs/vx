@@ -43,7 +43,7 @@ for (const [name, answer] of [
         }
         const controller = new AbortController()
         const layer: RemoteCacheLayer = {
-          has: async () => true,
+          has: async () => ({}),
           get: () => {
             setTimeout(() => controller.abort('SIGINT'), 50)
             return answer()

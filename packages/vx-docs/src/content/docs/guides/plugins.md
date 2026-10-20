@@ -408,7 +408,12 @@ export function nice(): VxPlugin {
 ## Your own cache
 
 Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
-`put`, plus an optional `hasMany`. Write `hasMany` only when your wire
+`put`, plus an optional `hasMany`. `has` answers `null` for a key the
+remote lacks, else what it knows of the entry: `{ size, durationMs }`,
+either one, or `{}`; `hasMany` answers a `Map` of the held keys to the
+same. A size reaches `--dry` and the run's footer, and with a duration
+core runs a task here when its download would take longer than twice the
+task's stored time. Write `hasMany` only when your wire
 answers many keys in one call: its presence tells core to ask it once
 per run (and once for `--dry` and `--force`); without it core GETs each
 key directly and asks `has` per key only for `--dry` and `--force`. An
@@ -440,7 +445,9 @@ class AcmeRemote implements RemoteCacheLayer {
   constructor(readonly endpoint: string) {} // printed in warnings: no credentials in it
   async has(hash: string) {
     const res = await fetch(`${this.endpoint}/${hash}`, { method: 'HEAD', signal: deadline() })
-    return res.ok
+    if (!res.ok) return null
+    const size = Number(res.headers.get('content-length'))
+    return Number.isFinite(size) ? { size } : {} // what restoring it downloads
   }
   async get(hash: string) {
     const res = await fetch(`${this.endpoint}/${hash}`, { signal: deadline() })
@@ -449,7 +456,7 @@ class AcmeRemote implements RemoteCacheLayer {
     return { body: res, durationMs: undefined } // streamed to disk
   }
   async put(hash: string, body: Blob) {
-    if (await this.has(hash)) return // an entry is immutable; this server would overwrite
+    if ((await this.has(hash)) !== null) return // an entry is immutable; this server would overwrite
     const res = await fetch(`${this.endpoint}/${hash}`, { method: 'PUT', body, signal: deadline() })
     if (!res.ok) throw new Error(`HTTP ${res.status}`) // fetch resolves on a 500
   }

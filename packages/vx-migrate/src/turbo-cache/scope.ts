@@ -1,4 +1,4 @@
-import type { RemoteCacheLayer } from '@vzn/vx'
+import type { ArtifactInfo, RemoteCacheLayer } from '@vzn/vx'
 
 /**
  * How a remote keeps branches apart (2026-10-20). `'header'`: plain keys,
@@ -45,31 +45,31 @@ export function keyedByRef(inner: RemoteCacheLayer, allRefs: readonly string[]):
   /** Task key → the stored key a batch probe found it under. */
   const found = new Map<string, string>()
   const hasMany = inner.hasMany
-  const firstHeld = async (hash: string): Promise<string | undefined> => {
+  const firstHeld = async (hash: string): Promise<ArtifactInfo | null> => {
     const known = found.get(hash)
-    if (known !== undefined) return known
+    if (known !== undefined) return inner.has(known)
     for (const ref of refs) {
-      const key = refKey(ref, hash)
-      if (await inner.has(key)) return key
+      const info = await inner.has(refKey(ref, hash))
+      if (info !== null) return info
     }
-    return undefined
+    return null
   }
   return {
     ...(inner.endpoint !== undefined ? { endpoint: inner.endpoint } : {}),
     ...(inner.open !== undefined ? { open: (ctx) => inner.open!(ctx) } : {}),
-    has: async (hash) => (await firstHeld(hash)) !== undefined,
+    has: firstHeld,
     ...(hasMany !== undefined
       ? {
           hasMany: async (hashes) => {
             const keys = hashes.map((h) => refs.map((r) => refKey(r, h)))
             const held = await hasMany.call(inner, keys.flat())
             if (held === null) return null
-            const out = new Set<string>()
+            const out = new Map<string, ArtifactInfo>()
             hashes.forEach((h, i) => {
               const key = keys[i]!.find((k) => held.has(k))
               if (key === undefined) return
               found.set(h, key)
-              out.add(h)
+              out.set(h, held.get(key)!)
             })
             return out
           },

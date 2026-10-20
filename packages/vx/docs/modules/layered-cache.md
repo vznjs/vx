@@ -47,15 +47,21 @@ export interface RemoteOpenContext extends PluginSecrets {
   warn(message: string): void // one line naming the plugin; the remote stays on
 }
 
+/** What a remote knows of a stored artifact; `{}` when the wire says nothing. */
+export interface ArtifactInfo {
+  readonly size?: number // the body's bytes
+  readonly durationMs?: number // the producing task's run
+}
+
 export interface RemoteCacheLayer {
   /** Where the artifacts live, named in every degrade warning; never a credential. */
   readonly endpoint?: string
   /** Optional: get ready (a credential). Once per run, before the first task, only when the policy reads or writes it. */
   open?(ctx: RemoteOpenContext): Promise<void>
-  /** Existence probe (drives the plan path's `--dry` remote prediction). */
-  has(hash: string): Promise<boolean>
+  /** Existence probe (drives the plan path's `--dry` remote prediction); `null` = absent. */
+  has(hash: string): Promise<ArtifactInfo | null>
   /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   /** Fetch an artifact; `null` = miss. Errors THROW. `body` is read once, by core. */
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. */
@@ -128,7 +134,7 @@ corrupt remote body is additionally refused by `Cache.ingest`'s
 validation (zstd checks), which this layer also degrades to a miss. A
 result of the wrong SHAPE — a `get` whose `body` is not a `Blob` or a
 `Response` (the pre-stream `ArrayBuffer` / `Uint8Array` included, named
-as such: "body is a Uint8Array"), a `hasMany` that is not a `Set` or
+as such: "body is a Uint8Array"), a `hasMany` that is not a `Map` or
 `null` — is the plugin's bug, named as such through `onError`
 ("download <hash> failed: remote cache layer returned an invalid
 result: get() resolved body is string (expected { body: Blob | Response,
@@ -178,6 +184,14 @@ any, after `run()` has drained every upload and prefetch.
    `local.ingest(body)` → re-read local. `durationMs` from the wire rides the ingested entry; the
    producing execution's `cpuMs` / `peakRssBytes` ride the artifact's
    own sidecar, so no wire needs to carry them.
+4. A task waiting on its download gives it up when the rest of the
+   body would take longer than running the task: twice the stored
+   duration, for the save a run adds, against the body's own pace so
+   far, weighed every 25 ms. The task then runs here, a miss, and
+   uploads nothing (the remote holds the key). Only a key the batch
+   probe sized and timed is judged; any other is awaited. 500 tasks at
+   30 ms and 4 MB/s per connection, 20 of them 8 MB: 3070 ms → 1807 ms
+   (min of 5); 200 tiny tasks tie.
 
 ## Write path
 
@@ -215,7 +229,9 @@ local concerns.
 read-through / write-through / prefetch-dedup / degradation /
 delegation contracts. `tests/orchestrator-remote.test.ts` covers the
 end-to-end run paths (remote hit, plan prediction, never-fail,
-at-most-once, injection precedence).
+at-most-once, injection precedence). `tests/slow-download.test.ts`
+holds the judge: a body slower than its task runs the task, one faster
+or unsized is awaited.
 
 ## Replacing this module
 

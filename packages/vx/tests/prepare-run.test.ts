@@ -613,7 +613,7 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
     async () => {
       await pkg('app', cfg(task('build')))
       const remote: RemoteCacheLayer = {
-        has: async () => false,
+        has: async () => null,
         get: async () => null,
         put: async () => undefined,
       }
@@ -636,7 +636,7 @@ describe('hasRemoteLayer asks the layer instead of comparing handles', () => {
         localWorkspaceSource([
           pluginSource(
             'org/remote',
-            `{ cache: () => ({ has: async () => false, get: async () => null, put: async () => {} }) }`,
+            `{ cache: () => ({ has: async () => null, get: async () => null, put: async () => {} }) }`,
           ),
         ]),
       )

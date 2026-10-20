@@ -96,12 +96,18 @@ export class ReapiRemoteCache {
    * hit vs miss. Costs one extra round trip, and only for a PREDICTED HIT:
    * a miss still answers in one call.
    */
-  async has(hash: string): Promise<boolean> {
+  async has(hash: string): Promise<{ size: number; durationMs?: number } | null> {
     const result = await this.client.getActionResult(actionDigestFor(hash))
-    if (result === null) return false
+    if (result === null) return null
     const file = result.output_files?.find((f) => f.path === ARTIFACT_PATH)
-    if (file === undefined) return false
-    return (await this.client.findMissingBlobs([file.digest])).length === 0
+    if (file === undefined) return null
+    if ((await this.client.findMissingBlobs([file.digest])).length > 0) return null
+    // The duration only when it rode inline: a CAS read for it is a round trip.
+    const durationMs = decodeDuration(result.stdout_raw)
+    return {
+      size: Number(file.digest.size_bytes),
+      ...(durationMs === undefined ? {} : { durationMs }),
+    }
   }
 
   /**

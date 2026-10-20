@@ -810,6 +810,8 @@ async function runOnBus(
         localWrite: policy.localWrite,
         remote: remoteCacheEnabled && (policy.remoteRead || policy.remoteWrite),
         traffic: prepared.localCache.traffic,
+        downloads: prepared.localCache.downloads,
+        uploads: prepared.localCache.uploads,
         notDownloaded: () => deferredOutputs.pending().length,
       },
       concurrency,

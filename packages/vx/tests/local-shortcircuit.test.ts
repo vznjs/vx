@@ -1321,7 +1321,7 @@ describe('local cache short-circuit', () => {
       })
       const store = new Map<string, Blob>()
       const remote: RemoteCacheLayer = {
-        has: (h) => Promise.resolve(store.has(h)),
+        has: (h) => Promise.resolve(store.has(h) ? {} : null),
         get: (h) => {
           const body = store.get(h)
           return Promise.resolve(body === undefined ? null : { body, durationMs: undefined })
@@ -1361,7 +1361,7 @@ describe('local cache short-circuit', () => {
     })
     let gets = 0
     const remote: RemoteCacheLayer = {
-      has: () => Promise.resolve(false),
+      has: () => Promise.resolve(null),
       get: () => {
         gets++
         return Promise.resolve(null)

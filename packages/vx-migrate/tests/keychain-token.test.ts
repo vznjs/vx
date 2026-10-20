@@ -100,7 +100,7 @@ describe('turboCache(): option, env, config file, then the keychain', () => {
   it('a layer never opened (a plan, a remote-off run) asks the server nothing', async () => {
     const srv = server()
     const c = turbo({}, srv.fetchImpl)
-    expect(await c.has('aa')).toBe(false)
+    expect(await c.has('aa')).toBeNull()
     expect(await c.get('aa')).toBeNull()
     await c.put('aa', new Blob(['x']), { durationMs: 1 })
     expect(srv.auth).toEqual([])
@@ -142,7 +142,7 @@ describe('turboCache(): option, env, config file, then the keychain', () => {
       "the OS keychain's token for remote.cachely.dev (cachely) holds a line break or NUL, which no HTTP header can carry (it is not printed); removed it, so the next run asks again",
     )
     expect(k.entries.has(KEY)).toBe(false)
-    expect(await c.has('aa')).toBe(false)
+    expect(await c.has('aa')).toBeNull()
     expect(srv.auth).toEqual([])
   })
 })

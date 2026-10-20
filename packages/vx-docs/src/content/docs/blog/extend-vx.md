@@ -47,12 +47,13 @@ directory as the store:
 // plugins/cache.ts
 import { link, mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
-import { definePlugin, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
+import { type ArtifactInfo, definePlugin, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
 
 class DirRemote implements RemoteCacheLayer {
   constructor(readonly endpoint: string) {}
-  async has(hash: string): Promise<boolean> {
-    return Bun.file(path.join(this.endpoint, hash)).exists()
+  async has(hash: string): Promise<ArtifactInfo | null> {
+    const file = Bun.file(path.join(this.endpoint, hash))
+    return (await file.exists()) ? { size: file.size } : null
   }
   async get(hash: string) {
     const file = Bun.file(path.join(this.endpoint, hash))

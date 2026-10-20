@@ -353,10 +353,10 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(put.headers['x-artifact-duration']).toBe('1234')
     expect(put.headers['content-type']).toBe('application/octet-stream')
     expect(put.headers['x-artifact-client-interactive']).toMatch(/^[01]$/)
-    expect(await c.has('aa11')).toBe(true)
+    expect(await c.has('aa11')).not.toBeNull()
     expect(srv.seen.at(-1)!.method).toBe('HEAD')
-    expect(await c.has('bb22')).toBe(false)
-    expect(await c.hasMany(['aa11', 'bb22'])).toEqual(new Set(['aa11']))
+    expect(await c.has('bb22')).toBeNull()
+    expect([...(await c.hasMany(['aa11', 'bb22']))!.keys()]).toEqual(['aa11'])
     const got = await c.get('aa11')
     expect(srv.seen.at(-1)!.headers['accept']).toBe('application/octet-stream')
     expect(got?.durationMs).toBe(1234)
@@ -527,10 +527,10 @@ describe('TurboRemoteCache against the spec server', () => {
     // value" — never an index.
     const c = cache({ token: 'also-wrong' })
     const miss: Record<string, unknown> = {
-      'has-a': false,
-      'has-b': false,
+      'has-a': null,
+      'has-b': null,
       get: null,
-      hasMany: new Set(),
+      hasMany: new Map(),
       put: undefined,
     }
     const names = ['has-a', 'has-b', 'get', 'hasMany', 'put']
@@ -558,10 +558,10 @@ describe('TurboRemoteCache against the spec server', () => {
     const c = cache({ token: 'wrong' })
     await expect(c.has('aa11')).rejects.toThrow(/401.*token was refused/)
     const n = srv.seen.length
-    expect(await c.has('aa11')).toBe(false)
+    expect(await c.has('aa11')).toBeNull()
     expect(await c.get('aa11')).toBeNull()
     await c.put('ee55', new Blob(['x']), { durationMs: 1 })
-    expect(await c.hasMany(['aa11'])).toEqual(new Set())
+    expect(await c.hasMany(['aa11'])).toEqual(new Map())
     expect(srv.seen.length).toBe(n) // no further requests
   })
 })

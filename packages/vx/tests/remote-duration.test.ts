@@ -24,7 +24,7 @@ it(
       const remote: RemoteCacheLayer = {
         endpoint: 'mem://test',
         async has() {
-          return stored !== undefined
+          return stored !== undefined ? {} : null
         },
         async get() {
           return stored === undefined ? null : { body: new Blob([stored]), durationMs: duration }

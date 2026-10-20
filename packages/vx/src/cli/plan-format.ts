@@ -1,7 +1,7 @@
 // Formatters for `--dry` (human / JSON).
 
 import type { AffectedReason, CacheStatus, RunPlan } from '../orchestrator/index.js'
-import { formatElapsed, maskedCommand } from '../util/index.js'
+import { formatBytes, formatElapsed, maskedCommand } from '../util/index.js'
 
 /**
  * Human-readable preview. One line per real task (groups hidden, same
@@ -65,7 +65,11 @@ export function formatPlanText(plan: RunPlan): string {
 
   const hitParts: string[] = []
   if (local > 0) hitParts.push(`${local} local`)
-  if (remote > 0) hitParts.push(`${remote} remote`)
+  if (remote > 0) {
+    // The remote's sizes, summed: what restoring the hits would download.
+    const bytes = real.reduce((sum, t) => sum + (t.remoteBytes ?? 0), 0)
+    hitParts.push(bytes > 0 ? `${remote} remote, ${formatBytes(bytes)}` : `${remote} remote`)
+  }
   const hits = local + remote
   const summary: string[] = [`${real.length} task(s) planned`]
   if (hits > 0) summary.push(`${hits} cache hit${hits === 1 ? '' : 's'} (${hitParts.join(', ')})`)

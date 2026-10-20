@@ -42,7 +42,7 @@ function wire(opts: { batch?: boolean; fail?: boolean } = {}): Wire {
     async has(h) {
       calls.push(`has ${h}`)
       boom()
-      return store.has(h)
+      return store.has(h) ? {} : null
     },
     async get(h) {
       calls.push(`get ${h}`)
@@ -61,7 +61,7 @@ function wire(opts: { batch?: boolean; fail?: boolean } = {}): Wire {
     w.hasMany = async (hs) => {
       calls.push(`hasMany ${hs.length}`)
       boom()
-      return new Set(hs.filter((h) => store.has(h)))
+      return new Map(hs.filter((h) => store.has(h)).map((h) => [h, {}]))
     }
   }
   return w
@@ -301,7 +301,7 @@ describe('ctx.cache', () => {
       'not a body' as unknown as Blob,
     ]) {
       const odd: RemoteCacheLayer = {
-        has: async () => true,
+        has: async () => ({}),
         get: async () => ({ body, durationMs: undefined }),
         put: async () => {},
       }

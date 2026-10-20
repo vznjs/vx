@@ -373,7 +373,7 @@ describe('the REAPI cache layer, exactly', () => {
       ],
     })
     await withCache(async (c) => {
-      expect(await c.has('k-order')).toBe(true)
+      expect(await c.has('k-order')).not.toBeNull()
       store('decoy')
       entry('k-order-get', {
         output_files: [
@@ -389,7 +389,7 @@ describe('the REAPI cache layer, exactly', () => {
     entry('k-gone', {
       output_files: [{ path: ARTIFACT, digest: digestOf(bytes('evicted')), is_executable: false }],
     })
-    expect(await withCache((c) => c.has('k-gone'))).toBe(false)
+    expect(await withCache((c) => c.has('k-gone'))).toBeNull()
   })
 
   it('a duration that is not a number is none; one normalised into CAS is read from there', async () => {

@@ -67,7 +67,7 @@ describe('local fallbacks', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'vx-local-fallbacks-'))
     const local = new Cache(dir, { read: true, write: true })
     try {
-      const remote = { has: async () => false, get: async () => null, put: async () => {} }
+      const remote = { has: async () => null, get: async () => null, put: async () => {} }
       const got = await resolveCache([testPlugin('org/remote', { cache: () => remote })], {
         ...baseCtx,
         localCache: local,

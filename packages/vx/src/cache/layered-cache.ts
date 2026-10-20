@@ -45,7 +45,11 @@ const STOPPED: unique symbol = Symbol('stopped')
  * fails at once, removes its temp, and releases the connection; the cache
  * then closes under no write.
  */
-function endsOnStop(body: Blob | Response, stopped: Promise<typeof STOPPED>): Blob | Response {
+function endsOnStop(
+  body: Blob | Response,
+  stopped: Promise<typeof STOPPED>,
+  onChunk: (bytes: number) => void = () => {},
+): Blob | Response {
   if (body instanceof Blob || body.body === null) return body
   const reader = body.body.getReader()
   let stop = false
@@ -60,11 +64,26 @@ function endsOnStop(body: Blob | Response, stopped: Promise<typeof STOPPED>): Bl
       const next = await reader.read()
       if (stop) controller.error(new Error('the run was stopped'))
       else if (next.done) controller.close()
-      else controller.enqueue(next.value)
+      else {
+        onChunk(next.value.byteLength)
+        controller.enqueue(next.value)
+      }
     },
     cancel: (reason) => reader.cancel(reason),
   })
   return new Response(stream, { headers: body.headers })
+}
+
+const judged = (i: ArtifactInfo): i is { size: number; durationMs: number } =>
+  i.size !== undefined && i.durationMs !== undefined
+
+/** How often a task waiting on its download weighs running instead. */
+const JUDGE_EVERY_MS = 25
+
+interface Download {
+  readonly start: number
+  received: number
+  abandon(): void
 }
 
 /** What a remote's `open` is handed: the run's CI verdict and its plugin's keychain. */
@@ -73,6 +92,16 @@ export interface RemoteOpenContext extends PluginSecrets {
   readonly ci: boolean
   /** One line naming the plugin, for a fact that leaves the remote on. */
   warn(message: string): void
+}
+
+/**
+ * What a remote knows of an artifact it holds, before it is downloaded:
+ * the body's size in bytes and the producing task's duration, each when
+ * the wire carries it (Turbo's batch query and `HEAD` do).
+ */
+export interface ArtifactInfo {
+  readonly size?: number
+  readonly durationMs?: number
 }
 
 /**
@@ -111,17 +140,21 @@ export interface RemoteCacheLayer {
    * plugin's keychain and may ask on the terminal.
    */
   open?(ctx: RemoteOpenContext): Promise<void>
-  /** Existence probe: `--dry` and `--force` ask it per key when the remote cannot batch. */
-  has(hash: string): Promise<boolean>
   /**
-   * Optional batch existence probe: given N hashes, return the subset stored
-   * remotely in ONE round-trip. Its presence says the wire can batch: a run
-   * asks it once for its keys, `--dry` before its per-key answers, and
-   * `--force` in the background to skip uploads of held keys. Without it a
-   * run GETs each key directly (no `has`). Never throws for control flow:
-   * `null` means "no batch info; use per-hash".
+   * Existence probe: what the remote knows of the stored artifact, or null
+   * when it holds none. `--dry` and `--force` ask it per key when the
+   * remote cannot batch.
    */
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  has(hash: string): Promise<ArtifactInfo | null>
+  /**
+   * Optional batch existence probe: given N hashes, the stored ones and what
+   * the remote knows of each, in ONE round-trip. Its presence says the wire
+   * can batch: a run asks it once for its keys, `--dry` before its per-key
+   * answers, and `--force` in the background to skip uploads of held keys.
+   * Without it a run GETs each key directly (no `has`). Never throws for
+   * control flow: `null` means "no batch info; use per-hash".
+   */
+  hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   /**
    * Fetch an artifact; `null` = miss. `body` is read once, by core,
    * straight into the local cache — an HTTP wire returns its `fetch`
@@ -182,6 +215,10 @@ export class LayeredCache implements CacheLayer {
    * its download and ingest took.
    */
   private readonly remoteSourced = new Map<string, number>()
+  /** What the batch probe said of each held key: its size and stored duration. */
+  private readonly infos = new Map<string, ArtifactInfo>()
+  /** Bodies being read now, by key: how far along, and how to give one up. */
+  private readonly downloads = new Map<string, Download>()
 
   /** Remotes in declared order: the first readable one holding a hash answers it. */
   constructor(
@@ -226,9 +263,12 @@ export class LayeredCache implements CacheLayer {
    * absences either way, so a hash only a sibling holds costs it no GET.
    * Never throws.
    */
-  async remoteHasMany(hashes: readonly string[]): Promise<Set<string> | null> {
+  async remoteHasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     if (this.readable.length === 0) return null
-    const answer = this.probeMany(hashes)
+    const answer = this.probeMany(hashes).then((found) => {
+      if (found !== null) for (const [h, info] of found) this.infos.set(h, info)
+      return found
+    })
     const waiting = hashes.filter((h) => !this.inflight.has(h) && !this.probing.has(h))
     for (const h of waiting) {
       this.probing.set(
@@ -248,12 +288,12 @@ export class LayeredCache implements CacheLayer {
     return answer
   }
 
-  private async probeMany(hashes: readonly string[]): Promise<Set<string> | null> {
-    let out: Set<string> | null = new Set()
+  private async probeMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
+    let out: Map<string, ArtifactInfo> | null = new Map()
     for (const lane of this.readable) {
       const found = await lane.hasMany(hashes)
       if (found === null) out = null
-      else if (out !== null) for (const h of found) out.add(h)
+      else if (out !== null) for (const [h, info] of found) if (!out.has(h)) out.set(h, info)
     }
     return out
   }
@@ -305,7 +345,7 @@ export class LayeredCache implements CacheLayer {
     // remote walk per key: a settled `false` means no remote had it
     // (no second probe), and a settled/in-flight `true` means the
     // artifact was/will-be ingested locally — re-read below.
-    const ingested = await this.pullFromRemote(hash, ctx)
+    const ingested = await this.awaitOrRun(hash, this.pullFromRemote(hash, ctx))
     if (!ingested) return null
 
     // Read past the local READ gate: `ingest` is deliberately ungated, so
@@ -327,6 +367,39 @@ export class LayeredCache implements CacheLayer {
     return this.asRemote(hash, materialized)
   }
 
+  /**
+   * A pull the task now waits on, given up when the rest of its body would
+   * take longer than running the task (its stored duration, doubled for
+   * the save a run adds): the task then runs here, a miss. Only a key the
+   * batch probe sized and timed is judged, from its own body's pace so far.
+   * The facts are read each tick: the probe can answer after the task asks.
+   */
+  private async awaitOrRun(hash: string, pull: Promise<boolean>): Promise<boolean> {
+    if (this.infos.has(hash) && !judged(this.infos.get(hash)!)) return pull
+    for (;;) {
+      const done = await Promise.race([pull, Bun.sleep(JUDGE_EVERY_MS).then(() => undefined)])
+      if (done !== undefined) return done
+      const info = this.infos.get(hash)
+      if (info === undefined) continue
+      if (!judged(info)) return pull
+      const budget = info.durationMs * 2
+      const dl = this.downloads.get(hash)
+      if (dl === undefined) continue
+      const elapsed = performance.now() - dl.start
+      const left =
+        dl.received === 0
+          ? elapsed > budget
+            ? Infinity
+            : 0
+          : ((info.size - dl.received) * elapsed) / dl.received
+      if (left > budget) {
+        dl.abandon()
+        await pull
+        return false
+      }
+    }
+  }
+
   private asRemote(hash: string, entry: CacheEntry): CacheEntry {
     const fetchMs = this.remoteSourced.get(hash)
     return fetchMs === undefined ? entry : { ...entry, source: 'remote', fetchMs }
@@ -337,7 +410,7 @@ export class LayeredCache implements CacheLayer {
   // a remote cache. Remote errors degrade to a miss (never throw).
   async has(hash: string): Promise<'local' | 'remote' | null> {
     if ((await this.local.has(hash)) === 'local') return 'local'
-    for (const lane of this.readable) if (await lane.has(hash)) return 'remote'
+    for (const lane of this.readable) if ((await lane.has(hash)) !== null) return 'remote'
     return null
   }
 
@@ -411,10 +484,19 @@ export class LayeredCache implements CacheLayer {
       durationMs: durationOf(remoteBody.durationMs),
       ...(ctx?.outputs !== undefined ? { outputs: ctx.outputs } : {}),
     }
+    let abandon = (): void => {}
+    const abandoned = new Promise<typeof STOPPED>((resolve) => (abandon = () => resolve(STOPPED)))
+    const dl: Download = { start: performance.now(), received: 0, abandon }
+    this.downloads.set(hash, dl)
+    const ends = Promise.race([stopped, abandoned])
     try {
-      const ingest = this.local.ingest(hash, endsOnStop(remoteBody.body, stopped), meta)
+      const ingest = this.local.ingest(
+        hash,
+        endsOnStop(remoteBody.body, ends, (n) => (dl.received += n)),
+        meta,
+      )
       ingest.catch(() => undefined)
-      if ((await Promise.race([ingest, stopped])) === STOPPED) return false
+      if ((await Promise.race([ingest, ends])) === STOPPED) return false
     } catch (err) {
       // The bytes came off the network — a corrupt/truncated remote
       // artifact must degrade to a cache miss (task re-executes), not
@@ -422,8 +504,13 @@ export class LayeredCache implements CacheLayer {
       // down: `Cache.restoreOutputs` drops it (A-52).
       lane.report('download', hash, err)
       return false
+    } finally {
+      this.downloads.delete(hash)
     }
     this.remoteSourced.set(hash, Math.round(performance.now() - fetchStart))
+    this.local.downloads.count++
+    this.local.downloads.bytes +=
+      remoteBody.body instanceof Blob ? remoteBody.body.size : dl.received
     return true
   }
 

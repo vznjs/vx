@@ -44,7 +44,7 @@ would run:
   ▶  @vzn/vx#test          cache miss — would exec   68595e49  ~4.20s
   ∅  @vzn/vx#dev           no-cache (would exec)     c0ffee00
 
-4 task(s) planned, 2 cache hits (1 local, 1 remote), 1 would run, 1 no-cache.
+4 task(s) planned, 2 cache hits (1 local, 1 remote, 12 MB), 1 would run, 1 no-cache.
 predicted: ~4.20s wall · ~4.20s total execution · 1 task without history (+?)
 ```
 

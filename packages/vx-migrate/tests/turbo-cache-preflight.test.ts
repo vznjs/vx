@@ -129,7 +129,7 @@ describe('TurboRemoteCache with preflight', () => {
     apiSeen.length = 0
     const c = cache(true)
     await c.put(HASH, new Blob(['own bytes']), { durationMs: 5 })
-    expect(await c.has(HASH)).toBe(true)
+    expect(await c.has(HASH)).not.toBeNull()
     const got = await c.get(HASH)
     expect(await got!.body.text()).toBe('own bytes')
     // The put asks first: Turbo's PUT would replace a stored artifact.
@@ -168,7 +168,7 @@ describe('TurboRemoteCache with preflight', () => {
     redirect = true
     elsewhereSeen.length = 0
     try {
-      expect(await cache(true).has(HASH)).toBe(false)
+      expect(await cache(true).has(HASH)).toBeNull()
     } finally {
       redirect = false
     }

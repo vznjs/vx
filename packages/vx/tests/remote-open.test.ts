@@ -39,7 +39,7 @@ function opening(fail?: string): { layer: RemoteCacheLayer; calls: string[] } {
       },
       async has(hash) {
         calls.push('has')
-        return store.has(hash)
+        return store.has(hash) ? {} : null
       },
       async get(hash) {
         calls.push('get')

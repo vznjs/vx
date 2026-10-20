@@ -5,6 +5,7 @@
 // reference to `Cache` below is a type (the local handle a layer may wrap).
 
 import type { Cache } from './cache.js'
+import type { ArtifactInfo } from './layered-cache.js'
 import { fsClockLag, stampGrainMs } from './fs-clock.js'
 
 export interface CacheKeyInput {
@@ -550,12 +551,12 @@ export interface CacheLayer {
    */
   readonly hasRemote?: boolean
   /**
-   * Batch existence probe over the remote — the subset of `hashes` stored
-   * remotely, in ONE round-trip, or `null` for "no batch info; use
-   * per-hash". Only meaningful with `hasRemote`; a remote layer that can't
+   * Batch existence probe over the remote — the `hashes` stored remotely
+   * and what the first remote holding each knows of it (`ArtifactInfo`), in
+   * ONE round-trip, or `null` for "no batch info; use per-hash". Only meaningful with `hasRemote`; a remote layer that can't
    * batch omits it and the prefetch pass falls back to per-hash GETs.
    */
-  remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   /**
    * The subset of `hashes` the local store already holds. The prefetch
    * pass probes the remote only for the rest, so a run the local cache

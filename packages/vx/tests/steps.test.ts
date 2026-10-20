@@ -114,7 +114,7 @@ it(
         tasks: ['build'],
         log: { ...silentLogger(fixture), stepStart: (id) => steps.push(id), stepEnd() {} },
         remoteCache: {
-          has: async (hash) => store.has(hash),
+          has: async (hash) => (store.has(hash) ? {} : null),
           get: async (hash) => {
             const body = store.get(hash)
             return body === undefined ? null : { body: new Blob([body.slice()]), durationMs: 1 }
