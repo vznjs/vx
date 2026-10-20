@@ -7,27 +7,27 @@
 - **Concurrency:** 10 for every runner. **Reps:** cold 1, the rest median of 3.
 - **vx:** compiled binary from a `vx lock` snapshot, as every run does. Uses `scheduleHistoryPlugin({ file: 'vx-timings.json' })`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
 - **Git:** default config for every runner (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`); the bench host's own sets `core.checkstat=minimal`, under which vx hashes every input from disk.
-- **Host:** Linux 6.18.44-fc-v114 · 4 cores · linux/x64
-- **Date:** 2026-10-12
+- **Host:** Linux 6.18.44-fc-v139 · 4 cores · linux/x64
+- **Date:** 2026-10-20
 
 ## Overhead (measured minus ideal)
 
 | Runner    | Version              | Warm overhead | Restore overhead | Cold overhead |
 | --------- | -------------------- | ------------- | ---------------- | ------------- |
-| vx        | vx 0.0.0 @ 126d60a93 | 856 ms        | 1.45 s           | 7.73 s        |
-| turbo     | 2.11.7               | 855 ms        | 1.50 s           | 10.32 s       |
-| nx        | 23.3.0               | 23.22 s       | 21.64 s          | 3m 23s        |
-| vite-task | 1.1.0                | 11.24 s       | 11.21 s          | 9.44 s        |
+| vx        | vx 0.0.0 @ a3e1aa99d | 703 ms        | 1.00 s           | 6.68 s        |
+| turbo     | 2.11.9               | 726 ms        | 1.20 s           | 8.43 s        |
+| nx        | 23.3.0               | 22.66 s       | 22.43 s          | 3m 19s        |
+| vite-task | 1.3.0                | 11.57 s       | 11.17 s          | 8.99 s        |
 
 ## Wall time (warm, restore)
 
 | Runner    | Warm    | Restore | CPU, cold | CPU, warm |
 | --------- | ------- | ------- | --------- | --------- |
-| ideal     | 56 ms   | 570 ms  | 28.10 s   | 95 ms     |
-| vx        | 912 ms  | 2.02 s  | 1m 5s     | 1.75 s    |
-| turbo     | 911 ms  | 2.07 s  | 1m 31s    | 2.02 s    |
-| nx        | 23.28 s | 22.21 s | 6m 3s     | 29.53 s   |
-| vite-task | 11.30 s | 11.78 s | 53.74 s   | 11.22 s   |
+| ideal     | 61 ms   | 431 ms  | 28.77 s   | 101 ms    |
+| vx        | 764 ms  | 1.43 s  | 58.91 s   | 1.53 s    |
+| turbo     | 787 ms  | 1.63 s  | 1m 33s    | 1.65 s    |
+| nx        | 22.72 s | 22.86 s | 6m 10s    | 27.96 s   |
+| vite-task | 11.64 s | 11.60 s | 52.56 s   | 11.53 s   |
 
 **Ideal** is the theoretical best case: cold is the tasks' own durations
 list-scheduled critical-path first on 10 workers (critical path

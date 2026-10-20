@@ -14,11 +14,11 @@ These are reproducible on your own machine, not marketing figures:
 
 - **Runner overhead**, the number to read first: the time a runner adds
   on top of the ideal run. On the synthetic 9,603-task workspace, with
-  nothing changed, vx adds 856 ms, Turborepo 855 ms,
-  Vite Task 11.24 s and Nx 23.22 s. On a
-  cold build over its 1 min 53 s ideal schedule, vx adds 7.73 s,
-  Turborepo 10.32 s and Nx 3 min 23 s;
-  Vite Task 9.44 s.
+  nothing changed, vx adds 703 ms, Turborepo 726 ms,
+  Vite Task 11.57 s and Nx 22.66 s. On a
+  cold build over its 1 min 53 s ideal schedule, vx adds 6.68 s,
+  Turborepo 8.43 s and Nx 3 min 19 s;
+  Vite Task 8.99 s.
   Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ. Run 2026-10-12 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
 
 - **vx alone** — `bun packages/vx-bench/run.ts [projects]` measures vx across

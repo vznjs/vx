@@ -345,7 +345,7 @@ async function buildRunners(dir: string): Promise<Runner[]> {
   // 2026-10-09: every bench table names its versions).
   const rev = await sh(['git', 'rev-parse', '--short=9', 'HEAD'], vxRoot)
   const vxCommit = rev.ok ? rev.out.trim() : ''
-  const vxVer = `${(await sh([...vxRun, '--version'], dir)).out.trim() || 'workspace'}${vxCommit ? ` @ ${vxCommit}` : ''}`
+  const vxVer = `${(await sh([...vxRun, '--version'], dir)).out.trim().replace(/ \(.*\)$/, '') || 'workspace'}${vxCommit ? ` @ ${vxCommit}` : ''}`
   const conc = ['--concurrency', String(CONCURRENCY)]
   const clearVx = () => rm(path.join(dir, '.vx', 'cache'), { recursive: true, force: true })
   const suffix = compiled.ok ? '' : ' (ts-source)'

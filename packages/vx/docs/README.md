@@ -92,9 +92,9 @@ each is recorded in [optimizations.md](./optimizations.md).
 
 - A fully-cached run on a 100-project workspace completes in **74 ms**
   wall-clock. On the head-to-head (9,603 tasks, each tool in its native
-  config), a cold build adds 7.73 s with vx, 10.32 s with Turborepo and
-  3 min 23 s with Nx; with nothing changed, vx adds 856 ms and Turborepo
-  855 ms. Every row: [benchmarks.md](./benchmarks.md).
+  config), a cold build adds 6.68 s with vx, 8.43 s with Turborepo and
+  3 min 19 s with Nx; with nothing changed, vx adds 703 ms and Turborepo
+  726 ms. Every row: [benchmarks.md](./benchmarks.md).
 - At 15k input files, deriving every cache key costs **zero source-file reads**
   — hashes come from git's index for tracked, clean files.
 - No daemon. Nothing to keep warm, nothing to restart.
