@@ -11,6 +11,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readlinkSync,
   readFileSync,
   rmSync,
   statSync,
@@ -333,3 +334,46 @@ it('a file beside the outputs that no glob names does not make a hit restore', a
   expect(second.out).toContain('1✓')
   expect(existsSync(path.join(proj, 'dist', 'notes.md'))).toBe(true)
 }, 60_000)
+
+// turborepo put_archive_after_restore_restores_changed_files,
+// put_archive_after_restore_restores_changed_symlinks,
+// fetch_restores_symlinks_changed_since_put
+for (const change of [
+  'edited',
+  'deleted',
+  'retargeted link',
+  'deleted link',
+  'deleted dangling link',
+  'link made a file',
+]) {
+  it(`an output ${change} after its run comes back as the entry holds it on the next hit`, async () => {
+    const root = await makeWorkspace({ prefix: 'vx-ported-changed-' })
+    made.push(root)
+    const proj = await addProject(root, 'app', {
+      config: `export default { tasks: { build: {
+        exec: { command: 'mkdir -p dist && echo archived > dist/out.txt && echo a > dist/a.txt && echo b > dist/b.txt && ln -sf a.txt dist/link && ln -sf missing dist/dangling' },
+        inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      } } }`,
+      files: { 'src/in.txt': 'v1\n' },
+    })
+    const git = gitIn(root)
+    git('add', '-A')
+    git('commit', '-q', '-m', 'init')
+    const cacheDir = path.join(root, '.cache')
+    expect((await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])).code).toBe(0)
+    const d = path.join(proj, 'dist')
+    if (change === 'edited') writeFileSync(path.join(d, 'out.txt'), 'changed\n')
+    if (change === 'deleted') rmSync(path.join(d, 'out.txt'))
+    if (change.includes('link'))
+      rmSync(path.join(d, change.includes('dangling') ? 'dangling' : 'link'))
+    if (change === 'retargeted link') symlinkSync('b.txt', path.join(d, 'link'))
+    if (change === 'link made a file') writeFileSync(path.join(d, 'link'), 'a\n')
+    const hit = await vx(root, ['run', 'build', '--all', '--cache-dir', cacheDir])
+    expect(`${hit.code}\n${hit.err}`).toStartWith('0\n')
+    expect([
+      readFileSync(path.join(d, 'out.txt'), 'utf8'),
+      readlinkSync(path.join(d, 'link')),
+      readlinkSync(path.join(d, 'dangling')),
+    ]).toEqual(['archived\n', 'a.txt', 'missing'])
+  }, 60_000)
+}
