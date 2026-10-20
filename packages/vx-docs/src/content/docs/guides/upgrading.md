@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: install vx on init, migrate only Turbo and Nx
+
+vx init no longer hands a repo with only a package.json to @vzn/vx-migrate: it writes an empty root project there. Map package.json scripts with bunx @vzn/vx-migrate. vx init now installs @vzn/vx globally and as a root devDependency.
+
 ## cache: drop the local cache hit check
 
 cache.store.verify (VX_CACHE_STORE_VERIFY) is removed: a local hit restores its stored files unchecked.

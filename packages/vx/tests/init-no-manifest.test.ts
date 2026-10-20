@@ -1,12 +1,14 @@
-// `vx init` reads no package.json (M, 2026-10-14). With none, it writes
-// the workspace file and one empty root project, then the lock; a repo
-// with one is handed to @vzn/vx-migrate, whose scripts mapper it was.
+// `vx init` outside a Turbo or Nx repo writes the workspace file and one
+// empty root project, then the lock; a Turbo or Nx repo is handed to
+// @vzn/vx-migrate (M, 2026-10-20). A source checkout installs nothing:
+// `initInstalls` is the plan a release runs.
 
 import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
+import { initInstalls } from '../src/cli/init.js'
 import { ui } from '../src/util/index.js'
 import { VERSION } from '../src/version.js'
 
@@ -63,7 +65,7 @@ describe('vx init with no package.json', () => {
       ui.render(
         [
           ui.report(`vx init ${VERSION}`, [
-            ['from', 'no package.json: one project, the root'],
+            ['from', 'no turbo.json or nx.json: one project, the root'],
             ['files', '.vx/workspace.ts', 'vx.config.ts', '.vx/.gitignore', '.vx/.gitattributes'],
             ['lock', '1 project config → .vx/projects.lock.json'],
             null,
@@ -118,17 +120,18 @@ describe('vx init with no package.json', () => {
     const r = await vx(root, ['init', '--keep'])
     expect([r.code, r.err, existsSync(path.join(root, '.vx'))]).toEqual([
       1,
-      "✗ vx init  --keep answers a Turbo or Nx repo's question, and there is no package.json here\n",
+      "✗ vx init  --keep answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here\n",
       false,
     ])
   })
 })
 
-describe('vx init with a package.json hands over to @vzn/vx-migrate', () => {
+describe('vx init in a Turbo or Nx repo hands over to @vzn/vx-migrate', () => {
   // A stand-in vx-migrate records what it was asked: the suite reads no other package.
-  async function jsRepo(): Promise<string> {
+  async function jsRepo(tool = 'turbo.json'): Promise<string> {
     const root = await tmp('vx-init-js-')
     await writeFile(path.join(root, 'package.json'), '{"name":"r","workspaces":["packages/*"]}\n')
+    await writeFile(path.join(root, tool), '{}\n')
     await mkdir(path.join(root, 'packages', 'a'), { recursive: true })
     await writeFile(
       path.join(root, 'packages', 'a', 'package.json'),
@@ -164,5 +167,45 @@ describe('vx init with a package.json hands over to @vzn/vx-migrate', () => {
       cwd: docs,
       argv: ['--keep'],
     })
+  })
+})
+
+describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
+  it('writes the starter at the topmost package.json, from a directory below it', async () => {
+    const root = await tmp('vx-init-pkg-')
+    await writeFile(path.join(root, 'package.json'), '{"name":"r","scripts":{"build":"tsc"}}\n')
+    const sub = path.join(root, 'packages', 'a')
+    await mkdir(sub, { recursive: true })
+    await writeFile(path.join(sub, 'package.json'), '{"name":"a"}\n')
+    const r = await vx(sub, ['init'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect([
+      await readFile(path.join(root, 'vx.config.ts'), 'utf8'),
+      existsSync(path.join(root, '.vx', 'workspace.ts')),
+      existsSync(path.join(sub, 'vx.config.ts')),
+    ]).toEqual([PROJECT, true, false])
+  })
+})
+
+describe('initInstalls', () => {
+  it('installs globally with the runner that started init, and as the root devDependency', async () => {
+    const root = await tmp('vx-init-installs-')
+    await writeFile(path.join(root, 'package.json'), '{"name":"r"}\n')
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), '')
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
+    expect(initInstalls('1.2.3', 'pnpm/10.0.0 node/v22', root, undefined)).toEqual([
+      { argv: ['pnpm', 'add', '-g', '@vzn/vx@1.2.3'], cwd: null },
+      {
+        argv: ['pnpm', 'add', '@vzn/vx@1.2.3', '--save-dev', '--workspace-root'],
+        cwd: root,
+      },
+    ])
+  })
+
+  it('skips a global vx already at the version; no package.json, no local install', () => {
+    expect(initInstalls('1.2.3', undefined, null, '1.2.3')).toEqual([])
+    expect(initInstalls('1.2.3', undefined, null, '1.2.2')).toEqual([
+      { argv: ['npm', 'install', '-g', '@vzn/vx@1.2.3'], cwd: null },
+    ])
   })
 })

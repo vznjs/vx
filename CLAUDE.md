@@ -82,7 +82,7 @@ packages/vx-migrate     adoption, one package (2026-09-11): `turbo()` runs a Tur
                         `runExecutor`, design docs/design/nx-unchanged-2026-09.md),
                         `turboCache()` / `nxCache()` keep a Turbo (`/v8/artifacts`) or Nx (`/v1/cache`) remote
                         cache, and `bunx @vzn/vx-migrate` writes vx.config.ts from turbo.json, an Nx graph or
-                        package.json scripts (core `vx init` hands any repo with a manifest to it, 2026-10-14). `src/turbo/`, `src/nx/`, `src/turbo-cache/`, `src/nx-cache/`
+                        package.json scripts (core `vx init` hands a Turbo or Nx repo to it, 2026-10-20). `src/turbo/`, `src/nx/`, `src/turbo-cache/`, `src/nx-cache/`
 packages/vx-schedule-history  `schedule` plugin: order by the critical path learned from run history
 packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fingerprint` seam) and keys each
                         task on its project's own dependency closure; --affected follows. Parsers over core's

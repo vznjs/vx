@@ -35,13 +35,12 @@ Windows: run vx inside WSL2.
 
 ## Quick start
 
-In a git repo with a `package.json` workspace:
+In a git repo:
 
 ```sh
-npm install -D @vzn/vx         # the scope matters: npm's `vx` is an unrelated package
-npx @vzn/vx init               # beside turbo.json or nx.json: migrates them; else a vx.config.ts per package
-npx @vzn/vx run build --all    # builds in dependency order and stores the results
-npx @vzn/vx run build --all    # nothing changed: every task up-to-date
+npx @vzn/vx init       # installs vx globally and in the repo; beside turbo.json or nx.json: migrates them; else a root vx.config.ts
+vx run build --all     # builds in dependency order and stores the results
+vx run build --all     # nothing changed: every task up-to-date
 ```
 
 Bun workspaces: `bun add -d @vzn/vx` and `bunx @vzn/vx` (npm refuses to run in

@@ -1,8 +1,8 @@
 // `vx init [--dry [--format json]] [--force] [--mjs] [--native|--keep]` — a workspace from nowhere.
-// Core reads no package.json (M, 2026-10-14): a repo with one (package.json
-// scripts, Turbo, Nx) is `@vzn/vx-migrate`'s, which maps it and installs
-// what it writes (`migrate`); without one, the workspace file and an empty
-// root project are written here, then the lock (`starter`).
+// It installs vx globally and, where a package.json is, as its devDependency
+// (M, 2026-10-20). A Turbo or Nx repo is `@vzn/vx-migrate`'s, which maps it
+// and installs what it writes (`migrate`); any other gets the workspace file
+// and an empty root project, then the lock (`starter`).
 // `vx init --plugin <seam>` writes a runnable plugin for one seam and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
@@ -13,7 +13,14 @@ import { gitTop, workspaceFileWritten } from '../handoff.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import { lockAfterMigration } from './lock.js'
 import { PLUGIN_TEMPLATES } from './plugin-templates.js'
-import { isCompiledBinary, targetVersion } from './upgrade.js'
+import {
+  isCompiledBinary,
+  projectManager,
+  startedVersion,
+  targetVersion,
+  upgradeArgv,
+  type ManagedInstall,
+} from './upgrade.js'
 import { VERSION } from '../version.js'
 import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from '../util/index.js'
 import {
@@ -107,13 +114,96 @@ export async function initCmd(args: readonly string[]): Promise<number> {
     dirs.push(d)
     if (d === top || path.dirname(d) === d) break
   }
-  const manifest = dirs.some((d) => MANIFESTS.some((f) => existsSync(path.join(d, f))))
-  if (manifest) return migrate(dirs, parsed)
-  return starter(marked ?? cwd, top === null, parsed)
+  if (dirs.some((d) => TOOL_CONFIGS.some((f) => existsSync(path.join(d, f))))) {
+    return migrate(dirs, parsed)
+  }
+  // The topmost package.json: a monorepo's root, wherever below it init ran.
+  const pkgRoot = dirs.findLast((d) => existsSync(path.join(d, 'package.json'))) ?? null
+  return starter(marked ?? pkgRoot ?? cwd, pkgRoot, top === null, parsed)
 }
 
-/** What makes a repo vx-migrate's to map: a package manager's root, a Turbo or Nx config. */
-const MANIFESTS = ['package.json', 'pnpm-workspace.yaml', 'turbo.json', 'turbo.jsonc', 'nx.json']
+/** What makes a repo vx-migrate's to map: a Turbo or Nx config. */
+const TOOL_CONFIGS = ['turbo.json', 'turbo.jsonc', 'nx.json']
+
+/**
+ * The installs `vx init` runs (M, 2026-10-20): vx at `version` globally,
+ * with the manager that started init, so a bare `vx` is on PATH, unless
+ * the global vx already answers `version`; and, where `pkgRoot` has a
+ * package.json, as its devDependency with the repo's own manager.
+ */
+export function initInstalls(
+  version: string,
+  userAgent: string | undefined,
+  pkgRoot: string | null,
+  globalAt: string | undefined,
+  execPath = process.execPath,
+): { argv: string[]; cwd: string | null }[] {
+  const out: { argv: string[]; cwd: string | null }[] = []
+  if (globalAt !== version) {
+    const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1] ?? 'npm'
+    const manager = runner as ManagedInstall['manager']
+    out.push({ argv: upgradeArgv({ manager, scope: 'global', cwd: '' }, version), cwd: null })
+  }
+  if (pkgRoot !== null) {
+    const install: ManagedInstall = {
+      manager: projectManager(pkgRoot, execPath),
+      scope: 'project',
+      cwd: pkgRoot,
+      field: 'devDependencies',
+    }
+    out.push({ argv: upgradeArgv(install, version), cwd: pkgRoot })
+  }
+  return out
+}
+
+/** The version the global `vx` on PATH answers: not a runner's cache, not a project's bin. */
+function globalVersion(): string | undefined {
+  for (const dir of (process.env['PATH'] ?? '').split(path.delimiter)) {
+    const p = dir.split(path.sep).join('/')
+    if (p.includes('/_npx/') || /\/(bunx|dlx)-/.test(p) || p.includes('/node_modules/.bin'))
+      continue
+    const bin = path.join(dir, 'vx')
+    if (existsSync(bin)) return startedVersion(bin)?.split(' ')[1]
+  }
+  return undefined
+}
+
+/**
+ * Run `initInstalls`, in order. A source checkout (0.0.0, which npm never
+ * had) installs nothing: the release would replace the code under test.
+ */
+async function install(pkgRoot: string | null, dry: boolean): Promise<string[]> {
+  if (VERSION === '0.0.0') return []
+  const version = await targetVersion(undefined, 'vx init')
+  const steps = initInstalls(
+    version,
+    process.env['npm_config_user_agent'],
+    pkgRoot,
+    globalVersion(),
+  )
+  if (dry) return steps.map((s) => s.argv.join(' '))
+  for (const s of steps) {
+    const bin = Bun.which(s.argv[0]!, { PATH: process.env['PATH'] ?? '' })
+    if (bin === null) {
+      throw new UserError(
+        `vx init: ${s.argv[0]} is not on PATH; run it yourself: ${s.argv.join(' ')}`,
+      )
+    }
+    ui.print(
+      'out',
+      ui.text([ui.cmd(s.argv.join(' ')), ui.dim(s.cwd === null ? '' : ` in ${s.cwd}`)]),
+    )
+    const proc = Bun.spawnSync({
+      cmd: [bin, ...s.argv.slice(1)],
+      cwd: s.cwd ?? process.cwd(),
+      stdio: ['inherit', 'inherit', 'inherit'],
+    })
+    if (proc.exitCode !== 0) {
+      throw new UserError(`vx init: ${s.argv.join(' ')} failed (exit ${proc.exitCode})`)
+    }
+  }
+  return steps.map((s) => s.argv.join(' '))
+}
 
 /** Write `plugins/<seam>.ts` and its test under `root`: the workspace root, else the cwd. */
 async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promise<number> {
@@ -151,17 +241,23 @@ const PROJECT =
   "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: {} })\n"
 
 /**
- * No package.json: `.vx/workspace.ts` declaring no plugin and a root
- * `vx.config.ts` with no task, then the lock. `@vzn/vx` resolves to the
- * running vx (core-alias.ts), so the two load with nothing installed.
- * A file already here is kept; `--force` replaces it.
+ * No Turbo or Nx config: the installs, then `.vx/workspace.ts` declaring
+ * no plugin and a root `vx.config.ts` with no task, then the lock.
+ * `@vzn/vx` resolves to the running vx (core-alias.ts), so the two load
+ * whatever got installed. A file already here is kept; `--force` replaces it.
  */
-async function starter(root: string, noGit: boolean, args: InitArgs): Promise<number> {
+async function starter(
+  root: string,
+  pkgRoot: string | null,
+  noGit: boolean,
+  args: InitArgs,
+): Promise<number> {
   if (args.mode !== undefined) {
     throw new UserError(
-      `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no package.json here`,
+      `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here`,
     )
   }
+  const installs = args.json === true || args.dry ? await install(pkgRoot, true) : []
   const ext = args.mjs ? 'mjs' : 'ts'
   const config = `vx.config.${ext}`
   const files: { path: string; contents: string }[] = []
@@ -185,16 +281,17 @@ async function starter(root: string, noGit: boolean, args: InitArgs): Promise<nu
   ] as const) {
     if (!existsSync(path.join(root, name))) files.push({ path: name, contents })
   }
-  const vx = vxInvocation(process.env['npm_config_user_agent'], false)
+  const vx = VERSION === '0.0.0' ? vxInvocation(process.env['npm_config_user_agent'], false) : 'vx'
   const next = `${noGit ? 'git init, ' : ''}declare a task in ${kept.find((f) => f.startsWith('vx.config.')) ?? config}, then ${vx} lock && ${vx} run <task>`
   if (args.json === true) {
     process.stdout.write(
-      `${JSON.stringify({ dry: true, source: 'no package.json', files, kept, replaced, todos: [], notes: [], next })}\n`,
+      `${JSON.stringify({ dry: true, source: 'no turbo.json or nx.json', files, kept, replaced, todos: [], notes: [], next, installs })}\n`,
     )
     return 0
   }
-  const rows: ui.FieldRow[] = [['from', 'no package.json: one project, the root']]
+  const rows: ui.FieldRow[] = [['from', 'no turbo.json or nx.json: one project, the root']]
   if (args.dry) rows.push(['dry run', 'nothing written'])
+  if (installs.length > 0) rows.push(['install', ...installs])
   if (files.length > 0) rows.push(['files', ...files.map((f) => f.path)])
   if (kept.length > 0) rows.push(['kept', ...kept])
   if (replaced.length > 0) rows.push(['replaced', ...replaced])
@@ -203,6 +300,8 @@ async function starter(root: string, noGit: boolean, args: InitArgs): Promise<nu
     ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0
   }
+  const ran = await install(pkgRoot, false)
+  if (ran.length > 0) rows.push(['installed', ...ran])
   for (const f of files) await Bun.write(path.join(root, f.path), f.contents)
   for (const f of replaced) await unlink(path.join(root, f))
   // The lock that follows loads the workspace file just written.
@@ -217,7 +316,7 @@ async function starter(root: string, noGit: boolean, args: InitArgs): Promise<nu
 }
 
 /**
- * A repo with a package.json is `@vzn/vx-migrate`'s, at the latest
+ * A Turbo or Nx repo is `@vzn/vx-migrate`'s, after the global install, at the latest
  * release: it installs @vzn/vx and every @vzn/vx-* plugin the root lists
  * at its own version, so init always lands on latest with all of them
  * together, as `vx upgrade` moves them (M, 2026-10-16: an installed 0.0.637
@@ -232,6 +331,8 @@ async function migrate(dirs: readonly string[], args: InitArgs): Promise<number>
     args.mode !== undefined && `--${args.mode}`,
     args.json === true && '--format=json',
   ].filter((f): f is string => typeof f === 'string')
+  // vx-migrate installs the project's own vx.
+  if (!args.dry) await install(null, false)
   // An exact version: `bun x` may answer `@latest` from its cache.
   const latest = VERSION === '0.0.0' ? 'latest' : await targetVersion(undefined, 'vx init')
   return Bun.spawn(migrateCommand(dirs, flags, latest), {

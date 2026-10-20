@@ -52,6 +52,11 @@
     "next": {
       "type": ["string", "null"],
       "description": "the command to type after the real run; null where the plan names none"
+    },
+    "installs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "core's plan only: the install commands the real run runs (global, then the root devDependency)"
     }
   }
 }

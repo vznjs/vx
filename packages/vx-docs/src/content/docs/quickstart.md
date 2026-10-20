@@ -14,28 +14,21 @@ that binary.
 
 ## Install
 
-1. Install it at the workspace root: `npm install -D @vzn/vx` (in a pnpm
-   workspace, `pnpm add -D -w @vzn/vx`: npm refuses `workspace:*`; Bun:
-   `bun add -d @vzn/vx`).
-2. Run `npx @vzn/vx init` (Bun: `bunx @vzn/vx init`; npm refuses a repo
-   whose `devEngines` names Bun). It runs `@vzn/vx-migrate`, which writes a
-   `vx.config.ts` per package from its scripts, and a `.vx/workspace.ts`. A root script that checks the whole
-   repo (`format: prettier --check .`) becomes a task in a root
-   `vx.config.ts`; one that runs the members (`pnpm -r build`) does not,
-   nor one named like a package's own task (a root `lint` beside a
-   package's `lint`), so `--all` never runs a check twice. No task gets a `cache` block, so
-   nothing is cached yet: add the one each `build`'s TODO shows. A
-   repo with `turbo.json` or `nx.json` starts at
-   [Coming from Turbo, Nx or Vite Task](#coming-from-turbo-nx-or-vite-task) instead.
-   With no `package.json` at all (a Go or Rust repo), it writes
-   `.vx/workspace.ts` and an empty root `vx.config.ts` to declare tasks in.
+Run `npx @vzn/vx init` (Bun: `bunx @vzn/vx init`; npm refuses a repo
+whose `devEngines` names Bun). It installs `@vzn/vx` globally, so `vx`
+works anywhere, and as a devDependency at the repo root with your own
+package manager, so the repo pins its version. Then it writes
+`.vx/workspace.ts` and an empty root `vx.config.ts` to declare tasks in.
+A repo with `turbo.json` or `nx.json` starts at
+[Coming from Turbo, Nx or Vite Task](#coming-from-turbo-nx-or-vite-task)
+instead: the same command maps it.
 
 `vx init` is how every repo starts. The `.vx/workspace.ts` it writes
 marks the workspace root.
 
 ## Config
 
-What `vx init` wrote for a package, with the cache block its TODO asks for:
+A package's `vx.config.ts`, with a cache block on `build`:
 
 ```ts
 // packages/app/vx.config.ts
@@ -62,8 +55,8 @@ export default defineProject({
 
 ## Run
 
-Installed from npm, the command is `npx @vzn/vx` (pnpm: `pnpm vx`, Bun:
-`bunx @vzn/vx`); the lines below drop the prefix.
+`vx init` installed `vx` globally; inside the repo, the global `vx`
+hands the run to the version the repo pins.
 
 ```bash
 vx lock                   # find each vx.config.ts, resolve it into .vx/projects.lock.json, which runs read
